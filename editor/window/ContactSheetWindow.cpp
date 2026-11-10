@@ -13,11 +13,14 @@
 #include "pixelart/lint/EffectLints.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
+#include "widget/ColorField.h"
 
 #include "imgui.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 
 namespace jasperengine::editor {
@@ -30,6 +33,47 @@ namespace {
 
     // the backdrop names as the window shows them (Unity-like capitalised words)
     constexpr const char* kBackdropLabels[7] = {"Checker", "Dark", "Light", "Sky", "Ground", "Black", "Scene Colour"};
+
+    constexpr const char* kTargetLabels[4] = {"GameObject", "Animation Clip", "Particles", "Transition"};
+
+    constexpr jasperengine::pixelart::TransitionKind kTransitionKinds[jasperengine::pixelart::kTransitionKindCount] = {
+        jasperengine::pixelart::TransitionKind::IRIS, jasperengine::pixelart::TransitionKind::BLINDS, jasperengine::pixelart::TransitionKind::SLASH,
+        jasperengine::pixelart::TransitionKind::PIXEL_DISSOLVE, jasperengine::pixelart::TransitionKind::CRT_OFF,
+        jasperengine::pixelart::TransitionKind::BURN_AWAY, jasperengine::pixelart::TransitionKind::FADE};
+    constexpr const char* kTransitionLabels[jasperengine::pixelart::kTransitionKindCount] = {"Iris", "Blinds", "Slash", "Pixel Dissolve", "CRT Off",
+                                                                                              "Burn Away", "Fade"};
+    constexpr const char* kPhaseLabels[3] = {"Play", "Cover", "Reveal"};
+    constexpr const char* kShapeLabels[3] = {"Circle", "Diamond", "Square"};
+    constexpr const char* kEaseLabels[4] = {"Linear", "In", "Out", "In Out"};
+
+    // a combo over labels; the picked index in `index`
+    void labelCombo(const char* label, int& index, const char* const* labels, int count) {
+        ImGui::SetNextItemWidth(Theme::dpi(130.0f));
+        if (ImGui::BeginCombo(label, labels[index])) {
+            for (int i = 0; i < count; i++) {
+                const bool selected = i == index;
+                if (ImGui::Selectable(labels[i], selected)) index = i;
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    // a combo over project files, shown by file name; the picked path in `path`
+    void fileCombo(const char* label, std::string& path, const std::vector<std::string>& files, const char* empty) {
+        namespace fs = std::filesystem;
+        const std::string shown = path.empty() ? std::string(files.empty() ? empty : "(pick one)") : FileUtils::pathToUtf8(fs::path(path).filename());
+        ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+        if (ImGui::BeginCombo(label, shown.c_str())) {
+            for (const std::string& file : files) {
+                const bool selected = file == path;
+                if (ImGui::Selectable(FileUtils::pathToUtf8(fs::path(file).filename()).c_str(), selected)) path = file;
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", file.c_str());
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
 
 }
 
@@ -46,26 +90,81 @@ void ContactSheetWindow::open(uint32_t scene, Entity target) {
     entity = target;
     windowOpen = true;
     notice.clear();
+    transition = jasperengine::pixelart::TransitionOptions::fromDefaults();
+    scanTargetFiles();
+}
+
+void ContactSheetWindow::scanTargetFiles() {
+    namespace fs = std::filesystem;
+    clipFiles.clear();
+    particleFiles.clear();
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(project->getAssetsPath(), ec), end; it != end && !ec; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const fs::path file = it->path();
+        if (file.extension() == ".anim") {
+            clipFiles.push_back(fs::relative(file, project->getProjectPath(), ec).generic_string());
+        } else if (Util::isParticleEffectFile(file.string())) {
+            particleFiles.push_back(project->normalizeToAssetsRelative(file).generic_string());
+        }
+    }
+    std::sort(clipFiles.begin(), clipFiles.end());
+    std::sort(particleFiles.begin(), particleFiles.end());
+}
+
+std::string ContactSheetWindow::sheetName() const {
+    namespace fs = std::filesystem;
+    const SceneProject* scene = project->getScene(sceneId);
+    switch (targetKind) {
+        case TargetKind::Particles: return particlesPath.empty() ? std::string("Particles") : FileUtils::pathToUtf8(fs::path(particlesPath).stem());
+        case TargetKind::Transition: return std::string(kTransitionLabels[std::find(kTransitionKinds, kTransitionKinds + jasperengine::pixelart::kTransitionKindCount, transitionKind) - kTransitionKinds]) + " Transition";
+        default: return scene && scene->scene ? scene->scene->getEntityName(entity) : std::string("Contact Sheet");
+    }
 }
 
 void ContactSheetWindow::capture() {
+    if (pixelart::fx::EffectCapture::anyRunning()) {
+        notice = "Another capture is running: wait for it to end, then capture again.";
+        noticeIsError = true;
+        return;
+    }
     SceneProject* scene = project->getScene(sceneId);
     std::string error;
-    std::unique_ptr<pixelart::fx::CaptureTarget> target = pixelart::fx::makeEntityTarget(project, scene, entity, "", error);
+    std::unique_ptr<pixelart::fx::CaptureTarget> target;
+    const bool hasGameObject = targetKind == TargetKind::GameObject || targetKind == TargetKind::Clip;
+    if (hasGameObject) {
+        target = pixelart::fx::makeEntityTarget(project, scene, entity, targetKind == TargetKind::Clip ? clipPath : std::string(), error);
+    } else if (targetKind == TargetKind::Particles) {
+        target = pixelart::fx::makeParticlesTarget(project, particlesPath, error);
+    } else {
+        jasperengine::pixelart::TransitionOptions options = transition;
+        // no Pixel Perfect Camera draws a capture: pixel size 0 is one screen pixel per art pixel
+        options.pixelSize = std::max(options.pixelSize, 1);
+        const pixelart::fx::CaptureTransitionPhase phases[3] = {pixelart::fx::CaptureTransitionPhase::Play, pixelart::fx::CaptureTransitionPhase::Cover,
+                                                                 pixelart::fx::CaptureTransitionPhase::Reveal};
+        target = pixelart::fx::makeTransitionTarget(transitionKind, options, phases[std::clamp(transitionPhase, 0, 2)],
+                                                    std::clamp((double)duration, 1.0 / 60.0, 60.0), artWidth, artHeight);
+    }
     if (!target) {
         notice = "Can't capture: " + error + ".";
         noticeIsError = true;
         return;
     }
+    if (!pixelart::fx::captureFitsLimits(*target, std::clamp(frames, 1, 64), error)) {
+        notice = "Can't capture: " + error + ". Lower the Art Width, Art Height or Pixel Size, or the Frames.";
+        noticeIsError = true;
+        return;
+    }
     pixelart::fx::CaptureSettings settings;
-    settings.mode = sceneMode ? pixelart::fx::CaptureMode::Scene : pixelart::fx::CaptureMode::Isolated;
+    const bool useSceneMode = sceneMode && hasGameObject;
+    settings.mode = useSceneMode ? pixelart::fx::CaptureMode::Scene : pixelart::fx::CaptureMode::Isolated;
     settings.duration = std::clamp((double)duration, 1.0 / 60.0, 60.0);
     settings.loop = loop;
     settings.times = pixelart::fx::sheetTimes(std::clamp(frames, 1, 64), settings.duration, loop);
     settings.lints = lints;
     settings.project = project;
     settings.pixelsPerUnit = std::max(1, project->getPixelsPerUnit());
-    if (sceneMode && project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
+    if (useSceneMode && project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
         notice = "Scene mode captures a stopped scene here; in Play, use capture_contact_sheet (it steps the paused game).";
         noticeIsError = true;
         return;
@@ -109,9 +208,7 @@ void ContactSheetWindow::collect() {
 
 void ContactSheetWindow::saveAs() {
     if (sheet.empty()) return;
-    SceneProject* scene = project->getScene(sceneId);
-    const std::string name = scene && scene->scene ? scene->scene->getEntityName(entity) : std::string("Contact Sheet");
-    const std::string chosen = FileDialogs::saveFileDialog(project->getAssetsPath().string(), name + " Contact Sheet.png", "PNG image", "png");
+    const std::string chosen = FileDialogs::saveFileDialog(project->getAssetsPath().string(), sheetName() + " Contact Sheet.png", "PNG image", "png");
     if (chosen.empty()) return;
     std::filesystem::path target = FileUtils::pathFromUtf8(chosen);
     if (target.extension() != ".png") target += ".png";
@@ -126,6 +223,122 @@ void ContactSheetWindow::saveAs() {
     noticeIsError = false;
 }
 
+void ContactSheetWindow::drawTargetRow(bool& canCapture) {
+    SceneProject* scene = project->getScene(sceneId);
+    const bool gameObject = scene && scene->scene && scene->scene->isEntityCreated(entity);
+    const char* preview = kTargetLabels[(int)targetKind];
+    ImGui::SetNextItemWidth(Theme::dpi(150.0f));
+    if (ImGui::BeginCombo("Target##cs_target", preview)) {
+        for (int i = 0; i < 4; i++) {
+            if (ImGui::Selectable(kTargetLabels[i], i == (int)targetKind)) {
+                targetKind = (TargetKind)i;
+                scanTargetFiles();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    switch (targetKind) {
+        case TargetKind::GameObject:
+            ImGui::TextDisabled("GameObject: %s", gameObject ? scene->scene->getEntityName(entity).c_str() : "(none)");
+            canCapture = gameObject;
+            break;
+        case TargetKind::Clip:
+            ImGui::TextDisabled("On %s", gameObject ? scene->scene->getEntityName(entity).c_str() : "(no GameObject)");
+            ImGui::SameLine();
+            fileCombo("Clip##cs_clip", clipPath, clipFiles, "(no .anim in the project)");
+            canCapture = gameObject && !clipPath.empty();
+            break;
+        case TargetKind::Particles:
+            fileCombo("Effect##cs_particles", particlesPath, particleFiles, "(no .particles in the project)");
+            canCapture = !particlesPath.empty();
+            break;
+        case TargetKind::Transition:
+            ImGui::TextDisabled("the Project Settings' transition defaults, drawn over transparent black");
+            canCapture = true;
+            drawTransitionOptions();
+            break;
+    }
+}
+
+void ContactSheetWindow::drawTransitionOptions() {
+    using namespace jasperengine::pixelart;
+    int kind = (int)(std::find(kTransitionKinds, kTransitionKinds + kTransitionKindCount, transitionKind) - kTransitionKinds);
+    labelCombo("Kind##cs_transition_kind", kind, kTransitionLabels, kTransitionKindCount);
+    transitionKind = kTransitionKinds[kind];
+    ImGui::SameLine();
+    labelCombo("Phase##cs_transition_phase", transitionPhase, kPhaseLabels, 3);
+    ImGui::SameLine();
+    int ease = (int)transition.ease;
+    labelCombo("Ease##cs_transition_ease", ease, kEaseLabels, 4);
+    transition.ease = (TransitionEase)ease;
+
+    ImGui::TextUnformatted("Colour");
+    ImGui::SameLine();
+    Vector4 ink = transition.ink;
+    ui::ColorFieldOptions colourOptions;
+    colourOptions.alpha = false;
+    colourOptions.linearStorage = false;   // the transition's ink is sRGB as picked
+    colourOptions.label = "Transition Colour";
+    colourOptions.width = Theme::dpi(60.0f);
+    if (ui::colorField("##cs_transition_colour", ink, colourOptions) != ui::EditPhase::None) transition.ink = Vector4(ink.x, ink.y, ink.z, 1.0f);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+    char ramp[256];
+    std::snprintf(ramp, sizeof(ramp), "%s", transition.ramp.c_str());
+    if (ImGui::InputText("Ramp##cs_transition_ramp", ramp, sizeof(ramp))) transition.ramp = ramp;
+    ImGui::SetItemTooltip("A ramp name or a <palette>.palette#ramp:<name> path; empty: the built-in ember ramp");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::SliderInt("Rim##cs_transition_rim", &transition.rim, 0, kTransitionMaxRim);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::SliderFloat("Glow##cs_transition_glow", &transition.glow, 0.0f, 1.0f, "%.2f");
+
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::SliderInt("Pixel Size##cs_transition_pixel_size", &transition.pixelSize, 0, 16, transition.pixelSize == 0 ? "Auto" : "%d");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::InputInt("Art Width##cs_transition_width", &artWidth, 0, 0);
+    artWidth = std::clamp(artWidth, 8, 1024);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::InputInt("Art Height##cs_transition_height", &artHeight, 0, 0);
+    artHeight = std::clamp(artHeight, 8, 1024);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    int seed = (int)transition.seed;
+    if (ImGui::InputInt("Seed##cs_transition_seed", &seed, 0, 0)) transition.seed = (uint32_t)std::max(seed, 0);
+
+    if (transitionKind == TransitionKind::IRIS) {
+        int shape = (int)transition.shape;
+        labelCombo("Shape##cs_transition_shape", shape, kShapeLabels, 3);
+        transition.shape = (IrisShape)shape;
+        ImGui::SameLine();
+        float center[2] = {transition.center.x, transition.center.y};
+        ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+        if (ImGui::DragFloat2("Centre##cs_transition_center", center, 0.01f, 0.0f, 1.0f, "%.2f")) transition.center = Vector2(center[0], center[1]);
+    } else if (transitionKind == TransitionKind::BLINDS) {
+        ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+        ImGui::SliderInt("Count##cs_transition_count", &transition.count, 1, 64);
+        ImGui::SameLine();
+        ImGui::Checkbox("Vertical##cs_transition_vertical", &transition.vertical);
+    } else if (transitionKind == TransitionKind::SLASH) {
+        ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+        ImGui::DragFloat("Angle##cs_transition_angle", &transition.angle, 1.0f, -360.0f, 360.0f, "%.0f°");
+    } else if (transitionKind == TransitionKind::PIXEL_DISSOLVE) {
+        ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+        ImGui::SliderInt("Cell##cs_transition_cell", &transition.cell, 1, 256);
+    } else if (transitionKind == TransitionKind::FADE) {
+        ImGui::Checkbox("Through Ramp##cs_transition_through_ramp", &transition.throughRamp);
+    }
+    if (transitionPhase == 0) {
+        ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+        // below 0: 10 % of the duration (TransitionOptions::hold)
+        ImGui::DragFloat("Hold##cs_transition_hold", &transition.hold, 0.01f, -1.0f, 60.0f, transition.hold < 0.0f ? "Auto" : "%.2f s");
+    }
+}
+
 void ContactSheetWindow::show() {
     for (Texture& old : retired) old.destroy();
     retired.clear();
@@ -134,9 +347,8 @@ void ContactSheetWindow::show() {
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(720.0f), Theme::dpi(560.0f)), ImGuiCond_FirstUseEver);
     bool keepOpen = true;
     if (ImGui::Begin("Contact Sheet###ContactSheetWindow", &keepOpen, ImGuiWindowFlags_NoCollapse)) {
-        SceneProject* scene = project->getScene(sceneId);
-        const bool valid = scene && scene->scene && scene->scene->isEntityCreated(entity);
-        ImGui::TextDisabled("GameObject: %s", valid ? scene->scene->getEntityName(entity).c_str() : "(none)");
+        bool valid = false;
+        drawTargetRow(valid);
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
         ImGui::SliderInt("Frames##cs_frames", &frames, 1, 64);
         ImGui::SameLine();
@@ -152,8 +364,11 @@ void ContactSheetWindow::show() {
             ImGui::SameLine();
             ImGui::Checkbox((std::string(kBackdropLabels[i]) + "##cs_backdrop" + std::to_string(i)).c_str(), &backdrops[i]);
         }
+        // a .particles asset or a transition has no scene of its own to show
+        ImGui::BeginDisabled(targetKind == TargetKind::Particles || targetKind == TargetKind::Transition);
         ImGui::Checkbox("Scene Mode##cs_scene", &sceneMode);
-        ImGui::SetItemTooltip("Through the scene's camera, the whole scene; off: the GameObject alone on the backdrops");
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Through the scene's camera, the whole scene; off: the target alone on the backdrops");
         ImGui::SameLine();
         ImGui::Checkbox("Lints##cs_lints", &lints);
         ImGui::SetItemTooltip("Spill, one-shot end, loop seam, determinism, flicker, palette, partial alpha and frame cost checks");

@@ -8,6 +8,7 @@
 #include "util/UIProbe.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
+#include "widget/ColorPickerWindow.h"
 #include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
@@ -688,10 +689,49 @@ void editor::GameWindow::drawPixelScale(const PixelPerfectViewRequest& request) 
     }
 }
 
+namespace {
+
+    // The Transition pop-up's preview colour (a preview setting, not saved: no undo step), under one ID wherever it
+    // is drawn. Picking in the Color window closes the pop-up, and a field not drawn for a frame ends the Color
+    // window's session, so while that window edits it the field is drawn on the toolbar instead.
+    constexpr const char* kTransitionPreviewColourId = "GameTransitionPreviewColour";
+
+    bool transitionPreviewColourEditing() {
+        ImGui::PushOverrideID(ImHashStr(kTransitionPreviewColourId));
+        ImGui::PushID("##value");
+        const ImGuiID id = ImGui::GetID("##colorField");
+        ImGui::PopID();
+        ImGui::PopID();
+        return editor::ui::ColorPickerWindow::get().targets(id);
+    }
+
+    void transitionPreviewColourField(Vector4& colour) {
+        ImGui::PushOverrideID(ImHashStr(kTransitionPreviewColourId));
+        editor::ui::ColorFieldOptions options;
+        options.alpha = false;
+        options.linearStorage = false;   // the ink is sRGB as picked (TransitionOptions::ink)
+        options.label = "Transition Preview Colour";
+        options.width = editor::Theme::dpi(160.0f);
+        Vector4 value = colour;
+        const editor::ui::EditPhase phase = editor::ui::colorField("##value", value, options);
+        if (phase == editor::ui::EditPhase::Changing || phase == editor::ui::EditPhase::Cancelled || phase == editor::ui::EditPhase::Applied)
+            colour = Vector4(value.x, value.y, value.z, 1.0f);
+        ImGui::PopID();
+    }
+
+}
+
 void editor::GameWindow::drawTransitionMenu() {
     using namespace jasperengine::pixelart;
-    if (!ImGui::BeginPopup("##GameTransitionMenu"))
+    if (!ImGui::BeginPopup("##GameTransitionMenu")) {
+        if (transitionPreviewColourEditing()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Preview Colour");
+            ImGui::SameLine();
+            transitionPreviewColourField(transitionPreviewColor);
+        }
         return;
+    }
     const TransitionDefaults& defaults = ScreenTransition::getDefaults();
     if (!transitionPreviewSet) {
         transitionPreviewDuration = defaults.duration;
@@ -712,8 +752,9 @@ void editor::GameWindow::drawTransitionMenu() {
     ImGui::Separator();
     ImGui::SetNextItemWidth(Theme::dpi(160.0f));
     ImGui::DragFloat("Duration", &transitionPreviewDuration, 0.01f, 0.05f, 10.0f, "%.2f s");
-    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-    ImGui::ColorEdit3("Colour", &transitionPreviewColor.x);
+    ImGui::TextUnformatted("Colour");
+    ImGui::SameLine();
+    transitionPreviewColourField(transitionPreviewColor);
     ImGui::SetNextItemWidth(Theme::dpi(160.0f));
     ImGui::InputTextWithHint("Ramp", "built-in ember ramp", transitionPreviewRamp, sizeof(transitionPreviewRamp));
     ImGui::SetItemTooltip("A palette ramp, \"<palette>.palette#ramp:<name>\"");

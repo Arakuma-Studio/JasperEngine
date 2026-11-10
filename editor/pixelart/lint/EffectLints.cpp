@@ -451,6 +451,22 @@ namespace jasperengine::editor::pixelart::lint {
         if (!cpu && cost.gpuMs < 0.0 && cost.taps < 0) {
             return skipped("frame_cost", cost.skipReason.empty() ? std::string("nothing was measured") : cost.skipReason);
         }
+        const std::string tapsText = cost.taps >= 0 ? std::to_string(cost.taps) + " texture taps (budget " + std::to_string(cost.tapBudget) +
+                                                      ", static SPIR-V count: a read in a shader loop counts once)"
+                                                    : std::string();
+        if (!cpu && cost.gpuMs < 0.0) {
+            // only the static taps: no time was measured, so this is no PASS on the frame's cost
+            const std::string reason = cost.skipReason.empty() ? std::string("no time was measured") : cost.skipReason;
+            if (cost.taps <= cost.tapBudget) return skipped("frame_cost", reason + "; " + tapsText);
+            LintResult r = started("frame_cost");
+            r.threshold = cost.tapBudget;
+            r.measured = cost.taps;
+            r.count = 1;
+            r.status = LintStatus::Warn;
+            r.message = tapsText + "; " + reason;
+            r.fix = "turn off features it does not need, or share one material between the copies";
+            return r;
+        }
         LintResult r = started("frame_cost");
         r.threshold = 1.0;
         const double added = cpu ? std::max(0.0, cost.shownMs - cost.hiddenMs) : 0.0;
@@ -464,7 +480,7 @@ namespace jasperengine::editor::pixelart::lint {
         std::string parts;
         if (cpu) parts = "CPU +" + fixedText(added, 3) + " ms (shown " + fixedText(cost.shownMs, 3) + ", hidden " + fixedText(cost.hiddenMs, 3) + ")";
         if (cost.gpuMs >= 0.0) parts += std::string(parts.empty() ? "" : ", ") + "GPU +" + fixedText(cost.gpuMs, 3) + " ms";
-        if (cost.taps >= 0) parts += std::string(parts.empty() ? "" : ", ") + std::to_string(cost.taps) + " texture taps (budget " + std::to_string(cost.tapBudget) + ")";
+        if (cost.taps >= 0) parts += std::string(parts.empty() ? "" : ", ") + tapsText;
         r.message = "median frame cost: " + parts;
         if (r.status != LintStatus::Pass) r.fix = "turn off features it does not need, lower particle counts, or share one material between the copies";
         return r;
@@ -540,22 +556,43 @@ namespace jasperengine::editor::pixelart::lint {
     LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames) {
         LintResult r = started("transition_edges");
         r.threshold = 0;
-        int spread = 0, measured = 0;
+        int spread = 0, measured = 0, spreadFrames = 0, differing = 0, differingFrames = 0, worst = -1;
         for (size_t fi = 0; fi < frames.size(); fi++) {
             const RimSpreadFrame& f = frames[fi];
+            worst = std::max(worst, f.twinWorst);
+            if (f.twinDiffering > 0) {
+                r.addSpot({(int)fi + 1, f.x2, f.y2});
+                differing = std::max(differing, f.twinDiffering);
+                differingFrames++;
+            }
             if (f.crossings == 0) continue;
             measured++;
             const int s = f.widest - f.narrowest;
-            if (s > 0) r.addSpot({(int)fi + 1, f.x, f.y});
+            if (s > 0) {
+                r.addSpot({(int)fi + 1, f.x, f.y});
+                spreadFrames++;
+            }
             spread = std::max(spread, s);
         }
-        if (measured == 0) return skipped("transition_edges", "no frame shows a rim between ink and screen");
-        r.measured = spread;
-        r.status = spread > 0 ? LintStatus::Warn : LintStatus::Pass;
-        if (spread > 0) {
-            r.message = "the rim's width varies by " + std::to_string(spread) + " art px along the edge in " + std::to_string(r.count) + " frame(s)";
-            r.fix = "keep rim within 0..8 and draw it at whole art pixels (pixel_size 0 or the S41 grid scale)";
+        // the read-back against the CPU evaluation, said whatever the status: 1 of 255 absorbs rounding, nothing more
+        const std::string twin = worst < 0 ? std::string() : "largest channel difference from the CPU evaluation: " + std::to_string(worst) + " of 255";
+        if (measured == 0 && differing == 0) {
+            return skipped("transition_edges", "no frame shows a rim between ink and screen" + (twin.empty() ? std::string() : "; " + twin));
         }
+        r.measured = std::max(spread, differing);
+        r.status = spread > 0 || differing > 0 ? LintStatus::Warn : LintStatus::Pass;
+        if (differing > 0) {
+            r.message = std::to_string(differing) + " art px of the frame read back differ from the transition's CPU evaluation (in " +
+                        std::to_string(differingFrames) + " frame(s)); " + twin;
+            r.fix = "the transition's shader and its CPU evaluation disagree at these options: a person decides (an engine bug)";
+        }
+        if (spread > 0) {
+            r.message += std::string(r.message.empty() ? "" : "; ") + "the rim's width varies by " + std::to_string(spread) + " art px along the edge in " +
+                         std::to_string(spreadFrames) + " frame(s)";
+            r.fix += std::string(r.fix.empty() ? "" : "; ") + "keep rim within 0..8 and draw it at whole art pixels (pixel_size 0 or the S41 grid scale)";
+        }
+        if (r.message.empty()) r.message = twin;
+        else if (differing == 0 && !twin.empty()) r.message += "; " + twin;
         return r;
     }
 
@@ -590,13 +627,18 @@ namespace jasperengine::editor::pixelart::lint {
                 report.add(lintDeterminism(input.determinismFirst, input.determinismSecond, input.determinismTime));
             }
         }
-        if (wanted("flicker")) report.add(lintFlicker(input.frames, input.loop));
+        // scene mode reads the whole opaque view: these count every pixel of the scene behind the target
+        const char* const wholeView = "scene mode draws the whole view, so this cannot tell the target from what is behind it: capture it isolated";
+        if (wanted("flicker")) report.add(input.wholeView ? skipped("flicker", wholeView) : lintFlicker(input.frames, input.loop));
         if (wanted("off_palette")) {
             OffPaletteOptions options;
             options.paletteName = input.paletteName;
-            report.add(lintOffPalette(input.frames, input.palette, options));
+            report.add(input.wholeView ? skipped("off_palette", wholeView) : lintOffPalette(input.frames, input.palette, options));
         }
-        if (wanted("partial_alpha")) report.add(lintPartialAlpha(input.frames));
+        if (wanted("partial_alpha")) {
+            report.add(input.wholeView ? skipped("partial_alpha", "scene mode reads the view with its alpha forced to 255: capture it isolated")
+                                       : lintPartialAlpha(input.frames));
+        }
         if (wanted("frame_cost")) report.add(lintFrameCost(input.cost));
         if (wanted("hit_stop_length")) report.add(lintHitStopLength(input.hitStopSeconds, input.hitStopSkipReason));
         if (wanted("transition_edges")) {
@@ -636,10 +678,14 @@ namespace jasperengine::editor::pixelart::lint {
 
     Verdict effectVerdict(const LintReport& report) {
         Verdict verdict = Verdict::Clean;
+        bool measured = false;
         for (const LintResult& r : report.results) {
             if (r.status == LintStatus::Fail && (r.id == "determinism" || r.id == "frame_cost")) return Verdict::NeedsPerson;
             if (r.status == LintStatus::Warn || r.status == LintStatus::Fail) verdict = Verdict::Fixable;
+            measured = measured || r.status != LintStatus::Skip;
         }
+        // every check skipped (or none ran): nothing was measured, so clean would claim what nobody checked
+        if (!measured && verdict == Verdict::Clean) return Verdict::NeedsPerson;
         return verdict;
     }
 

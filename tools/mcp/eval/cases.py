@@ -4556,6 +4556,80 @@ CASES = [
                    "reply_must": [r"(?i)rim|width|edge"]},
         "max_turns": 10,
     },
+    {
+        "id": "guard_contact_sheet_too_large",
+        "kind": "guard",
+        "what_happened": "New error text (S48 review): capture_contact_sheet caps a transition's capture size; the error "
+                         "capture_too_large names the fix, and an agent retries smaller instead of giving up or looping.",
+        "text_at_issue": "capture_contact_sheet error: capture_too_large with 'lower target.transition_options' width, height or "
+                         "pixel_size, or ask for fewer frames'",
+        "source": "S48 review, finding 6 (new error text); no failure on record",
+        "prompt": "Capture an iris screen transition's contact sheet at 1024 by 1024 art pixels with pixel size 16 and 64 frames, "
+                  "and show me the sheet.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "once": True, "args": {"frames": 64}, "result": err(
+                "Can't capture the contact sheet:\n- capture_too_large: a 16384 x 16384 frame x 64 frames is 17179869184 px of frames; "
+                "a capture takes at most 4096 px a side and 33554432 px over all its frames Fix: lower "
+                "target.transition_options' width, height or pixel_size, or ask for fewer frames")},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 1: a 1288x176 sheet of 160x90 frames.",
+                {"target": "transition iris", "scale": 1, "cell": [160, 90],
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}}}],
+                   "min_calls": {"capture_contact_sheet": 2},
+                   "reply_must": [r"(?i)smaller|lower|too large|limit|cap"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_running",
+        "kind": "guard",
+        "what_happened": "New error text (S48 review): a capture is refused while another runs; the error names get_job, and "
+                         "the agent waits for the job then retries instead of concluding the tool is broken.",
+        "text_at_issue": "capture_contact_sheet error: capture_running with 'wait for job <id> with get_job, or cancel_job it, "
+                         "then call again'",
+        "source": "S48 review, finding 12 (new error text); no failure on record",
+        "prompt": "Capture a contact sheet of the Explosion GameObject and tell me its size.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "once": True, "result": err(
+                "Can't capture the contact sheet:\n- capture_running: another capture is still running (job job_7) Fix: wait for "
+                "job job_7 with get_job, or cancel_job it, then call again")},
+            {"tool": "get_job", "result": ok("job_7: succeeded", {"job_id": "job_7", "status": "succeeded"})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames.",
+                {"target": "Explosion", "scale": 4, "cell": [100, 100]})},
+        ],
+        "checks": {"calls": [{"tool": "get_job"}, {"tool": "capture_contact_sheet"}],
+                   "must_not_call": ["record_game", "screenshot"],
+                   "reply_must": [r"803|100"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_reload_disclosed",
+        "kind": "guard",
+        "what_happened": "New result text (S48 review): capture_contact_sheet's determinism check in Play reloads the played "
+                         "scene; the result's next says the game restarted, so the agent reports it instead of assuming the "
+                         "game's state is unchanged.",
+        "text_at_issue": "capture_contact_sheet next: 'The determinism check reloaded the played scene for its two fresh captures, "
+                         "so the game's state restarted.'",
+        "source": "S48 review, finding 10 (new result text); no failure on record",
+        "prompt": "While the game is playing, check with a contact sheet that the Random GameObject's frames are deterministic, "
+                  "and tell me anything I need to know about the state of the game afterwards.",
+        "mocks": [
+            {"tool": "play", "result": ok("Playing the Main scene.", {"state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Playing.", {"state": "playing"})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 3 frames of Random (scene) at scale 1: a 322x116 sheet of 320x180 frames. Checks FAIL, verdict "
+                "needs_person:\nFAIL determinism: 14.0",
+                {"target": "Random", "mode": "scene", "verdict": "needs_person", "check_status": "FAIL",
+                 "checks": [{"id": "determinism", "kind": "effect", "status": "FAIL", "measured": 14, "threshold": 0}],
+                 "next": "The determinism check reloaded the played scene for its two fresh captures, so the game's state restarted. "
+                         "Look at the sheet as well as the checks: they measure mistakes, not taste."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"lint": "*"}}],
+                   "reply_must": [r"(?i)reload|restart"]},
+        "max_turns": 10,
+    },
     # ---- S48 Pixel FX: sprite effects (material presets and library:sprite features)
     {
         "id": "guard_pixel_fx_selout_preset",

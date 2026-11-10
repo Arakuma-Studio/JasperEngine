@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <cmath>
 #include <set>
@@ -125,18 +126,56 @@ namespace {
 
     // ------------------------------------------------------------------ targets
 
+    // A frame read back (screen pixels, rows top first, premultiplied) against the CPU evaluation at
+    // art resolution: the art pixels with a screen pixel more than 1 away in a channel (the GPU rounds its output, the
+    // twin rounds its float maths: ScreenTransitionGpu's allowance); the first in (x, y), the largest difference in `worst`
+    int countTwinDiffering(const PixelImage& frame, const jasperengine::pixelart::TransitionImage& twin, int pixelSize, int& x, int& y, int& worst) {
+        worst = 0;
+        if (frame.width() != twin.width * pixelSize || frame.height() != twin.height * pixelSize) {
+            worst = 255;
+            return twin.width * twin.height;
+        }
+        int differing = 0;
+        for (int ay = 0; ay < twin.height; ay++) {
+            for (int ax = 0; ax < twin.width; ax++) {
+                const jasperengine::pixelart::Rgba8 want = twin.colors[(size_t)ay * (size_t)twin.width + (size_t)ax];
+                bool same = true;
+                for (int sy = ay * pixelSize; sy < (ay + 1) * pixelSize; sy++) {
+                    const uint8_t* row = frame.row(sy);
+                    for (int sx = ax * pixelSize; sx < (ax + 1) * pixelSize; sx++) {
+                        const uint8_t* p = row + (size_t)sx * 4;
+                        const int d = std::max({std::abs(p[0] - want.r), std::abs(p[1] - want.g), std::abs(p[2] - want.b), std::abs(p[3] - want.a)});
+                        worst = std::max(worst, d);
+                        if (d > 1) same = false;
+                    }
+                }
+                if (!same) {
+                    if (differing == 0) {
+                        x = ax;
+                        y = ay;
+                    }
+                    differing++;
+                }
+            }
+        }
+        return differing;
+    }
+
     class CaptureEntityTarget : public CaptureTarget {
     public:
         Project* project = nullptr;
-        SceneProject* scene = nullptr;
+        uint32_t sceneId = NULL_PROJECT_SCENE;   // the id, not a SceneProject*: scenes live in a vector
         Entity entity = NULL_ENTITY;
         std::string clip;
         double clipLength = 0.0;
         bool clipLoops = false;
         CaptureEffect effect;
 
+        SceneProject* scene() const { return project->getScene(sceneId); }
+
         std::string label() const override {
-            const std::string name = scene->scene->getEntityName(entity);
+            const SceneProject* source = scene();
+            const std::string name = source && source->scene ? source->scene->getEntityName(entity) : std::string();
             return (name.empty() ? "GameObject " + std::to_string(entity) : name) + (clip.empty() ? "" : " playing " + clip) +
                    (effect.active ? std::string(" with ") + jasperengine::pixelart::pixelFxEffectName(effect.effect) : std::string());
         }
@@ -146,14 +185,15 @@ namespace {
             return d;
         }
         bool defaultLoop() const override { return !clip.empty() && clipLoops; }
-        SceneProject* sourceScene() const override { return scene; }
+        SceneProject* sourceScene() const override { return scene(); }
 
         bool build(Scene* into, uint32_t runSeed, std::vector<Entity>& made, std::string& error) override {
-            if (!scene->scene || !scene->scene->isEntityCreated(entity)) {
+            SceneProject* source = scene();
+            if (!source || !source->scene || !source->scene->isEntityCreated(entity)) {
                 error = "the GameObject is gone from its scene";
                 return false;
             }
-            const std::vector<Entity> copies = EntityCloner::clone(scene->scene, EntityCloner::collectHierarchy(scene->scene, entity), into);
+            const std::vector<Entity> copies = EntityCloner::clone(source->scene, EntityCloner::collectHierarchy(source->scene, entity), into);
             if (copies.empty()) {
                 error = "the GameObject could not be copied";
                 return false;
@@ -275,16 +315,26 @@ namespace {
 
         void describeLints(lint::EffectLintInput& input) const override {
             input.transition = true;
-            // the rim as the shader draws it (ScreenTransitionGpu pins the CPU twin against the GPU); art pixels, whatever
-            // the sheet's pixel_size
-            for (double time : input.times) {
+            // A test's way to make the CPU evaluation differ from what the shader drew (tools/mcp/tests/test_contact_sheet.py)
+            static const float twinSkew = [] {
+                const char* value = std::getenv("JASPER_TEST_TRANSITION_TWIN_SKEW");
+                return value ? (float)std::atof(value) : 0.0f;
+            }();
+            const int pixelSize = std::max(options.pixelSize, 1);
+            // the rim's width from the CPU twin of the shader (a colour image cannot show which axis a rim pixel was
+            // measured along), in art pixels whatever the pixel_size; the frames read back must be that twin, pixel by
+            // pixel, or this measures something the shader did not draw
+            for (size_t i = 0; i < input.times.size(); i++) {
                 float coverage = 0.0f;
                 jasperengine::pixelart::TransitionPhase state = jasperengine::pixelart::TransitionPhase::COVER;
-                at(time, coverage, state);
+                at(input.times[i], coverage, state);
                 jasperengine::pixelart::TransitionImage image;
-                jasperengine::pixelart::ScreenTransition::evaluate(kind, options, coverage, state, artWidth, artHeight, image);
+                jasperengine::pixelart::ScreenTransition::evaluate(kind, options, twinSkew != 0.0f ? std::clamp(coverage + twinSkew, 0.0f, 1.0f) : coverage, state,
+                                                                   artWidth, artHeight, image);
                 const jasperengine::pixelart::TransitionRimMeasure m = jasperengine::pixelart::ScreenTransition::measureRim(kind, image);
-                input.rimSpreads.push_back({m.crossings, m.minWidth, m.maxWidth, m.atX, m.atY});
+                lint::RimSpreadFrame frame{m.crossings, m.minWidth, m.maxWidth, m.atX, m.atY};
+                if (i < input.frames.size() && input.frames[i]) frame.twinDiffering = countTwinDiffering(*input.frames[i], image, pixelSize, frame.x2, frame.y2, frame.twinWorst);
+                input.rimSpreads.push_back(frame);
             }
             input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);
             input.spillApplies = false;
@@ -483,6 +533,7 @@ void EffectCapture::finish(const std::string& failure) {
             in.cost.hiddenMs = median(d.hidden);
         }
         if (d.taps >= 0) in.cost.taps = d.taps;
+        in.wholeView = output.opaque;
         if (settings.mode == CaptureMode::Scene && settings.sceneId != 0) {
             // the longest HitStop.play the game asked for while it was captured (0: none)
             const jasperengine::pixelart::HitStopStats stats = jasperengine::pixelart::HitStop::getStats();
@@ -490,12 +541,19 @@ void EffectCapture::finish(const std::string& failure) {
         } else {
             in.hitStopSkipReason = "hit-stops are measured in a scene-mode capture of the playing game";
         }
-        target->describeLints(in);
+        if (settings.lints) target->describeLints(in);
     }
     if (onFinished) {
         std::function<void()> done = onFinished;
         done();
     }
+}
+
+bool EffectCapture::anyRunning() {
+    for (const EffectCapture* run : liveCaptures()) {
+        if (run->started && !run->finished) return true;
+    }
+    return false;
 }
 
 bool EffectCapture::processFrame() {
@@ -581,7 +639,8 @@ bool EffectCapture::advance(double budgetMs) {
             (settings.times.empty() || settings.times.back() < settings.duration - 1e-9)) {
             d.passes.push_back(CapturePass{1, {settings.duration}, &d.lastFrame});
         }
-        if (wanted("spill") && settings.mode == CaptureMode::Isolated) {
+        int fixedWidth = 0, fixedHeight = 0;
+        if (wanted("spill") && settings.mode == CaptureMode::Isolated && !target->fixedFrame(fixedWidth, fixedHeight)) {
             const uint32_t seeds[3] = {2, 3, 7};
             for (int k = 0; k < 3; k++) d.passes.push_back(CapturePass{seeds[k], settings.times, &d.spill[k]});
         }
@@ -947,7 +1006,7 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* p
     }
     auto target = std::make_unique<CaptureEntityTarget>();
     target->project = project;
-    target->scene = scene;
+    target->sceneId = scene->id;
     target->entity = entity;
     target->clip = clip;
     target->effect = effect;
@@ -976,6 +1035,17 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeTransitionTarget(jasper
     target->artWidth = std::clamp(artWidth, 8, 1024);
     target->artHeight = std::clamp(artHeight, 8, 1024);
     return target;
+}
+
+bool editor::pixelart::fx::captureFitsLimits(const CaptureTarget& target, int frames, std::string& error) {
+    int width = 0, height = 0;
+    if (!target.fixedFrame(width, height)) return true;
+    const int64_t pixels = (int64_t)width * height * std::max(frames, 1);
+    if (width <= kCaptureMaxSide && height <= kCaptureMaxSide && pixels <= kCaptureMaxPixels) return true;
+    error = "a " + std::to_string(width) + " x " + std::to_string(height) + " frame x " + std::to_string(std::max(frames, 1)) + " frames is " +
+            std::to_string(pixels) + " px of frames; a capture takes at most " + std::to_string(kCaptureMaxSide) + " px a side and " +
+            std::to_string(kCaptureMaxPixels) + " px over all its frames";
+    return false;
 }
 
 std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeParticlesTarget(Project* project, const std::string& effect, std::string& error) {

@@ -2090,7 +2090,15 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             if (settingsui::beginRow("graphics.screen_transitions.color")) {
                 if (projectBeginSettingsRow("Colour", m_transitions.color != defaults.color))
                     m_transitions.color = defaults.color;
-                ImGui::ColorEdit3("##TransitionColor", &m_transitions.color.x);
+                // the Color window; undoable with the other transition settings (TransitionSettingsCmd)
+                ui::ColorFieldOptions colorOptions;
+                colorOptions.alpha = false;
+                colorOptions.linearStorage = false;   // the ink is sRGB as picked
+                colorOptions.label = "Transition Colour";
+                Vector4 ink = m_transitions.color;
+                const ui::EditPhase phase = ui::colorField("##TransitionColor", ink, colorOptions);
+                if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied)
+                    m_transitions.color = Vector4(ink.x, ink.y, ink.z, m_transitions.color.w);
                 endSettingsRow("The ink the screen is covered in (sRGB, as picked).");
             }
             if (settingsui::beginRow("graphics.screen_transitions.ramp")) {

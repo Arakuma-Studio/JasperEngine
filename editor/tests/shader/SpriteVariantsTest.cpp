@@ -267,6 +267,8 @@ TEST(SpriteVariants, FlashHasAnIdleBranchBesidePixelFx){
 
 // AC9, R33: the texture reads each S48 feature adds to the base sprite's fragment stage (static
 // count in the Vulkan SPIR-V) within the budget
+// the count is static (SPIR-V call sites): a read inside a shader loop counts once, as the
+// frame_cost lint says in its message
 TEST(SpriteVariants, TapBudget){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     auto taps = [](const std::vector<std::string>& features){

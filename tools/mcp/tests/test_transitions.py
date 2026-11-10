@@ -308,6 +308,8 @@ async def test_contact_sheet_route(ed: Editor):
             ed.check_eq(off, 0, f"{name}: progress 1 is all ink")
             rows = {row["id"]: row for row in value["checks"]}
             edges = rows["transition_edges"]
+            ed.check("of 255" in (edges["limited_by"] or ""), f"{name}: says how far the frames read back are from the CPU evaluation: {edges}")
+            print(f"     [twin] {name}: {edges['limited_by']}", flush=True)
             if kind in ("pixel_dissolve", "fade"):
                 ed.check_in(edges["status"], ("PASS", "SKIP"), f"{name}: no rim to measure: {edges}")
             else:
