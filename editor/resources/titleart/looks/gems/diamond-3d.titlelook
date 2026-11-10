@@ -340,6 +340,7 @@
     {
       "type": "outline",
       "params": {
+        "color": "#e0e7f0",
         "width": 2.5
       }
     },

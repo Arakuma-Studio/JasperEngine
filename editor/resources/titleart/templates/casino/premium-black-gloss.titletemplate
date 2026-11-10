@@ -294,7 +294,7 @@
           "features": {},
           "language": "",
           "size": 300,
-          "tracking": -40,
+          "tracking": 0,
           "line_height": 1.1,
           "kerning": true,
           "align": "center",
@@ -842,18 +842,18 @@
                 "material": {
                   "fill": {
                     "kind": "solid",
-                    "color": "#050505",
+                    "color": "#3a3f4a",
                     "gradient": {
                       "stops": [
                         {
                           "pos": 0,
-                          "color": "#050505",
+                          "color": "#3a3f4a",
                           "alpha": 1,
                           "mid": 0.5
                         },
                         {
                           "pos": 1,
-                          "color": "#050505",
+                          "color": "#3a3f4a",
                           "alpha": 1,
                           "mid": 0.5
                         }
