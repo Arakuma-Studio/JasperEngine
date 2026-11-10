@@ -122,6 +122,12 @@ TEST_F(LuaSpriteBatch, SmallEdits){
     EXPECT_TRUE(component.sortInstances);
 }
 
+TEST_F(LuaSpriteBatch, RawComponentGetterReturnsUserdata){
+    EXPECT_EQ(runBatchLua(L,
+        "local component = batch:getSpriteBatchComponent()\n"
+        "assert(type(component) == 'userdata')\n"), "");
+}
+
 TEST_F(LuaSpriteBatch, TypedErrorsChangeNothing){
     ASSERT_EQ(runBatchLua(L, "batch:setPositions({0, 0, 1, 1})\n"), "");
     std::string error = runBatchLua(L, "batch:frameId('nope')\n");
