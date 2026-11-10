@@ -216,23 +216,23 @@
       {
         "fill": {
           "kind": "linear",
-          "color": "#ffe0a8",
+          "color": "#bfa46e",
           "gradient": {
             "stops": [
               {
-                "color": "#ffe0a8"
+                "color": "#bfa46e"
               },
               {
                 "pos": 0.4,
-                "color": "#e88a20"
+                "color": "#a45200"
               },
               {
                 "pos": 0.6,
-                "color": "#8a3a00"
+                "color": "#4f0100"
               },
               {
                 "pos": 1,
-                "color": "#ffc070"
+                "color": "#bd8538"
               }
             ]
           }

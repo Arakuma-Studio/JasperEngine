@@ -2767,6 +2767,7 @@
       "item": "giraffe",
       "notes": [
         "mapped: the colourway through the colourway port (PachislopColourways)",
+        "mapped: tuned by overrides.json",
         "dropped: colourway: COLOURWAY_DEFS.giraffe.swatchPattern: a CSS swatch of the UI, not carried (the swatch colours are): the colourway port does not carry it"
       ]
     },

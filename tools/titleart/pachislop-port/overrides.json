@@ -15521,5 +15521,117 @@
       }
     }
   },
-  "color_schemes": {}
+  "color_schemes": {
+    "giraffe": {
+      "paints": {
+        "accents": [
+          {
+            "fill": {
+              "color": "#fff2d0",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff2d0"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#fff2d0"
+                  }
+                ]
+              }
+            },
+            "material_3d": {
+              "color": "#fff2d0",
+              "roughness": 0.15,
+              "clearcoat": 1
+            },
+            "shade": "#7a4a10"
+          },
+          {
+            "fill": {
+              "kind": "linear",
+              "color": "#bfa46e",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#bfa46e"
+                  },
+                  {
+                    "pos": 0.4,
+                    "color": "#a45200"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#4f0100"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#bd8538"
+                  }
+                ]
+              }
+            },
+            "ramp": {
+              "stops": [
+                {
+                  "color": "#2a0d00"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#a3461a"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffad7a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff3ea"
+                }
+              ]
+            },
+            "material_3d": {
+              "preset": "copper",
+              "color": "#ff8a52",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff0e0"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#ffb48a"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#d0652a"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#6e2a0c"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#c05a24"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#ffa77a"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffe6d6"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.12,
+              "clearcoat": 0.3
+            },
+            "shade": "#4a1a00"
+          }
+        ]
+      }
+    }
+  }
 }
