@@ -64,7 +64,7 @@
       },
       {
         "fill": {
-          "color": "#474747"
+          "color": "#111111"
         },
         "material_3d": {
           "color": "#111111",
@@ -74,10 +74,10 @@
     ],
     "base": {
       "fill": {
-        "color": "#505050"
+        "color": "#000000"
       },
       "material_3d": {
-        "color": "#505050",
+        "color": "#000000",
         "metallic": 1,
         "roughness": 0.4,
         "env_multiplier": 0.6
