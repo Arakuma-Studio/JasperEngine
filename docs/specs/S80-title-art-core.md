@@ -1564,7 +1564,7 @@ each spec writes only its own `### ` section (so the file splits into section re
 `### Import and export` (S87). The generated catalogues are separate files:
 `title-art-effects.md` (S80's generator, S83's columns) and `title-library.md` (S84). The guide
 (`McpInstructions.cpp`) gets one
-"Other areas" entry, `title art (edit_title)`, and the generated `title_art` group name: ≤ 40 bytes
+"Other areas" entry, `titles (edit_title)`, and the generated `title_art` group name: ≤ 40 bytes
 together, with a case `make_title_logo` in `tools/mcp/eval/cases.py` that fails without the entry.
 
 ### 6.12 Checks (`check_title`)
@@ -2287,3 +2287,6 @@ rest of S82 lands in 6B.
     holds one compile, as the rule says; the test's bound counted only draws. It now takes the slower of the slowest pass and
     the slowest build (`TitleGpuStats::slowestBuildMs`), still one compile plus the 1 s rest, and the hang-threshold check on
     GPUs is unchanged. The 8.8 s itself remains ELEMENT's size (S86 deviation 23).
+60. **Merge with upstream: the guide entry is `titles (edit_title)`.** The upstream merges took the
+    whole guide to its headroom (6,693 bytes, one over); the area's own entry gives the bytes
+    instead of another area's (§6.11's 40-byte cap still holds).

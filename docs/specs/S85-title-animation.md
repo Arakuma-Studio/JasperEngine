@@ -736,7 +736,7 @@ S80's.
     ["anim"]}`, then `export_title {dry_run: true}`, then export;
   - a Lua recipe.
 
-  The agent guide itself gets no new bytes; S80's `title art (edit_title)` entry covers the area.
+  The agent guide itself gets no new bytes; S80's `titles (edit_title)` entry covers the area.
 - **R57. CLI.** Every tool works through `jasperengine-editor call`, and Lua through `eval_lua`.
   `jasperengine-editor check --titles` runs the document-kind animation checks without a GPU.
 

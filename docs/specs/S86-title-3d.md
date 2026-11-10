@@ -784,7 +784,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   format values that S80's enums already carry, check ids); no new tool is added.
 - **R62 Guide.** A `### 3D` section in `docs/mcp/guide/title-art.md` covers the fields, tiers and
   budgets, reading `stats_3d`, the checks and when to bake. The agent guide gets no bytes: S80's
-  `title art (edit_title)` entry covers the area (S80 §6.11).
+  `titles (edit_title)` entry covers the area (S80 §6.11).
 - **R63 Lua** (S81's `TitleArt` component):
   - `title.qualityTier` (`"auto"|"high"|"medium"|"low"`, read/write);
   - `title:getMeshStats(layerPath)` → `{triangles, vertices, solids, buildMs, tier, overBudget}`;

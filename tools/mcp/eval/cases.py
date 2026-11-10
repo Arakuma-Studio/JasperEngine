@@ -1462,7 +1462,7 @@ CASES = [
         "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
                          "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
                          "names the area and its tool.",
-        "text_at_issue": "Guide 'Other areas': 'title art (edit_title)' and the generated Tool groups list (title_art)",
+        "text_at_issue": "Guide 'Other areas': 'titles (edit_title)' and the generated Tool groups list (title_art)",
         "source": "guide index entry (S80 R60, AC40); no failure on record",
         "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
         "mocks": [
