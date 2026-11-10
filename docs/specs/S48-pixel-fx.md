@@ -998,7 +998,8 @@ Implementation notes that change what the spec says. Each item names the require
 - **transition_edges.** A transition's capture takes the rim's width from its CPU evaluation (`ScreenTransition::measureRim`: the
   run along each row or column away from the uncovered side, the rule the shader draws by, in art pixels at any `pixel_size`),
   because a colour image cannot tell which axis a rim pixel was measured along; every frame read back is compared with that
-  evaluation pixel by pixel, and a difference WARNs naming the art pixels. Pixel Dissolve and Fade have no continuous
+  evaluation pixel by pixel, at most 1 of 255 per channel apart (rounding only), a larger difference WARNs naming the art
+  pixels, and the row's `limited_by` always gives the largest channel difference. Pixel Dissolve and Fade have no continuous
   edge and report SKIP unless the read-back differs. `lintTransitionEdges` on bare images (mean rim run times the cosine of the fitted edge slope, over 7
   lines) stays for callers with frames only.
 - **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker. Its Target

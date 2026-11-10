@@ -556,9 +556,10 @@ namespace jasperengine::editor::pixelart::lint {
     LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames) {
         LintResult r = started("transition_edges");
         r.threshold = 0;
-        int spread = 0, measured = 0, spreadFrames = 0, differing = 0, differingFrames = 0;
+        int spread = 0, measured = 0, spreadFrames = 0, differing = 0, differingFrames = 0, worst = -1;
         for (size_t fi = 0; fi < frames.size(); fi++) {
             const RimSpreadFrame& f = frames[fi];
+            worst = std::max(worst, f.twinWorst);
             if (f.twinDiffering > 0) {
                 r.addSpot({(int)fi + 1, f.x2, f.y2});
                 differing = std::max(differing, f.twinDiffering);
@@ -573,12 +574,16 @@ namespace jasperengine::editor::pixelart::lint {
             }
             spread = std::max(spread, s);
         }
-        if (measured == 0 && differing == 0) return skipped("transition_edges", "no frame shows a rim between ink and screen");
+        // the read-back against the CPU evaluation, said whatever the status: 1 of 255 absorbs rounding, nothing more
+        const std::string twin = worst < 0 ? std::string() : "largest channel difference from the CPU evaluation: " + std::to_string(worst) + " of 255";
+        if (measured == 0 && differing == 0) {
+            return skipped("transition_edges", "no frame shows a rim between ink and screen" + (twin.empty() ? std::string() : "; " + twin));
+        }
         r.measured = std::max(spread, differing);
         r.status = spread > 0 || differing > 0 ? LintStatus::Warn : LintStatus::Pass;
         if (differing > 0) {
             r.message = std::to_string(differing) + " art px of the frame read back differ from the transition's CPU evaluation (in " +
-                        std::to_string(differingFrames) + " frame(s))";
+                        std::to_string(differingFrames) + " frame(s)); " + twin;
             r.fix = "the transition's shader and its CPU evaluation disagree at these options: a person decides (an engine bug)";
         }
         if (spread > 0) {
@@ -586,6 +591,8 @@ namespace jasperengine::editor::pixelart::lint {
                          std::to_string(spreadFrames) + " frame(s)";
             r.fix += std::string(r.fix.empty() ? "" : "; ") + "keep rim within 0..8 and draw it at whole art pixels (pixel_size 0 or the S41 grid scale)";
         }
+        if (r.message.empty()) r.message = twin;
+        else if (differing == 0 && !twin.empty()) r.message += "; " + twin;
         return r;
     }
 

@@ -127,22 +127,26 @@ namespace {
     // ------------------------------------------------------------------ targets
 
     // A frame read back (screen pixels, rows top first, premultiplied) against the CPU evaluation at
-    // art resolution: the art pixels with any screen pixel of a different colour; the first in (x, y)
-    int countTwinDiffering(const PixelImage& frame, const jasperengine::pixelart::TransitionImage& twin, int pixelSize, int& x, int& y) {
-        if (frame.width() != twin.width * pixelSize || frame.height() != twin.height * pixelSize) return twin.width * twin.height;
+    // art resolution: the art pixels with a screen pixel more than 1 away in a channel (the GPU rounds its output, the
+    // twin rounds its float maths: ScreenTransitionGpu's allowance); the first in (x, y), the largest difference in `worst`
+    int countTwinDiffering(const PixelImage& frame, const jasperengine::pixelart::TransitionImage& twin, int pixelSize, int& x, int& y, int& worst) {
+        worst = 0;
+        if (frame.width() != twin.width * pixelSize || frame.height() != twin.height * pixelSize) {
+            worst = 255;
+            return twin.width * twin.height;
+        }
         int differing = 0;
         for (int ay = 0; ay < twin.height; ay++) {
             for (int ax = 0; ax < twin.width; ax++) {
                 const jasperengine::pixelart::Rgba8 want = twin.colors[(size_t)ay * (size_t)twin.width + (size_t)ax];
                 bool same = true;
-                for (int sy = ay * pixelSize; sy < (ay + 1) * pixelSize && same; sy++) {
+                for (int sy = ay * pixelSize; sy < (ay + 1) * pixelSize; sy++) {
                     const uint8_t* row = frame.row(sy);
                     for (int sx = ax * pixelSize; sx < (ax + 1) * pixelSize; sx++) {
                         const uint8_t* p = row + (size_t)sx * 4;
-                        if (p[0] != want.r || p[1] != want.g || p[2] != want.b || p[3] != want.a) {
-                            same = false;
-                            break;
-                        }
+                        const int d = std::max({std::abs(p[0] - want.r), std::abs(p[1] - want.g), std::abs(p[2] - want.b), std::abs(p[3] - want.a)});
+                        worst = std::max(worst, d);
+                        if (d > 1) same = false;
                     }
                 }
                 if (!same) {
@@ -329,7 +333,7 @@ namespace {
                                                                    artWidth, artHeight, image);
                 const jasperengine::pixelart::TransitionRimMeasure m = jasperengine::pixelart::ScreenTransition::measureRim(kind, image);
                 lint::RimSpreadFrame frame{m.crossings, m.minWidth, m.maxWidth, m.atX, m.atY};
-                if (i < input.frames.size() && input.frames[i]) frame.twinDiffering = countTwinDiffering(*input.frames[i], image, pixelSize, frame.x2, frame.y2);
+                if (i < input.frames.size() && input.frames[i]) frame.twinDiffering = countTwinDiffering(*input.frames[i], image, pixelSize, frame.x2, frame.y2, frame.twinWorst);
                 input.rimSpreads.push_back(frame);
             }
             input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);

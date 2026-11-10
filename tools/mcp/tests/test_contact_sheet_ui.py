@@ -189,9 +189,9 @@ async def capture_and_save(ed: Editor, name: str, tool_args: dict) -> None:
 async def test_contact_sheet_transition_target(ed: Editor):
     ui = ui_of(ed)
     await pick(ed, ui, "Target##cs_target", "Transition")
-    for name in ("Kind##cs_transition_kind", "Phase##cs_transition_phase", "Colour##cs_transition_colour", "Rim##cs_transition_rim",
+    for name in ("Kind##cs_transition_kind", "Phase##cs_transition_phase", "##colorField", "Rim##cs_transition_rim",
                  "Pixel Size##cs_transition_pixel_size", "Art Width##cs_transition_width", "Art Height##cs_transition_height"):
-        ed.check(await ui.find(name, "Contact Sheet") is not None, f"the window has {name.split('##')[0]} for a transition")
+        ed.check(await ui.find(name, "Contact Sheet") is not None, f"the window has {name.split('##')[0] or name} for a transition")
     await pick(ed, ui, "Kind##cs_transition_kind", "Blinds")
     await shot(ed, "4-transition-options")
     await capture_and_save(ed, "transition", {"target": {"transition": "blinds", "transition_options": {}}, "frames": 8, "duration": 1, "lint": True})
@@ -212,5 +212,5 @@ async def test_contact_sheet_clip_target(ed: Editor):
     ed.check(await ui.find("Clip##cs_clip", "Contact Sheet") is not None, "the window lists the project's .anim clips")
     await pick(ed, ui, "Clip##cs_clip", "blink_one.anim")
     await capture_and_save(ed, "clip", {"target": {"entity": "Hero", "animation": "assets/anim/blink_one.anim", "scene": STATE["scene"]}, "frames": 8,
-                                        "duration": 1, "lint": True})
+                                        "duration": 1, "loop": False, "lint": True})
     await shot(ed, "5-clip-captured")

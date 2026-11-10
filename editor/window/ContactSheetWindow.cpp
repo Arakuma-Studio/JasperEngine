@@ -14,6 +14,7 @@
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "widget/ColorField.h"
 
 #include "imgui.h"
 
@@ -272,8 +273,15 @@ void ContactSheetWindow::drawTransitionOptions() {
     labelCombo("Ease##cs_transition_ease", ease, kEaseLabels, 4);
     transition.ease = (TransitionEase)ease;
 
-    float colour[4] = {transition.ink.x, transition.ink.y, transition.ink.z, 1.0f};
-    if (ImGui::ColorEdit3("Colour##cs_transition_colour", colour, ImGuiColorEditFlags_NoInputs)) transition.ink = Vector4(colour[0], colour[1], colour[2], 1.0f);
+    ImGui::TextUnformatted("Colour");
+    ImGui::SameLine();
+    Vector4 ink = transition.ink;
+    ui::ColorFieldOptions colourOptions;
+    colourOptions.alpha = false;
+    colourOptions.linearStorage = false;   // the transition's ink is sRGB as picked
+    colourOptions.label = "Transition Colour";
+    colourOptions.width = Theme::dpi(60.0f);
+    if (ui::colorField("##cs_transition_colour", ink, colourOptions) != ui::EditPhase::None) transition.ink = Vector4(ink.x, ink.y, ink.z, 1.0f);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(Theme::dpi(120.0f));
     char ramp[256];

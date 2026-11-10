@@ -104,12 +104,14 @@ namespace jasperengine::editor::pixelart::lint {
     LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition);
     // A transition's rim from its own CPU evaluation (ScreenTransition::measureRim): the width along each row or
     // column away from the uncovered side, the rule the shader draws by, which a colour-only image cannot show.
-    // twinDiffering: art pixels of the frame read back that differ from that CPU evaluation (x2, y2: the first)
+    // twinDiffering: art pixels of the frame read back more than 1 channel value from that CPU evaluation (x2, y2: the
+    // first; twinWorst: the largest channel difference of the frame, -1 when it was not compared)
     struct RimSpreadFrame {
         int crossings = 0, narrowest = 0, widest = 0;
         int x = -1, y = -1;
         int twinDiffering = 0;
         int x2 = -1, y2 = -1;
+        int twinWorst = -1;
     };
     LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames);
 

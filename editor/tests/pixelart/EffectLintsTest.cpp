@@ -345,15 +345,25 @@ TEST(EffectLints, TransitionFramesThatDifferFromTheCpuEvaluationWarn) {
     differs.twinDiffering = 7;
     differs.x2 = 3;
     differs.y2 = 5;
+    differs.twinWorst = 9;
     const LintResult r = lintRimSpreads({same, differs});
     EXPECT_EQ(r.status, LintStatus::Warn);
     EXPECT_EQ(r.measured, 7);
     ASSERT_EQ(r.at.size(), 1u);
     EXPECT_EQ(r.at[0], (LintSpot{2, 3, 5}));
     EXPECT_NE(r.message.find("read back"), std::string::npos) << r.message;
+    EXPECT_NE(r.message.find("9 of 255"), std::string::npos) << r.message;
     EXPECT_FALSE(r.fix.empty());
+    // a comparison that found only rounding still says how large it was, on a PASS and on a SKIP
+    same.twinWorst = 1;
+    EXPECT_EQ(lintRimSpreads({same}).status, LintStatus::Pass);
+    EXPECT_NE(lintRimSpreads({same}).message.find("1 of 255"), std::string::npos) << lintRimSpreads({same}).message;
     RimSpreadFrame noRim;
     EXPECT_EQ(lintRimSpreads({noRim}).status, LintStatus::Skip);
+    noRim.twinWorst = 0;
+    EXPECT_EQ(lintRimSpreads({noRim}).status, LintStatus::Skip);
+    EXPECT_NE(lintRimSpreads({noRim}).message.find("0 of 255"), std::string::npos) << lintRimSpreads({noRim}).message;
+    noRim.twinWorst = -1;
     noRim.twinDiffering = 1;
     EXPECT_EQ(lintRimSpreads({noRim}).status, LintStatus::Warn);
 }
