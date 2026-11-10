@@ -13,7 +13,10 @@
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
 
+#include "Scene.h"
+#include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
+#include "component/Transform.h"
 #include "math/Vector3.h"
 #include "object/tilemap/Grid.h"
 #include "object/tilemap/TilemapLayer.h"
@@ -38,8 +41,21 @@ namespace {
         std::snprintf(error, sizeof(TilemapErrorText), "%s", text.c_str());
     }
 
-    TilemapLayer* layerOf(lua_State* L) {
-        return luabridge::detail::Userdata::get<TilemapLayer>(L, 1, false);
+    // the layer or Grid at argument 1, with its component: a wrapper of a GameObject without one
+    // (removed since, or wrapped by TilemapLayer(scene, entity) on another GameObject) raises a
+    // Lua error here, where getComponent would throw through Lua's C frames
+    TilemapLayer* tilemapLayerOf(lua_State* L) {
+        TilemapLayer* layer = luabridge::detail::Userdata::get<TilemapLayer>(L, 1, false);
+        if (!layer || !layer->getScene()->findComponent<TilemapLayerComponent>(layer->getEntity()) || !layer->getScene()->findComponent<Transform>(layer->getEntity()))
+            luaL_error(L, "TilemapLayer: the GameObject has no Tilemap Layer (call it on a layer: layer:setCell, not layer.setCell; TilemapLayer(scene) makes one)");
+        return layer;
+    }
+
+    Grid* tilemapGridOf(lua_State* L) {
+        Grid* grid = luabridge::detail::Userdata::get<Grid>(L, 1, false);
+        if (!grid || !grid->getScene()->findComponent<GridComponent>(grid->getEntity()) || !grid->getScene()->findComponent<Transform>(grid->getEntity()))
+            luaL_error(L, "Grid: the GameObject has no Grid (call it on a Grid: grid:worldToCell, not grid.worldToCell)");
+        return grid;
     }
 
     Vector3 vectorAt(lua_State* L, int index) {
@@ -51,8 +67,7 @@ namespace {
 
     // layer:getCell(x, y) -> id, flags
     int layerGetCell(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
+        TilemapLayer* layer = tilemapLayerOf(L);
         uint32_t flags = 0;
         const int tile = layer->getTile((int)luaL_checkinteger(L, 2), (int)luaL_checkinteger(L, 3), &flags);
         lua_pushinteger(L, tile);
@@ -61,24 +76,26 @@ namespace {
     }
 
     int layerSetCell(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
+        TilemapLayer* layer = tilemapLayerOf(L);
         layer->setCell((int)luaL_checkinteger(L, 2), (int)luaL_checkinteger(L, 3), (int)luaL_checkinteger(L, 4),
                        (uint32_t)luaL_optinteger(L, 5, 0));
         return 0;
     }
 
     int layerFill(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
-        layer->fill((int)luaL_checkinteger(L, 2), (int)luaL_checkinteger(L, 3), (int)luaL_checkinteger(L, 4), (int)luaL_checkinteger(L, 5),
-                    (int)luaL_checkinteger(L, 6), (uint32_t)luaL_optinteger(L, 7, 0));
+        TilemapLayer* layer = tilemapLayerOf(L);
+        const CellCoord a{(int32_t)luaL_checkinteger(L, 2), (int32_t)luaL_checkinteger(L, 3)};
+        const CellCoord b{(int32_t)luaL_checkinteger(L, 4), (int32_t)luaL_checkinteger(L, 5)};
+        const CellRect rect = CellRect::of(a, b);
+        if (rect.exceeds(MAX_TILE_REGION_CELLS))
+            return luaL_error(L, "TilemapLayer: region_too_large: fill covers %I x %I cells, past the limit of %I cells (fill smaller rectangles)",
+                              (lua_Integer)rect.width(), (lua_Integer)rect.height(), (lua_Integer)MAX_TILE_REGION_CELLS);
+        layer->fill(a.x, a.y, b.x, b.y, (int)luaL_checkinteger(L, 6), (uint32_t)luaL_optinteger(L, 7, 0));
         return 0;
     }
 
     int layerWorldToCell(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
+        TilemapLayer* layer = tilemapLayerOf(L);
         const CellCoord cell = layer->worldToCell(vectorAt(L, 2));
         lua_pushinteger(L, cell.x);
         lua_pushinteger(L, cell.y);
@@ -86,8 +103,7 @@ namespace {
     }
 
     int layerCellToWorld(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
+        TilemapLayer* layer = tilemapLayerOf(L);
         const Vector3 world = layer->cellToWorld((int)luaL_checkinteger(L, 2), (int)luaL_checkinteger(L, 3));
         if (!luabridge::push(L, world)) lua_pushnil(L);
         return 1;
@@ -95,8 +111,7 @@ namespace {
 
     // layer:getCellAt(point) -> tile (-1 when none), cx, cy
     int layerGetCellAt(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
+        TilemapLayer* layer = tilemapLayerOf(L);
         int tile = NO_TILE;
         CellCoord cell;
         layer->getCellAt(vectorAt(L, 2), tile, cell);
@@ -122,8 +137,7 @@ namespace {
     }
 
     bool applyTerrain(lua_State* L, const CellRect& rect, int argument, TilemapErrorText& error) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return true;
+        TilemapLayer* layer = tilemapLayerOf(L);
         int terrain = NO_TERRAIN;
         if (!terrainIndexOf(L, argument, layer, terrain, error)) return false;
         std::string failure;
@@ -150,8 +164,7 @@ namespace {
     }
 
     bool applyRefresh(lua_State* L, TilemapErrorText& error) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return true;
+        TilemapLayer* layer = tilemapLayerOf(L);
         const CellCoord a{(int32_t)luaL_checkinteger(L, 2), (int32_t)luaL_checkinteger(L, 3)};
         const CellCoord b{(int32_t)luaL_checkinteger(L, 4), (int32_t)luaL_checkinteger(L, 5)};
         std::string failure;
@@ -169,8 +182,7 @@ namespace {
     }
 
     int gridWorldToCell(lua_State* L) {
-        Grid* grid = luabridge::detail::Userdata::get<Grid>(L, 1, false);
-        if (!grid) return 0;
+        Grid* grid = tilemapGridOf(L);
         const CellCoord cell = grid->worldToCell(vectorAt(L, 2));
         lua_pushinteger(L, cell.x);
         lua_pushinteger(L, cell.y);

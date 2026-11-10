@@ -65,7 +65,13 @@ namespace jasperengine{
         bool isEmpty() const { return maxX < minX || maxY < minY; }
         int64_t width() const { return isEmpty() ? 0 : (int64_t)maxX - minX + 1; }
         int64_t height() const { return isEmpty() ? 0 : (int64_t)maxY - minY + 1; }
-        int64_t area() const { return width() * height(); }
+        // saturates at INT64_MAX: a rectangle spanning the int32 range has 2^64 cells
+        int64_t area() const {
+            const int64_t w = width(), h = height();
+            return (w != 0 && h > INT64_MAX / w) ? INT64_MAX : w * h;
+        }
+        // more cells than `limit` (region limits compare through this, never a wrapped product)
+        bool exceeds(int64_t limit) const { return width() > limit || height() > limit || area() > limit; }
         bool contains(CellCoord c) const { return c.x >= minX && c.x <= maxX && c.y >= minY && c.y <= maxY; }
         void merge(CellCoord c){
             if (isEmpty()){ minX = maxX = c.x; minY = maxY = c.y; return; }

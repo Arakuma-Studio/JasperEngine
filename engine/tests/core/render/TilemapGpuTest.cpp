@@ -16,11 +16,14 @@
 #include "object/Sprite.h"
 #include "object/tilemap/Grid.h"
 #include "object/tilemap/TilemapLayer.h"
+#include "picking/MeshRaycast.h"
 #include "registry/SortingLayers.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TilemapSystem.h"
+#include "tilemap/TileColliderBuilder.h"
 #include "tilemap/TilesetPool.h"
+#include "../support/AllocationCounter.h"
 
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
@@ -32,8 +35,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -173,6 +179,19 @@ namespace {
 
         static bool near(const Colour& a, const Colour& b, int tolerance = 6) {
             return std::abs(a[0] - b[0]) <= tolerance && std::abs(a[1] - b[1]) <= tolerance && std::abs(a[2] - b[2]) <= tolerance;
+        }
+
+        // the tile's image covers exactly [x0, x1) x [y0, y1) (world pixels): its inside, 2 pixels in
+        // from each edge, has the colour, 2 pixels beyond each edge is background
+        void expectBox(const std::vector<uint8_t>& shot, int x0, int y0, int x1, int y1, const Colour& colour, const char* what) {
+            const int mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+            EXPECT_TRUE(near(at(shot, mx, my), colour)) << what << ": centre";
+            EXPECT_TRUE(near(at(shot, x0 + 2, y0 + 2), colour)) << what << ": bottom-left";
+            EXPECT_TRUE(near(at(shot, x1 - 3, y1 - 3), colour)) << what << ": top-right";
+            EXPECT_TRUE(near(at(shot, x0 - 2, my), Colour{0, 0, 0})) << what << ": left of it";
+            EXPECT_TRUE(near(at(shot, x1 + 1, my), Colour{0, 0, 0})) << what << ": right of it";
+            EXPECT_TRUE(near(at(shot, mx, y0 - 2), Colour{0, 0, 0})) << what << ": below it";
+            EXPECT_TRUE(near(at(shot, mx, y1 + 1), Colour{0, 0, 0})) << what << ": above it";
         }
 
         const RenderSystem::SpriteBatchStats& stats() { return scene.getSystem<RenderSystem>()->getSpriteBatchStats(); }
@@ -513,5 +532,208 @@ TEST_F(TilemapGpu, DisabledLayerDrawsNothing) {
     image();
     EXPECT_EQ(stats().draws, 0u);
     EXPECT_EQ(layer->getCellCount(), 1);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R7, R8 without the production layout maths: one tile per layout, where the header's formulas put
+// it, computed by hand (cells 16 x 16, regular hexagons: side 8; the layer at (96, 48))
+TEST_F(TilemapGpu, HandWrittenPlacementPerLayout) {
+    JASPER_REQUIRE_GPU();
+    struct Case { const char* name; TileGridLayout layout; StaggerAxis axis; StaggerIndex index; CellCoord cell; int x0, y0; };
+    const Case cases[] = {
+        // anchor (2 * 16, 1 * 16): the image's bottom-left
+        {"rectangle", TileGridLayout::Rectangle, StaggerAxis::Y, StaggerIndex::Odd, {2, 1}, 96 + 32, 48 + 16},
+        // anchor ((2 - 1) * 8, (2 + 1) * 8) = (8, 24): bottom-centred, x0 = 8 - 8
+        {"isometric", TileGridLayout::Isometric, StaggerAxis::Y, StaggerIndex::Odd, {2, 1}, 96 + 0, 48 + 24},
+        // rows 8 apart, odd rows 8 right: anchor (1 * 16 + 8, 1 * 8) = (24, 8)
+        {"staggered Y odd", TileGridLayout::IsometricStaggered, StaggerAxis::Y, StaggerIndex::Odd, {1, 1}, 96 + 16, 48 + 8},
+        // columns 8 apart, even columns 8 up: column 1 stays, anchor (1 * 8, 1 * 16) = (8, 16)
+        {"staggered X even", TileGridLayout::IsometricStaggered, StaggerAxis::X, StaggerIndex::Even, {1, 1}, 96 + 0, 48 + 16},
+        // pointy: columns 16 apart, rows (16 + 8) / 2 = 12 apart, odd rows 8 right: anchor (24, 12)
+        {"hexagon pointy", TileGridLayout::Hexagon, StaggerAxis::Y, StaggerIndex::Odd, {1, 1}, 96 + 16, 48 + 12},
+        // flat: columns (16 + 8) / 2 = 12 apart, rows 16 apart, odd columns 8 up: anchor (12, 24)
+        {"hexagon flat", TileGridLayout::Hexagon, StaggerAxis::X, StaggerIndex::Odd, {1, 1}, 96 + 4, 48 + 24},
+    };
+    layer->setPosition(96.0f, 48.0f, 0.0f);
+    for (const Case& c : cases) {
+        grid().layout = c.layout;
+        grid().staggerAxis = c.axis;
+        grid().staggerIndex = c.index;
+        gridChanged();
+        TileCells& cells = layer->editCells();
+        cells.clear();
+        cells.setTile(c.cell, 1);
+        ASSERT_TRUE(settle());
+        expectBox(image(), c.x0, c.y0, c.x0 + TILE, c.y0 + TILE, kColours[1], c.name);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R8, R10, R27, tileAnchor: on an isometric dual-grid layer with a tileAnchor, the drawn tile, the
+// picked one and the collider are the same diamond (values by hand: cells 16 x 16, the layer at
+// (96, 48))
+TEST_F(TilemapGpu, PickingAndCollidersMatchTheDrawnTile) {
+    JASPER_REQUIRE_GPU();
+    layer->setPosition(96.0f, 48.0f, 0.0f);
+    grid().layout = TileGridLayout::Isometric;
+    gridChanged();
+    TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();
+    component.dualGrid = true;
+    component.tileAnchor = Vector2(0.5f, 0.25f);
+    component.needUpdate = true;
+    layer->editCells().setTile(CellCoord{2, 1}, 1);
+    ASSERT_TRUE(settle());
+    // anchor (8, 24), tileAnchor (8, 4), dual grid (0, -8): the image's bottom-centre at (16, 20)
+    const int x0 = 96 + 8, y0 = 48 + 20;
+    expectBox(image(), x0, y0, x0 + TILE, y0 + TILE, kColours[1], "drawn");
+
+    MeshRaycastHit hit = MeshRaycast::raycast(&scene, Vector3((float)x0 + 8.0f, (float)y0 + 8.0f, 50.0f), Vector3(0.0f, 0.0f, -1.0f), 100.0f);
+    EXPECT_TRUE(hit.hit && hit.entity == layer->getEntity()) << "the drawn tile picks";
+    // inside cell (2, 1)'s own diamond (centre (104, 80)), left of the drawn image: nothing shown
+    hit = MeshRaycast::raycast(&scene, Vector3(100.0f, 80.0f, 50.0f), Vector3(0.0f, 0.0f, -1.0f), 100.0f);
+    EXPECT_FALSE(hit.hit && hit.entity == layer->getEntity()) << "the logical cell without its tile does not";
+    int tile = NO_TILE;
+    CellCoord cell;
+    EXPECT_TRUE(layer->getCellAt(Vector3((float)x0 + 8.0f, (float)y0 + 8.0f, 0.0f), tile, cell));
+    EXPECT_EQ(cell, (CellCoord{2, 1}));
+
+    // the full-cell collider, in texels as TilemapColliders builds it: the drawn image's box
+    auto data = std::make_shared<TilesetData>(*TilesetPool::get(tilesetPath)->data);
+    data->findTile(1)->collision.mode = TileCollisionMode::Full;
+    const double ppu = (double)Engine::getPixelsPerUnit();
+    TileColliderSettings settings;
+    settings.cells = &layer->readCells();
+    settings.tileset = data.get();
+    settings.grid = gridSpecOf(grid());
+    settings.grid.cellWidth *= ppu;
+    settings.grid.cellHeight *= ppu;
+    settings.tileAnchor = TilePoint{0.5, 0.25};
+    settings.dualGrid = true;
+    const TileColliderChunk built = TileColliderBuilder(settings).build(ChunkCoord{0, 0});
+    ASSERT_EQ(built.loops.size(), 1u);
+    double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (const TilePoint& p : built.loops[0].points) {
+        minX = std::min(minX, p.x / ppu); minY = std::min(minY, p.y / ppu);
+        maxX = std::max(maxX, p.x / ppu); maxY = std::max(maxY, p.y / ppu);
+    }
+    EXPECT_DOUBLE_EQ(minX + 96.0, (double)x0);
+    EXPECT_DOUBLE_EQ(minY + 48.0, (double)y0);
+    EXPECT_DOUBLE_EQ(maxX + 96.0, (double)x0 + TILE);
+    EXPECT_DOUBLE_EQ(maxY + 48.0, (double)y0 + TILE);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R32: back from Individual to Chunk mode, each chunk draws all its tiles again, not the one row
+// its first sort item had
+TEST_F(TilemapGpu, IndividualThenChunkDrawsEveryRow) {
+    JASPER_REQUIRE_GPU();
+    layer->setPosition(64.0f, 64.0f, 0.0f);
+    TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();
+    component.mode = TilemapRenderMode::Individual;
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++)
+            layer->setCell(x, y, 1);
+    }
+    ASSERT_TRUE(settle());
+    std::vector<uint8_t> shot = image();
+    for (int y = 0; y < 4; y++)
+        EXPECT_TRUE(near(at(shot, 64 + 8, 64 + 8 + y * TILE), kColours[1])) << "Individual, row " << y;
+    component.mode = TilemapRenderMode::Chunk;
+    component.needUpdate = true;
+    shot = image();
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++)
+            EXPECT_TRUE(near(at(shot, 64 + 8 + x * TILE, 64 + 8 + y * TILE), kColours[1])) << "Chunk, cell " << x << "," << y;
+    }
+    EXPECT_EQ(stats().draws, 1u);
+    EXPECT_EQ(stats().instances, 16u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R56: 1080p, 16 px tiles, three fully covered layers (about 24,500 visible tiles), one page: at
+// most 25 draws per layer, and the layers' per-frame CPU of a static map (no rebuild)
+TEST_F(TilemapGpu, ThreeCoveredLayersDrawWithinTheBudget) {
+    JASPER_REQUIRE_GPU();
+    constexpr int W = 1920, H = 1080;
+    GpuEnvironment::setView(W, H, W, H, Scaling::STRETCH);
+    camera.setOrtho(0.0f, (float)W, 0.0f, (float)H, -100.0f, 100.0f);
+    std::vector<std::unique_ptr<TilemapLayer>> extra;
+    std::vector<TilemapLayer*> layers{layer.get()};
+    for (int i = 0; i < 2; i++) {
+        extra.push_back(std::make_unique<TilemapLayer>(&scene));
+        scene.addComponent<GridComponent>(extra.back()->getEntity(), GridComponent());
+        extra.back()->getComponent<TilemapLayerComponent>().tileset = AssetRef(tilesetPath);
+        layers.push_back(extra.back().get());
+    }
+    const int columns = W / TILE, rows = (H + TILE - 1) / TILE;
+    for (size_t i = 0; i < layers.size(); i++) {
+        layers[i]->getComponent<TilemapLayerComponent>().chunkSize = 32;
+        layers[i]->getComponent<MeshComponent>().sortingOrder = (int)i;
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < columns; x++)
+                layers[i]->setCell(x, y, (x + y + (int)i) % 4);
+        }
+    }
+    ASSERT_TRUE(settle());
+    image(3);
+    const uint32_t draws = stats().draws;
+    const uint64_t instances = stats().instances;
+    EXPECT_EQ(instances, 3u * (uint64_t)columns * (uint64_t)rows);
+    EXPECT_LE(draws, 3u * 25u) << "visible chunks x pages per layer";
+
+    TilemapSystem& system = *scene.getSystem<TilemapSystem>();
+    using Clock = std::chrono::steady_clock;
+    constexpr int frames = 200;
+    double best = 1e30;
+    for (int round = 0; round < 5; round++) {
+        const Clock::time_point start = Clock::now();
+        for (int i = 0; i < frames; i++)
+            system.update(1.0 / 60.0);
+        best = std::min(best, std::chrono::duration<double, std::milli>(Clock::now() - start).count() / frames);
+    }
+    for (TilemapLayer* each : layers)
+        EXPECT_EQ(system.getRebuiltChunks(each->getComponent<TilemapLayerComponent>()), 0u);
+    std::printf("[bench] tilemap: 3 covered 1080p layers, %llu tiles: %u draws, TilemapSystem %.4f ms a frame (budget 0.15 ms mobile; desktop measured)\n",
+                (unsigned long long)instances, draws, best);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LT(best, 0.15 * slack);
+    }
+    extra.clear();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R57: 1,000 random setCells in one frame, the rebuilds of the touched chunks in view included
+TEST_F(TilemapGpu, ThousandRandomEditsWithinTheBudget) {
+    JASPER_REQUIRE_GPU();
+    // 64 x 64 cells in view: four chunks of 32
+    GpuEnvironment::setView(1024, 1024, 1024, 1024, Scaling::STRETCH);
+    camera.setOrtho(0.0f, 1024.0f, 0.0f, 1024.0f, -100.0f, 100.0f);
+    TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();
+    component.chunkSize = 32;
+    for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++)
+            layer->setCell(x, y, (x + y) % 4);
+    }
+    ASSERT_TRUE(settle());
+    image(2);
+    TilemapSystem& system = *scene.getSystem<TilemapSystem>();
+    std::mt19937 random(5);
+    using Clock = std::chrono::steady_clock;
+    double best = 1e30;
+    for (int round = 0; round < 5; round++) {
+        const Clock::time_point start = Clock::now();
+        for (int i = 0; i < 1000; i++)
+            layer->setCell((int)(random() % 64), (int)(random() % 64), (int)(random() % 4));
+        system.update(1.0 / 60.0);
+        best = std::min(best, std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+        EXPECT_EQ(system.getRebuiltChunks(component), 4u) << "the four chunks in view, once each";
+        image(1);
+    }
+    std::printf("[bench] tilemap: 1,000 random setCell + 4 chunk rebuilds %.3f ms (budget 1.0 ms mobile, 1.5 ms web; desktop measured)\n", best);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LT(best, 1.0 * slack);
+    }
     EXPECT_NO_ENGINE_ERRORS();
 }

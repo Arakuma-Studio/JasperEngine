@@ -2292,17 +2292,14 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
             const TileGridSpec spec = scene->getSystem<TilemapSystem>()->layerSpec(source, *tileLayer);
             const TileCells& cells = tileLayer->cells.read();
             const Matrix4 inverse = tilemapTransform->modelMatrix.inverse();
+            // the tile drawn over the cell centre (the layer's tileAnchor and dual grid shift)
+            const TilePoint shift = tilegrid::tileShift(spec, tileLayer->tileAnchor.x, tileLayer->tileAnchor.y, tileLayer->dualGrid);
             for (int y = 0; y < map->getHeight(); y++) {
                 for (int x = 0; x < map->getWidth(); x++) {
                     const GridCell cell{x, y};
                     const Vector3 local = inverse * gridWorld(frame, map->cellCenter(cell), 0.0f, 0.0f);
                     const float xyz[3] = {local.x, local.y, local.z};
-                    TilePoint point = tilegrid::localToPlane(spec, xyz);
-                    if (tileLayer->dualGrid) {
-                        point.x += tilegrid::pitchX(spec) * 0.5;
-                        point.y += tilegrid::pitchY(spec) * 0.5;
-                    }
-                    const int32_t tile = cells.getTile(tilegrid::localToCell(spec, point));
+                    const int32_t tile = cells.getTile(tilegrid::shownCellAt(spec, tilegrid::localToPlane(spec, xyz), shift));
                     uint8_t area = (uint8_t)std::clamp(component->emptyCellArea, 0, AREA_COUNT - 1);
                     if (tile != NO_TILE) {
                         area = AREA_WALKABLE;

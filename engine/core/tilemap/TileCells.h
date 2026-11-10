@@ -15,9 +15,11 @@
 // count][u8 value] over the terrain plane the same way; all base64 (Base64). Deterministic: the
 // same cells give the same bytes. Values keep unknown high bits (28-31) as they are.
 //
-// Changes: every write that changes a value bumps the chunk's and the store's revision and records
-// the chunk in the changed list (takeChanged), so the runtime rebuilds only those chunks (R33, R41).
-// A dropped chunk is reported there too (chunk() then returns null).
+// Changes: every write that changes a value stamps its chunk and the store with a revision taken
+// from one process-wide clock, so no two writes anywhere share one: a copy of a store (copy on
+// write, undo snapshots) keeps each chunk's revision with its cells, and a consumer that compares
+// a chunk's revision with the one it last saw finds exactly the chunks whose cells differ, in this
+// store or any copy of it (R33, R41). A dropped chunk is absent (chunk() returns null).
 //
 // Not thread-safe for writes; concurrent reads (chunk builds on jobs) are safe while nothing writes.
 
@@ -37,8 +39,7 @@ namespace jasperengine{
         std::vector<uint8_t> terrain;     // empty, or chunkSize^2
         uint32_t nonEmpty = 0;            // cells with a tile
         uint32_t terrainCount = 0;        // terrain values other than none
-        uint64_t revision = 0;
-        bool inChanged = false;           // already in the store's changed list
+        uint64_t revision = 0;            // the clock's value at the chunk's last change
     };
 
     class JASPERENGINE_API TileCells{
@@ -105,12 +106,8 @@ namespace jasperengine{
         std::string encodeChunkBytes(ChunkCoord coord) const;
         bool decodeChunkBytes(ChunkCoord coord, std::string_view bytes, std::string& error);
 
+        // the clock's value at the store's last change (equal revisions: the same cells)
         uint64_t getRevision() const { return revision; }
-        // the chunks changed (or dropped) since the last call, each once
-        std::vector<ChunkCoord> takeChanged();
-        bool hasChanged() const { return !changedList.empty(); }
-        // marks every chunk changed (a consumer that lost its state)
-        void markAllChanged();
 
         bool operator==(const TileCells& other) const;
         bool operator!=(const TileCells& other) const { return !(*this == other); }
@@ -119,11 +116,10 @@ namespace jasperengine{
         int chunkSize = DEFAULT_CHUNK_SIZE;
         int chunkShift = 5;
         std::unordered_map<ChunkCoord, TileChunk, ChunkCoordHash> chunkMap;
-        std::vector<ChunkCoord> changedList;
         uint64_t revision = 0;
 
         TileChunk* editChunk(ChunkCoord coord, bool create);
-        void touched(ChunkCoord coord, TileChunk* chunk);
+        void touched(TileChunk* chunk);
         void dropIfEmpty(ChunkCoord coord);
     };
 

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace jasperengine;
 
@@ -82,18 +83,35 @@ void SpriteInstanceBatch::setPivotsEnabled(bool enabled){
 void SpriteInstanceBatch::markChanged(float x0, float y0, float x1, float y1){
     revision++;
     bounds.setNull();
-    // the corners of the quad through each instance matrix (2D: z is the translation's)
+    if (count == 0)
+        return;
+    // the corners of the quad through each instance matrix (2D: z is the translation's), as plain
+    // minima and maxima: a tilemap chunk's 1,024 instances are rebuilt within R57's 50 us
     const float xs[2] = {x0, x1};
     const float ys[2] = {y0, y1};
+    const float inf = std::numeric_limits<float>::infinity();
+    float lo[3] = {inf, inf, inf}, hi[3] = {-inf, -inf, -inf};
     for (uint32_t i = 0; i < count; i++){
+        // the columns once each: Matrix4's operator[] is out of line
         const Matrix4& m = cpuInstances[i].instanceMatrix;
+        const float* c0 = m[0];
+        const float* c1 = m[1];
+        const float* c3 = m[3];
         for (float x : xs){
             for (float y : ys){
-                bounds.merge(Vector3(m[0][0] * x + m[1][0] * y + m[3][0], m[0][1] * x + m[1][1] * y + m[3][1],
-                                     m[0][2] * x + m[1][2] * y + m[3][2]));
+                for (int axis = 0; axis < 3; axis++){
+                    const float v = c0[axis] * x + c1[axis] * y + c3[axis];
+                    lo[axis] = std::min(lo[axis], v);
+                    hi[axis] = std::max(hi[axis], v);
+                }
             }
         }
     }
+    bounds = AABB(Vector3(lo[0], lo[1], lo[2]), Vector3(hi[0], hi[1], hi[2]));
+}
+
+void SpriteInstanceBatch::markRectsChanged(){
+    revision++;
 }
 
 void SpriteInstanceBatch::setPageRuns(std::span<const SpritePageRun> runs){

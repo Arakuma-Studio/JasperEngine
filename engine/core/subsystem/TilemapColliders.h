@@ -39,6 +39,8 @@ namespace jasperengine{
     namespace tilemapcolliders{
 
         JASPERENGINE_API void markDirty(TilemapCollider2DComponent& collider, std::span<const ChunkCoord> chunks);
+        // every chunk rebuilds; only the ones whose shapes differ are replaced (a changed field of
+        // the collider itself replaces them all: needUpdate)
         JASPERENGINE_API void markAll(TilemapCollider2DComponent& collider);
         // rebuilds what is dirty and writes the results to the entity's Rigidbody2D; `tileset`
         // may be null while it loads (nothing is generated from a null one)

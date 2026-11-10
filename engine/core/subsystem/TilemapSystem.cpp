@@ -112,12 +112,10 @@ TilemapChunkParams TilemapSystem::chunkParams(const TilemapLayerComponent& layer
 
 void TilemapSystem::buildChunk(TilemapLayerComponent& layer, TilemapChunkRuntime& chunk) const{
     TilemapLayerState& state = *layer.state;
-    const TileChunk* stored = layer.cells.read().chunk(chunk.coord);
     chunk.batch.setPivotsEnabled(state.list.lead.hasPivots());
     if (state.list.lead.hasFx())
         chunk.batch.enableFx();
     tilechunk::build(chunkParams(layer), chunk.coord, chunk.batch, chunk.build);
-    chunk.builtRevision = stored ? stored->revision : 0;
 }
 
 void TilemapSystem::syncChunkList(TilemapLayerComponent& layer){
@@ -133,11 +131,7 @@ void TilemapSystem::syncChunkList(TilemapLayerComponent& layer){
     std::sort(order.begin(), order.end(), [&](const ChunkCoord& a, const ChunkCoord& b){
         return tilegrid::painterLess(spec, CellCoord{a.x * size, a.y * size}, CellCoord{b.x * size, b.y * size});
     });
-    double shiftX = 0.0, shiftY = 0.0;
-    if (layer.dualGrid){
-        shiftX = -tilegrid::pitchX(spec) * 0.5;
-        shiftY = -tilegrid::pitchY(spec) * 0.5;
-    }
+    const TilePoint shift = tilegrid::tileShift(spec, layer.tileAnchor.x, layer.tileAnchor.y, layer.dualGrid);
     AABB union_;
     union_.setNull();
     std::vector<SpriteInstanceChunk> previous = std::move(list.chunks);
@@ -146,10 +140,14 @@ void TilemapSystem::syncChunkList(TilemapLayerComponent& layer){
     for (const ChunkCoord& coord : order){
         TilemapChunkRuntime& runtime = *state.chunks.at(coord);
         SpriteInstanceChunk entry;
-        if (runtime.listIndex < previous.size() && previous[runtime.listIndex].batch == &runtime.batch)
-            entry = previous[runtime.listIndex];
+        // only what the chunk's batch went through: an Individual layer's entries are its rows
+        // (a range of the batch and a sort item each), and the list made here is whole chunks
+        if (runtime.listIndex < previous.size() && previous[runtime.listIndex].batch == &runtime.batch){
+            entry.lastDrawn = previous[runtime.listIndex].lastDrawn;
+            entry.needsBuild = previous[runtime.listIndex].needsBuild;
+        }
         entry.batch = &runtime.batch;
-        entry.bounds = tilechunk::chunkBounds(spec, cells.chunkRect(coord), state.overhangX, state.overhangY, shiftX, shiftY);
+        entry.bounds = tilechunk::chunkBounds(spec, cells.chunkRect(coord), state.overhangX, state.overhangY, shift);
         union_.merge(entry.bounds);
         runtime.listIndex = list.chunks.size();
         list.chunks.push_back(entry);
@@ -330,12 +328,11 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
         };
     }
 
-    // ---- which chunks changed (compared by revision: a copy of the store shares them)
+    // ---- which chunks changed, by revision: a chunk's revision names its cells in this store and
+    // in every copy of it (TileCells' clock), so another store (an undo snapshot, a clone that
+    // wrote) is compared chunk by chunk too
     bool listChanged = false;
     std::vector<ChunkCoord> changed;
-    // another store with other revisions (an undone copy, a clone that wrote): compare it whole
-    if (&cells != state.store && cells.getRevision() != state.storeRevision)
-        allDirty = true;
     if (state.tileset && (allDirty || &cells != state.store || cells.getRevision() != state.storeRevision)){
         for (auto it = state.chunks.begin(); it != state.chunks.end();){
             if (!cells.chunk(it->first)){
@@ -354,9 +351,10 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
                 found = state.chunks.emplace(entry.first, std::move(runtime)).first;
                 changed.push_back(entry.first);
                 listChanged = true;
-            }else if (allDirty || found->second->builtRevision != entry.second.revision){
+            }else if (allDirty || found->second->seenRevision != entry.second.revision){
                 changed.push_back(entry.first);
             }
+            found->second->seenRevision = entry.second.revision;
         }
         state.store = &cells;
         state.storeRevision = cells.getRevision();
@@ -455,10 +453,6 @@ void TilemapSystem::updateColliders(){
         if (!layer || !layer->enabled || !collider.enabled){
             tilemapcolliders::release(scene, entity, collider);
             continue;
-        }
-        if (collider.needUpdate){
-            collider.needUpdate = false;
-            tilemapcolliders::markAll(collider);
         }
         if (!layer->state || !layer->state->tileset)
             continue;

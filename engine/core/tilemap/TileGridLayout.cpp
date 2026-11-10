@@ -481,6 +481,31 @@ bool tilegrid::layoutOverlaps(const TileGridSpec& spec){
     return spec.layout != TileGridLayout::Rectangle;
 }
 
+TilePoint tilegrid::tileAnchorShift(const TileGridSpec& spec, double anchorX, double anchorY){
+    return TilePoint{anchorX * pitchX(spec), anchorY * pitchY(spec)};
+}
+
+TilePoint tilegrid::dualGridShift(const TileGridSpec& spec){
+    // the isometric (1, 1) step is straight up: half of it down keeps u
+    if (spec.layout == TileGridLayout::Isometric)
+        return TilePoint{0.0, -pitchY(spec) * 0.5};
+    return TilePoint{-pitchX(spec) * 0.5, -pitchY(spec) * 0.5};
+}
+
+TilePoint tilegrid::tileShift(const TileGridSpec& spec, double anchorX, double anchorY, bool dualGrid){
+    TilePoint shift = tileAnchorShift(spec, anchorX, anchorY);
+    if (dualGrid){
+        const TilePoint dual = dualGridShift(spec);
+        shift.x += dual.x;
+        shift.y += dual.y;
+    }
+    return shift;
+}
+
+CellCoord tilegrid::shownCellAt(const TileGridSpec& spec, TilePoint point, TilePoint shift){
+    return localToCell(spec, TilePoint{point.x - shift.x, point.y - shift.y});
+}
+
 void tilegrid::planeToLocal(const TileGridSpec& spec, TilePoint p, float out[3]){
     out[0] = (float)p.x;
     if (spec.plane == TileGridPlane::XY){

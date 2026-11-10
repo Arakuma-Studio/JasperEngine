@@ -76,6 +76,9 @@ namespace jasperengine{
         // bumps the revision and refreshes the bounds from the instances' matrices (unit quad
         // corners: (x0, y0) .. (x1, y1) of the mesh the instances draw)
         void markChanged(float x0, float y0, float x1, float y1);
+        // bumps the revision only: the instances' texture rects or colours changed, not their
+        // matrices, so the bounds stay (an animated tile's next frame)
+        void markRectsChanged();
         uint64_t getRevision() const { return revision; }
         const AABB& localBounds() const { return bounds; }
 

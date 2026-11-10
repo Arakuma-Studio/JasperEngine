@@ -78,8 +78,9 @@ namespace jasperengine{
         JASPERENGINE_API bool updateAnimation(const TilemapChunkParams& params, SpriteInstanceBatch& batch, TilemapChunkBuild& build, int64_t ms, bool& changed);
         // the frame rect (u0, v0, w, h; negative w or h mirrors) of a tile with its flag bits
         JASPERENGINE_API Rect tileUvRect(const TileRenderInfo& tile, uint32_t flags);
-        // the chunk's bounds in layer space: its cells' polygons grown by `overhang` world units
-        JASPERENGINE_API AABB chunkBounds(const TileGridSpec& grid, const CellRect& rect, double overhangX, double overhangY, double dualShiftX, double dualShiftY);
+        // the chunk's bounds in layer space: its cells' polygons moved by the layer's
+        // tilegrid::tileShift and grown by `overhang` world units
+        JASPERENGINE_API AABB chunkBounds(const TileGridSpec& grid, const CellRect& rect, double overhangX, double overhangY, TilePoint shift);
     }
 
 }

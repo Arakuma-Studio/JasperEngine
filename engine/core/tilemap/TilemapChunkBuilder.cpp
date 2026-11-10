@@ -47,37 +47,20 @@ namespace{
         return q;
     }
 
-    // where a dual-grid layer's tile sits relative to its cell's anchor: half a cell down-left,
-    // in cell space (R27), the same fractional cell on every layout
-    void dualGridShift(const TileGridSpec& grid, double& sx, double& sy){
-        if (grid.layout == TileGridLayout::Isometric){
-            sx = 0.0;
-            sy = -tilegrid::pitchY(grid) * 0.5;
-        }else{
-            sx = -tilegrid::pitchX(grid) * 0.5;
-            sy = -tilegrid::pitchY(grid) * 0.5;
-        }
-    }
-
     struct PlacedCell{
         CellCoord cell;
         uint32_t value = 0;
         const TileRenderInfo* info = nullptr;
     };
 
-    void writeInstance(const TilemapChunkParams& params, const PlacedCell& placed, InstanceRenderData& out, Vector2* pivot){
+    // shift: the layer's tilegrid::tileShift, the same for every tile of a build
+    void writeInstance(const TilemapChunkParams& params, TilePoint shift, const PlacedCell& placed, InstanceRenderData& out, Vector2* pivot){
         const TileRenderInfo& tile = *placed.info;
         const uint32_t flags = cellValueFlags(placed.value);
         const double ppu = params.pixelsPerUnit;
         TilePoint anchor = tilegrid::cellToLocal(params.grid, placed.cell);
-        anchor.x += params.tileAnchorX * tilegrid::pitchX(params.grid);
-        anchor.y += params.tileAnchorY * tilegrid::pitchY(params.grid);
-        if (params.dualGrid){
-            double sx, sy;
-            dualGridShift(params.grid, sx, sy);
-            anchor.x += sx;
-            anchor.y += sy;
-        }
+        anchor.x += shift.x;
+        anchor.y += shift.y;
         const TileQuad quad = transformedQuad(tile, flags);
         // R8: the image's bottom-left at a rectangle's anchor, its bottom-centre at the others'
         double baseX = anchor.x * ppu;
@@ -97,7 +80,6 @@ namespace{
         const float y0 = (float)(bottom / ppu), y1 = (float)(top / ppu);
         const float w = x1 - x0, h = y1 - y0;
 
-        Matrix4 m;
         const bool xz = params.grid.plane == TileGridPlane::XZ;
         // the quad's axes in the plane; transpose swaps them (mirrored: no culling on the quad)
         float axisXu, axisXv, axisYu, axisYv, ou, ov;
@@ -110,11 +92,15 @@ namespace{
             axisYu = 0.0f;  axisYv = h;
             ou = x0; ov = y0;
         }
-        m[0][0] = axisXu; m[0][1] = xz ? 0.0f : axisXv; m[0][2] = xz ? -axisXv : 0.0f; m[0][3] = 0.0f;
-        m[1][0] = axisYu; m[1][1] = xz ? 0.0f : axisYv; m[1][2] = xz ? -axisYv : 0.0f; m[1][3] = 0.0f;
-        m[2][0] = 0.0f; m[2][1] = xz ? 1.0f : 0.0f; m[2][2] = xz ? 0.0f : 1.0f; m[2][3] = 0.0f;
-        m[3][0] = ou; m[3][1] = xz ? 0.0f : ov; m[3][2] = xz ? -ov : 0.0f; m[3][3] = 1.0f;
-        out.instanceMatrix = m;
+        // the columns once each (Matrix4's operator[] is out of line; a chunk writes 1,024 of these)
+        float* c0 = out.instanceMatrix[0];
+        float* c1 = out.instanceMatrix[1];
+        float* c2 = out.instanceMatrix[2];
+        float* c3 = out.instanceMatrix[3];
+        c0[0] = axisXu; c0[1] = xz ? 0.0f : axisXv; c0[2] = xz ? -axisXv : 0.0f; c0[3] = 0.0f;
+        c1[0] = axisYu; c1[1] = xz ? 0.0f : axisYv; c1[2] = xz ? -axisYv : 0.0f; c1[3] = 0.0f;
+        c2[0] = 0.0f; c2[1] = xz ? 1.0f : 0.0f; c2[2] = xz ? 0.0f : 1.0f; c2[3] = 0.0f;
+        c3[0] = ou; c3[1] = xz ? 0.0f : ov; c3[2] = xz ? -ov : 0.0f; c3[3] = 1.0f;
         out.color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
         out.textureRect = tilechunk::tileUvRect(tile, flags);
         if (pivot)
@@ -154,7 +140,7 @@ Rect tilechunk::tileUvRect(const TileRenderInfo& tile, uint32_t flags){
     return Rect(u0, v0, u1 - u0, v1 - v0);
 }
 
-AABB tilechunk::chunkBounds(const TileGridSpec& grid, const CellRect& rect, double overhangX, double overhangY, double dualShiftX, double dualShiftY){
+AABB tilechunk::chunkBounds(const TileGridSpec& grid, const CellRect& rect, double overhangX, double overhangY, TilePoint shift){
     TilePoint min{1e300, 1e300}, max{-1e300, -1e300};
     const CellCoord corners[4] = {{rect.minX, rect.minY}, {rect.maxX, rect.minY}, {rect.minX, rect.maxY}, {rect.maxX, rect.maxY}};
     for (const CellCoord& corner : corners){
@@ -169,10 +155,10 @@ AABB tilechunk::chunkBounds(const TileGridSpec& grid, const CellRect& rect, doub
         min.x -= px; min.y -= py;
         max.x += px; max.y += py;
     }
-    min.x += std::min(dualShiftX, 0.0) - overhangX;
-    min.y += std::min(dualShiftY, 0.0) - overhangY;
-    max.x += std::max(dualShiftX, 0.0) + overhangX;
-    max.y += std::max(dualShiftY, 0.0) + overhangY;
+    min.x += shift.x - overhangX;
+    min.y += shift.y - overhangY;
+    max.x += shift.x + overhangX;
+    max.y += shift.y + overhangY;
     if (grid.plane == TileGridPlane::XZ)
         return AABB(Vector3((float)min.x, 0.0f, (float)-max.y), Vector3((float)max.x, 0.0f, (float)-min.y));
     return AABB(Vector3((float)min.x, (float)min.y, 0.0f), Vector3((float)max.x, (float)max.y, 0.0f));
@@ -184,6 +170,8 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
     out.rows.clear();
     out.nextFrameMs = kNoFrameChange;
     std::vector<PlacedCell> placed;
+    // one page (the usual tileset) needs no grouping by page
+    bool severalPages = false;
     const TileChunk* chunk = params.cells->chunk(coord);
     if (chunk){
         placed.reserve(chunk->nonEmpty);
@@ -196,6 +184,7 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
             const TileRenderInfo* info = params.tileset->tile(cellValueTile(value));
             if (!info)
                 continue;                // R90: a missing id draws nothing and keeps its cell
+            severalPages = severalPages || (!placed.empty() && placed.front().info->page != info->page);
             placed.push_back({CellCoord{origin.x + i % size, origin.y + i / size}, value, info});
         }
     }
@@ -215,7 +204,7 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
         std::sort(placed.begin(), placed.end(), [&](const PlacedCell& a, const PlacedCell& b){
             return tilegrid::painterLess(params.grid, a.cell, b.cell);
         });
-    }else{
+    }else if (severalPages){
         std::stable_sort(placed.begin(), placed.end(), [](const PlacedCell& a, const PlacedCell& b){
             return a.info->page < b.info->page;
         });
@@ -225,6 +214,7 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
     std::span<InstanceRenderData> instances = batch.instances();
     std::span<Vector2> pivots = batch.pivots();
     std::span<Vector4> fx = batch.fx();
+    const TilePoint shift = tilegrid::tileShift(params.grid, params.tileAnchorX, params.tileAnchorY, params.dualGrid);
     for (size_t n = 0; n < placed.size(); n++){
         PlacedCell shown = placed[n];
         const int32_t tileId = cellValueTile(shown.value);
@@ -244,11 +234,12 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
                     shown.info = current;
             }
         }
-        writeInstance(params, shown, instances[n], pivots.empty() ? nullptr : &pivots[n]);
+        writeInstance(params, shift, shown, instances[n], pivots.empty() ? nullptr : &pivots[n]);
         if (params.individual){
+            // the sort point is where the tile is drawn
             const TilePoint anchor = tilegrid::cellToLocal(params.grid, shown.cell);
-            if (out.rows.empty() || out.rows.back().anchorV != anchor.y)
-                out.rows.push_back({(uint32_t)n, 0u, anchor.x, anchor.y});
+            if (out.rows.empty() || out.rows.back().anchorV != anchor.y + shift.y)
+                out.rows.push_back({(uint32_t)n, 0u, anchor.x + shift.x, anchor.y + shift.y});
             out.rows.back().count++;
         }
         if (!fx.empty())
@@ -268,32 +259,62 @@ bool tilechunk::updateAnimation(const TilemapChunkParams& params, SpriteInstance
         return true;
     int64_t earliest = kNoFrameChange;
     std::span<InstanceRenderData> instances = batch.instances();
+    // the instances of one animation and start share their frame (R60's 30 us for a chunk): the
+    // frame, its rect and whether the animation stays on one page are found once per run of them
+    int cachedAnimation = -1;
+    int64_t cachedStart = 0;
+    int64_t cachedNext = kNoFrameChange;
+    const TileRenderInfo* current = nullptr;
+    uint32_t cachedFlags = 0;
+    bool rectReady = false;
+    Rect rect;
+    int pagesAnimation = -1;
+    bool onePage = true;
     for (const TilemapAnimatedInstance& entry : build.animated){
         const TileRenderInfo* still = params.tileset->tile(entry.tile);
         if (!still || still->animation < 0 || entry.instance >= instances.size())
             return false;
         const TileAnimationRuntime& animation = params.tileset->animations[(size_t)still->animation];
-        int64_t next = kNoFrameChange;
-        const int frame = animationFrameAt(animation, ms + entry.startMs, next);
-        earliest = std::min(earliest, next - entry.startMs);
-        const TileRenderInfo* current = params.tileset->tile(animation.frames[(size_t)frame]);
-        if (!current)
-            return false;
-        const Rect rect = tileUvRect(*current, entry.flags);
+        if (still->animation != cachedAnimation || entry.startMs != cachedStart){
+            const int frame = animationFrameAt(animation, ms + entry.startMs, cachedNext);
+            current = params.tileset->tile(animation.frames[(size_t)frame]);
+            if (!current)
+                return false;
+            cachedAnimation = still->animation;
+            cachedStart = entry.startMs;
+            rectReady = false;
+        }
+        earliest = std::min(earliest, cachedNext - entry.startMs);
+        if (!rectReady || entry.flags != cachedFlags){
+            rect = tileUvRect(*current, entry.flags);
+            cachedFlags = entry.flags;
+            rectReady = true;
+        }
         InstanceRenderData& instance = instances[entry.instance];
         if (instance.textureRect.getX() == rect.getX() && instance.textureRect.getY() == rect.getY() &&
                 instance.textureRect.getWidth() == rect.getWidth() && instance.textureRect.getHeight() == rect.getHeight())
             continue;
+        if (pagesAnimation != still->animation){
+            pagesAnimation = still->animation;
+            onePage = true;
+            for (int32_t id : animation.frames){
+                const TileRenderInfo* frame = params.tileset->tile(id);
+                onePage = onePage && frame && frame->page == current->page;
+            }
+        }
         // a frame on another page belongs to another run: rebuild (rare: an animation across pages)
-        for (const SpritePageRun& run : batch.getPageRuns()){
-            if (entry.instance >= run.first && entry.instance < run.first + run.count && run.page != current->page)
-                return false;
+        if (!onePage){
+            for (const SpritePageRun& run : batch.getPageRuns()){
+                if (entry.instance >= run.first && entry.instance < run.first + run.count && run.page != current->page)
+                    return false;
+            }
         }
         instance.textureRect = rect;
         changed = true;
     }
     build.nextFrameMs = earliest;
+    // the rects moved, not the instances: the bounds stay
     if (changed)
-        batch.markChanged(0.0f, 0.0f, 1.0f, 1.0f);
+        batch.markRectsChanged();
     return true;
 }
