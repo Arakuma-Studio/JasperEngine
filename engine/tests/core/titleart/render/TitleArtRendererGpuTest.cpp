@@ -514,3 +514,30 @@ TEST_F(TitleArtRendererGpu, GeneratorGetsItsFollowedLayer) {
     for (const TitleProblem& p : job->problems()) cycle = cycle || p.code == "follow_cycle";
     EXPECT_TRUE(cycle) << "follow_cycle is reported";
 }
+
+TEST_F(TitleArtRendererGpu, IsolationKeysTheGroupNode) {
+    // R14 with isolation: a group drawn for one isolated child holds only that child, so its node
+    // must not share a cache entry with the whole group (a check's isolated render after the full
+    // one drew both children; the full render after an isolated one drew one)
+    // the red ellipse lies inside the blue square: the group covers the same region either way
+    Json group{{"id", "00000001"}, {"type", "group"},
+               {"children", Json::array({shapeLayer("00000002", "rect", 80, solidFace("#2040ff")), shapeLayer("00000003", "ellipse", 30, solidFace("#ff2020"))})}};
+    auto doc = makeDoc({{"canvas", canvas(320, 160)}, {"layers", Json::array({group})}});
+    RenderRequest whole = requestOf(doc);
+    RenderRequest alone = requestOf(doc);
+    alone.isolateLayer = "00000002";
+    auto freshWhole = makeRenderer();
+    auto freshAlone = makeRenderer();
+    const Pixels expectWhole = render(*freshWhole, whole), expectAlone = render(*freshAlone, alone);
+    ASSERT_FALSE(identical(expectWhole, expectAlone));
+    {
+        auto renderer = makeRenderer();
+        render(*renderer, whole);
+        EXPECT_TRUE(identical(render(*renderer, alone), expectAlone)) << "the isolated child after the whole group draws the group's other child";
+    }
+    {
+        auto renderer = makeRenderer();
+        render(*renderer, alone);
+        EXPECT_TRUE(identical(render(*renderer, whole), expectWhole)) << "the whole group after an isolated child draws that child alone";
+    }
+}
