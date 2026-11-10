@@ -14165,7 +14165,8 @@ void editor::InspectorWindow::drawGridComponent(ComponentType cpType, SceneProje
         ImGui::PushID((int)layer);
         const std::string name = scene->getEntityName(layer);
         const std::string label = std::string(ICON_FA_GRIP_LINES " ") + name + "  (Order " + std::to_string(tilemapmesh::sortingOrder(scene, layer)) + ")";
-        ImGui::Selectable(label.c_str());
+        // the row spans the width: overlap lets its x button, drawn over it, take the click
+        ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_AllowOverlap);
         if (ImGui::BeginDragDropSource()) {
             ImGui::SetDragDropPayload(kLayerRowPayload, &layer, sizeof(layer));
             ImGui::TextUnformatted(name.c_str());
@@ -14346,7 +14347,9 @@ void editor::InspectorWindow::drawTilemapConvertSection(SceneProject* sceneProje
     const TilemapComponent* tilemap = sceneProject->scene->findComponent<TilemapComponent>(entity);
     if (!tilemap || !tilemapmesh::hasMesh(sceneProject->scene, entity)) return;
     separatorText("Grid Tilemap");
-    const tilemap::ConvertCheck check = tilemap::check(*tilemap, tilemapmesh::submeshTextures(sceneProject->scene, entity));
+    // drawn every frame; the check reads its textures' files (content-keyed: Inspectors may share it)
+    static tilemap::ConvertCheckCache checks;
+    const tilemap::ConvertCheck& check = checks.get(*tilemap, tilemapmesh::submeshTextures(sceneProject->scene, entity));
     if (check.ok) {
         ImGui::TextDisabled("Convertible: %d x %d tiles, %d rect(s)", check.tileWidth, check.tileHeight, (int)check.rects.size());
     } else {

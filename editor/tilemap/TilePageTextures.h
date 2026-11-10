@@ -32,16 +32,25 @@ namespace jasperengine::editor::tilemap {
         void beginFrame();
         // a project switch: everything uploaded is retired
         void clear();
+        // how many times a page's image was read and decoded
+        uint64_t decodes() const { return decodeCount; }
 
     private:
         struct Entry {
             Texture texture;
             uint64_t generation = 0;
             bool loaded = false;
+            // a page that did not load is read again only when its file changes (each tile of it
+            // asks every frame): the file's stamp then, and the frame it was last looked at
+            bool failed = false;
+            int64_t failedStamp = 0;
+            uint64_t checkedFrame = 0;
         };
         std::map<std::string, Entry> entries;
         std::vector<Texture> retired;
         uint64_t uploads = 0;
+        uint64_t decodeCount = 0;
+        uint64_t frame = 0;
     };
 
     // a tile of a source's grid: texture sources at their (at) positions, others wrapped ten to a

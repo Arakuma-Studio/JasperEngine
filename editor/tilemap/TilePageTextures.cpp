@@ -4,17 +4,37 @@
 #include "tilemap/TilePageTextures.h"
 
 #include "Backend.h"
+#include "asset/ImportedAssets.h"
+#include "io/FileData.h"
 #include "texture/TextureData.h"
 #include "tilemap/TilesetEdit.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <utility>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::tilemap;
+
+// file-local, in a namespace of its own: unity builds merge the editor's sources
+namespace jasperengine::editor::tilepagetextures {
+
+    // the stamp of the file a page reads (an imported "<file>#<key>" reads its imported file); 0
+    // when there is none
+    int64_t pageFileStamp(const std::string& pagePath) {
+        std::string file = pagePath;
+        if (file.find('#') != std::string::npos && !ImportedAssets::find(ImportedAssets::normalize(file), file)) return 0;
+        std::error_code error;
+        const auto time = std::filesystem::last_write_time(FileData::getSystemPath(file), error);
+        return error ? 0 : (int64_t)time.time_since_epoch().count();
+    }
+
+}
+
+using namespace jasperengine::editor::tilepagetextures;
 
 TilePageTextures& TilePageTextures::get() {
     static TilePageTextures instance;
@@ -24,6 +44,7 @@ TilePageTextures& TilePageTextures::get() {
 void TilePageTextures::beginFrame() {
     for (Texture& texture : retired) texture.destroy();
     retired.clear();
+    frame++;
 }
 
 void TilePageTextures::clear() {
@@ -35,13 +56,21 @@ void TilePageTextures::clear() {
 
 ImTextureID TilePageTextures::page(const std::string& pagePath, const TilesetRuntime& tileset) {
     Entry& entry = entries[pagePath];
-    if (entry.generation != tileset.generation || entry.texture.empty()) {
+    bool retry = entry.generation != tileset.generation || (entry.texture.empty() && !entry.failed);
+    if (!retry && entry.failed && entry.checkedFrame != frame) {
+        // once a frame at most: the file's stamp, not its pixels
+        entry.checkedFrame = frame;
+        retry = pageFileStamp(pagePath) != entry.failedStamp;
+    }
+    if (retry) {
         if (!entry.texture.empty()) {
             retired.push_back(entry.texture);
             entry.texture = Texture();
         }
         entry.generation = tileset.generation;
         entry.loaded = false;
+        entry.failed = false;
+        decodeCount++;
         // the default loader reads what a TilesetRuntime lists: a texture path, an imported "<file>#<key>"
         TilesetPagePixels pixels;
         if (const PixelImage* image = pixels.get(pagePath)) {
@@ -58,6 +87,11 @@ ImTextureID TilePageTextures::page(const std::string& pagePath, const TilesetRun
                 entry.texture.releaseData();
                 entry.loaded = render && render->isCreated();
             }
+        }
+        if (!entry.loaded) {
+            entry.failed = true;
+            entry.failedStamp = pageFileStamp(pagePath);
+            entry.checkedFrame = frame;
         }
     }
     if (!entry.loaded) return ImTextureID{};
