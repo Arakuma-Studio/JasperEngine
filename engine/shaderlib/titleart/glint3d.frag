@@ -31,7 +31,7 @@ uniform texture2D u_tgAux3;
 uniform sampler u_tgAux3_smp;
 
 uniform u_fs_titleGlint {
-    vec4 p0;    // BRIGHT: y exposure, z 1 = expand the shoulder, w 1 = decode compressed light
+    vec4 p0;    // BRIGHT: y exposure, z 1 = expand the shoulder, w the light's encoding (hd_decode)
     vec4 p1;    // per program (above)
     vec4 p2;    // BRIGHT: xy the source texel of the grid's first corner; ADD: uv scale and offset
     vec4 p3;    // xy: 1 / the target's size (texels)
@@ -61,7 +61,7 @@ void main() {
             ivec2 q = p + ivec2(x, y);
             if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, size))) {
                 vec4 s = texelFetch(sampler2D(u_tgSrc, u_tgSrc_smp), q, 0);
-                if (tg.p0.w > 0.5) s = hd_decodeLight(s);
+                s = hd_decode(s, tg.p0.w);
                 if (tg.p0.z > 0.5 && s.a > 1e-5) s.rgb = hd_expand(s.rgb / s.a, tg.p0.y) * s.a;
                 c += s;
             }

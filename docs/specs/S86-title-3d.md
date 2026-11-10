@@ -1488,3 +1488,18 @@ rest of S82 lands in 6B.
     direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
     pi-scaled lobes, which made the lights pi times brighter than the references.
 
+31. **Implementation (R30): the supersampled fallback holds linear light** (the integrator's decision, from S84's gate on
+    `casino/confirm-giraffe-3d`). The MSAA resolve averages what the target holds, and `a C / (1 + C)` averages to far less
+    light where a highlight meets a dark sample (12 over 0.02 resolves to 0.89, not 6.01), so the glint picked other stars.
+    At k > 1, where the float path's resolve averages light, the compressed path now holds premultiplied light / 64 in the
+    SRGB8A8 target (`hd_encodeLinear`; 3D highlights reach 60), dithered in the main pass by half a sRGB code that the k x k
+    texels of a pixel average out; the tone map, the gem copy and `Glint3D`'s bright pass decode by mode (`hd_decode`:
+    0 plain, 1 compressed, 2 linear). At k = 1 (Medium and Low on devices, and any k = 1 render), where the float path also
+    compresses highlights before its resolve (the shoulder), the encoding stays `a C / (1 + C)`: linear light there would
+    cost the darks their precision with no supersampling to average the dither. Cost: no pass, target or byte more in any
+    tier; the supersampled fallback's lit shader adds the dither (two `pow` per fragment); k = 1 is unchanged (not timed).
+    Tried and measured on the gate's 0.25 renders (fraction of pixels over 24/255; giraffe en / every other 3D sample): linear
+    light at 16, 32, 64 without dither 2.5 % / 2.2 % / 2.1 %, with `about-80-percent-3d` failing at 16 and 32 (clipping) and
+    at 64 (dark precision); 64 with the dither 2.0 % with all others passing; no MSAA at k > 1 with the old encoding 3.1 %.
+    The same linear encoding in a float target gives 0.0 %: what remains is the 8-bit precision of the glint's input,
+    which its pinch and star budget (4th powers of ratios) turn into star flips. Test: `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`.

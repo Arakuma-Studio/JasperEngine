@@ -1042,12 +1042,18 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     const double exposure = plan.lighting.exposure;
     set4(fs.camera, camera.position[0], camera.position[1], camera.position[2], (float)exposure);
     const bool shoulder = !compressed && samples > 1 && k == 1 && plan.debugView == Title3DDebugView::None;
+    // the fallback's encoding (hdr_compress.glsl hd_decode): supersampled, where the float path's
+    // resolve averages light, linear light so the fallback's resolve averages light too; at k = 1,
+    // like the float path's shoulder, the highlight-compressing one
+    const bool linearLight = compressed && k > 1;
+    const float encoding = linearLight ? 2.0f : compressed ? 1.0f : 0.0f;
     // an environment's lookup uniforms (the layer's, or a part's own before its draws)
     auto setEnvironment = [&](size_t index) {
         const Title3DEnvPlan& envPlan = plan.environments[std::min(index, plan.environments.size() - 1)];
         const Environment3D& e = envPlan.environment;
         const Cube* c = index < envCubes.size() ? envCubes[index] : nullptr;
-        set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder ? 1.0f : 0.0f, (float)(plan.size / 100.0));
+        set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder || linearLight ? 1.0f : 0.0f,
+             (float)(plan.size / 100.0));
         const int face = c ? c->face : 512;
         set4(fs.env, (float)std::log2(face / 512.0), (float)((c ? c->levels : 1) - 1), (float)e.blur,
              (e.repeatX != 1 || e.repeatY != 1) ? 1.0f : 0.0f);
@@ -1383,7 +1389,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
             PostBlock block;
             std::memset(&block, 0, sizeof(block));
             const bool behindShoulder = !compressed && samples > 1 && k == 1;
-            set4(block.p0, 0, (float)exposure, behindShoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
+            set4(block.p0, 0, (float)exposure, behindShoulder ? 1.0f : 0.0f, encoding);
             if (!im.post(*copy, nullptr, &im.behindCopy, 0, ColorFormat::RGBA16F, &mt->texture(), nullptr, nullptr, block, error)) return false;
             for (int level = 1; level < im.behindLevels; level++) {
                 set4(block.p1, (float)(level - 1), 0);
@@ -1415,6 +1421,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         gi.sourceWidth = mainKey.width;
         gi.sourceHeight = mainKey.height;
         gi.compressed = compressed;
+        gi.linearLight = linearLight;
         gi.shoulder = shoulder;
         gi.exposure = exposure;
         gi.k = k;
@@ -1440,7 +1447,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     }
     PostBlock post;
     std::memset(&post, 0, sizeof(post));
-    set4(post.p0, (float)plan.lighting.toneMapping, (float)exposure, shoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
+    set4(post.p0, (float)plan.lighting.toneMapping, (float)exposure, shoulder ? 1.0f : 0.0f, encoding);
     float debug = 0;
     if (plan.debugView == Title3DDebugView::AO) debug = 1;
     else if (plan.debugView == Title3DDebugView::Glint) debug = 2;

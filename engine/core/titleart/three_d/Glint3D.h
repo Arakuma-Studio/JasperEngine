@@ -41,6 +41,7 @@ namespace jasperengine::titleart {
         TextureRender* source = nullptr;    // the main HDR image (premultiplied, k x the region)
         int sourceWidth = 0, sourceHeight = 0;
         bool compressed = false;            // the source holds compressed light
+        bool linearLight = false;           // in the fallback's linear encoding (supersampled)
         bool shoulder = false;              // the source's MSAA samples were shouldered
         double exposure = 1;
         int k = 1;                          // source texels per output px per axis

@@ -328,7 +328,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
     const int brightLevel = sprites ? sl : base;
     const int ss = std::max(1, in.k);
     Block brightBlock{};
-    set4(brightBlock.p0, 0, in.exposure, in.shoulder ? 1 : 0, in.compressed ? 1 : 0);
+    set4(brightBlock.p0, 0, in.exposure, in.shoulder ? 1 : 0, in.linearLight ? 2 : in.compressed ? 1 : 0);
     set4(brightBlock.p1, std::max(0.0, g.threshold), std::ldexp(1.0, brightLevel) * ss);
     set4(brightBlock.p2, std::lround(ox * ss), std::lround(oy * ss));
     TitleTarget* bright = target(brightLevel, 1);

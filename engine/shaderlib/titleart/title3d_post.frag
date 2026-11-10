@@ -39,7 +39,7 @@ uniform texture2D u_tpAux2;
 uniform sampler u_tpAux2_smp;
 
 uniform u_fs_title3dPost {
-    vec4 p0;    // TONEMAP: x mode, y exposure, z 1 = expand the shoulder, w 1 = decode compressed light
+    vec4 p0;    // TONEMAP: x mode, y exposure, z 1 = expand the shoulder, w the light's encoding (hd_decode)
     vec4 p1;    // MITCHELL: x k, y the source's last texel along the axis; AO: x radius (view units),
                 // y px per view unit at depth 1, z intensity, w 1 = origin top left; AO_BLUR: xy the
                 // axis; BOX_DOWN: x the source level, y 1 = copy the level as it is
@@ -116,7 +116,7 @@ void main() {
     ivec2 at = ivec2(gl_FragCoord.xy);
 #if TP_PROGRAM == 1
     vec4 c = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
-    if (tp.p0.w > 0.5) c = hd_decodeLight(c);
+    c = hd_decode(c, tp.p0.w);
     float a = clamp(c.a, 0.0, 1.0);
     vec3 straight = a > 1e-5 ? max(c.rgb / a, vec3(0.0)) : vec3(0.0);
     if (tp.p0.z > 0.5) straight = hd_expand(straight, tp.p0.y);
@@ -212,7 +212,7 @@ void main() {
     frag_color = vec4(vec3(ws > 0.0 ? s / ws : 1.0), 1.0);
 #elif TP_PROGRAM == 6
     vec4 c = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
-    if (tp.p0.w > 0.5) c = hd_decodeLight(c);
+    c = hd_decode(c, tp.p0.w);
     float a = clamp(c.a, 0.0, 1.0);
     vec3 straight = a > 1e-5 ? max(c.rgb / a, vec3(0.0)) : vec3(0.0);
     if (tp.p0.z > 0.5) straight = hd_expand(straight, tp.p0.y);

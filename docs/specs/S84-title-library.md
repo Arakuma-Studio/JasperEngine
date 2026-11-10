@@ -1873,7 +1873,7 @@ rest of S82 lands in 6B.
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
     `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
-    - fallback_parity: `casino/confirm-giraffe-3d` (en; the 3D glint's picks: see below). `elements/electric-blue` and
+    - fallback_parity: `casino/confirm-giraffe-3d` (en; the 3D glint's 8-bit input: Deviation 29). `elements/electric-blue` and
       `elements/storm-counter` pass since S83 Deviation 37 (Light Glow read Lightning's light clipped at 1 on the RGBA8
       path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
@@ -1911,12 +1911,11 @@ rest of S82 lands in 6B.
     param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
     and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
-29. **Open: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). Measured at the
-    gate's 0.25: 2.8 % of pixels over 24/255 (AC9's limit 1 %), mean 2.0; the same document with the glint off 0.35 %,
-    with its 2D effects off 1.9 %; `ja` passes (0.76 %), as every other 3D item does. The glint's bright pass already
-    decodes the compressed light; what differs is the light it decodes: at k > 1 the MSAA resolve averages the encoding
-    `s = C/(1 + C)`, not the light, so a sub-sample highlight comes out far dimmer than the float path's linear resolve
-    (and SRGB8A8 holds `s` near 1, where highlights live, in steps of about 25 % of `C` at radiance 40), and the pinch and
-    the star budget pick other stars. Rendering the compressed main pass without MSAA at k > 1 (every texel one sample,
-    decoded exactly) made it worse (en 3.1 %, ja 1.7 %), so it is not in. A fix needs S86's encoding or resolve (a
-    per-sample decode needs multisampled textures, which WebGL2 and GLES 3.0 lack): for its owner to decide.
+29. **Open: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
+    0.25 it measured 2.8 % of pixels over 24/255 (the check's limit 1 %), mean 2.0; with the glint off 0.35 %; `ja` passes, as
+    every other 3D item does. The MSAA resolve averaged the encoding `C/(1 + C)`, not the light; S86 Deviation 31 makes the
+    supersampled fallback hold linear light (resolves average light, `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`):
+    giraffe en is now 2.0 %, mean 1.6, and the other 251 samples of the 91 3D items pass. What remains is the 8-bit precision
+    of the glint's input (the same encoding in a float target: 0.0 %), which no 8-bit encoding of light up to 60 removes.
+    Note: S86 AC9 holds a glint-on render to the mean alone (3/255), which giraffe en passes; `fallback_parity` holds every 3D
+    document to the 1 % share as well. Whether the check follows AC9 there is the integrator's decision.

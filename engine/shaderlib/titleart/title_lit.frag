@@ -12,7 +12,8 @@ precision highp int;
 // the grade as uniforms (title_env.glsl). The output is premultiplied: opaque writes alpha 1;
 // with opacity < 1, rgb = diffuse x a + added light and alpha = a + (1 - a) max(added light).
 // TL_HDR_COMPRESS writes the compressed light of the RGBA8 path (hdr_compress.glsl); otherwise
-// `frame.z` asks for the tone-map-aware shoulder on MSAA samples. Variants: the TL_* bits of
+// `frame.z` asks for the tone-map-aware shoulder on MSAA samples (with TL_HDR_COMPRESS: the
+// linear encoding of a supersampled render, hdr_compress.glsl). Variants: the TL_* bits of
 // TitleTierFeatures.h. A slot's material comes from the slot table, so one draw can cover the
 // opaque slots of a variant (v_ids.w low 12 bits). TL_OUTPUT 1 and 2 are render_title's
 // debug views: the shading normal (world, 0..1) and the reflected environment, unweighted;
@@ -381,7 +382,18 @@ void main() {
 #endif
 
 #ifdef TL_HDR_COMPRESS
-    frag_color = hd_encodeLight(color);
+    if (tl.frame.z > 0.5) {
+        // supersampled: the linear encoding, dithered by half a code in the target's sRGB coding
+        // (the k x k texels of a pixel average the rounding out)
+        vec4 encoded = hd_encodeLinear(color);
+        float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+        vec3 code = mix(encoded.rgb * 12.92, 1.055 * pow(encoded.rgb, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), encoded.rgb));
+        code = max(code + ign / 255.0, vec3(0.0));
+        encoded.rgb = mix(code / 12.92, pow((code + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), code));
+        frag_color = encoded;
+    } else {
+        frag_color = hd_encodeLight(color);
+    }
 #else
     if (tl.frame.z > 0.5 && color.a > 0.0) color.rgb = hd_shoulder(color.rgb / color.a, tl.camera.w) * color.a;
     frag_color = color;
