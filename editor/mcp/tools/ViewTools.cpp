@@ -2303,7 +2303,7 @@ void registerViewTools(McpRegistry& registry) {
         // its words were cut again when the wave-2 merges took core 16 characters over its limit.
         tool.description =
             "Fronts a panel (screenshot needs none). console: "
-            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled rect; "
+            "its rows, categories, selection; systems: each row's Enabled rect; "
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",

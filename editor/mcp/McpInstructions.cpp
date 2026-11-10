@@ -127,7 +127,7 @@ post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_pre
 (softShadows, shadows_quality), reflections (SSR replaces probe reflections;
 check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
 (analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), pixel-fx
-(capture_contact_sheet), titles (edit_title), data safety (allow_data_loss), meshes (inspect_models,
+(capture_contact_sheet), title-art, data safety (allow_data_loss), meshes (inspect_models,
 check_render_budgets), device tiers (set_device_simulation, then play), sprites (set_sprite_frames
 sheet): jasper://docs/<area>.
 )JE";
