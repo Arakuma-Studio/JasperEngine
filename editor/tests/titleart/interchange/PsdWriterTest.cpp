@@ -14,6 +14,7 @@
 #include "titleart/interchange/psd/PsdAdjustments.h"
 #include "titleart/interchange/psd/PsdReader.h"
 #include "titleart/interchange/psd/PsdWriter.h"
+#include "io/AtomicFile.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -135,6 +136,12 @@ namespace {
         }
     }
 
+    size_t workingFiles(const fs::path& dir) {
+        size_t count = 0;
+        for (const auto& entry : fs::directory_iterator(dir)) count += jasperengine::io::isTemporarySiblingName(entry.path().filename().string()) ? 1 : 0;
+        return count;
+    }
+
     // R49: the file assembled from the spool is the same file, with no layer left in memory
     void streamed(int bps) {
         std::vector<uint8_t> batch;
@@ -152,9 +159,9 @@ namespace {
             EXPECT_TRUE(doc.merged.empty()) << "the merged image is freed";
             for (const PsdWriteLayer& l : doc.layers) EXPECT_TRUE(l.rgba.empty()) << l.name << " is freed";
             ASSERT_TRUE(writePsdFile(doc, spool, dir / "x.psd", error)) << error;
-            EXPECT_TRUE(fs::exists(spoolPath));
+            EXPECT_EQ(workingFiles(dir), 1u) << "the working file, a temporary sibling of the spool's name";
         }
-        EXPECT_FALSE(fs::exists(spoolPath)) << "the working file goes with the spool";
+        EXPECT_EQ(workingFiles(dir), 0u) << "the working file goes with the spool";
         std::ifstream in(dir / "x.psd", std::ios::binary);
         const std::vector<uint8_t> file((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         EXPECT_EQ(file, batch) << "the same bytes as writing in memory";

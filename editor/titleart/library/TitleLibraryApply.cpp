@@ -13,6 +13,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/RemoveFilesCmd.h"
 #include "command/type/WriteFilesCmd.h"
+#include "io/AtomicFile.h"
 #include "titleart/fx/FxPresets.h"
 #include "titleart/ColorSchemeApply.h"
 #include "titleart/TitleArtIO.h"
@@ -1187,9 +1188,11 @@ TitleOpsResult titlelibrary::runLibraryBatch(Project* project, const Json& ops) 
             fs::remove(f.path, ec);
             continue;
         }
-        fs::create_directories(f.path.parent_path(), ec);
-        std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
-        out << f.content;
+        const io::WriteResult written = io::writeFileAtomic(f.path, f.content);
+        if (!written.ok()) {
+            result.ok = false;
+            result.problems.push_back(TitleOpProblem{"error", "write_failed", -1, {}, "could not write '" + f.path.generic_string() + "': " + io::describeWriteError(written)});
+        }
     }
     TitleLibrary::get().invalidate();
     return result;

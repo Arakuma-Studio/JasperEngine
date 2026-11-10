@@ -26,7 +26,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <map>
 
@@ -92,8 +91,8 @@ namespace {
         if (!xliff) {
             const std::string file = FileDialogs::saveFileDialog(document.parent_path().string(), document.stem().string() + ".csv");
             if (file.empty()) return;
-            std::ofstream(FileUtils::pathFromUtf8(file), std::ios::binary) << exportTitleStringsCsv(docs, {});
-            panel().message = "Exported " + fs::path(file).filename().string();
+            const bool written = FileUtils::writeFileReplacing(FileUtils::pathFromUtf8(file), exportTitleStringsCsv(docs, {}));
+            panel().message = (written ? "Exported " : "Couldn't write ") + fs::path(file).filename().string();
             return;
         }
         const std::string dir = FileDialogs::openFileDialog(document.parent_path().string(), FILE_DIALOG_ALL, true);
@@ -102,7 +101,11 @@ namespace {
         for (const auto& [code, text] : exportTitleStringsXliff(docs, {})) {
             std::string lower = code;
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-            std::ofstream(FileUtils::pathFromUtf8(dir) / (document.stem().string() + "." + lower + ".xlf"), std::ios::binary) << text;
+            const fs::path target = FileUtils::pathFromUtf8(dir) / (document.stem().string() + "." + lower + ".xlf");
+            if (!FileUtils::writeFileReplacing(target, text)) {
+                panel().message = "Couldn't write " + target.filename().string();
+                return;
+            }
             count++;
         }
         panel().message = "Exported " + std::to_string(count) + " XLIFF file(s)";

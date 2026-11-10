@@ -134,7 +134,9 @@ TEST(TitleAnimBench, Sample64){
     std::printf("[title anim] Sample64: 40 tracks, 64 glyphs: median %.2f us, p95 %.2f us, %llu allocations over 600 frames (R35: 25 us median, 0)\n", median,
                 percentile(samples, 0.95), (unsigned long long)allocations);
     EXPECT_LT(median, 250.0);
-    if (testsupport::countsAllocations()) EXPECT_EQ(allocations, 0u) << "sampling allocates nothing in steady state";
+    if (testsupport::countsAllocations()) {
+        EXPECT_EQ(allocations, 0u) << "sampling allocates nothing in steady state";
+    }
 
     // the pose the runtime builds from it each frame (re-render requests and glyph quads)
     std::vector<double> poses;

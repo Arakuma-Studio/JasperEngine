@@ -531,7 +531,10 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
                 }
                 fs::rename(from, to, ec);
                 if (ec) {
-                    fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+                    if (!FileUtils::copyFileAtomic(from, to, ec)) {
+                        ok = false;
+                        break;
+                    }
                     fs::remove(from, ec);
                 }
                 moved.push_back(to.generic_string());

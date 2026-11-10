@@ -142,7 +142,9 @@ TEST(TitleArt3DLua, TheTierGoesIntoTheState) {
     const TitleArtRuntimeSettings before = settings;
     for (int& tier : settings.realtime3DTier) tier = 2;
     TitleArtScheduler::get().configure(settings);
-    if (!QualityResolver::getTier().has_value()) EXPECT_EQ(TitleArtRuntime::tierFor(live3D, "auto"), (int)TitleTier::Medium);
+    if (!QualityResolver::getTier().has_value()) {
+        EXPECT_EQ(TitleArtRuntime::tierFor(live3D, "auto"), (int)TitleTier::Medium);
+    }
     TitleArtScheduler::get().configure(before);
     TitleArtLiveState low, high;
     low.tier = 3;

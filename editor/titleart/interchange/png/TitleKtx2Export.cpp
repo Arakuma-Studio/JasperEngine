@@ -9,6 +9,7 @@
 #include "TitlePngExport.h"
 
 #include "Project.h"
+#include "io/AtomicFile.h"
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureCooker.h"
 
@@ -69,13 +70,12 @@ namespace {
                     std::error_code ec;
                     fs::create_directories(work, ec);
                     const fs::path source = work / c->fileName("", code, "png");
-                    {
-                        std::ofstream out(source, std::ios::binary);
-                        out.write(reinterpret_cast<const char*>(png.data()), (std::streamsize)png.size());
-                        if (!out) {
-                            c->fail("write_failed", "cannot write " + source.generic_string());
-                            return;
-                        }
+                    io::AtomicWriteOptions options;
+                    options.durability = io::Durability::Cache;
+                    const io::WriteResult written = io::writeFileAtomic(source, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
+                    if (!written.ok()) {
+                        c->fail("write_failed", "cannot write " + source.generic_string() + ": " + io::describeWriteError(written));
+                        return;
                     }
                     TextureCookCache cache;
                     cache.open(work / "cache", "", 256ull << 20);
