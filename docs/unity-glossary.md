@@ -18,6 +18,9 @@ Projects made before the rename are migrated once with
 | Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
 | The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
 | Maximize On Play (the Game view toolbar; F11, on macOS Control+Cmd+F; Edit > Maximize On Play) | the toolbar toggle only |
+| Preset (a saved set of a component's settings) | a Title Art **Look** (`.titlelook`): a saved style of one title layer, applied by Apply Look (none before) |
+| Preset Library | the **Title Library** (Looks, Color Schemes, Templates in the Title Designer's Library) (none before) |
+| Swatches / Color Presets | a Title Art **Color Scheme** (`.titlecolors`): colours by role, applied without changing the style (none before) |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
@@ -183,6 +186,7 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 |---|---|
 | `Application.OpenURL(url)` | `System.openURL(url)` (returns whether the system took it) |
 | `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
+| Unity Localization `LocalizationSettings.SelectedLocale` (titles only) | `TitleArt.setLanguage(code)`, `TitleArt.getLanguage()`, `TitleArt.onLanguageChanged`; a Title Art Renderer's `language`; Project Settings > Localization (`localization.languages`, `localization.default_language`) |
 | `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
 | `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
 | `QualitySettings.terrainDetailDistanceFactor` | `Engine.foliageDistanceScale` (starts from Quality > Foliage Distance; [instancing.md](rendering/instancing.md)) |

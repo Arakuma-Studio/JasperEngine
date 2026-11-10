@@ -739,12 +739,21 @@ namespace jasperengine{
 	};
 
 	class FluidSystem;
+	class TitleArtSystem;
 
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
 		// null until then or without one)
 		FluidSystem* frameFluids = nullptr;
+		// the scene's Title Art Renderers, whose images their Images and Sprites show (S81 R2;
+		// set with frameFluids)
+		TitleArtSystem* frameTitles = nullptr;
+		// the image an entity's Image or Sprite (submesh 0's base colour) is lent this frame: a
+		// fluid's MATERIAL output or a title's (null: its own texture); `transparent` as the
+		// lender says (straight alpha)
+		TextureRender* lentTexture(Entity entity, bool* transparent = nullptr) const;
+		bool hasLentTextures() const;
 
 
 		friend class AtmosphereRenderer;

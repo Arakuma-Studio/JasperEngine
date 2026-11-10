@@ -1,0 +1,133 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/elven-silver",
+  "revision": 1,
+  "name": {
+    "en": "Elven Silver",
+    "ja": "エルフの銀"
+  },
+  "description": {
+    "en": "Silver-blue gradient face with a smooth bevel and a pale inner glow, a dark blue keyline, a silver-white line and a navy outline, a cool glow behind and small star glints.",
+    "ja": "なめらかなベベルと淡い内側の光を持つ銀青のグラデーションの面、暗い青の縁、銀白の線、紺の外縁、背後の冷たいグロー、小さな星のキラキラ。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "silver",
+    "elven",
+    "blue",
+    "fantasy",
+    "glow",
+    "elegant"
+  ],
+  "synonyms": {
+    "en": [
+      "moonlight silver",
+      "true silver",
+      "fairy",
+      "enchanted"
+    ],
+    "ja": [
+      "エルフ",
+      "銀",
+      "月光",
+      "妖精",
+      "erufu",
+      "gin"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#c8d8f0"
+            },
+            {
+              "pos": 1,
+              "color": "#8aa0c8"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#e0f0ff"
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#2a3a5a"
+          }
+        }
+      },
+      {
+        "width": 2.4,
+        "material": {
+          "fill": {
+            "color": "#ced6dd"
+          }
+        }
+      },
+      {
+        "width": 1.8,
+        "material": {
+          "fill": {
+            "color": "#1a2440"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#a0d0ff",
+        "size": 26
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "stars",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "stars": 6
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

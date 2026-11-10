@@ -1,0 +1,86 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/jersey-number",
+  "revision": 1,
+  "name": {
+    "en": "Jersey Number",
+    "ja": "ユニフォームの背番号"
+  },
+  "description": {
+    "en": "White face in a royal blue band, a white band and a royal blue outline like stitched tackle twill, over a soft shadow.",
+    "ja": "ロイヤルブルーの帯、白の帯、ロイヤルブルーの外縁に包まれた白い面、縫い付けの文字のように、柔らかい影。"
+  },
+  "family": "sports",
+  "tags": [
+    "jersey",
+    "number",
+    "blue",
+    "white",
+    "sports",
+    "team"
+  ],
+  "synonyms": {
+    "en": [
+      "uniform",
+      "tackle twill",
+      "player number",
+      "kit"
+    ],
+    "ja": [
+      "背番号",
+      "ユニフォーム",
+      "チーム",
+      "青",
+      "sebangō",
+      "yunifōmu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "anton",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style": {
+    "rims": [
+      {
+        "material": {
+          "fill": {
+            "color": "#0a3a8a"
+          }
+        }
+      },
+      {
+        "width": 1.5
+      },
+      {
+        "width": 2,
+        "material": {
+          "fill": {
+            "color": "#0a3a8a"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 16,
+        "opacity": 0.45
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

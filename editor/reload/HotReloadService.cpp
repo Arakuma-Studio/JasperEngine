@@ -412,7 +412,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
             // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
             if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "tileset" || kind == "graph" ||
-                kind == "aseprite" || kind == "font")
+                kind == "aseprite" || kind == "font" || kind == "titleart")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
@@ -508,6 +508,12 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         reload::reloadGraphs(ctx, files(external, "graph"), graphDocuments);
     }
     reload::reloadFonts(ctx, files(external, "font"));
+    {
+        // Title Art: its documents, and those reading a changed font, image or SVG
+        std::vector<fs::path> titleAssets = files(external, "font");
+        for (const fs::path& path : textures) titleAssets.push_back(path);
+        reload::reloadTitleArt(ctx, both("titleart"), titleAssets);
+    }
     {
         std::vector<fs::path> bitmapFonts = both("font");
         for (const fs::path& path : both("texture")) bitmapFonts.push_back(path);

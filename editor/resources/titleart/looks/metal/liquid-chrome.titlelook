@@ -1,0 +1,243 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/liquid-chrome",
+  "revision": 1,
+  "name": {
+    "en": "Liquid Chrome",
+    "ja": "液体クローム"
+  },
+  "description": {
+    "en": "A grey face with a bevel, a gradient-map finish, a mirror reflection and a liquid texture, one rim (grey).",
+    "ja": "灰色の面（ベベル、グラデーションマップ仕上げ、映り込み、液体のテクスチャ）、1本の縁（灰色）。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "2d",
+    "grey",
+    "bevel",
+    "chrome",
+    "liquid",
+    "outline"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "flat",
+      "emboss",
+      "chiselled",
+      "mirror",
+      "polished metal",
+      "molten",
+      "melted",
+      "stroke",
+      "border",
+      "rim"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "平面",
+      "へいめん",
+      "heimen",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "液体",
+      "えきたい",
+      "ekitai",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#808080",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#808080"
+            },
+            {
+              "pos": 1,
+              "color": "#808080"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "custom",
+        "profile_curve": {
+          "points": [
+            {},
+            {
+              "x": 0.04,
+              "y": 0.03
+            },
+            {
+              "x": 0.13,
+              "y": 0.28
+            },
+            {
+              "x": 0.23,
+              "y": 0.41
+            },
+            {
+              "x": 0.3,
+              "y": 0.44
+            },
+            {
+              "x": 0.45,
+              "y": 0.55
+            },
+            {
+              "x": 0.6,
+              "y": 0.68
+            },
+            {
+              "x": 1,
+              "y": 1
+            }
+          ]
+        },
+        "size_mode": "fit",
+        "fit": 69.31,
+        "depth": 4.5,
+        "soften": 0.05,
+        "light_angle": 182,
+        "light_altitude": 8.8,
+        "gloss": "linear",
+        "highlight_opacity": 1,
+        "shadow_opacity": 0.15
+      },
+      "reflection": {
+        "enabled": true,
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        },
+        "blur": 50,
+        "rotation": 60
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#1c1c1c"
+            },
+            {
+              "pos": 0.45,
+              "color": "#9a9a9a"
+            },
+            {
+              "pos": 0.8,
+              "color": "#f0f0f0"
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff"
+            }
+          ]
+        }
+      },
+      "texture": {
+        "kind": "liquid",
+        "amount": 0.2,
+        "scale": 40,
+        "target": "surface"
+      }
+    },
+    "rims": [
+      {
+        "width": 0.2,
+        "material": {
+          "fill": {
+            "color": "#2e2e2e",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#2e2e2e"
+                },
+                {
+                  "pos": 1,
+                  "color": "#2e2e2e"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 591,
+    "item": "f-chrome-liquid",
+    "license_note": "used with the author's permission"
+  }
+}

@@ -1,0 +1,357 @@
+{
+  "templates": [
+    {
+      "id": "elements/inferno-title",
+      "name": {
+        "en": "Inferno Title (fire)",
+        "ja": "灼熱タイトル (炎)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title in red-hot fire with its flames and embers, over a cracked-earth subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：炎と火の粉をまとう灼熱の文字、ひび割れた大地のサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "elements",
+      "tags": [
+        "title",
+        "subtitle",
+        "fire",
+        "flames",
+        "embers",
+        "hot",
+        "red"
+      ],
+      "synonyms": {
+        "en": [
+          "burning title",
+          "flame logo",
+          "lava"
+        ],
+        "ja": [
+          "燃える文字",
+          "炎のロゴ",
+          "激熱"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "INFERNO",
+          "ja": "灼熱"
+        },
+        "subtitle": {
+          "en": "BURNING",
+          "ja": "燃え上がれ"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 250,
+            "transform.position": [
+              0,
+              40
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#3a0c00",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#0a0200",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "BURNING",
+            "size": 100,
+            "transform.position": [
+              0,
+              -200
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "elements/red-hot-fire",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "elements/cracked-earth",
+          "apply_font": true
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "elements/frozen-banner",
+      "name": {
+        "en": "Frozen Banner (ice, 3D ribbon)",
+        "ja": "氷結バナー (氷 + 3D リボン)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: an ice title over a 3D ice-crystal glass ribbon, with white light motes falling slowly; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：3D の氷結晶ガラスのリボンに氷の文字、ゆっくり舞い落ちる白い光の粒。背景はガイドレイヤー。"
+      },
+      "family": "elements",
+      "tags": [
+        "banner",
+        "ribbon",
+        "ice",
+        "frozen",
+        "3d",
+        "snow",
+        "particles"
+      ],
+      "synonyms": {
+        "en": [
+          "ice banner",
+          "winter title",
+          "freeze"
+        ],
+        "ja": [
+          "氷のバナー",
+          "冬のタイトル",
+          "凍結"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "FROZEN",
+          "ja": "氷結"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 240,
+            "transform.position": [
+              0,
+              10
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a2a4a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#020a18",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Ribbon",
+          "before": "Title",
+          "values": {
+            "shape": "ribbon",
+            "size": 320,
+            "aspect": 5,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Ribbon",
+          "look": "elements/ice-crystal-glass-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "elements/ice",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "particles",
+          "name": "Light Motes",
+          "preset": "light_motes",
+          "values": {
+            "gen.color_mode": "solid",
+            "gen.color": "#ffffff",
+            "gen.gravity": 60,
+            "gen.loop": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "elements/storm-counter",
+      "name": {
+        "en": "Storm Counter (lightning)",
+        "ja": "嵐のカウンター (稲妻)"
+      },
+      "description": {
+        "en": "A 1024 × 512 counter: electric-blue digits with lightning bolts; the backdrop is a guide layer.",
+        "ja": "1024 × 512 のカウンター：稲妻をまとう電撃ブルーの数字。背景はガイドレイヤー。"
+      },
+      "family": "elements",
+      "tags": [
+        "counter",
+        "digits",
+        "lightning",
+        "electric",
+        "blue",
+        "multiplier"
+      ],
+      "synonyms": {
+        "en": [
+          "multiplier",
+          "combo counter",
+          "thunder"
+        ],
+        "ja": [
+          "倍率",
+          "コンボカウンター",
+          "雷"
+        ]
+      },
+      "canvas": [
+        1024,
+        512
+      ],
+      "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "×999",
+          "ja": "×999"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 280,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a1a3a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#02040c",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "elements/electric-blue",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "lightning",
+          "name": "Lightning",
+          "preset": "bolts",
+          "follow": "Title"
+        }
+      ]
+    }
+  ]
+}

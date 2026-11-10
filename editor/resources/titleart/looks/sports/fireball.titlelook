@@ -1,0 +1,103 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/fireball",
+  "revision": 1,
+  "name": {
+    "en": "Fireball",
+    "ja": "ファイアボール"
+  },
+  "description": {
+    "en": "Yellow to orange face in a thick dark red outline, flames over its edges and a short smeared trail.",
+    "ja": "太い暗い赤の縁取りの中の黄色からオレンジの面、縁を越える炎、短くにじむ残像。"
+  },
+  "family": "sports",
+  "tags": [
+    "fire",
+    "fireball",
+    "orange",
+    "speed",
+    "sports",
+    "flames"
+  ],
+  "synonyms": {
+    "en": [
+      "blazing",
+      "hot shot",
+      "on fire",
+      "comet"
+    ],
+    "ja": [
+      "炎",
+      "ファイアボール",
+      "燃える",
+      "スピード",
+      "honoo",
+      "faiabōru"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "black-ops-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff0a0"
+            },
+            {
+              "pos": 1,
+              "color": "#ff8a00"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#3a0a00"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "motion_trail",
+      "params": {
+        "angle": 200,
+        "length": 40
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "fire",
+      "preset": "over_edges",
+      "place": "above",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

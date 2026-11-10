@@ -17,9 +17,28 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    bool isUpper(unsigned char c) { return std::isupper(c) != 0; }
-    bool isLower(unsigned char c) { return std::islower(c) != 0; }
-    bool isDigit(unsigned char c) { return std::isdigit(c) != 0; }
+    // ASCII only, whatever the C locale: a byte of a UTF-8 sequence is never a case or digit
+    // boundary, so the camelCase split cannot cut a multi-byte character
+    bool isUpper(unsigned char c) { return c >= 'A' && c <= 'Z'; }
+    bool isLower(unsigned char c) { return c >= 'a' && c <= 'z'; }
+    bool isDigit(unsigned char c) { return c >= '0' && c <= '9'; }
+    bool isAsciiLetterOrDigit(unsigned char c) { return isUpper(c) || isLower(c) || isDigit(c); }
+
+    bool isAscii(std::string_view word) {
+        for (char c : word) {
+            if (static_cast<unsigned char>(c) >= 0x80) return false;
+        }
+        return true;
+    }
+
+    bool isContinuation(unsigned char c) { return (c & 0xC0) == 0x80; }
+
+    // The bytes of the character starting at `at` (1 for ASCII and for a stray byte)
+    size_t characterLength(std::string_view text, size_t at) {
+        size_t length = 1;
+        search::decodeUtf8(text, at, length);
+        return length;
+    }
 
     // The next space-separated word of a normalized string from `at` (advanced past it)
     std::string_view nextWord(std::string_view text, size_t& at) {
@@ -49,12 +68,82 @@ namespace {
 
 }
 
+char32_t search::decodeUtf8(std::string_view text, size_t at, size_t& length) {
+    length = 1;
+    const unsigned char lead = static_cast<unsigned char>(text[at]);
+    if (lead < 0x80) return lead;
+    size_t count = 0;
+    char32_t codePoint = 0;
+    char32_t minimum = 0;
+    if ((lead & 0xE0) == 0xC0) {
+        count = 1;
+        codePoint = lead & 0x1F;
+        minimum = 0x80;
+    } else if ((lead & 0xF0) == 0xE0) {
+        count = 2;
+        codePoint = lead & 0x0F;
+        minimum = 0x800;
+    } else if ((lead & 0xF8) == 0xF0) {
+        count = 3;
+        codePoint = lead & 0x07;
+        minimum = 0x10000;
+    } else {
+        return INVALID_UTF8;
+    }
+    if (at + count >= text.size()) return INVALID_UTF8;
+    for (size_t k = 1; k <= count; k++) {
+        const unsigned char next = static_cast<unsigned char>(text[at + k]);
+        if (!isContinuation(next)) return INVALID_UTF8;
+        codePoint = (codePoint << 6) | (next & 0x3F);
+    }
+    // overlong forms, surrogates and values past U+10FFFF are not characters
+    if (codePoint < minimum || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) return INVALID_UTF8;
+    length = count + 1;
+    return codePoint;
+}
+
+bool search::isSeparator(char32_t c) {
+    if (c < 0x80) return !isAsciiLetterOrDigit(static_cast<unsigned char>(c));
+    if (c == INVALID_UTF8) return false;
+    // Latin-1: controls, no-break space, signs and marks; not ª ² ³ µ ¹ º ¼ ½ ¾
+    if (c <= 0xBF) return c != 0xAA && c != 0xB2 && c != 0xB3 && c != 0xB5 && c != 0xB9 && c != 0xBA && (c < 0xBC || c > 0xBE);
+    if (c == 0xD7 || c == 0xF7) return true;                     // × ÷
+    if (c >= 0x2000 && c <= 0x206F) return true;                 // general punctuation and spaces
+    if (c >= 0x2190 && c <= 0x23FF) return true;                 // arrows, mathematical and technical symbols
+    if (c >= 0x2500 && c <= 0x27BF) return true;                 // box drawing, shapes, symbols, dingbats
+    if (c >= 0x2E00 && c <= 0x2E7F) return true;                 // supplemental punctuation
+    if (c >= 0x3000 && c <= 0x3004) return true;                 // ideographic space 、 。 〃 〄
+    if (c >= 0x3008 && c <= 0x3020) return true;                 // CJK brackets, 〜 and marks
+    if (c == 0x3030 || c == 0x30FB) return true;                 // 〰 ・
+    if (c >= 0xFE10 && c <= 0xFE1F) return true;                 // vertical forms
+    if (c >= 0xFE30 && c <= 0xFE6F) return true;                 // CJK compatibility and small forms
+    if (c >= 0xFF01 && c <= 0xFF0F) return true;                 // full-width ! .. /
+    if (c >= 0xFF1A && c <= 0xFF20) return true;                 // full-width : .. @
+    if (c >= 0xFF3B && c <= 0xFF40) return true;                 // full-width [ .. `
+    if (c >= 0xFF5B && c <= 0xFF65) return true;                 // full-width { .. ~, half-width ｡ ｢ ｣ ､ ･
+    return c == 0xFEFF || c == 0xFFFD;
+}
+
 std::string search::normalize(std::string_view text) {
     std::string result;
     result.reserve(text.size() + 8);
     bool previousSpace = true;
-    for (size_t i = 0; i < text.size(); ++i) {
+    for (size_t i = 0; i < text.size();) {
         const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c >= 0x80) {
+            // a UTF-8 character stays whole (Japanese names are words too, S82 R27); its
+            // punctuation separates words as ASCII punctuation does
+            size_t length = 1;
+            if (isSeparator(decodeUtf8(text, i, length))) {
+                if (!previousSpace) result.push_back(' ');
+                previousSpace = true;
+            } else {
+                result.append(text.substr(i, length));
+                previousSpace = false;
+            }
+            i += length;
+            continue;
+        }
         const bool upper = isUpper(c);
         const bool previousLowerOrDigit = i > 0 &&
             (isLower(static_cast<unsigned char>(text[i - 1])) || isDigit(static_cast<unsigned char>(text[i - 1])));
@@ -64,13 +153,14 @@ std::string search::normalize(std::string_view text) {
             if (!previousSpace) result.push_back(' ');
             previousSpace = true;
         }
-        if (std::isalnum(c) != 0) {
+        if (isAsciiLetterOrDigit(c)) {
             result.push_back(static_cast<char>(std::tolower(c)));
             previousSpace = false;
         } else if (!previousSpace) {
             result.push_back(' ');
             previousSpace = true;
         }
+        ++i;
     }
     while (!result.empty() && result.back() == ' ') result.pop_back();
     return result;
@@ -111,15 +201,19 @@ int search::subsequence(std::string_view q, std::string_view c) {
     size_t qi = 0;
     int score = 0;
     int run = 0;
-    for (size_t ci = 0; ci < c.size() && qi < q.size(); ++ci) {
-        if (q[qi] != c[ci]) {
+    for (size_t ci = 0; ci < c.size() && qi < q.size();) {
+        // whole characters: the bytes of one UTF-8 character never stand in for another's
+        const size_t length = characterLength(q, qi);
+        if (isContinuation(static_cast<unsigned char>(c[ci])) || c.substr(ci, length) != q.substr(qi, length)) {
             run = 0;
+            ++ci;
             continue;
         }
         const bool boundary = ci == 0 || c[ci - 1] == ' ';
         score += 7 + (boundary ? 10 : 0) + std::min(run * 4, 16);
         ++run;
-        ++qi;
+        qi += length;
+        ci += length;
     }
     return qi == q.size() ? score - static_cast<int>(c.size() - q.size()) : -1;
 }
@@ -139,6 +233,7 @@ int search::fuzzyScore(std::string_view q, std::string_view c) {
     while (queryAt < q.size()) {
         const std::string_view queryWord = nextWord(q, queryAt);
         if (queryWord.empty()) continue;
+        const bool queryIsAscii = isAscii(queryWord);
 
         int best = -1;
         size_t candidateAt = 0;
@@ -149,7 +244,7 @@ int search::fuzzyScore(std::string_view q, std::string_view c) {
                 best = std::max(best, 180 - static_cast<int>(candidateWord.size() - queryWord.size()));
             }
             const int cutoff = cutoffFor(queryWord);
-            const int distance = damerau(queryWord, candidateWord, cutoff);
+            const int distance = queryIsAscii ? damerau(queryWord, candidateWord, cutoff) : cutoff + 1;
             if (distance <= cutoff) {
                 best = std::max(best, 140 - distance * 35 - std::abs(static_cast<int>(candidateWord.size() - queryWord.size())));
             }
@@ -186,9 +281,10 @@ bool search::filterMatch(std::string_view normQuery, std::string_view normCandid
             if (candidateWord.empty()) continue;
             if (candidateWord.starts_with(queryWord)) {
                 found = true;
-            } else if (queryWord.size() >= 3 && queryWord[0] == candidateWord[0]) {
+            } else if (queryWord.size() >= 3 && queryWord[0] == candidateWord[0] && isAscii(queryWord)) {
                 // typos from three letters on (one letter is within one edit of every word), with
-                // the first letter right: "vsync" must not find every "sync"
+                // the first letter right: "vsync" must not find every "sync"; ASCII words only
+                // (two kana a code point apart are one byte apart: "あい" is no typo of "あう")
                 const int cutoff = cutoffFor(queryWord);
                 found = damerau(queryWord, candidateWord, cutoff) <= cutoff;
             }

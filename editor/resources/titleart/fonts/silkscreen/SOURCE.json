@@ -1,0 +1,22 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/silkscreen/OFL.txt",
+    "sha256": "86c5e9c9382cdcc5948704fdfe60f2aa164a719746931219a42736ecd9cefbd3",
+    "bytes": 4394
+  },
+  "paths": [
+    "ofl/silkscreen/Silkscreen-Regular.ttf",
+    "ofl/silkscreen/Silkscreen-Bold.ttf"
+  ],
+  "sha256": [
+    "c845473330b94c2079ce9af01c51ac8ba2d99c24f4d14c039843bbb8e642ebd8",
+    "768476aa712d4f5c3e18d3bce80f980a8bd3f72b7094d22ec5e768df3acfed61"
+  ],
+  "bytes": [
+    32220,
+    30632
+  ]
+}

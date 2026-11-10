@@ -1,0 +1,66 @@
+{
+  "presets": [
+    {
+      "id": "bolts",
+      "name": "Lightning Bolts",
+      "aliases": [
+        "lightning bolts",
+        "稲妻"
+      ],
+      "source": "lightning/bolts",
+      "params": {},
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "electric_blue",
+      "name": "Electric Blue",
+      "aliases": [
+        "electric blue",
+        "電撃"
+      ],
+      "source": "lightning/electricBlue",
+      "params": {
+        "mode": "outward",
+        "count": 9,
+        "length": 170,
+        "jaggedness": 60,
+        "branches": 60,
+        "core_width": 2.2,
+        "glow_size": 12,
+        "glow": 110,
+        "color": "#5fd8ff",
+        "intensity": 105,
+        "seed": 4
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "electrify",
+      "name": "Electrify (along Edge)",
+      "aliases": [
+        "Electrify (along edge)",
+        "electrify",
+        "electric outline",
+        "放電"
+      ],
+      "source": "lightning/electrify",
+      "params": {
+        "mode": "edge",
+        "seed": 3
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    }
+  ]
+}

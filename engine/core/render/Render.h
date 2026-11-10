@@ -44,6 +44,12 @@ namespace jasperengine{
     //   ADDITIVE_PREMULTIPLIED  ONE, ONE
     //   SCREEN_PREMULTIPLIED    ONE, ONE_MINUS_SRC_COLOR
     //   MULTIPLY_PREMULTIPLIED  DST_COLOR, ONE_MINUS_SRC_ALPHA
+    // and Title Art's light blends (docs/specs/S80-title-art-core.md §6.4), dynamic path only:
+    //   LIGHT_PREMULTIPLIED     colour ONE, ONE; alpha ONE, ONE_MINUS_SRC_ALPHA (light adds
+    //                           colour and unions coverage, where ADDITIVE_PREMULTIPLIED keeps
+    //                           adding alpha)
+    //   MAX_PREMULTIPLIED       MAX of source and destination, colour and alpha (all factors ONE)
+    //   ERASE_PREMULTIPLIED     ZERO, ONE_MINUS_SRC_ALPHA (dst x (1 - src alpha): knockout)
     enum class BlendMode : uint8_t {
         NONE,
         ALPHA,
@@ -55,7 +61,10 @@ namespace jasperengine{
         MULTIPLY_PREMULTIPLIED,
         // dst - src (premultiplied colour taken away; alpha kept): the atmosphere's
         // volumetric composite removes the analytic fog it replaces with it
-        SUBTRACT_PREMULTIPLIED
+        SUBTRACT_PREMULTIPLIED,
+        LIGHT_PREMULTIPLIED,
+        MAX_PREMULTIPLIED,
+        ERASE_PREMULTIPLIED
     };
 
     enum class DepthCompare{
@@ -186,7 +195,16 @@ namespace jasperengine{
         LIGHTING_PASS,
         // S48's screen transition (transition.frag): one premultiplied fullscreen triangle over
         // the finished frame (pixelart::ScreenTransition)
-        TRANSITION
+        TRANSITION,
+        TITLE_ART,            // Title Art's passes (S80): the program is the low property bits (titleart/render/TitlePasses.h)
+        // 3D titles (S86, titleart/three_d/TitleTierFeatures.h): the Title Lit mesh shader (the TL_*
+        // feature bits), the 3D post (the pass in the bits), the environment builder's passes, the
+        // Low tier's sprite glints and the glint chain's passes (the pass in the bits)
+        TITLE_LIT,
+        TITLE_3D_POST,
+        TITLE_ENV,
+        TITLE_GLINT_SPRITE,
+        TITLE_GLINT
     };
 
     enum class AttributeType{
@@ -514,7 +532,8 @@ namespace jasperengine{
         DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA
     };
 
-    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT };
+    // MAX takes ONE for every factor (sokol validates it)
+    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT, MAX };
 
     // Color blending of a render object's color pipelines (PIP_DEFAULT, PIP_DEFAULT_NODEPTH,
     // PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT). Without one, those pipelines keep their

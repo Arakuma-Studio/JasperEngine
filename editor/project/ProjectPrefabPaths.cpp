@@ -23,6 +23,7 @@
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtDocument.h"
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
@@ -279,6 +280,15 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
         }
     }
     SoundEventDocument::relinkGuids(this, movedAudio);
+
+    // the Title Art documents naming a moved font, image or SVG by GUID take its new path (R5)
+    {
+        std::map<std::string, fs::path> moved;
+        for (const AssetDatabase::Change& change : allChanges) {
+            if (change.type == AssetDatabase::Change::Type::Moved && !change.guid.empty()) moved[change.guid] = projectPath / change.path;
+        }
+        if (!moved.empty()) TitleArtDocument::relinkGuids(this, moved);
+    }
 
     // the database tracks every asset type: the .anim clips' and .vat Vertex Animations'
     // references follow in applyClipAssetChanges, the prefab files' here
@@ -686,6 +696,8 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
     }
     // open .vat documents go with their files (and reload below)
     VatDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    // open .titleart documents too, and their baked PNGs' recipes name the new path
+    TitleArtDocument::filesMoved(this, oldPath.lexically_normal(), newPath.lexically_normal());
     // the database moved the clips' GUIDs with AssetOps (applyClipAssetChanges relinked their
     // references); open documents (clips, a model's sub-clips) go with their files
     AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());

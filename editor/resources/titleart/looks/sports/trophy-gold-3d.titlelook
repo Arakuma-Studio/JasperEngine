@@ -1,0 +1,183 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/trophy-gold-3d",
+  "revision": 1,
+  "name": {
+    "en": "Trophy Gold 3D",
+    "ja": "トロフィーゴールド 3D"
+  },
+  "description": {
+    "en": "Round-bevelled extrusion in punchy banded gold ringed by a chrome band, lit by a harbour sunset, with glints.",
+    "ja": "鮮やかな帯状の金で丸ベベルの押し出し、クロームの帯で囲み、港の夕日の光、キラキラ付き。"
+  },
+  "family": "sports",
+  "tags": [
+    "gold",
+    "trophy",
+    "winner",
+    "chrome",
+    "sports",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "champion",
+      "first place",
+      "victory",
+      "award"
+    ],
+    "ja": [
+      "トロフィー",
+      "優勝",
+      "金",
+      "チャンピオン",
+      "torofī",
+      "yūshō"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "anton",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style_3d": {
+    "depth": 12,
+    "bevel": {
+      "width": 1.5,
+      "depth": 1.5
+    },
+    "face": {
+      "preset": "punchy_gold",
+      "color": "#ffc000",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#fff4b0"
+          },
+          {
+            "pos": 0.18,
+            "color": "#ffd400"
+          },
+          {
+            "pos": 0.42,
+            "color": "#ff9800"
+          },
+          {
+            "pos": 0.5,
+            "color": "#b83000"
+          },
+          {
+            "pos": 0.58,
+            "color": "#ff7c00"
+          },
+          {
+            "pos": 0.8,
+            "color": "#ffb800"
+          },
+          {
+            "pos": 1,
+            "color": "#ffe070"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.2,
+      "env_multiplier": 2,
+      "specular_multiplier": 2
+    },
+    "bands": [
+      {
+        "grow": 1.5,
+        "depth": 10.4,
+        "offset": -12,
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "sunset_harbour",
+      "intensity": 1,
+      "rotation": 25,
+      "contrast": 1.2
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

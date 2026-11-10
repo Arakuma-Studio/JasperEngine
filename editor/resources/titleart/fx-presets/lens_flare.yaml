@@ -1,0 +1,66 @@
+{
+  "presets": [
+    {
+      "id": "blue",
+      "name": "Blue Flare",
+      "aliases": [
+        "blue flare",
+        "青いレンズフレア"
+      ],
+      "source": "lensFlare/blue",
+      "params": {},
+      "layer": {
+        "blend": "add",
+        "effects": []
+      }
+    },
+    {
+      "id": "gold",
+      "name": "Gold Flare",
+      "aliases": [
+        "gold flare",
+        "金色のレンズフレア"
+      ],
+      "source": "lensFlare/gold",
+      "params": {
+        "position": [
+          360,
+          110
+        ],
+        "size": 60,
+        "streak": 900,
+        "color": "#ffd27a",
+        "intensity": 110
+      },
+      "layer": {
+        "blend": "add",
+        "effects": []
+      }
+    },
+    {
+      "id": "streak",
+      "name": "Long Streak",
+      "aliases": [
+        "long streak",
+        "anamorphic streak"
+      ],
+      "source": "lensFlare/streak",
+      "params": {
+        "position": [
+          0,
+          0
+        ],
+        "size": 40,
+        "streak": 2400,
+        "rays": 20,
+        "ghosts": false,
+        "color": "#5ab0ff",
+        "intensity": 120
+      },
+      "layer": {
+        "blend": "add",
+        "effects": []
+      }
+    }
+  ]
+}

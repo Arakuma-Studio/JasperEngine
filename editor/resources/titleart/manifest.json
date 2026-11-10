@@ -1,0 +1,24 @@
+{
+  "format": "jasperengine.titlelibrary",
+  "version": 1,
+  "families": [
+    {"id": "casino", "name": {"en": "Casino & Pachislot", "ja": "カジノ・パチスロ"}},
+    {"id": "metal", "name": {"en": "Metal & Chrome", "ja": "メタル・クローム"}},
+    {"id": "neon", "name": {"en": "Neon", "ja": "ネオン"}},
+    {"id": "elements", "name": {"en": "Fire, Ice & Energy", "ja": "炎・氷・エネルギー"}},
+    {"id": "gems", "name": {"en": "Gems & Glass", "ja": "宝石・ガラス"}},
+    {"id": "wa", "name": {"en": "Japanese Wa", "ja": "和風"}},
+    {"id": "scifi", "name": {"en": "Sci-fi", "ja": "SF"}},
+    {"id": "fantasy", "name": {"en": "Fantasy", "ja": "ファンタジー"}},
+    {"id": "horror", "name": {"en": "Horror", "ja": "ホラー"}},
+    {"id": "cartoon", "name": {"en": "Cartoon", "ja": "カートゥーン"}},
+    {"id": "retro", "name": {"en": "Retro Arcade", "ja": "レトロアーケード"}},
+    {"id": "anime", "name": {"en": "Anime", "ja": "アニメ"}},
+    {"id": "sports", "name": {"en": "Sports", "ja": "スポーツ"}},
+    {"id": "minimal", "name": {"en": "Minimal", "ja": "ミニマル"}}
+  ],
+  "featured": ["casino/big-win-3d", "metal/chrome-title", "fantasy/kingdom-title", "scifi/hud-title", "cartoon/party-title", "minimal/clean-title"],
+  "sample_texts": {"latin": "HERO", "kanji": "大当り", "digits": "1234"},
+  "scheme_preview_look": "casino/outline-gold",
+  "aliases": {}
+}

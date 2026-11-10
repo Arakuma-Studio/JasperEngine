@@ -34,3 +34,4 @@
 1099 terrainworld/worldData terrain_world
 1101 grid/importSource any
 1102 tilemaplayer/tileset tileset
+1104 titleart/title title_art

@@ -444,6 +444,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 101, 0, 0, 1]
+  TitleArtRendererComponent:
+    position: [103, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 103, 0, 0, 1]
   TouchAreaComponent:
     position: [83, 0, 0]
     rotation: [1, 0, 0, 0]

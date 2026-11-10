@@ -1,0 +1,1135 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "75723ce5a515f246b1a19a6d6b190a2e",
+  "template": {
+    "version": 1,
+    "id": "wa/awakening-dry-brush",
+    "revision": 1,
+    "name": {
+      "en": "Awakening (dry brush)",
+      "ja": "覚醒 (かすれ筆)"
+    },
+    "description": {
+      "en": "A 1920 × 1080 template with one text layer and a guide backdrop.",
+      "ja": "1920 × 1080 のテンプレート：テキスト1つ、ガイドの背景。"
+    },
+    "family": "wa",
+    "tags": [
+      "wa",
+      "2d",
+      "black",
+      "gradient",
+      "bevel",
+      "brushed",
+      "outline",
+      "brush",
+      "glow"
+    ],
+    "synonyms": {
+      "en": [
+        "japanese",
+        "traditional",
+        "flat",
+        "dark",
+        "jet black",
+        "ramp",
+        "fade",
+        "emboss",
+        "chiselled",
+        "stroke",
+        "border",
+        "rim",
+        "calligraphy",
+        "ink brush",
+        "dry brush",
+        "light",
+        "bloom",
+        "shine"
+      ],
+      "ja": [
+        "和風",
+        "和",
+        "わふう",
+        "wafu",
+        "平面",
+        "へいめん",
+        "heimen",
+        "黒",
+        "ブラック",
+        "くろ",
+        "kuro",
+        "グラデーション",
+        "gurade-shon",
+        "guradeshon",
+        "ベベル",
+        "面取り",
+        "めんとり",
+        "mentori",
+        "beberu",
+        "縁取り",
+        "ふちどり",
+        "縁",
+        "fuchidori",
+        "fuchi",
+        "筆文字",
+        "毛筆",
+        "ふでもじ",
+        "fudemoji",
+        "かすれ",
+        "kasure",
+        "光彩",
+        "発光",
+        "グロー",
+        "はっこう",
+        "hakko",
+        "guro"
+      ]
+    },
+    "placeholders": [
+      {
+        "name": "text",
+        "role": "title",
+        "sample": {
+          "en": "AWAKEN",
+          "ja": "覚醒"
+        },
+        "max_chars": 10
+      }
+    ],
+    "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+    "provenance": {
+      "source": "pachislop",
+      "commit": "1c32502",
+      "file": "src/presets/templates.ts",
+      "line": 920,
+      "item": "t-kasure-brush",
+      "license_note": "used with the author's permission"
+    }
+  },
+  "name": "Awakening (dry brush)",
+  "canvas": {
+    "width": 2400,
+    "height": 1080,
+    "background": {
+      "transparent": true,
+      "color": "#000000"
+    }
+  },
+  "global_light": {
+    "angle": 120,
+    "altitude": 30
+  },
+  "seed": 1,
+  "material_links": {},
+  "layers": [
+    {
+      "id": "8ed2bf0a",
+      "type": "generator",
+      "name": "Background",
+      "visible": true,
+      "locked": false,
+      "guide": true,
+      "blend": "normal",
+      "opacity": 1,
+      "clip": false,
+      "transform": {
+        "position": [0, 0],
+        "rotation": 0,
+        "scale": 1,
+        "flip_x": false,
+        "flip_y": false,
+        "stretch": [1, 1],
+        "z": 0,
+        "rotation_x": 0,
+        "rotation_y": 0
+      },
+      "masks": [],
+      "effects": [],
+      "look": {
+        "id": "",
+        "color_scheme": "",
+        "owner": ""
+      },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
+      "generator": {
+        "type": "fill",
+        "params": {
+          "angle": 90,
+          "color": "#000000",
+          "gradient": {
+            "stops": [
+              {
+                "pos": 0,
+                "color": "#7a0a0a",
+                "alpha": 1,
+                "mid": 0.5
+              },
+              {
+                "pos": 0.6,
+                "color": "#200202",
+                "alpha": 1,
+                "mid": 0.5
+              },
+              {
+                "pos": 1,
+                "color": "#000000",
+                "alpha": 1,
+                "mid": 0.5
+              }
+            ],
+            "interp": "rgb"
+          },
+          "kind": "radial",
+          "offset": 0,
+          "scale": 1
+        }
+      },
+      "follow": ""
+    },
+    {
+      "id": "8ad07a27",
+      "type": "text",
+      "name": "覚醒",
+      "visible": true,
+      "locked": false,
+      "guide": false,
+      "blend": "normal",
+      "opacity": 1,
+      "clip": false,
+      "transform": {
+        "position": [0, 0],
+        "rotation": 0,
+        "scale": 1,
+        "flip_x": false,
+        "flip_y": false,
+        "stretch": [1, 1],
+        "z": 0,
+        "rotation_x": 0,
+        "rotation_y": 0
+      },
+      "masks": [],
+      "effects": [
+        {
+          "id": "77d34a1e",
+          "type": "outer_glow",
+          "enabled": true,
+          "params": {
+            "angle": 90,
+            "color": "#c80010",
+            "fill": "solid",
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#ff4ad8",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1,
+                  "color": "#30e0ff",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "intensity": 0.7,
+            "mode": "behind",
+            "on_face": 0.15,
+            "opacity": 0.8,
+            "size": 67.6,
+            "spread": 0.05,
+            "technique": "softer"
+          },
+          "from_look": false
+        }
+      ],
+      "look": {
+        "id": "",
+        "color_scheme": "",
+        "owner": ""
+      },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
+      "text": "覚醒",
+      "font": {
+        "path": "TitleArt/Fonts/yuji-syuku/YujiSyuku-Regular.ttf",
+        "guid": ""
+      },
+      "face_index": 0,
+      "fallback_fonts": [],
+      "variations": {},
+      "features": {},
+      "language": "",
+      "size": 520,
+      "tracking": -60,
+      "line_height": 1.1,
+      "kerning": true,
+      "align": "center",
+      "vertical": false,
+      "tate_chu_yoko": true,
+      "tate_chu_yoko_max": 3,
+      "proportional": 0,
+      "h_scale": 1,
+      "v_scale": 1,
+      "shear": 0,
+      "chars": {},
+      "lines": {},
+      "warp": {
+        "style": "none",
+        "bend": 0,
+        "horizontal": 0,
+        "vertical": 0
+      },
+      "distort": {
+        "mode": "none",
+        "corners": [
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0]
+        ],
+        "mesh": [
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0]
+        ]
+      },
+      "weight": 0,
+      "dimension": "2d",
+      "style": {
+        "face": {
+          "fill": {
+            "kind": "linear",
+            "color": "#2a2a2a",
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#2a2a2a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#050505",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1,
+                  "color": "#141414",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "angle": 90,
+            "scale": 1,
+            "offset": 0,
+            "span": "layer",
+            "image": {
+              "image": null,
+              "scale": 1,
+              "offset": [0, 0],
+              "rotation": 0,
+              "tile": false
+            }
+          },
+          "opacity": 1,
+          "bevel": {
+            "enabled": true,
+            "profile": "smooth",
+            "profile_curve": {
+              "points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "corner": false
+                },
+                {
+                  "x": 0.5,
+                  "y": 0.75,
+                  "corner": false
+                },
+                {
+                  "x": 1,
+                  "y": 1,
+                  "corner": false
+                }
+              ]
+            },
+            "size": 1,
+            "size_mode": "fixed",
+            "fit": 70,
+            "depth": 2,
+            "direction": "up",
+            "soften": 0,
+            "light_angle": 120,
+            "light_altitude": 40,
+            "use_global_light": true,
+            "gloss": "cove",
+            "gloss_curve": {
+              "points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "corner": false
+                },
+                {
+                  "x": 1,
+                  "y": 1,
+                  "corner": false
+                }
+              ]
+            },
+            "highlight_color": "#ffffff",
+            "highlight_opacity": 0.45,
+            "shadow_color": "#000000",
+            "shadow_opacity": 0.5
+          },
+          "reflection": {
+            "enabled": false,
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            },
+            "amount": 1,
+            "blur": 75,
+            "rotation": 0,
+            "colorize": 0
+          },
+          "finish": {
+            "enabled": false,
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#3a0c00",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "amount": 1
+          },
+          "pattern": {
+            "kind": "none",
+            "color": "#000000",
+            "color2": "#ffffff",
+            "opacity": 1,
+            "scale": 12,
+            "angle": 0,
+            "seed": 1,
+            "image": null,
+            "shade": 0.6,
+            "relief": 0
+          },
+          "satin": {
+            "enabled": false,
+            "color": "#000000",
+            "blend": "multiply",
+            "opacity": 0.5,
+            "angle": 19,
+            "use_global_light": false,
+            "distance": 5,
+            "size": 7,
+            "contour": {
+              "points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "corner": false
+                },
+                {
+                  "x": 0.5,
+                  "y": 1,
+                  "corner": false
+                },
+                {
+                  "x": 1,
+                  "y": 0,
+                  "corner": false
+                }
+              ]
+            },
+            "invert": true
+          },
+          "texture": {
+            "kind": "brushed",
+            "amount": 0.2,
+            "scale": 3,
+            "blend": "overlay",
+            "seed": 2,
+            "target": "color",
+            "angle": 0
+          },
+          "inner_glow": {
+            "enabled": false,
+            "color": "#ffffff",
+            "size": 2,
+            "opacity": 0.6,
+            "noise": 0
+          },
+          "gloss": {
+            "enabled": false,
+            "opacity": 0.55,
+            "position": 0.45,
+            "softness": 0.15,
+            "curve": 0.25,
+            "angle": 0
+          },
+          "refraction": 0,
+          "glass": {
+            "enabled": false,
+            "color": "#3cc8ff",
+            "tint": 1,
+            "opacity": 0.7,
+            "edge": 0.7,
+            "caustic": 0.7
+          },
+          "sheen": {
+            "enabled": false,
+            "color": "#ffffff",
+            "amount": 0.7,
+            "position": -0.25,
+            "width": 0.35
+          },
+          "link": ""
+        },
+        "rims": [
+          {
+            "id": "31cfa29e",
+            "enabled": true,
+            "width": 1.4,
+            "join": "round",
+            "fill_counters": false,
+            "plate": {
+              "kind": "contour",
+              "close": 0,
+              "corner": 4,
+              "slant": 0
+            },
+            "offset": [0, 0],
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#ffffff",
+                "gradient": {
+                  "stops": [
+                    {
+                      "pos": 0,
+                      "color": "#ffffff",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#ffffff",
+                      "alpha": 1,
+                      "mid": 0.5
+                    }
+                  ],
+                  "interp": "rgb"
+                },
+                "angle": 90,
+                "scale": 1,
+                "offset": 0,
+                "span": "layer",
+                "image": {
+                  "image": null,
+                  "scale": 1,
+                  "offset": [0, 0],
+                  "rotation": 0,
+                  "tile": false
+                }
+              },
+              "opacity": 1,
+              "bevel": {
+                "enabled": false,
+                "profile": "smooth",
+                "profile_curve": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 0.5,
+                      "y": 0.75,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 1,
+                      "corner": false
+                    }
+                  ]
+                },
+                "size": 3,
+                "size_mode": "fixed",
+                "fit": 70,
+                "depth": 3,
+                "direction": "up",
+                "soften": 0,
+                "light_angle": 120,
+                "light_altitude": 30,
+                "use_global_light": true,
+                "gloss": "ring",
+                "gloss_curve": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 1,
+                      "corner": false
+                    }
+                  ]
+                },
+                "highlight_color": "#ffffff",
+                "highlight_opacity": 0.85,
+                "shadow_color": "#000000",
+                "shadow_opacity": 0.6
+              },
+              "reflection": {
+                "enabled": false,
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                },
+                "amount": 1,
+                "blur": 75,
+                "rotation": 0,
+                "colorize": 0
+              },
+              "finish": {
+                "enabled": false,
+                "gradient": {
+                  "stops": [
+                    {
+                      "pos": 0,
+                      "color": "#3a0c00",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6",
+                      "alpha": 1,
+                      "mid": 0.5
+                    }
+                  ],
+                  "interp": "rgb"
+                },
+                "amount": 1
+              },
+              "pattern": {
+                "kind": "none",
+                "color": "#000000",
+                "color2": "#ffffff",
+                "opacity": 1,
+                "scale": 12,
+                "angle": 0,
+                "seed": 1,
+                "image": null,
+                "shade": 0.6,
+                "relief": 0
+              },
+              "satin": {
+                "enabled": false,
+                "color": "#000000",
+                "blend": "multiply",
+                "opacity": 0.5,
+                "angle": 19,
+                "use_global_light": false,
+                "distance": 5,
+                "size": 7,
+                "contour": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 0.5,
+                      "y": 1,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 0,
+                      "corner": false
+                    }
+                  ]
+                },
+                "invert": true
+              },
+              "texture": {
+                "kind": "none",
+                "amount": 0.3,
+                "scale": 4,
+                "blend": "overlay",
+                "seed": 1,
+                "target": "color",
+                "angle": 0
+              },
+              "inner_glow": {
+                "enabled": false,
+                "color": "#ffffff",
+                "size": 2,
+                "opacity": 0.6,
+                "noise": 0
+              },
+              "gloss": {
+                "enabled": false,
+                "opacity": 0.55,
+                "position": 0.45,
+                "softness": 0.15,
+                "curve": 0.25,
+                "angle": 0
+              },
+              "refraction": 0,
+              "glass": {
+                "enabled": false,
+                "color": "#3cc8ff",
+                "tint": 1,
+                "opacity": 0.7,
+                "edge": 0.7,
+                "caustic": 0.7
+              },
+              "sheen": {
+                "enabled": false,
+                "color": "#ffffff",
+                "amount": 0.7,
+                "position": -0.25,
+                "width": 0.35
+              },
+              "link": ""
+            }
+          },
+          {
+            "id": "fe875639",
+            "enabled": true,
+            "width": 1.2,
+            "join": "miter",
+            "fill_counters": false,
+            "plate": {
+              "kind": "contour",
+              "close": 0,
+              "corner": 4,
+              "slant": 0
+            },
+            "offset": [0, -2],
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#000000",
+                "gradient": {
+                  "stops": [
+                    {
+                      "pos": 0,
+                      "color": "#000000",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#000000",
+                      "alpha": 1,
+                      "mid": 0.5
+                    }
+                  ],
+                  "interp": "rgb"
+                },
+                "angle": 90,
+                "scale": 1,
+                "offset": 0,
+                "span": "layer",
+                "image": {
+                  "image": null,
+                  "scale": 1,
+                  "offset": [0, 0],
+                  "rotation": 0,
+                  "tile": false
+                }
+              },
+              "opacity": 1,
+              "bevel": {
+                "enabled": false,
+                "profile": "smooth",
+                "profile_curve": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 0.5,
+                      "y": 0.75,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 1,
+                      "corner": false
+                    }
+                  ]
+                },
+                "size": 3,
+                "size_mode": "fixed",
+                "fit": 70,
+                "depth": 3,
+                "direction": "up",
+                "soften": 0,
+                "light_angle": 120,
+                "light_altitude": 30,
+                "use_global_light": true,
+                "gloss": "ring",
+                "gloss_curve": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 1,
+                      "corner": false
+                    }
+                  ]
+                },
+                "highlight_color": "#ffffff",
+                "highlight_opacity": 0.85,
+                "shadow_color": "#000000",
+                "shadow_opacity": 0.6
+              },
+              "reflection": {
+                "enabled": false,
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                },
+                "amount": 1,
+                "blur": 75,
+                "rotation": 0,
+                "colorize": 0
+              },
+              "finish": {
+                "enabled": false,
+                "gradient": {
+                  "stops": [
+                    {
+                      "pos": 0,
+                      "color": "#3a0c00",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a",
+                      "alpha": 1,
+                      "mid": 0.5
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6",
+                      "alpha": 1,
+                      "mid": 0.5
+                    }
+                  ],
+                  "interp": "rgb"
+                },
+                "amount": 1
+              },
+              "pattern": {
+                "kind": "none",
+                "color": "#000000",
+                "color2": "#ffffff",
+                "opacity": 1,
+                "scale": 12,
+                "angle": 0,
+                "seed": 1,
+                "image": null,
+                "shade": 0.6,
+                "relief": 0
+              },
+              "satin": {
+                "enabled": false,
+                "color": "#000000",
+                "blend": "multiply",
+                "opacity": 0.5,
+                "angle": 19,
+                "use_global_light": false,
+                "distance": 5,
+                "size": 7,
+                "contour": {
+                  "points": [
+                    {
+                      "x": 0,
+                      "y": 0,
+                      "corner": false
+                    },
+                    {
+                      "x": 0.5,
+                      "y": 1,
+                      "corner": false
+                    },
+                    {
+                      "x": 1,
+                      "y": 0,
+                      "corner": false
+                    }
+                  ]
+                },
+                "invert": true
+              },
+              "texture": {
+                "kind": "none",
+                "amount": 0.3,
+                "scale": 4,
+                "blend": "overlay",
+                "seed": 1,
+                "target": "color",
+                "angle": 0
+              },
+              "inner_glow": {
+                "enabled": false,
+                "color": "#ffffff",
+                "size": 2,
+                "opacity": 0.6,
+                "noise": 0
+              },
+              "gloss": {
+                "enabled": false,
+                "opacity": 0.55,
+                "position": 0.45,
+                "softness": 0.15,
+                "curve": 0.25,
+                "angle": 0
+              },
+              "refraction": 0,
+              "glass": {
+                "enabled": false,
+                "color": "#3cc8ff",
+                "tint": 1,
+                "opacity": 0.7,
+                "edge": 0.7,
+                "caustic": 0.7
+              },
+              "sheen": {
+                "enabled": false,
+                "color": "#ffffff",
+                "amount": 0.7,
+                "position": -0.25,
+                "width": 0.35
+              },
+              "link": ""
+            }
+          }
+        ],
+        "knockout": false,
+        "erode": {
+          "enabled": true,
+          "amount": 0.55,
+          "edge": 6,
+          "scale": 14,
+          "angle": 0,
+          "seed": 4
+        }
+      },
+      "part_effects": {},
+      "glyph_mode": "cells",
+      "text_key": "",
+      "translate": true,
+      "max_chars": 0,
+      "translator_note": "",
+      "fit": {
+        "mode": "none",
+        "box": [0, 0],
+        "min_scale": 0.6,
+        "min_h_scale": 0.8,
+        "max_lines": 2
+      },
+      "translations": {},
+      "style_3d": null
+    }
+  ],
+  "exposed": [
+    {
+      "name": "text",
+      "label": "Text",
+      "type": "text",
+      "targets": [
+        {
+          "layer": "8ad07a27",
+          "field": "text"
+        }
+      ],
+      "min": null,
+      "max": null,
+      "options": []
+    }
+  ],
+  "outputs": [
+    {
+      "id": "main",
+      "content": "all",
+      "layers": [],
+      "file": "",
+      "scale": 1,
+      "trim": true,
+      "padding": 4,
+      "round_to": 4,
+      "bit_depth": 8,
+      "alpha_bleed": true,
+      "max_size": 4096
+    }
+  ],
+  "runtime": {
+    "characters": {
+      "presets": [
+        "latin"
+      ],
+      "custom": "",
+      "custom_file": null,
+      "document_text": true
+    },
+    "glyph_layer": ""
+  },
+  "source_language": "",
+  "languages": [],
+  "string_namespace": "",
+  "dpi": 72,
+  "import_notes": [],
+  "scene_3d": {
+    "camera": {
+      "fov": 30,
+      "x": 0,
+      "y": 0,
+      "z_offset": 0,
+      "rotation_x": 0,
+      "rotation_y": 0,
+      "rotation": 0
+    },
+    "environment": {
+      "preset": "studio",
+      "hdri": null,
+      "matcap": null,
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "lights": [
+      {
+        "id": "5e5b86bd",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "0cbb3632",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ],
+    "tone_mapping": "neutral",
+    "exposure": 1,
+    "supersample": 3
+  }
+}

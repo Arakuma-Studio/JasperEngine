@@ -127,6 +127,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Sprite](#librarysprite) `library:sprite` | mesh | 2D | none | alpha |
 | [Sprite mask](#librarysprite_mask) `library:sprite_mask` | mesh | 2D | none | opaque |
 | [Stencil mask](#librarystencil_mask) `library:stencil_mask` | mesh | Outline and stencil | none | opaque |
+| [Title FX](#librarytitle_fx) `library:title_fx` | ui | 2D | none | alpha (Auto) |
+| [Title FX (Sprite)](#librarytitle_fx_sprite) `library:title_fx_sprite` | mesh | 2D | none | alpha |
 | [Toon](#librarytoon) `library:toon` | mesh | Stylized | pixel, mixed, vertex | opaque |
 | [Triplanar](#librarytriplanar) `library:triplanar` | mesh | Stylized | none, pixel, vertex | opaque |
 | [UI Effects](#libraryui_fx) `library:ui_fx` | ui | 2D | none | alpha (Auto) |
@@ -1144,6 +1146,95 @@ Unity-style Sprite Mask: writes stencil 16 (bits 0xF0) in the shape of the sprit
 | Property | Kind | Default | Description |
 |---|---|---|---|
 | `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+
+<a id="librarytitle_fx"></a>
+### Title FX (`library:title_fx`)
+
+The Title Art Renderer's live layers on its Image: a keyable sweep band, a glow pulse from the title's glow output, a tint, glint stars at the title's highlight anchors and the crossfade between two renders. Driven by the component (its Live Time, never engine time); not for hand use.
+
+- **Type**: UI (a UI component's custom shader); category 2D.
+- **Default state**: the engine's (alpha blend).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `sweepParams` | vector4 | (0, 0.15, 25, 0.6) | Sweep: position 0..1, width (fraction of the frame), angle (degrees clockwise), softness (with `SWEEP`) |
+| `sweepColor` | HDR colour | (1, 1, 1, 0.8) | Sweep colour (alpha: strength) (with `SWEEP`) |
+| `glowColor` | HDR colour | (1, 0.85, 0.4, 1) | Glow colour (with `GLOW`) |
+| `glowParams` | vector4 | (0, 0, 0, 0) | Glow: pulse (with `GLOW`) |
+| `tintColor` | colour | (1, 1, 1, 1) | Tint colour (overlay blend) (with `TINT`) |
+| `tintParams` | vector4 | (0, 0, 0, 0) | Tint: amount (with `TINT`) |
+| `glintColor` | HDR colour | (1, 1, 1, 1) | Glint colour (with `GLINTS`) |
+| `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
+| `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
+| `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: the fragment affine row 0 (identity: S85 moves the vertices), opacity (with `ANIM`) |
+| `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
+| `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
+| `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
+| `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+| `animVertex0` | vector4 | (1, 0, 0, 0) | Animation: the vertex affine row 0 (frame-normalised) (with `ANIM`) |
+| `animVertex1` | vector4 | (0, 1, 0, 0) | Animation: the vertex affine row 1 (with `ANIM`) |
+| `animSpace` | vector4 | (0, 0, 1, 1) | Animation: the frame in the element's own space (origin, size) (with `ANIM`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_glowTexture` | black | The title's glow output (with `GLOW`) |
+| `u_prevTexture` | black | The previous render (crossfade) (with `CROSSFADE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `SWEEP` | off | Sweep |
+| `GLOW` | off | Glow Pulse |
+| `TINT` | off | Tint |
+| `GLINTS` | off | Glints |
+| `CROSSFADE` | off | Crossfade |
+| `ANIM` | off | Animation |
+
+<a id="librarytitle_fx_sprite"></a>
+### Title FX (Sprite) (`library:title_fx_sprite`)
+
+The Title Art Renderer's live layers on its Sprite: a keyable sweep band, a glow pulse from the title's glow output, a tint, glint stars at the title's highlight anchors and the crossfade between two renders. Unlit, alpha blended, both faces. Driven by the component (its Live Time, never engine time); not for hand use.
+
+- **Type**: mesh (a material's shader); category 2D.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend alpha, cull off (both faces), depth write off, shadows off.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `sweepParams` | vector4 | (0, 0.15, 25, 0.6) | Sweep: position 0..1, width (fraction of the frame), angle (degrees clockwise), softness (with `SWEEP`) |
+| `sweepColor` | HDR colour | (1, 1, 1, 0.8) | Sweep colour (alpha: strength) (with `SWEEP`) |
+| `glowColor` | HDR colour | (1, 0.85, 0.4, 1) | Glow colour (with `GLOW`) |
+| `glowParams` | vector4 | (0, 0, 0, 0) | Glow: pulse (with `GLOW`) |
+| `tintColor` | colour | (1, 1, 1, 1) | Tint colour (overlay blend) (with `TINT`) |
+| `tintParams` | vector4 | (0, 0, 0, 0) | Tint: amount (with `TINT`) |
+| `glintColor` | HDR colour | (1, 1, 1, 1) | Glint colour (with `GLINTS`) |
+| `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
+| `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
+| `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: the fragment affine row 0 (identity: S85 moves the vertices), opacity (with `ANIM`) |
+| `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
+| `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
+| `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
+| `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+| `animVertex0` | vector4 | (1, 0, 0, 0) | Animation: the vertex affine row 0 (frame-normalised) (with `ANIM`) |
+| `animVertex1` | vector4 | (0, 1, 0, 0) | Animation: the vertex affine row 1 (with `ANIM`) |
+| `animSpace` | vector4 | (0, 0, 1, 1) | Animation: the frame in the element's own space (origin, size) (with `ANIM`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_glowTexture` | black | The title's glow output (with `GLOW`) |
+| `u_prevTexture` | black | The previous render (crossfade) (with `CROSSFADE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `SWEEP` | off | Sweep |
+| `GLOW` | off | Glow Pulse |
+| `TINT` | off | Tint |
+| `GLINTS` | off | Glints |
+| `CROSSFADE` | off | Crossfade |
+| `ANIM` | off | Animation |
 
 <a id="libraryui_fx"></a>
 ### UI Effects (`library:ui_fx`)

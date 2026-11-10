@@ -120,6 +120,7 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
   go first. So no long file starts last and alone. Each file has its own process, editor and
   scratch directory, so the order changes nothing a test sees.
+- `SMOKE_METHOD=build SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed`: a Compile build with only the engine modules the project needs (`jasperengine-editor build --method compile`): a fixed-text Realtime 3D title without the mesher, checked against the editor's frame.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
   A hang watchdog report fails it, with one exception: on a project's first editor open, when every
@@ -338,14 +339,15 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text) and an HTML UI document (`htmlui`), goldens in its
-`golden/`:
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
+the same golden), goldens in its `golden/`:
 
 ```sh
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).

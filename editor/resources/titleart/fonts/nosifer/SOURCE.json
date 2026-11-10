@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/nosifer/OFL.txt",
+    "sha256": "b41b99f35b507564e54f6b2f5162ad1c21f94a16837c632da6632b376a341f42",
+    "bytes": 4369
+  },
+  "path": "ofl/nosifer/Nosifer-Regular.ttf",
+  "sha256": "09c5ac35e34dc7a397d5f698b703c5640b59cf93d4d343ebae4f16f3859d09b8",
+  "bytes": 43272
+}

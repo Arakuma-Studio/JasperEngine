@@ -49,11 +49,11 @@ namespace jasperengine {
         TreeData = 30,              // a .jetrees file of a Terrain's trees (T5 R22)
         TerrainWorld = 31,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
-        NoiseGraph = 33             // a .noisegraph Noise Graph (T2)
+        NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
+        TitleArt = 34               // a .titleart Title Art document (S80; its GUID in its JSON)
     };
-
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::NoiseGraph);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::TitleArt);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -91,6 +91,7 @@ namespace jasperengine {
             case AssetType::TerrainWorld: return "terrain_world";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
+            case AssetType::TitleArt: return "title_art";
             case AssetType::Unknown: break;
         }
         return "unknown";

@@ -59,6 +59,7 @@
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"

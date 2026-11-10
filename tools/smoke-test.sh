@@ -27,6 +27,14 @@
 # A smoke-expect.txt in the project lists lines (one per line, '#' comments) the game's log must
 # hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game);
 # such a project runs 120 frames unless SMOKE_QUIT_AFTER says otherwise.
+# SMOKE_METHOD=build builds as the editor's Build does with Method Compile (jasperengine-editor build
+# --method compile): only the engine modules the project needs (S34), unlike compile's source export.
+# A smoke-export-expect.txt lists lines that build's generated CMakeLists.txt must hold (build only),
+# a smoke-build-expect.txt lines only that build's game logs (a source export and a prebuilt player
+# keep every module, so the same game does not log them),
+# and a smoke-golden.json ({"image", "tolerance", "max_fraction"}) an image the game's own frame
+# (SMOKE_PLAY=1) must match (tools/ci/smoke_golden.py; tools/fixtures/title3d-fixed: a Realtime 3D
+# title drawn from its cooked mesh in a build without the mesher, against the editor's frame).
 #
 # SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
 # SMOKE_EXPORT_ARGS="..." is added to the export command (e.g. --development-build).
@@ -75,11 +83,11 @@ esac
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
 METHOD="${SMOKE_METHOD:-prebuilt}"
-[[ "$METHOD" == prebuilt || "$METHOD" == compile ]] || { echo "SMOKE_METHOD must be prebuilt or compile (got $METHOD)" >&2; exit 1; }
+[[ "$METHOD" == prebuilt || "$METHOD" == compile || "$METHOD" == build ]] || { echo "SMOKE_METHOD must be prebuilt, compile or build (got $METHOD)" >&2; exit 1; }
 PLAYERS="${SMOKE_PLAYERS_DIR:-build/players}"
 [[ "$PLAYERS" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "SMOKE_PLAYERS_DIR must be build/<dir> (got $PLAYERS)" >&2; exit 1; }
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,64p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -z "${SMOKE_QUIT_AFTER:-}" && -f "$PROJECT/smoke-expect.txt" ]] && SMOKE_QUIT_AFTER=120
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
@@ -162,7 +170,24 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             fi
         }
 
-        if [[ "$SMOKE_METHOD" == prebuilt ]]; then
+        if [[ "$SMOKE_METHOD" == build ]]; then
+        echo "== build (Compile: the modules the project needs)"
+        # shellcheck disable=SC2086
+        "$EDITOR" build --project project --platform linux --backend "$EXPORT_BACKEND" --out game-out --method compile \
+            $SMOKE_EXPORT_ARGS > build.log 2>&1 || { echo "FAIL: build"; tail -30 build.log; exit 1; }
+        check_log build build.log
+        GAME="$(sed -n "s/^executable: //p" build.log | head -1)"
+        [[ -x "$GAME" ]] || { echo "FAIL: no executable ($GAME)"; exit 1; }
+        # smoke-export-expect.txt: lines the generated CMakeLists of the build must hold (module switches)
+        if [[ -f project/smoke-export-expect.txt ]]; then
+            TREE="$(sed -n "s/.*Building in the shared compile tree //p" build.log | head -1)"
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -qF -- "$line" "$TREE/CMakeLists.txt" || { echo "FAIL: the build does not hold: $line"; exit 1; }
+            done < project/smoke-export-expect.txt
+            echo "ok: the build holds project/smoke-export-expect.txt"
+        fi
+        elif [[ "$SMOKE_METHOD" == prebuilt ]]; then
         echo "== build (prebuilt player)"
         # shellcheck disable=SC2086
         "$EDITOR" build --project project --platform linux --backend "$EXPORT_BACKEND" --out game-out --method prebuilt \
@@ -275,6 +300,19 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
                 grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
             done < project/smoke-expect.txt
             echo "ok: the game logged project/smoke-expect.txt"
+        fi
+        if [[ "$SMOKE_METHOD" == build && -f project/smoke-build-expect.txt ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
+            done < project/smoke-build-expect.txt
+            echo "ok: the game logged project/smoke-build-expect.txt"
+        fi
+        # smoke-golden.json: the own frame of the game against an image (tools/ci/smoke_golden.py)
+        if [[ -f project/smoke-golden.json ]]; then
+            [[ "$SMOKE_PLAY" == 1 ]] || { echo "FAIL: project/smoke-golden.json compares the frame the game writes itself: run with SMOKE_PLAY=1"; exit 1; }
+            python3 /src/tools/ci/smoke_golden.py project/smoke-golden.json game.png game-golden-diff.png \
+                || { echo "FAIL: the frame of the game is not its golden ($OUT/game-golden-diff.png)"; exit 1; }
         fi
 
         # the extra runs: "<name> NAME=value ..." entries separated by ";"

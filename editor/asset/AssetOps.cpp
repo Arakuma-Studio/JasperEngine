@@ -13,6 +13,7 @@
 #include "animation/ModelClipSettings.h"
 #include "pose/HumanoidMapIO.h"
 #include "project/SceneFileIdentity.h"
+#include "titleart/TitleArtBake.h"
 
 #include <algorithm>
 #include <set>
@@ -28,9 +29,21 @@ namespace {
     // The files an operation moves: the path, and its meta beside it when it is a file
     // (a directory carries the metas inside it). A model's .humanoid bone mapping (pose
     // animation) and .clips settings (S77 D4) go with it the same way: they describe that model file
-    std::vector<std::pair<fs::path, fs::path>> withMeta(const fs::path& from, const fs::path& to) {
+    // A .titleart's derived files (its baked PNGs, their metas, its bake sidecar) go with it on a
+    // move, a delete and its restore, renamed after the document (VatAssetFiles' pairing); a copy
+    // leaves them (`derived` false): the copy has a GUID of its own and bakes its own outputs
+    std::vector<std::pair<fs::path, fs::path>> withMeta(const fs::path& from, const fs::path& to, bool derived = true) {
         std::vector<std::pair<fs::path, fs::path>> pairs{{from, to}};
         std::error_code ec;
+        if (derived && fs::is_regular_file(from, ec) && Util::isTitleArtFile(FileUtils::pathToUtf8(from))) {
+            const std::string oldName = from.filename().string();
+            for (const fs::path& file : titleArtDerivedFiles(from)) {
+                const std::string name = file.filename().string();
+                const std::string newName = name.compare(0, oldName.size(), oldName) == 0 ? to.filename().string() + name.substr(oldName.size()) : name;
+                const fs::path rest = file.parent_path().lexically_relative(from.parent_path());
+                pairs.push_back({file, (to.parent_path() / rest / newName).lexically_normal()});
+            }
+        }
         if (fs::is_regular_file(from, ec)) {
             const fs::path meta = AssetTypes::metaPathFor(from);
             if (fs::is_regular_file(meta, ec)) {
@@ -236,6 +249,13 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
     }
 
     result.changes = project.getAssetDatabase().moveAssets(from, to);
+    // a document's derived files keep their GUIDs too (scenes place the baked PNGs by GUID)
+    for (size_t i = 1; i < pairs.size(); i++) {
+        if (AssetTypes::isMetaFile(pairs[i].first) || !Util::isImageFile(FileUtils::pathToUtf8(pairs[i].first))) continue;
+        if (fs::is_directory(from, ec)) break;
+        const std::vector<AssetDatabase::Change> derived = project.getAssetDatabase().moveAssets(pairs[i].first, pairs[i].second);
+        result.changes.insert(result.changes.end(), derived.begin(), derived.end());
+    }
     // the scene list and the open tabs name scene files by path
     if (project.moveSceneFileHints(from, to)) {
         addWritten(result, project, project.getProjectPath() / "project.yaml");
@@ -361,7 +381,7 @@ Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to
         return result;
     }
     // the metas go along (their import settings and labels); the copies get new GUIDs below
-    for (const auto& [source, target] : withMeta(from, to)) {
+    for (const auto& [source, target] : withMeta(from, to, false)) {
         // in a write scope (util/SafeWrite.h) beneath its root, never through a planted link
         if (target.has_parent_path()) FileUtils::createDirectories(target.parent_path(), ec);
         if (!FileUtils::copyPath(source, target, false, ec)) {

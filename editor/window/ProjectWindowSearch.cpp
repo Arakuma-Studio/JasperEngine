@@ -50,7 +50,7 @@ namespace {
     const TypeChoice typeChoices[] = {
         {"AudioClip", "AudioClip"}, {"Folder", "Folder"}, {"Font", "Font"}, {"Material", "Material"}, {"Model", "Model"},
         {"Prefab", "Prefab"}, {"Scene", "Scene"}, {"Script", "Script"}, {"Shader", "Shader"}, {"TextAsset", "TextAsset"},
-        {"Texture2D", "Texture2D"},
+        {"Texture2D", "Texture2D"}, {"Title Art", "title_art"},
     };
 
     std::string lower(std::string text) {

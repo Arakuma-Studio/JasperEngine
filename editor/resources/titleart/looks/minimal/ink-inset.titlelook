@@ -1,0 +1,77 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/ink-inset",
+  "revision": 1,
+  "name": {
+    "en": "Ink Inset",
+    "ja": "インクの浮き彫り"
+  },
+  "description": {
+    "en": "Near-black face pressed in like letterpress with a faint white inner shadow.",
+    "ja": "かすかな白い内側の影で活版印刷のように押し込んだ黒に近い面。"
+  },
+  "family": "minimal",
+  "tags": [
+    "ink",
+    "letterpress",
+    "black",
+    "minimal",
+    "inset",
+    "print"
+  ],
+  "synonyms": {
+    "en": [
+      "debossed",
+      "pressed",
+      "stamped",
+      "printed"
+    ],
+    "ja": [
+      "活版印刷",
+      "インク",
+      "押し込み",
+      "黒",
+      "kappan insatsu",
+      "inku"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "light",
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 900
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#1a1a1a"
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "inner_shadow",
+      "params": {
+        "distance": 2,
+        "size": 2,
+        "color": "#ffffff",
+        "opacity": 0.4
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

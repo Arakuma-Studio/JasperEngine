@@ -1,0 +1,168 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "obsidian",
+  "revision": 1,
+  "name": {
+    "en": "Obsidian",
+    "ja": "黒曜"
+  },
+  "description": {
+    "en": "Glossy volcanic black from slate grey to black, slate and pale steel rings.",
+    "ja": "スレートグレーから黒への光沢ある火山の黒、スレートと淡い鋼の縁。"
+  },
+  "family_hint": [
+    "metal",
+    "horror",
+    "minimal"
+  ],
+  "tags": [
+    "black",
+    "dark",
+    "gloss",
+    "stone",
+    "grey"
+  ],
+  "synonyms": {
+    "en": [
+      "black glass",
+      "onyx",
+      "jet"
+    ],
+    "ja": [
+      "黒曜石",
+      "黒",
+      "こくよう",
+      "kokuyou",
+      "kuro"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#8a8f9a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#8a8f9a"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#3a3e48"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#14161c"
+            },
+            {
+              "pos": 1
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#32363f",
+        "roughness": 0.15,
+        "clearcoat": 1
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#5a606c"
+        },
+        "material_3d": {
+          "color": "#5a606c",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "fill": {
+          "color": "#9da2ac"
+        },
+        "material_3d": {
+          "color": "#c8ced8",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#000000",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#8a8f9a",
+  "glow": "#9aa8c0",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#9aa8c0"
+      },
+      {
+        "pos": 1,
+        "color": "#272a32"
+      }
+    ]
+  },
+  "glint": "#8a8f9a",
+  "light_ramp": [
+    "#14161c",
+    "#3a3e48",
+    "#8a8f9a",
+    "#9aa8c0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#727781"
+        },
+        {
+          "pos": 0.55,
+          "color": "#21242b"
+        },
+        {
+          "pos": 1,
+          "color": "#030304"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#8a8f9a",
+    "#3a3e48",
+    "#14161c",
+    "#000000",
+    "#000000",
+    "#c8ced8"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

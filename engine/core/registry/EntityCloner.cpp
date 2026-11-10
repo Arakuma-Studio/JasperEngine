@@ -60,6 +60,7 @@
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -928,6 +929,15 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<TitleArtRendererComponent>(TitleArtRendererComponent& title, Entity, CloneContext&) {
+    // the authored fields are copied; the copy gets its own state (events, live render, what it
+    // drives of its own companion) at its first update
+    title.runtime.reset();
+    title.needUpdate = true;
+    title.sweepPositionKeyed = false;
+}
+
+template<>
 void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
@@ -1351,6 +1361,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TitleArtRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

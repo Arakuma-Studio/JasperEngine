@@ -1,0 +1,122 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/candy-pop-3d",
+  "revision": 1,
+  "name": {
+    "en": "Candy Pop 3D",
+    "ja": "キャンディポップ 3D"
+  },
+  "description": {
+    "en": "Inflated pink candy metal ringed by a white gloss band, in a softbox studio, with glints.",
+    "ja": "白い光沢の帯で囲んだ膨らんだピンクのキャンディメタル、ソフトボックスのスタジオ光、キラキラ付き。"
+  },
+  "family": "anime",
+  "tags": [
+    "candy",
+    "pink",
+    "inflate",
+    "glossy",
+    "anime",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "bubble letters",
+      "sweets",
+      "pop",
+      "kawaii 3d"
+    ],
+    "ja": [
+      "キャンディ",
+      "ぷっくり",
+      "ピンク",
+      "ポップ",
+      "kyandi",
+      "pokkuri"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "mochiy-pop-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "inflate": {
+      "height": 22
+    },
+    "face": {
+      "preset": "candy",
+      "color": "#ff6ab0",
+      "metallic": 0.85,
+      "roughness": 0.35,
+      "env_multiplier": 1.4,
+      "specular_multiplier": 1.5,
+      "clearcoat": 1,
+      "flakes": 0.8,
+      "flake_scale": 0.8
+    },
+    "bands": [
+      {
+        "grow": 1.5,
+        "depth": 2.4,
+        "offset": -4,
+        "material": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

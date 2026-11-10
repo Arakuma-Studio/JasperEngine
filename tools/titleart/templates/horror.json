@@ -1,0 +1,341 @@
+{
+  "templates": [
+    {
+      "id": "horror/nightmare-title",
+      "name": {
+        "en": "Nightmare Title (blood drip, smoke)",
+        "ja": "悪夢タイトル (血のしたたり + 煙)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: dripping blood letters with black smoke behind and a scratched-bone subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：血がしたたる文字、背後に黒い煙、引っかき傷の骨のサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "horror",
+      "tags": [
+        "title",
+        "subtitle",
+        "blood",
+        "drips",
+        "smoke",
+        "scary",
+        "dark"
+      ],
+      "synonyms": {
+        "en": [
+          "horror title",
+          "creepy logo",
+          "slasher"
+        ],
+        "ja": [
+          "ホラータイトル",
+          "不気味なロゴ",
+          "恐怖"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "NIGHTMARE",
+          "ja": "悪夢"
+        },
+        "subtitle": {
+          "en": "NO ESCAPE",
+          "ja": "逃げ場はない"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 185,
+            "transform.position": [
+              0,
+              80
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#2a0004",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#050000",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "NO ESCAPE",
+            "size": 110,
+            "transform.position": [
+              0,
+              -160
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "horror/blood-drip",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "horror/scratched-bone",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "smoke",
+          "name": "Smoke",
+          "preset": "black",
+          "follow": "Title"
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ],
+      "background": "light"
+    },
+    {
+      "id": "horror/the-end",
+      "name": {
+        "en": "The End (gothic candle, film grain)",
+        "ja": "終焉 (ゴシックの灯 + フィルム粒子)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 ending banner: candle-lit gothic letters under a film-grain adjustment layer; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のエンディングバナー：ろうそくに照らされたゴシック文字、フィルム粒子の調整レイヤー。背景はガイドレイヤー。"
+      },
+      "family": "horror",
+      "tags": [
+        "banner",
+        "ending",
+        "gothic",
+        "candle",
+        "grain",
+        "dark"
+      ],
+      "synonyms": {
+        "en": [
+          "ending card",
+          "finale",
+          "credits"
+        ],
+        "ja": [
+          "エンディング",
+          "終幕",
+          "クレジット"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "THE END",
+          "ja": "終焉"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 250,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1a1008",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#040200",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "horror/gothic-candle",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "adjustment",
+          "adjustment": "effects_only",
+          "name": "Film Grain"
+        },
+        {
+          "op": "add_effect",
+          "layer": "Film Grain",
+          "type": "grain",
+          "preset": "film"
+        }
+      ]
+    },
+    {
+      "id": "horror/dread-counter",
+      "name": {
+        "en": "Dread Counter (burnt ember)",
+        "ja": "恐怖のカウンター (燃えさし)"
+      },
+      "description": {
+        "en": "A 1024 × 512 counter: charred digits glowing with embers in their cracks; the backdrop is a guide layer.",
+        "ja": "1024 × 512 のカウンター：ひび割れに火の粉が光る焦げた数字。背景はガイドレイヤー。"
+      },
+      "family": "horror",
+      "tags": [
+        "counter",
+        "digits",
+        "ember",
+        "burnt",
+        "dark",
+        "embers"
+      ],
+      "synonyms": {
+        "en": [
+          "death count",
+          "days left",
+          "kill count"
+        ],
+        "ja": [
+          "残り日数",
+          "カウント",
+          "犠牲者数"
+        ]
+      },
+      "canvas": [
+        1024,
+        512
+      ],
+      "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "13",
+          "ja": "13"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 300,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#200400",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#050000",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "horror/burnt-ember",
+          "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Particles",
+          "values": {
+            "follow": ""
+          }
+        }
+      ]
+    }
+  ]
+}

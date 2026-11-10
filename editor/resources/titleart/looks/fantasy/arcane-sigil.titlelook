@@ -1,0 +1,129 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/arcane-sigil",
+  "revision": 1,
+  "name": {
+    "en": "Arcane Sigil",
+    "ja": "秘術の紋章"
+  },
+  "description": {
+    "en": "Violet gradient face under a violet glass, a white line and a deep violet frame, an added violet glow and a violet magic circle below.",
+    "ja": "紫のガラスを重ねた紫のグラデーションの面、白い線、深い紫の枠、加算の紫のグロー、下に紫の魔法陣。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "magic",
+    "violet",
+    "glass",
+    "circle",
+    "fantasy",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "arcane",
+      "spell",
+      "sorcery",
+      "rune circle"
+    ],
+    "ja": [
+      "魔法陣",
+      "魔法",
+      "紫",
+      "呪文",
+      "mahōjin",
+      "mahō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#f0c8ff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#8a2aff"
+            },
+            {
+              "pos": 1,
+              "color": "#2a0060"
+            }
+          ]
+        }
+      },
+      "glass": {
+        "enabled": true,
+        "color": "#b060ff",
+        "tint": 0.6
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#1a0040"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#b060ff",
+        "size": 30,
+        "mode": "add"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "magic_circle",
+      "preset": "gold",
+      "place": "below",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#f0d8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#9a40ff"
+            }
+          ]
+        }
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

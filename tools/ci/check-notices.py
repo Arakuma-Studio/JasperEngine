@@ -6,10 +6,15 @@
     python3 tools/ci/check-notices.py --install-manifest   # licence files to install, for CMake
 
 Every directory under libs/, engine/libs/ and engine/libs/shadercompiler/libs/ is a vendored
-library and needs:
+library, and so is each NESTED_LIBRARIES directory (code inside a library's directory that ships
+under other conditions, such as HarfBuzz's editor-only subsetter); each needs:
   - a row in a NOTICE.md table that names its location in backticks (`engine/libs/sokol/`),
   - a licence file in the directory (LICENSE*, LICENCE*, COPYING*, UNLICENSE*).
 FIRST_PARTY lists the directories there that are our own code.
+
+Every directory under a CONTENT_ROOTS root (the Title Art library's fonts, S84 R31) is third-party
+content the editor install carries: it needs a NOTICE.md row naming it the same way and its licence
+file (OFL.txt), installed as licenses/<prefix>-<directory>-<licence file>.
 
 The editor install carries NOTICE.md, LICENSE and licenses/<library>-LICENSE for every shipped
 library (CMakeLists.txt installs what --install-manifest prints): its first licence file under
@@ -18,7 +23,8 @@ install tree for exactly that, and that the repository-only engine/CMakePresets.
 Libraries in TESTS_ONLY are never shipped, so they have no licences/ entry.
 
 engine/notices.json (S30 R27) says which shipped games link each engine/libs library (always, a player
-feature such as physics3d, or editor: never in a game); every engine/libs directory needs an entry.
+feature such as physics3d or a list of features, or editor: never in a game); every engine/libs directory
+needs an entry.
 --player-notices FEATURE... prints the licence files a player with those features stages ('<file>|<name>'
 like --install-manifest), and --third-party-notices FEATURE... the THIRD-PARTY-NOTICES.txt of such a
 player (its libraries' NOTICE.md rows as text): tools/players/package_player.py writes both into a runtime.
@@ -42,6 +48,14 @@ FIRST_PARTY = {
 }
 # vendored for the tests only (not linked into anything shipped, not installed)
 TESTS_ONLY = {"libs/googletest"}
+# libraries inside another library's directory, with their own engine/notices.json entry (their name)
+NESTED_LIBRARIES = {
+    "engine/libs/harfbuzz/subset": "harfbuzz-subset",
+}
+# third-party content staged with the editor: root -> (each directory's licence file, licenses/ prefix)
+CONTENT_ROOTS = {
+    "editor/resources/titleart/fonts": ("OFL.txt", "titleart-font"),
+}
 
 # (the extension may name the licence and its version, as FFmpeg's COPYING.LGPLv2.1 does)
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst|[al]?gplv\d(\.\d)?))?$", re.IGNORECASE)
@@ -60,7 +74,30 @@ def vendored_libraries(repo: Path) -> list[str]:
             relative = f"{root}/{child.name}"
             if child.is_dir() and relative not in FIRST_PARTY:
                 found.append(relative)
+    found += [nested for nested in sorted(NESTED_LIBRARIES) if (repo / nested).is_dir()]
     return found
+
+
+def content_directories(repo: Path) -> list[str]:
+    """Repository-relative paths of every CONTENT_ROOTS directory ('editor/resources/titleart/fonts/anton')."""
+    found = []
+    for root in sorted(CONTENT_ROOTS):
+        base = repo / root
+        if base.is_dir():
+            found += [f"{root}/{child.name}" for child in sorted(base.iterdir()) if child.is_dir()]
+    return found
+
+
+def content_licence(content: str) -> tuple[str, str]:
+    """A content directory's licence file name and its name under licenses/."""
+    root, directory = content.rsplit("/", 1)
+    licence, prefix = CONTENT_ROOTS[root]
+    return licence, f"{prefix}-{directory}-{licence}"
+
+
+def library_name(library: str) -> str:
+    """A library's name (licenses/<name>-LICENSE, its engine/notices.json key): its directory's, or its nested name."""
+    return NESTED_LIBRARIES.get(library, library.rsplit("/", 1)[-1])
 
 
 def licence_files(directory: Path) -> list[Path]:
@@ -87,14 +124,25 @@ def install_manifest(repo: Path) -> list[tuple[Path, str]]:
     for library in vendored_libraries(repo):
         if library in TESTS_ONLY:
             continue
-        name = library.rsplit("/", 1)[1]
+        name = library_name(library)
         files = licence_files(repo / library)
         for index, path in enumerate(files):
             manifest.append((path, f"{name}-LICENSE" if index == 0 else f"{name}-{path.name}"))
+    for content in content_directories(repo):
+        licence, name = content_licence(content)
+        if (repo / content / licence).is_file():
+            manifest.append((repo / content / licence, name))
     return manifest
 
 
-GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "voxel", "tracy", "editor"}
+GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "voxel", "tracy",
+                   "titleart", "editor"}
+
+
+def when_conditions(entry: dict) -> list:
+    """An entry's `when`: one condition, or a list of them (ThorVG ships with the HTML UI or Title Art)."""
+    when = entry.get("when")
+    return when if isinstance(when, list) else [when]
 
 
 def load_game_notices(repo: Path) -> dict:
@@ -114,11 +162,13 @@ def check_game_notices(repo: Path) -> list[str]:
     for name, entry in libraries.items():
         directory = entry.get("dir", "")
         listed[directory] = name
-        if entry.get("when") not in GAME_CONDITIONS:
-            problems.append(f"engine/notices.json: {name}: when must be one of {', '.join(sorted(GAME_CONDITIONS))}")
+        conditions = when_conditions(entry)
+        if not conditions or any(not isinstance(c, str) or c not in GAME_CONDITIONS for c in conditions):
+            problems.append(f"engine/notices.json: {name}: when must be one of {', '.join(sorted(GAME_CONDITIONS))}"
+                            " or a list of player features")
         if not (repo / directory).is_dir():
             problems.append(f"engine/notices.json: {name}: {directory} does not exist")
-        elif directory.rsplit("/", 1)[-1] != name:
+        elif library_name(directory) != name:
             problems.append(f"engine/notices.json: {name}: the name must be its directory's ({directory})")
     for library in vendored_libraries(repo):
         if library.startswith("engine/libs/") and library not in listed:
@@ -129,7 +179,7 @@ def check_game_notices(repo: Path) -> list[str]:
 def player_libraries(repo: Path, features: list[str]) -> list[str]:
     """The engine/notices.json libraries a player with these features ships, sorted."""
     return sorted(name for name, entry in load_game_notices(repo).items()
-                  if entry["when"] == "always" or entry["when"] in features)
+                  if any(c == "always" or c in features for c in when_conditions(entry)))
 
 
 def player_manifest(repo: Path, features: list[str]) -> list[tuple[Path, str]]:
@@ -170,6 +220,12 @@ def check_repository(repo: Path) -> list[str]:
             problems.append(f"{library}: no NOTICE.md row names `{library}/`")
         if not any(LICENCE_FILE.match(f.name) for f in licence_files(repo / library)):
             problems.append(f"{library}: no licence file (LICENSE, LICENCE, COPYING or UNLICENSE)")
+    for content in content_directories(repo):
+        if content not in rows:
+            problems.append(f"{content}: no NOTICE.md row names `{content}/`")
+        licence, _ = content_licence(content)
+        if not (repo / content / licence).is_file():
+            problems.append(f"{content}: no {licence}")
     problems += check_game_notices(repo)
     return problems
 
@@ -219,7 +275,8 @@ def main() -> int:
         print(f"check-notices: {problem}")
     if not problems:
         what = args.installed or "NOTICE.md"
-        print(f"check-notices: {what}: {len(vendored_libraries(args.repo))} vendored libraries, all covered")
+        print(f"check-notices: {what}: {len(vendored_libraries(args.repo))} vendored libraries and "
+              f"{len(content_directories(args.repo))} content directories, all covered")
     return 1 if problems else 0
 
 

@@ -1,0 +1,465 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "elements/red-hot-fire",
+  "revision": 1,
+  "name": {
+    "en": "Red Hot Fire",
+    "ja": "激アツの炎"
+  },
+  "description": {
+    "en": "A red gradient face with a bevel, a gradient-map finish, a gloss band and an inner glow, four rims (black, gold, red, a black dropped base), a light glow and fire.",
+    "ja": "赤のグラデーションの面（ベベル、グラデーションマップ仕上げ、光沢の帯、内側の光彩）、4本の縁（黒、金、赤、黒の台）、ライトグロー、炎。"
+  },
+  "family": "elements",
+  "tags": [
+    "elements",
+    "2d",
+    "red",
+    "gradient",
+    "bevel",
+    "metal",
+    "gloss",
+    "outline",
+    "glow",
+    "fire"
+  ],
+  "synonyms": {
+    "en": [
+      "energy",
+      "elemental",
+      "flat",
+      "crimson",
+      "scarlet",
+      "ramp",
+      "fade",
+      "emboss",
+      "chiselled",
+      "metallic",
+      "metal finish",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine",
+      "flame",
+      "blaze",
+      "burning"
+    ],
+    "ja": [
+      "エネルギー",
+      "属性",
+      "zokusei",
+      "平面",
+      "へいめん",
+      "heimen",
+      "赤",
+      "レッド",
+      "あか",
+      "aka",
+      "グラデーション",
+      "gurade-shon",
+      "guradeshon",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "炎",
+      "火",
+      "ほのお",
+      "honoo",
+      "hi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#ff5a5a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff5a5a"
+            },
+            {
+              "pos": 0.45,
+              "color": "#e00012"
+            },
+            {
+              "pos": 1,
+              "color": "#5a0000"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "depth": 4,
+        "shadow_opacity": 0.55
+      },
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#2a0000"
+            },
+            {
+              "pos": 0.4,
+              "color": "#a10010"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ff3a3a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff0f0"
+            }
+          ]
+        },
+        "amount": 0.75
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#ffd6a0",
+        "size": 1.4,
+        "opacity": 0.5,
+        "noise": 0.45
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.35,
+        "softness": 0.12
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#0a0604",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#0a0604"
+                },
+                {
+                  "pos": 1,
+                  "color": "#0a0604"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 2,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "color": "#fffbd0",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fffbd0"
+                },
+                {
+                  "pos": 0.45,
+                  "color": "#ffe600"
+                },
+                {
+                  "pos": 1,
+                  "color": "#d08a00"
+                }
+              ]
+            },
+            "angle": 270
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.3,
+            "depth": 4
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.45
+          }
+        }
+      },
+      {
+        "width": 2.8,
+        "material": {
+          "fill": {
+            "color": "#3a0000",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#3a0000"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.6,
+            "gloss": "cove",
+            "highlight_color": "#ff6a3a",
+            "highlight_opacity": 0.5
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "offset": [0, -2.6],
+        "material": {
+          "fill": {
+            "color": "#000000",
+            "gradient": {
+              "stops": [
+                {},
+                {
+                  "pos": 1
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "fire",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fffbe0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.3,
+              "color": "#ffd000",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.65,
+              "color": "#ff4a00",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#7a0000",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "height": 120,
+        "inside": 8,
+        "intensity": 105,
+        "seed": 7,
+        "spread": 25,
+        "turbulence": 70
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [
+    {
+      "type": "light_glow",
+      "params": {
+        "chroma": 30,
+        "exposure": 0.5,
+        "falloff": 25,
+        "intensity": 2.5,
+        "knee": 0.3,
+        "radius": 220,
+        "threshold": 0.4,
+        "tint_amount": 0.85,
+        "tint_inner": "#ffa030",
+        "tint_outer": "#ff2000"
+      }
+    }
+  ],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 818,
+    "item": "f-fire-gekiatsu",
+    "license_note": "used with the author's permission"
+  }
+}

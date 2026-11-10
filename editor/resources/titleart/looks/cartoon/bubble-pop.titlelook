@@ -1,0 +1,108 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/bubble-pop",
+  "revision": 1,
+  "name": {
+    "en": "Bubble Pop",
+    "ja": "バブルポップ"
+  },
+  "description": {
+    "en": "Puffy sky-blue gradient face with a deep smooth bevel and a strong gloss, a white line, a navy frame and a dark navy base below.",
+    "ja": "深いなめらかなベベルと強い光沢を持つふっくらした空色グラデーションの面、白い線、紺の枠、下にずらした濃紺の台。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "bubble",
+    "blue",
+    "glossy",
+    "cartoon",
+    "puffy",
+    "kids"
+  ],
+  "synonyms": {
+    "en": [
+      "bubbly",
+      "balloon letters",
+      "playful",
+      "candy blue"
+    ],
+    "ja": [
+      "バブル",
+      "ぷっくり",
+      "水色",
+      "ポップ",
+      "baburu",
+      "pokkuri"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#7ad8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#2a8aff"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 6,
+        "depth": 6
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.8
+      }
+    },
+    "rims": [
+      {
+        "width": 2
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#10307a"
+          }
+        }
+      },
+      {
+        "offset": [0, -3],
+        "material": {
+          "fill": {
+            "color": "#0a1a40"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

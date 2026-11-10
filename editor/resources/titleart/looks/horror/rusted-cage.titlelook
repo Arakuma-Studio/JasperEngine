@@ -1,0 +1,118 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/rusted-cage",
+  "revision": 1,
+  "name": {
+    "en": "Rusted Cage",
+    "ja": "錆びた檻"
+  },
+  "description": {
+    "en": "Rust gradient face with a hammered surface, a rust pattern and a chamfer bevel, a black keyline and a dark iron band of vertical bars.",
+    "ja": "槌目の表面、錆の模様、面取りを持つ錆色グラデーションの面、黒い縁、縦の格子の暗い鉄の帯。"
+  },
+  "family": "horror",
+  "tags": [
+    "rust",
+    "iron",
+    "cage",
+    "horror",
+    "industrial",
+    "grunge"
+  ],
+  "synonyms": {
+    "en": [
+      "prison bars",
+      "corroded",
+      "dungeon",
+      "rusty metal"
+    ],
+    "ja": [
+      "錆",
+      "檻",
+      "鉄格子",
+      "牢獄",
+      "sabi",
+      "ori"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "black-ops-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#a04a1a"
+            },
+            {
+              "pos": 1,
+              "color": "#4a1a08"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "chamfer",
+        "size": 2,
+        "depth": 4
+      },
+      "pattern": {
+        "kind": "rust",
+        "color": "#4a1a08",
+        "color2": "#c06a2a",
+        "opacity": 0.45
+      },
+      "texture": {
+        "kind": "hammered",
+        "amount": 0.5,
+        "target": "surface"
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#3a3a3a"
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1
+          },
+          "pattern": {
+            "kind": "stripes",
+            "color": "#8a8a8a",
+            "scale": 6
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

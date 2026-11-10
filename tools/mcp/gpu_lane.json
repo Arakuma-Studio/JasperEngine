@@ -2,6 +2,10 @@
  "about": "The MCP suite's graphics test files on the real-GPU lane (docs/testing.md, 'The real-GPU lane'). gpu: runs on the lane's GPU. llvmpipe: compares with goldens drawn by llvmpipe; the MCP suite has no per-renderer goldens. other: stays on llvmpipe, for the reason given. A file not listed renders nothing that matters and stays on llvmpipe.",
  "validated": "run twice on H (RTX 3080 Ti, 1600x900 headless Xorg), BF16 2026-11-02; the nine it left failing, BF20 2026-11-03",
  "tests": {
+  "test_title_library_golden.py": {
+   "class": "llvmpipe",
+   "why": "compares with goldens drawn by llvmpipe"
+  },
   "test_animation_clip.py": {
    "class": "gpu",
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"

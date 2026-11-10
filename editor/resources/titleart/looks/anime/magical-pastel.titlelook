@@ -1,0 +1,120 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/magical-pastel",
+  "revision": 1,
+  "name": {
+    "en": "Magical Pastel",
+    "ja": "マジカルパステル"
+  },
+  "description": {
+    "en": "Pastel pink to blue to mint face under a lilac glass, a lilac line and a wide white border, with highlight glints and drifting sakura petals.",
+    "ja": "薄紫のガラスを重ねたパステルのピンクから青、ミントへの面、薄紫の線、太い白ふち、ハイライトのキラキラ、舞う桜の花びら。"
+  },
+  "family": "anime",
+  "tags": [
+    "pastel",
+    "magical",
+    "glass",
+    "anime",
+    "sakura",
+    "cute"
+  ],
+  "synonyms": {
+    "en": [
+      "magical girl",
+      "dreamy",
+      "fairy tale",
+      "soft colours"
+    ],
+    "ja": [
+      "魔法少女",
+      "パステル",
+      "ゆめかわ",
+      "桜",
+      "mahō shōjo",
+      "paseteru"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "mochiy-pop-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffd0f0"
+            },
+            {
+              "pos": 0.5,
+              "color": "#d0e0ff"
+            },
+            {
+              "pos": 1,
+              "color": "#d0fff0"
+            }
+          ]
+        }
+      },
+      "glass": {
+        "enabled": true,
+        "color": "#c8b0ff",
+        "tint": 0.3
+      }
+    },
+    "rims": [
+      {
+        "width": 2.1,
+        "material": {
+          "fill": {
+            "color": "#c08aff"
+          }
+        }
+      },
+      {
+        "width": 3.1
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "large": 3,
+        "small": 4
+      },
+      "effects": []
+    },
+    {
+      "type": "particles",
+      "preset": "sakura",
+      "place": "above",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

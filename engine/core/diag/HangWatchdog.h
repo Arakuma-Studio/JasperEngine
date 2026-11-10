@@ -33,6 +33,8 @@ namespace jasperengine::diag {
     // One per main-loop iteration (one relaxed increment): the watchdog arms on the first one
     // after start()
     JASPERENGINE_API void heartbeat();
+    // The heartbeats so far (any thread): the main loop's iterations, also where nothing renders
+    JASPERENGINE_API uint64_t heartbeats();
 
     struct WatchdogConfig {
         uint32_t thresholdMs = 3000;      // editor 3 s, development games 5 s

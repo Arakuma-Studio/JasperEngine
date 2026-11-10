@@ -1,0 +1,123 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/warp-streak",
+  "revision": 1,
+  "name": {
+    "en": "Warp Streak",
+    "ja": "ワープストリーク"
+  },
+  "description": {
+    "en": "White to cyan face inside a navy line, a pale cyan band and a navy outline, smeared into a tapered trail, over horizontal speed lines.",
+    "ja": "紺の線、淡いシアンの帯、紺の外縁の内側の白からシアンの面、先細りの残像、背後の水平な集中線。"
+  },
+  "family": "scifi",
+  "tags": [
+    "warp",
+    "speed",
+    "cyan",
+    "motion",
+    "trail",
+    "space"
+  ],
+  "synonyms": {
+    "en": [
+      "hyperspace",
+      "light speed",
+      "fast",
+      "zoom"
+    ],
+    "ja": [
+      "ワープ",
+      "スピード",
+      "残像",
+      "宇宙",
+      "wāpu",
+      "zanzō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "orbitron",
+    "ja": "train-one",
+    "variations": {
+      "wght": 900
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#6ae8ff"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#04203a"
+          }
+        }
+      },
+      {
+        "width": 2.6,
+        "material": {
+          "fill": {
+            "color": "#bff4ff"
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "material": {
+          "fill": {
+            "color": "#04203a"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "motion_trail",
+      "params": {
+        "length": 60,
+        "taper": 0.6
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "speed_lines",
+      "preset": "flow_h",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

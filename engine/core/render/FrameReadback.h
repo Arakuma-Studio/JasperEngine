@@ -24,13 +24,21 @@ namespace jasperengine {
     class JASPERENGINE_API FrameReadback {
     public:
         // width * height * bytesPerPixel bytes, rows top first (offscreen targets are top-left
-        // origin on every backend); bytesPerPixel 4 (RGBA8) or 1 (R8); false with a message
+        // origin on every backend); bytesPerPixel 4 (RGBA8), 1 (R8), 8 (RGBA16F: IEEE halves) or
+        // 16 (RGBA32F); the size must match the texture's format. GLES3 / WebGL2 read float
+        // targets only with EXT_color_buffer_float (false with "float readback needs
+        // EXT_color_buffer_float" otherwise). False with a message
         static bool readTexture(TextureRender& texture, int width, int height, int bytesPerPixel,
                                 std::vector<uint8_t>& pixels, std::string* error = nullptr);
         // the RGBA8 colour of a created framebuffer
         static bool readFramebuffer(Framebuffer& framebuffer, std::vector<uint8_t>& rgba, std::string* error = nullptr);
         // waits until the GPU has done everything submitted (glFinish, vkQueueWaitIdle)
         static bool finishGpu();
+        // a fence after everything submitted so far, and whether the GPU has passed the last one,
+        // without waiting (main thread). The GL family (glFenceSync, flushed so it starts; not
+        // Windows' GL 1.1 headers); elsewhere, and with no fence, it has always passed
+        static void fenceGpu();
+        static bool gpuFencePassed();
 
         // Metal's reader (Objective-C, platform/apple/MetalReadback.h installs it)
         using PlatformReader = bool (*)(TextureRender& texture, int width, int height, int bytesPerPixel,

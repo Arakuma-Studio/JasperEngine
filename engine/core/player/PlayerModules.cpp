@@ -13,7 +13,7 @@
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart"};
     return modules;
 }
 
@@ -37,6 +37,9 @@ std::vector<std::string> player::builtModules() {
     if (nav::isNavMeshAvailable()) modules.push_back("navigation");
 #if JASPERENGINE_SOUND_LAYER
     modules.push_back("soundlayer");
+#endif
+#if JASPERENGINE_TITLE_ART
+    modules.push_back("titleart");
 #endif
 #if JASPERENGINE_NOISE_ENABLED
     modules.push_back("noise");
@@ -66,6 +69,7 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "physics2d") return "2D physics";
     if (module == "navigation") return "navigation meshes";
     if (module == "soundlayer") return "Sound Events and clip import settings";
+    if (module == "titleart") return "Title Art (Realtime and Glyph Atlas)";
     if (module == "noise") return "the Noise and NoiseGraph API";
     if (module == "voxel") return "Voxel Volumes";
     if (module == "terrainworld") return "Terrain World";

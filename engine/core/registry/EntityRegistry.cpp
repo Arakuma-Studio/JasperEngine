@@ -7,6 +7,7 @@
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -235,6 +236,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<GridComponent>(ComponentOrder::Insertion, "GridComponent");
     registerComponent<TilemapLayerComponent>(ComponentOrder::Insertion, "TilemapLayerComponent");
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
+    // S81 R58: after the last one, so no ComponentType moves
+    registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

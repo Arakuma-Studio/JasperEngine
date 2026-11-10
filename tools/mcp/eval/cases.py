@@ -1699,6 +1699,56 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "make_title_logo",
+        "kind": "guard",
+        "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
+                         "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
+                         "names the area and its tool.",
+        "text_at_issue": "Guide 'Other areas': 'titles (edit_title)' and the generated Tool groups list (title_art)",
+        "source": "guide index entry (S80 R60, AC40); no failure on record",
+        "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
+        "mocks": [
+            {"tool": "tool_groups", "result": ok("Enabled title_art.", {"enabled": ["title_art"]})},
+            {"tool": "edit_title", "result": ok("Created assets/titles/jackpot.titleart; applied 2 op(s).",
+                                                {"path": "assets/titles/jackpot.titleart", "rev": 2, "applied": 2})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/jackpot.titleart (rev 2) at 768 x 432.", {"rev": 2})},
+            {"tool": "export_title", "result": ok("Baked 1 output(s) of assets/titles/jackpot.titleart.",
+                                                  {"files": [{"output": "main", "path": "assets/titles/jackpot.titleart.png"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title"}],
+                   "must_not_call": ["create_texture", "write_file", "synthesize_texture"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "translate_title_de_ja",
+        "kind": "guard",
+        "what_happened": "A title is translated inside its .titleart (add_language, one set_translation per text layer, in one "
+                         "edit_title batch), then check_title {languages: all} is read and its fixes applied; an agent must not "
+                         "duplicate the layers per language or write a second document (S87 D1, D2).",
+        "text_at_issue": "jasper://docs/title-art 'Languages': the translation loop",
+        "source": "S87 R60, AC30; no failure on record",
+        "prompt": "Translate the title assets/titles/logo.titleart (it says BIG WIN) into German and Japanese, and make sure "
+                  "both versions fit.",
+        "groups_enabled": ["title_art"],
+        "mocks": [
+            {"tool": "get_title", "result": ok("assets/titles/logo.titleart rev 3: 1 layers, canvas 1024 x 512, 1 output(s), 0 not fresh, 0 problem(s).",
+                                               {"path": "assets/titles/logo.titleart", "rev": 3,
+                                                "layers": [{"path": "Title", "id": "0000000a", "type": "text", "text": "BIG WIN", "max_chars": 0}]})},
+            {"tool": "edit_title", "result": ok("Applied 4 op(s) to assets/titles/logo.titleart (Edit Title Art (12 changes)).",
+                                                {"path": "assets/titles/logo.titleart", "rev": 4, "applied": 4})},
+            {"tool": "check_title", "result": ok("PASS assets/titles/logo.titleart: 9 pass, 0 warn, 0 fail, 0 skipped.",
+                                                 {"verdict": "PASS", "checks": [{"id": "languages_complete", "status": "PASS", "language": "de"},
+                                                                                {"id": "languages_complete", "status": "PASS", "language": "ja"},
+                                                                                {"id": "text_overflow", "status": "PASS", "language": "de"}]})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/logo.titleart (rev 4) at 768 x 384.", {"rev": 4,
+                                                  "language_rows": ["en", "de \u00b7 fit 0.86", "ja"]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title", "args": {"ops": [{"op": "add_language"}]}},
+                             {"tool": "check_title"}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 16,
+    },
+    {
         "id": "guard_nav_carve_tiles_per_tick",
         "kind": "guard",
         "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "

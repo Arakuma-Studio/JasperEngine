@@ -1,0 +1,88 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/manga-ink",
+  "revision": 1,
+  "name": {
+    "en": "Manga Ink",
+    "ja": "漫画インク"
+  },
+  "description": {
+    "en": "Solid black ink face with a fading white screen tone, a wide white border and a thin black outline.",
+    "ja": "白く薄れていくスクリーントーンを刷った黒いベタの面、太い白ふち、細い黒い外縁。"
+  },
+  "family": "anime",
+  "tags": [
+    "manga",
+    "ink",
+    "black",
+    "screentone",
+    "anime",
+    "comic"
+  ],
+  "synonyms": {
+    "en": [
+      "comic ink",
+      "screen tone",
+      "black and white",
+      "inked"
+    ],
+    "ja": [
+      "漫画",
+      "スクリーントーン",
+      "ベタ",
+      "白黒",
+      "manga",
+      "sukurīn tōn"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "reggae-one",
+    "ja": "reggae-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#000000"
+      }
+    },
+    "rims": [
+      {
+        "width": 3.6
+      },
+      {
+        "width": 1.6,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {
+    "face": [
+      {
+        "type": "halftone",
+        "params": {
+          "size": 5,
+          "color": "#ffffff",
+          "amount": 0.5,
+          "mode": "normal"
+        }
+      }
+    ]
+  },
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

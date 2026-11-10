@@ -1,0 +1,31 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "name": "Every Layer",
+  "canvas": {"width": 1280, "height": 720, "background": {"transparent": false, "color": "#102030"}},
+  "seed": 7,
+  "material_links": {"0000aaaa": {"name": "Gold"}},
+  "layers": [
+    {"id": "00000001", "type": "generator", "name": "Backdrop", "generator": {"type": "fill", "params": {"color": "#202020"}}},
+    {"id": "00000002", "type": "group", "name": "Logo", "transform": {"position": [0, 40], "rotation": 5, "scale": 1.2},
+     "children": [
+       {"id": "00000003", "type": "text", "name": "Title", "text": "確定", "size": 180, "vertical": true,
+        "chars": {"1": {"rotation": 10, "face": {"fill": {"kind": "linear"}}}},
+        "style": {"face": {"fill": {"color": "#ffd060"}, "bevel": {"enabled": true, "size": 4}, "link": "0000aaaa"},
+                  "rims": [{"id": "00000010", "width": 4, "material": {"fill": {"color": "#000000"}}},
+                           {"id": "00000011", "width": 6, "join": "round", "plate": {"kind": "box"}}]},
+        "part_effects": {"rim:00000011": [{"id": "00000020", "type": "outer_glow", "params": {"size": 30}}]},
+        "effects": [{"id": "00000021", "type": "drop_shadow", "params": {"distance": 12}}]},
+       {"id": "00000004", "type": "shape", "name": "Badge", "shape": "star", "points": 7, "clip": true,
+        "style": {"face": {"link": "0000aaaa"}}}
+     ]},
+    {"id": "00000005", "type": "image", "name": "Photo", "image": {"path": "images/photo.png", "guid": ""}, "filter": "nearest",
+     "masks": [{"id": "00000030", "type": "gradient", "shape": "radial", "length": 300}]},
+    {"id": "00000006", "type": "vector", "name": "Emblem", "svg": {"path": "art/emblem.svg", "guid": ""}, "mode": "artwork",
+     "masks": [{"id": "00000031", "type": "layer", "layer": "00000003", "channel": "luminance"}]},
+    {"id": "00000007", "type": "adjustment", "name": "Grade", "adjustment": {"type": "levels", "channels": {"rgb": {"gamma": 1.2}}}}
+  ],
+  "exposed": [{"name": "text", "type": "text", "targets": [{"layer": "00000003", "field": "text"}]}],
+  "outputs": [{"id": "main"}, {"id": "glow", "content": "glow", "bit_depth": 16}]
+}

@@ -1,0 +1,375 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/emerald-metal-3d",
+  "revision": 1,
+  "name": {
+    "en": "Emerald Metal 3D",
+    "ja": "エメラルドメタル 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a green metal face and a chamfer bevel, four bands (gold, black metal, green metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "緑のメタルの面の3D押し出し文字（ベベル付き）、4本の帯（金、黒のメタル、緑のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "green",
+    "bevel",
+    "gold",
+    "black",
+    "bands",
+    "outline",
+    "glow",
+    "emerald"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "emerald green",
+      "lime",
+      "emboss",
+      "chiselled",
+      "golden",
+      "gilded",
+      "yellow gold",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine",
+      "green gem"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "緑",
+      "グリーン",
+      "みどり",
+      "midori",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "金",
+      "ゴールド",
+      "きん",
+      "kin",
+      "gorudo",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "エメラルド",
+      "emerarudo"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 11.5,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1.3,
+      "depth": 1.3,
+      "profile": "chamfer"
+    },
+    "face": {
+      "color": "#02381a",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#d8ffe0"
+          },
+          {
+            "pos": 0.2,
+            "color": "#4cf07a"
+          },
+          {
+            "pos": 0.44,
+            "color": "#0aa046"
+          },
+          {
+            "pos": 0.52,
+            "color": "#02381a"
+          },
+          {
+            "pos": 0.6,
+            "color": "#08903e"
+          },
+          {
+            "pos": 0.82,
+            "color": "#3ce870"
+          },
+          {
+            "pos": 1,
+            "color": "#b8ffcc"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.12,
+      "env_multiplier": 0.85,
+      "clearcoat": 0.6
+    },
+    "bands": [
+      {
+        "grow": 1,
+        "depth": 10.6,
+        "offset": -11.5,
+        "bevel": {
+          "width": 1,
+          "depth": 0.9
+        },
+        "material": {
+          "preset": "gold",
+          "color": "#ffc23a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff8d8"
+              },
+              {
+                "pos": 0.06,
+                "color": "#ffe890"
+              },
+              {
+                "pos": 0.16,
+                "color": "#ffc838"
+              },
+              {
+                "pos": 0.3,
+                "color": "#f0a018"
+              },
+              {
+                "pos": 0.4,
+                "color": "#c06a06"
+              },
+              {
+                "pos": 0.47,
+                "color": "#5a2602"
+              },
+              {
+                "pos": 0.51,
+                "color": "#1a0800"
+              },
+              {
+                "pos": 0.55,
+                "color": "#120500"
+              },
+              {
+                "pos": 0.6,
+                "color": "#5a2804"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c87810"
+              },
+              {
+                "pos": 0.84,
+                "color": "#f8b830"
+              },
+              {
+                "pos": 0.94,
+                "color": "#ffe080"
+              },
+              {
+                "pos": 1,
+                "color": "#fff4c8"
+              }
+            ]
+          },
+          "gradient_span": "line",
+          "gradient_bend": 0.6,
+          "metallic": 1,
+          "roughness": 0.06,
+          "env_multiplier": 0.9
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#02200c",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#04300f",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "green_metal",
+          "color": "#0a5a24",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#2ad060"
+              },
+              {
+                "pos": 0.45,
+                "color": "#06602a"
+              },
+              {
+                "pos": 0.55,
+                "color": "#01200a"
+              },
+              {
+                "pos": 1,
+                "color": "#1ab050"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.4,
+        "depth": 7,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#010a04",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#010804",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#20e060",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#a0ffb8"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": 40,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dMore.ts",
+    "line": 118,
+    "item": "f-3d-emerald",
+    "license_note": "used with the author's permission"
+  }
+}

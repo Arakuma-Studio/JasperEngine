@@ -2755,6 +2755,50 @@ OVERRIDES.update({
         'overloads': [([('code', 'NativeErrorCode|string'), ('message?', 'string')], 'boolean')]},
 })
 
+# Title Art (S81 §6.6, TitleArtClassesLua.cpp): the calls that can raise (one sentence naming the
+# title, what failed, why and the fix) are lua_CFunctions; a parameter value is a number, a
+# boolean, a string or a colour (Vector3/Vector4, linear)
+_TITLE_VALUE = 'number|boolean|string|Vector3|Vector4'
+OVERRIDES.update({
+    ('TitleArt', '__call'): {
+        'doc': ['The Title Art Renderer of a GameObject: `TitleArt(scene, entity)`. Raises when the GameObject has none',
+                '(`gameObject:getTitleArt()` gives nil instead).'],
+        'overloads': [([('scene', 'Scene'), ('entity', 'integer')], 'TitleArt')]},
+    ('TitleArt', 'setParameter'): {
+        'doc': ['Sets the Exposed parameter `name` (a number, a boolean, a string or a linear colour). Raises on a',
+                'Baked title, an unknown name (listing the Exposed ones) or a value of the wrong type.'],
+        'overloads': [([('name', 'string'), ('value', _TITLE_VALUE)], '')]},
+    ('TitleArt', 'getParameter'): {
+        'doc': ['The Exposed parameter\'s value now (the override, else the document\'s). Raises on an unknown name.'],
+        'overloads': [([('name', 'string')], _TITLE_VALUE)]},
+    ('TitleArt', 'resetParameter'): {
+        'doc': ['Drops the override of `name`: the document\'s value again. Raises on a Baked title or an unknown name.'],
+        'overloads': [([('name', 'string')], '')]},
+    ('TitleArt', 'setColorScheme'): {
+        'doc': ['Selects a color scheme of the document by id. Raises on a Baked title or an unknown id.'],
+        'overloads': [([('id', 'string')], '')]},
+    ('TitleArt', 'setNativeSize'): {
+        'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
+                'when the title has no image yet.'],
+        'overloads': [([], '')]},
+    ('TitleArt', 'getMeshStats'): {
+        'doc': ['The mesh the 3D layer at `layerPath` (names joined by "/", or its id) drew in the last render: triangles,',
+                'vertices, solids, buildMs, tier, overBudget and cooked (an export\'s mesh); nil before its first render. Raises',
+                'on a Baked title or a path that names no 3D layer (listing them).'],
+        'overloads': [([('layerPath', 'string')],
+                       '{triangles: integer, vertices: integer, solids: integer, buildMs: number, tier: string, overBudget: boolean, cooked: boolean}?')]},
+    ('TitleArt', 'setLanguage'): {
+        'doc': ['S87: the language of every Title Art Renderer whose Language is Auto ("" = back to the device\'s',
+                'languages). Raises on a tag that is not BCP 47 ("de", "pt-BR", "zh-Hant"); nothing changes then.'],
+        'overloads': [([('code', 'string')], '')]},
+    ('TitleArt', 'getLanguages'): {
+        'doc': ['The languages this title offers: its source first, then the languages it ships.'],
+        'overloads': [([], 'string[]')]},
+    ('TitleArt', 'play'): {
+        'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+})
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
@@ -2790,6 +2834,12 @@ PROPERTY_OVERRIDES = {
     ('HttpResponse', 'data'): ('JsonValue', False),
     ('HttpResponse', 'textureData'): ('TextureData|nil', True),
 
+    # Title Art (S81): name lists built as tables
+    ('TitleArt', 'colorSchemes'): ('string[]', True),
+    ('TitleArt', 'parameterNames'): ('string[]', True),
+    ('TitleArt', 'animations'): ('string[]', True),
+    # S87: the static language event
+    ('TitleArt', 'onLanguageChanged'): ('FunctionSubscribe', False),
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),

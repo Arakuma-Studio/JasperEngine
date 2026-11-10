@@ -1,0 +1,54 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "wave_loop",
+  "name": "Wave",
+  "group": "loop",
+  "role": "idle",
+  "duration": 1.6,
+  "wrap": "loop",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "A wave runs through the letters.",
+  "params": [
+    {
+      "name": "height",
+      "label": "Height (%)",
+      "type": "number",
+      "default": 8,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "each",
+      "label": "Each (s)",
+      "type": "number",
+      "default": 0.08,
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "tracks": [
+    {
+      "target": "main_text",
+      "field": "glyph.offset",
+      "relative": true,
+      "stagger": {
+        "each": "each"
+      },
+      "drive": {
+        "from": [
+          0,
+          "-height"
+        ],
+        "to": [
+          0,
+          "height"
+        ],
+        "cycles": 1,
+        "ease": "sine_in_out"
+      }
+    }
+  ],
+  "markers": []
+}

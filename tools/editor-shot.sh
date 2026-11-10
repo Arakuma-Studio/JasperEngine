@@ -20,6 +20,11 @@
 #   w:N, sleep:N   wait N seconds
 #   shot:TAG       save <name>-TAG.png  s   save <name>-1.png, <name>-2.png, ...
 # EXPORT_DIR=build/x (under the repo) sets the default Build Settings output.
+# EXTRA_SETTINGS (YAML) is appended to the run's settings.yaml (e.g. a window to open at start).
+# SHOT_GPU=1 (the GPU host, after tools/gpu/xorg-headless.sh start with JE_GPU_SCREEN=1600x900) runs
+# the editor on its NVIDIA X server instead of an Xvfb, so the canvas renders on the real GPU.
+# SHOT_FONTS=<dir> copies that directory's font files into the run's ~/.local/share/fonts, where
+# fontconfig (and so the editor's system font search) finds them: e.g. a CJK font the image lacks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,6 +53,13 @@ window:
 EOF
 if [[ -n "${EXPORT_DIR:-}" ]]; then
     printf 'export:\n  default_dir: /src/%s\n' "$EXPORT_DIR" >> "$ROOT/$WORK/settings.yaml"
+fi
+if [[ -n "${EXTRA_SETTINGS:-}" ]]; then
+    printf '%s\n' "$EXTRA_SETTINGS" >> "$ROOT/$WORK/settings.yaml"
+fi
+if [[ -n "${SHOT_FONTS:-}" ]]; then
+    mkdir -p "$ROOT/$WORK/home/.local/share/fonts"
+    cp "$SHOT_FONTS"/*.[ot]t[fc] "$ROOT/$WORK/home/.local/share/fonts/"
 fi
 
 # Runs inside the container, from $WORK.
@@ -87,8 +99,13 @@ steps() {
     done
 }
 
-Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
-export DISPLAY=:99
+if [[ "${SHOT_GPU:-0}" == 1 ]]; then
+    # the GPU host's headless NVIDIA X server (tools/gpu/xorg-headless.sh, JE_GPU_SCREEN=1600x900)
+    . /src/tools/gpu/env.sh
+else
+    Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
+    export DISPLAY=:99
+fi
 sleep 1
 dbus-run-session -- "/src/$EDITOR" > "../$NAME.log" 2>&1 &
 pid=$!
@@ -113,7 +130,9 @@ fi
 kill "$pid"
 EOF
 
-docker run --rm \
+GPU_ARGS=()
+[[ "${SHOT_GPU:-0}" == 1 ]] && GPU_ARGS=(--gpus all -e SHOT_GPU=1)
+docker run --rm "${GPU_ARGS[@]}" \
     --user "$(id -u):$(id -g)" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \

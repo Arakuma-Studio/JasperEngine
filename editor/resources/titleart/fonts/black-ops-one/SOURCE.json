@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/blackopsone/OFL.txt",
+    "sha256": "f67ca4a200424868ee8fcd5464d7b35ac1cbf7723f6bfdbd19a8524689fab9a8",
+    "bytes": 4411
+  },
+  "path": "ofl/blackopsone/BlackOpsOne-Regular.ttf",
+  "sha256": "282a825b5f294377387e3969f765408157dbea8da0f5d0aae68c6bc704b145b3",
+  "bytes": 166532
+}

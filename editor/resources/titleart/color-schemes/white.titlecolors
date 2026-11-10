@@ -1,0 +1,276 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "white",
+  "revision": 1,
+  "name": {
+    "en": "White",
+    "ja": "白"
+  },
+  "description": {
+    "en": "Pearl white metal with a white line and a slate frame.",
+    "ja": "真珠のような白の金属、白の線とスレートの枠。"
+  },
+  "family_hint": [
+    "casino",
+    "minimal"
+  ],
+  "tags": [
+    "white",
+    "pearl",
+    "cool",
+    "bright"
+  ],
+  "synonyms": {
+    "en": [
+      "snow",
+      "pearl white",
+      "ivory"
+    ],
+    "ja": [
+      "しろ",
+      "shiro",
+      "ホワイト",
+      "白色"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.55,
+              "color": "#eef1f7"
+            },
+            {
+              "pos": 1,
+              "color": "#b6becc"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "preset": "white_gloss",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#5a6478"
+    },
+    "dark": {
+      "fill": {
+        "color": "#14171f",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#14171f"
+            },
+            {
+              "pos": 1,
+              "color": "#14171f"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#14171f",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          }
+        },
+        "material_3d": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#5a6478"
+      },
+      {
+        "fill": {
+          "color": "#58607a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#58607a"
+              },
+              {
+                "pos": 1,
+                "color": "#58607a"
+              }
+            ]
+          }
+        },
+        "material_3d": {
+          "color": "#58607a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e3e7ee"
+              },
+              {
+                "pos": 0.45,
+                "color": "#a3abb8"
+              },
+              {
+                "pos": 0.52,
+                "color": "#555c68"
+              },
+              {
+                "pos": 0.6,
+                "color": "#9aa2af"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dfe4eb"
+              },
+              {
+                "pos": 1,
+                "color": "#f7f9fc"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.14,
+          "clearcoat": 0.3
+        },
+        "shade": "#1a2030"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#05070c",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#05070c"
+            },
+            {
+              "pos": 1,
+              "color": "#05070c"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#05070c",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "preset": "silver",
+      "color": "#d8dde6",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.22,
+            "color": "#e3e7ee"
+          },
+          {
+            "pos": 0.45,
+            "color": "#a3abb8"
+          },
+          {
+            "pos": 0.52,
+            "color": "#555c68"
+          },
+          {
+            "pos": 0.6,
+            "color": "#9aa2af"
+          },
+          {
+            "pos": 0.8,
+            "color": "#dfe4eb"
+          },
+          {
+            "pos": 1,
+            "color": "#f7f9fc"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.14,
+      "clearcoat": 0.3
+    }
+  },
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 0.4,
+        "color": "#dfe6ff"
+      },
+      {
+        "pos": 1,
+        "color": "#6a7aa0"
+      }
+    ]
+  },
+  "shadow": "#1a2040",
+  "light_ramp": [
+    "#1e2430",
+    "#5c6678",
+    "#a9b3c4",
+    "#dfe5ef"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffffff"
+        },
+        {
+          "pos": 0.55,
+          "color": "#e6eaf2"
+        },
+        {
+          "pos": 1,
+          "color": "#7a8496"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#eef1f7",
+    "#b6becc",
+    "#14171f",
+    "#58607a"
+  ],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/colourways.ts",
+    "line": 207
+  }
+}

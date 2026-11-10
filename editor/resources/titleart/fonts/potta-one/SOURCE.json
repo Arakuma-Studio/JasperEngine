@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/pottaone/OFL.txt",
+    "sha256": "fe55933bcfad354914050fe0e7c879bd666a623f1e363a651198ac40c271cd26",
+    "bytes": 4472
+  },
+  "path": "ofl/pottaone/PottaOne-Regular.ttf",
+  "sha256": "bde843868b56e429e1c863da2efa76df533162b226d990efcb96d533b0ca2a93",
+  "bytes": 4918516
+}

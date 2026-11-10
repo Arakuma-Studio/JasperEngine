@@ -247,12 +247,14 @@ namespace jasperengine::editor{
         // grid tilemaps (S50): the cell layout, a layer of cells, its colliders
         GridComponent,
         TilemapLayerComponent,
-        TilemapCollider2DComponent
+        TilemapCollider2DComponent,
+        // shows a .titleart through its Image or Sprite (S81 R1)
+        TitleArtRendererComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TilemapCollider2DComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

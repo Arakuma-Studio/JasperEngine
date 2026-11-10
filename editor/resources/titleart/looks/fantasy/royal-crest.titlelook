@@ -1,0 +1,210 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/royal-crest",
+  "revision": 1,
+  "name": {
+    "en": "Royal Crest",
+    "ja": "王家の紋章"
+  },
+  "description": {
+    "en": "Royal purple face with a gloss band and a satin, a dark violet keyline, a gold metal frame and a gold metal base below, with highlight glints.",
+    "ja": "光沢の帯とサテンを持つ王家の紫の面、暗い紫の縁、金属調の金の枠、下にずらした金の台、ハイライトのキラキラ。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "royal",
+    "purple",
+    "gold",
+    "crest",
+    "fantasy",
+    "regal"
+  ],
+  "synonyms": {
+    "en": [
+      "kingdom",
+      "noble",
+      "majestic",
+      "coat of arms"
+    ],
+    "ja": [
+      "王家",
+      "紋章",
+      "紫",
+      "高貴",
+      "ōke",
+      "monshō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#6a1aa0"
+      },
+      "satin": {
+        "enabled": true,
+        "opacity": 0.4
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#1a0030"
+          }
+        }
+      },
+      {
+        "width": 2,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fff0a0"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#ffc830"
+                },
+                {
+                  "pos": 0.7,
+                  "color": "#a86000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffe080"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1,
+            "depth": 4
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.8
+          }
+        }
+      },
+      {
+        "width": 2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fff0a0"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#ffc830"
+                },
+                {
+                  "pos": 0.7,
+                  "color": "#a86000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffe080"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1,
+            "depth": 4
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.8
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

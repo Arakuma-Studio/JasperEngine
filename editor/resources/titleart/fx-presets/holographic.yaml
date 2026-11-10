@@ -1,0 +1,14 @@
+# Holographic Foil presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: foil
+    name: Foil
+    aliases: [holo foil, glitter foil]
+    params: {pattern: glitter}
+  - id: rainbow_sticker
+    name: Rainbow Sticker
+    aliases: [holo sticker, stars foil]
+    params: {pattern: stars}
+  - id: diffraction
+    name: Diffraction
+    aliases: [grating, rainbow grating]
+    params: {pattern: diffraction}

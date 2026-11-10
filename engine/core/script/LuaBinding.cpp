@@ -966,6 +966,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerProfilerClasses(L);
     registerGameplayClasses(L);
     registerNavigationClasses(L);
+    registerTitleArtClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
 #if JASPERENGINE_NOISE

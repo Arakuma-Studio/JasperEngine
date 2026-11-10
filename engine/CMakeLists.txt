@@ -56,6 +56,17 @@ option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end
 # (docs/specs/S34-player-size.md); the editor, the tests and the full player have both.
 option(JASPERENGINE_HTMLUI "Compile the HTML UI" ON)
 option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTMLUI)" ON)
+# Title Art (docs/specs/S80-title-art-core.md §6.15): the .titleart document, its renderer,
+# text, geometry, effects and runtime (engine/core/titleart, listed by TitleArtSources.cmake).
+# The editor's shared engine has it; OFF compiles nothing under engine/core/titleart.
+option(JASPERENGINE_TITLE_ART "Compile Title Art (engine/core/titleart)" ON)
+# Its sub-options (docs/specs/S81-title-art-runtime.md R51; S86's code behind them): Realtime 3D
+# titles (engine/core/titleart/three_d/) and their runtime mesher (dynamic 3D text). The prebuilt
+# variants with the module carry both; a Compile build turns them off when its shipped titles
+# need neither (ModuleUsage).
+include(CMakeDependentOption)
+cmake_dependent_option(JASPERENGINE_TITLE_ART_3D "Compile Realtime 3D titles (engine/core/titleart/three_d)" ON "JASPERENGINE_TITLE_ART" OFF)
+cmake_dependent_option(JASPERENGINE_TITLE_ART_MESHER "Compile the runtime mesher of 3D titles (dynamic 3D text)" ON "JASPERENGINE_TITLE_ART_3D" OFF)
 # Voxel Volumes (docs/specs/T6-voxel-volumes.md): bounded smooth voxel terrain, Transvoxel LOD, destruction.
 # A player variant or a Compile build leaves it out when its project cannot reach it.
 option(JASPERENGINE_VOXEL "Compile Voxel Volumes (needs JASPERENGINE_NOISE)" ON)
@@ -1152,6 +1163,9 @@ endif()
 if(JASPERENGINE_SHARED AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO AND JASPERENGINE_RUNTIME_SHADERS))
     message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has every module: JASPERENGINE_HTMLUI, JASPERENGINE_VIDEO and JASPERENGINE_RUNTIME_SHADERS stay ON")
 endif()
+if(JASPERENGINE_SHARED AND NOT JASPERENGINE_TITLE_ART)
+    message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has Title Art: JASPERENGINE_TITLE_ART stays ON")
+endif()
 set(JASPERENGINE_HTMLUI_LIBS "")
 set(JASPERENGINE_VIDEO_LIBS "")
 if(JASPERENGINE_HTMLUI)
@@ -1180,6 +1194,8 @@ add_subdirectory(libs/basisu)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     add_subdirectory(libs/bc7enc_rdo)
     add_subdirectory(libs/astcenc)
+    # the export's font subsetter of Title Art (S81 R50), editor only like the encoders
+    add_subdirectory(libs/harfbuzz/subset)
 endif()
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
@@ -1224,8 +1240,23 @@ if(JASPERENGINE_TRACY)
 endif()
 # SVG images (texture/TextureData, and the HTML UI's)
 add_subdirectory(libs/lunasvg)
-if(JASPERENGINE_HTMLUI)
+# ThorVG: the HTML UI's Lottie and Title Art's coverage masks; Clipper2: Title Art's outline
+# offsets (docs/specs/S80-title-art-core.md §6.15)
+if(JASPERENGINE_HTMLUI OR JASPERENGINE_TITLE_ART)
     add_subdirectory(libs/thorvg)
+endif()
+set(JASPERENGINE_TITLE_ART_LIBS "")
+if(JASPERENGINE_TITLE_ART)
+    # 2D physics' tilemap colliders may have added it already (JASPERENGINE_PHYSICS_LIBS)
+    if(NOT TARGET clipper2)
+        add_subdirectory(libs/clipper2)
+    endif()
+    set(JASPERENGINE_TITLE_ART_LIBS clipper2)
+    if(NOT JASPERENGINE_HTMLUI)
+        list(APPEND JASPERENGINE_TITLE_ART_LIBS thorvg)
+    endif()
+endif()
+if(JASPERENGINE_HTMLUI)
     add_subdirectory(libs/rmlui)
     # the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
     add_subdirectory(libs/lexbor)
@@ -1279,7 +1310,7 @@ if(JASPERENGINE_VIDEO)
 endif()
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS}
+    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_TITLE_ART_LIBS}
     ${jasperengineQuietVideoLibs} ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -1323,9 +1354,10 @@ if(JASPERENGINE_VIDEO)
 endif()
 jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
-    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
-    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
+    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc harfbuzz-subset)
+    target_compile_options(harfbuzz-subset PRIVATE ${EXTERNAL_WARNING_FLAG})
 endif()
 if(JASPERENGINE_RUNTIME_SHADERS)
     # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
@@ -1675,6 +1707,7 @@ set(JASPERENGINE_SRCS
     core/object/Points.cpp
     core/object/Primitive.cpp
     core/object/Sprite.cpp
+    core/object/TitleArt.cpp
     core/object/Terrain.cpp
     core/object/TerrainEdit.cpp
     core/object/TerrainOpsJson.cpp
@@ -1801,6 +1834,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ParticleClassesLua.cpp
     core/script/binding/FoliageLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
+    core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
@@ -1841,6 +1875,12 @@ set(JASPERENGINE_SRCS
     core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/TitleArtSystem.cpp
+    core/subsystem/TitleArtSystemAnimation.cpp
+    core/titleanim/TitleAnimTypes.cpp
+    core/titleanim/TitleAnimSampling.cpp
+    core/titleanim/TitleAnimDataIO.cpp
+    core/titleanim/TitleAnimPlayer.cpp
     core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1946,6 +1986,8 @@ set(JASPERENGINE_SRCS
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
+    core/util/TitleArtBakeInfo.cpp
+    core/util/TitleArtLanguage.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp
@@ -2033,6 +2075,15 @@ else()
     list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
         "^core/(htmlui/|debug/DebugOverlayResources|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
     list(APPEND JASPERENGINE_SRCS core/htmlui/HtmlUIClock.cpp)
+endif()
+# Title Art (S80-S87): the module's sources, globbed per directory
+if(JASPERENGINE_TITLE_ART)
+    include(core/titleart/TitleArtSources.cmake)
+    include(core/titleart/three_d/Title3DSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TITLE_ART_SRCS})
+else()
+    # S81 R51: without the module every title shows its bake (the UIDocumentSystemNone precedent)
+    list(APPEND JASPERENGINE_SRCS core/subsystem/TitleArtRuntimeNone.cpp)
 endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
@@ -2189,6 +2240,11 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+if(JASPERENGINE_TITLE_ART_SRCS)
+    jasperengine_skip_unity_build(
+        REASON "the Title Art sources: several streams' per-file helper sets with the same names"
+        SOURCES ${JASPERENGINE_TITLE_ART_SRCS})
+endif()
 if(JASPERENGINE_VOXEL)
     jasperengine_skip_unity_build(
         REASON "the voxel sources build with their own floating-point flags, and include the Transvoxel tables"
@@ -2278,6 +2334,9 @@ target_compile_definitions(jasperengine
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
+        JASPERENGINE_TITLE_ART=$<BOOL:${JASPERENGINE_TITLE_ART}>
+        JASPERENGINE_TITLE_ART_3D=$<BOOL:${JASPERENGINE_TITLE_ART_3D}>
+        JASPERENGINE_TITLE_ART_MESHER=$<BOOL:${JASPERENGINE_TITLE_ART_MESHER}>
         JASPERENGINE_TERRAIN_EDIT=$<BOOL:${JASPERENGINE_TERRAIN_EDIT}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
@@ -2339,6 +2398,9 @@ target_link_libraries(
     ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_VIDEO_LIBS} zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+if(JASPERENGINE_TITLE_ART_LIBS)
+    target_link_libraries(jasperengine PRIVATE ${JASPERENGINE_TITLE_ART_LIBS})
+endif()
 if(JASPERENGINE_NAVIGATION)
     target_link_libraries(jasperengine PRIVATE recastnavigation)
 endif()
@@ -2484,6 +2546,8 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
         # the vector libraries (hidden visibility too): LunaSVG/plutovg for SVG, ThorVG for Lottie
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
+        # Clipper2 (tilemap colliders, Title Art's outline offsets; hidden visibility too: Clipper2Lib::)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libclipper2.a")
         # the HTML parser of the compat layer (hidden visibility too; C, so lxb_*/lexbor_* symbols)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
         # the <video> decoders (hidden visibility too: dav1d_*, opus_*, mkvparser::)

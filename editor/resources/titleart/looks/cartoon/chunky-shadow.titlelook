@@ -1,0 +1,95 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/chunky-shadow",
+  "revision": 1,
+  "name": {
+    "en": "Chunky Shadow",
+    "ja": "ぶあつい影"
+  },
+  "description": {
+    "en": "Flat yellow face in a thick dark brown outline, stacked into a solid dark brown long shadow.",
+    "ja": "太い焦げ茶の縁取りの平らな黄色の面、焦げ茶の厚い長い影を積み重ねる。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "yellow",
+    "long-shadow",
+    "cartoon",
+    "bold",
+    "flat",
+    "chunky"
+  ],
+  "synonyms": {
+    "en": [
+      "block shadow",
+      "3d shadow",
+      "drop block",
+      "retro cartoon"
+    ],
+    "ja": [
+      "影",
+      "ロングシャドウ",
+      "黄色",
+      "太字",
+      "kage",
+      "rongu shadō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "potta-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#ffd000"
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#3a1a00"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "extrude",
+      "params": {
+        "angle": 45,
+        "length": 18,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#3a1a00"
+            },
+            {
+              "pos": 1,
+              "color": "#3a1a00"
+            }
+          ]
+        },
+        "shading": 0,
+        "edge": 0
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

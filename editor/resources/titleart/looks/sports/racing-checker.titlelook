@@ -1,0 +1,115 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/racing-checker",
+  "revision": 1,
+  "name": {
+    "en": "Racing Checker",
+    "ja": "レーシングチェッカー"
+  },
+  "description": {
+    "en": "Chrome ramp face with a gloss band, a black and white checkered band and a black outline, over horizontal speed lines.",
+    "ja": "光沢の帯付きのクロームのランプの面、白黒の市松の帯、黒い外縁、背後の水平なスピード線。"
+  },
+  "family": "sports",
+  "tags": [
+    "racing",
+    "checker",
+    "chrome",
+    "speed",
+    "sports",
+    "motorsport"
+  ],
+  "synonyms": {
+    "en": [
+      "chequered flag",
+      "grand prix",
+      "race",
+      "finish line"
+    ],
+    "ja": [
+      "レース",
+      "チェッカーフラッグ",
+      "市松",
+      "スピード",
+      "rēsu",
+      "ichimatsu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "teko",
+    "ja": "dela-gothic-one",
+    "variations": {
+      "wght": 700
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#8a94a0"
+            },
+            {
+              "pos": 1,
+              "color": "#e8ecf0"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 4,
+        "material": {
+          "pattern": {
+            "kind": "checker",
+            "scale": 2.5
+          }
+        }
+      },
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "speed_lines",
+      "preset": "flow_h",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -9,6 +9,7 @@
 #include "render/preview/ModelRender.h"
 #include "render/preview/PrefabRender.h"
 #include "pose/PoseThumbnails.h"
+#include "render/preview/TitleArtPreviewRender.h"
 #include "organisation/SavedSearchRows.h"
 #include "asset/AssetClipboard.h"
 #include "window/AssetCreateMenu.h"
@@ -63,7 +64,8 @@ namespace jasperengine::editor {
         PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
         PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
-        TILESET             // .tileset (the Tileset Editor; a thumbnail of its tiles)
+        TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
+        TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
     };
 
     struct FileEntry {
@@ -191,6 +193,9 @@ namespace jasperengine::editor {
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
         std::vector<uint8_t> vertexAnimationIconPixels;
+        // a "T" over a rim for .titleart files (S80 §6.13)
+        Texture titleArtIcon;
+        std::vector<uint8_t> titleArtIconPixels;
         // the Animator assets' icons (S21): a state graph, a figure, a sectioned strip
         Texture animatorControllerIcon;
         std::vector<uint8_t> animatorControllerIconPixels;
@@ -384,6 +389,10 @@ namespace jasperengine::editor {
         PoseAssetThumbnailer poseThumbnailer;
         std::queue<ThumbnailRequest> poseThumbnailQueue;
         void processPoseThumbnails();
+        // .titleart thumbnails: the fresh main output, else a render through TitlePreviewQueue (main thread)
+        TitleArtThumbnailer titleArtThumbnailer{0x50524f4a};
+        std::queue<ThumbnailRequest> titleArtThumbnailQueue;
+        void processTitleArtThumbnails();
         // The prefab files each prefab depends on, read again when its own file changes
         struct PrefabDependencies {
             std::filesystem::file_time_type writeTime{};
@@ -612,6 +621,8 @@ namespace jasperengine::editor {
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
         void assetsCreateShakePreset(const fs::path& directory);
+        // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
+        void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place

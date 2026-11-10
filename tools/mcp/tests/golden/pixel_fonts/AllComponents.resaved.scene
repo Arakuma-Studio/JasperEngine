@@ -2931,3 +2931,18 @@ entities:
         contactEvents: false
         sensorEvents: true
         enableHitEvents: true
+  - type: Entity
+    entity: 1104
+    name: TitleArtRendererComponent
+    components:
+      transform:
+        position: [103, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      titleart:
+        enabled: true

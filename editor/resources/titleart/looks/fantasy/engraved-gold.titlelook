@@ -1,0 +1,205 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/engraved-gold",
+  "revision": 1,
+  "name": {
+    "en": "Engraved Gold",
+    "ja": "彫金ゴールド"
+  },
+  "description": {
+    "en": "Banded gold face with a gold finish, a cove bevel and an inner shadow that read as engraving, a dark keyline, a hammered antique bronze frame and a dark base below.",
+    "ja": "金の仕上げ、彫りに見えるコーブベベルと内側の影を持つ帯状の金の面、暗い縁、槌目のアンティークブロンズの枠、下にずらした暗い台。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "gold",
+    "engraved",
+    "bronze",
+    "fantasy",
+    "medieval",
+    "bevel"
+  ],
+  "synonyms": {
+    "en": [
+      "carved gold",
+      "royal gold",
+      "treasure",
+      "inscription"
+    ],
+    "ja": [
+      "彫金",
+      "金",
+      "王家",
+      "財宝",
+      "chōkin",
+      "kin"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff6d0"
+            },
+            {
+              "pos": 0.3,
+              "color": "#ffd050"
+            },
+            {
+              "pos": 0.5,
+              "color": "#a05a00"
+            },
+            {
+              "pos": 0.62,
+              "color": "#ffc848"
+            },
+            {
+              "pos": 1,
+              "color": "#fff0b0"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "cove",
+        "size": 2.5,
+        "depth": 4
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "amount": 0.85
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#2a1404"
+          }
+        }
+      },
+      {
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#c89050"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#6a3a10"
+                },
+                {
+                  "pos": 1,
+                  "color": "#b07a3a"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1,
+            "depth": 4
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#1a0a02"
+                },
+                {
+                  "pos": 0.3,
+                  "color": "#5a2c0c"
+                },
+                {
+                  "pos": 0.6,
+                  "color": "#b0682a"
+                },
+                {
+                  "pos": 0.85,
+                  "color": "#e8b070"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff0d0"
+                }
+              ]
+            },
+            "amount": 0.6
+          },
+          "texture": {
+            "kind": "hammered",
+            "amount": 0.5,
+            "target": "surface"
+          }
+        }
+      },
+      {
+        "width": 2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "color": "#140800"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "inner_shadow",
+      "params": {
+        "distance": 3,
+        "size": 3
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

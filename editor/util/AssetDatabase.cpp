@@ -23,6 +23,7 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/VertexAnimation.h"
 #include "animation/AnimatorAssetIO.h"
+#include "titleart/TitleArtIO.h"
 #include "graph/Graph.h"
 #include "yaml-cpp/yaml.h"
 
@@ -246,7 +247,8 @@ namespace {
         return out;
     }
 
-    // .anim clips, .vat Vertex Animations and the Animator's .controller / .mask / .montage files are JSON: their GUID is the top-level "guid" member
+    // .anim clips, .vat Vertex Animations, the Animator's .controller / .mask / .montage files and
+    // .titleart documents are JSON: their GUID is the top-level "guid" member
     // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
     bool isSpriteAtlasFile(const fs::path& path) {
         return SpriteSheetSources::isAtlasPath(path.string());
@@ -255,7 +257,32 @@ namespace {
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
                editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isProceduralMaterialFile(path.string()) ||
-               isSpriteAtlasFile(path);
+               isSpriteAtlasFile(path) || editor::Util::isTitleArtFile(path.string());
+    }
+
+    // a Title Art document with "formerGuids" set (an unknown member to its reader, written back)
+    // and that GUID: written canonically again; false for a text that is not one
+    bool withTitleArtIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
+        // a newer version is a valid document this build does not decode: only its GUID changes
+        if (!parsed.ok && parsed.error.code == "version_newer" && formerGuids.empty()) return anim::replaceClipGuid(text, guid.str());
+        if (!parsed.ok) return false;
+        titleart::Json& root = parsed.doc.root;
+        if (formerGuids.empty() && !root.contains("formerGuids")) {
+            return anim::replaceClipGuid(text, guid.str());
+        }
+        root.erase("formerGuids");
+        if (!formerGuids.empty()) {
+            std::vector<Guid> sorted = formerGuids;
+            std::sort(sorted.begin(), sorted.end());
+            sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+            titleart::Json list = titleart::Json::array();
+            for (const Guid& former : sorted) list.push_back(former.str());
+            root["formerGuids"] = list;
+        }
+        root["guid"] = guid.str();
+        text = titleart::writeTitleArt(parsed.doc);
+        return true;
     }
 
     // the Animator asset text parses (its writer is what the identity rewrite uses)
@@ -309,6 +336,10 @@ namespace {
         }
         if (editor::Util::isAnimatorAssetFile(path.string())) {
             return animatorAssetParses(text);
+        }
+        if (editor::Util::isTitleArtFile(path.string())) {
+            const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
+            return parsed.ok || parsed.error.code == "version_newer";
         }
         if (editor::Util::isProceduralMaterialFile(path.string())) {
             graph::LoadReport report;
@@ -400,6 +431,9 @@ namespace {
         // the Animator's assets (S21): their own readers and writers
         if (editor::Util::isAnimatorAssetFile(path.string()) || !anim::animatorAssetKind(text).empty()) {
             return withAnimatorAssetIdentity(text, guid, formerGuids);
+        }
+        if (editor::Util::isTitleArtFile(path.string())) {
+            return withTitleArtIdentity(text, guid, formerGuids);
         }
         if (editor::Util::isVertexAnimationFile(path.string())) {
             vat::VatParseResult parsed = vat::parseVat(text);

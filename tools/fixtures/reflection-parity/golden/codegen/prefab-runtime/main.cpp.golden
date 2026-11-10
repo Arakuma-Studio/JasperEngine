@@ -111,6 +111,7 @@ JASPERENGINE_INIT void init() {
     Http::setInsecureHttpAllowed(false);
     Engine::setVSyncCount(1);
     Engine::setTargetFrameRate(-1);
+    TitleArtLanguage::setProjectDefault("en");
     Screen::initialize(ScreenOrientation::AutoRotation, 0x1A, true);
 #if defined(_WIN32)
     System::setApplicationInfo({"PrefabRuntime", "com.yourcompany.project", "1.0", 1});

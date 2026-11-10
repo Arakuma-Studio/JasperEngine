@@ -1,0 +1,124 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/stadium-lights",
+  "revision": 1,
+  "name": {
+    "en": "Stadium Lights",
+    "ja": "スタジアムライト"
+  },
+  "description": {
+    "en": "White to silver face with a gloss band in a thick dark outline, with glints, a streak flare from the upper left and white god rays behind.",
+    "ja": "光沢の帯付きの白から銀の面と太い暗い縁取り、キラキラ、左上からの光条のフレア、背後の白い光芒。"
+  },
+  "family": "sports",
+  "tags": [
+    "stadium",
+    "lights",
+    "white",
+    "flare",
+    "sports",
+    "rays"
+  ],
+  "synonyms": {
+    "en": [
+      "floodlights",
+      "night game",
+      "arena",
+      "spotlight"
+    ],
+    "ja": [
+      "スタジアム",
+      "照明",
+      "ナイター",
+      "光芒",
+      "sutajiamu",
+      "naitā"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "anton",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#c8d0dc"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#10141c"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    },
+    {
+      "type": "lens_flare",
+      "preset": "streak",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "position": [-260, 100]
+      },
+      "effects": []
+    },
+    {
+      "type": "backlight",
+      "preset": "god_rays",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "color": "#ffffff",
+        "outer_color": "#c8d8ff"
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

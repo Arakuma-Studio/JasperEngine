@@ -1,0 +1,121 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "wa/gold-leaf-washi",
+  "revision": 1,
+  "name": {
+    "en": "Gold Leaf on Washi",
+    "ja": "金箔和紙"
+  },
+  "description": {
+    "en": "Gold leaf face with a crumpled leaf texture pushed through a gold ramp, a thin vermilion line, a dark sumi frame and a soft brown shadow.",
+    "ja": "しわのある箔の質感を金のランプに通した金箔の面、細い朱の線、墨色の枠、柔らかい茶色の影。"
+  },
+  "family": "wa",
+  "tags": [
+    "gold",
+    "leaf",
+    "washi",
+    "japanese",
+    "vermilion",
+    "traditional"
+  ],
+  "synonyms": {
+    "en": [
+      "gold foil",
+      "gilded paper",
+      "kinpaku",
+      "japanese gold"
+    ],
+    "ja": [
+      "金箔",
+      "和紙",
+      "朱",
+      "和風",
+      "kinpaku",
+      "washi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "zen-old-mincho-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#e8c060"
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "amount": 0.5
+      },
+      "texture": {
+        "kind": "crumple",
+        "amount": 0.6
+      }
+    },
+    "rims": [
+      {
+        "width": 1.4,
+        "material": {
+          "fill": {
+            "color": "#c01a10"
+          }
+        }
+      },
+      {
+        "width": 3.8,
+        "material": {
+          "fill": {
+            "color": "#1a1208"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 18,
+        "color": "#2a1a00",
+        "opacity": 0.5
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

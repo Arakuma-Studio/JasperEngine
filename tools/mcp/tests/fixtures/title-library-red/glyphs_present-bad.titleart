@@ -1,0 +1,55 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "84000000000000000000000000000000",
+  "canvas": {
+    "width": 1280,
+    "height": 640
+  },
+  "layers": [
+    {
+      "id": "00000001",
+      "type": "text",
+      "name": "Title",
+      "text": "HERO大",
+      "size": 200,
+      "transform": {
+        "position": [
+          0,
+          0
+        ]
+      },
+      "style": {
+        "face": {
+          "fill": {
+            "kind": "solid",
+            "color": "#ffffff"
+          }
+        },
+        "rims": [
+          {
+            "width": 6,
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#000000"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "exposed": [
+    {
+      "name": "text",
+      "type": "text",
+      "targets": [
+        {
+          "layer": "00000001",
+          "field": "text"
+        }
+      ]
+    }
+  ]
+}

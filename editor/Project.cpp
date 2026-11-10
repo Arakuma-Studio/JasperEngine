@@ -5,6 +5,7 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -18,6 +19,7 @@
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "subsystem/TilemapSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -48,6 +50,8 @@
 #include "component/AnimatorComponent.h"
 #include "pool/AnimatorAssetPool.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -3500,6 +3504,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
+    settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3523,6 +3528,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    // S87: a Play starts in the device's language with the project's default
+    TitleArtLanguage::setGlobal("");
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -6433,6 +6441,10 @@ void editor::Project::resetConfigs() {
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
     VatDocument::closeAll();
+    // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
+    TitleArtDocument::closeAll();
+    TitleArtAutoBake::get().reset();
+    TitleArtRenderHost::editor().reset();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();
@@ -6669,6 +6681,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<UISystem>()->setEditMode(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
+    // Title Art's Live Time runs in Play only (S81 R38) and Edit mode takes the editor's frame budget
+    if (auto titles = scene->findSystem<TitleArtSystem>()) titles->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);

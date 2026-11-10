@@ -1,0 +1,83 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/title-card-brush",
+  "revision": 1,
+  "name": {
+    "en": "Title Card Brush",
+    "ja": "タイトルカードの筆"
+  },
+  "description": {
+    "en": "Eroded red face in a wide white border over a red brush swirl behind, like an episode title card.",
+    "ja": "欠けた赤い面と太い白ふち、背後に赤い筆の渦、話数タイトルカードのように。"
+  },
+  "family": "anime",
+  "tags": [
+    "brush",
+    "red",
+    "title-card",
+    "anime",
+    "japanese",
+    "eroded"
+  ],
+  "synonyms": {
+    "en": [
+      "episode title",
+      "ink brush",
+      "calligraphy",
+      "swirl"
+    ],
+    "ja": [
+      "筆",
+      "サブタイトル",
+      "赤",
+      "毛筆",
+      "fude",
+      "sabutaitoru"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "reggae-one",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#e01020"
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2
+      }
+    ],
+    "erode": {
+      "enabled": true,
+      "amount": 0.3
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "brush_swirl",
+      "preset": "red",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

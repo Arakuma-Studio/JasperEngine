@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "window/TitleArtInterchangeWindows.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
 #if JASPERENGINE_TERRAIN_WORLD
@@ -45,6 +46,9 @@
 #include "window/ProjectWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/TitleDesignerWindow.h"
+#include "window/InspectorWindowTitleArt.h"
+#include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
@@ -163,12 +167,18 @@
 #include "shader/ShaderBuilder.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/TitleArtSystem.h"
+#include "titleart/runtime/TitleArtRuntimeEditor.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
+#include "titleart/TitleArtBaker.h"
+#include "util/ProjectChecks.h"
+#include "titleart/TitleArtDocument.h"
+#include "titleart/TitlePreviewQueue.h"
 #include "particles/ParticleEffectPreview.h"
 #include "pixelart/fx/EffectCapture.h"
 #include "procmat/ProceduralRun.h"
@@ -291,6 +301,16 @@ editor::App::App(){
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
+    titleDesignerWindow = new TitleDesignerWindow(&project);
+    // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
+    InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
+        std::string error;
+        if (!titleDesignerWindow->open(document, &error)) registerAlert("Title Designer", error);
+    });
+    InspectorWindowTitleArt::setOpenInContext([this](const std::filesystem::path& document, uint32_t sceneId, Entity instance) {
+        std::string error;
+        if (!titleDesignerWindow->openInContextOf(document, sceneId, instance, &error)) registerAlert("Title Designer", error);
+    });
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
@@ -750,6 +770,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.delete", "Delete"),
         menuSeparator(),
         catalogItem("assets.import"),
+        catalogItem("assets.importTitleArt"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
         catalogItem("assets.importSoundEssentials"),
@@ -848,6 +869,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
+        catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1183,6 +1205,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
             break;
+        case AppMenuCommand::ToggleTitleDesigner:
+            titleDesignerWindow->setOpen(true);
+            titleDesignerWindow->requestFocus();
+            break;
         case AppMenuCommand::ToggleSpritePreview:
             spritePreviewWindow->open();
             break;
@@ -1399,6 +1425,17 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleMaximizeOnPlay:
             gameWindow->toggleMaximizeOnPlay();
+            break;
+        case AppMenuCommand::TitleArtBakeAll:
+            // every .titleart of the assets folder (or the selected ones), in the background
+            if (!project.getProjectPath().empty()) {
+                for (const std::filesystem::path& document : ProjectChecks::findProjectFiles(project.getAssetsPath(), {titleart::TITLE_ART_EXTENSION})) {
+                    TitleArtAutoBake::get().requestBake(&project, document, {}, false);
+                }
+            }
+            break;
+        case AppMenuCommand::AssetsCreateTitleArt:
+            projectWindow->createAsset(AssetCreateKind::TitleArt, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AddCameraShakerToMainCamera: {
             SceneProject* scene = project.getSelectedScene();
@@ -2364,6 +2401,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Title Designer: preview-first, beside Scene and Game (S82 R2)
+    ImGui::DockBuilderDockWindow(TitleDesignerWindow::WINDOW_NAME, dock_id_middle_top);
     // a graph wants the width of the views
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
@@ -2622,6 +2661,21 @@ void editor::App::setup() {
     pixelart::fx::EffectCapture::setFrameRequester([this]() { requestRedraw(); });
     procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
     ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
+
+    // Title Art (S80 R6, R34, R50): a changed document (commit, undo, redo, outside edit, a font
+    // or image it reads) rebakes with Auto Bake and its thumbnail is drawn again
+    TitleArtDocument::setChangedHook([this](const std::vector<std::filesystem::path>& paths) {
+        if (project.getProjectPath().empty()) return;
+        for (const std::filesystem::path& path : paths) {
+            TitleArtAutoBake::get().documentChanged(&project, path);
+            if (projectWindow) projectWindow->notifyResourceFileChanged(path);
+            // S81 R23: its Realtime and Glyph Atlas instances (Edit and Play) render again
+            std::error_code relativeError;
+            const std::filesystem::path relative = std::filesystem::relative(path, project.getProjectPath(), relativeError);
+            if (!relativeError) TitleArtSystem::notifyTitleChanged(relative.generic_string());
+        }
+        requestRedraw();
+    });
 
     // Initialize application settings
     initializeSettings();
@@ -3166,6 +3220,9 @@ void editor::App::show(){
     spritePreviewWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
+    titleDesignerWindow->show();
+    // S87: Import Title Art, its report and the Title Designer's Export
+    drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();
@@ -4498,6 +4555,19 @@ void editor::App::engineRender(){
     if (ProceduralMaterialWindow::processFrame()) {
         requestRedraw();
     }
+    // the Title Designer's canvas (a private scene; it draws only on change, S82 R66)
+    editor::titledesigner::TitleCanvasView::processFrame();
+    // Title Art: every preview of the editor within one budget (S80 R45), then Auto Bake's slice
+    // (the budget is Preferences > Title Designer > Preview Budget, S82 R67)
+    TitlePreviewQueue::editor().runFrame(titleDesignerWindow->previewBudgetMs());
+    if (titleDesignerWindow->needsFrames()) requestRedraw();
+    if (!project.getProjectPath().empty()) TitleArtAutoBake::get().tick(&project);
+    // S81: the scenes' Realtime and Glyph Atlas titles render with the project's assets and
+    // settings; Edit mode keeps drawing until they are ready (R24)
+    const bool titlesRendering = syncTitleArtRuntime(&project);
+    if (TitlePreviewQueue::editor().stats().queued > 0 || !TitleArtAutoBake::get().idle() || titlesRendering) {
+        requestRedraw();
+    }
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -5393,6 +5463,7 @@ void editor::App::engineViewDestroyed(){
     // session's stop fires too)
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
+    editor::titledesigner::TitleCanvasView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
     pixelart::fx::EffectCapture::releaseGpu();
     procmat::ProceduralRun::releaseGpu();
@@ -5499,6 +5570,7 @@ void editor::App::prepareForProjectSwitch() {
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
+    titleDesignerWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
     spritePreviewWindow->resetForProjectSwitch();
@@ -6160,6 +6232,10 @@ editor::SpriteNormalsWindow* editor::App::getSpriteNormalsWindow() const{
     return spriteNormalsWindow;
 }
 
+editor::TitleDesignerWindow* editor::App::getTitleDesignerWindow() const{
+    return titleDesignerWindow;
+}
+
 editor::SpriteNormalsWatcher* editor::App::getSpriteNormalsWatcher() const{
     return spriteNormalsWatcher;
 }
@@ -6553,6 +6629,7 @@ void editor::App::applyPanelVisibilitySettings() {
     graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     pixelArtCleanupWindow->setOpen(visibility.pixelArtCleanup);
+    titleDesignerWindow->restoreFromSettings();
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);

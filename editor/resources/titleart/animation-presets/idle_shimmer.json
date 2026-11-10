@@ -1,0 +1,77 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "idle_shimmer",
+  "name": "Idle Shimmer",
+  "group": "loop",
+  "role": "idle",
+  "duration": 3,
+  "wrap": "loop",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "A light band sweeps across now and then, with twinkling glints.",
+  "params": [
+    {
+      "name": "sweep_time",
+      "label": "Sweep Time (s)",
+      "type": "number",
+      "default": 0.8,
+      "min": 0.1,
+      "max": 10
+    },
+    {
+      "name": "angle",
+      "label": "Angle (deg)",
+      "type": "number",
+      "default": 30,
+      "min": -80,
+      "max": 80
+    },
+    {
+      "name": "glints",
+      "label": "Glints",
+      "type": "bool",
+      "default": true
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "live.sweep_position",
+      "keys": [
+        [
+          0,
+          0,
+          "sine_in_out"
+        ],
+        [
+          "sweep_time",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "live.sweep_angle",
+      "keys": [
+        [
+          0,
+          "angle",
+          "step"
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "live.glint_amount",
+      "when": "glints",
+      "drive": {
+        "from": 0.6,
+        "to": 1,
+        "cycles": 1,
+        "ease": "sine_in_out"
+      }
+    }
+  ],
+  "markers": []
+}

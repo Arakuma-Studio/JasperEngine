@@ -30,6 +30,8 @@ namespace {
         {editor::DepEdgeKind::LuaRequire, "lua_require"},
         {editor::DepEdgeKind::ShaderInclude, "shader_include"},
         {editor::DepEdgeKind::ModelUri, "model_uri"},
+        {editor::DepEdgeKind::TitleArtAsset, "title_art_asset"},
+        {editor::DepEdgeKind::TitleArtOutput, "title_art_output"},
     };
 
 }

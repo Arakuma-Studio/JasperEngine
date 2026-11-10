@@ -1,0 +1,170 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "forest",
+  "revision": 1,
+  "name": {
+    "en": "Forest",
+    "ja": "森"
+  },
+  "description": {
+    "en": "Matte leaf greens from spring to deep forest, a wood-tan line and a bark-brown frame.",
+    "ja": "若葉から深い森へのつや消しの緑、木の色の線と樹皮の茶の枠。"
+  },
+  "family_hint": [
+    "fantasy",
+    "cartoon"
+  ],
+  "tags": [
+    "green",
+    "nature",
+    "wood",
+    "matte",
+    "earthy"
+  ],
+  "synonyms": {
+    "en": [
+      "woods",
+      "leaf",
+      "jungle",
+      "nature"
+    ],
+    "ja": [
+      "森",
+      "もり",
+      "緑",
+      "mori",
+      "midori"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#e8ffd0",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e8ffd0"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#7ac040"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#2a6a20"
+            },
+            {
+              "pos": 1,
+              "color": "#0a2008"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#6aaf3a",
+        "roughness": 0.7
+      },
+      "shade": "#102008"
+    },
+    "dark": {
+      "fill": {
+        "color": "#0a1404"
+      },
+      "material_3d": {
+        "color": "#0a1404",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#c8a060"
+        },
+        "material_3d": {
+          "color": "#c8a060",
+          "roughness": 0.7
+        },
+        "shade": "#102008"
+      },
+      {
+        "fill": {
+          "color": "#3a2410"
+        },
+        "material_3d": {
+          "color": "#3a2410",
+          "roughness": 0.7
+        },
+        "shade": "#102008"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#0a0a02"
+      },
+      "material_3d": {
+        "color": "#0a0a02",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#071606",
+      "roughness": 0.7
+    }
+  },
+  "face_glow": "#e8ffd0",
+  "glow": "#b0ff80",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#b0ff80"
+      },
+      {
+        "pos": 1,
+        "color": "#529530"
+      }
+    ]
+  },
+  "shadow": "#102008",
+  "glint": "#e8ffd0",
+  "light_ramp": [
+    "#0a2008",
+    "#2a6a20",
+    "#7ac040",
+    "#b0ff80",
+    "#e8ffd0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#c7eca5"
+        },
+        {
+          "pos": 0.55,
+          "color": "#46882b"
+        },
+        {
+          "pos": 1,
+          "color": "#0f2b0c"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#e8ffd0",
+    "#7ac040",
+    "#2a6a20",
+    "#0a2008",
+    "#0a1404",
+    "#3a2410"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

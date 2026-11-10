@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
 #include "cook/BuildReport.h"
@@ -219,6 +220,8 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S87 R25: the Title Art language sets the build leaves out, and the sidecars it rewrites
+        TitleLanguageShipping titleLanguages;
         // S53: the same for models (and the .bin files only they read)
         std::set<std::string> cookedModelSources;
         // S51 R34: the files only bitmap fonts read (sheets, pages, TrueType sources), which ship
@@ -408,6 +411,12 @@ namespace jasperengine::editor {
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
+        // S80 R35: Title Art outputs stale or missing before the textures cook
+        bool prepareTitleArt();
+        // S81: what the build's Realtime and Glyph Atlas titles need at runtime (after copyAssets)
+        bool writeTitleArtRuntime();
+        // the platforms this export builds for (buildPlatformName's names; a source export: all)
+        std::vector<std::string> exportPlatformNames() const;
         bool cookTextures();
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file

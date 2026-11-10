@@ -1,0 +1,95 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/crt-scanline",
+  "revision": 1,
+  "name": {
+    "en": "CRT Scanline",
+    "ja": "ブラウン管スキャンライン"
+  },
+  "description": {
+    "en": "Red to amber gradient face seen through a CRT shadow mask, with a slight chromatic split and an orange glow.",
+    "ja": "ブラウン管のシャドウマスク越しに見る赤から琥珀色のグラデーションの面、わずかな色収差、オレンジのグロー。"
+  },
+  "family": "retro",
+  "tags": [
+    "crt",
+    "scanlines",
+    "retro",
+    "arcade",
+    "orange",
+    "screen"
+  ],
+  "synonyms": {
+    "en": [
+      "arcade monitor",
+      "tube tv",
+      "old screen",
+      "raster"
+    ],
+    "ja": [
+      "ブラウン管",
+      "走査線",
+      "アーケード",
+      "レトロ",
+      "buraunkan",
+      "sōsasen"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "press-start-2p",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff4a2a"
+            },
+            {
+              "pos": 1,
+              "color": "#ffd040"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "scanlines",
+      "params": {
+        "style": "crt",
+        "mask_strength": 0.6
+      }
+    },
+    {
+      "type": "chromatic_aberration",
+      "params": {
+        "amount": 2
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff8a40",
+        "size": 12
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -414,6 +414,66 @@ TEST(AtomicFile, PublishFileOfStreamedTemp){
     EXPECT_FALSE(fs::exists(temp2));
 }
 
+// A streamed write of more than one chunk (S03: same rules as writeFileAtomic)
+TEST(AtomicFile, WriterPublishesThePiecesAtCommit){
+    TestTempDir dir("atomic_writer");
+    const fs::path target = dir.path() / "sub" / "out.bin";
+    const std::string first = payload(io::kWriteChunkSize + 37, 'a');
+    const std::string second = payload(1234, 'b');
+    io::AtomicFileWriter writer;
+    ASSERT_TRUE(writer.open(target));
+    EXPECT_FALSE(fs::exists(target));
+    EXPECT_TRUE(fs::exists(writer.temporaryPath()));
+    ASSERT_TRUE(writer.write(first.data(), first.size()));
+    ASSERT_TRUE(writer.write(second.data(), second.size()));
+    EXPECT_TRUE(writer.commit().written());
+    EXPECT_EQ(TestTempDir::read(target), first + second);
+    EXPECT_TRUE(temporarySiblings(target.parent_path()).empty());
+}
+
+TEST(AtomicFile, WriterDiscardedKeepsTheTarget){
+    TestTempDir dir("atomic_writer");
+    const fs::path target = dir.path() / "out.bin";
+    ASSERT_TRUE(io::writeFileAtomic(target, "before").ok());
+    {
+        io::AtomicFileWriter writer;
+        ASSERT_TRUE(writer.open(target));
+        ASSERT_TRUE(writer.write("after", 5));
+        // no commit: the writer going away must not touch the target
+    }
+    EXPECT_EQ(TestTempDir::read(target), "before");
+    EXPECT_TRUE(temporarySiblings(dir.path()).empty());
+}
+
+TEST(AtomicFile, WriterFailureDropsLaterPiecesAndKeepsTheTarget){
+    TestTempDir dir("atomic_writer");
+    const fs::path target = dir.path() / "out.bin";
+    ASSERT_TRUE(io::writeFileAtomic(target, "before").ok());
+    io::AtomicFileWriter writer;
+    ASSERT_TRUE(writer.open(target));
+    {
+        FaultInjectorGuard guard(failNth("write", 1, std::make_error_code(std::errc::no_space_on_device)));
+        EXPECT_FALSE(writer.write("x", 1));
+    }
+    EXPECT_EQ(writer.result().error, io::WriteError::WriteTemp);
+    EXPECT_FALSE(writer.write("y", 1));
+    EXPECT_FALSE(writer.commit().ok());
+    EXPECT_EQ(TestTempDir::read(target), "before");
+    EXPECT_TRUE(temporarySiblings(dir.path()).empty());
+}
+
+TEST(AtomicFile, WriterKeepsTheFileReadableWhileOpen){
+    TestTempDir dir("atomic_writer");
+    const fs::path target = dir.path() / "out.bin";
+    io::AtomicFileWriter writer;
+    ASSERT_TRUE(writer.open(target));
+    ASSERT_TRUE(writer.write("12345", 5));
+    EXPECT_EQ(TestTempDir::read(writer.temporaryPath()), "12345");
+    writer.discard();
+    EXPECT_FALSE(fs::exists(target));
+    EXPECT_TRUE(temporarySiblings(dir.path()).empty());
+}
+
 TEST(AtomicFile, PublishListenerSeesEveryPublish){
     TestTempDir dir("atomic");
     const fs::path target = dir / "watched.png";

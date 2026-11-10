@@ -28,6 +28,7 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
@@ -93,6 +94,9 @@ void Scene::init(){
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
+    // S81: after the UI's layout (the companions' rects) and the fluids, before Render lends
+    // the titles' images to their Images and Sprites
+    registerSystem<TitleArtSystem>();
     // after the scripts' frame, before RenderSystem converts the frames it hands over
     registerSystem<VideoPlayerSystem>();
     registerSystem<RenderSystem>();
@@ -150,6 +154,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     // every event of every component (ComponentEvents.h), then the physics system's
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){

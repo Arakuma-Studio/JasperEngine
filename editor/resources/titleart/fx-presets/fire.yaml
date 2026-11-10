@@ -1,0 +1,143 @@
+{
+  "presets": [
+    {
+      "id": "behind",
+      "name": "Flames Behind",
+      "aliases": [
+        "flames behind",
+        "fire behind"
+      ],
+      "source": "fire/behind",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "over_edges",
+      "name": "Flames over the Edges",
+      "aliases": [
+        "flames over the edges",
+        "fire over edges"
+      ],
+      "source": "fire/overEdges",
+      "params": {
+        "over_edge": true
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "hot",
+      "name": "Hot Fire (激アツ)",
+      "aliases": [
+        "激アツ fire",
+        "激アツ",
+        "red fire",
+        "hot fire"
+      ],
+      "source": "fire/red",
+      "params": {
+        "height": 120,
+        "width": 22,
+        "turbulence": 70,
+        "spread": 25,
+        "inside": 8,
+        "intensity": 105,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fffbe0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.3,
+              "color": "#ffd000",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.65,
+              "color": "#ff4a00",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#7a0000",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "seed": 7
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "blaze",
+      "name": "Tall Blaze",
+      "aliases": [
+        "tall blaze",
+        "blaze",
+        "bonfire"
+      ],
+      "source": "fire/blaze",
+      "params": {
+        "height": 260,
+        "width": 40,
+        "turbulence": 70,
+        "spread": 30,
+        "inside": 10,
+        "intensity": 90,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fffbe0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.3,
+              "color": "#ffd000",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.65,
+              "color": "#ff4a00",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#7a0000",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "seed": 12
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "zoom_punch",
+  "name": "Zoom Punch",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.35,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Zooms in from small, overshoots and settles (an optional zoom blur).",
+  "params": [
+    {
+      "name": "from_scale",
+      "label": "From Scale",
+      "type": "number",
+      "default": 0.2,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "blur",
+      "label": "Blur",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "adds": [
+    {
+      "id": "blur",
+      "when": "blur",
+      "kind": "effect",
+      "type": "radial_blur",
+      "params": {
+        "type": "zoom",
+        "amount": 0
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.scale",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          "from_scale",
+          "quad_out"
+        ],
+        [
+          "0.7*D",
+          1.15,
+          "sine_in_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "add:blur",
+      "field": "fx:radial_blur.amount",
+      "when": "blur",
+      "keys": [
+        [
+          0,
+          0.6,
+          "quad_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "time": "0.7*D",
+      "name": "onPunch"
+    }
+  ]
+}

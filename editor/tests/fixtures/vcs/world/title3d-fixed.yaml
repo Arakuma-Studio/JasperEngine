@@ -1,0 +1,6 @@
+Title3D:
+  Logo:
+    position: [120, 80, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 120, 80, 0, 1]

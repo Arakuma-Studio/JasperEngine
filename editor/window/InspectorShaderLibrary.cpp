@@ -71,6 +71,9 @@ namespace {
             case BlendMode::SCREEN_PREMULTIPLIED: return "Screen (premultiplied)";
             case BlendMode::MULTIPLY_PREMULTIPLIED: return "Multiply (premultiplied)";
             case BlendMode::SUBTRACT_PREMULTIPLIED: return "Subtract (premultiplied)";
+            case BlendMode::LIGHT_PREMULTIPLIED: return "Light (premultiplied)";
+            case BlendMode::MAX_PREMULTIPLIED: return "Max (premultiplied)";
+            case BlendMode::ERASE_PREMULTIPLIED: return "Erase (premultiplied)";
         }
         return "Alpha";
     }

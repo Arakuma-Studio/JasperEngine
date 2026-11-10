@@ -30,6 +30,8 @@
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
+#   --setprop NAME=VALUE  an Android system property set before each launch (repeatable),
+#                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path)
 #   --golden DIR        check what the screen shows: each run waits for the engine's
 #                       'I/JasperEngine: Engine presented:' line (30 frames presented after the
 #                       ready line), screenshots the device and fails when the screen is black or
@@ -97,6 +99,7 @@ APK="$1"; shift
 EXPECTS=()
 FORBIDS=()
 SCENES=()
+SETPROPS=()
 GOLDEN=""
 ORDERED=0
 EXPECT_NATIVE_CRASH=0
@@ -129,6 +132,9 @@ while [[ $# -gt 0 ]]; do
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
+        --setprop)
+            [[ "$2" =~ ^[A-Za-z0-9_.]+=[A-Za-z0-9_.-]*$ ]] || { echo "android-emulator-test: --setprop takes NAME=VALUE (got $2)" >&2; exit 2; }
+            SETPROPS+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --bundletool) BUNDLETOOL="$2"; shift 2 ;;
@@ -193,7 +199,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
-    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
+    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="${SETPROPS[*]+"${SETPROPS[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
@@ -262,6 +268,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
         fi
         adb shell setprop debug.jasperengine.ready_signal 1
+        for prop in ${SETPROPS:-}; do adb shell setprop "${prop%%=*}" "${prop#*=}"; done
 
         # what the GLES path logs when it goes wrong (NativeEngine, sokol GL, ShaderPool, libEGL)
         GLES_ERRORS="^[A-Z]/JasperEngine: .*(OpenGL error|OPENGL ERRORS|shader compilation failed|shader linking failed|GL_SHADER_COMPILATION_FAILED|GL_SHADER_LINKING_FAILED|framebuffer completeness check failed|GL_FRAMEBUFFER_STATUS|failed to compile at runtime|Shader build failed|Shader resource creation failed|EGL error|SwappyGL_swap failed|\(PANIC\))|^E/libEGL *: call to OpenGL ES API with no current context"

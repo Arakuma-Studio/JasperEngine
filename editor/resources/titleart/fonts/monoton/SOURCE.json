@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/monoton/OFL.txt",
+    "sha256": "585c6d2da8bcd8ffa651e0016f2e992a6891b625143a46a1dacf00699a817d9a",
+    "bytes": 4401
+  },
+  "path": "ofl/monoton/Monoton-Regular.ttf",
+  "sha256": "951c4cea65ffede784a7c9672feec5d329a7e1e12216c42d53ecf36c90d04dea",
+  "bytes": 51604
+}

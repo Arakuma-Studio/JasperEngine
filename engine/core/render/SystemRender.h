@@ -207,6 +207,9 @@ namespace jasperengine{
         static bool isGpuCreationIdle();
         // updates until idle or the timeout (tests, the benchmark): true when idle
         static bool waitGpuCreationIdle(double timeoutMs);
+        // the GPU is a software rasterizer (llvmpipe, softpipe, SwiftShader): what is drawn costs
+        // CPU time, the main thread's when it waits for it
+        static bool isSoftwareGpu();
         static void resetGpuCreationMax();
         // applied at setup (the mode); the budget and warm draws also at once
         static void setShaderCreationSettings(const ShaderCreationSettings& settings);

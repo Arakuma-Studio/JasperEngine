@@ -1,0 +1,343 @@
+{
+  "templates": [
+    {
+      "id": "scifi/hud-title",
+      "name": {
+        "en": "HUD Title (hologram ring)",
+        "ja": "HUD タイトル (ホログラムの輪)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: cyan HUD letters with their hologram ring and a light-guide subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：ホログラムの輪をまとうシアンの HUD 文字、ライトガイドのサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "scifi",
+      "tags": [
+        "title",
+        "subtitle",
+        "hud",
+        "hologram",
+        "cyan",
+        "interface",
+        "futuristic"
+      ],
+      "synonyms": {
+        "en": [
+          "system boot",
+          "computer screen",
+          "cockpit"
+        ],
+        "ja": [
+          "システム起動",
+          "コンピューター画面",
+          "コックピット"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "SYSTEM ONLINE",
+          "ja": "システム起動"
+        },
+        "subtitle": {
+          "en": "ACCESS GRANTED",
+          "ja": "アクセス許可"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 150,
+            "transform.position": [
+              0,
+              30
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#06203a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#01060e",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "ACCESS GRANTED",
+            "size": 64,
+            "transform.position": [
+              0,
+              -120
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "scifi/hud-cyan",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "scifi/contour-light-guide",
+          "apply_font": true
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ],
+      "background": "dark"
+    },
+    {
+      "id": "scifi/mission-complete",
+      "name": {
+        "en": "Mission Complete (3D visor chrome)",
+        "ja": "任務完了 (3D バイザークローム)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: 3D visor-chrome letters with anamorphic light streaks over them and a halo shockwave behind; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：3D バイザークロームの文字、その上にアナモルフィックの光の筋、背後にハローの衝撃波。背景はガイドレイヤー。"
+      },
+      "family": "scifi",
+      "tags": [
+        "banner",
+        "3d",
+        "chrome",
+        "streaks",
+        "shockwave",
+        "victory",
+        "futuristic"
+      ],
+      "synonyms": {
+        "en": [
+          "mission clear",
+          "stage clear",
+          "success"
+        ],
+        "ja": [
+          "ミッションクリア",
+          "ステージクリア",
+          "成功"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "MISSION COMPLETE",
+          "ja": "任務完了"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 140,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a1430",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#02040a",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "shockwave",
+          "name": "Halo",
+          "preset": "halo",
+          "after": "Backdrop",
+          "values": {
+            "gen.radius": 700,
+            "gen.squash": 30
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "scifi/visor-chrome-3d",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "light_streaks",
+          "name": "Light Streaks",
+          "before": "Title",
+          "preset": "anamorphic"
+        }
+      ]
+    },
+    {
+      "id": "scifi/countdown",
+      "name": {
+        "en": "Countdown (light guide)",
+        "ja": "カウントダウン (ライトガイド)"
+      },
+      "description": {
+        "en": "A 1024 × 512 timer: dark digits outlined with glowing cyan light-guide contours; the backdrop is a guide layer.",
+        "ja": "1024 × 512 のタイマー：シアンに光る輪郭線をまとう暗い数字。背景はガイドレイヤー。"
+      },
+      "family": "scifi",
+      "tags": [
+        "counter",
+        "digits",
+        "timer",
+        "countdown",
+        "cyan",
+        "contour"
+      ],
+      "synonyms": {
+        "en": [
+          "timer",
+          "clock",
+          "time limit"
+        ],
+        "ja": [
+          "タイマー",
+          "時計",
+          "制限時間"
+        ]
+      },
+      "canvas": [
+        1024,
+        512
+      ],
+      "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "00:59",
+          "ja": "00:59"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 230,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#06203a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#01060e",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "scifi/contour-light-guide",
+          "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "style.rims[0].material.fill.color": "#16205a",
+            "style.rims[1].material.fill.color": "#2a9cff"
+          }
+        }
+      ]
+    }
+  ]
+}

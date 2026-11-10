@@ -1,0 +1,84 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/varsity",
+  "revision": 1,
+  "name": {
+    "en": "Varsity",
+    "ja": "バーシティ"
+  },
+  "description": {
+    "en": "Flat varsity red face, a white band, a navy frame and a navy base below, like college lettering.",
+    "ja": "平らなバーシティレッドの面、白い帯、紺の枠、下にずらした紺の台、カレッジレタリングのように。"
+  },
+  "family": "sports",
+  "tags": [
+    "varsity",
+    "college",
+    "red",
+    "navy",
+    "sports",
+    "classic"
+  ],
+  "synonyms": {
+    "en": [
+      "letterman",
+      "campus",
+      "team name",
+      "athletic"
+    ],
+    "ja": [
+      "カレッジ",
+      "スポーツ",
+      "チーム",
+      "赤",
+      "karejji",
+      "chīmu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "archivo-black",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#c8102e"
+      }
+    },
+    "rims": [
+      {
+        "width": 2
+      },
+      {
+        "material": {
+          "fill": {
+            "color": "#0a1f44"
+          }
+        }
+      },
+      {
+        "width": 1.5,
+        "offset": [0, -1.5],
+        "material": {
+          "fill": {
+            "color": "#0a1f44"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

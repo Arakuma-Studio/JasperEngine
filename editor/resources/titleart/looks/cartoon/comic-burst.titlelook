@@ -1,0 +1,104 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/comic-burst",
+  "revision": 1,
+  "name": {
+    "en": "Comic Burst",
+    "ja": "コミックバースト"
+  },
+  "description": {
+    "en": "Yellow to orange face printed with halftone dots, inside a black line, a wide white band and a black outline.",
+    "ja": "ハーフトーンの網点を刷った黄色からオレンジの面、黒い線、太い白の帯、黒い外縁。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "comic",
+    "halftone",
+    "yellow",
+    "cartoon",
+    "pop-art",
+    "bold"
+  ],
+  "synonyms": {
+    "en": [
+      "comic book",
+      "pop art",
+      "comic dots",
+      "kapow"
+    ],
+    "ja": [
+      "アメコミ",
+      "網点",
+      "ポップアート",
+      "コミック",
+      "amekomi",
+      "amiten"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "bangers",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffe020"
+            },
+            {
+              "pos": 1,
+              "color": "#ff8a00"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1.5,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      },
+      {
+        "width": 4
+      },
+      {
+        "width": 1.5,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {
+    "face": [
+      {
+        "type": "halftone",
+        "params": {
+          "size": 6
+        }
+      }
+    ]
+  },
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

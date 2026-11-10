@@ -263,6 +263,8 @@ namespace jasperengine::editor {
         int targetFrameRate = -1;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Project Settings > Localization > Default Language, its fallbacks applied (S87 R64)
+        std::string defaultLanguage = "en";
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;

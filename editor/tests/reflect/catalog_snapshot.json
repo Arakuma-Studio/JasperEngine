@@ -23656,6 +23656,561 @@
    "type": 102,
    "type_of_key": 102,
    "type_of_name": 102
+  },
+  {
+   "display_name": "Title Art Renderer",
+   "enum_options": {
+    "renderMode": [
+     [
+      0,
+      "baked",
+      "Baked"
+     ],
+     [
+      1,
+      "realtime",
+      "Realtime"
+     ],
+     [
+      2,
+      "glyph_atlas",
+      "Glyph Atlas"
+     ]
+    ],
+    "transition": [
+     [
+      0,
+      "cut",
+      "Cut"
+     ],
+     [
+      1,
+      "crossfade",
+      "Crossfade"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee8b8a",
+   "key": "titleart",
+   "known_keys": [
+    "additionalCharacters",
+    "animationSpeed",
+    "animationUnscaledTime",
+    "atlasMaxPages",
+    "atlasPageSize",
+    "defaultAnimation",
+    "driveAnimation",
+    "enabled",
+    "glintAmount",
+    "glintColor",
+    "glintRate",
+    "glintSeed",
+    "glintSize",
+    "glintsEnabled",
+    "glowColor",
+    "glowEnabled",
+    "glowPulse",
+    "language",
+    "liveTime",
+    "liveUnscaledTime",
+    "overrides",
+    "pivotFromTitle",
+    "pixelsPerUnit",
+    "playAutomatically",
+    "prebakeInitialState",
+    "priority",
+    "qualityTier",
+    "renderMode",
+    "renderWhenHidden",
+    "resolutionScale",
+    "runtimeEnvironments",
+    "sweepAngle",
+    "sweepAuto",
+    "sweepColor",
+    "sweepEnabled",
+    "sweepInterval",
+    "sweepPosition",
+    "sweepSoftness",
+    "sweepSpeed",
+    "sweepWidth",
+    "tintAmount",
+    "tintColor",
+    "tintEnabled",
+    "title",
+    "transition",
+    "transitionDuration",
+    "uiScale"
+   ],
+   "name": "TitleArtRendererComponent",
+   "properties_of_default": {
+    "additionalCharacters": [
+     1,
+     0,
+     true
+    ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "atlasMaxPages": [
+     8,
+     0,
+     true
+    ],
+    "atlasPageSize": [
+     8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "glintAmount": [
+     2,
+     0,
+     true
+    ],
+    "glintColor": [
+     6,
+     0,
+     true
+    ],
+    "glintRate": [
+     2,
+     0,
+     true
+    ],
+    "glintSeed": [
+     9,
+     0,
+     true
+    ],
+    "glintSize": [
+     2,
+     0,
+     true
+    ],
+    "glintsEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowColor": [
+     6,
+     0,
+     true
+    ],
+    "glowEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowPulse": [
+     2,
+     0,
+     true
+    ],
+    "language": [
+     1,
+     0,
+     true
+    ],
+    "liveTime": [
+     2,
+     0,
+     true
+    ],
+    "liveUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "pivotFromTitle": [
+     0,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "prebakeInitialState": [
+     0,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "qualityTier": [
+     1,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderWhenHidden": [
+     0,
+     0,
+     true
+    ],
+    "resolutionScale": [
+     2,
+     0,
+     true
+    ],
+    "sweepAngle": [
+     2,
+     0,
+     true
+    ],
+    "sweepAuto": [
+     0,
+     0,
+     true
+    ],
+    "sweepColor": [
+     6,
+     0,
+     true
+    ],
+    "sweepEnabled": [
+     0,
+     0,
+     true
+    ],
+    "sweepInterval": [
+     2,
+     0,
+     true
+    ],
+    "sweepPosition": [
+     2,
+     0,
+     true
+    ],
+    "sweepSoftness": [
+     2,
+     0,
+     true
+    ],
+    "sweepSpeed": [
+     2,
+     0,
+     true
+    ],
+    "sweepWidth": [
+     2,
+     0,
+     true
+    ],
+    "tintAmount": [
+     2,
+     0,
+     true
+    ],
+    "tintColor": [
+     6,
+     0,
+     true
+    ],
+    "tintEnabled": [
+     0,
+     0,
+     true
+    ],
+    "title": [
+     18,
+     0,
+     true
+    ],
+    "transition": [
+     13,
+     0,
+     true
+    ],
+    "transitionDuration": [
+     2,
+     0,
+     true
+    ],
+    "uiScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "additionalCharacters": [
+     1,
+     0,
+     true
+    ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "atlasMaxPages": [
+     8,
+     0,
+     true
+    ],
+    "atlasPageSize": [
+     8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "glintAmount": [
+     2,
+     0,
+     true
+    ],
+    "glintColor": [
+     6,
+     0,
+     true
+    ],
+    "glintRate": [
+     2,
+     0,
+     true
+    ],
+    "glintSeed": [
+     9,
+     0,
+     true
+    ],
+    "glintSize": [
+     2,
+     0,
+     true
+    ],
+    "glintsEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowColor": [
+     6,
+     0,
+     true
+    ],
+    "glowEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowPulse": [
+     2,
+     0,
+     true
+    ],
+    "language": [
+     1,
+     0,
+     true
+    ],
+    "liveTime": [
+     2,
+     0,
+     true
+    ],
+    "liveUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "pivotFromTitle": [
+     0,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "prebakeInitialState": [
+     0,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "qualityTier": [
+     1,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderWhenHidden": [
+     0,
+     0,
+     true
+    ],
+    "resolutionScale": [
+     2,
+     0,
+     true
+    ],
+    "sweepAngle": [
+     2,
+     0,
+     true
+    ],
+    "sweepAuto": [
+     0,
+     0,
+     true
+    ],
+    "sweepColor": [
+     6,
+     0,
+     true
+    ],
+    "sweepEnabled": [
+     0,
+     0,
+     true
+    ],
+    "sweepInterval": [
+     2,
+     0,
+     true
+    ],
+    "sweepPosition": [
+     2,
+     0,
+     true
+    ],
+    "sweepSoftness": [
+     2,
+     0,
+     true
+    ],
+    "sweepSpeed": [
+     2,
+     0,
+     true
+    ],
+    "sweepWidth": [
+     2,
+     0,
+     true
+    ],
+    "tintAmount": [
+     2,
+     0,
+     true
+    ],
+    "tintColor": [
+     6,
+     0,
+     true
+    ],
+    "tintEnabled": [
+     0,
+     0,
+     true
+    ],
+    "title": [
+     18,
+     0,
+     true
+    ],
+    "transition": [
+     13,
+     0,
+     true
+    ],
+    "transitionDuration": [
+     2,
+     0,
+     true
+    ],
+    "uiScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 103,
+   "type_of_key": 103,
+   "type_of_name": 103
   }
  ],
  "ease_options": [
@@ -31345,6 +31900,238 @@
    ],
    "version": [
     8,
+    0,
+    true
+   ]
+  },
+  "TitleArtRendererComponent": {
+   "additionalCharacters": [
+    1,
+    0,
+    true
+   ],
+   "animationSpeed": [
+    2,
+    0,
+    true
+   ],
+   "animationTime": [
+    2,
+    0,
+    true
+   ],
+   "animationUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "atlasMaxPages": [
+    8,
+    0,
+    true
+   ],
+   "atlasPageSize": [
+    8,
+    0,
+    true
+   ],
+   "defaultAnimation": [
+    1,
+    0,
+    true
+   ],
+   "driveAnimation": [
+    1,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "glintAmount": [
+    2,
+    0,
+    true
+   ],
+   "glintColor": [
+    6,
+    0,
+    true
+   ],
+   "glintRate": [
+    2,
+    0,
+    true
+   ],
+   "glintSeed": [
+    9,
+    0,
+    true
+   ],
+   "glintSize": [
+    2,
+    0,
+    true
+   ],
+   "glintsEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowColor": [
+    6,
+    0,
+    true
+   ],
+   "glowEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowPulse": [
+    2,
+    0,
+    true
+   ],
+   "language": [
+    1,
+    0,
+    true
+   ],
+   "liveTime": [
+    2,
+    0,
+    true
+   ],
+   "liveUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "pivotFromTitle": [
+    0,
+    0,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    0,
+    true
+   ],
+   "playAutomatically": [
+    0,
+    0,
+    true
+   ],
+   "prebakeInitialState": [
+    0,
+    0,
+    true
+   ],
+   "priority": [
+    8,
+    0,
+    true
+   ],
+   "qualityTier": [
+    1,
+    0,
+    true
+   ],
+   "renderMode": [
+    13,
+    0,
+    true
+   ],
+   "renderWhenHidden": [
+    0,
+    0,
+    true
+   ],
+   "resolutionScale": [
+    2,
+    0,
+    true
+   ],
+   "sweepAngle": [
+    2,
+    0,
+    true
+   ],
+   "sweepAuto": [
+    0,
+    0,
+    true
+   ],
+   "sweepColor": [
+    6,
+    0,
+    true
+   ],
+   "sweepEnabled": [
+    0,
+    0,
+    true
+   ],
+   "sweepInterval": [
+    2,
+    0,
+    true
+   ],
+   "sweepPosition": [
+    2,
+    0,
+    true
+   ],
+   "sweepSoftness": [
+    2,
+    0,
+    true
+   ],
+   "sweepSpeed": [
+    2,
+    0,
+    true
+   ],
+   "sweepWidth": [
+    2,
+    0,
+    true
+   ],
+   "tintAmount": [
+    2,
+    0,
+    true
+   ],
+   "tintColor": [
+    6,
+    0,
+    true
+   ],
+   "tintEnabled": [
+    0,
+    0,
+    true
+   ],
+   "title": [
+    18,
+    0,
+    true
+   ],
+   "transition": [
+    13,
+    0,
+    true
+   ],
+   "transitionDuration": [
+    2,
+    0,
+    true
+   ],
+   "uiScale": [
+    2,
     0,
     true
    ]

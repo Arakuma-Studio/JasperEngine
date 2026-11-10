@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/yujisyuku/OFL.txt",
+    "sha256": "ef7c85c72ae94381c8bc4832ae4e6fbabdeafa2bb8a31313cd75dce95a690256",
+    "bytes": 4386
+  },
+  "path": "ofl/yujisyuku/YujiSyuku-Regular.ttf",
+  "sha256": "82728ebafc8c97391e2dab633414a806f344b8e4e2227d307179f07b548fca61",
+  "bytes": 8430348
+}

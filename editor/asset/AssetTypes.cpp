@@ -29,7 +29,7 @@ namespace {
                 {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".pic", ".pnm", ".svg"}},
             {{AssetType::Model, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".gltf", ".glb", ".obj", ".fbx"}},
             {{AssetType::Audio, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".wav", ".ogg", ".mp3", ".flac"}},
-            {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf", ".bitmapfont", ".fnt"}},
+            {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf", ".ttc", ".bitmapfont", ".fnt"}},
             {{AssetType::UIDocument, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".html", ".htm", ".rml"}},
             {{AssetType::Stylesheet, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".css", ".rcss"}},
             {{AssetType::Shader, AssetIdentity::Sidecar, AssetPathBase::Project, false, false}, {".vert", ".frag", ".glsl"}},
@@ -69,6 +69,8 @@ namespace {
             {{AssetType::ProceduralMaterial, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".procmat"}},
             // T4 R48: a folder, one asset; its GUID is in its manifest.yaml and the scan does not enter it
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
+            // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
+            {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
         };
         return table;
     }

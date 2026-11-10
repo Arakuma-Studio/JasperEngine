@@ -4,6 +4,7 @@
 #include "Stream.h"
 #include "pixelart/PixelColor.h"
 #include "pixelart/ScreenTransition.h"
+#include "util/TitleArtLanguage.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -3068,6 +3069,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
 
     {
+        // Project Settings > Localization (S87 R64; non-defaults only)
+        const LocalizationSettings& localization = project->getLocalizationSettings();
+        YAML::Node localizationNode;
+        if (!localization.languages.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& code : localization.languages) list.push_back(code);
+            localizationNode["languages"] = list;
+        }
+        if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        if (localizationNode.size() != 0) root["localization"] = localizationNode;
+    }
+
+    {
         const ApplicationSettings& application = project->getApplicationSettings();
         const ApplicationSettings defaultApplication;
         YAML::Node applicationNode;
@@ -3346,6 +3360,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     {
         const YAML::Node debugNode = reflect::encode(reflect::debugSettingsStruct(), &project->getDebugSettings(), reflect::EncodeContext{});
         if (debugNode.IsMap() && debugNode.size()) root["debug"] = debugNode;
+    }
+
+    // Project Settings > Title Art: what differs from the defaults
+    {
+        const YAML::Node titleArtNode = project->getTitleArtSettings().encode();
+        if (titleArtNode.IsMap() && titleArtNode.size()) root["titleArt"] = titleArtNode;
     }
 
     if (!project->getStandalonePrefabs().empty()) {
@@ -4041,6 +4061,24 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
     }
 
+    if (node["localization"] && node["localization"].IsMap()) {
+        const YAML::Node& localizationNode = node["localization"];
+        LocalizationSettings& localization = project->getLocalizationSettings();
+        localization = LocalizationSettings();
+        if (localizationNode["languages"] && localizationNode["languages"].IsSequence()) {
+            for (const YAML::Node& code : localizationNode["languages"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(code.as<std::string>(""));
+                if (TitleArtLanguage::isValid(tag) && std::find(localization.languages.begin(), localization.languages.end(), tag) == localization.languages.end()) {
+                    localization.languages.push_back(tag);
+                }
+            }
+        }
+        if (localizationNode["defaultLanguage"]) {
+            const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
+            if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
+        }
+    }
+
     if (node["application"] && node["application"].IsMap()) {
         const YAML::Node& applicationNode = node["application"];
         ApplicationSettings& application = project->getApplicationSettings();
@@ -4326,6 +4364,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         // a project without the node (older ones) gets the defaults
         project->setDebugSettings(debug);
+    }
+
+    // Project Settings > Title Art; older projects have no node and take the defaults
+    {
+        std::vector<std::string> warnings;
+        project->setTitleArtSettings(TitleArtProjectSettings::decode(node["titleArt"], &warnings));
+        for (const std::string& warning : warnings) Out::warning("Ignoring %s in project settings", warning.c_str());
     }
 
     if (node["standalonePrefabs"]) {

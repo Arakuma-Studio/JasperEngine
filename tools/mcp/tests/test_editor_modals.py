@@ -91,6 +91,11 @@ SITES = {
     ("window/dialog/TextureSlicerToolDialog.cpp", "popupTitle"): "test_texture_slicer",
     ("window/dialog/ProjectSettingsWindow.cpp", "Project Settings##ProjectSettingsModal"): "test_project_settings_merges_edits",
     ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
+    ("window/TitleDesignerProperties.cpp", "Expose as Parameter###exposedialog"): "not driven: a Title Designer row's context menu; edit_title's expose op does the same for agents (TitleDesignerWindowDeathTest.ExposeDialogIsAnEditorModal answers it)",
+    ("window/TitleDesignerLibrary.cpp", "Replace the whole title?###replacetitle"): "not driven: a Library template applied to a document with content needs S84's provider; edit_title replaces a title for agents",
+    ("window/TitleDesignerLanguages.cpp", "Edit Languages###titleEditLanguages"): "not driven: the Title Designer's Language menu opens it; edit_title's language ops (add_language, remove_language, set_source_language) do the same for agents",
+    ("window/TitleDesignerLanguages.cpp", "Remove Language?###titleRemoveLanguage"): "not driven: a row's trash button inside Edit Languages; edit_title's remove_language does the same for agents",
+    ("window/TitleArtInterchangeWindows.cpp", "Import Title Art###titleImport"): "not driven: Assets > Import Title Art... opens it; edit_title {create: {from}} imports for agents",
     ("window/AsepriteImporterView.cpp", "Extract Clips##aseprite_extract"): "test_aseprite_extract_clips",
     ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
     ("window/dialog/SpriteConversionDialog.cpp", "title"): "test_sprite_conversion_dialog",
@@ -195,8 +200,10 @@ async def test_sites_table_is_complete(ed: Editor):
     # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
     # S42's Fix All and Apply Pixel Art Preset: 78; T1's Create Terrain and its three Terrain Settings
     # dialogs, T4's three Terrain World dialogs, T5's Remove Tree Prototype and Mass Place Trees, T6's
-    # Create Voxel Volume: 88; S50's Apply Terrain Template and the Hierarchy's map import preview: 90
-    ed.check_eq(sum(found.values()), 90, "the 90 sites")
+    # Create Voxel Volume: 88; S82's Expose as Parameter and Replace the whole title: 90; S50's Apply
+    # Terrain Template and the Hierarchy's map import preview: 92; S87's Edit Languages, Remove
+    # Language and Import Title Art (ImGui modals before, which the lint refused): 95
+    ed.check_eq(sum(found.values()), 95, "the 95 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

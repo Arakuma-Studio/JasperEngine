@@ -6,6 +6,9 @@
 #include "component/TrailRendererComponent.h"
 #include "component/ActionComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/Transform.h"
+#include "subsystem/TitleArtSystem.h"
 
 #include <algorithm>
 
@@ -56,6 +59,26 @@ bool editor::AddComponentCmd::execute() {
                         project->recordPrefabComponentAdded(sceneId, entity, need);
                         required.emplace_back(entity, need);
                     }
+                }
+            }
+            // a Title Art Renderer draws through an Image (UI) or a Sprite (world): with neither, the
+            // one the scene calls for comes in the same undo step (S81 R1)
+            if (componentType == ComponentType::TitleArtRendererComponent && TitleArtSystem::spaceOf(scene, entity) == titleart::TitleArtSpace::None){
+                bool ui = sceneProject->sceneType == SceneType::SCENE_UI;
+                for (Entity parent = scene->findComponent<Transform>(entity) ? scene->getComponent<Transform>(entity).parent : NULL_ENTITY;
+                     !ui && parent != NULL_ENTITY;
+                     parent = scene->findComponent<Transform>(parent) ? scene->getComponent<Transform>(parent).parent : NULL_ENTITY){
+                    ui = scene->findComponent<RectTransformComponent>(parent) != nullptr;
+                }
+                std::vector<ComponentType> needs;
+                if (ui) needs = {ComponentType::RectTransformComponent, ComponentType::UIComponent, ComponentType::ImageComponent};
+                else needs = {ComponentType::MeshComponent, ComponentType::SpriteComponent};
+                const std::vector<ComponentType> has = Catalog::findComponents(scene, entity);
+                for (ComponentType need : needs){
+                    if (std::find(has.begin(), has.end(), need) != has.end()) continue;
+                    ProjectUtils::addEntityComponent(scene, entity, need, sceneProject->entities);
+                    project->recordPrefabComponentAdded(sceneId, entity, need);
+                    required.emplace_back(entity, need);
                 }
             }
             ProjectUtils::addEntityComponent(scene, entity, componentType, sceneProject->entities);

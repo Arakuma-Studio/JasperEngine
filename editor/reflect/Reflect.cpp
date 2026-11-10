@@ -139,6 +139,7 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::TreeData: return "tree_data";
         case AssetKind::TerrainWorld: return "terrain_world";
         case AssetKind::Tileset: return "tileset";
+        case AssetKind::TitleArt: return "title_art";
     }
     return "";
 }
