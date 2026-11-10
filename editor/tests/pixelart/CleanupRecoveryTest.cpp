@@ -15,11 +15,14 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine::editor::pixelart;
@@ -117,10 +120,22 @@ TEST(CleanupRecovery, FindsTheGridOfASmallSpriteInAWideEmptyBackground) {
 TEST(CleanupRecovery, FindsALargeGridInALargePictureQuickly) {
     const PixelArt sprite = makeSprite(48, 48, sweetie16(), 8);
     const RgbaImage image = upscale(sprite, upscaled(21.3, 4, 2, 5));
+    // R36's budget is with the editor's 8 workers
+    setParallelFor([](int count, const std::function<void(int)>& body) {
+        std::atomic<int> next{0};
+        std::vector<std::thread> workers;
+        for (int w = 0; w < 8; w++) {
+            workers.emplace_back([&]() {
+                for (int i = next++; i < count; i = next++) body(i);
+            });
+        }
+        for (std::thread& worker : workers) worker.join();
+    });
     const auto started = std::chrono::steady_clock::now();
     const std::optional<Detection> detection = detectGrid(image);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
-    std::printf("[bench] detectGrid %dx%d: %.1f ms (budget 120, R36)\n", image.width(), image.height(), ms);
+    setParallelFor(nullptr);
+    std::printf("[bench] detectGrid %dx%d with 8 workers: %.1f ms (budget 120, R36)\n", image.width(), image.height(), ms);
     if (jasperengine::editor::test::perfSlack() > 0.0) {
         EXPECT_LT(ms, 120.0 * jasperengine::editor::test::perfSlack());
     }
