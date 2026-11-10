@@ -2096,9 +2096,11 @@ starting-style-entry,box-shadow-transition,scale-rotate-translate}.html`.
 
 FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot collide):
 
-- **Timing functions (P3-A1).** As planned; `linear` is `linear()` without stops (the identity) and
-  serializes as `linear`; `cubic-bezier()` solves to 1e-7 in double precision (not duration-scaled).
-  Unknown easing names are invalid; RmlUi's tween names stay valid.
+- **Timing functions (P3-A1, P3-A6).** As planned; `linear` is `linear()` without stops (the identity)
+  and serializes as `linear`; `linear()` also accepts a single constant stop and honors the before
+  flag at coincident first stops. `cubic-bezier()` bounds its parameter error to 1e-12 in double
+  precision (not duration-scaled), including near vertical tangents. Unknown easing names are
+  invalid; RmlUi's tween names stay valid.
 - **Longhands (P3-A1).** Comma lists in one `StyleValue` type (`AnimationListValue`), parsers
   `transition_property`, `animation_duration` (no negatives), `animation_time`, `animation_easing`,
   `animation_iteration_count`, `animation_name`, `animation_keyword` (registered from the package's
