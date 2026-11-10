@@ -48,6 +48,12 @@ namespace {
 
     class CompatShapeAnimation : public RuntimeContextTest {
     protected:
+        Rml::ElementDocument* show(const std::string& body, const std::string& style = "",
+                                  const std::string& url = "compat/runtime/test.rml"){
+            // CssRewriter scopes author rules under the root that DocumentLoader adds to HTML.
+            return RuntimeContextTest::show("<div id='htmlui-root'>" + body + "</div>", style, url);
+        }
+
         void SetUp() override{
             previousTime = HtmlUIClock::getFixedTime();
             HtmlUIClock::setFixedTime(0.0);
