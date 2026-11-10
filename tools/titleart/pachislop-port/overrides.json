@@ -15550,6 +15550,46 @@
           }
         ]
       }
+    },
+    "casino/premium-black-gloss": {
+      "template": {
+        "placeholders": [
+          {
+            "name": "text",
+            "role": "title",
+            "sample": {
+              "en": "PREMIUM",
+              "ja": "プレミアム"
+            },
+            "max_chars": 11,
+            "chars": {
+              "en": {
+                "4": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                },
+                "5": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                },
+                "6": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "cjk": {
+          "highlight_scale": 0.5
+        }
+      }
     }
   },
   "color_schemes": {

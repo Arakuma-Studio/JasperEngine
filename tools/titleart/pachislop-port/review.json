@@ -964,10 +964,10 @@
     {
       "id": "casino/premium-black-gloss",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
-      "reviewer": "s84-agent",
-      "date": "2026-11-09"
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges. Tuned for counter_survival: the English sample's I, U and M sit 4 % further right (at tracking -40 the M and I serifs touched and closed a gap the rims filled), and cjk.highlight_scale 0.5 halves the face bevel's highlight on Japanese text (the handakuten counter, 6 px at the gate's scale, is filled by the pinstripes and read as lighter than its bevel-lit ring)",
+      "reviewer": "s84-lib-looks",
+      "date": "2026-11-10"
     },
     {
       "id": "casino/premium-rainbow-fx",

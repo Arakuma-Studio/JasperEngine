@@ -2300,6 +2300,7 @@
         "mapped: background layers -> Fill generator layers",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: generators through S83's map (glints -> glints)",
+        "mapped: tuned by overrides.json",
         "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
