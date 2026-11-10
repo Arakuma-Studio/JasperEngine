@@ -48,12 +48,17 @@ AnimEngine& AnimEngine::instance(){
     return *engine;
 }
 
-AnimEngine::ScopedTickPause::ScopedTickPause(){
-    ++AnimEngine::instance().tickPauseDepth;
+AnimEngine::ScopedTickPause::ScopedTickPause(std::vector<std::shared_ptr<AnimTimer>>* created){
+    AnimEngine& engine = AnimEngine::instance();
+    previousCollector = engine.timerCollector;
+    if (created) engine.timerCollector = created;
+    ++engine.tickPauseDepth;
 }
 
 AnimEngine::ScopedTickPause::~ScopedTickPause(){
-    --AnimEngine::instance().tickPauseDepth;
+    AnimEngine& engine = AnimEngine::instance();
+    --engine.tickPauseDepth;
+    engine.timerCollector = previousCollector;
 }
 
 void AnimEngine::countTimer(int delta){
@@ -105,6 +110,7 @@ void AnimEngine::add(AnimTimer& timer){
     timer.running = true;
     timer.engineRef = timer.shared_from_this();
     hasChildren = true;
+    if (timerCollector) timerCollector->push_back(timer.engineRef);
 }
 
 void AnimEngine::update(){

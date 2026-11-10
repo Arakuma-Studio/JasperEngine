@@ -39,3 +39,32 @@ TEST(AnimeClock, ScopedPreviewTicksLeaveBothClocksAndCallbacksAlone){
     EXPECT_EQ(updates, 2);
     engine.reset();
 }
+
+TEST(AnimeClock, PreviewCollectsOnlyTimersCreatedInItsScope){
+    AnimEngine& engine = AnimEngine::instance();
+    engine.reset();
+    engine.tickMilliseconds(0, 0);
+    auto outside = Anime::createTimer();
+    std::vector<std::shared_ptr<AnimTimer>> outerTimers;
+    std::vector<std::shared_ptr<AnimTimer>> innerTimers;
+    std::shared_ptr<AnimTimer> first, second, inner;
+    {
+        AnimEngine::ScopedTickPause outer(&outerTimers);
+        first = Anime::createTimer();
+        {
+            AnimEngine::ScopedTickPause collectingInner(&innerTimers);
+            inner = Anime::createTimer();
+        }
+        {
+            AnimEngine::ScopedTickPause nonCollectingInner;
+            second = Anime::createTimer();
+        }
+    }
+    auto after = Anime::createTimer();
+    ASSERT_EQ(outerTimers.size(), 2u);
+    EXPECT_EQ(outerTimers[0], first);
+    EXPECT_EQ(outerTimers[1], second);
+    ASSERT_EQ(innerTimers.size(), 1u);
+    EXPECT_EQ(innerTimers[0], inner);
+    engine.reset();
+}

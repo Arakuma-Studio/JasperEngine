@@ -33,10 +33,12 @@ namespace jasperengine {
         // must not tick animations belonging to the editor's other documents.
         class JASPERENGINE_API ScopedTickPause {
         public:
-            ScopedTickPause();
+            explicit ScopedTickPause(std::vector<std::shared_ptr<AnimTimer>>* created = nullptr);
             ~ScopedTickPause();
             ScopedTickPause(const ScopedTickPause&) = delete;
             ScopedTickPause& operator=(const ScopedTickPause&) = delete;
+        private:
+            std::vector<std::shared_ptr<AnimTimer>>* previousCollector;
         };
         // the one engine; not copyable (it owns its tweens: MSVC instantiates the copies of
         // an exported class)
@@ -91,6 +93,7 @@ namespace jasperengine {
         bool ticked = false;
         bool updating = false;
         unsigned int tickPauseDepth = 0;
+        std::vector<std::shared_ptr<AnimTimer>>* timerCollector = nullptr;
         uint64_t nextListenerId = 1;
         std::vector<std::pair<uint64_t, std::function<void()>>> resetListeners;
     };
