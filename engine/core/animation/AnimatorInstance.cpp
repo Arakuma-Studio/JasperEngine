@@ -1550,11 +1550,12 @@ void anim::AnimatorInstance::applyMontages(size_t layer, Pose& out, const Animat
 
 // ---------------------------------------------------------------- evaluation
 
-void anim::AnimatorInstance::sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors) const{
+void anim::AnimatorInstance::sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors,
+                                            float stepFps) const{
     // the one retarget path: the clip as a humanoid sample, realised on the avatar, written to
     // the rig's bones (the generic tracks of the clip play by path before)
     HumanoidSample sample;
-    slot.retarget.sample(*slot.clip, clipTime, cursors, footIK, sample);
+    slot.retarget.sample(*slot.clip, clipTime, cursors, footIK, sample, stepFps);
     pose::HumanPose realised;
     std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
     std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> extraLive;
@@ -1566,8 +1567,9 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
                                         float referenceTime, const AnimatorComponent& component, bool mirror, bool footIK){
     AnimatorClipSlot& slot = clips[index];
     out.copyFrom(rig.rest);
-    sampleClip(slot.binding, rig, clipTime, slot.cursors, out);
-    if (slot.retargeted) sampleHumanoid(slot, clipTime, out, mirror, footIK, slot.retargetCursors.data());
+    // S48 Pose Frame Rate: held poses, the root bone's translation smooth
+    sampleClip(slot.binding, rig, clipTime, slot.cursors, out, component.poseFrameRate, slot.rootBone);
+    if (slot.retargeted) sampleHumanoid(slot, clipTime, out, mirror, footIK, slot.retargetCursors.data(), component.poseFrameRate);
     if (component.applyRootMotion) removeRootMotion(slot, out);
     if (!additive) return;
     const uint8_t flags = (uint8_t)((mirror ? 1 : 0) | (footIK ? 2 : 0));
@@ -1665,7 +1667,10 @@ void anim::AnimatorInstance::evaluateLayer(size_t layer, const AnimatorComponent
             from = &source;
         }
         evaluateMotion(layer, run.next, destination, component);
-        const float progress = run.duration > 0.0f ? std::min(1.0f, run.elapsed / run.duration) : 1.0f;
+        // S48 Pose Frame Rate: the blend's weight steps on the same ticks as the poses (events
+        // and root motion keep the true progress)
+        const float elapsed = holdStepTime(run.elapsed, component.poseFrameRate);
+        const float progress = run.duration > 0.0f ? std::min(1.0f, elapsed / run.duration) : 1.0f;
         poseBlend(run.output, *from, destination, progress, nullptr, nullptr);
     }else if (run.snapshot){
         run.output.copyFrom(run.snapshotPose);

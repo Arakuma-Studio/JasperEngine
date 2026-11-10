@@ -85,6 +85,7 @@
 #include <bit>
 #include "pixelart/PaletteQuantize.h"
 #include "pixelart/PaletteSwap.h"
+#include "pixelart/Glitch.h"
 #include <cstddef>
 #include <memory>
 #include <algorithm>
@@ -849,6 +850,7 @@ TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
 uint32_t RenderSystem::pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 TextureRender RenderSystem::defaultParticle;
+TextureRender RenderSystem::defaultRampGrey;
 TextureRender RenderSystem::emptyCubeGray;
 std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
 std::mutex RenderSystem::zeroVertexBuffersMutex;
@@ -1388,7 +1390,8 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent,
+        &defaultRampGrey
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -4511,6 +4514,23 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
         case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
         case ShaderTextureDefault::PARTICLE: return cube ? &emptyCubeWhite : &defaultParticle;
+        case ShaderTextureDefault::RAMP_GREY:{
+            if (cube)
+                return &emptyCubeGray;
+            if (!defaultRampGrey.isCreated()){
+                // the step i of 8 is i / 7 grey (sRGB bytes)
+                static uint32_t pixels[8];
+                for (int i = 0; i < 8; i++){
+                    const uint32_t v = (uint32_t)((i * 255 + 3) / 7);
+                    pixels[i] = 0xFF000000u | (v << 16) | (v << 8) | v;
+                }
+                void* data[6] = {(void*)pixels};
+                size_t sizes[6] = {sizeof(pixels)};
+                defaultRampGrey.createTexture("default|ramp_grey", 8, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, sizes,
+                                              TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+            }
+            return &defaultRampGrey;
+        }
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
@@ -4866,6 +4886,8 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
             settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
             settings.filmGateMask != FilmGateMask::NONE))
         features |= UBER_FILM_DAMAGE;
+    // Glitch: the switch alone (at intensity 0 the variant waits for scripted bursts)
+    if (settings.glitchEnabled) features |= UBER_GLITCH;
     // Palette Quantize, with a palette (none: off, and said so)
     if (settings.paletteEnabled){
         if (settings.palette.empty())
@@ -5310,6 +5332,22 @@ void RenderSystem::fillUberFilm(const PostProcessingSettings& settings, double t
     }
 }
 
+void RenderSystem::fillUberGlitch(const PostProcessingSettings& settings, double time, int sourceRows){
+    fs_uber.glitch = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    fs_uber.glitchTearsA = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    fs_uber.glitchTearsB = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (!settings.glitchEnabled)
+        return;
+    // a scripted burst (PixelFX.glitch) corrupts the main scene only
+    const float script = scene == Engine::getMainScene() ? pixelart::Glitch::getBurstIntensity() : 0.0f;
+    const pixelart::GlitchFrame frame = pixelart::glitchFrame(settings, time, sourceRows, script);
+    fs_uber.glitch = Vector4((float)frame.split, frame.interlace ? 0.7f : 0.0f, (float)frame.tearCount, frame.strength);
+    for (int i = 0; i < frame.tearCount; i++){
+        Vector4& packed = i < 4 ? fs_uber.glitchTearsA : fs_uber.glitchTearsB;
+        packed[i % 4] = pixelart::packGlitchTear(frame.tears[i]);
+    }
+}
+
 void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
                               FramebufferRender* destination, const Rect& viewport, bool nearestSource){
     // the background around the viewport, as the blit (CLEAR: a tiler loads nothing), or a
@@ -5413,6 +5451,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
                                     uberBlurTexture ? settings.blurIntensity : 0.0f);
         fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, uberSharpBilinear.x, uberSharpBilinear.y, 0.0f);
         fillUberFilm(settings, time, vw, vh);
+        fillUberGlitch(settings, time, (int)sh);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
@@ -17412,8 +17451,10 @@ uint16_t RenderSystem::getScenePipelines() const{
 
         // (a scene-colour reader: the scene camera switches between the swapchain and an
         // offscreen target without reloading)
+        // (a game that can play a screen transition composites it offscreen on Vulkan, starting
+        // mid-run: its objects have these pipelines from load and do not reload when it does)
         if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect ||
-                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity)){
+                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity) || Engine::isCompositeExpected()){
             pipelines |= camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
         }
 

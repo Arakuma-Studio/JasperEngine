@@ -385,9 +385,25 @@ Ported, each file keeping the original notice next to ours:
 | CIELAB D65, CIEDE2000 and the cached nearest-colour matcher (`engine/core/pixelart/PixelColor.cpp`); Apply Palette's lost-colour groups (`editor/pixelart/ApplyPalette.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `packages/tools/src/pixel/core/color.ts`, `lost.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 | `fitRamp` and `rampAt` (`engine/core/pixelart/PixelColor.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/color.js` `fit` and `at` | MIT, Copyright (c) 2026 Patch |
 | The ordered pair-mix dither (`PaletteMatcher::ditherPair`, Palette Quantize's table) | Joel Yliluoma, "Arbitrary-palette positional dithering algorithm" (the algorithm, no code) | — |
+| S48's screen transitions (`engine/core/pixelart/ScreenTransition.cpp`, `engine/shaderlib/transition.frag`: the cover/hold/reveal structure, the kinds, the field rule for constant-width rims) and their default ember ramp; the Glitch burst structure (`engine/core/pixelart/Glitch.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/fx/transitions/` (`_lib.js` `field`, `iris.js`, `crt-off.js`, `pixel-dissolve.js`, `burn-away.js`), `src/core/color.js` `PAL.ember`, `src/fx/scifi/glitch.js` (the techniques, written fresh; no Sprite Fusion particle code) | MIT, Copyright (c) 2026 Patch |
 
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).
+
+## Pixel FX game feel (S48)
+
+Ported, each function keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The kick shake (`camera::kickOffset`, `engine/core/camera/ShakeInstance.cpp`) and the held-pose time (`anim::holdPoseTime`, `engine/core/animation/KeyframeSampling.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/act.js` (`get shake()`, `poseAt`), which credits Hollow Crown's skills for the freeze, the shake and the 12 fps held poses | MIT, Copyright (c) 2026 Patch; Copyright (c) 2026 rehan-remade (Hollow Crown) |
+
+## Pixel FX contact sheets and effect lints (S48)
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The contact sheet's backdrops (`editor/pixelart/fx/ContactSheet.cpp`: dark, ground, sky, light, black and their colours) and its grid | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/scene.js` `backdrop`, `tools/lib/fxlib.mjs` `contactSheet` | MIT, Copyright (c) 2026 Patch |
+| The spill, one-shot end, loop seam, determinism and slow-frame rules (`editor/pixelart/lint/EffectLints.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `tools/check.mjs` | MIT, Copyright (c) 2026 Patch |
 
 ## Pixel particles (S49)
 

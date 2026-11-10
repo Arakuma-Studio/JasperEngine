@@ -15,6 +15,8 @@
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
 #include "manager/SceneManager.h"
+#include "pixelart/HitStop.h"
+#include "pixelart/PixelSnap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -333,7 +335,8 @@ void CameraControlSystem::updateFollowers(float scaledDt, float unscaledDt){
         CameraFollowComponent& follow = followers->getComponentFromIndex(i);
         const Entity entity = followers->getEntity(i);
         if (!follow.enabled || !scene->isEntityActiveInHierarchy(entity)) continue;
-        followOne(entity, follow, follow.unscaledTime ? unscaledDt : scaledDt);
+        // a hit-stop freezes a scaled follow, unless the camera is Hit Stop Exempt (S48)
+        followOne(entity, follow, follow.unscaledTime ? unscaledDt : (float)pixelart::HitStop::deltaFor(scene, entity, scaledDt));
     }
 }
 
@@ -361,7 +364,7 @@ uint64_t CameraControlSystem::play(Entity entity, CameraShakerComponent& shaker,
     // the cap: the oldest one-shot goes (else the oldest), with a warning once
     if (runtime.instances.size() >= MAX_SHAKE_INSTANCES){
         auto victim = std::find_if(runtime.instances.begin(), runtime.instances.end(), [](const ShakerInstanceEntry& entry){
-            return entry.instance.getPreset().type == ShakeType::OneShot;
+            return entry.instance.getPreset().type != ShakeType::Sustained;
         });
         if (victim == runtime.instances.end()) victim = runtime.instances.begin();
         runtime.instances.erase(victim);
@@ -487,7 +490,10 @@ void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent
     CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
     Vector3 position = raw.position;
     Vector3 rotation = raw.rotation;
-    if (is2D(entity, shaker)){
+    const bool flat = is2D(entity, shaker);
+    // S48: what one art pixel is in this shaker's offset space
+    const float pixel = flat ? pixelWorldSize(entity, camera) : 1.0f / (float)std::max(1, Engine::getPixelsPerUnit());
+    if (flat){
         // x/y and roll; a preset unit is a tenth of the view height (Unity's 2D camera is 10 tall)
         float unit = 1.0f;
         if (camera){
@@ -501,11 +507,19 @@ void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent
             unit = view && isOrthographic(*view) ? std::fabs(view->topClip - view->bottomClip) / 10.0f
                                                  : (float)std::max(1, Engine::getCanvasHeight()) / 10.0f;
         }
-        position = Vector3(position.x * unit, position.y * unit, 0.0f);
+        position = Vector3(position.x * unit + raw.pixels.x * pixel, position.y * unit + raw.pixels.y * pixel, 0.0f);
         rotation = Vector3(0.0f, 0.0f, rotation.z);
+    }else{
+        // a 3D shaker: a pixel-unit preset moves by world units of the pixel grid
+        position += raw.pixels * pixel;
     }
     position = position * sanitizeScale(shaker.positionScale);
     rotation = rotation * sanitizeScale(shaker.rotationScale);
+    if (shaker.pixelSnap && flat && pixel > 0.0f){
+        // S48 Pixel Snap: whole art pixels (S41's rounding rule) and no roll (S42's no-rotation rule)
+        position = Vector3(pixelart::snap(position.x / pixel) * pixel, pixelart::snap(position.y / pixel) * pixel, 0.0f);
+        rotation = Vector3(0, 0, 0);
+    }
     runtime.offsetPosition = position;
     runtime.offsetRotation = rotation;
 
@@ -547,6 +561,26 @@ void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent
     runtime.applied = true;
 }
 
+float CameraControlSystem::pixelWorldSize(Entity entity, const CameraComponent* camera) const{
+    const CameraComponent* view = camera ? camera : scene->findComponent<CameraComponent>(scene->getCamera());
+    if (!camera && (scene->findComponent<UIComponent>(entity) || scene->findComponent<RectTransformComponent>(entity))){
+        // a UI element moves in canvas units
+        return 1.0f;
+    }
+    // the S41 grid: a base pixel is 1 / pixels per unit world units
+    const PixelPerfectViewRequest& grid = Engine::getPixelPerfectView();
+    if (grid.active && grid.pixelsPerUnit > 0 && (!view || isOrthographic(*view))){
+        return 1.0f / (float)grid.pixelsPerUnit;
+    }
+    // else the camera's screen pixels
+    if (view && isOrthographic(*view)){
+        const float pixels = Engine::getViewRect().getHeight();
+        const float height = std::fabs(view->topClip - view->bottomClip);
+        if (pixels > 0.0f && height > 0.0f) return height / pixels;
+    }
+    return 1.0f / (float)std::max(1, Engine::getPixelsPerUnit());
+}
+
 void CameraControlSystem::clearOffset(Entity entity, ShakerRuntime& runtime){
     if (CameraComponent* camera = scene->findComponent<CameraComponent>(entity)){
         if (camera->hasViewOffset){
@@ -562,9 +596,13 @@ void CameraControlSystem::clearOffset(Entity entity, ShakerRuntime& runtime){
 
 void CameraControlSystem::stepShaker(Entity entity, const CameraShakerComponent& shaker, ShakerRuntime& runtime,
                                      float scaledDt, float unscaledDt){
+    // a hit-stop freezes the scaled shakes of this shaker, unless it is Hit Stop Exempt (S48)
+    scaledDt = (float)pixelart::HitStop::deltaFor(scene, entity, scaledDt);
     ShakeOffset raw;
+    bool anyUnscaled = shaker.unscaledTime;
     for (auto it = runtime.instances.begin(); it != runtime.instances.end();){
         const bool unscaled = it->unscaled < 0 ? shaker.unscaledTime : it->unscaled > 0;
+        anyUnscaled = anyUnscaled || unscaled;
         raw += it->instance.update(unscaled ? unscaledDt : scaledDt);
         if (it->instance.isFinished()){
             it = runtime.instances.erase(it);
@@ -574,6 +612,24 @@ void CameraControlSystem::stepShaker(Entity entity, const CameraShakerComponent&
     }
     runtime.trauma.step(shaker.unscaledTime ? unscaledDt : scaledDt, shaker.traumaDecay, shaker.traumaFrequency);
     raw += runtime.trauma.getOffset(std::max(1.0f, std::min(4.0f, shaker.traumaPower)), shaker.traumaMaxOffset, shaker.traumaMaxAngle);
+    if (shaker.tickRate > 0.0f && std::isfinite(shaker.tickRate)){
+        // S48 Tick Rate: a new offset only on ticks of the shake's clock (unscaled when the
+        // shaker or one of its shakes is: a hit-stop's shake ticks through the freeze)
+        const float period = 1.0f / shaker.tickRate;
+        if (!runtime.tickHeld || runtime.tickClock >= period){
+            runtime.heldRaw = raw;
+            if (runtime.tickHeld) runtime.tickClock = std::fmod(runtime.tickClock, period);
+            runtime.tickHeld = true;
+        }
+        raw = runtime.heldRaw;
+        const float dt = anyUnscaled ? unscaledDt : scaledDt;
+        if (dt > 0.0f) runtime.tickClock += dt;
+        if (runtime.instances.empty() && runtime.trauma.trauma <= 0.0f){
+            // nothing left to shake: the next shake starts on a tick of its own
+            runtime.tickHeld = false;
+            runtime.tickClock = 0.0f;
+        }
+    }
     applyOffset(entity, shaker, runtime, raw);
 }
 

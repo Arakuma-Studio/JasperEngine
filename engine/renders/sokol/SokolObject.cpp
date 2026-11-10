@@ -29,8 +29,22 @@ namespace {
     // binds and draws the draw set up (its pipeline and uniforms applied): its bindings only when
     // they are not the ones applied last (SokolSystem); false when the frame's descriptor buffer
     // has no room for it (Vulkan: skipped and counted)
+    // a draw that reads no buffer, image or sampler (a fullscreen triangle from gl_VertexIndex and
+    // uniforms only): sokol's validation rejects an empty sg_apply_bindings, and such a pipeline
+    // requires none
+    bool sokolObjectBindingsEmpty(const sg_bindings& bind){
+        if (bind.index_buffer.id != SG_INVALID_ID) return false;
+        for (const sg_buffer& buffer : bind.vertex_buffers)
+            if (buffer.id != SG_INVALID_ID) return false;
+        for (const sg_view& view : bind.views)
+            if (view.id != SG_INVALID_ID) return false;
+        for (const sg_sampler& sampler : bind.samplers)
+            if (sampler.id != SG_INVALID_ID) return false;
+        return true;
+    }
+
     bool bindAndDraw(const sg_bindings& bind, int baseElement, int numElements, int numInstances){
-        const bool rebind = !SokolSystem::isBindingsApplied(bind);
+        const bool rebind = !sokolObjectBindingsEmpty(bind) && !SokolSystem::isBindingsApplied(bind);
         if (!SokolSystem::reserveDescriptorBytes(rebind))
             return false;
         if (rebind)

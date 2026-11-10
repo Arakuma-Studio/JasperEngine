@@ -55,6 +55,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"   // S48
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"

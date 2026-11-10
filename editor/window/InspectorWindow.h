@@ -473,6 +473,15 @@ namespace jasperengine::editor{
         void drawShakePresetAsset(const std::filesystem::path& asset);
         // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
         void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // InspectorSpriteFx.cpp (S48 R37): a library:sprite feature row's 40 x 40 thumbnail, an
+        // animated amount's Preview row, and the preview stopping once its GameObject is not shown
+        void drawSpriteFxThumbnail(SceneProject* sceneProject, Entity entity, ComponentType cpType, const std::string& paramsProperty,
+                                   const std::string& define);
+        void drawSpriteFxPreviewRow(SceneProject* sceneProject, Entity entity, ComponentType cpType, const std::string& paramsProperty,
+                                    const ShaderManifestProperty& property);
+        void syncSpriteFxPreview(SceneProject* shown, const std::vector<Entity>& selection);
+        void stopSpriteFxPreview();
+        void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
@@ -962,6 +971,10 @@ namespace jasperengine::editor{
         void drawSpriteBatchComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         std::vector<std::string> sortingLayerNames;
         std::vector<EnumEntry> sortingLayerEntries;
+        // S48 (InspectorPixelFx.cpp): Pose Frame Rate's combo row (inside a table) and the Camera
+        // Shaker's Pixel Snap and Tick Rate rows
+        void drawPoseFrameRateRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, float current);
+        void drawShakerPixelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);

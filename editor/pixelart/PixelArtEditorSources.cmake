@@ -157,6 +157,32 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/mcp/tools/PixelArtTools.cpp
 )
 
+# S48 (Pixel FX): the effect and rule lints, contact sheets and their captures, the Contact Sheet
+# dialog and capture_contact_sheet
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+    ${EDITOR_DIR}/pixelart/fx/ContactSheet.cpp
+    ${EDITOR_DIR}/pixelart/fx/EffectCapture.cpp
+    ${EDITOR_DIR}/render/OffscreenDraw.cpp
+    ${EDITOR_DIR}/window/ContactSheetWindow.cpp
+    ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S48's lint, sheet, capture and tool modules: file-local helpers (problem, failCall, hex, drawn, skipped) shared in name with the palette and particle tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+        ${EDITOR_DIR}/pixelart/fx/ContactSheet.cpp
+        ${EDITOR_DIR}/pixelart/fx/EffectCapture.cpp
+        ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
+        ${EDITOR_DIR}/window/ContactSheetWindow.cpp
+)
+
+# S48 (Pixel FX): the sprite material Inspector's feature thumbnails and Preview scrub
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/SpriteFxPreview.cpp
+    ${EDITOR_DIR}/window/InspectorSpriteFx.cpp
+)
+
 # S51 (Pixel Fonts): preview_font, the font parts of get_asset_info and write_file, the Bitmap Font
 # Inspector, Create > Bitmap Font, the Text Inspector's pixel rows, hot reload and cooking
 list(APPEND JASPERENGINE_EDITOR_SOURCES

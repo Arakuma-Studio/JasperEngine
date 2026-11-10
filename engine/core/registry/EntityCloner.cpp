@@ -56,6 +56,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -1335,6 +1336,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

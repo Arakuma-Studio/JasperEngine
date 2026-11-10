@@ -124,6 +124,9 @@ namespace jasperengine{
 
         void setSpeed(float speed);
         float getSpeed() const;
+        // S48 Pose Frame Rate (fps, 0 = smooth): poses held on whole steps from each key
+        void setPoseFrameRate(float fps);
+        float getPoseFrameRate() const;
         void setApplyRootMotion(bool apply);
         bool isApplyRootMotion() const;
         // the last update's root motion, world space

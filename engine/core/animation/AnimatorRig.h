@@ -201,13 +201,18 @@ namespace jasperengine::anim{
         };
         std::vector<KeyCursor> cursors;
         std::vector<Location> locations;
+        // S48 Pose Frame Rate: the groups' locations at the true time, for the smooth root bone
+        std::vector<Location> smoothLocations;
         void resize(size_t groups);
     };
 
     // Writes the clip at `clipTime` (seconds, already wrapped into the clip) into `out`, which
     // holds the rest pose (or another base) for everything the clip does not animate
+    // `stepFps` > 0 (S48 Pose Frame Rate) holds every track on whole steps from its previous
+    // key (holdPoseTime), except the position of bone `smoothBone` (the root), sampled at
+    // `clipTime`
     JASPERENGINE_API void sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, float clipTime,
-                                     RigClipCursors& cursors, Pose& out);
+                                     RigClipCursors& cursors, Pose& out, float stepFps = 0.0f, int smoothBone = -1);
 
 }
 

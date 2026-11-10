@@ -21,6 +21,14 @@ namespace{
         return preset;
     }
 
+    // S48 R22: a preset in art pixels, with its tick rate
+    ShakePreset pixels(ShakePreset preset, float tick){
+        preset.units = ShakeUnits::Pixels;
+        preset.tick = tick;
+        return preset;
+    }
+
+    constexpr ShakeType KICK = ShakeType::Kick;
     constexpr ShakeType ONE_SHOT = ShakeType::OneShot;
     constexpr ShakeType SUSTAINED = ShakeType::Sustained;
 
@@ -47,6 +55,10 @@ const std::vector<BuiltinShakePreset>& camera::builtinShakePresets(){
         {"handheld", "A held, slow handheld-camera drift", make(SUSTAINED, 0.5f, 0.25f, 1.0f, 1.0f, Vector3(0, 0, 0), Vector3(1, 0.5f, 0.5f))},
         {"vibration", "A held, fine vibration", make(SUSTAINED, 0.2f, 20.0f, 0.5f, 0.5f, Vector3(0, 0.15f, 0), Vector3(1.25f, 0, 4))},
         {"bump", "A soft bump", make(ONE_SHOT, 1.25f, 4.0f, 0.1f, 0.75f, Vector3(0.15f, 0.15f, 0.15f), Vector3(1, 1, 1))},
+        // S48's pixel-art shakes (pixelfx act.js): whole art pixels, no roll
+        {"pixel_hit", "A 2-pixel kick over 0.15 s", pixels(make(KICK, 2.0f, 1.0f, 0.0f, 0.15f, Vector3(1, 1, 0), Vector3(0, 0, 0)), 0.0f)},
+        {"pixel_heavy", "A 4-pixel kick over 0.35 s", pixels(make(KICK, 4.0f, 1.0f, 0.0f, 0.35f, Vector3(1, 1, 0), Vector3(0, 0, 0)), 0.0f)},
+        {"pixel_rumble", "A held 1-pixel rumble stepping at 30 Hz", pixels(make(SUSTAINED, 1.0f, 8.0f, 0.0f, 0.2f, Vector3(1, 1, 0), Vector3(0, 0, 0)), 30.0f)},
     };
     return presets;
 }

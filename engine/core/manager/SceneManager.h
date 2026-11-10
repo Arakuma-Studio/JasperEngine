@@ -206,6 +206,12 @@ namespace jasperengine {
         // True for a scene below the shown loading scene, which gets no UI input.
         static bool isCoveredByLoading(Scene* scene);
 
+        // The loading scene is on screen (a screen transition reveals onto it, S48 R15)
+        static bool isLoadingSceneShown();
+        // The stack loadScene() switched to has loaded (holds may still keep the loading scene up),
+        // or nothing is loading
+        static bool isLoadComplete();
+
         // Tracks the loading of a stack started without loadScene(), as the editor's Play does.
         static void setCurrentScene(uint32_t id);
 

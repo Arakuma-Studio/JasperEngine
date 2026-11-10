@@ -28,6 +28,7 @@
 #include "io/watch/FileIdentity.h"
 #include "manager/SceneManager.h"
 #include "shader/ShaderGlobals.h"
+#include "pixelart/ScreenTransition.h"
 
 namespace fs = std::filesystem;
 
@@ -278,6 +279,8 @@ namespace jasperengine::editor {
         // T3 R34: the terrain tiers the game ships, a mask of TerrainQuality bits (all three: no line)
         uint32_t shippedTerrainTiers = 0x7u;
         DrawSubmissionSettings drawSubmission;
+        // Project Settings > Graphics > Screen Transitions (S48)
+        jasperengine::pixelart::TransitionDefaults transitionDefaults;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
@@ -446,6 +449,7 @@ namespace jasperengine::editor {
         // Project::getGeneratedTerrainTiers; set before configure()
         void setShippedTerrainTiers(uint32_t mask) { shippedTerrainTiers = mask; }
         void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
+        void setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults) { transitionDefaults = defaults; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }

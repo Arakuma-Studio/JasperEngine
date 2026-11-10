@@ -339,6 +339,8 @@ JASPERENGINE_INIT void init() {
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
     Engine::setDynamicBatchingDefault(game.dynamicBatching);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
+    // Screen Transitions (S48): Lua's defaults
+    pixelart::ScreenTransition::setDefaults(game.transitions);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
     // the Device Tier the GPU gets applies from here on (spec S56)
