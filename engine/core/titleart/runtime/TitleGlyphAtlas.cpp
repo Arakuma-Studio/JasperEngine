@@ -530,6 +530,9 @@ uint64_t jasperengine::titleart::titleGlyphStyleHash(uint64_t documentHash, cons
 }
 
 bool TitleGlyphAtlas::snapshot(TitleGlyphAtlasSnapshot& out, std::string& error){
+    // the pages' draws were recorded, not submitted: Vulkan's readback waits for what was
+    // submitted (FrameReadback reads after the frame that drew was committed)
+    SystemRender::commit();
     out = TitleGlyphAtlasSnapshot();
     Json manifest{{"format", "jasperengine.titleart.glyphs"}, {"version", 1}, {"page_size", pageSide}};
     Json skylines = Json::array();
@@ -765,6 +768,9 @@ std::vector<std::string> jasperengine::titleart::titleGlyphPrebakeStrings(const 
 bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
                                                     const std::vector<FieldOverride>& overrides, const std::string& textLayer,
                                                     const std::vector<std::string>& strings, size_t maxCells, std::string& error){
+    // this call steps the jobs itself and no frame commits meanwhile: spreading the first draws
+    // (TitleFirstDraws) would wait for a frame that never comes
+    TitleFirstDraws::SynchronousScope synchronous;
     TitleLiveLimits limits;
     double clock = 0.0;
     for (const std::string& text : strings){

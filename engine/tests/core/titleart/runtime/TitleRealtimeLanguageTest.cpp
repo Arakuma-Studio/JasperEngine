@@ -16,6 +16,7 @@
 #include "titleart/runtime/TitleGlyphAtlas.h"
 #include "titleart/runtime/TitleGlyphAtlasPlan.h"
 
+#include <limits>
 #include <chrono>
 
 using namespace jasperengine;
@@ -64,7 +65,7 @@ namespace {
         return out;
     }
 
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs = UNLIMITED, int maxFrames = 100000) {
+    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs = UNLIMITED, int maxFrames = std::numeric_limits<int>::max()) {
         TitleLiveLimits limits;
         double clock = 0.0;
         const auto start = std::chrono::steady_clock::now();
