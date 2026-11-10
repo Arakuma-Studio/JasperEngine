@@ -105,6 +105,9 @@ namespace jasperengine::titleart {
         const TargetRef* alphaKeyed = nullptr;
         // the quality tier S81 renders for: Mobile takes the reductions S83 names (D11, D12)
         FxTier tier = FxTier::Desktop;
+        // the input's colour holds light x 1 / inputLight (S83 D14: a group's light accumulator on
+        // the RGBA8 path, given to a first effect that `readsLight`); its alpha is plain coverage
+        float inputLight = 1.0f;
 
         EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };
@@ -142,6 +145,9 @@ namespace jasperengine::titleart {
         // definition's reduced path, the one its estimate for FxTier::Mobile describes. The
         // renderer takes it from RenderRequest::fxTier (S81 sets it per device); tests set it
         FxTier tier = FxTier::Desktop;
+        // its output's colour holds light x lightScale, alpha plain (S83 D14: the light of an
+        // `encodesLight` generator inside a group whose Light Glow reads it, on the RGBA8 path)
+        float lightScale = 1.0f;
         // set by render: what it drew depends on the layer's place on the canvas (above). A
         // generator that fills the canvas from canvas coordinates sets it
         bool usesCanvasPosition = false;

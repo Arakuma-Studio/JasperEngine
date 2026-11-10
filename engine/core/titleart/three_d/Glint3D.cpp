@@ -244,6 +244,10 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
     const int W = (int)((left + std::ceil((lx.hi - cx) / cell)) * cell);
     const int H = (int)((above + std::ceil((ly.hi - cy) / cell)) * cell);
     const double ox = cx - left * cell, oy = cy - above * cell;
+    // the targets' format and the light a texel holds (the 8-bit path scales it into range)
+    const ColorFormat format = in.floatTargets ? ColorFormat::RGBA16F : ColorFormat::SRGB8A8;
+    const double scale = in.floatTargets ? 1.0 : GLINT_LIGHT_8BIT;
+    const double outScale = in.floatTargets ? 1.0 : GLINT_OUT_8BIT;
 
     std::map<int, TargetRef> held;     // level * 32 + slot
     std::string poolError;
@@ -253,7 +257,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
             TargetKey key;
             key.width = std::max(1, (int)std::ceil(W / std::ldexp(1.0, level)));
             key.height = std::max(1, (int)std::ceil(H / std::ldexp(1.0, level)));
-            key.format = ColorFormat::RGBA16F;
+            key.format = format;
             key.filter = TextureFilter::LINEAR;
             ref = pool.acquire(key, &poolError);
         }
@@ -320,7 +324,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         TargetKey key;
         key.width = lx.count;
         key.height = ly.count;
-        key.format = ColorFormat::RGBA16F;
+        key.format = format;
         key.filter = TextureFilter::NEAREST;
         out.light = pool.acquire(key, &poolError);
         if (!out.light) {
@@ -339,6 +343,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
     out.uv[1] = (float)(in.region.height * ly.n / (in.frameHeight * ly.count));
     out.uv[2] = (float)((in.region.x * lx.n / in.frameWidth - lx.j0) / lx.count);
     out.uv[3] = (float)((in.region.y * ly.n / in.frameHeight - ly.j0) / ly.count);
+    out.lightScale = (float)outScale;
     const double k = std::max(0.0, g.intensity);
     const auto tint = std::array<float, 3>{srgbToLinear(g.tint.r), srgbToLinear(g.tint.g), srgbToLinear(g.tint.b)};
     // the angle: clockwise on screen, rows down
@@ -348,8 +353,8 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
     const int brightLevel = sprites ? sl : base;
     const int ss = std::max(1, in.k);
     Block brightBlock{};
-    set4(brightBlock.p0, 0, in.exposure, in.shoulder ? 1 : 0, in.compressed ? 1 : 0);
-    set4(brightBlock.p1, std::max(0.0, g.threshold), std::ldexp(1.0, brightLevel) * ss);
+    set4(brightBlock.p0, 0, in.exposure, in.shoulder ? 1 : 0, in.linearLight ? 2 : in.compressed ? 1 : 0);
+    set4(brightBlock.p1, std::max(0.0, g.threshold), std::ldexp(1.0, brightLevel) * ss, 1.0 / scale);
     set4(brightBlock.p2, std::lround(ox * ss), std::lround(oy * ss));
     TitleTarget* bright = target(brightLevel, 1);
     if (!run(BRIGHT, bright, in.source, nullptr, nullptr, nullptr, brightBlock, false)) return false;
@@ -362,7 +367,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         if (!blurY) return false;
         TitleTarget* peaks = target(sl, 7);
         Block hp{};
-        set4(hp.p1, COVER_K);
+        set4(hp.p1, COVER_K / scale);
         if (!run(HIGHPASS, peaks, textureOf(bright), textureOf(blurX), textureOf(blurY), nullptr, hp, false)) return false;
         Pass* sp = im.pass(0, error);
         if (!sp) return false;
@@ -375,13 +380,14 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         set4(vs.map, texelPx / outPxX, texelPx / outPxY, (ox + 0.5 * texelPx - lx.lo) / outPxX, (oy + 0.5 * texelPx - ly.lo) / outPxY);
         const double lengthOut = std::max(1.0, g.length * in.unit / outPxX);
         set4(vs.frame, lx.count, ly.count, lengthOut, in.originTopLeft ? 1 : 0);
-        set4(vs.gain, tint[0] * k, tint[1] * k, tint[2] * k, 1e-3);
+        const double toOut = scale / outScale;
+        set4(vs.gain, tint[0] * k * toOut, tint[1] * k * toOut, tint[2] * k * toOut, 1e-3 / scale);
         SpriteFs fs{};
         set4(fs.shape, rays, angle, lengthOut, std::max(0.75, detail * grid / outPxX * 0.25));
         set4(fs.bloom, std::max(0.75, POINT_BLOOM_SIGMA * detail * grid / outPxX), POINT_BLOOM * 0.25, STREAK_PEAK / std::max(1.0, sigma));
         auto* t = out.light.as<SokolTitleTarget>();
         PipelineState state;
-        state.target.color = ColorFormat::RGBA16F;
+        state.target.color = format;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::ADDITIVE_PREMULTIPLIED;
@@ -418,7 +424,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         if (it != tamed.end()) return it->second;
         TitleTarget* rt = target(level, 18);
         Block b{};
-        set4(b.p1, COVER_K);
+        set4(b.p1, COVER_K / scale);
         if (!run(TAME, rt, textureOf(mips[(size_t)level]), nullptr, nullptr, textureOf(coverage), b, false)) return nullptr;
         tamed[level] = rt;
         return rt;
@@ -428,7 +434,8 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
     set4(add.p2, (double)lx.count * in.frameWidth / lx.n / W, (double)ly.count * in.frameHeight / ly.n / H, (lx.lo - ox) / W, (ly.lo - oy) / H);
     auto addInto = [&](TitleTarget* src, double gain) {
         Block b = add;
-        set4(b.p1, tint[0] * k * gain, tint[1] * k * gain, tint[2] * k * gain);
+        const double toOut = gain * scale / outScale;
+        set4(b.p1, tint[0] * k * toOut, tint[1] * k * toOut, tint[2] * k * toOut);
         return run(ADD, light, textureOf(src), nullptr, nullptr, nullptr, b, true);
     };
     int bloomSlot = 2;
@@ -445,7 +452,7 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         if (!blurY) return false;
         TitleTarget* peaks = target(sl, 7);
         Block hp{};
-        set4(hp.p1, COVER_K);
+        set4(hp.p1, COVER_K / scale);
         if (!run(HIGHPASS, peaks, textureOf(mips[(size_t)sl]), textureOf(blurX), textureOf(blurY), textureOf(coverage), hp, false)) return false;
         // light gathered over a few detail sizes, on sl + 1
         auto gather = [&](TitleTarget* src, int mid, int slot) -> TitleTarget* {

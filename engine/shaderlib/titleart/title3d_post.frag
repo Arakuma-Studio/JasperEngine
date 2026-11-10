@@ -19,11 +19,14 @@ precision highp int;
 //   16 taps in 7 turns over the radius projected at the pixel's depth, rotated by interleaved
 //   gradient noise keyed on whole-render pixels, falloff along the surface, then two 9-tap
 //   depth-aware blurs (weight exp(-|dz| / (0.02 z))). Ported from Pachislop
-//   src/engine/three/ao.ts by SafEight, used with the author's permission.
+//   src/engine/three/ao.ts by SafEight, used with the author's permission. Without float targets
+//   (p0.x = 1) the prepass is packed into RGBA8 (hdr_compress.glsl hd_packNormalDepth) and the AO
+//   targets are RGBA8.
 // - TP_PROGRAM 6 BEHIND: the resolved opaque image as linear premultiplied light (the gem behind
 //   copy's top level); 7 BOX_DOWN: a 2 x 2 box of the level above, or (p1.y = 1) the same level
 //   texel for texel (the copy's mip chain, built through a second texture: a pass never samples
-//   the image it draws).
+//   the image it draws). Without float targets the copy is SRGB8A8 in the compressed-light
+//   encoding (hd_encodeLight): the box averages the decoded light, then encodes it again.
 // @image_sample_type u_tpSrc unfilterable_float
 // @sampler_type u_tpSrc_smp nonfiltering
 // @image_sample_type u_tpAux unfilterable_float
@@ -39,11 +42,14 @@ uniform texture2D u_tpAux2;
 uniform sampler u_tpAux2_smp;
 
 uniform u_fs_title3dPost {
-    vec4 p0;    // TONEMAP: x mode, y exposure, z 1 = expand the shoulder, w 1 = decode compressed light
+    vec4 p0;    // TONEMAP: x mode, y exposure, z 1 = expand the shoulder, w the light's encoding (hd_decode);
+                // AO, AO_BLUR: x 1 = the prepass is packed; BEHIND: as TONEMAP, x 1 = write the compressed
+                // encoding; BOX_DOWN: x 1 = the copy holds the compressed encoding
     vec4 p1;    // MITCHELL: x k, y the source's last texel along the axis; AO: x radius (view units),
                 // y px per view unit at depth 1, z intensity, w 1 = origin top left; AO_BLUR: xy the
                 // axis; BOX_DOWN: x the source level, y 1 = copy the level as it is
-    vec4 p2;    // TONEMAP: x 1 = AO, y 1 = glint, z debug (1 AO, 2 glint, 3 ink); AO, AO_BLUR: xy the
+    vec4 p2;    // TONEMAP: x 1 = AO, y 1 = glint, z debug (1 AO, 2 glint, 3 ink), w the light a glint
+                // texel holds x (1, or the 8-bit glint's scale: Glint3D.h); AO, AO_BLUR: xy the
                 // grid's origin in the whole render (px), z the title centre's view depth, w its radius
     vec4 p3;    // TONEMAP: the glint texture's uv = main uv x xy + zw
     mat4 projInv;   // AO: the prepass's inverse projection
@@ -91,6 +97,12 @@ vec4 tpBilinearAux2(vec2 uv) {
 #endif
 
 #if TP_PROGRAM == 4 || TP_PROGRAM == 5
+// a prepass texel: (view normal, title-relative depth), unpacked from RGBA8 when p0.x = 1
+vec4 tpND(ivec2 q) {
+    vec4 nd = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), q, 0);
+    return tp.p0.x > 0.5 ? hd_unpackNormalDepth(nd) : nd;
+}
+
 bool tpSurface(vec4 nd) {
     return dot(nd.xyz, nd.xyz) > 0.25;
 }
@@ -116,7 +128,7 @@ void main() {
     ivec2 at = ivec2(gl_FragCoord.xy);
 #if TP_PROGRAM == 1
     vec4 c = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
-    if (tp.p0.w > 0.5) c = hd_decodeLight(c);
+    c = hd_decode(c, tp.p0.w);
     float a = clamp(c.a, 0.0, 1.0);
     vec3 straight = a > 1e-5 ? max(c.rgb / a, vec3(0.0)) : vec3(0.0);
     if (tp.p0.z > 0.5) straight = hd_expand(straight, tp.p0.y);
@@ -132,7 +144,7 @@ void main() {
         light *= ao;
     }
     if (tp.p2.y > 0.5) {
-        vec3 g = max(tpBilinearAux2(uv * tp.p3.xy + tp.p3.zw).rgb, vec3(0.0));
+        vec3 g = max(tpBilinearAux2(uv * tp.p3.xy + tp.p3.zw).rgb * tp.p2.w, vec3(0.0));
         if (debugView == 2) {
             float ga = clamp(max(g.r, max(g.g, g.b)), 0.0, 1.0);
             frag_color = ga > 1e-5 ? vec4(tl_toneMap(g / ga * tp.p0.y, int(tp.p0.x + 0.5)) * ga, ga) : vec4(0.0);
@@ -150,7 +162,7 @@ void main() {
     vec3 col = tl_toneMap(light / a * tp.p0.y, int(tp.p0.x + 0.5));
     frag_color = vec4(col * a, a);
 #elif TP_PROGRAM == 4
-    vec4 nd = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
+    vec4 nd = tpND(at);
     frag_color = vec4(1.0);
     if (!tpSurface(nd)) return;
     ivec2 isize = textureSize(sampler2D(u_tpSrc, u_tpSrc_smp), 0);
@@ -176,7 +188,7 @@ void main() {
         vec2 off = vec2(cos(ang), sin(ang)) * t * rPx;
         ivec2 q = ivec2(centre + off);
         if (any(lessThan(q, ivec2(0))) || any(greaterThanEqual(q, isize))) continue;
-        vec4 qnd = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), q, 0);
+        vec4 qnd = tpND(q);
         if (!tpSurface(qnd)) continue;
         vec3 v = tpViewPos(vec2(q) + 0.5, size, tpDepth(qnd)) - P;
         float vv = dot(v, v);
@@ -191,7 +203,7 @@ void main() {
     frag_color = vec4(vec3(pow(max(0.0, 1.0 - 2.0 * sum / 16.0), 2.0 * tp.p1.z)), 1.0);
 #elif TP_PROGRAM == 5
     ivec2 last = textureSize(sampler2D(u_tpAux, u_tpAux_smp), 0) - 1;
-    vec4 nd = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
+    vec4 nd = tpND(at);
     if (!tpSurface(nd)) {
         frag_color = vec4(1.0);
         return;
@@ -202,7 +214,7 @@ void main() {
     float ws = 0.0;
     for (int i = -4; i <= 4; i++) {
         ivec2 q = clamp(at + axis * i, ivec2(0), last);
-        vec4 qnd = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), q, 0);
+        vec4 qnd = tpND(q);
         if (!tpSurface(qnd)) continue;
         float x = float(i) / 2.0;
         float w = exp(-0.5 * x * x) * exp(-abs(tpDepth(qnd) - z) / (0.02 * max(z, 1e-4)));
@@ -212,11 +224,12 @@ void main() {
     frag_color = vec4(vec3(ws > 0.0 ? s / ws : 1.0), 1.0);
 #elif TP_PROGRAM == 6
     vec4 c = texelFetch(sampler2D(u_tpSrc, u_tpSrc_smp), at, 0);
-    if (tp.p0.w > 0.5) c = hd_decodeLight(c);
+    c = hd_decode(c, tp.p0.w);
     float a = clamp(c.a, 0.0, 1.0);
     vec3 straight = a > 1e-5 ? max(c.rgb / a, vec3(0.0)) : vec3(0.0);
     if (tp.p0.z > 0.5) straight = hd_expand(straight, tp.p0.y);
     frag_color = vec4(straight * a, a);
+    if (tp.p0.x > 0.5) frag_color = hd_encodeLight(frag_color);
 #elif TP_PROGRAM == 7
     int level = int(tp.p1.x + 0.5);
     ivec2 last = textureSize(sampler2D(u_tpAux, u_tpAux_smp), level) - 1;
@@ -225,11 +238,13 @@ void main() {
         return;
     }
     ivec2 b = at * 2;
-    vec4 sum = texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b, last), level);
-    sum += texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(1, 0), last), level);
-    sum += texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(0, 1), last), level);
-    sum += texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(1, 1), last), level);
+    float mode = tp.p0.x > 0.5 ? 1.0 : 0.0;
+    vec4 sum = hd_decode(texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b, last), level), mode);
+    sum += hd_decode(texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(1, 0), last), level), mode);
+    sum += hd_decode(texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(0, 1), last), level), mode);
+    sum += hd_decode(texelFetch(sampler2D(u_tpAux, u_tpAux_smp), min(b + ivec2(1, 1), last), level), mode);
     frag_color = sum * 0.25;
+    if (mode > 0.5) frag_color = hd_encodeLight(frag_color);
 #else
     float k = tp.p1.x;
     int last = int(tp.p1.y + 0.5);

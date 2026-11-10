@@ -22,6 +22,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -89,6 +90,8 @@ namespace jasperengine::editor {
         // S85: whether a project asset (assets-relative path, GUID) exists (marker sounds); null
         // without a project
         std::function<bool(const std::string& path, const std::string& guid)> assetExists;
+        // the pixel checks' renders of this context, shared by its checks (TitleArtBuiltinChecks)
+        std::shared_ptr<void> renders;
     };
 
     struct TitleCheckResult {

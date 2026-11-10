@@ -1875,10 +1875,11 @@ rest of S82 lands in 6B.
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
     `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
-    - fallback_parity: `elements/electric-blue`, `elements/storm-counter` (bloom over Lightning clamps on the RGBA8 path),
-      `casino/confirm-giraffe-3d` (the 3D glint's picks);
+    - fallback_parity: none since Deviation 32 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
+      `elements/storm-counter` pass since S83 Deviation 43 (Light Glow read Lightning's light clipped at 1 on the RGBA8
+      path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
-      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low; **fixed in the mesher** (S86 Deviation 31:
+      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low; **fixed in the mesher** (S86 Deviation 35:
       it coarsens to each tier's budget, and the solid limit drops the thinnest band), so 6 items fail; the gate over
       every 3D item (70 looks, 21 templates, 252 renders) finds only diamond-3d and confirm-giraffe-3d below;
     - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
@@ -1886,8 +1887,8 @@ rest of S82 lands in 6B.
       documents, cause not found).
     What was fixed, by cause: the tier budget measured islands instead of the stack, and the mesher now builds at most the
     tier's stack (bands past it are reported per tier as `3d_tier_budget.<tier>.bands_dropped`, a warning); fallback parity
-    uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning, Backlight, following
-    Glints, as S83's own test does for the first two); counter_survival is visible contrast (below); legibility is judged on
+    uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning and Backlight, as
+    S83's own test does, and following Glints, measured in S83 Deviation 44); counter_survival is visible contrast (below); legibility is judged on
     the item's declared background (46 looks, 11 templates). About 45 items were tuned as data, each with a targeted change, and reviewed on
     before-and-after sheets of every family in both samples: no look lost its identity; the colour scheme mono-dark did, and
     is restored (it fails counter_survival again); two template sample texts were shortened to fit ("NEW IN", "BREAK").
@@ -1907,9 +1908,12 @@ rest of S82 lands in 6B.
     `Monoton` (declared in `OFL.txt` only) and `MedievalSharp` (declared in ID 13) would have shipped subsets under a reserved
     name. Detection now reads IDs 0 and 13 and a small table of the pack's fonts whose names do not declare it;
     `TitleFontSubset.ReservedNamesOfThePackFonts` holds all three plus an ID-0 font.
-28. **Open renderer bugs found by the gate:** after `render_title` on a document, the forced RGBA8 render of the same document
-    at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
-    the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
+28. **Renderer bugs found by the gate.** After `render_title`, `fallback_parity` failed on `sports/goal-banner`: not the RGBA8
+    path (it was the fresh render, Speed Lines drawn) but the float render, which met the node cache and drew the look's Fire
+    twice and no Speed Lines. Generator params sat in the Node hash scope (an object member inherits the walk's scope), which
+    the node cache's content key leaves out, so two generators following one layer from one place shared an entry (and a
+    param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
+    and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
 29. **Follow-up of 23 (ta/lib-looks):**
     - The "render state carried between documents" was the renderer's node cache: a group drawn for an isolated layer was
@@ -1970,3 +1974,19 @@ rest of S82 lands in 6B.
     user's; 20 MB): a cold run 1234 s, every later one 1040 s (17.3 min). A run on a clean machine stays over 20 min;
     a 101-render subset measured 192 s cold, 121 s warm. llvmpipe thread counts (4, 7, 8, Mesa's 16) were measured on
     that subset and changed nothing warm (4: slower), so none is set.
+
+32. **Resolved: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
+    0.25 it measured 2.8 % of pixels over 24/255 (the check's limit 1 %), mean 2.0; with the glint off 0.35 %; `ja` passes, as
+    every other 3D item does. The MSAA resolve averaged the encoding `C/(1 + C)`, not the light; S86 Deviation 36 makes the
+    supersampled fallback hold linear light (resolves average light, `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`):
+    giraffe en is now 2.0 %, mean 1.6, and the other 251 samples of the 91 3D items pass. What remains is the 8-bit precision
+    of the glint's input (the same encoding in a float target: 0.0 %), which no 8-bit encoding of light up to 60 removes.
+    The integrator's decision: `fallback_parity` now checks a document with 3D glints on twice, as S86 AC9 reads: the same
+    document with its glints off to the 3D share and max (giraffe en 0.0 % over 24/255, max 24), the glint-on render to AC9's
+    mean alone (3/255; giraffe en 1.6), so the stars are judged by the spec's own criterion and everything else per pixel
+    (S86 Deviation 37). Red controls (`FallbackParityCheckTest`): a glint document broken outside its glints fails, and so
+    does a glint whose difference passes the mean; without glints the share stays.
+33. **Implementation: the pixel checks' renders live with their call.** `rendersOf` kept one static set of renders keyed by
+    the context's address and the document's hash, so a later `check_title` call on the same document (its context in the
+    same stack slot) with another `render_scale` read the earlier call's renders. They now live in the context
+    (`TitleCheckContext::renders`), one set per call (`FallbackParityCheckTest.EachCallRendersAtItsOwnOptions`, red before).

@@ -248,6 +248,42 @@ TEST_F(TitleGenGpu, FallbackWithinClass) {
     }
 }
 
+// Light Glow over Lightning (S83 D14's light accumulator): a group whose Light Glow reads a title
+// and an Add-blended Lightning that follows it (elements/storm-counter's structure, its params).
+// Each alone agreed; together the RGBA8 path clipped the bolts' light at 1 in the group before the
+// glow read it
+TEST_F(TitleGenGpu, LightGlowOverLightningWithinClass) {
+    Json title = standardTitleLayer();
+    title["effects"] = Json::array();
+    auto bolts = [](const char* id, int count, double glow, double intensity, int seed) {
+        return Json{{"id", id}, {"type", "generator"}, {"name", "Lightning"}, {"blend", "add"}, {"follow", "00000001"},
+                    {"generator", {{"type", "lightning"},
+                                   {"params", {{"count", count}, {"glow", glow}, {"intensity", intensity}, {"seed", seed}, {"color", "#4fd8ff"}}}}}};
+    };
+    Json group{{"id", "00000500"}, {"type", "group"}, {"name", "Title FX"},
+               {"children", Json::array({title, bolts("00000501", 12, 100, 100, 1), bolts("00000502", 9, 110, 105, 4)})},
+               {"effects", Json::array({standardEffect("00000503", "light_glow",
+                                                       {{"exposure", 1}, {"threshold", 0.4}, {"knee", 0.3}, {"radius", 280}, {"falloff", 30},
+                                                        {"intensity", 2}, {"chroma", -40}, {"tint_amount", 0.7}, {"tint_inner", "#9ee6ff"},
+                                                        {"tint_outer", "#1a5cff"}})})}};
+    const TitleArtDoc doc = standardDocument({group});
+    const uint32_t forced = TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F;
+    GenImage f, e;
+    std::string error;
+    ASSERT_TRUE(renderGenDocument(doc, GEN_SCALE, f, error)) << error;
+    ASSERT_TRUE(renderGenDocument(doc, GEN_SCALE, e, error, forced)) << error;
+    const GenPixelStats stats = compareGenImages(f, e);
+    // F2 (Light Glow's class); Lightning's edge cells read the 8-bit grid (FallbackWithinClass): no max
+    EXPECT_LE(stats.mean, 3.0) << stats.text();
+    EXPECT_LE(stats.fractionOver8, 0.05) << stats.text();
+    if (stats.mean > 3.0 || stats.fractionOver8 > 0.05) {
+        const std::filesystem::path dir(getOutputDirectory());
+        std::filesystem::create_directories(dir);
+        writePng((dir / "titleart-glow-over-lightning-float.png").string(), f.rgba, f.width, f.height);
+        writePng((dir / "titleart-glow-over-lightning-rgba8.png").string(), e.rgba, e.width, e.height);
+    }
+}
+
 // ---- QuadBatch (AC13) ----
 
 namespace {

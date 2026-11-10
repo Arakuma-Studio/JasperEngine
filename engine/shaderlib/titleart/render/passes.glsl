@@ -18,7 +18,8 @@ bool taInsideUv(vec2 uv) { return all(greaterThanEqual(uv, vec2(0.0))) && all(le
 // TA_TEX0 through p[2] x opacity p[3].x; p[3].y 0 rgba, 1 the red channel as a value (r r r r);
 // p[3].z 1: transparent outside the source; p[3].w mask 0 none, 1 TA_TEX1's alpha, 2 its red,
 // through p[4]; p[5].w 1: S85's layer tint p[5].rgb (multiply) and flash p[6].rgb (added under
-// the alpha), linear, on the premultiplied source
+// the alpha), linear, on the premultiplied source; p[7].x > 0 scales the colour alone, after the
+// opacity (into a light accumulator, S83 D14)
 void main() {
     vec2 uv = taMapUv(ta.p[2]);
     vec4 s = texture(TA_TEX0, uv);
@@ -26,6 +27,7 @@ void main() {
     if (ta.p[3].z > 0.5 && !taInsideUv(uv)) s = vec4(0.0);
     if (ta.p[5].w > 0.5) s.rgb = max(s.rgb * ta.p[5].rgb + ta.p[6].rgb * s.a, vec3(0.0));
     s *= ta.p[3].x;
+    if (ta.p[7].x > 0.0) s.rgb *= ta.p[7].x;
     if (ta.p[3].w > 0.5) {
         vec4 m = texture(TA_TEX1, taMapUv(ta.p[4]));
         s *= ta.p[3].w > 1.5 ? m.r : m.a;

@@ -20,6 +20,9 @@ precision highp int;
 // - 7 TAME: src x K / (K + coverage).
 // - 8 PINCH: src x (src / (blur K))^2 x (blur / (coverage Kc))^2, each at most 1.
 // - 9 DENSITY: src x ((near / (wide K))^2)^2, at most 1.
+// Without float targets (Glint3D.h) the targets are SRGB8A8 holding light / a scale: the bright
+// pass writes light x p1.z, the constants of TAME and HIGHPASS come in the stored units, and ADD's
+// gain converts to the output's scale; the other passes are linear or take ratios.
 
 uniform texture2D u_tgSrc;
 uniform sampler u_tgSrc_smp;
@@ -31,8 +34,8 @@ uniform texture2D u_tgAux3;
 uniform sampler u_tgAux3_smp;
 
 uniform u_fs_titleGlint {
-    vec4 p0;    // BRIGHT: y exposure, z 1 = expand the shoulder, w 1 = decode compressed light
-    vec4 p1;    // per program (above)
+    vec4 p0;    // BRIGHT: y exposure, z 1 = expand the shoulder, w the light's encoding (hd_decode)
+    vec4 p1;    // per program (above); BRIGHT: z the scale of the light it writes
     vec4 p2;    // BRIGHT: xy the source texel of the grid's first corner; ADD: uv scale and offset
     vec4 p3;    // xy: 1 / the target's size (texels)
 } tg;
@@ -61,7 +64,7 @@ void main() {
             ivec2 q = p + ivec2(x, y);
             if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, size))) {
                 vec4 s = texelFetch(sampler2D(u_tgSrc, u_tgSrc_smp), q, 0);
-                if (tg.p0.w > 0.5) s = hd_decodeLight(s);
+                s = hd_decode(s, tg.p0.w);
                 if (tg.p0.z > 0.5 && s.a > 1e-5) s.rgb = hd_expand(s.rgb / s.a, tg.p0.y) * s.a;
                 c += s;
             }
@@ -73,7 +76,7 @@ void main() {
     float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)) / c.a;
     float e = min(l, 64.0) - tg.p1.x;
     if (e <= 0.0) return;
-    frag_color.rgb = c.rgb * (e * e / (e + 4.0)) / max(l, 1e-4);
+    frag_color.rgb = c.rgb * (e * e / (e + 4.0)) / max(l, 1e-4) * tg.p1.z;
 #elif TG_PROGRAM == 2
     frag_color = vec4(texture(sampler2D(u_tgSrc, u_tgSrc_smp), uv).rgb, 1.0);
 #elif TG_PROGRAM == 3

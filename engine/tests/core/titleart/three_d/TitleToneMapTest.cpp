@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // S86 AC18 and R30: the 3D post's tone maps (titleart/title_tonemap.glsl) and light encodings
-// (titleart/hdr_compress.glsl), compiled as C++ over a shim of the GLSL they use, so the shader
+// (titleart/hdr_compress.glsl, the AO prepass's RGBA8 packing included), compiled as C++ over a shim of the GLSL they use, so the shader
 // runs these very lines. The ACES Filmic and AgX references are three.js's formulas evaluated in
 // double precision by a separate script (the values below); Neutral is checked against the
 // scene's PostColorLut. CPU only.
@@ -48,6 +48,9 @@ namespace tlglsl {
     inline float min(float a, double b) { return std::min(a, (float)b); }
     inline float max(double a, float b) { return std::max((float)a, b); }
     inline float clamp(float v, double lo, double hi) { return std::clamp(v, (float)lo, (float)hi); }
+    inline float abs(float v) { return std::fabs(v); }
+    inline float floor(double v) { return (float)std::floor(v); }
+    inline float sqrt(float v) { return std::sqrt(v); }
     inline float smoothstep(double e0, double e1, float x) {
         const float t = std::clamp((x - (float)e0) / (float)(e1 - e0), 0.0f, 1.0f);
         return t * t * (3.0f - 2.0f * t);
@@ -144,4 +147,55 @@ TEST(TitleToneMapTest, ShoulderAndCompressedLightInvert) {
         // red control: reading the encoding as plain colour loses the highlight
         if (m >= 2) { EXPECT_LT(e.x / 0.5f, 1.0f); }
     }
+}
+
+// R30: the MSAA resolve averages the encoded samples. Supersampled, the fallback's linear encoding
+// averages light, as the float path's resolve does where a highlight meets a dark sample (a bevel's
+// glint at an edge); red control: the highlight-compressing encoding resolves 12 over 0.02 to 0.89,
+// not 6.01, and the glint picks other stars
+TEST(TitleToneMapTest, SupersampledFallbackResolvesToTheMeanLight) {
+    auto resolve = [](vec4 (*encode)(vec4), float mode, float bright, float dark) {
+        const vec4 a = encode(vec4(bright, bright * 0.5f, bright * 0.25f, 1.0f));
+        const vec4 b = encode(vec4(dark, dark * 0.5f, dark * 0.25f, 1.0f));
+        return hd_decode(vec4(0.5f * (a.x + b.x), 0.5f * (a.y + b.y), 0.5f * (a.z + b.z), 0.5f * (a.w + b.w)), mode);
+    };
+    for (float bright : {1.5f, 4.0f, 12.0f, 40.0f}) {
+        for (float dark : {0.0f, 0.02f, 0.3f}) {
+            const float mean = 0.5f * (bright + dark);
+            const vec4 linear = resolve(hd_encodeLinear, 2.0f, bright, dark);
+            EXPECT_NEAR(linear.x, mean, mean * 1e-4f) << bright << " over " << dark;
+            EXPECT_NEAR(linear.z, 0.25f * mean, mean * 1e-4f) << bright << " over " << dark;
+        }
+    }
+    EXPECT_LT(resolve(hd_encodeLight, 1.0f, 12.0f, 0.02f).x, 0.2f * 6.01f) << "the compressed encoding resolves to the mean light";
+    // the linear encoding holds 3D highlights (they reach 60) and decodes plain light as mode 0
+    const vec4 high = hd_decode(hd_encodeLinear(vec4(60.0f, 30.0f, 15.0f, 1.0f)), 2.0f);
+    EXPECT_NEAR(high.x, 60.0f, 1e-3f);
+    EXPECT_NEAR(hd_decode(vec4(0.25f, 0.5f, 0.75f, 1.0f), 0.0f).y, 0.5f, 1e-6f);
+}
+
+// R30, R31: without float targets the AO prepass packs the view normal (octahedral, 8 bits a
+// component) and the title-relative depth (16 bits over +-8 radii) into RGBA8; codes round-trip
+// within a degree and 1/4000 of a radius, and an empty texel (code 0) reads as no surface
+TEST(TitleToneMapTest, PackedAoPrepassRoundTrips) {
+    auto code = [](float v) { return std::round(v * 255.0f) / 255.0f; };
+    int checked = 0;
+    for (int i = 0; i < 200; i++) {
+        const float z = -1.0f + 2.0f * (float)((i * 37) % 200) / 199.0f;
+        const float phi = 0.7f * (float)i;
+        const float r = std::sqrt(std::max(0.0f, 1.0f - z * z));
+        const vec4 nd(r * std::cos(phi), r * std::sin(phi), z, -7.5f + 15.0f * (float)i / 199.0f);
+        const vec4 packed = hd_packNormalDepth(nd);
+        const vec4 back = hd_unpackNormalDepth(vec4(code(packed.x), code(packed.y), code(packed.z), code(packed.w)));
+        const float dot = back.x * nd.x + back.y * nd.y + back.z * nd.z;
+        EXPECT_GT(dot, std::cos(1.5f * 3.14159265f / 180.0f)) << i;
+        EXPECT_NEAR(back.w, nd.w, 16.0f / 65534.0f) << i;
+        checked++;
+    }
+    EXPECT_EQ(checked, 200);
+    const vec4 empty = hd_unpackNormalDepth(vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(empty.x * empty.x + empty.y * empty.y + empty.z * empty.z, 0.0f) << "nothing drawn reads as no surface";
+    // red control: the depth's low byte dropped moves it by up to 1/16 of a radius
+    const vec4 packed = hd_packNormalDepth(vec4(0.0f, 0.0f, 1.0f, 0.1234f));
+    EXPECT_GT(std::abs(hd_unpackNormalDepth(vec4(code(packed.x), code(packed.y), code(packed.z), 0.0f)).w - 0.1234f), 1e-3f);
 }

@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -349,8 +350,11 @@ namespace jasperengine::titleart::test {
     // ---- running a job ----
 
     // frames until the job is done (its programs compile on the way, a cold shader cache takes
-    // a while on a software device); false on failure or after three minutes
-    inline ::testing::AssertionResult runJob(TitleRenderJob& job, const StepBudget& budget = {}, int maxFrames = 1000000) {
+    // a while on a software device); false on failure or after three minutes. The frames are not
+    // limited unless a test asks: on a fast GPU a million frames that wait for the shader worker
+    // took 1.5 s, less than a cold process's first compiles
+    inline ::testing::AssertionResult runJob(TitleRenderJob& job, const StepBudget& budget = {},
+                                             int maxFrames = std::numeric_limits<int>::max()) {
         const auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < maxFrames && std::chrono::steady_clock::now() - start < std::chrono::minutes(3); i++) {
             SystemRender::updateGpuCreation();

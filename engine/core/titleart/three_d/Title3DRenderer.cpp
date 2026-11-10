@@ -15,6 +15,7 @@
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
 #include "render/TextureRender.h"
+#include "jobs/JobSystem.h"
 #include "texture/TextureData.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleGpu.h"
@@ -45,6 +46,8 @@ namespace {
     constexpr double ENV_FAST_MS = 4.0, ENV_SLOW_MS = 16.0;
     // the gem's refraction thickness, a fraction of the source size (Pachislop GEM_THICKNESS)
     constexpr double GEM_THICKNESS = 0.3;
+    // a cube built on the builder's CPU twin is cached apart from the GPU-built one of its environment
+    constexpr uint64_t CPU_CUBE_KEY = 0x9e3779b97f4a7c15ull;
 
     enum PostProgram : uint32_t { TONEMAP = 1, MITCHELL_H = 2, MITCHELL_V = 3, AO = 4, AO_BLUR = 5, BEHIND = 6, BOX_DOWN = 7 };
     enum EnvProgram : uint32_t { PROCEDURAL = 1, PREFILTER = 2, EQUIRECT = 3, DOWNSAMPLE = 4 };
@@ -189,6 +192,7 @@ struct Title3DRenderer::Impl {
     std::map<uint64_t, std::unique_ptr<GpuMesh>> meshes;
     std::map<uint64_t, std::unique_ptr<Cube>> cubes;
     std::map<uint64_t, std::unique_ptr<EnvBuild>> builds;
+    std::map<uint64_t, std::unique_ptr<jobs::Task<std::vector<uint8_t>>>> cpuBuilds;    // by cube key
     std::map<const TitlePicture3D*, std::unique_ptr<PictureGpu>> pictures;
     uint64_t envShare = TITLE_ENV_STEP_UNITS;
     // placeholders: filtering samplers, and a nearest one for the slots that declare nonfiltering
@@ -199,6 +203,7 @@ struct Title3DRenderer::Impl {
     TextureRender behindCopy, behindScratch, behindCopyRaw, behindScratchRaw;
     std::unique_ptr<Glint3D> glint;
     int behindWidth = 0, behindHeight = 0, behindLevels = 0;
+    ColorFormat behindFormat = ColorFormat::RGBA16F;
     CameraRender pass;
     uint64_t clock = 0;
     // the render's first draws (TitleFirstDraws): it stops at the frame's second new program and
@@ -334,13 +339,14 @@ struct Title3DRenderer::Impl {
     }
 
     // a build's textures and its pass list (the programs are ready)
-    std::unique_ptr<EnvBuild> startBuild(const Title3DEnvPlan& env, std::string& error) {
+    std::unique_ptr<EnvBuild> startBuild(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
         auto b = std::make_unique<EnvBuild>();
         b->key = env.key;
         const int face = env.face;
         const int levels = titleEnvironmentLevels(face);
         const bool panorama = env.hdri != nullptr;
         auto createCube = [&](TextureRender& t) {
+            stats.floatRenderTargets++;
             return t.createFramebufferTexture(TextureType::TEXTURE_CUBE, false, false, face, face, TextureFilter::LINEAR_MIPMAP_LINEAR,
                                               TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, ColorFormat::RGBA16F,
                                               1, false, false, levels);
@@ -534,12 +540,16 @@ struct Title3DRenderer::Impl {
     // forever or be drawn after it went)
     Cube* finish(std::unique_ptr<EnvBuild> b, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
         std::unique_ptr<Cube> made = std::move(b->made);
+        b.reset();
+        stats.environmentBuilds++;
+        return store(std::move(made), pinned);
+    }
+
+    Cube* store(std::unique_ptr<Cube> made, const std::vector<Title3DEnvPlan>& pinned) {
         made->lastUse = ++clock;
         Cube* out = made.get();
         const uint64_t key = made->key;
-        b.reset();
         cubes[key] = std::move(made);
-        stats.environmentBuilds++;
         for (int faceSize : {1024, 2048}) {
             const size_t keep = faceSize == 2048 ? CUBES_2048 : CUBES_1024;
             while (true) {
@@ -549,7 +559,8 @@ struct Title3DRenderer::Impl {
                 for (auto& [k, c] : cubes) {
                     if (c->face != faceSize) continue;
                     count++;
-                    const bool held = std::any_of(pinned.begin(), pinned.end(), [&](const Title3DEnvPlan& e) { return e.key == k; });
+                    const bool held = std::any_of(pinned.begin(), pinned.end(),
+                                                  [&](const Title3DEnvPlan& e) { return e.key == k || (e.key ^ CPU_CUBE_KEY) == k; });
                     if (c->lastUse < oldest && c.get() != out && !held) {
                         oldest = c->lastUse;
                         victim = k;
@@ -571,25 +582,31 @@ struct Title3DRenderer::Impl {
         return true;
     }
 
-    // a cooked KTX2 cube uploaded (in the device's format, or its fallback)
-    Cube* uploadCooked(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
+    // a KTX2 cube uploaded (in the device's format, or its fallback), not cached
+    std::unique_ptr<Cube> uploadKtx2(const std::vector<uint8_t>& file, uint64_t key, const char* label, std::string& error) {
         TextureData data;
         const TextureFormatSupport support = SystemRender::getTextureFormatSupport();
         std::string loadError;
-        if (!data.loadKtx2(env.cooked->data(), (unsigned)env.cooked->size(), 0, &support, false, &loadError)) {
-            error = "the cooked title environment could not be read: " + loadError;
+        if (file.empty() || !data.loadKtx2(file.data(), (unsigned)file.size(), 0, &support, false, &loadError)) {
+            error = std::string("the ") + label + " could not be read: " + loadError;
             return nullptr;
         }
         auto made = std::make_unique<Cube>();
-        made->key = env.key;
+        made->key = key;
         made->face = data.getWidth();
         made->levels = (int)data.getLevels().size();
-        if (!made->texture.createTextureLevels("title environment (cooked)", TextureType::TEXTURE_CUBE, data.getGpuFormat(), data.getWidth(),
-                                               data.getHeight(), 6, data.getLevels(), TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR,
+        if (!made->texture.createTextureLevels(label, TextureType::TEXTURE_CUBE, data.getGpuFormat(), data.getWidth(), data.getHeight(), 6,
+                                               data.getLevels(), TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR,
                                                TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)) {
-            error = "the cooked title environment could not be uploaded";
+            error = std::string("the ") + label + " could not be uploaded";
             return nullptr;
         }
+        return made;
+    }
+
+    Cube* uploadCooked(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
+        std::unique_ptr<Cube> made = uploadKtx2(*env.cooked, env.key, "cooked title environment", error);
+        if (!made) return nullptr;
         made->lastUse = ++clock;
         Cube* out = made.get();
         cubes[env.key] = std::move(made);
@@ -597,17 +614,63 @@ struct Title3DRenderer::Impl {
         return out;
     }
 
-    // the cube of an environment: cached, else uploaded (cooked) or built to the end now (a render
-    // that did not wait for ready())
-    Cube* cube(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
-        auto it = cubes.find(env.key);
+    // the CPU twin's cube of an environment as an RGBA16F KTX2 file (empty when it cannot be written)
+    static std::vector<uint8_t> buildOnCpu(const TitleEnvScene& scene, const std::shared_ptr<const TitleHdri>& hdri, float yaw, int face) {
+        std::vector<uint8_t> file;
+        std::string error;
+        if (!writeTitleEnvironmentKtx2(buildTitleEnvironmentCpu(scene, hdri.get(), yaw, face), {}, file, error)) file.clear();
+        return file;
+    }
+
+    // a CPU build of `env` started on a background job (ready() polls it)
+    jobs::Task<std::vector<uint8_t>>& cpuBuild(const Title3DEnvPlan& env) {
+        std::unique_ptr<jobs::Task<std::vector<uint8_t>>>& slot = cpuBuilds[env.key ^ CPU_CUBE_KEY];
+        if (!slot) {
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "title-3d-environment";
+            const TitleEnvScene scene = *env.scene;
+            const std::shared_ptr<const TitleHdri> hdri = env.hdri;
+            const float yaw = env.hdriYaw;
+            const int face = env.face;
+            slot = std::make_unique<jobs::Task<std::vector<uint8_t>>>(
+                jobs::submit([scene, hdri, yaw, face]() { return buildOnCpu(scene, hdri, yaw, face); }, options));
+        }
+        return *slot;
+    }
+
+    // a finished CPU build uploaded into the cache
+    Cube* finishCpu(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
+        const uint64_t key = env.key ^ CPU_CUBE_KEY;
+        auto it = cpuBuilds.find(key);
+        std::vector<uint8_t> file;
+        if (it != cpuBuilds.end()) {
+            it->second->wait();
+            if (it->second->status() == jobs::TaskStatus::Completed) file = std::move(it->second->get());
+            cpuBuilds.erase(it);
+        } else {
+            file = buildOnCpu(*env.scene, env.hdri, env.hdriYaw, env.face);
+        }
+        std::unique_ptr<Cube> made = uploadKtx2(file, key, "title environment (built on the CPU)", error);
+        if (!made) return nullptr;
+        stats.environmentCpuBuilds++;
+        return store(std::move(made), pinned);
+    }
+
+    // the cube of an environment: cached, else uploaded (cooked), built on the CPU twin where the
+    // device renders no float cube (`gpu` false), or built to the end now (a render that did not
+    // wait for ready())
+    Cube* cube(const Title3DEnvPlan& env, bool gpu, std::string& error, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
+        const uint64_t key = env.cooked || gpu ? env.key : env.key ^ CPU_CUBE_KEY;
+        auto it = cubes.find(key);
         if (it != cubes.end()) {
             it->second->lastUse = ++clock;
             return it->second.get();
         }
         if (env.cooked) return uploadCooked(env, error, stats);
+        if (!gpu) return finishCpu(env, error, stats, pinned);
         std::unique_ptr<EnvBuild>& slot = builds[env.key];
-        if (!slot) slot = startBuild(env, error);
+        if (!slot) slot = startBuild(env, error, stats);
         if (!slot) {
             builds.erase(env.key);
             return nullptr;
@@ -815,15 +878,16 @@ struct Title3DRenderer::Impl {
     }
 
     // the gem behind copy at `width` x `height` with every level (kept between renders of that size)
-    bool ensureBehind(int width, int height) {
-        if (behindWidth == width && behindHeight == height) return true;
+    bool ensureBehind(int width, int height, ColorFormat format, Title3DStats& stats) {
+        if (behindWidth == width && behindHeight == height && behindFormat == format) return true;
         releaseBehind();
         int levels = 1;
         while ((std::max(width, height) >> levels) > 0) levels++;
         auto make = [&](TextureRender& t) {
+            if (isFloatColorFormat(format)) stats.floatRenderTargets++;
             return t.createFramebufferTexture(TextureType::TEXTURE_2D, false, false, width, height, TextureFilter::LINEAR_MIPMAP_LINEAR,
-                                              TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, ColorFormat::RGBA16F,
-                                              1, false, false, levels);
+                                              TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, format, 1, false,
+                                              false, levels);
         };
         if (!make(behindCopy)) return false;
         if (!make(behindScratch) || !behindCopyRaw.createAliasView(behindCopy, "title 3d behind (texels)") ||
@@ -837,6 +901,7 @@ struct Title3DRenderer::Impl {
         behindWidth = width;
         behindHeight = height;
         behindLevels = levels;
+        behindFormat = format;
         return true;
     }
 };
@@ -864,12 +929,25 @@ namespace {
         return f.renderRGBA16F && f.filterRGBA16F;
     }
 
-    // the glint chain of the render (the debug view shows the full chain when the layer has none)
+    // whether environment cubes build on the GPU into RGBA16F cubes; else on the builder's CPU
+    // twin, uploaded as RGBA16F and only sampled (filterable on every backend, GLES3 included)
+    bool gpuEnvironments(uint32_t testFlags) {
+        return SystemRender::getFeatures().renderRGBA16F && !(testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS);
+    }
+
+    // the glint chain of the render (the debug view shows the full chain when the layer has none);
+    // it runs with or without float targets (glintFloat)
     GlintMode glintMode(const Title3DPlan& plan) {
-        const RenderFeatures& f = SystemRender::getFeatures();
-        if (!floatPasses() || !f.blendRGBA16F || plan.glintParams.intensity <= 0) return GlintMode::Off;
+        if (plan.glintParams.intensity <= 0) return GlintMode::Off;
         if (plan.glint == GlintMode::Off && plan.debugView == Title3DDebugView::Glint) return GlintMode::Full;
         return plan.glint;
+    }
+
+    // whether the glint's targets are RGBA16F (rendered, filtered and blended), else SRGB8A8 (R30)
+    bool glintFloat(uint32_t testFlags) {
+        const RenderFeatures& f = SystemRender::getFeatures();
+        if (testFlags & (TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_FLOAT_FILTER | TITLE_ART_TEST_NO_FLOAT_BLEND)) return false;
+        return f.renderRGBA16F && f.filterRGBA16F && f.blendRGBA16F;
     }
 
     bool debugGeometry(const Title3DPlan& plan) {
@@ -877,9 +955,15 @@ namespace {
                plan.debugView == Title3DDebugView::Wireframe;
     }
 
-    // whether the render makes the gem behind copy (float passes, not a geometry view)
+    // whether the render makes the gem behind copy (not a geometry view)
     bool behindActive(const Title3DPlan& plan, uint32_t testFlags) {
-        return plan.behind && floatPasses() && !debugGeometry(plan) && !(testFlags & TITLE_ART_TEST_NO_BEHIND);
+        return plan.behind && !debugGeometry(plan) && !(testFlags & TITLE_ART_TEST_NO_BEHIND);
+    }
+
+    // whether the AO targets and the behind copy are RGBA16F; else RGBA8 (the prepass packed) and
+    // SRGB8A8 (the copy in the compressed-light encoding), R30
+    bool floatPostTargets(uint32_t testFlags) {
+        return floatPasses() && !(testFlags & (TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_FLOAT_FILTER));
     }
 
     // a slot's Title Lit variant in this render
@@ -976,12 +1060,19 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
         if (!impl->glint) impl->glint = std::make_unique<Glint3D>();
         if (!impl->glint->ready(glint, &error) && error.empty()) return false;
     }
-    // the environments: a share of a build per call, so a cube never stalls a frame
+    // the environments: a share of a build per call, so a cube never stalls a frame (a CPU build
+    // runs on a job)
+    const bool gpuEnv = gpuEnvironments(testFlags);
     for (const Title3DEnvPlan& env : plan.environments) {
-        if (env.matcap || env.cooked || impl->cubes.count(env.key)) continue;
+        if (env.matcap || env.cooked || impl->cubes.count(gpuEnv ? env.key : env.key ^ CPU_CUBE_KEY)) continue;
+        if (!gpuEnv) {
+            if (!impl->cpuBuild(env).isReady()) return false;
+            impl->finishCpu(env, error, counters, plan.environments);
+            return !error.empty();      // a failure the render reports; else the next call goes on
+        }
         if (!impl->envProgramsReady(env, error)) return !error.empty();
         std::unique_ptr<EnvBuild>& slot = impl->builds[env.key];
-        if (!slot) slot = impl->startBuild(env, error);
+        if (!slot) slot = impl->startBuild(env, error, counters);
         if (!slot) {
             impl->builds.erase(env.key);
             return true;    // the render reports the error
@@ -1057,7 +1148,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     std::vector<Cube*> envCubes(plan.environments.size(), nullptr);
     for (size_t i = 0; i < plan.environments.size(); i++) {
         if (plan.environments[i].matcap) continue;
-        envCubes[i] = im.cube(plan.environments[i], error, counters, plan.environments);
+        envCubes[i] = im.cube(plan.environments[i], gpuEnvironments(testFlags), error, counters, plan.environments);
         if (!envCubes[i]) return false;     // an error, or a first draw deferred (im.buildDeferred)
     }
     GpuMesh* gpuMesh = im.mesh(plan, error, counters);
@@ -1119,12 +1210,18 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     const double exposure = plan.lighting.exposure;
     set4(fs.camera, camera.position[0], camera.position[1], camera.position[2], (float)exposure);
     const bool shoulder = !compressed && samples > 1 && k == 1 && plan.debugView == Title3DDebugView::None;
+    // the fallback's encoding (hdr_compress.glsl hd_decode): supersampled, where the float path's
+    // resolve averages light, linear light so the fallback's resolve averages light too; at k = 1,
+    // like the float path's shoulder, the highlight-compressing one
+    const bool linearLight = compressed && k > 1;
+    const float encoding = linearLight ? 2.0f : compressed ? 1.0f : 0.0f;
     // an environment's lookup uniforms (the layer's, or a part's own before its draws)
     auto setEnvironment = [&](size_t index) {
         const Title3DEnvPlan& envPlan = plan.environments[std::min(index, plan.environments.size() - 1)];
         const Environment3D& e = envPlan.environment;
         const Cube* c = index < envCubes.size() ? envCubes[index] : nullptr;
-        set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder ? 1.0f : 0.0f, (float)(plan.size / 100.0));
+        set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder || linearLight ? 1.0f : 0.0f,
+             (float)(plan.size / 100.0));
         const int face = c ? c->face : 512;
         set4(fs.env, (float)std::log2(face / 512.0), (float)((c ? c->levels : 1) - 1), (float)e.blur,
              (e.repeatX != 1 || e.repeatY != 1) ? 1.0f : 0.0f);
@@ -1269,12 +1366,13 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     // ---- the AO prepass, SAO and its blurs at output resolution (R31) ----
     std::string poolError;
     TargetRef aoTarget;
-    if (wantsAO(plan) && floatPasses()) {
+    if (wantsAO(plan)) {
+        const bool aoFloat = floatPostTargets(testFlags);
         const TitleCamera3D aoCamera = title3DCamera(plan.camera, plan.canvasWidth, plan.canvasHeight, pxScale, region, !features.originTopLeft);
         TargetKey ndKey;
         ndKey.width = region.width;
         ndKey.height = region.height;
-        ndKey.format = ColorFormat::RGBA16F;
+        ndKey.format = aoFloat ? ColorFormat::RGBA16F : ColorFormat::RGBA;
         ndKey.filter = TextureFilter::NEAREST;
         ndKey.depth = TitleDepthFormat::Depth;
         TargetRef nd = services.pool.acquire(ndKey, &poolError);
@@ -1300,10 +1398,10 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
             fs = saved;
         }
         const float zCentre = viewDepth(aoCamera);
-        set4(aoFs.aoDepth, zCentre, radiusWorld);
+        set4(aoFs.aoDepth, zCentre, radiusWorld, aoFloat ? 0.0f : 1.0f);
         auto* ndt = nd.as<SokolTitleTarget>();
         PipelineState state;
-        state.target.color = ColorFormat::RGBA16F;
+        state.target.color = ndKey.format;
         state.target.depth = DepthStencilFormat::DEPTH;
         state.target.sampleCount = 1;
         state.blend = BlendMode::NONE;
@@ -1328,6 +1426,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         im.pass.endRenderPass();
         PostBlock block;
         std::memset(&block, 0, sizeof(block));
+        set4(block.p0, aoFloat ? 0.0f : 1.0f);
         const double radiusView = std::max(1e-3, plan.aoParams.radius / 100.0 * plan.size * plan.layerScale);
         const double projScale = region.height * 0.5 * std::abs(aoCamera.projection.at(1, 1));
         set4(block.p1, (float)radiusView, (float)projScale, (float)std::max(0.0, plan.aoParams.intensity), features.originTopLeft ? 1.0f : 0.0f);
@@ -1459,26 +1558,28 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
             counters.mainPasses++;
             Fullscreen* copy = im.program(ShaderType::TITLE_3D_POST, BEHIND, "u_fs_title3dPost", "u_tpSrc", &error);
             Fullscreen* down = im.program(ShaderType::TITLE_3D_POST, BOX_DOWN, "u_fs_title3dPost", "u_tpSrc", &error);
-            if (!copy || !down || !im.ensureBehind(mainKey.width, mainKey.height)) {
+            const ColorFormat behindFormat = floatPostTargets(testFlags) ? ColorFormat::RGBA16F : ColorFormat::SRGB8A8;
+            const float behindEncoded = behindFormat == ColorFormat::RGBA16F ? 0.0f : 1.0f;
+            if (!copy || !down || !im.ensureBehind(mainKey.width, mainKey.height, behindFormat, counters)) {
                 if (error.empty()) error = "the gem behind copy could not be set up";
                 return false;
             }
             PostBlock block;
             std::memset(&block, 0, sizeof(block));
             const bool behindShoulder = !compressed && samples > 1 && k == 1;
-            set4(block.p0, 0, (float)exposure, behindShoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
-            if (!im.post(*copy, nullptr, &im.behindCopy, 0, ColorFormat::RGBA16F, &mt->texture(), nullptr, nullptr, block, error)) return false;
+            set4(block.p0, behindEncoded, (float)exposure, behindShoulder ? 1.0f : 0.0f, encoding);
+            if (!im.post(*copy, nullptr, &im.behindCopy, 0, behindFormat, &mt->texture(), nullptr, nullptr, block, error)) return false;
             for (int level = 1; level < im.behindLevels; level++) {
                 set4(block.p1, (float)(level - 1), 0);
-                if (!im.post(*down, nullptr, &im.behindScratch, level, ColorFormat::RGBA16F, nullptr, &im.behindCopyRaw, nullptr, block, error)) return false;
+                if (!im.post(*down, nullptr, &im.behindScratch, level, behindFormat, nullptr, &im.behindCopyRaw, nullptr, block, error)) return false;
                 set4(block.p1, (float)level, 1);
-                if (!im.post(*down, nullptr, &im.behindCopy, level, ColorFormat::RGBA16F, nullptr, &im.behindScratchRaw, nullptr, block, error)) return false;
+                if (!im.post(*down, nullptr, &im.behindCopy, level, behindFormat, nullptr, &im.behindScratchRaw, nullptr, block, error)) return false;
             }
             counters.behindCopies++;
             // the whole render's width: a region's preview mips as the whole render would
             const double frameSpan = (double)plan.canvasWidth * pxScale / std::max(1, region.width);
-            set4(fs.behind, (float)std::log2(std::max(1.0, mainKey.width * frameSpan)), (float)(GEM_THICKNESS * plan.size * plan.layerScale), 1,
-                 features.originTopLeft ? 1.0f : 0.0f);
+            set4(fs.behind, (float)std::log2(std::max(1.0, mainKey.width * frameSpan)), (float)(GEM_THICKNESS * plan.size * plan.layerScale),
+                 1.0f + behindEncoded, features.originTopLeft ? 1.0f : 0.0f);
             startMain(false);
             drawSlots(false, true, true);
         }
@@ -1498,6 +1599,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         gi.sourceWidth = mainKey.width;
         gi.sourceHeight = mainKey.height;
         gi.compressed = compressed;
+        gi.linearLight = linearLight;
         gi.shoulder = shoulder;
         gi.exposure = exposure;
         gi.k = k;
@@ -1509,6 +1611,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         gi.params = plan.glintParams;
         gi.mode = glint;
         gi.originTopLeft = features.originTopLeft;
+        gi.floatTargets = glintFloat(testFlags);
         if (!im.glint->render(gi, services.pool, glintOut, im.gate, error)) return false;
         counters.glintPasses += glintOut.passes;
     }
@@ -1523,12 +1626,12 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     }
     PostBlock post;
     std::memset(&post, 0, sizeof(post));
-    set4(post.p0, (float)plan.lighting.toneMapping, (float)exposure, shoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
+    set4(post.p0, (float)plan.lighting.toneMapping, (float)exposure, shoulder ? 1.0f : 0.0f, encoding);
     float debug = 0;
     if (plan.debugView == Title3DDebugView::AO) debug = 1;
     else if (plan.debugView == Title3DDebugView::Glint) debug = 2;
     else if (plan.debugView == Title3DDebugView::Ink) debug = 3;
-    set4(post.p2, aoTarget ? 1.0f : 0.0f, glintOut.light ? 1.0f : 0.0f, debug);
+    set4(post.p2, aoTarget ? 1.0f : 0.0f, glintOut.light ? 1.0f : 0.0f, debug, glintOut.lightScale);
     set4(post.p3, glintOut.uv[0], glintOut.uv[1], glintOut.uv[2], glintOut.uv[3]);
     const TargetKey outKey = static_cast<SokolTitleTarget*>(out)->key();
     TargetRef toned;

@@ -1618,3 +1618,70 @@ rest of S82 lands in 6B.
     chamfer kept; every other tier and sample of these items was within budget and is unchanged. Red controls:
     `MESHER_TEST_NO_TIER_BUDGET` (the reductions alone are over at 4 of the 30 layer-tiers), and the old band choice
     moves the Ribbon's Low silhouette by 15 px.
+
+36. **Implementation (R30): the supersampled fallback holds linear light** (the integrator's decision, from S84's gate on
+    `casino/confirm-giraffe-3d`). The MSAA resolve averages what the target holds, and `a C / (1 + C)` averages to far less
+    light where a highlight meets a dark sample (12 over 0.02 resolves to 0.89, not 6.01), so the glint picked other stars.
+    At k > 1, where the float path's resolve averages light, the compressed path now holds premultiplied light / 64 in the
+    SRGB8A8 target (`hd_encodeLinear`; 3D highlights reach 60), dithered in the main pass by half a sRGB code that the k x k
+    texels of a pixel average out; the tone map, the gem copy and `Glint3D`'s bright pass decode by mode (`hd_decode`:
+    0 plain, 1 compressed, 2 linear). At k = 1 (Medium and Low on devices, and any k = 1 render), where the float path also
+    compresses highlights before its resolve (the shoulder), the encoding stays `a C / (1 + C)`: linear light there would
+    cost the darks their precision with no supersampling to average the dither. Cost: no pass, target or byte more in any
+    tier; the supersampled fallback's lit shader adds the dither (two `pow` per fragment); k = 1 is unchanged (not timed).
+    Tried and measured on the gate's 0.25 renders (fraction of pixels over 24/255; giraffe en / every other 3D sample): linear
+    light at 16, 32, 64 without dither 2.5 % / 2.2 % / 2.1 %, with `about-80-percent-3d` failing at 16 and 32 (clipping) and
+    at 64 (dark precision); 64 with the dither 2.0 % with all others passing; no MSAA at k > 1 with the old encoding 3.1 %.
+    The same linear encoding in a float target gives 0.0 %: what remains is the 8-bit precision of the glint's input,
+    which its pinch and star budget (4th powers of ratios) turn into star flips. Test: `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`.
+37. **Implementation (AC9): how S84's `fallback_parity` reads AC9 for glints** (the integrator's decision). The glint places
+    discrete stars from the light it reads, and on the RGBA8 path that light has 8 bits (31): a star at a near-tie moves.
+    AC9 holds a glint-on render to the mean (3/255) and a glint-off one to the share as well; the check does the same with
+    one document: with its 3D glints off to the 3D share and max, with them on to the mean alone.
+38. **Implementation (R30, R32, AC9): the 3D glint runs without float targets.** Found by S84's gate review: under
+    `TITLE_ART_TEST_NO_FLOAT_TARGETS` only the main target left float; `Glint3D` kept every intermediate and its output
+    in RGBA16F at every tier (Gold 3D "BIG": 34 float targets at Bake and High, 23 at Medium, 5 at Low), and on a device
+    without renderable, filterable and blendable RGBA16F the renderer turned the glint off. Now the glint runs on every
+    device. Where RGBA16F does not render, filter or blend, or under `TITLE_ART_TEST_NO_FLOAT_TARGETS`, `_NO_FLOAT_FILTER`
+    or `_NO_FLOAT_BLEND`, the glint runs the same passes on SRGB8A8 targets. Its intermediates hold light / 64, the
+    linear encoding of 31, since the bright pass reaches 60. Its output holds light / 16, S83 D14's accumulator, because
+    past 16 every tone curve is white. The bright pass scales its write, TAME's and HIGHPASS's coverage constant comes in
+    the stored units, ADD's and the sprites' gains convert to the output's scale, the other passes are linear or take
+    ratios, and the tone map reads the output at its scale. Cost: no pass more, and half the glint's target memory.
+    No dither: dithering every intermediate write by half a code, in the sRGB coding as 36's main pass does, moved the
+    result further from the float path (Gold 3D "BIG", mean /255 at Bake, High, Medium, Low: 0.82, 0.66, 0.32, 0.29
+    against 0.62, 0.45, 0.30, 0.28 undithered). Its convex decode biases each of the chain's 30 passes upward, as S83
+    Deviation 43 found for the scatter. A dither of half a code in linear light came to 0.72, 0.54, 0.30, 0.31.
+    `TitleTargetPoolStats::floatAcquires` counts the float targets a render takes.
+    Test: `Title3DFallbackGpu.TheGlintRunsWithoutFloatTargetsOnEveryTier`. Each tier's forced render takes no float
+    target, runs as many glint passes as the float render, shows its glint, and stays within AC9's mean 3/255. Red
+    control: the earlier glint took the float targets above. AO, the gem behind copy and the environments: 34.
+    S84's `fallback_parity` keeps 32's glint-off share rule: the stars still come from 8-bit light, and Gold 3D "BIG"
+    shows up to 229/255 at a moved star.
+39. **Implementation (R21, R25, R26, R30, R31, AC9): no float render target without float.** Before this change,
+    `TITLE_ART_TEST_NO_FLOAT_TARGETS` left three render paths in float. AO took three RGBA16F pool targets. The gem
+    behind copy and the environment cubes were made as RGBA16F render targets. A device without float targets dropped
+    AO and the behind copy, and its cube builds rendered into targets it cannot render. Now no pass renders into a float
+    target where RGBA16F does not render (or filter, for AO and the copy), or under the flag:
+    - **AO prepass:** RGBA8. It holds the view normal octahedral in 8 bits a component and the title-relative depth in
+      16 bits over +-8 radii (`hd_packNormalDepth`; code 0 marks no surface). The round trip is within 1.5 degrees and
+      1/4000 radius (`TitleToneMapTest.PackedAoPrepassRoundTrips`). SAO and its blurs unpack it and write RGBA8.
+    - **Behind copy:** SRGB8A8 in the compressed-light encoding of R30. Its box levels average the decoded light and
+      encode it again. The gem decodes what it samples (`behind.z` 2); trilinear filtering mixes encoded texels.
+    - **Environments:** the cube is built on the builder's CPU twin (`buildTitleEnvironmentCpu`, 26) on a background
+      job, polled by `ready()`. It is uploaded as an RGBA16F KTX2 cube, as a cooked cube is, and cached apart from a
+      GPU-built one. The cube is only sampled: sampling and filtering RGBA16F textures is core in GLES3 and WebGL2,
+      and the code makes no cube render target on this path (`Title3DStats::floatRenderTargets` stays 0). The
+      panorama upload and the RGBA32F span table are sampled textures, not targets.
+    Cost on that path: no pass more. The prepass and AO targets take half their bytes and the copy half its bytes. A
+    cube costs a CPU build in place of the GPU one; players load cooked cubes (R26) and build none.
+    `Title3DStats::environmentCpuBuilds` and `floatRenderTargets` count the CPU builds and the float targets made
+    outside the pool.
+    Test: `Title3DFallbackGpu.AOAndGemsRenderWithoutFloatTargets` renders "BIG" with a sapphire face over gold bands
+    and AO, at every tier, float and forced on separate renderers. The forced render takes no float target, makes no
+    float render target, builds its cube on the CPU, runs the same AO and behind passes, and shows both: it differs
+    from the forced renders without the copy and without AO. The float-vs-forced mean at Bake, High, Medium, Low is
+    0.32, 0.32, 0.17, 0.06 /255, with 0 to 0.05 % of pixels over 24/255 (AC9's glint-off criteria: 2/255 and 1 %).
+    The glint test now also runs on separate renderers. Red control, the code before this change under the flag: 3
+    float pool targets (AO) and 4 float render targets (2 cubes, the copy and its scratch) at Bake and High, and 2
+    (the cubes) at Medium and Low.

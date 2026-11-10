@@ -136,3 +136,24 @@ TEST_F(TitleArtHashTest, AGeneratorsParamsChangeItsNodeCacheKey) {
     ASSERT_TRUE(setTitleArtField(*layer, "layer", "gen.rotation", Json(20)).ok);
     EXPECT_NE(hashTitleArt(changed).layers.at("00000001").content, hashTitleArt(parsed.doc).layers.at("00000001").content);
 }
+
+// two generators that differ only in what they generate are different pixels: the node cache keys
+// a layer by its content hash (red: a Fire and Speed Lines following one title shared a node entry)
+TEST_F(TitleArtHashTest, AGeneratorsParamsAreItsContent) {
+    const std::string text = R"({"format": "jasperengine.titleart", "version": 1, "layers": [
+        {"id": "00000001", "type": "text", "text": "GOAL"},
+        {"id": "00000002", "type": "generator", "follow": "00000001", "generator": {"type": "speed_lines", "params": {"count": 170}}},
+        {"id": "00000003", "type": "generator", "follow": "00000001", "generator": {"type": "fire", "params": {}}}]})";
+    const TitleArtParseResult parsed = parseTitleArt(text);
+    ASSERT_TRUE(parsed.ok);
+    const TitleArtHashes hashes = hashTitleArt(parsed.doc);
+    EXPECT_NE(hashes.layers.at("00000002").content, hashes.layers.at("00000003").content);
+    EXPECT_NE(hashes.layers.at("00000002").stack, hashes.layers.at("00000003").stack);
+
+    TitleArtDoc copy = parsed.doc;
+    const FieldSetResult set = setTitleArtField(*findLayer(copy.root, "00000002"), "layer", "generator.params.count", 40);
+    ASSERT_TRUE(set.ok) << set.error;
+    const LayerHashes before = hashes.layers.at("00000002"), after = hashTitleArt(copy).layers.at("00000002");
+    EXPECT_NE(after.content, before.content) << "a param edit is new pixels, not a cache hit";
+    EXPECT_EQ(after.placement, before.placement);
+}

@@ -213,16 +213,14 @@ namespace {
         std::vector<std::unique_ptr<TitleCheckImage>> freshImages;
     };
 
-    // one Renders per check run: the checks of one run() share it (keyed by the context)
+    // one Renders per check run: the checks of one context share it (TitleCheckContext::renders: a
+    // later call, whatever its options, starts with none)
     Renders& rendersOf(TitleCheckContext& context) {
-        static const TitleCheckContext* owner = nullptr;
-        static std::string ownerHash;
-        static std::unique_ptr<Renders> renders;
-        const std::string hash = titleArtSourceHash(context.doc);
-        if (!renders || owner != &context || ownerHash != hash) {
-            renders = std::make_unique<Renders>(context);
-            owner = &context;
-            ownerHash = hash;
+        auto* renders = static_cast<Renders*>(context.renders.get());
+        if (!renders) {
+            auto made = std::make_shared<Renders>(context);
+            renders = made.get();
+            context.renders = std::move(made);
         }
         return *renders;
     }
@@ -1156,12 +1154,58 @@ namespace {
                 const std::string type = str(layer["generator"], "type");
                 // Glints that follow a layer pick their stars from its 8-bit analysis grid the same way
                 // (HighlightFinder over readGrid): a star at a borderline cell moves between the paths
+                // (measured on the library, S83 Deviation 44: up to 253/255 on seven items, mean and share within class)
                 const bool follows = !str(layer, "follow").empty();
                 gridLayout = gridLayout || type == "lightning" || type == "backlight" || (type == "glints" && follows);
             }
             return true;
         });
         options.maxDiff = has3D || gridLayout ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
+        // a 3D glint places discrete stars from 8-bit light on the RGBA8 path (S86 Deviation 36): S86
+        // AC9 holds a glint-on render to the mean alone; the same document with its glints off is held
+        // to the 3D share and max, so everything but the stars stays judged per pixel
+        std::vector<std::string> glintLayers;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (!layer.value("visible", true) || layer.value("guide", false) || layer.value("dimension", std::string()) != "3d") return true;
+            const TJson& s3 = layer.value("style_3d", TJson::object());
+            if (s3.is_object() && s3.value("glint", TJson::object()).is_object() && s3.value("glint", TJson::object()).value("enabled", false)) {
+                glintLayers.push_back(str(layer, "id"));
+            }
+            return true;
+        });
+        if (!glintLayers.empty()) {
+            auto glintsOff = std::make_shared<titleart::TitleArtDoc>(ctx.doc);
+            for (const std::string& id : glintLayers) {
+                if (TJson* layer = titleart::findLayer(glintsOff->root, id)) (*layer)["style_3d"]["glint"]["enabled"] = false;
+            }
+            titleart::RenderRequest offFloat = renders.request();
+            offFloat.doc = glintsOff;
+            titleart::RenderRequest offForced = forced;
+            offForced.doc = glintsOff;
+            const TitleCheckImage* floatOff = renders.get("glints off", offFloat, error);
+            if (!floatOff) return renderFailed(out, error);
+            const TitleCheckImage* rgba8Off = renders.get("glints off rgba8", offForced, error);
+            if (!rgba8Off) return renderFailed(out, error);
+            const ImageDiffResult off = diffImages(asImage(*floatOff), asImage(*rgba8Off), options);
+            ImageDiffOptions onOptions = options;
+            onOptions.maxFraction = 1.0;
+            const ImageDiffResult on = diffImages(asImage(*floatPath), asImage(*rgba8), onOptions);
+            const bool ok = off.ok && on.ok;
+            TitleCheckResult r = result(ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "",
+                                        "premultiplied comparison of the forced RGBA8 path with the float path: with the 3D glints off to S86 AC9's "
+                                        "share and max, with them on (their stars) to its mean");
+            r.measured = TJson{{"max", on.max}, {"mean", on.mean}, {"fraction_over", on.fractionOver}, {"class", "3D"},
+                               {"glints_off", {{"max", off.max}, {"mean", off.mean}, {"fraction_over", off.fractionOver}}}};
+            r.threshold = TJson{{"mean", onOptions.maxMean},
+                                {"glints_off", {{"max", options.maxDiff}, {"mean", options.maxMean}, {"fraction_over_24", options.maxFraction}}}};
+            r.message = ok ? "the RGBA8 path agrees with the float path"
+                           : !off.ok ? (off.sameSize ? "with the 3D glints off, the RGBA8 path differs from the float path beyond §6.3's tolerance" : off.error)
+                                     : (on.sameSize ? "the RGBA8 path's 3D glints differ from the float path's beyond S86 AC9's mean" : on.error);
+            const ImageDiffResult& bad = !off.ok ? off : on;
+            if (!ok && !bad.bbox.empty()) r.at.push_back(toCanvas(*floatPath, {bad.bbox.x, bad.bbox.y, bad.bbox.width, bad.bbox.height}));
+            out.push_back(std::move(r));
+            return;
+        }
         const ImageDiffResult diff = diffImages(asImage(*floatPath), asImage(*rgba8), options);
         TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path, to the tolerance of the document's fallback class");
         r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}, {"class", has3D ? "3D" : titleart::fallbackClassName(cls)}};

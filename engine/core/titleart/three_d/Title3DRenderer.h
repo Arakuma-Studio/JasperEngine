@@ -12,8 +12,13 @@
 //   glint (R32, Glint3D.h) on the pre-tone-map image; the tone map (AO multiplied, glint added,
 //   the MSAA shoulder expanded, compressed light decoded) on straight colour x exposure, then
 //   Mitchell H and V from k x down into the node target S80 composites (premultiplied, display
-//   referred).
-// - Environments: built on the GPU (title_env.frag) as linear RGBA16F cubes, procedural presets
+//   referred). Without float render targets (R30: the device, or TITLE_ART_TEST_NO_FLOAT_TARGETS)
+//   no pass renders into a float target: the AO prepass is packed into RGBA8 and its AO is RGBA8,
+//   the behind copy is SRGB8A8 in the compressed-light encoding, the glint runs on SRGB8A8.
+// - Environments: where RGBA16F renders (and not under TITLE_ART_TEST_NO_FLOAT_TARGETS), built on
+//   the GPU as below; else built on the builder's CPU twin (buildTitleEnvironmentCpu) on a
+//   background job and uploaded as an RGBA16F cube that is only sampled (as a cooked cube is), cached
+//   apart from the GPU-built one. On the GPU (title_env.frag): linear RGBA16F cubes, procedural presets
 //   evaluated per texel and box-filtered per level, then GGX-prefiltered into levels down to
 //   8 px; cached by (scene, face, builder version), 3 at 1024 and 1 at 2048. A photo preset whose
 //   HDRI is not available renders the studio with an `environment_missing` problem. A build is
@@ -130,6 +135,8 @@ namespace jasperengine::titleart {
         uint64_t glintPasses = 0;
         // renders that stopped at a program's first draw (TitleFirstDraws) and ran again later
         uint64_t deferredRenders = 0;
+        uint64_t environmentCpuBuilds = 0;  // cubes built on the builder's CPU twin (no float cube targets)
+        uint64_t floatRenderTargets = 0;    // float render targets made outside the pool (cubes, the behind copy)
     };
 
     // the share of an environment build one ready() call starts with (texel x samples); the

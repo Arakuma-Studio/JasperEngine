@@ -70,6 +70,14 @@ TEST_F(TitleTargetPoolTest, DepthAndSamplesInKey) {
     EXPECT_EQ(deep.as<FakeTarget>()->key.depth, TitleDepthFormat::Depth);
     EXPECT_EQ(allocator.made, 3);
     EXPECT_EQ(pool.stats().depthOrMsaaAcquires, 2u);
+    // the float formats are counted (S86 AC9: the RGBA8 path takes none)
+    EXPECT_EQ(pool.stats().floatAcquires, 3u);
+    TargetKey srgb = colour(64, 64);
+    srgb.format = ColorFormat::SRGB8A8;
+    EXPECT_TRUE(pool.acquire(srgb));
+    EXPECT_EQ(pool.stats().floatAcquires, 3u);
+    EXPECT_TRUE(isFloatColorFormat(ColorFormat::R16F));
+    EXPECT_FALSE(isFloatColorFormat(ColorFormat::RGBA));
     EXPECT_EQ(pool.stats().bytesLive, targetBytes(msaa));
     EXPECT_EQ(targetBytes(msaa), (size_t)256 * 256 * (8 * 4 + 8 + 4 * 4)) << "4 samples, a resolve and a depth per sample";
     deep.reset();
