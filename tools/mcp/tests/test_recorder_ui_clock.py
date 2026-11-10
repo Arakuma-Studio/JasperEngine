@@ -24,8 +24,17 @@ SCRIPT = """---@class RecordedUiClock : ScriptInstance
 local RecordedUiClock = { properties = {} }
 function RecordedUiClock:init()
     local doc = UIDocument(self.scene, self.entity)
+    recordedUiClockDocument = doc
+    recordedUiClockWentBack = false
+    self.css = doc:getElementById('css')
+    RegisterEngineEvent(self, 'onUpdate')
     anime.animate(doc:getElementById('ui'), { translateX = 90, duration = 3000, ease = 'linear' })
     anime.animate(doc:getElementById('game'), { translateX = 90, duration = 3000, ease = 'linear', clock = 'game' })
+end
+function RecordedUiClock:onUpdate()
+    local x = tonumber((self.css:getStyle('left'):gsub('px', '')))
+    if x and self.previousCss and x < self.previousCss - 0.01 then recordedUiClockWentBack = true end
+    self.previousCss = x
 end
 return RecordedUiClock
 """
@@ -65,9 +74,35 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         for channel, top in ((0, 8), (1, 40), (2, 72)):
             first = centre(frames[0], channel, top)
             ed.check(first >= 0, f"clock {channel} marker exists")
+            ed.check(abs(first - 7.5) <= 0.6, f"clock {channel} starts at its initial value in frame zero: {first}")
             for index in (3, 9, 15):
                 position = centre(frames[index], channel, top)
                 ed.check(abs(position - first - index) <= 0.6,
                          f"clock {channel}, frame {index}: moved {position - first}, expected {index}")
     ed.check_eq(sum(a == b for a, b in zip(*recordings)), 16,
                 "CSS and both anime clocks produce byte-identical repeated recordings")
+
+    # Ending a mid-Play recording must not rewind a running CSS animation.
+    await ed.call("play", action="start", scene=scene, fixed_fps=30)
+    await ed.call("eval_lua", code="recordedUiClockWentBack = false")
+    try:
+        out = ed.scratch.root / "ui-mid-play"
+        await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
+                      output=str(out), exit_play=False, timeout_seconds=600)
+        await ed.call("wait", frames=3)
+        state = await ed.call("eval_lua", code="return recordedUiClockWentBack")
+        ed.check_eq(state["values"], [False], "CSS time never moves backward when a recording ends without exiting Play")
+
+        # Paused gameplay keeps its CSS UI clock running, including while it records.
+        await ed.call("play", action="pause")
+        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'none')")
+        await ed.call("wait", frames=2)
+        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'slide')")
+        out = ed.scratch.root / "ui-paused-play"
+        result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
+                               output=str(out), exit_play=False, timeout_seconds=600)
+        frames = [Path(path).read_bytes() for path in result["files"]]
+        ed.check(centre(frames[-1], 0, 8) - centre(frames[0], 0, 8) >= 14.0,
+                 "paused Play records a moving CSS UI rather than a frozen clock")
+    finally:
+        await ed.call("play", action="stop")

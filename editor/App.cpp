@@ -4556,6 +4556,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // A paused game advances one frame here when Step was pressed
     const bool steppingFrame = project.beginStepFrame(sceneProject.id);
 
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemDraw();
 
     if (steppingFrame) {
@@ -4651,6 +4652,7 @@ bool editor::App::runHiddenGameFrame() {
         pendingResizeScene = sceneProject->id;
     }
     // waits for the GPU on Metal first
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemUpdate();
     return true;
 }

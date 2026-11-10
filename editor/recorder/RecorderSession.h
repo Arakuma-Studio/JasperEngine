@@ -117,6 +117,8 @@ namespace jasperengine::editor::recorder {
         // App, at the start of an editor frame (engineRender, before the game updates): the frame
         // the game drew is read back and queued
         void captureFrame();
+        // App, immediately before the running game's engine frame, including paused Play.
+        void prepareFrame();
         // App, every frame: the state, the end of the frames asked for, Play stopped, finalising
         void update();
 

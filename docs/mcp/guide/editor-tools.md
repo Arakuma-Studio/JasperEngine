@@ -79,7 +79,8 @@ recording and restored after (`overrode_fixed_fps`).
 Fresh recordings restart HTML UI documents at UI time zero before Play initializes scripts.
 CSS, `anime` and UI effects hold that clock during loading and advance by exactly 1/fps for
 each game frame. `anime`'s `clock = "game"` follows the fixed scaled game delta. Recording
-mid-Play preserves the current UI origin; finishing restores the editor's previous clock.
+mid-Play preserves the current UI origin; finishing releases the UI clock at its last
+recorded time so playback continues smoothly, or restores a clock that was already pinned.
 
 From a shell: `jasperengine-editor call --project P --wait-job record_game --frames 90 --format mp4 --output out.mp4`.
 

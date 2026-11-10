@@ -808,16 +808,6 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     // keeps CSS, anime and seeded UI effects independent of how long that load took.
     HtmlUIClock::setFixedTime(recordingUiStart);
     animationClocksAligned = false;
-    Engine::onUpdate.add("RecorderSession.UiClock", [this]() {
-        if (!recording()) return;
-        const uint64_t frames = Engine::getGameFrames();
-        const uint64_t index = frames > gameFramesAtStart ? frames - gameFramesAtStart - 1 : 0;
-        HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate);
-        if (!animationClocksAligned) {
-            AnimEngine::instance().alignClockSources(HtmlUIClock::now(), Engine::getGameTime());
-            animationClocksAligned = true;
-        }
-    });
     startTime = Clock::now();
     startedPlay = false;
     currentState = State::Arming;
@@ -855,6 +845,20 @@ void RecorderSession::warnAboutFreeSpace() {
 
 void RecorderSession::beginRecording() {
     currentState = State::Recording;
+}
+
+void RecorderSession::prepareFrame() {
+    if (!recording() || !host.isPlaying() || Engine::isSimulationHeld() || Engine::isPaused()) return;
+    const uint64_t frames = Engine::getGameFrames();
+    const uint64_t index = frames >= gameFramesAtStart ? frames - gameFramesAtStart : 0;
+    HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate);
+    if (!animationClocksAligned) {
+        // Engine advances game time before the document update. Discard that first delta
+        // too, so CSS and both anime clocks render their initial values in frame zero.
+        const double firstGameTime = Engine::getGameTime() + Engine::getFixedDeltatime() * Engine::getTimeScale();
+        AnimEngine::instance().alignClockSources(HtmlUIClock::now(), firstGameTime);
+        animationClocksAligned = true;
+    }
 }
 
 bool RecorderSession::assetsLoading() const {
@@ -1066,9 +1070,7 @@ void RecorderSession::stop() {
 
 void RecorderSession::restoreEngine() {
     releaseHold();
-    Engine::onUpdate.remove("RecorderSession.UiClock");
-    HtmlUIClock::setFixedTime(previousFixedUiTime ? previousFixedUiTime : std::optional<double>(previousUiTime));
-    if (!previousFixedUiTime) HtmlUIClock::setFixedTime(std::nullopt);
+    HtmlUIClock::setFixedTime(previousFixedUiTime);
     AnimEngine::instance().alignClockSources(HtmlUIClock::now(), Engine::getGameTime());
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
