@@ -106,6 +106,9 @@ namespace jasperengine::editor {
         std::unique_ptr<Cache> cache;
     };
 
+    // S87 R42's frame source: export_title's sheet, atlas and sequence formats render through it
+    void registerTitleAnimExportFrames();
+
     // the Live Effect values a pose's title tracks give, over the component's defaults (S81 R33-R37)
     struct TitleLiveEffectValues {
         bool sweep = false, glow = false, tint = false, glints = false;

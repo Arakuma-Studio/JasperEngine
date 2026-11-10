@@ -8,6 +8,7 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/anim/TitleAnimIO.h"
 #include "titleart/anim/TitleAnimRealtime.h"
+#include "titleart/interchange/sheet/TitleSheetExport.h"
 #include "titleart/text/TitleTextLayout.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "util/Fnv.h"
@@ -731,4 +732,44 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
     out.coveragePct = out.image.pixelCount() ? 100.0 * (double)covered / (double)out.image.pixelCount() : 0.0;
     out.poseHash = fnv1a64(out.image.data.data(), out.image.data.size());
     return true;
+}
+
+void editor::registerTitleAnimExportFrames(){
+    TitleAnimFrameSource source;
+    source.open = [](Project* project, std::shared_ptr<const tt::TitleArtDoc> doc, std::string& error) -> std::shared_ptr<TitleAnimFrameRenderer>{
+        if (!project){
+            error = "no project is open";
+            return nullptr;
+        }
+        auto renderer = std::make_shared<TitleAnimRenderer>(project, doc);
+        auto out = std::make_shared<TitleAnimFrameRenderer>();
+        const ta::TitleAnimLibrary& lib = renderer->library();
+        const auto add = [&](const ta::CompiledTitleAnimation& a){
+            TitleAnimInfo info;
+            info.name = a.name;
+            info.fps = std::min((double)ta::TITLE_ANIM_MAX_FLIPBOOK_FPS, std::max(1.0, (double)a.flipbookSettings.fps));
+            info.duration = a.duration;
+            info.loop = a.wrap != ta::AnimWrap::Once;
+            out->animations.push_back(std::move(info));
+        };
+        // the default first, as export_title's `animation` default expects
+        if (const ta::CompiledTitleAnimation* first = lib.find(lib.defaultName)) add(*first);
+        for (const ta::CompiledTitleAnimation& a : lib.animations) if (a.name != lib.defaultName) add(a);
+        out->render = [renderer](const std::string& animation, double seconds, double scale, const tt::TitleRectI& region,
+                                 texsynth::Image& pixels, tt::TitleRectI& covers, std::string& frameError){
+            TitleAnimFrameRequest request;
+            request.animation = animation;
+            request.time = seconds;
+            request.as = TitleAnimRenderAs::Exact;
+            request.pxScale = (float)scale;
+            request.region = region;
+            TitleAnimFrame frame;
+            if (!renderer->render(request, frame, frameError)) return false;
+            pixels = std::move(frame.image);
+            covers = frame.frame;
+            return true;
+        };
+        return out;
+    };
+    registerTitleAnimFrameSource(std::move(source));
 }

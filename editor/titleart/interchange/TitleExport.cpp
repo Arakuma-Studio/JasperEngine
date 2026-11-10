@@ -351,12 +351,17 @@ void TitleExportContext::renderFrame(std::shared_ptr<const titleart::TitleArtDoc
     r.outputBitDepth = (image.bitDepth == 16 || !image.dither) ? 16 : 8;
     const int outW = width > 0 ? width : (int)std::lround(frame.width * scale), outH = height > 0 ? height : (int)std::lround(frame.height * scale);
     render(std::move(r), [this, done, frame, scale, outW, outH](TitleRenderedImage& img) {
-        if (img.frame.empty()) img.frame = frame;
-        texsynth::Image pixels = cut(img, frame, scale, std::max(1, outW), std::max(1, outH));
-        if (image.bitDepth == 8 && pixels.bitDepth == 16) pixels = to8(pixels);
-        finishPixels(pixels);
+        texsynth::Image pixels = cutFrame(img, frame, scale, outW, outH);
         done(pixels);
     });
+}
+
+texsynth::Image TitleExportContext::cutFrame(TitleRenderedImage& img, const TitleRectI& frame, double scale, int width, int height) const {
+    if (img.frame.empty()) img.frame = frame;
+    texsynth::Image pixels = cut(img, frame, scale, std::max(1, width), std::max(1, height));
+    if (image.bitDepth == 8 && pixels.bitDepth == 16) pixels = to8(pixels);
+    finishPixels(pixels);
+    return pixels;
 }
 
 void TitleExportContext::finishPixels(texsynth::Image& pixels) const {

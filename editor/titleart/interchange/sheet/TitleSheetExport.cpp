@@ -27,9 +27,8 @@ namespace {
         return s;
     }
 
-    // one language's frames: the posed documents, their trimmed frames and pixels
+    // one language's frames: their trimmed frames and pixels
     struct Frames : TitleSheetFrames {
-        std::vector<std::shared_ptr<titleart::TitleArtDoc>> posed;
         std::vector<TitleRectI> trimmed;
         TitleRectI frame;
         double scale = 1.0;
@@ -236,12 +235,16 @@ namespace {
         for (const std::string& code : languages) {
             auto f = std::make_shared<Frames>();
             f->language = code;
-            const titleart::TitleArtDoc doc = ctx.resolved(code);
+            if (ctx.image.bitDepth == 16) ctx.warn("bit_depth_8: an animation's frames render 8-bit sRGB, so the export is 8-bit");
+            auto doc = std::make_shared<titleart::TitleArtDoc>(ctx.resolved(code));
             if (!s) {
-                if (doc.root.contains("animation")) return ctx.fail("not_available", "sampling a title's animations arrives with S85 (Title Art animation)");
+                if (doc->root.contains("animations")) return ctx.fail("not_available", "sampling a title's animations arrives with S85 (Title Art animation)");
                 return ctx.fail("no_animation", "the title has no animation to export as a " + format);
             }
-            const std::vector<TitleAnimInfo> animations = s->animations(doc);
+            std::string openError;
+            const std::shared_ptr<TitleAnimFrameRenderer> renderer = s->open(ctx.request.project, doc, openError);
+            if (!renderer) return ctx.fail("no_animation", "the title's animations cannot be rendered: " + openError);
+            const std::vector<TitleAnimInfo>& animations = renderer->animations;
             if (animations.empty()) return ctx.fail("no_animation", "the title has no animation to export as a " + format);
             const std::string wanted = ctx.request.options.value("animation", std::string());
             auto found = std::find_if(animations.begin(), animations.end(), [&](const TitleAnimInfo& a) { return wanted.empty() || a.name == wanted; });
@@ -257,27 +260,42 @@ namespace {
             if (!titleAnimFrameTimes(*found, f->fps, ctx.request.options.contains("frames") ? ctx.request.options["frames"] : Json(), f->times, error)) {
                 return ctx.fail("bad_option", error);
             }
-            for (double t : f->times) {
-                auto posed = std::make_shared<titleart::TitleArtDoc>();
-                if (!s->pose(doc, found->name, t, *posed, error)) return ctx.fail("pose_failed", error);
-                f->posed.push_back(posed);
-            }
-            f->trimmed.resize(f->posed.size());
-            for (size_t i = 0; i < f->posed.size(); i++) {
-                ctx.measure(f->posed[i], "", "", [f, i](TitleRenderedImage&, const TitleRectI& frame) { f->trimmed[i] = frame; });
-            }
+            f->trimmed.resize(f->times.size());
+            const std::string name = found->name;
             TitleExportContext* c = &ctx;
-            ctx.then([c, f, format] {
+            for (size_t i = 0; i < f->times.size(); i++) {
+                // measured over the canvas as a flipbook bake is: the frame's ink in canvas px
+                ctx.then([c, f, i, renderer, name] {
+                    texsynth::Image pixels;
+                    TitleRectI covers;
+                    std::string frameError;
+                    if (!renderer->render(name, f->times[i], c->image.scale, TitleRectI{}, pixels, covers, frameError)) return c->fail("pose_failed", frameError);
+                    const TitleRectI box = alphaBox(pixels, c->image.alphaThreshold);
+                    if (!box.empty()) {
+                        const double scale = c->image.scale;
+                        f->trimmed[i] = TitleRectI{covers.x + (int)std::floor(box.x / scale), covers.y + (int)std::floor(box.y / scale),
+                                                   (int)std::ceil(box.width / scale) + 1, (int)std::ceil(box.height / scale) + 1};
+                    }
+                    return true;
+                });
+            }
+            ctx.then([c, f, format, renderer, name] {
                 TitleRectI shared;
                 for (const TitleRectI& r : f->trimmed) shared = titleart::unionRect(shared, r);
                 f->scale = c->image.scale;
                 f->frame = c->finishFrame(shared, f->scale, &f->width, &f->height);
                 c->result.frames[f->language.empty() ? titleart::titleSourceLanguage(c->request.doc.root) : f->language] =
                     Json::array({f->frame.x, f->frame.y, f->frame.width, f->frame.height});
-                f->pixels.resize(f->posed.size());
-                for (size_t i = 0; i < f->posed.size(); i++) {
-                    c->renderFrame(f->posed[i], "", f->frame, f->scale, "", [f, i](texsynth::Image& pixels) { f->pixels[i] = std::move(pixels); },
-                                   f->width, f->height);
+                f->pixels.resize(f->times.size());
+                for (size_t i = 0; i < f->times.size(); i++) {
+                    c->then([c, f, i, renderer, name] {
+                        TitleRenderedImage frame;
+                        std::string frameError;
+                        if (!renderer->render(name, f->times[i], f->scale, f->frame, frame.image, frame.frame, frameError)) return c->fail("pose_failed", frameError);
+                        frame.pxScale = (float)f->scale;
+                        f->pixels[i] = c->cutFrame(frame, f->frame, f->scale, f->width, f->height);
+                        return true;
+                    });
                 }
                 c->then([c, f, format] {
                     c->result.extra["frame_count"] = f->pixels.size();

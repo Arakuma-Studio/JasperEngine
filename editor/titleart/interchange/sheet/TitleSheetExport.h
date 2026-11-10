@@ -11,10 +11,10 @@
 //     pages up to max_atlas 4096, at most 16) in `<stem>_page<N>.png` and `<stem>.atlas.json`
 //     (the JSON-hash shape with trimmed, spriteSourceSize, sourceSize, duration, frameTags);
 //   - sequence: `<stem>_<NNNN>.png` on the shared frame.
-// - Poses come from S85's sampling through the frame source S85 registers
-//   (registerTitleAnimFrameSource): its animations, their fps and duration, and the document
-//   posed at a time for a language (S85 rebuilds its TitleAnimPlan per language). Without one, a
-//   document with animations answers not_available naming S85.
+// - Frames come from S85's renderer through the frame source it registers
+//   (registerTitleAnimFrameSource): its animations, their fps and duration, and each frame at a
+//   time for a language (rendered Exact, every track at its own time, canvas-sized as a
+//   flipbook bake is). Without one, a document with animations answers not_available naming S85.
 // - Thread-safety: main thread.
 
 #pragma once
@@ -23,6 +23,7 @@
 #include "titleart/interchange/TitleExport.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -35,15 +36,21 @@ namespace jasperengine::editor {
         bool loop = false;          // a loop's frames cover [0, D); a once animation's include D
     };
 
-    struct TitleAnimFrameSource {
-        // the document's animations, the default first
-        std::function<std::vector<TitleAnimInfo>(const titleart::TitleArtDoc& doc)> animations;
-        // `doc` (resolved for the export's language) posed at `seconds` of `animation`; false with `error`
-        std::function<bool(const titleart::TitleArtDoc& doc, const std::string& animation, double seconds, titleart::TitleArtDoc& posed,
-                           std::string& error)> pose;
+    // the frames of one document's animations (S85's renderer, one per language of an export)
+    struct TitleAnimFrameRenderer {
+        std::vector<TitleAnimInfo> animations;      // the default first
+        // `animation` at `seconds` over `region` (canvas px, image space; empty: the canvas) at
+        // `scale`: straight sRGB RGBA8 pixels and the canvas pixels they cover; false with `error`
+        std::function<bool(const std::string& animation, double seconds, double scale, const titleart::TitleRectI& region,
+                           texsynth::Image& pixels, titleart::TitleRectI& covers, std::string& error)> render;
     };
 
-    // S85's registration (its sampling); replaces an earlier one
+    struct TitleAnimFrameSource {
+        // a renderer of `doc` (resolved for the export's language); null with `error`
+        std::function<std::shared_ptr<TitleAnimFrameRenderer>(Project* project, std::shared_ptr<const titleart::TitleArtDoc> doc, std::string& error)> open;
+    };
+
+    // S85's registration (TitleAnimRender.cpp); replaces an earlier one
     void registerTitleAnimFrameSource(TitleAnimFrameSource source);
     const TitleAnimFrameSource* titleAnimFrameSource();
 

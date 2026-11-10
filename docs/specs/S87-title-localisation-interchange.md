@@ -1460,15 +1460,25 @@ rest of S82 lands in 6B.
     `test_title_languages.py::test_language_bakes`; AC11 and AC12 are
     `editor/tests/titleart/TitleStringsTest.cpp`; AC8 is
     `engine/tests/core/titleart/runtime/TitleRealtimeLanguageTest.cpp`.
-24. **Not done: AC7's per-frame capture.** `TitleBakedLanguageTest` does not exist. The Baked switch
-    is covered in Play by `test_title_lua_language.py` (not ready, then ready; `onLanguageReady`
-    once), which cannot see every frame or prove the Japanese texture is never requested.
-25. **Partly done: AC10.** `TitleLanguageShippingTest` covers the plan (dropped files, the shipped
-    table, `W-TITLE-LANGUAGE-DROPPED`, the project's sidecar unchanged);
-    `test_title_export_languages.py` against a prebuilt player was not written.
-26. **Partly done: AC22 until S85 lands.** `TitleSheetExportTest` covers the writers and the frame
-    times over frames made by the test; rendering frames needs S85's `registerTitleAnimFrameSource`,
-    so the job end to end is unverified here.
+24. **AC7's per-frame capture: `engine/tests/core/titleart/TitleBakedLanguageTest.cpp`.** Solid-colour
+    sets: every frame of the switch reads the centre pixel of the target; only the old or the new
+    set may show, `onLanguageReady` fires on the first German frame, the Japanese PNG is never in
+    `TextureDataPool`. Texture loads run asynchronously, as in a game, so the switch spans at least a
+    frame. Red control: dropping the old texture at the switch fails frame 0 (white, neither set).
+25. **AC10: `test_title_export_languages.py`** (prebuilt player, `JASPER_SLOW_BUILD=1`): the shipped
+    table, the dropped set and `W-TITLE-LANGUAGE-DROPPED`, the project's sidecar unchanged, the
+    German bake shown with `LANGUAGE=de` (within 24/255 on 1 % of the pixels, not the AC's 2/255: the
+    build ships bakes cooked, lossy, `je-cooked/`; measured 4 % of pixels over 2/255, worst 11/255).
+    Not checked: the AC's `nm` for "a project without titles": a prebuilt player is one
+    binary per variant, not made per project; R26's `TitleArtLanguage` is in the always-built core
+    part, so the symbol's absence is only meaningful in a Compile build (not run here).
+26. **AC22 end to end: `test_title_export_sheet.py`.** `registerTitleAnimFrameSource` now takes S85's
+    renderer (`registerTitleAnimExportFrames`, `TitleAnimRender`): frames are rendered Exact (every
+    track, the companion included) over the canvas, measured for the shared frame and rendered again
+    on it. A title that moves off the canvas is clipped at the canvas, as a flipbook bake is
+    (Deviation of R42's "union frame", which reached past the canvas only through reach measured from
+    the document, not the pose). Frames are 8-bit sRGB (the renderer's output): `bit_depth` 16 is
+    not honoured for animation frames.
 27. **Deviation: AC28's bench is `TitleLocalisationBenchTest`,** a unit test, not
     `tools/perf/title_localisation_bench`. Measured on build box 2 (15 workers), never on a phone:
 

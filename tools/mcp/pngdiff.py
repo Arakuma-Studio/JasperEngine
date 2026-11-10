@@ -259,6 +259,37 @@ def stats(a, b, premultiplied: bool = True, tolerance: int = 8):
             "changed_pct": 100.0 * changed / pixels}
 
 
+def centre_match(outer: tuple, inner: tuple, channel_tolerance: int, search: int = 2) -> tuple:
+    """A trimmed image inside a larger capture, about its centre: `inner` (composited over black,
+    straight alpha) searched at up to `search` pixels of offset from where it would sit centred in
+    `outer` (a title's frame rounds by a pixel). Returns (fraction of pixels over the tolerance,
+    (x, y) of the best offset, worst channel difference there)."""
+    (ow, oh, orgba), (iw, ih, irgba) = outer, inner
+    best = (1.1, (0, 0), 0)
+    centre_x, centre_y = (ow - iw) // 2, (oh - ih) // 2
+    for dy in range(-search, search + 1):
+        for dx in range(-search, search + 1):
+            ox, oy = centre_x + dx, centre_y + dy
+            if ox < 0 or oy < 0 or ox + iw > ow or oy + ih > oh:
+                continue
+            over = worst = 0
+            for y in range(ih):
+                for x in range(iw):
+                    oi = ((y + oy) * ow + x + ox) * 4
+                    ii = (y * iw + x) * 4
+                    alpha = irgba[ii + 3]
+                    for c in range(3):
+                        diff = abs(orgba[oi + c] - irgba[ii + c] * alpha // 255)
+                        worst = max(worst, diff)
+                        if diff > channel_tolerance:
+                            over += 1
+                            break
+            fraction = over / max(1, iw * ih)
+            if fraction < best[0]:
+                best = (fraction, (ox, oy), worst)
+    return best
+
+
 def compare(a, b, channel_tolerance: int = 24, max_fraction: float = 0.01, premultiplied: bool = False):
     """(ok, fraction, diff_png): a pixel differs when any channel (alpha included) differs by more
     than channel_tolerance; ok when at most max_fraction of the pixels differ. diff_png shows a
