@@ -892,8 +892,9 @@ halves written out by hand), `fonts` (Pachislop `fontId` → pack pair; S87 uses
 reason}`), `template_texts` (the replaced sample texts of §6.7.3 and every template's `en` sample of
 §6.10.1). A Pachislop id (an `ids` key) or template text (a `source`) that holds a denied term is
 written as `sha256:<64 hex digits>` of its UTF-8, the form the sanitised dump holds it in; the port
-matches a source as it reads it or by that hash, so a fresh dump of a clone maps the same
-(Deviation 34).
+matches a source as it reads it or by that hash, so a fresh dump of a clone maps the same; a hashed
+text's entry says `source_japanese` (the script of the text, which picks the language a template
+stores) (Deviation 34).
 
 Field mapping rules (in `PachislopPort`, §6.7.1): keys and enum values camelCase → snake_case (`doubleRing` → `double_ring`,
 `shapeBurst` → `shape_burst`) unless `fields` says otherwise; `kind: title2d | title3d` → `dimension`;
@@ -2018,7 +2019,9 @@ rest of S82 lands in 6B.
     42 strings, so every other byte and every test reading the dump are unchanged); the map keys those ids and texts the
     same way and `PachislopPort` matches a map key against the source as read or its `pachislopSourceKey`, so a fresh dump
     of a clone still maps `f-plate-…` and `t-…` to `casino/slanted-box-plate` (withheld) and the texts to ONE STRIKE and
-    THE ORIGINAL; a map key that names a term outright fails the port. The comments are rephrased. S87's Pachislop
+    THE ORIGINAL; a map key that names a term outright fails the port. A template stores Japanese when a source text is
+    Japanese script, which a hash hides: a hashed `template_texts` entry carries `source_japanese` (required; without it
+    the two templates stored their English names, the first run of `CheckReproducesCommittedFiles` after the rewrite). The comments are rephrased. S87's Pachislop
     project importer reads the map's fonts, fields and environments only, so it needs no change. Guard:
     `TitleArtDeniedTermsScan.NoTitleArtPathHoldsADeniedTerm` scans `editor/resources/titleart`, `editor/titleart`,
     `engine/core/titleart`, `engine/shader*/titleart`, `engine/shaderlib/titleart`, `tools/titleart`, `docs/titleart`,

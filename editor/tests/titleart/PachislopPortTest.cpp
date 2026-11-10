@@ -157,6 +157,7 @@ TEST_F(PachislopPortTest, HashedMapKeysMatchRawSources) {
             const std::string source = e.value("source", std::string());
             if (source.rfind("sha256:", 0) != 0) {
                 e["source"] = pachislopSourceKey(source);
+                e["source_japanese"] = hasJapaneseScript(source);
                 texts++;
             }
         }

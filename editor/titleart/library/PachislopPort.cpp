@@ -1643,6 +1643,9 @@ namespace {
         struct TextEntry {
             std::string source, name, en, ja;
             Json charsEn, charsJa;          // index (ours) -> source index, or null (identity)
+            // a hashed source (pachislopSourceKey): whether the text it stands for is Japanese script,
+            // which picks the language the template stores (the hash does not show it)
+            bool sourceJapanese = false;
             bool claimed = false;
         };
 
@@ -1934,6 +1937,10 @@ namespace {
                 entry.ja = e.value("ja", std::string());
                 if (e.contains("chars_en")) entry.charsEn = e["chars_en"];
                 if (e.contains("chars_ja")) entry.charsJa = e["chars_ja"];
+                entry.sourceJapanese = e.value("source_japanese", false);
+                if (entry.source.rfind("sha256:", 0) == 0 && !e.contains("source_japanese")) {
+                    error(c, "template_texts: a hashed source needs `source_japanese` (the script of the text it stands for)");
+                }
                 static const std::set<std::string> names = {"text", "subtitle", "kicker", "counter", "label", "line_2"};
                 if (!names.count(entry.name)) error(c, "template_texts: `" + entry.name + "` is not text, subtitle, kicker, counter, label or line_2");
                 if (entry.source.empty() || entry.en.empty() || entry.ja.empty()) error(c, "template_texts: every entry needs source, en and ja");
@@ -2044,7 +2051,13 @@ namespace {
             const Json layers = project.contains("layers") && project["layers"].is_array() ? project["layers"] : Json::array();
             for (const Json& L : layers) {
                 const Json src = L.contains("source") ? L["source"] : Json();
-                if (src.is_object() && src.value("kind", std::string()) == "text" && hasJapaneseScript(src.value("text", std::string()))) t.storeJa = true;
+                if (!src.is_object() || src.value("kind", std::string()) != "text") continue;
+                const std::string text = src.value("text", std::string());
+                if (hasJapaneseScript(text)) t.storeJa = true;
+                // the dump holds a text with a denied term hashed: its entry says its script
+                for (const TextEntry& e : t.texts) {
+                    if (e.sourceJapanese && text.rfind("sha256:", 0) == 0 && e.source == text) t.storeJa = true;
+                }
             }
 
             // the tree (Pachislop: a flat list, bottom first, `parentId` naming a group)

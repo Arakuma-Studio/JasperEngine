@@ -1199,6 +1199,7 @@
     "casino/slanted-box-plate": [
       {
         "source": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
+        "source_japanese": true,
         "name": "text",
         "en": "ONE STRIKE",
         "ja": "一撃必殺"
@@ -1229,6 +1230,7 @@
     "casino/original-depth-fade-3d": [
       {
         "source": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
+        "source_japanese": true,
         "name": "text",
         "en": "THE ORIGINAL",
         "ja": "元祖カミナリ",
