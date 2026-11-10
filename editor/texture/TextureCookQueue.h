@@ -169,8 +169,9 @@ namespace jasperengine::editor {
         void setViewFamily(TextureFamily family);
         TextureFamily getViewFamily() const;
 
-        // the settings of a texture as stored (or inferred when it has none); any thread
-        bool settingsOf(const std::string& assetPath, TextureImportSettings& out);
+        // the settings of a texture as stored (or inferred when it has none), and when asked its
+        // Pixel Art Cleanup recipe; any thread
+        bool settingsOf(const std::string& assetPath, TextureImportSettings& out, std::string* pixelCleanupRecipe = nullptr);
 
         TextureCookCache& getCache() { return cache; }
         void setMemoryBudget(uint64_t bytes);
@@ -206,8 +207,14 @@ namespace jasperengine::editor {
 
         mutable std::mutex mutex;           // entries, settings memo, inbox
         std::map<std::pair<std::string, int>, Entry> entries;
-        // the stored settings of a texture (first: it has some)
-        std::unordered_map<std::string, std::pair<bool, TextureImportSettings>> settingsMemo;
+        // what a texture's .meta stores for the cook: its settings (has: it has some) and the
+        // Pixel Art Cleanup step's recipe (S46 R33, "" off)
+        struct StoredImport {
+            bool has = false;
+            TextureImportSettings settings;
+            std::string pixelCleanupRecipe;
+        };
+        std::unordered_map<std::string, StoredImport> settingsMemo;
         std::vector<std::string> loaderInbox;   // loaded through the raw path: cook at Loaded priority
         std::vector<std::shared_ptr<Job>> running;
         std::vector<std::shared_ptr<SwapIn>> swaps;

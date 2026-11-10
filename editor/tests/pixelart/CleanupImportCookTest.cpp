@@ -4,12 +4,18 @@
 // The texture cook's import step (docs/specs/S46-pixel-art-cleanup.md R33, D8) through the cooker's
 // hook: the key changes only with a step, the plan and the cook see the step's output, a step that
 // does not apply cooks the raw source and says why, and importStepRecipeText reads what a .meta
-// says. The last cases run the real recipe from pixelart/cleanup.
+// says. The last cases run the real recipe from pixelart/cleanup: one run serves a source's plan, cook
+// and families while they share TextureCookStep::memo and nothing outlives them, and the queue
+// recooks for an outside .meta edit of the step alone.
 
 #include <gtest/gtest.h>
 
 #include "support/EditorTestSupport.h"
+#include "support/TestTempDir.h"
 #include "support/TextureCorpus.h"
+
+#include "Project.h"
+#include "command/type/SetAssetMetaCmd.h"
 
 #include "pixelart/PixelImage.h"
 #include "pixelart/cleanup/CleanupImportCook.h"
@@ -17,13 +23,19 @@
 #include "pixelart/cleanup/CleanupSample.h"
 #include "pixelart/cleanup/CleanupSynthetic.h"
 #include "texture/TextureCookCache.h"
+#include "texture/TextureCookQueue.h"
 #include "texture/TextureCooker.h"
+
+#include "yaml-cpp/yaml.h"
 
 #include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -34,21 +46,30 @@ namespace fs = std::filesystem;
 
 namespace {
 
+    PixelImage stripes(int width, int height) {
+        PixelImage image(width, height);
+        std::span<uint8_t> pixels = image.editPixels();
+        for (size_t i = 0; i < pixels.size(); i += 4) {
+            pixels[i] = static_cast<uint8_t>(i & 0xff);
+            pixels[i + 1] = 40;
+            pixels[i + 2] = 200;
+            pixels[i + 3] = 255;
+        }
+        return image;
+    }
+
+    // a clean 16 x 16 sprite upscaled 8 times: the real fix applies
+    PixelImage fixableSprite() {
+        return cu::upscale(cu::demoSprite(), {8.0, 0.0, 0.0, 0, 0.0, 7});
+    }
+
     struct StepBench {
         ScratchDir scratch;
         TextureCookCache cache;
         fs::path source;
-        explicit StepBench(const std::string& name, int width = 32, int height = 32) : scratch(name) {
+        explicit StepBench(const std::string& name, const PixelImage& image = stripes(32, 32)) : scratch(name) {
             cache.open(scratch.path / "cache", "", 256ull << 20);
             source = scratch.path / "art.png";
-            PixelImage image(width, height);
-            std::span<uint8_t> pixels = image.editPixels();
-            for (size_t i = 0; i < pixels.size(); i += 4) {
-                pixels[i] = static_cast<uint8_t>(i & 0xff);
-                pixels[i + 1] = 40;
-                pixels[i + 2] = 200;
-                pixels[i + 3] = 255;
-            }
             const std::string bytes = image.encodePng();
             std::ofstream file(source, std::ios::binary);
             file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -272,19 +293,134 @@ TEST(CleanupImportCook, NeedsPersonOnTheSavedSourceStillCooksTheFix) {
     EXPECT_TRUE(outcome.applied) << outcome.error << outcome.guard;
 }
 
-// "one fix per source change": the queue's plan and cook stages are separate requests
-TEST(CleanupImportCook, ThePlanAndTheCookRunTheFixOnce) {
-    const PixelImage image = cu::upscale(cu::demoSprite(), {8.0, 0.0, 0.0, 0, 0.0, 7});
-    const std::string recipe = cu::recipeText(cu::Recipe());
+// the queue's plan and cook stages are separate requests: the memo they share runs the fix once
+TEST(CleanupImportCook, ThePlanAndTheCookStagesShareOneFix) {
+    StepBench bench("cleanup-stages", fixableSprite());
+    TextureCookRequest request = bench.request();
+    request.step = cu::importCookStep(cu::recipeText(cu::Recipe()));
+    request.step.memo = std::make_shared<TextureCookStep::Memo>();
     const uint64_t before = cu::importCookFixesRun();
-    const TextureCookStep planned = cu::importCookStep(recipe);
-    const TextureCookStep cooked = cu::importCookStep(recipe);
-    const TextureCookStep::Outcome first = planned.run(image.pixels().data(), image.width(), image.height(), "once-hash");
-    const TextureCookStep::Outcome second = cooked.run(image.pixels().data(), image.width(), image.height(), "once-hash");
-    EXPECT_EQ(cu::importCookFixesRun(), before + 1);
-    ASSERT_TRUE(first.applied);
-    EXPECT_EQ(first.rgba, second.rgba);
-    // another source of the same size is its own fix
-    (void)cooked.run(image.pixels().data(), image.width(), image.height(), "other-hash");
+    TextureCookPlan plan;
+    std::string error;
+    ASSERT_TRUE(TextureCooker::plan(bench.cache, request, plan, error)) << error;
+    ASSERT_EQ(plan.analysis.stepState, "applied");
+    const TextureCookResult cooked = TextureCooker::cook(bench.cache, request, nullptr);
+    ASSERT_TRUE(cooked.ok) << cooked.error;
+    EXPECT_EQ(cooked.record.logicalWidth, 16);
+    EXPECT_EQ(cu::importCookFixesRun(), before + 1) << "the cook stage ran the fix again";
+    // without a memo, one cook() call is both stages, and runs it once too
+    StepBench alone("cleanup-stages-alone", fixableSprite());
+    TextureCookRequest single = alone.request();
+    single.step = cu::importCookStep(cu::recipeText(cu::Recipe()));
+    const uint64_t first = cu::importCookFixesRun();
+    ASSERT_TRUE(TextureCooker::cook(alone.cache, single, nullptr).ok);
+    EXPECT_EQ(cu::importCookFixesRun(), first + 1);
+}
+
+// the step keeps nothing itself: an output no cook takes (here the plan of a texture already cooked)
+// is not held for whoever asks next
+TEST(CleanupImportCook, TheStepHoldsNoOutcomeNobodyTakes) {
+    const PixelImage image = fixableSprite();
+    StepBench bench("cleanup-holds-nothing", image);
+    TextureCookRequest request = bench.request();
+    request.step = cu::importCookStep(cu::recipeText(cu::Recipe()));
+    ASSERT_TRUE(TextureCooker::cook(bench.cache, request, nullptr).ok);
+    // the sources table forgets the file (same bytes, new mtime): the plan runs the fix, and finds the key cooked
+    fs::last_write_time(bench.source, fs::last_write_time(bench.source) + std::chrono::seconds(2));
+    uint64_t before = cu::importCookFixesRun();
+    TextureCookPlan plan;
+    std::string error;
+    ASSERT_TRUE(TextureCooker::plan(bench.cache, request, plan, error)) << error;
+    ASSERT_EQ(cu::importCookFixesRun(), before + 1);
+    ASSERT_TRUE(bench.cache.has(plan.key));
+    // the same pixels, file and recipe: a run, not that plan's output
+    before = cu::importCookFixesRun();
+    const TextureCookStep::Outcome again = request.step.run(image.pixels().data(), image.width(), image.height(), plan.sourceSha256);
+    EXPECT_TRUE(again.applied);
+    EXPECT_EQ(cu::importCookFixesRun(), before + 1) << "an outcome nobody took was still held";
+    (void)request.step.run(image.pixels().data(), image.width(), image.height(), plan.sourceSha256);
     EXPECT_EQ(cu::importCookFixesRun(), before + 2);
+}
+
+// an export cooks every family of a texture: one fix serves them all, one family at a time or side by side
+TEST(CleanupImportCook, EveryFamilyOfATextureSharesOneFix) {
+    for (const int threads : {1, 4}) {
+        StepBench bench("cleanup-families-" + std::to_string(threads), fixableSprite());
+        std::map<std::string, TextureCookInputs> inputs;
+        TextureCookInputs in;
+        in.assetPath = "art.png";
+        in.absolute = bench.source;
+        in.settings = bench.request().settings;
+        in.hasSettings = true;
+        in.pixelCleanupRecipe = cu::recipeText(cu::Recipe());
+        inputs[in.assetPath] = in;
+        std::vector<TextureBatchItem> items;
+        for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}) {
+            TextureBatchItem item;
+            item.assetPath = in.assetPath;
+            item.family = family;
+            items.push_back(item);
+        }
+        const uint64_t before = cu::importCookFixesRun();
+        TextureBatchCook::run(bench.cache, TextureProjectSettings(), inputs, items, threads, 2ull << 30, nullptr, nullptr);
+        for (const TextureBatchItem& item : items) {
+            ASSERT_TRUE(item.result.ok) << textureFamilyName(item.family) << ": " << item.result.error;
+            EXPECT_FALSE(item.result.cacheHit) << textureFamilyName(item.family);
+            EXPECT_EQ(item.result.record.logicalWidth, 16) << textureFamilyName(item.family);
+        }
+        EXPECT_EQ(cu::importCookFixesRun(), before + 1) << threads << " thread(s): a family ran the fix again";
+    }
+}
+
+// S46 R33 through the queue: an edit of the .meta outside the editor that changes only
+// import.pixelCleanup recooks, and the recipe the queue reads comes with the settings' read
+TEST(CleanupImportCookQueue, AnOutsideEditOfTheStepAloneRecooks) {
+    jasperengine::test::TestTempDir dir{"cleanup-queue-meta"};
+    fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/textures", dir.path(), fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+    auto project = std::make_unique<Project>();
+    project->setSkipProjectLock(true);
+    ASSERT_TRUE(project->loadProject(dir.path(), false));
+    project->getAssetIndex().waitUntilReady();
+    TextureCookQueue& queue = TextureCookQueue::get();
+    queue.attach(project.get());
+    const std::string texture = "textures/gradient.png";
+    const fs::path absolute = dir.path() / "assets" / texture;
+    SetAssetMetaCmd settings(project.get(), "assets/" + texture, "import.textureImporter", YAML::Load("{version: 1, maxSize: 512}"));
+    ASSERT_TRUE(settings.execute());
+    queue.request(texture, TextureFamily::Desktop);
+    TextureImportSettings stored;
+    std::string recipe = "unread";
+    ASSERT_TRUE(queue.settingsOf(texture, stored, &recipe));
+    EXPECT_EQ(recipe, "");
+    queue.cancelAll();
+    ASSERT_FALSE(queue.isPending(texture, TextureFamily::Desktop));
+
+    // a text editor adds the step: the importer's settings stay as they were
+    const fs::path meta = SetAssetMetaCmd::metaPathOf(absolute);
+    YAML::Node root = YAML::LoadFile(meta.string());
+    root["import"]["pixelCleanup"] = YAML::Load("{enabled: true, recipe: {follow: straight}}");
+    {
+        std::ofstream file(meta, std::ios::binary | std::ios::trunc);
+        file << YAML::Dump(root) << "\n";
+    }
+    queue.settingsChanged(texture);
+    EXPECT_TRUE(queue.isPending(texture, TextureFamily::Desktop)) << "the step's recipe is a cook input";
+    ASSERT_TRUE(queue.settingsOf(texture, stored, &recipe));
+    EXPECT_NE(recipe.find("\"follow\":\"straight\""), std::string::npos) << recipe;
+    EXPECT_EQ(stored.maxSize.value_or(0), 512);
+
+    // told again with nothing new: no recook
+    queue.cancelAll();
+    queue.settingsChanged(texture);
+    EXPECT_FALSE(queue.isPending(texture, TextureFamily::Desktop));
+
+    // the cook's inputs: the settings and the step from one read of the .meta
+    TextureCookInputs inputs;
+    ASSERT_TRUE(gatherTextureInputs(*project, texture, inputs));
+    EXPECT_TRUE(inputs.hasSettings);
+    EXPECT_EQ(inputs.settings.maxSize.value_or(0), 512);
+    EXPECT_EQ(inputs.pixelCleanupRecipe, recipe);
+
+    queue.attach(nullptr);
+    closeProject(*project);
 }

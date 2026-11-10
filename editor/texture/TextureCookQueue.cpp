@@ -45,6 +45,21 @@ namespace {
             Out::warning("Pixel Art Cleanup of %s did not run (%s): the raw source was cooked.", assetPath.c_str(), analysis.stepGuard.c_str());
     }
 
+    // The .meta read once for the cook: the importer's settings (false: none stored, or `error`)
+    // and the Pixel Art Cleanup step's recipe (S46 R33), so a texture without the step pays no
+    // second read
+    bool readStoredImport(const fs::path& absolute, TextureImportSettings& settings, std::string& recipe, std::string& error){
+        const YAML::Node importMap = SetAssetMetaCmd::read(absolute, "import");
+        recipe = jasperengine::editor::pixelart::cleanup::importStepRecipeText(absolute, importMap);
+        settings = TextureImportSettings();
+        if (!importMap.IsMap())
+            return false;
+        const YAML::Node stored = importMap["textureImporter"];
+        if (!stored || stored.IsNull())
+            return false;
+        return TextureImportSettings::parse(stored, settings, &error);
+    }
+
     std::string cookLowerExtension(const std::string& path){
         std::string extension = fs::path(path).extension().string();
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
@@ -138,13 +153,12 @@ bool editor::gatherTextureInputs(Project& project, const std::string& assetPath,
     out.absolute = (project.getAssetsPath() / fs::path(assetPath)).lexically_normal();
     out.projectRelative = project.normalizeToProjectRelative(out.absolute).generic_string();
     std::string error;
-    out.hasSettings = TextureImportSettings::load(out.absolute.string(), out.settings, &error);
+    out.hasSettings = readStoredImport(out.absolute, out.settings, out.pixelCleanupRecipe, error);
     if (!error.empty())
         return false;
     out.inference = TextureTypeInference::infer(project, out.projectRelative);
     if (!out.hasSettings)
         out.settings = cookInferredSettings(out.inference);
-    out.pixelCleanupRecipe = pixelart::cleanup::importStepRecipeText(out.absolute);
     return true;
 }
 
@@ -235,6 +249,9 @@ struct TextureCookQueue::Job {
     bool sourceOnly = false;
     bool inferred = false;              // settings were inferred: written by the main thread
     bool cpuRead = false;               // read on the CPU (isReadOnCpu, requireCpuReadable)
+    // the Pixel Art Cleanup run its plan and cook share with the texture's other families in
+    // flight (S46 R33); dropped when the job is done (main thread)
+    std::shared_ptr<TextureCookStep::Memo> stepMemo;
 };
 
 struct TextureCookQueue::SwapIn {
@@ -392,23 +409,28 @@ void TextureCookQueue::projectSettingsChanged(){
 
 // ---- settings and inputs
 
-bool TextureCookQueue::settingsOf(const std::string& assetPath, TextureImportSettings& out){
+bool TextureCookQueue::settingsOf(const std::string& assetPath, TextureImportSettings& out, std::string* pixelCleanupRecipe){
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = settingsMemo.find(assetPath);
         if (it != settingsMemo.end()){
-            out = it->second.second;
-            return it->second.first;
+            out = it->second.settings;
+            if (pixelCleanupRecipe)
+                *pixelCleanupRecipe = it->second.pixelCleanupRecipe;
+            return it->second.has;
         }
     }
-    TextureImportSettings settings;
+    StoredImport stored;
     std::string error;
-    const bool has = TextureImportSettings::load(absoluteOf(assetPath).string(), settings, &error);
-    if (!has && !error.empty())
+    stored.has = readStoredImport(absoluteOf(assetPath), stored.settings, stored.pixelCleanupRecipe, error);
+    if (!stored.has && !error.empty())
         Out::warning("%s: texture import settings: %s", assetPath.c_str(), error.c_str());
+    out = stored.settings;
+    if (pixelCleanupRecipe)
+        *pixelCleanupRecipe = stored.pixelCleanupRecipe;
+    const bool has = stored.has;
     std::lock_guard<std::mutex> lock(mutex);
-    settingsMemo[assetPath] = {has, settings};
-    out = settings;
+    settingsMemo[assetPath] = std::move(stored);
     return has;
 }
 
@@ -559,16 +581,18 @@ void TextureCookQueue::sourceChanged(const std::string& assetPath){
 void TextureCookQueue::settingsChanged(const std::string& assetPath){
     if (!project || !isTextureSource(assetPath))
         return;
-    TextureImportSettings now;
+    StoredImport now;
     std::string error;
-    const bool has = TextureImportSettings::load(absoluteOf(assetPath).string(), now, &error);
+    now.has = readStoredImport(absoluteOf(assetPath), now.settings, now.pixelCleanupRecipe, error);
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = settingsMemo.find(assetPath);
-        // our own write of inferred settings, or a write that changed nothing of the importer
-        if (it != settingsMemo.end() && it->second.first == has && it->second.second == now)
+        // our own write of inferred settings, or a write that changed nothing the cook reads
+        // (the Pixel Art Cleanup recipe is one of its inputs, S46 R33)
+        if (it != settingsMemo.end() && it->second.has == now.has && it->second.settings == now.settings &&
+            it->second.pixelCleanupRecipe == now.pixelCleanupRecipe)
             return;
-        settingsMemo[assetPath] = {has, now};
+        settingsMemo[assetPath] = now;
     }
     if (!isCookableTexture(assetPath)){
         startSwap(assetPath);
@@ -584,7 +608,7 @@ void TextureCookQueue::settingsChanged(const std::string& assetPath){
     invalidate(assetPath);
     // invalidate() dropped the memo: keep the settings just read
     std::lock_guard<std::mutex> lock(mutex);
-    settingsMemo[assetPath] = {has, now};
+    settingsMemo[assetPath] = std::move(now);
 }
 
 void TextureCookQueue::cancelJobs(bool wait){
@@ -744,7 +768,7 @@ void TextureCookQueue::startJobs(){
         job->inputs.assetPath = key.first;
         job->inputs.absolute = absoluteOf(key.first);
         job->inputs.projectRelative = project->normalizeToProjectRelative(job->inputs.absolute).generic_string();
-        job->inputs.hasSettings = settingsOf(key.first, job->inputs.settings);
+        job->inputs.hasSettings = settingsOf(key.first, job->inputs.settings, &job->inputs.pixelCleanupRecipe);
         job->edges = TextureTypeInference::referenceEdges(*project, job->inputs.projectRelative);
         const bool readOnCpu = isReadOnCpu(key.first);
         {
@@ -758,6 +782,17 @@ void TextureCookQueue::startJobs(){
             entry.job = job;
             job->epoch = entry.epoch;
             job->cpuRead = readOnCpu || cpuRecooks.erase(key.first) > 0;
+            // another family of this texture in flight shares its Pixel Art Cleanup run
+            if (!job->inputs.pixelCleanupRecipe.empty()){
+                for (const std::shared_ptr<Job>& other : running){
+                    if (other->stepMemo && other->assetPath == job->assetPath && other->inputs.pixelCleanupRecipe == job->inputs.pixelCleanupRecipe){
+                        job->stepMemo = other->stepMemo;
+                        break;
+                    }
+                }
+                if (!job->stepMemo)
+                    job->stepMemo = std::make_shared<TextureCookStep::Memo>();
+            }
             running.push_back(job);
         }
         jobs::SubmitOptions options;
@@ -779,13 +814,13 @@ void TextureCookQueue::startJobs(){
                 inputs.settings = cookInferredSettings(inputs.inference);
                 job->inferred = true;
             }
-            inputs.pixelCleanupRecipe = pixelart::cleanup::importStepRecipeText(inputs.absolute);
             if (inputs.inference.sourceOnly){
                 job->sourceOnly = true;
                 job->result.ok = true;
                 return;
             }
-            const TextureCookRequest request = makeTextureCookRequest(inputs, job->project, job->family);
+            TextureCookRequest request = makeTextureCookRequest(inputs, job->project, job->family);
+            request.step.memo = job->stepMemo;
             if (!TextureCooker::plan(*cookCache, request, job->result.plan, job->result.error))
                 return;
             if (cookCache->has(job->result.plan.key) && cookCache->load(job->result.plan.key, job->result.record)){
@@ -817,7 +852,8 @@ void TextureCookQueue::startJobs(){
         options.name = "texture-cook";
         TextureCookCache* cookCache = &cache;
         job->task = jobs::submit([job, cookCache](){
-            const TextureCookRequest request = makeTextureCookRequest(job->inputs, job->project, job->family);
+            TextureCookRequest request = makeTextureCookRequest(job->inputs, job->project, job->family);
+            request.step.memo = job->stepMemo;
             job->result = TextureCooker::cook(*cookCache, request, [job](){ return job->cancel.load(); });
         }, options);
     }
@@ -865,8 +901,10 @@ void TextureCookQueue::collectJobs(){
                 metaWrites.push_back({job->assetPath, YAML::Dump(job->inputs.settings.serialize())});
                 job->inferred = false;
             }
-            if (!current)
+            if (!current){
+                job->stepMemo.reset();
                 continue;
+            }
             Entry& entry = it->second;
             TextureCookState& state = entry.state;
             if (!job->cooking && job->result.ok == false && job->result.error.empty() && job->workingBytes > 0){
@@ -905,6 +943,7 @@ void TextureCookQueue::collectJobs(){
         }
         if (planned)
             continue;
+        job->stepMemo.reset();
         if (job->result.ok && !job->sourceOnly && !job->result.cacheHit)
             Out::info("Cooked %s for %s: %s, %.0f ms", job->assetPath.c_str(), textureFamilyName(job->family),
                       job->result.record.label.c_str(), job->result.record.cookMs);
@@ -944,9 +983,9 @@ void TextureCookQueue::writeInferredSettings(){
         std::error_code ec;
         if (!fs::exists(SetAssetMetaCmd::metaPathOf(absolute), ec))
             continue;
-        // (an absent key reads as a null node, which yaml-cpp counts as defined)
-        const YAML::Node stored = SetAssetMetaCmd::read(absolute, TextureImportSettings::metaKey);
-        if (stored && !stored.IsNull())
+        StoredImport stored;
+        std::string error;
+        if (readStoredImport(absolute, stored.settings, stored.pixelCleanupRecipe, error) || !error.empty())
             continue;
         TextureImportSettings settings;
         if (!TextureImportSettings::parse(YAML::Load(yaml), settings))
@@ -954,7 +993,7 @@ void TextureCookQueue::writeInferredSettings(){
         {
             // the write's own listener call sees nothing new
             std::lock_guard<std::mutex> lock(mutex);
-            settingsMemo[assetPath] = {true, settings};
+            settingsMemo[assetPath] = {true, settings, stored.pixelCleanupRecipe};
         }
         // not a step of the history: the settings a texture always had, written down (R30)
         SetAssetMetaCmd command(project, project->normalizeToProjectRelative(absolute), TextureImportSettings::metaKey,
@@ -1139,6 +1178,19 @@ void TextureBatchCook::run(TextureCookCache& cache, const TextureProjectSettings
     size_t next = 0;
     int done = 0;
     auto isCancelled = [&](){ return cancelled && cancelled(); };
+    // S46 R33: a texture's families share one Pixel Art Cleanup run, kept until its last family is done
+    struct SharedStep {
+        std::shared_ptr<TextureCookStep::Memo> memo;
+        int left = 0;
+    };
+    std::map<std::string, SharedStep> sharedSteps;
+    for (const TextureBatchItem& item : items){
+        auto found = inputs.find(item.assetPath);
+        if (found != inputs.end() && !found->second.pixelCleanupRecipe.empty())
+            sharedSteps[item.assetPath].left++;
+    }
+    for (auto& [path, shared] : sharedSteps)
+        shared.memo = std::make_shared<TextureCookStep::Memo>();
 
     auto worker = [&](){
         while (true){
@@ -1160,7 +1212,13 @@ void TextureBatchCook::run(TextureCookCache& cache, const TextureProjectSettings
                 item.result.cancelled = true;
                 item.result.error = "cancelled";
             }else{
-                const TextureCookRequest request = makeTextureCookRequest(found->second, project, item.family);
+                TextureCookRequest request = makeTextureCookRequest(found->second, project, item.family);
+                {
+                    std::lock_guard<std::mutex> lock(batchMutex);
+                    auto shared = sharedSteps.find(item.assetPath);
+                    if (shared != sharedSteps.end())
+                        request.step.memo = shared->second.memo;
+                }
                 TextureCookPlan plan;
                 std::string error;
                 if (!TextureCooker::plan(cache, request, plan, error)){
@@ -1186,6 +1244,9 @@ void TextureBatchCook::run(TextureCookCache& cache, const TextureProjectSettings
                 }
             }
             std::lock_guard<std::mutex> lock(batchMutex);
+            auto shared = sharedSteps.find(item.assetPath);
+            if (shared != sharedSteps.end() && --shared->second.left == 0)
+                shared->second.memo.reset();
             done++;
             if (progress)
                 progress(done, (int)items.size(), item.assetPath);

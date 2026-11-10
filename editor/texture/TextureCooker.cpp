@@ -72,6 +72,22 @@ namespace {
         return htmlui::compat::sha256Hex(step.key);
     }
 
+    // A step's output for these pixels, from its memo when the memo holds them
+    TextureCookStep::Outcome runMemoizedStep(const TextureCookStep& step, const uint8_t* pixels, int width, int height,
+                                             const std::string& sourceSha256){
+        TextureCookStep::Memo& memo = *step.memo;
+        std::lock_guard<std::mutex> lock(memo.mutex);
+        if (!memo.filled || memo.key != step.key || memo.sourceSha256 != sourceSha256 || memo.width != width || memo.height != height){
+            memo.outcome = step.run(pixels, width, height, sourceSha256);
+            memo.filled = true;
+            memo.key = step.key;
+            memo.sourceSha256 = sourceSha256;
+            memo.width = width;
+            memo.height = height;
+        }
+        return memo.outcome;
+    }
+
     // Runs a request's step on a decoded 2D source: `image` is replaced by the step's output when
     // it applies. `analysis` (when given) notes how it ended.
     void runCookStep(const TextureCookStep& step, TextureData& image, const std::string& sourceSha256, TextureSourceAnalysis* analysis,
@@ -87,7 +103,8 @@ namespace {
         if (!pixels){
             outcome.error = "its pixels cannot be read as RGBA8";
         }else if (step.run){
-            outcome = step.run(pixels, image.getWidth(), image.getHeight(), sourceSha256);
+            outcome = step.memo ? runMemoizedStep(step, pixels, image.getWidth(), image.getHeight(), sourceSha256)
+                                : step.run(pixels, image.getWidth(), image.getHeight(), sourceSha256);
         }
         if (outcome.applied){
             void* copy = malloc(outcome.rgba.size());
@@ -274,9 +291,16 @@ bool TextureCooker::plan(TextureCookCache& cache, const TextureCookRequest& requ
     return true;
 }
 
-TextureCookResult TextureCooker::cook(TextureCookCache& cache, const TextureCookRequest& request, const std::function<bool()>& cancelled){
+TextureCookResult TextureCooker::cook(TextureCookCache& cache, const TextureCookRequest& given, const std::function<bool()>& cancelled){
     TextureCookResult result;
     const auto start = std::chrono::steady_clock::now();
+    // a step's plan and cook in one call run it once
+    TextureCookRequest withMemo;
+    if (!given.step.key.empty() && !given.step.memo){
+        withMemo = given;
+        withMemo.step.memo = std::make_shared<TextureCookStep::Memo>();
+    }
+    const TextureCookRequest& request = withMemo.step.memo ? withMemo : given;
     if (!plan(cache, request, result.plan, result.error))
         return result;
     const TextureCookPlan& plan = result.plan;

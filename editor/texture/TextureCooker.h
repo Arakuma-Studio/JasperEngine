@@ -16,6 +16,8 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,17 @@ namespace jasperengine::editor {
         };
         // the source's straight RGBA8 pixels, rows top first, and its file's SHA-256
         std::function<Outcome(const uint8_t* rgba, int width, int height, const std::string& sourceSha256)> run;
+        // The output of one run, shared by the requests that cook one source: its plan and cook
+        // stages, every family. Whoever builds those requests owns it, so the output lives only
+        // while one of them may still ask; null runs the step each time it is needed.
+        struct Memo {
+            std::mutex mutex;               // held through a run: a second family waits for the first's
+            bool filled = false;
+            std::string key, sourceSha256;  // what `outcome` is of, with the source's size
+            int width = 0, height = 0;
+            Outcome outcome;
+        };
+        std::shared_ptr<Memo> memo;
     };
 
     struct TextureCookRequest {
@@ -80,6 +93,7 @@ namespace jasperengine::editor {
         // the plan of a cook (settings, format, key) without cooking: the inspector's table, the
         // report, a cache lookup. Decodes only when the source changed since it was last hashed.
         static bool plan(TextureCookCache& cache, const TextureCookRequest& request, TextureCookPlan& out, std::string& error);
+        // plans again, then cooks on a cache miss; a step without a memo gets one for the call
         static TextureCookResult cook(TextureCookCache& cache, const TextureCookRequest& request, const std::function<bool()>& cancelled);
 
         // The source as the cook reads it: float for .hdr / .exr, a 4:3 or 3:4 cross split

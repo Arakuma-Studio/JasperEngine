@@ -29,9 +29,11 @@ namespace jasperengine::editor::pixelart::cleanup {
     // The recipe text the cook hashes and runs for an asset's .meta. "" when the step is off: no
     // key, `enabled: false`, or not a raster source (.aseprite never takes the step).
     std::string importStepRecipeText(const std::filesystem::path& absoluteAsset);
+    // The same from the .meta's `import` map its reader already has, so the cook reads the file once
+    std::string importStepRecipeText(const std::filesystem::path& absoluteAsset, const YAML::Node& importMap);
 
-    // How many fixes the cook steps of this process really ran: the plan and the cook of one texture
-    // are separate stages, and the second reuses the first's result (the spec's "one fix per source change")
+    // How many fixes the cook steps of this process ran: a source's stages and families share one
+    // run through TextureCookStep::memo
     uint64_t importCookFixesRun();
     // The cook step for a recipe text ("": no step)
     TextureCookStep importCookStep(const std::string& recipeText);
