@@ -1907,3 +1907,41 @@ rest of S82 lands in 6B.
     at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
     the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
+29. **Follow-up of 23 (ta/lib-looks):**
+    - The "render state carried between documents" was the renderer's node cache: a group drawn for an isolated layer was
+      keyed by the group's content hash, which chains every child, so an isolated render after the full one got the whole
+      group back (and a full render after an isolated one got the one layer). `casino/red-hot-rim-glow` ja's isolated echo
+      layer held the main layer drawn over its counters. Group and clip nodes now key by what they draw
+      (`TitlePlanner::drawnHash`; red control `TitleArtRendererGpu.IsolationKeysTheGroupNode`). It passes in every order.
+    - `mono-dark`: the face takes a dark ramp (#000 -> #111 -> #2e2e2e): the black face's bevel no longer lights the letter
+      edges as bright as the white line in the counters; base and rims stay black, so the look is unchanged.
+    - `gems/diamond-3d`: the outline effect 2.5 -> 1.5 (the schema default); at 2.5 it closed the gaps the digits' bands
+      enclose on `1234`. `gems/crystal-title`, built from it, follows.
+    - `casino/premium-black-gloss` still fails, en and ja pulling opposite ways: en's P and R counters are darker than the
+      bevel-lit letter around them (and Zen Old Mincho's M and I serifs touch at tracking -40, enclosing a gap the rims
+      fill); ja's handakuten counter is 6 x 6 px in the gate's 0.25 render and is filled by the four pinstripe rims at any
+      width (half the rims leave 2 of 25 px open), lighter than the letter. A lower face bevel highlight (0.15) passes ja and
+      fails en; en passes with the sample's I, U, M moved right by 4 % and the glow at 0.25, which ja does not need. No one
+      design change passes both; left for the owner (a per-language face, or a metric for counters below the rim width).
+    - Sample texts: `casino/new-machine-flyer` is NEW ARRIVAL again, on two lines (NEW / ARRIVAL fit the template
+      unchanged). `metal/liquid-gold-vertical-kicker` keeps BREAK: LIMIT BREAK in one vertical column is taller than the
+      2880 canvas, and in two columns the Latin reads across as BL / RI / EM / AI / KT.
+    - The style lint warns on 17 looks and the scheme `royal` (and on five templates through the looks they apply), all
+      by design and left: hairline rims are the look of `minimal/outline-thin`, `minimal/frosted-glass`,
+      `retro/vector-green`, `metal/liquid-chrome`, `neon/hollow-neon`, `neon/neon-tube`, `wa/dry-brush-ink` (0.2-2.8 %);
+      `gems/blue-glass`, `gems/red-glass`, `casino/rainbow-glass-gold`, `metal/gradient-map-gold` sit at 4.6-4.9 % of
+      a 5 % threshold (Pachislop's widths); the contrasts are gold-on-gold strokes separated by their bevels
+      (`metal/double-stroke-gold`, `casino/rainbow-glass-gold`) and 3D bands the lighting separates
+      (`casino/gold-on-red-stack-3d`, `casino/rainbow-glass-gold-3d`, `elements/ice-crystal-glass-3d`,
+      `metal/holographic-silver-3d`); `retro/16bit-gradient`'s hard shadow is the pixel-art style.
+    - A font "sometimes missing" in a full gate run (`cartoon/sticker-white`: missing font LilitaOne) was the asset
+      database learning a library apply's imported files only on the file watcher's later walk, which raced the check
+      that followed the apply. A title step that writes files besides `.titleart` documents now refreshes the database
+      before it returns (red control `TitleArtDocumentTest.FilesAStepImportsAreInTheAssetDatabaseWhenItReturns`).
+    - Found, not changed: `TitleLibraryBuiltins.Budgets` fails its apply_look budget (17 ms against 9) when a test that
+      opens a project (`TitleDesignerState*`) runs before it in the same process, with or without this stream's
+      changes: the library then follows that project and apply_look plans font imports against it.
+    - `calibration.json` regenerated after these fixes (830 renders, 30 red controls): counter_survival L 2.7
+      (`casino/premium-black-gloss`), R 0 (both bad twins now measure 0; the file had 6.5), T 8 outside the middle half,
+      so `test_title_library_calibration` still fails on it until premium-black-gloss passes; with the next-worst item
+      (8.5) the rule would put T between 2.1 and 6.4, not 8. The threshold is left at 8 for the owner.
