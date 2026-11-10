@@ -91,7 +91,7 @@ std::string relativeOf(Project* project, const fs::path& absolute) {
 // The settings' field names (validateSettings, settingsFromJson) as the tool's argument names
 const std::vector<std::string>& paramKeys() {
     static const std::vector<std::string> keys = {"strength", "detail", "smoothing", "volume", "radius", "softness", "alpha_threshold",
-                                                  "profile", "edges", "resolution_scale", "soft_edge", "ignore_outline", "regions", "quantize", "version"};
+                                                  "profile", "edges", "resolution_scale", "soft_edge", "ignore_outline", "regions", "quantize", "gaps", "version"};
     return keys;
 }
 
@@ -187,8 +187,9 @@ bool pairArg(const Json& v, int& x, int& y) {
 }
 
 // preset, params, directx, height -> resolved settings (Settings s = presetSettings(p);
-// settingsFromJson(overrides, s); s.preset = p; validateSettings(s), as every surface does)
-bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& problems) {
+// settingsFromJson(overrides, s); s.preset = p; validateSettings(s), as every surface does);
+// params.light_steps (the contact sheet's Light Steps, not a setting of the map) -> lightSteps
+bool settingsArg(const Json& args, sn::Settings& out, int& lightSteps, std::vector<sn::Problem>& problems) {
     sn::Preset preset = sn::Preset::Default;
     if (args.contains("preset") && !args["preset"].is_null()) {
         const Json& p = args["preset"];
@@ -201,12 +202,24 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
     sn::Settings s = sn::presetSettings(preset);
     std::string keyList;
     for (const std::string& key : paramKeys()) keyList += (keyList.empty() ? "" : ", ") + key;
+    keyList += ", light_steps";
     if (args.contains("params") && !args["params"].is_null()) {
-        const Json& params = args["params"];
+        Json params = args["params"];
         if (!params.is_object()) {
             problems.push_back(problem("invalid_settings", "params", "params must be an object of overrides (got " + params.dump() + ")",
                                        "e.g. {\"detail\": 2, \"edges\": \"extend\"}; valid keys: " + keyList));
             return false;
+        }
+        if (params.contains("light_steps")) {
+            const Json& steps = params["light_steps"];
+            if (!steps.is_number_integer() || steps.get<long long>() < 0 || steps.get<long long>() > sn::kMaxLightSteps) {
+                problems.push_back(problem("invalid_settings", "params.light_steps",
+                                           "params.light_steps must be a whole number between 0 and " + std::to_string(sn::kMaxLightSteps) + " (got " + steps.dump() + ")",
+                                           "0 (smooth light) or 1..16 bands, as the scene's Light Steps"));
+                return false;
+            }
+            lightSteps = steps.get<int>();
+            params.erase("light_steps");
         }
         for (auto it = params.begin(); it != params.end(); ++it) {
             const std::vector<std::string>& keys = paramKeys();
@@ -250,6 +263,15 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
                 if (!quantizeKeys.count(it.key())) {
                     problems.push_back(problem("invalid_settings", "params.quantize", "params.quantize has an unknown key \"" + it.key() + "\"",
                                                "valid keys: directions, tilts, flat_deg, rotation_deg"));
+                    return false;
+                }
+            }
+        }
+        if (params.contains("gaps") && params["gaps"].is_object()) {
+            for (auto it = params["gaps"].begin(); it != params["gaps"].end(); ++it) {
+                if (it.key() != "share") {
+                    problems.push_back(problem("invalid_settings", "params.gaps", "params.gaps has an unknown key \"" + it.key() + "\"",
+                                               "give {\"share\": 0..0.9}: the darkest share of the pixels that are gaps"));
                     return false;
                 }
             }
@@ -483,6 +505,7 @@ struct NormalsCall {
     uint32_t applyScene = 0;
     Entity applyEntity = NULL_ENTITY;
     std::string savePath;                      // project-relative, "" for none
+    int lightSteps = 0;                        // the contact sheet's Light Steps (params.light_steps)
     std::vector<NormalsTarget> targets;
     bool finished = false;
     // filled on the main thread when the runs are done
@@ -592,6 +615,7 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
         frames["frame_height"] = source.color.height;
     }
     sn::SheetOptions sheetOptions;
+    sheetOptions.lightSteps = state.lightSteps;
     if (count > static_cast<size_t>(sheetOptions.maxFrames)) {
         std::string shown;
         for (int i : sn::sheetFrames(static_cast<int>(count), sheetOptions.maxFrames)) shown += (shown.empty() ? "" : ", ") + std::to_string(i);
@@ -941,10 +965,12 @@ void finishNormals(const NormalsCallPtr& state) {
                     for (const sn::OutputFile& f : written[0]) {
                         if (f.role == "normal") normal = f.path;
                     }
-                    writeText += " Use it: set_properties {entity: " + std::to_string(state->sourceEntity) +
-                                 ", values: {mesh: {\"submeshes[0].material.normalTexture\": \"" + normal + "\"}}}" +
-                                 (args.size() > 1 ? " (the full calls, frames and Sprite Animation included, are in apply_args)" : std::string(" (apply_args)")) +
-                                 ", or call again with apply: true.";
+                    const std::string use = "Use it: set_properties {entity: " + std::to_string(state->sourceEntity) +
+                                            ", values: {mesh: {\"submeshes[0].material.normalTexture\": \"" + normal + "\"}}}" +
+                                            (args.size() > 1 ? " (the full calls, frames and Sprite Animation included, are in apply_args)" : std::string(" (apply_args)")) +
+                                            ", or call again with apply: true.";
+                    writeText += " " + use;
+                    data["next"] = use;
                 }
             }
         }
@@ -973,7 +999,9 @@ void finishNormals(const NormalsCallPtr& state) {
     if (!state->write) {
         std::string defaults;
         for (const Report& r : reports) defaults += (defaults.empty() ? "" : ", ") + r.defaultNormal;
-        text += " Preview only, nothing written: call again with the same arguments plus output (true for " + defaults + ") to write exactly this.";
+        const std::string next = "Preview only, nothing written: call again with the same arguments plus output (true for " + defaults + ") to write exactly this.";
+        text += " " + next;
+        data["next"] = next;
     } else {
         text += writeText;
     }
@@ -983,9 +1011,18 @@ void finishNormals(const NormalsCallPtr& state) {
     }
     if (!reports[0].sheet.empty()) {
         state->images.push_back({Base64::encode(reports[0].sheet.data(), reports[0].sheet.size()), "image/png"});
+        const std::string steps = state->lightSteps > 0 ? "; Light Steps " + std::to_string(state->lightSteps) : std::string("; smooth light");
         text += std::string("\nImage: the contact sheet") + (tilemap ? " of the first tileset" : "") +
                 " (per frame: colour, normal, lit from the top-left, top-right, bottom-right, bottom-left" +
-                (reports[0].painted ? "; magenta outline: painted pixels" : "") + ").";
+                (reports[0].painted ? "; magenta outline: painted pixels" : "") + steps + ").";
+        // the legend where the agent reads (structuredContent)
+        Json legend = {{"rows", tilemap ? "the frames of the first tileset" : "the frames"},
+                       {"columns", Json::array({"colour", "normal", "lit from the top-left", "lit from the top-right", "lit from the bottom-right",
+                                                "lit from the bottom-left"})},
+                       {"light_elevation_deg", rounded(sn::kSheetLightElevationDeg, 0)},
+                       {"light_steps", state->lightSteps}};
+        if (reports[0].painted) legend["magenta_outline"] = "painted pixels";
+        data["sheet_legend"] = legend;
     }
     state->text = text;
     sheet.commit();
@@ -1052,7 +1089,8 @@ void generateSpriteNormalsTool(const CallPtr& call) {
     sn::FramesSpec frames;
     sn::OutputSpec output;
     bool customOutput = false;
-    if (!settingsArg(args, settings, problems) || !framesArg(args, frames, problems) || !outputArg(args, output, state->write, customOutput, problems)) {
+    if (!settingsArg(args, settings, state->lightSteps, problems) || !framesArg(args, frames, problems) ||
+        !outputArg(args, output, state->write, customOutput, problems)) {
         failCall(call, problems);
         return;
     }
@@ -1590,7 +1628,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"source", types({"string", "integer", "object"})},
         {"scene", sceneRef()},
-        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon", "painted", "props", "tile"})},
+        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon", "painted", "props", "tile", "stones"})},
         {"params", anyObject("")},
         {"frames", frames},
         // the defaults (preset default; directx, height, overwrite false; wait true) are in the
