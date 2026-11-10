@@ -264,6 +264,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-10: `main` is red: S48 landed `tools/fixtures/pixel-fx-game` without its world and
+  re-save goldens (its gate ran before the AC26 fixture joined the branch), so
+  `Stream.DerivedTransformWorldMatricesUnchanged` and `test_golden_resave_pixel_fx_game` fail. S46
+  generates them in its landing. S46's review fixes are done and merged with `main` at `a49cd299a`
+  (editor 364/365 and MCP 154/160, the failures being those goldens and two since fixed), including
+  a real slowdown: `near_duplicates` took 7.4 s on a 256×256 noise image, now linear. S50 found the
+  legacy Tilemap's mesh build writes its zero clamp back into stored tile positions (on `main`
+  already), so a drawn map lost negative positions on save or conversion; S50 fixes it.
+
 - 2026-11-10: S48 Pixel FX merged (`309dbc384`). Gate on the merged tree, box D: `WERROR` build;
   core 179/179; editor 219/219 with the shared-data suites; MCP 182 passed, 0 failed, 3 skipped
   (`test_golden_resave_prefab_*`, no TappyPlane); post-FX 3/3; GPU 37/37 on Vulkan and 37/37 on
