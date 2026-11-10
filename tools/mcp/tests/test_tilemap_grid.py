@@ -468,3 +468,27 @@ async def test_brush_identity(ed: Editor):
         made = await ed.call("edit_tilemap", scene=sid, create={"name": f"Id_{layout}"}, layout=layout, tileset=plain, ops=golden["ops"])
         got = await ed.call("get_tilemap", scene=sid, entity=made["tilemap"]["id"], include_tiles=True, limit=5000)
         ed.check_eq(sorted(got["cells"]), expected, f"{layout}: edit_tilemap and the brush give the same cells")
+
+
+async def test_convert_after_a_draw_keeps_negative_positions(ed: Editor):
+    """R50: a Free Tilemap whose tiles sit at negative positions, drawn at least once, converts to
+    the cells of the positions it stores (the legacy build draws them at 0 but must not write that
+    back)"""
+    sid = await scene(ed, "ConvertNegative")
+    write_sheet(ed, "assets/art/negative.png", 16, 2, 1)
+    legacy = await ed.call("edit_tilemap", scene=sid, create={"name": "Free"}, texture="assets/art/negative.png",
+                           rects=[{"name": "a", "rect": [0, 0, 16, 16]}, {"name": "b", "rect": [16, 0, 16, 16]}], cell_size=[16, 16],
+                           ops=[{"op": "set", "cells": [[0, 0, "a"], [1, 0, "b"]]}])
+    entity = legacy["tilemap"]["id"]
+    await ed.call("set_properties", scene=sid, entity=entity, values={"tilemap": {"tiles[1].position": [-32, -16]}})
+    # draw it: the legacy mesh build runs
+    for _ in range(3):
+        await ed.call_raw("screenshot", {"view": "scene", "scene": sid, "max_width": 64})
+    stored = await ed.call("get_tilemap", scene=sid, entity=entity, include_tiles=True)
+    positions = sorted(tuple(t["position"]) for t in stored["tile_list"])
+    ed.check_eq(positions, [(-32, -16), (0, 0)], "a draw keeps the stored positions")
+    done = await ed.call("edit_tilemap", scene=sid, entity=entity, ops=[{"op": "convert"}])
+    ed.check(done.get("converted"), f"converted: {done}")
+    cells = await ed.call("get_tilemap", scene=sid, entity=entity, include_tiles=True)
+    got = sorted((c[0], c[1], c[2]) for c in cells["cells"])
+    ed.check_eq(got, [(-2, -1, 1), (0, 0, 0)], "the cells of the stored positions")

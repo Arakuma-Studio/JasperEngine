@@ -878,6 +878,10 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 - **R69 (Compress Bounds).** The cell store drops empty chunks as it goes, so the button reports the used rect and
   chunk count and changes nothing.
 - **R67 (Navigation Area).** The Tileset Editor edits a tile's `nav_area` as an integer area index, not a named list.
+- **R49, R88 (legacy positions).** The legacy Tilemap's mesh build clamped negative tile positions to 0 by writing
+  the clamp back into the component, so a map that was drawn once saved, and converted, with moved tiles. It now draws
+  them at 0 as before and leaves the stored positions as authored (the picture is unchanged; a re-save keeps what was
+  loaded), so R50's conversion reads the authored cells.
 - **R82, §6.1 (MCP guide).** No `## Pixel art` line: per the ledger's upstream rule change the area is one "Other
   areas" entry (`tilemaps (edit_tilemap)`, `jasper://docs/tilemaps`). The guide's room came from moving the Unity-names
   sentence on Build Settings and Scenes in Build to `docs/unity-glossary.md` (already there) and the Code section.
