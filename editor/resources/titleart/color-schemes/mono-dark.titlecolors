@@ -40,6 +40,19 @@
       "fill": {
         "color": "#111111"
       },
+      "ramp": {
+        "stops": [
+          {},
+          {
+            "pos": 0.5,
+            "color": "#111111"
+          },
+          {
+            "pos": 1,
+            "color": "#2e2e2e"
+          }
+        ]
+      },
       "material_3d": {
         "color": "#111111",
         "roughness": 0.7
