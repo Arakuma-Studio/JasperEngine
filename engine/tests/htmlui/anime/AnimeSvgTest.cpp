@@ -267,14 +267,22 @@ TEST_F(AnimeSvgTest, ProceduralThirtyShapesReportFrameCost){
 }
 
 TEST_F(AnimeSvgTest, SvgMotionTargetsSerializeTransformsInUserUnits){
+    UIElement poly = element("poly");
+    poly.setAttribute("transform", "translate(0 20)");
+    render();
     const auto before = pixels();
     auto animation = Anime::animate(target("poly"), AnimParam::object({{"translateY", 20}, {"autoplay", false}, {"duration", 1000}, {"ease", "linear"}}));
     animation->seek(500);
     render();
     const std::string source = element("svg").getInnerHTML();
-    EXPECT_NE(source.find("matrix(1 0 0 1 0 10)"), std::string::npos);
+    EXPECT_NE(source.find("transform=\"matrix(1 0 0 1 0 10)\""), std::string::npos);
+    EXPECT_EQ(source.find("transform=\"translate(0 20)\""), std::string::npos);
     EXPECT_EQ(source.find("style=\";"), std::string::npos); // LunaSVG cannot read a leading empty declaration.
     EXPECT_NE(before, pixels());
+    EXPECT_EQ(poly.getAttribute("transform"), "translate(0 20)");
+    UIElementAccess::get(poly)->RemoveProperty(Rml::PropertyId::Transform);
+    render();
+    EXPECT_EQ(before, pixels());
 }
 
 TEST_F(AnimeSvgTest, HtmlSvgDescendantsUseSvgNamesAndDrawableGeometry){

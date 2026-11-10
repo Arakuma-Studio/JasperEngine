@@ -48,9 +48,11 @@ namespace {
 		{
 			output += "<" + svg_tag;
 			String style = GetAttribute<String>("style", "");
+			const Property* transform_property = GetLocalProperty(PropertyId::Transform);
+			const bool overrides_transform = transform_property && transform_property->unit == Unit::TRANSFORM;
 			for (const auto& attribute : GetAttributes())
 			{
-				if (attribute.first != "style")
+				if (attribute.first != "style" && !(overrides_transform && attribute.first == "transform"))
 					output += " " + attribute.first + "=\"" + StringUtilities::EncodeRml(attribute.second.Get<String>()) + "\"";
 			}
 			for (const auto& property : GetLocalStyleProperties())
@@ -73,6 +75,10 @@ namespace {
 					const Matrix4f& resolved = matrix;
 					const auto x = resolved.GetRow(0), y = resolved.GetRow(1);
 					value = CreateString("matrix(%.9g %.9g %.9g %.9g %.9g %.9g)", x[0], y[0], x[1], y[1], x[3], y[3]);
+					// LunaSVG reads transform attributes but not CSS transforms. A local CSS transform
+					// overrides the authored attribute, which stays intact in the editable DOM.
+					output += " transform=\"" + value + "\"";
+					continue;
 				}
 				if (!style.empty() && style.back() != ';') style += ';';
 				style += StyleSheetSpecification::GetPropertyName(property.first) + ":" + value;
