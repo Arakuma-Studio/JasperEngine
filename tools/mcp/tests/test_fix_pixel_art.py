@@ -324,6 +324,8 @@ async def test_apply_sets_the_sprite(ed: Editor):
     ed.check_eq(r["applied"]["undo"]["name"], names[0], "the result names the scene step")
     ed.check(any("Pixel Art Cleanup" in n for n in names), f"the file step: {names}")
     await ed.check_error("fix_pixel_art", {"source": HERO, "apply": "HeroSprite"}, contains="output")
+    # the file's next tests export the project: no GameObject may point at an output reset_art deletes
+    await ed.call("delete_entities", entities=["HeroSprite"])
 
 
 def sheet_png(copies: int = 3, gap: int = 32) -> bytes:
@@ -352,6 +354,8 @@ async def test_apply_an_aseprite_output(ed: Editor):
     names = [e["name"] for e in (await ed.call("get_undo_history", scope="timeline", limit=5))["entries"]]
     ed.check_eq(r["applied"]["undo"]["name"], names[0], "the result names the scene step")
     ed.check(any("Pixel Art Cleanup (hero_clean.aseprite)" in n for n in names), f"the file step: {names}")
+    # the file's next tests export the project: no GameObject may point at an output reset_art deletes
+    await ed.call("delete_entities", entities=["HeroAse"])
 
 
 async def test_apply_a_png_sheet(ed: Editor):
@@ -373,6 +377,8 @@ async def test_apply_a_png_sheet(ed: Editor):
     for clip in clips:
         if clip["include"]:
             ed.check(clip["name"] in tree, f"a Sprite Animation for {clip['name']}: {tree[:600]}")
+    # the file's next tests export the project: no GameObject may point at an output reset_art deletes
+    await ed.call("delete_entities", entities=["Walker"])
 
 
 async def test_import_step_through_the_tool(ed: Editor):
