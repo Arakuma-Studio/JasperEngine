@@ -16,6 +16,7 @@
 #include "asset/ImportedAssets.h"
 #include "pixelart/PixelImage.h"
 #include "support/EditorTestSupport.h"
+#include "reload/HotReloadService.h"
 #include "support/TestTempDir.h"
 #include "tilemap/Tileset.h"
 #include "tilemap/TilesetPool.h"
@@ -231,6 +232,54 @@ TEST_F(TilemapImportApplyTest, LinkedReimportMatchesLayersByNameAndKeepsUserComp
     EXPECT_EQ(layerNamed(grid, "New"), NULL_ENTITY);
     EXPECT_EQ(cellsOf(ground)->getTile(CellCoord{0, 1}), 0);
     EXPECT_NE(scene->scene->findComponent<ScriptComponent>(ground), nullptr);
+}
+
+// R47 through S05's funnel: the registration in HotReloadService::apply, not a direct call. The
+// base EditorHost these tests run on makes the service's deferred main-thread task run inline.
+TEST_F(TilemapImportApplyTest, HotReloadServiceReimportsALinkedMapChangedOnDisk) {
+    const ImportResult imported = apply(loadTheMap(), target(true));
+    ASSERT_TRUE(imported.ok) << imported.problem.message;
+    const Entity grid = imported.grids.front();
+    const Entity ground = layerNamed(grid, "Ground");
+    ASSERT_NE(ground, NULL_ENTITY);
+    scene->scene->addComponent<ScriptComponent>(ground, ScriptComponent{});
+
+    struct AttachedService {
+        HotReloadService& service = HotReloadService::get();
+        explicit AttachedService(Project& owner) { service.attach(owner); }
+        ~AttachedService() { service.detach(); }
+    } attached(*project);
+
+    const auto changeOf = [](const fs::path& path, FileChangeKind kind) {
+        FileChange change;
+        change.kind = kind;
+        change.path = path;
+        ChangeSet set;
+        set.changes.push_back(change);
+        return set;
+    };
+
+    // another program saves the map
+    writeMap(mapText(layerJson("Ground", "[0,0,2,2]") + "," + layerJson("New", "[1,0,0,0]")));
+    const size_t before = CommandHandle::get(sceneId)->position();
+    attached.service.apply(changeOf(mapFile, FileChangeKind::Modified), ApplyOptions());
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), before + 1) << "one undo step";
+    EXPECT_EQ(cellsOf(ground)->getTile(CellCoord{0, 1}), NO_TILE);
+    EXPECT_EQ(cellsOf(ground)->getTile(CellCoord{0, 0}), 1);
+    EXPECT_NE(scene->scene->findComponent<ScriptComponent>(ground), nullptr) << "the user component stays";
+    EXPECT_EQ(layerNamed(grid, "Extra"), NULL_ENTITY);
+    EXPECT_NE(layerNamed(grid, "New"), NULL_ENTITY);
+
+    // a file nothing links to, and the map's own removal, re-import nothing
+    const size_t afterReimport = CommandHandle::get(sceneId)->position();
+    const fs::path other = project->getAssetsPath() / "maps" / "other.tmj";
+    { std::ofstream out(other, std::ios::binary); out << mapText(layerJson("Ground", "[2,2,2,2]")); }
+    attached.service.apply(changeOf(other, FileChangeKind::Modified), ApplyOptions());
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), afterReimport);
+    fs::remove(mapFile);
+    attached.service.apply(changeOf(mapFile, FileChangeKind::Removed), ApplyOptions());
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), afterReimport);
+    EXPECT_EQ(cellsOf(ground)->getTile(CellCoord{0, 0}), 1) << "a deleted source keeps the layers";
 }
 
 TEST_F(TilemapImportApplyTest, ABrokenSourceKeepsThePreviousVersion) {

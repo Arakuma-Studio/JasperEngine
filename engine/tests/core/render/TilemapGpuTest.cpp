@@ -181,15 +181,15 @@ namespace {
             int& at(int x, int y) { return tiles[(size_t)y * VIEW + x]; }
         };
 
-        Expected rasterize(const TileGridSpec& spec, const std::vector<std::pair<CellCoord, int>>& cells) {
+        Expected rasterize(const TileGridSpec& spec, const std::vector<std::pair<CellCoord, int>>& cells, int originX = 0, int originY = 0) {
             std::vector<std::pair<CellCoord, int>> ordered = cells;
             std::stable_sort(ordered.begin(), ordered.end(), [&](const auto& a, const auto& b) { return tilegrid::painterLess(spec, a.first, b.first); });
             Expected out;
             out.tiles.assign((size_t)VIEW * VIEW, -1);
             for (const auto& [cell, tile] : ordered) {
                 const TilePoint anchor = tilegrid::cellToLocal(spec, cell);
-                const int x0 = (int)std::floor(anchor.x - (spec.layout == TileGridLayout::Rectangle ? 0.0 : TILE * 0.5));
-                const int y0 = (int)std::floor(anchor.y);
+                const int x0 = originX + (int)std::floor(anchor.x - (spec.layout == TileGridLayout::Rectangle ? 0.0 : TILE * 0.5));
+                const int y0 = originY + (int)std::floor(anchor.y);
                 for (int y = y0; y < y0 + TILE; y++) {
                     for (int x = x0; x < x0 + TILE; x++) {
                         if (x >= 0 && x < VIEW && y >= 0 && y < VIEW)
@@ -272,15 +272,8 @@ TEST_F(TilemapGpu, IsometricStaggeredAndHexagonPlaceTiles) {
         ASSERT_TRUE(settle());
         const std::vector<uint8_t> shot = image();
         TileGridSpec spec = gridSpecOf(grid());
-        Expected local = rasterize(spec, placed);
-        Expected world;
-        world.tiles.assign((size_t)VIEW * VIEW, -1);
-        for (int y = 0; y < VIEW; y++) {
-            for (int x = 0; x < VIEW; x++) {
-                if (x - 96 >= 0 && x - 96 < VIEW && y - 48 >= 0 && y - 48 < VIEW)
-                    world.at(x, y) = local.at(x - 96, y - 48);
-            }
-        }
+        // placed at the GameObject's origin: iso and hex cells reach left of it
+        Expected world = rasterize(spec, placed, 96, 48);
         expectPicture(shot, world);
     }
     EXPECT_NO_ENGINE_ERRORS();

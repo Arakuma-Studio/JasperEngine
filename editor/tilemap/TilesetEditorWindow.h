@@ -87,6 +87,7 @@ namespace jasperengine::editor::tilemap {
         int templateChoice = 0;
         int templateTerrain = 0;
         int templateSecond = -1;
+        std::string templateError;
 
         // ---- the coverage panel (R20)
         int coverageSet = 0;

@@ -10524,7 +10524,7 @@
    "type_of_name": 44
   },
   {
-   "display_name": "Tilemap",
+   "display_name": "Free Tilemap (Legacy)",
    "enum_options": {},
    "has_enabled": true,
    "icon": "efa18c",
@@ -21882,6 +21882,605 @@
    "type": 96,
    "type_of_key": 96,
    "type_of_name": 96
+  },
+  {
+   "display_name": "Grid",
+   "enum_options": {
+    "layout": [
+     [
+      0,
+      "rectangle",
+      "Rectangle"
+     ],
+     [
+      1,
+      "isometric",
+      "Isometric"
+     ],
+     [
+      2,
+      "isometric_staggered",
+      "Isometric Staggered"
+     ],
+     [
+      3,
+      "hexagon",
+      "Hexagon"
+     ]
+    ],
+    "plane": [
+     [
+      0,
+      "xy",
+      "XY"
+     ],
+     [
+      1,
+      "xz",
+      "XZ"
+     ]
+    ],
+    "staggerAxis": [
+     [
+      0,
+      "x",
+      "X"
+     ],
+     [
+      1,
+      "y",
+      "Y"
+     ]
+    ],
+    "staggerIndex": [
+     [
+      0,
+      "odd",
+      "Odd"
+     ],
+     [
+      1,
+      "even",
+      "Even"
+     ]
+    ]
+   },
+   "has_enabled": false,
+   "icon": "ef808a",
+   "key": "grid",
+   "known_keys": [
+    "cellGap",
+    "cellSize",
+    "hexSideLength",
+    "importSource",
+    "layout",
+    "linked",
+    "plane",
+    "staggerAxis",
+    "staggerIndex"
+   ],
+   "name": "GridComponent",
+   "properties_of_default": {
+    "cellGap": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "cellSize": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "hexSideLength": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "importSource": [
+     18,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "linked": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerAxis": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerIndex": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "cellGap": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "cellSize": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "hexSideLength": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "importSource": [
+     18,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "linked": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerAxis": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerIndex": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 97,
+   "type_of_key": 97,
+   "type_of_name": 97
+  },
+  {
+   "display_name": "Tilemap Layer",
+   "enum_options": {
+    "gpuResidency": [
+     [
+      0,
+      "visible",
+      "Visible"
+     ],
+     [
+      1,
+      "always",
+      "Always"
+     ]
+    ],
+    "mode": [
+     [
+      0,
+      "chunk",
+      "Chunk"
+     ],
+     [
+      1,
+      "individual",
+      "Individual"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "efa18c",
+   "key": "tilemaplayer",
+   "known_keys": [
+    "animationSpeed",
+    "chunkSize",
+    "chunks",
+    "dualGrid",
+    "enabled",
+    "gpuResidency",
+    "mode",
+    "seed",
+    "tileAnchor",
+    "tileset",
+    "tint",
+    "version"
+   ],
+   "name": "TilemapLayerComponent",
+   "properties_of_default": {
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "cellCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkSize": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "chunks": [
+     15,
+     0,
+     true
+    ],
+    "dualGrid": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "gpuResidency": [
+     13,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "seed": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "tileAnchor": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "tileset": [
+     18,
+     144115188075855872,
+     true
+    ],
+    "tint": [
+     6,
+     144115188075855872,
+     true
+    ],
+    "version": [
+     8,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "cellCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkSize": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "chunks": [
+     15,
+     0,
+     true
+    ],
+    "dualGrid": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "gpuResidency": [
+     13,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "seed": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "tileAnchor": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "tileset": [
+     18,
+     144115188075855872,
+     true
+    ],
+    "tint": [
+     6,
+     144115188075855872,
+     true
+    ],
+    "version": [
+     8,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 98,
+   "type_of_key": 98,
+   "type_of_name": 98
+  },
+  {
+   "display_name": "Tilemap Collider 2D",
+   "enum_options": {
+    "geometry": [
+     [
+      0,
+      "outlines",
+      "Outlines"
+     ],
+     [
+      1,
+      "polygons",
+      "Polygons"
+     ]
+    ],
+    "source": [
+     [
+      0,
+      "tiles",
+      "Tiles"
+     ],
+     [
+      1,
+      "terrain",
+      "Terrain"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "efa18c",
+   "key": "tilemapcollider2d",
+   "known_keys": [
+    "categoryBits",
+    "contactEvents",
+    "enableHitEvents",
+    "enabled",
+    "friction",
+    "geometry",
+    "groupIndex",
+    "maskBits",
+    "material",
+    "merge",
+    "offset",
+    "restitution",
+    "sensorEvents",
+    "solidTerrains",
+    "source"
+   ],
+   "name": "TilemapCollider2DComponent",
+   "properties_of_default": {
+    "categoryBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "contactEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enableHitEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "friction": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "generatedChains": [
+     9,
+     0,
+     false
+    ],
+    "generatedPolygons": [
+     9,
+     0,
+     false
+    ],
+    "geometry": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "groupIndex": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "maskBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "material": [
+     1,
+     144115188075855872,
+     true
+    ],
+    "merge": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "offset": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "restitution": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "sensorEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "solidTerrains": [
+     15,
+     144115188075855872,
+     true
+    ],
+    "source": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "categoryBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "contactEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enableHitEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "friction": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "generatedChains": [
+     9,
+     0,
+     false
+    ],
+    "generatedPolygons": [
+     9,
+     0,
+     false
+    ],
+    "geometry": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "groupIndex": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "maskBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "material": [
+     1,
+     144115188075855872,
+     true
+    ],
+    "merge": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "offset": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "restitution": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "sensorEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "solidTerrains": [
+     15,
+     144115188075855872,
+     true
+    ],
+    "source": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 99,
+   "type_of_key": 99,
+   "type_of_name": 99
   }
  ],
  "ease_options": [
@@ -23626,6 +24225,53 @@
    "turbulence": [
     2,
     0,
+    true
+   ]
+  },
+  "GridComponent": {
+   "cellGap": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "cellSize": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "hexSideLength": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "importSource": [
+    18,
+    0,
+    true
+   ],
+   "layout": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "linked": [
+    0,
+    0,
+    true
+   ],
+   "plane": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "staggerAxis": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "staggerIndex": [
+    13,
+    144115188075855872,
     true
    ]
   },
@@ -29058,6 +29704,93 @@
     true
    ]
   },
+  "TilemapCollider2DComponent": {
+   "categoryBits": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "contactEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enableHitEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enabled": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "friction": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "generatedChains": [
+    9,
+    0,
+    false
+   ],
+   "generatedPolygons": [
+    9,
+    0,
+    false
+   ],
+   "geometry": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "groupIndex": [
+    8,
+    144115188075855872,
+    true
+   ],
+   "maskBits": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "material": [
+    1,
+    144115188075855872,
+    true
+   ],
+   "merge": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "offset": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "restitution": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "sensorEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "solidTerrains": [
+    15,
+    144115188075855872,
+    true
+   ],
+   "source": [
+    13,
+    144115188075855872,
+    true
+   ]
+  },
   "TilemapComponent": {
    "automaticFlipY": [
     0,
@@ -29108,6 +29841,78 @@
     9,
     4194304,
     false
+   ]
+  },
+  "TilemapLayerComponent": {
+   "animationSpeed": [
+    2,
+    0,
+    true
+   ],
+   "cellCount": [
+    9,
+    0,
+    false
+   ],
+   "chunkCount": [
+    9,
+    0,
+    false
+   ],
+   "chunkSize": [
+    8,
+    144115188075855872,
+    true
+   ],
+   "chunks": [
+    15,
+    0,
+    true
+   ],
+   "dualGrid": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enabled": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "gpuResidency": [
+    13,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "seed": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "tileAnchor": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "tileset": [
+    18,
+    144115188075855872,
+    true
+   ],
+   "tint": [
+    6,
+    144115188075855872,
+    true
+   ],
+   "version": [
+    8,
+    0,
+    true
    ]
   },
   "TouchAreaComponent": {

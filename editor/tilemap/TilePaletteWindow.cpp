@@ -550,7 +550,12 @@ void TilePaletteWindow::show() {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
     }
-    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(640.0f), Theme::dpi(420.0f)), ImGuiCond_FirstUseEver);
+    // first opened off the Scene view it paints: over the panels at the work area's bottom right
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 firstSize(Theme::dpi(640.0f), Theme::dpi(420.0f));
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - firstSize.x - Theme::dpi(8.0f),
+                                   viewport->WorkPos.y + viewport->WorkSize.y - firstSize.y - Theme::dpi(8.0f)), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(firstSize, ImGuiCond_FirstUseEver);
     bool keepOpen = true;
     if (ImGui::Begin(WINDOW_NAME, &keepOpen)) {
         focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -562,7 +567,10 @@ void TilePaletteWindow::show() {
         if (!context.layer) {
             ImGui::TextDisabled("Select a Grid or a Tilemap Layer in the Hierarchy to choose an Active Tilemap.");
         } else if (!context.tileset) {
-            ImGui::TextDisabled("This Tilemap Layer has no Tileset: assign one in its Inspector.");
+            // a set path that does not load says why, rather than "no Tileset"
+            const std::string& path = context.layer->tileset.path;
+            if (path.empty()) ImGui::TextDisabled("This Tilemap Layer has no Tileset: assign one in its Inspector.");
+            else ImGui::TextColored(Theme::Colors::WarningText, "%s: %s", path.c_str(), TilesetPool::lastError(path).c_str());
         } else {
             if (context.linked) ImGui::TextColored(Theme::Colors::WarningText, "locked_linked: the Grid is linked to its source map (unlink it or edit the map)");
             if (!tools.statusLine().empty()) ImGui::TextDisabled("%s", tools.statusLine().c_str());

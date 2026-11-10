@@ -197,11 +197,11 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 48 (S52's Snap Pivot) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 49 (S50's Tile Clamp Frame) goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
-    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(49) | 0x41)),
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(50) | 0x41)),
               ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
     // the high shadow filters ('Shq', S10) only with shadows ('Shw', bit 4)
     const uint64_t shq = ShaderPool::getShadowsHQProperty();

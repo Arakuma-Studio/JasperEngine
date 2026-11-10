@@ -35,9 +35,9 @@ namespace {
         collider.friction = source.friction;
         collider.restitution = source.restitution;
         collider.material = source.material;
-        collider.categoryBits = source.categoryBits;
-        collider.maskBits = source.maskBits;
-        collider.groupIndex = source.groupIndex;
+        collider.categoryBits = (uint16_t)source.categoryBits;
+        collider.maskBits = (uint16_t)source.maskBits;
+        collider.groupIndex = (int16_t)source.groupIndex;
         collider.contactEvents = source.contactEvents;
         collider.sensorEvents = source.sensorEvents;
         collider.enableHitEvents = source.enableHitEvents;

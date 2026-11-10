@@ -23,7 +23,7 @@ TIMEOUT = 900
 
 CELL = 16
 ZOOM = 0.5
-TILESET = "art/overworld.tileset"
+TILESET = "assets/art/overworld.tileset"
 STATE: dict = {}
 PALETTE = "Tile Palette"
 EDITOR_WINDOW = "Tileset Editor"
@@ -80,8 +80,11 @@ async def undo_names(ed: Editor) -> list[str]:
 
 
 async def scene_rect(ed: Editor) -> dict:
-    result = await ed.call_raw("screenshot", {"view": "scene", "scene": STATE["scene"], "max_width": 0})
-    return result.structured["view_rect_in_window"]
+    """The Scene view's rect, read once: each test asks, so one failing does not break the next"""
+    if "rect" not in STATE:
+        result = await ed.call_raw("screenshot", {"view": "scene", "scene": STATE["scene"], "max_width": 0})
+        STATE["rect"] = result.structured["view_rect_in_window"]
+    return STATE["rect"]
 
 
 def cell_point(ed: Editor, rect: dict, col: float, row: float) -> tuple[int, int]:
@@ -110,7 +113,7 @@ async def test_create_grid_and_palette(ed: Editor):
         skip("needs the harness Xvfb")
     await ed.call("tool_groups", enable=["tilemaps", "editor_ux", "assets_pipeline"])
     write_sheet(ed)
-    made = await ed.call("edit_tileset", path=f"assets/{TILESET}", output=True, sources=[{"texture": "assets/art/tiles.png", "tile_size": [CELL, CELL], "skip_empty": False}],
+    made = await ed.call("edit_tileset", path=TILESET, output=True, sources=[{"texture": "assets/art/tiles.png", "tile_size": [CELL, CELL], "skip_empty": False}],
                          terrain_sets=[{"name": "Ground", "mode": "sides", "terrains": [{"name": "Water", "color": "#3a6fd8"}], "template": "sides_16", "origin": 0}])
     ed.check_eq(made["report"]["verdict"], "PASS", "the fixture tileset's coverage")
     sid = (await ed.call("create_scene", name="Palette", type="2d"))["scene"]["id"]
@@ -141,7 +144,6 @@ async def test_create_grid_and_palette(ed: Editor):
 async def test_paint_erase_pick(ed: Editor):
     await choose_tile(ed, 1, 0)   # tile 1 (the sheet's second tile of the top row)
     rect = await scene_rect(ed)
-    STATE["rect"] = rect
     await ui(ed).click(cell_point(ed, rect, 2, 2))
     ed.check_eq(await tile_at(ed, 2, 2), 1, "Paint wrote the chosen tile")
     names = await undo_names(ed)
@@ -179,7 +181,7 @@ async def test_paint_erase_pick(ed: Editor):
 
 
 async def test_box_and_flood(ed: Editor):
-    rect = STATE["rect"]
+    rect = await scene_rect(ed)
     await tool(ed, "Box")
     await choose_tile(ed, 3, 0)   # tile 3
     await ui(ed).drag(cell_point(ed, rect, 1, 1), cell_point(ed, rect, 3, 3))
@@ -198,7 +200,7 @@ async def test_box_and_flood(ed: Editor):
 
 
 async def test_esc_cancels_a_stroke(ed: Editor):
-    rect = STATE["rect"]
+    rect = await scene_rect(ed)
     await tool(ed, "Paint")
     await choose_tile(ed, 1, 1)   # tile 5
     before = await cells(ed)
@@ -215,7 +217,7 @@ async def test_esc_cancels_a_stroke(ed: Editor):
 
 
 async def test_terrain_painting(ed: Editor):
-    rect = STATE["rect"]
+    rect = await scene_rect(ed)
     await click_item(ed, "Terrains")
     await click_item(ed, "Water")
     await ui(ed).click(cell_point(ed, rect, 10, 2))
@@ -230,36 +232,68 @@ async def test_tileset_editor_peering_and_template(ed: Editor):
     await ed.call("run_command", id="window.tilesetEditor", payload=TILESET)
     await ui_input.frames(ed, 6)
     await shot(ed, "tileset-editor")
-    grid = await ui(ed).reveal("##tiles", EDITOR_WINDOW)
-    rect = grid.get("rect", grid)
-    await ui(ed).click(ui(ed).at(rect, (CELL, CELL)))  # the first tile
+    tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
+    step = CELL * 2 + 1   # the grid's 2x zoom and its one-pixel gap
+
+    def peering_n() -> object:
+        doc = json.loads((ed.project / TILESET).read_text())
+        return next(t for t in doc["tiles"] if t["id"] == 1)["terrain"]["peering"]["n"]
+
+    # tile 1 of sides_16 has its north side: the painter turns that region to None
+    original = peering_n()
+    ed.check(original != "none", f"the fixture's tile 1 has a north side: {original}")
+    await ui(ed).click(ui(ed).at(tiles, (step * 1.5, step * 0.5)))
     await ui_input.frames(ed, 4)
     await click_item(ed, "None##paintNone", EDITOR_WINDOW)
-    canvas = await ui(ed).reveal("##peeringCanvas", EDITOR_WINDOW)
-    area = canvas.get("rect", canvas)
-    # the north region of the 3 x 3 painter (slot n)
-    await ui(ed).click(ui(ed).at(area, (area["width"] / 2 if "width" in area else 24, 8)))
+    canvas = (await ui(ed).reveal("##peeringCanvas", EDITOR_WINDOW))["rect"]
+    await ui(ed).click(ui(ed).at(canvas, (canvas["width"] / 2, canvas["height"] / 6)))   # the 3 x 3 painter's north region
     await ui_input.frames(ed, 4)
-    doc = json.loads((ed.project / "assets" / TILESET).read_text())
-    first = next(t for t in doc["tiles"] if t["id"] == 0)
-    ed.check_eq(first["terrain"]["peering"]["n"], "none", f"the painter wrote the peering value: {first}")
+    ed.check_eq(peering_n(), "none", "the painter wrote the peering value")
     await shot(ed, "tileset-editor-peering")
 
+    # the template's origin is the selected tile; applying it from tile 0 restores tile 1's north
+    tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
+    await ui(ed).click(ui(ed).at(tiles, (step * 0.5, step * 0.5)))
+    await ui_input.frames(ed, 4)
     await click_item(ed, "Apply Terrain Template...", EDITOR_WINDOW)
+    dialog = None
     for _ in range(200):
         dialog = (await ed.call("editor_status")).get("dialog")
         if dialog:
             break
         await ui_input.frames(ed, 3)
-    else:
-        ed.fail("the template modal did not open")
+    ed.check(dialog, "the template modal opened")
     ed.check("template" in {f["name"] for f in dialog.get("fields", [])}, f"its fields: {dialog}")
     await ed.call("respond_dialog", choice="ok", values={"template": "Sides 16 (4x4)", "terrain": "Water"})
-    for _ in range(200):
-        if not (await ed.call("editor_status")).get("dialog"):
+    still_open = None
+    for _ in range(40):
+        still_open = (await ed.call("editor_status")).get("dialog")
+        if not still_open:
             break
         await ui_input.frames(ed, 3)
-    doc = json.loads((ed.project / "assets" / TILESET).read_text())
-    named = [t.get("name") for t in doc["tiles"]]
-    ed.check(any(n and n.startswith("sides_") for n in named), f"the template named the tiles: {named[:6]}")
+    ed.check(not still_open, f"Apply closed the dialog: {still_open}")
+    ed.check_eq(peering_n(), original, "the template assigned the peering values again")
     await shot(ed, "tileset-editor-template")
+
+
+async def test_each_layout_from_the_menu_and_its_overlay(ed: Editor):
+    """R63: each menu row makes its layout; R65: the overlay is drawn on it (the screenshots, AC13)"""
+    sid = STATE["scene"]
+    await ed.call("focus_window", window="scene")
+    rect = await scene_rect(ed)
+    await tool(ed, "Paint")
+    for command, layout, axis in (("isometric", "isometric", None), ("isometricStaggered", "isometric_staggered", None),
+                                  ("hexagonalPointyTop", "hexagon", "y"), ("hexagonalFlatTop", "hexagon", "x")):
+        await ed.call("run_command", id=f"gameobject.create.2DObjectTilemap.{command}")
+        layer = (await ed.call("get_selection", scene=sid))["entities"][0]["id"]
+        made = await ed.call("get_entity", scene=sid, entity=layer)
+        parent = made.get("parent")
+        grid = (await ed.call("get_entity", scene=sid, entity=parent if isinstance(parent, int) else parent["id"]))["components"]["grid"]
+        ed.check_eq(grid["layout"], layout, f"{command}'s Grid layout")
+        if axis:
+            ed.check_eq(grid["staggerAxis"], axis, f"{command}'s stagger axis")
+        await ed.call("set_properties", scene=sid, entity=layer, values={"tilemaplayer": {"tileset": TILESET}})
+        await ui_input.frames(ed, 4)
+        await ui(ed).move(cell_point(ed, rect, 4, 4))
+        await ui_input.frames(ed, 4)
+        await shot(ed, f"overlay-{command}")

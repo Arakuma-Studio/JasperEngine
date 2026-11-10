@@ -18,9 +18,9 @@ namespace jasperengine{
 
     // tiles: the tiles' collision shapes; terrain: full logical cells of the solid terrains (dual
     // grid and LDtk IntGrid layers)
-    enum class TileColliderSource : uint8_t { Tiles, Terrain };
+    enum class TileColliderSource { Tiles, Terrain };
     // outlines: chains (no area); polygons: convex pieces
-    enum class TileColliderGeometry : uint8_t { Outlines, Polygons };
+    enum class TileColliderGeometry { Outlines, Polygons };
 
     // Unity's Tilemap Collider 2D with its Composite Collider (docs/specs/S50-grid-tilemap.md
     // R38-R43, D8): on a Tilemap Layer's GameObject with a Rigidbody2D (static by default), the
@@ -38,8 +38,8 @@ namespace jasperengine{
         float friction = 0.6f;
         float restitution = 0.0f;
         std::string material;
-        uint16_t categoryBits = 1;
-        uint16_t maskBits = 0xFFFF;
+        uint32_t categoryBits = 1;       // 16 bits are used (Collider2D)
+        uint32_t maskBits = 0xFFFF;
         int32_t groupIndex = 0;
         bool contactEvents = true;
         bool sensorEvents = false;

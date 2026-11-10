@@ -3698,7 +3698,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Asked to paint a lake, agents filled the area with one water tile, so the shore had no transitions; "
                          "the terrain op paints the terrain and chooses the edge tiles (S50 R23, R75).",
-        "text_at_issue": "edit_tilemap description: 'ops run in order: jasper://docs/tilemaps lists them'; guide 'Other areas': "
+        "text_at_issue": "edit_tilemap description: 'Ops: jasper://docs/tilemaps'; guide 'Other areas': "
                          "'tilemaps (edit_tilemap)'; jasper://docs/tilemaps (terrain op)",
         "source": "S50 R75 (new op vocabulary); paraphrased from the design review",
         "prompt": "In the open scene, the Tilemap Layer 12 uses assets/Tilesets/overworld.tileset, which has a terrain named "

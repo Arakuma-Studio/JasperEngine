@@ -722,7 +722,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 49;
+        case ShaderType::MESH:   return 50;
         case ShaderType::DEPTH:  return 21;
         case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 6;

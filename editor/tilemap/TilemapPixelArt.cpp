@@ -13,6 +13,10 @@
 using namespace jasperengine;
 
 void editor::tilemap::registerTilemapPixelArtDrawables() {
+    // once: registering again would forget the input cache, so closed scenes decoded every check
+    static bool registered = false;
+    if (registered) return;
+    registered = true;
     pixelart::registerDrawableCollector("tilemap_layers", [](const SceneProject& scene, const pixelart::DrawableBase& base,
                                                              std::vector<pixelart::PixelArtDrawable>& out) {
         auto layers = scene.scene->getComponentArray<TilemapLayerComponent>();

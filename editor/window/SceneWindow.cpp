@@ -3612,7 +3612,7 @@ void editor::SceneWindow::drawSceneToolBadge(SceneProject& sceneProject) {
     if (!tool) return;
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(Theme::Colors::ButtonActivated, "%s", tool->label());
+    ImGui::TextUnformatted(tool->label());
     ImGui::SameLine();
     const std::string exitLabel = std::string(ICON_FA_XMARK) + "##ExitSceneTool" + std::to_string(sceneProject.id);
     if (ImGui::Button(exitLabel.c_str())) {

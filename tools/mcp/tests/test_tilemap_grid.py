@@ -72,7 +72,8 @@ async def test_create_each_layout(ed: Editor):
         read = await ed.call("get_tilemap", scene=sid, entity=made["grid"]["id"])
         ed.check_eq(read["layout"], layout, "the Grid's layout")
         ed.check_eq(len(read["layers"]), 1, "one Tilemap Layer")
-        ed.check_eq(read["layers"][0]["name"], "Tilemap", "the child's name")
+        # GameObject names are unique per scene, so later Grids' layers read "Tilemap 2", ...
+        ed.check(read["layers"][0]["name"].startswith("Tilemap"), f"the child's name: {read['layers'][0]['name']}")
     tree = await ed.call("find_entities", scene=sid, name="G_rectangle")
     ed.check_eq(tree["count"], 1, "the Grid keeps the given name")
 
@@ -96,7 +97,13 @@ async def test_paint_and_flips_and_region(ed: Editor):
     layer = made["tilemap"]["id"]
     ed.check_eq(made["grid"]["columns"], [-1, 6], "the touched columns")
     got = await ed.call("get_tilemap", scene=sid, entity=layer, region=[-1, 4, 1, 5])
-    ed.check_eq(got["grid"]["lines"], ["abc", "d.a"], "the top line is the highest row, negative x included")
+    # get_tilemap picks its own legend (R76): read the lines back through it
+    legend = got["grid"]["legend"]
+    names = [[None if ch == "." else legend[ch] for ch in line] for line in got["grid"]["lines"]]
+    ids = {"a": 0, "b": 1, "c": 2, "d": 3}
+    tile_names = {rect["index"]: rect["name"] for rect in got["rects"]}
+    expected = [[tile_names[ids[ch]] if ch != "." else None for ch in line] for line in ["abc", "d.a"]]
+    ed.check_eq(names, expected, "the top line is the highest row, negative x included")
     ed.check_eq(got["region"], [-1, 4, 1, 5], "the region returned")
     tiles = await ed.call("get_tilemap", scene=sid, entity=layer, region=[6, 0, 6, 0], include_tiles=True)
     ed.check_eq(tiles["cells"], [[6, 0, 2, 0]], "cells as [x, y, tile, flags]")
@@ -243,22 +250,22 @@ async def test_add_layer_and_layer_targeting(ed: Editor):
 
 
 def bresenham(ax, ay, bx, by):
-    """The rectangle line of NavGridBrush/TilemapBrush: the expected cells of AC6's comparison"""
-    dx, dy = abs(bx - ax), abs(by - ay)
+    """tilegrid::line on a rectangle (the tie rule of gridBresenham): the expected cells of AC6's comparison"""
+    dx, dy = abs(bx - ax), -abs(by - ay)
     sx, sy = 1 if ax < bx else -1, 1 if ay < by else -1
-    err = dx - dy
+    error = dx + dy
     cells = []
     x, y = ax, ay
     while True:
         cells.append((x, y))
         if (x, y) == (bx, by):
             return cells
-        e2 = 2 * err
-        if e2 > -dy:
-            err -= dy
+        e2 = 2 * error
+        if e2 >= dy:
+            error += dy
             x += sx
-        if e2 < dx:
-            err += dx
+        if e2 <= dx:
+            error += dx
             y += sy
 
 
@@ -290,6 +297,8 @@ async def test_brush_ops_equal_the_expected_cells(ed: Editor):
 
 async def test_check_pixel_art_lists_a_bilinear_tile_page(ed: Editor):
     """AC10 (R74a): the validator reads each tile page through the layer's Mesh sampler"""
+    # the validator reads pixel-art scenes only: the mode is what makes this scene one (R9)
+    await ed.call("set_project_settings", values={"pixel_art.enabled": True})
     made = await ed.call("create_scene", name="PixelCheck", type="2d", path="scenes/PixelCheck")
     sid = made["scene"]["id"]
     layer = (await ed.call("edit_tilemap", scene=sid, create={"name": "PixelGrid"}, tileset=TILESET,

@@ -15,16 +15,17 @@
 namespace jasperengine{
 
     // TileGridLayout, not GridLayout: nav::GridLayout (S19's NavGrid) already exists
-    enum class TileGridLayout : uint8_t { Rectangle, Isometric, IsometricStaggered, Hexagon };
+    // (int-sized: the editor's enum fields read and write their values as int)
+    enum class TileGridLayout { Rectangle, Isometric, IsometricStaggered, Hexagon };
     // the Grid's plane: XY (2D, default: local (u, v) is (x, y)) or XZ (3D boards: local (u, v) is
     // (x, z), as S19's NavGrid lays its cells along local X and Z)
-    enum class TileGridPlane : uint8_t { XY, XZ };
-    enum class StaggerAxis : uint8_t { X, Y };
-    enum class StaggerIndex : uint8_t { Odd, Even };
-    enum class TilemapRenderMode : uint8_t { Chunk, Individual };
+    enum class TileGridPlane { XY, XZ };
+    enum class StaggerAxis { X, Y };
+    enum class StaggerIndex { Odd, Even };
+    enum class TilemapRenderMode { Chunk, Individual };
     // a chunk's GPU buffer: built when first visible and released after 2 s unseen (Visible), or
     // kept from its first build on (Always)
-    enum class TilemapGpuResidency : uint8_t { Visible, Always };
+    enum class TilemapGpuResidency { Visible, Always };
 
     struct CellCoord{
         int32_t x = 0;

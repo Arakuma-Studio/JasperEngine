@@ -1341,7 +1341,7 @@ bool editTilemapGrid(const CallPtr& call) {
             if (i == 0 && kind == "convert") convertFirst = true;
         }
     }
-    const bool newArgs = hasArg(args, "layer") || hasArg(args, "layout") || hasArg(args, "preview") || hasArg(args, "image") || hasArg(args, "scale");
+    const bool newArgs = hasArg(args, "layer") || hasArg(args, "layout") || hasArg(args, "preview") || hasArg(args, "image");
     const bool legacyOnly = hasArg(args, "rects") || hasArg(args, "replace_rects") || hasArg(args, "origin");
 
     Entity entity = NULL_ENTITY;
@@ -1377,7 +1377,6 @@ bool editTilemapGrid(const CallPtr& call) {
 
     Problem error;
     const bool wantImage = flagArg(args, "image") || e.preview;
-    const int scale = intArg(args, "scale", 1);
 
     // ---- a legacy Free Tilemap becomes a Grid and a layer first (S50 R72)
     bool converted = false;
@@ -1564,7 +1563,7 @@ bool editTilemapGrid(const CallPtr& call) {
         const TilemapLayerComponent* layerComponent = chosenSlot.entity != NULL_ENTITY ? scene->findComponent<TilemapLayerComponent>(chosenSlot.entity) : nullptr;
         const double anchorX = layerComponent ? layerComponent->tileAnchor.x : 0.0;
         const double anchorY = layerComponent ? layerComponent->tileAnchor.y : 0.0;
-        if (compositeImage(chosenSlot.cells, chosenSlot.tileset.get(), e.spec, touched, scale, anchorX, anchorY, chosenSlot.dualGrid, image, info, imageError)) {
+        if (compositeImage(chosenSlot.cells, chosenSlot.tileset.get(), e.spec, touched, 1, anchorX, anchorY, chosenSlot.dualGrid, image, info, imageError)) {
             reply.images.push_back(std::move(image));
             result["image"] = info;
         } else {

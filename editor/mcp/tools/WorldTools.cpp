@@ -6597,16 +6597,15 @@ void registerWorldTools(McpRegistry& registry) {
     // S50 R75: the op vocabulary lives in jasper://docs/tilemaps; legacy Free Tilemaps keep the
     // old fields (rects, replace_rects, origin make a create one of them).
     add("edit_tilemap", "Edit Tilemap",
-        "Edits a Grid tilemap in one undo step, rolled back whole on any failing op (preview writes "
-        "nothing). entity: a Grid or Tilemap Layer (layer picks one; default first); create makes Grid + Tilemap "
-        "Layer. tileset: a .tileset path or a slice object (writes <texture>.tileset). ops run in order: "
-        "jasper://docs/tilemaps lists them. Read back with get_tilemap.",
+        "Grid tilemaps: one undo step, any failing op rolls back, preview writes nothing. create makes Grid + "
+        "Tilemap Layer; layer picks one (default first). tileset: .tileset path or slice object. Ops: "
+        "jasper://docs/tilemaps. Read back: get_tilemap.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"create", createSpec},
-            {"layer", {{"type", {"string", "integer"}}}},
-            {"layout", stringEnum("With create.", {"rectangle", "isometric", "isometric_staggered", "hexagon"})},
+            {"layer", any("")},
+            {"layout", string("With create.")},
             {"texture", assetPath("")},
             {"tileset", {{"anyOf", Json::array({
                 {{"type", "string"}},
@@ -6617,34 +6616,33 @@ void registerWorldTools(McpRegistry& registry) {
                     {"offset", vec2("")},
                     {"padding", vec2("")},
                     {"count", integer("")},
-                    {"names", array(string(""), "Row-major.")},
-                    {"prefix", withDefault(string(""), "tile_")},
+                    {"names", array(string(""), "")},
+                    {"prefix", string("")},
                     {"sheet_size", vec2("If unreadable.")}
                 })
             })}}},
-            {"rects", array(object({{"name", string("Replaces same name.")},
+            {"rects", array(object({{"name", string("")},
                                     {"rect", vec4("[x, y, w, h] px, top-left origin.")},
                                     {"submesh", integer("")}}, {"rect"}), "")},
             {"replace_rects", boolean("")},
             {"cell_size", vec2("")},
             {"origin", vec2(">= 0.")},
-            {"ops", array(anyObject("{op, ...}"), "")},
+            {"ops", array(anyObject(""), "")},
             {"preview", boolean("")},
             {"image", boolean("")},
-            {"scale", integer("", 1, 8)},
             {"return_grid", withDefault(boolean(""), true)},
-            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
+            {"max_cells", withDefault(integer(""), 6000)}
         }),
         editTilemapTool, false, false);
 
     add("get_tilemap", "Get Tilemap",
-        "A Grid, Tilemap Layer or Free Tilemap: layout, layers, an ASCII grid of the region (grid.lines, top = highest "
-        "row; legend), include_terrain, missing_tiles, include_tiles (cells), image at scale. Read after painting.",
+        "A Grid, Tilemap Layer or Free Tilemap: layout, layers, region as ASCII (grid.lines, top = highest row); "
+        "include_terrain, missing_tiles, include_tiles, image.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"layer", {{"type", {"string", "integer"}}}},
-            {"region", array(integer(""), "[x0, y0, x1, y1].")},
+            {"layer", any("")},
+            {"region", array(integer(""), "x0, y0, x1, y1")},
             {"cell_size", vec2("")},
             {"origin", vec2("")},
             {"include_tiles", boolean("")},
@@ -6653,7 +6651,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"image", boolean("")},
             {"scale", integer("", 1, 8)},
             {"limit", withDefault(integer(""), 200)},
-            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
+            {"max_cells", withDefault(integer(""), 6000)}
         }, {"entity"}),
         getTilemapTool, true, true);
 

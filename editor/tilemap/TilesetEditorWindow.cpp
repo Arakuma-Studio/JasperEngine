@@ -312,10 +312,9 @@ void TilesetEditorWindow::drawToolbar() {
     if (ImGui::Button("Apply Terrain Template...")) templateOpenRequested = true;
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("Assign names and peering values to the block of tiles whose top-left tile is the selected one");
-    if (!notice.empty()) {
-        if (noticeIsError) ImGui::TextColored(Theme::Colors::WarningText, "%s", notice.c_str());
-        else ImGui::TextDisabled("%s", notice.c_str());
-    }
+    // the line is always there: a first notice must not move the tile grid under the pointer
+    if (noticeIsError) ImGui::TextColored(Theme::Colors::WarningText, "%s", notice.c_str());
+    else ImGui::TextDisabled("%s", notice.empty() ? " " : notice.c_str());
     ImGui::Separator();
 }
 
@@ -1093,6 +1092,7 @@ void TilesetEditorWindow::drawTemplateModal() {
     if (templateOpenRequested) {
         ImGui::OpenPopup("Apply Terrain Template###TilesetTemplate");
         templateOpenRequested = false;
+        templateError.clear();
         templateTerrain = 0;
         templateSecond = -1;
         coverageSet = std::clamp(coverageSet, 0, (int)document.terrainSets.size() - 1);
@@ -1124,6 +1124,8 @@ void TilesetEditorWindow::drawTemplateModal() {
     static const TerrainTemplate kTemplates[] = {TerrainTemplate::Blob47, TerrainTemplate::Blob47Godot, TerrainTemplate::Sides16, TerrainTemplate::DualGrid4x4};
     const bool canApply = !selection.empty() && !document.terrainSets.empty() && !document.terrainSets[(size_t)coverageSet].terrains.empty();
     if (!canApply) EditorModal::error("Select the block's top-left tile and a terrain first");
+    else if (!templateError.empty()) EditorModal::error(templateError);
+    if (!templateError.empty()) ImGui::TextColored(Theme::Colors::WarningText, "%s", templateError.c_str());
     ImGui::BeginDisabled(!canApply);
     if (EditorModal::button("Apply", "ok")) {
         const TerrainTemplate chosen = kTemplates[std::clamp(templateChoice, 0, 3)];
@@ -1134,11 +1136,15 @@ void TilesetEditorWindow::drawTemplateModal() {
         options.secondTerrain = templateSecond;
         std::vector<TilesetProblem> problems;
         const bool applied = edit("Apply Terrain Template", [&](TilesetData& data) {
-            if (!terrain::applyTemplate(data, setIndex, chosen, origin, options, problems)) {
-                setNotice(problems.empty() ? std::string("The template does not fit") : problems.front().message, true);
-            }
+            terrain::applyTemplate(data, setIndex, chosen, origin, options, problems);
         });
-        if (applied && problems.empty()) ImGui::CloseCurrentPopup();
+        // a refusal is said in the dialog: the notice line sits behind the modal
+        if (applied && problems.empty()) {
+            templateError.clear();
+            ImGui::CloseCurrentPopup();
+        } else {
+            templateError = !problems.empty() ? problems.front().message : notice;
+        }
     }
     ImGui::EndDisabled();
     ImGui::SameLine();

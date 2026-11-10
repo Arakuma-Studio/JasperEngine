@@ -174,9 +174,10 @@ namespace {
         JE_FIELD(TilemapCollider2DComponent, offset, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, friction, .updateFlags = kTile, .min = 0.0f),
         JE_FIELD(TilemapCollider2DComponent, restitution, .updateFlags = kTile, .min = 0.0f),
-        JE_FIELD(TilemapCollider2DComponent, material, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile, .asset = AssetKind::Any),
-        JE_FIELD(TilemapCollider2DComponent, categoryBits, .ops = &ops::UIntAs<uint16_t>, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
-        JE_FIELD(TilemapCollider2DComponent, maskBits, .ops = &ops::UIntAs<uint16_t>, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
+        // a .physicsmaterial path as Collider2D's and Rigidbody2D's: a string with .asset needs a "<name>Guid" sibling
+        JE_FIELD(TilemapCollider2DComponent, material, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
+        JE_FIELD(TilemapCollider2DComponent, categoryBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
+        JE_FIELD(TilemapCollider2DComponent, maskBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, groupIndex, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, contactEvents, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, sensorEvents, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
