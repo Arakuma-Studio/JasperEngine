@@ -24208,9 +24208,9 @@
     ]
    },
    "structural_update_flags": 0,
-   "type": 100,
-   "type_of_key": 100,
-   "type_of_name": 100
+   "type": 103,
+   "type_of_key": 103,
+   "type_of_name": 103
   }
  ],
  "ease_options": [
