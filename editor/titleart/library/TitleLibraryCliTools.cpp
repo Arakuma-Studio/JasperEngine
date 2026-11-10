@@ -287,6 +287,11 @@ namespace {
 
     // runs the calls in a one-shot headless editor on the scratch project; the result envelopes
     bool runBatch(const char* executable, const Scratch& s, std::vector<Json>& results, std::string& error) {
+#if !defined(_WIN32)
+        // the editor (spawned by `batch`) inherits it: compiled shaders survive the run
+        const std::string mesaCache = mesaShaderCacheDir(std::getenv("MESA_SHADER_CACHE_DIR"), std::getenv("XDG_CACHE_HOME"), std::getenv("HOME"));
+        if (!mesaCache.empty()) setenv("MESA_SHADER_CACHE_DIR", mesaCache.c_str(), 0);
+#endif
         const fs::path calls = s.dir / "calls.ndjson", out = s.dir / "results.ndjson", err = s.dir / "editor-stderr.txt";
         std::string text;
         for (const std::string& c : s.calls) text += c + "\n";
@@ -414,6 +419,13 @@ namespace {
         return work;
     }
 
+}
+
+// ---- the headless editors' environment ----
+
+std::string titlelibrary::mesaShaderCacheDir(const char* mesaDir, const char* xdgCache, const char* home) {
+    if ((mesaDir && *mesaDir) || (xdgCache && *xdgCache) || !home || !*home) return {};
+    return (fs::path(home) / ".cache" / "mesa_shader_cache").string();
 }
 
 // ---- list, verify, lint, gen-docs ----

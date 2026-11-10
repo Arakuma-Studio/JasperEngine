@@ -1876,7 +1876,9 @@ rest of S82 lands in 6B.
     - fallback_parity: `elements/electric-blue`, `elements/storm-counter` (bloom over Lightning clamps on the RGBA8 path),
       `casino/confirm-giraffe-3d` (the 3D glint's picks);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
-      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low;
+      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low; **fixed in the mesher** (S86 Deviation 31:
+      it coarsens to each tier's budget, and the solid limit drops the thinnest band), so 6 items fail; the gate over
+      every 3D item (70 looks, 21 templates, 252 renders) finds only diamond-3d and confirm-giraffe-3d below;
     - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
       `casino/red-hot-rim-glow` passes alone and fails only late in an 860-render batch (render state carried between
       documents, cause not found).
@@ -1907,11 +1909,20 @@ rest of S82 lands in 6B.
     at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
     the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
-29. **AC21's `apply_look` fixed: 5.0 -> 1.07 ms on 16 rims** (`TitleLibraryBuiltins.Budgets`, build box 2, RelWithDebInfo).
-    Profiled with scoped timers: 3.1 ms of the 5.3 were the import plan reading the look's pack HDRI
-    (`autumn_road_2k.hdr`) whole on every apply, even without a project, where it only maps the path; in a project it also
-    hashed the HDRI, its copy and, with `apply_font`, the font twice (megabytes each, per apply). `ImportPlan` now hashes a
-    file once per (path, size, write time) and reads its bytes only to copy it; `importFileReads()` counts the reads
-    (`TitleLibraryBuiltins.ApplyLookReadsPackFilesOnce`: none without a project, each project copy hashed once, a settled
-    apply reads nothing; red with the cache off: 3, 15 and 5 reads). The link sync of S80's commit invariants copied and
-    dumped the previous document's materials on every batch; it does so only when a link has two members (1.13 -> 0.24 ms).
+29. **AC21's `apply_look`: the commit invariants' link sync.** Profiled with scoped timers (build box 2): of 5.3 ms on 16
+    rims, 3.1 were the import plan reading and hashing the look's pack files on every apply (fixed on ta/lib-looks,
+    007742f38: hashes cached, bytes read only to copy), and S80's link sync copied and dumped the previous document's
+    materials on every batch; it now does so only when a link has two members (1.13 -> 0.24 ms of the invariants).
+30. **AC21's baker within 20 min: 1364 s -> 1234 s cold, 1040 s warm** (build box 2: 16 shared cores, the image's 8-CPU
+    quota, llvmpipe; load average 1-9 from other worktrees; 830 thumbnails byte-identical to the 1364 s run). Profiled:
+    `time` gave 136 CPU-min over 22.7 min (llvmpipe already fills 6 of the 8 CPUs), `perf` 76 % of the samples in
+    llvmpipe's shaders and 14 % in LLVM compiling them on the editors' main threads, the engine under 2 %. So more editors
+    at once did not help (4 editors: 1357 s, 175 CPU-min: the quota is the limit; not kept). What was cut: (1) every
+    `render_title` of a current revision also rendered a 768 px copy kept for `compare: "rev:<n>"`; the baker passes
+    `options: {keep: false}` (one render; `test_render_title_keep_false`, red with the option ignored): 1239 s; (2) Mesa
+    caches llvmpipe's compiled shaders under the passwd entry's home, not $HOME, so in the build image (HOME under
+    build/) each bake compiled every shader again; the headless editors get `MESA_SHADER_CACHE_DIR=$HOME/.cache/
+    mesa_shader_cache` unless MESA_SHADER_CACHE_DIR or XDG_CACHE_HOME is set (Mesa's own default where HOME is the
+    user's; 20 MB): a cold run 1234 s, every later one 1040 s (17.3 min). A run on a clean machine stays over 20 min;
+    a 101-render subset measured 192 s cold, 121 s warm. llvmpipe thread counts (4, 7, 8, Mesa's 16) were measured on
+    that subset and changed nothing warm (4: slower), so none is set.
