@@ -57,7 +57,8 @@ namespace {
     // which ends long before an animation callback runs: LuaBinding::mainThread)
     class LuaRefHolder {
     public:
-        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)),
+            previewContextKey(LuaBinding::getPreviewContextKey()){
             lua_pushvalue(from, index);
             ref = luaL_ref(from, LUA_REGISTRYINDEX);
             animeLiveRefs().insert(this);
@@ -89,9 +90,11 @@ namespace {
             return true;
         }
         lua_State* state() const{ return L; }
+        bool belongsToPreview(int key) const{ return previewContextKey == key; }
 
     private:
         lua_State* L;
+        int previewContextKey;
         int ref = LUA_NOREF;
     };
 
@@ -133,6 +136,7 @@ namespace {
 
         const void* getIdentity() const override{ return identity; }
         bool isAlive() const{ return table->isAlive(); }
+        bool isValid() const override{ return isAlive(); }
         bool push(lua_State* onto) const{ return table->push(onto); }
 
         AnimRawValue getValue(const std::string& property, AnimTweenType type, AnimRawValue* inlineValue) override{
@@ -1270,6 +1274,21 @@ size_t AnimLua::getLiveLuaRefs(){
             count++;
     }
     return count;
+}
+
+void AnimLua::releasePreviewRefs(int contextKey){
+    if (contextKey < 0) return;
+    // A table can hold its animation userdata while the animation's target and callbacks
+    // hold registry references to that table. Detaching the timer alone cannot break it.
+    for (LuaRefHolder* ref : animeLiveRefs()){
+        if (ref->belongsToPreview(contextKey)) ref->release();
+    }
+    auto& targets = tableTargets();
+    for (auto it = targets.begin(); it != targets.end();){
+        const auto target = it->second.lock();
+        if (!target || !target->isAlive()) it = targets.erase(it);
+        else ++it;
+    }
 }
 
 void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){

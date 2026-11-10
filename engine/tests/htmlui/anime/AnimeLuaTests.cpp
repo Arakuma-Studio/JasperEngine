@@ -141,6 +141,77 @@ TEST_F(AnimeLuaTest, DetachedPreviewReleasesLuaCallbacksAtPinnedTime){
     EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
 }
 
+TEST_F(AnimeLuaTest, PreviewReferenceCyclesReleaseOnlyTheirOwnContext){
+    AnimEngine& engine = AnimEngine::instance();
+    ASSERT_EQ(run("t = {x = 0}; a = anime.animate(t, {x = 100, duration = 1000, onUpdate = function() t.seen = true end})"), "");
+    const size_t outsideRefs = AnimLua::getLiveLuaRefs();
+    const size_t outsideTimers = AnimEngine::getLiveTimerCount();
+    const int firstCache = LuaBinding::createPreviewModuleCache();
+    const int secondCache = LuaBinding::createPreviewModuleCache();
+    ASSERT_GE(firstCache, 0);
+    ASSERT_GE(secondCache, 0);
+    std::vector<std::shared_ptr<AnimTimer>> roots;
+    {
+        LuaBinding::ScopedModuleCache modules(firstCache);
+        AnimEngine::ScopedTickPause pause(&roots);
+        ASSERT_EQ(run(R"(
+            local m = {x = 0}
+            m.a = anime.animate(m, {x = 1, duration = 1000, onUpdate = function() m.seen = true end})
+            log = setmetatable({m}, {__mode = 'v'})
+        )"), "");
+    }
+    const size_t firstRefs = AnimLua::getLiveLuaRefs() - outsideRefs;
+    EXPECT_GT(firstRefs, 0u);
+    ASSERT_EQ(roots.size(), 1u);
+    const auto disposedTarget = std::static_pointer_cast<AnimAnimation>(roots[0])->head->target;
+    {
+        LuaBinding::ScopedModuleCache modules(secondCache);
+        AnimEngine::ScopedTickPause pause(&roots);
+        ASSERT_EQ(run(R"(
+            local m = {x = 0}
+            m.a = anime.animate(m, {x = 1, duration = 1000, onUpdate = function() m.seen = true end})
+            tl = setmetatable({m}, {__mode = 'v'})
+        )"), "");
+    }
+    const size_t secondRefs = AnimLua::getLiveLuaRefs() - outsideRefs - firstRefs;
+    EXPECT_GT(secondRefs, 0u);
+    for (const auto& root : roots){
+        root->paused = true;
+        root->cancel();
+        engine.detachRoot(*root);
+    }
+    roots.clear();
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    EXPECT_EQ(AnimLua::getLiveLuaRefs(), outsideRefs + firstRefs + secondRefs);
+    EXPECT_EQ(text("log[1] == nil"), "false");
+    EXPECT_EQ(text("tl[1] == nil"), "false");
+
+    AnimLua::releasePreviewRefs(firstCache);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    EXPECT_EQ(text("log[1] == nil"), "true");
+    EXPECT_EQ(text("tl[1] == nil"), "false");
+    EXPECT_FALSE(disposedTarget->isValid());
+    EXPECT_EQ(AnimLua::getLiveLuaRefs(), outsideRefs + secondRefs);
+    AnimLua::releasePreviewRefs(firstCache);
+    AnimLua::releasePreviewRefs(-1);
+    EXPECT_EQ(AnimLua::getLiveLuaRefs(), outsideRefs + secondRefs);
+
+    AnimLua::releasePreviewRefs(secondCache);
+    LuaBinding::releaseLuaRef(firstCache);
+    LuaBinding::releaseLuaRef(secondCache);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    EXPECT_EQ(text("tl[1] == nil"), "true");
+    EXPECT_EQ(AnimLua::getLiveLuaRefs(), outsideRefs);
+    EXPECT_EQ(AnimEngine::getLiveTimerCount(), outsideTimers);
+    EXPECT_EQ(engine.getActiveCount(), 1u);
+    ASSERT_EQ(run("a:seek(500); assert(t.seen and t.x == 50)"), "");
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::UI), now);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
+}
+
 TEST_F(AnimeLuaTest, CallbacksInOrderWithLoopsAndAlternate){
     ASSERT_EQ(run(R"(
         log = {}
