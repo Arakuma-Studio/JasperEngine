@@ -7,6 +7,7 @@
 
 #include "tilemap/TilemapConvert.h"
 
+#include "Engine.h"
 #include "Project.h"
 #include "Stream.h"
 #include "command/CommandHandle.h"
@@ -19,7 +20,9 @@
 #include "pixelart/PixelImage.h"
 #include "support/EditorTestSupport.h"
 #include "support/TestTempDir.h"
+#include "tilemap/TilemapComposite.h"
 #include "tilemap/Tileset.h"
+#include "tilemap/TilesetPool.h"
 
 #include <gtest/gtest.h>
 
@@ -116,6 +119,65 @@ namespace {
 
         std::string encoded() {
             return YAML::Dump(Stream::encodeEntity(entity, scene->scene, nullptr, nullptr));
+        }
+
+        // a 32 x 16 atlas whose every pixel differs, so a tile drawn from the wrong rect, row order
+        // or mirror shows; it replaces the solid one SetUp wrote
+        jasperengine::editor::pixelart::PixelImage writePatternAtlas() {
+            jasperengine::editor::pixelart::PixelImage atlas(32, 16);
+            for (int y = 0; y < 16; y++) {
+                for (int x = 0; x < 32; x++) atlas.set(x, y, {(uint8_t)(x * 7), (uint8_t)(y * 13), (uint8_t)(40 + (x + y) * 3), 255});
+            }
+            EXPECT_TRUE(atlas.savePng(project->getAssetsPath() / "tiles.png"));
+            return atlas;
+        }
+
+        // AC9: the picture of the legacy map, from its data (each tile's rect of the texture, top-left
+        // origin, with its bottom-left at the tile's position in pixels, y up; later tiles over
+        // earlier ones), against the CPU composite of the converted layer at the project's Pixels
+        // Per Unit, pixel for pixel over the composite's whole image
+        void expectSamePixels(const TilemapComponent& legacy, const jasperengine::editor::pixelart::PixelImage& texture) {
+            TilemapLayerComponent& layer = scene->scene->getComponent<TilemapLayerComponent>(entity);
+            const std::shared_ptr<const TilesetRuntime> runtime = TilesetPool::get(layer.tileset.path);
+            ASSERT_TRUE(runtime) << TilesetPool::lastError(layer.tileset.path);
+            CompositeParams params;
+            params.cells = &layer.cells.read();
+            params.tileset = runtime.get();
+            params.grid = gridSpecOf(scene->scene->getComponent<GridComponent>(entity));
+            params.region = layer.cells.read().usedRect();
+            params.pixelsPerUnit = (double)Engine::getPixelsPerUnit();
+            TilesetPagePixels pages;
+            CompositeResult after;
+            PixelProblem error;
+            ASSERT_TRUE(compositeLayer(params, pages, after, error)) << error.message;
+            ASSERT_FALSE(after.image.empty());
+            EXPECT_EQ(after.missing, 0u);
+
+            const auto before = [&](int x, int y) -> jasperengine::editor::pixelart::PixelRgba {
+                for (int i = (int)legacy.numTiles - 1; i >= 0; i--) {
+                    const TileData& tile = legacy.tiles[i];
+                    const int px = (int)tile.position.x, py = (int)tile.position.y, w = (int)tile.width, h = (int)tile.height;
+                    if (x < px || x >= px + w || y < py || y >= py + h) continue;
+                    const Rect& rect = legacy.tilesRect[tile.rectId].rect;
+                    return texture.at((int)rect.getX() + (x - px), (int)rect.getY() + (h - 1 - (y - py)));
+                }
+                return {0, 0, 0, 0};
+            };
+            size_t wrong = 0, opaque = 0;
+            for (int iy = 0; iy < after.image.height(); iy++) {
+                for (int ix = 0; ix < after.image.width(); ix++) {
+                    // image row iy is the plane's pixel row originY - 1 - iy (y up)
+                    const jasperengine::editor::pixelart::PixelRgba want = before(after.originX + ix, after.originY - 1 - iy);
+                    opaque += want[3] != 0;
+                    if (after.image.at(ix, iy) != want && wrong++ < 5) {
+                        ADD_FAILURE() << "pixel (" << after.originX + ix << ", " << after.originY - 1 - iy << ") differs after the conversion";
+                    }
+                }
+            }
+            EXPECT_EQ(wrong, 0u);
+            size_t tilePixels = 0;
+            for (unsigned int i = 0; i < legacy.numTiles; i++) tilePixels += (size_t)(legacy.tiles[i].width * legacy.tiles[i].height);
+            EXPECT_EQ(opaque, tilePixels) << "the composite covers every legacy tile";
         }
     };
 
@@ -286,4 +348,75 @@ TEST_F(TilemapConvertTest, ANonExistentEntityIsATypedError) {
     const ConvertResult result = convert(project, sceneId, NULL_ENTITY);
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.problem.kind, "unknown_layer");
+}
+
+// AC9: the converted layer draws the legacy map's pixels, at a project Pixels Per Unit other than 1
+// (cells in world units, tiles in pixels)
+TEST_F(TilemapConvertTest, ConvertedLayerDrawsTheLegacyPixels) {
+    const jasperengine::editor::pixelart::PixelImage atlas = writePatternAtlas();
+    // the Pixels Per Unit is the engine's too: back to the default however the test ends
+    struct DefaultPixelsPerUnit {
+        Project* project;
+        ~DefaultPixelsPerUnit() { project->setPixelsPerUnit(Project::defaultPixelsPerUnit); }
+    } restore{project};
+    project->setPixelsPerUnit(16);
+    addRect("grass", 0.0f, 0.0f, 16.0f, 16.0f);
+    addRect("stone", 16.0f, 0.0f, 16.0f, 16.0f);
+    addTile(1, 0.0f, 0.0f);
+    addTile(0, 16.0f, 0.0f);
+    addTile(1, 16.0f, 16.0f);
+    addTile(0, 48.0f, 32.0f);
+    const TilemapComponent legacy = tilemap();
+
+    const ConvertResult result = convert(project, sceneId, entity);
+    ASSERT_TRUE(result.ok) << result.problem.message;
+    EXPECT_FLOAT_EQ(scene->scene->getComponent<GridComponent>(entity).cellSize.x, 1.0f) << "16 pixels at 16 pixels per unit";
+    expectSamePixels(legacy, atlas);
+}
+
+// Stored legacy positions below 0 on the tile grid are cells like any other (the legacy mesh build
+// clamps them only when it draws)
+TEST_F(TilemapConvertTest, NegativeAlignedPositionsConvert) {
+    const jasperengine::editor::pixelart::PixelImage atlas = writePatternAtlas();
+    addRect("grass", 0.0f, 0.0f, 16.0f, 16.0f);
+    addRect("stone", 16.0f, 0.0f, 16.0f, 16.0f);
+    addTile(1, -16.0f, 0.0f);
+    addTile(0, 0.0f, -32.0f);
+    addTile(1, 16.0f, 16.0f);
+    const TilemapComponent legacy = tilemap();
+
+    const ConvertResult result = convert(project, sceneId, entity);
+    ASSERT_TRUE(result.ok) << result.problem.message << (result.check.offenders.empty() ? "" : " / " + result.check.offenders[0].reason);
+    const TileCells& cells = scene->scene->getComponent<TilemapLayerComponent>(entity).cells.read();
+    EXPECT_EQ(cells.getTile(CellCoord{-1, 0}), 1);
+    EXPECT_EQ(cells.getTile(CellCoord{0, -2}), 0);
+    EXPECT_EQ(cells.getTile(CellCoord{1, 1}), 1);
+    expectSamePixels(legacy, atlas);
+}
+
+// a negative position off the grid still leaves a remainder: refused like a positive one
+TEST_F(TilemapConvertTest, NegativeMisalignedPositionIsRefused) {
+    addRect("grass", 0.0f, 0.0f, 16.0f, 16.0f);
+    addTile(0, -8.0f, 0.0f, 16.0f, 16.0f, "off");
+    const ConvertResult result = convert(project, sceneId, entity);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.problem.kind, "not_grid_aligned");
+}
+
+// R12: the written tileset names its image by GUID too, so it survives the image's move
+TEST_F(TilemapConvertTest, TheTilesetNamesItsImageByGuid) {
+    addRect("grass", 0.0f, 0.0f, 16.0f, 16.0f);
+    addTile(0, 0.0f, 0.0f);
+    const ConvertResult result = convert(project, sceneId, entity);
+    ASSERT_TRUE(result.ok) << result.problem.message;
+    std::ifstream file(project->getAssetsPath() / "tiles.tileset");
+    std::stringstream text;
+    text << file.rdbuf();
+    TilesetData written;
+    std::vector<TilesetProblem> problems;
+    ASSERT_TRUE(tileset::parse(text.str(), written, problems));
+    ASSERT_EQ(written.sources.size(), 1u);
+    const Guid expected = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(project->getAssetsPath() / "tiles.png"));
+    ASSERT_FALSE(expected.isNull());
+    EXPECT_EQ(written.sources[0].asset.guid, expected);
 }

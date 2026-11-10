@@ -5,9 +5,10 @@
 #define TILEMAP_TILESET_POOL_H
 
 // Tilesets resolved for drawing (docs/specs/S50-grid-tilemap.md R12, R17, R31): each tile's texture
-// page, its rect in the page and its size, the pages' paths, and the animations. Loaded by path
-// (exported games use resolved paths) and cached; reloaded when the editor invalidates the file
-// (S05) or a source sheet repacks (its SpriteSheetPool generation moves).
+// page, its rect in the page and its size, the pages' paths, and the animations. A .tileset loads
+// by path and is cached; its sources resolve by GUID, then by their path hint (exported games ship
+// resolved paths). Reloaded when the editor invalidates the file (S05), clears the pool (an asset
+// moved) or a source sheet repacks (its SpriteSheetPool generation moves).
 //
 // Sources: texture: the page is the texture, tile rects from the slicing (margin + at * (tile +
 // spacing), top-left origin) and the texture's size (SpriteSheetSources::textureSize, so cooked

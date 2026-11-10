@@ -3129,9 +3129,14 @@ void editTilemapTool(const CallPtr& call) {
     step.commit();
 
     TilemapComponent& result = scene->getComponent<TilemapComponent>(target.entity);
-    Json data = {{"tilemap", entityJson(target, target.entity)}, {"created", created}, {"tile_rects", result.numTilesRect},
+    Json data = {{"kind", "free_tilemap"}, {"tilemap", entityJson(target, target.entity)}, {"created", created}, {"tile_rects", result.numTilesRect},
                  {"tiles", result.numTiles}, {"painted", painted}, {"erased", erased}};
     if (has(args, "tileset") || has(args, "rects")) data["rects"] = tileRectsJson(result);
+    if (created) {
+        // R75: only these fields make a create a Free Tilemap; say so where the agent reads next
+        data["next"] = "rects/replace_rects/origin made a Free Tilemap (legacy: free pixel rects, no layers or terrains). "
+                       "For a Grid + Tilemap Layer, create without them.";
+    }
     if (boolOr(args, "return_grid", true)) data["grid"] = tilemapGridJson(result, cell, origin, preferredChars, intOr(args, "max_cells", 6000));
     call->ok("Tilemap \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(result.numTilesRect) + " tile rects, " +
              std::to_string(result.numTiles) + " tiles (" + std::to_string(painted) + " painted, " + std::to_string(erased) +

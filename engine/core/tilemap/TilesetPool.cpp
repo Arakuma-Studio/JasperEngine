@@ -4,6 +4,7 @@
 #include "tilemap/TilesetPool.h"
 
 #include "Log.h"
+#include "asset/AssetMap.h"
 #include "asset/ImportedAssets.h"
 #include "io/Data.h"
 #include "sprite/SpriteSheet.h"
@@ -74,6 +75,16 @@ namespace {
         std::vector<int> sheetPages;
     };
 
+    // A source's asset by its GUID first (it survives the file's move or rename), else its path
+    // hint. In the editor AssetMap asks the asset database; exports write the resolved paths and no
+    // GUIDs into the .tileset files they ship, so a game never queries the map for them.
+    std::string tilesetSourcePath(const AssetRef& ref){
+        std::string found;
+        if (!ref.guid.isNull() && AssetMap::findPath(ref.guid, found) && !found.empty())
+            return found;
+        return ref.path;
+    }
+
     // Runs without the pool's lock: sheet loads read files and call registered loaders.
     std::shared_ptr<TilesetRuntime> tilesetResolve(const std::string& path, std::shared_ptr<const TilesetData> data, TilesetSheetGenerations& sheets){
         auto runtime = std::make_shared<TilesetRuntime>();
@@ -86,7 +97,7 @@ namespace {
             entry.source = &source;
             entry.tileWidth = source.tileWidth > 0 ? source.tileWidth : data->tileWidth;
             entry.tileHeight = source.tileHeight > 0 ? source.tileHeight : data->tileHeight;
-            const std::string& asset = source.asset.path;
+            const std::string asset = tilesetSourcePath(source.asset);
             switch (source.kind){
                 case TilesetSourceKind::Texture:{
                     int width = 0, height = 0;

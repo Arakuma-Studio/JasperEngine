@@ -1,0 +1,12 @@
+{
+  "about": "AC6 (docs/specs/S50-grid-tilemap.md): edit_tilemap ops on a 16-tile tileset (ids 0-15, probability 1, no terrains), layer seed 0, on each layout. TilemapBrushTest.McpOpsGiveTheGoldenCells replays them through TilemapBrush and prints the cells when they differ; tools/mcp/tests/test_tilemap_grid.py::test_brush_identity sends them through edit_tilemap and compares get_tilemap's cells. Cells are [x, y, tile, flags] sorted, flags masked to flip x (1<<24), flip y (1<<25) and transpose (1<<26).",
+  "ops": [
+    {"op": "fill", "tile": 1, "from": [0, 0], "to": [5, 3]},
+    {"op": "set", "cells": [[2, 1, null], [3, 1, null], [1, 2, 2, "x"], [4, 0, 3, "xy"]]},
+    {"op": "flood", "tile": 4, "at": [0, 0]},
+    {"op": "line", "tile": 5, "from": [-2, -1], "to": [6, 5]},
+    {"op": "random", "tiles": [6, {"tile": 7, "weight": 3}], "from": [7, 0], "to": [10, 3], "seed": 11},
+    {"op": "erase", "from": [5, 2], "to": [6, 3]}
+  ],
+  "cells": {}
+}

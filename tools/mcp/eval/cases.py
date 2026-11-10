@@ -3729,25 +3729,47 @@ CASES = [
     {
         "id": "guard_tileset_check_before_painting",
         "kind": "guard",
-        "what_happened": "edit_tileset check: true returns the terrain coverage report without writing; agents asked whether a "
-                         "tileset's terrains are complete should use it (S50 R77).",
-        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'; group line 'tilemaps'",
-        "source": "S50 R77",
-        "prompt": "Does assets/Tilesets/overworld.tileset have a tile for every terrain mask? Don't change anything.",
+        "what_happened": "edit_tileset check: true returns the terrain coverage report (the masks without a tile) and "
+                         "writes nothing; asked which masks a tileset lacks, agents should use it rather than read the "
+                         ".tileset JSON and work the masks out themselves, or take a preview's contact sheet (S50 R77). "
+                         "The prompt names neither checking nor leaving the file alone: the description is what "
+                         "tells the agent the call exists and is safe.",
+        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'",
+        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers)",
+        "prompt": "Which terrain masks of assets/Tilesets/overworld.tileset have no tile yet?",
+        "files": {"assets/Tilesets/overworld.tileset": '{\n  "version": 1,\n  "name": "Overworld",\n  "tile_size": [16, 16],\n'
+                  '  "sources": [{"id": 0, "kind": "texture", "texture": {"path": "Tilesets/overworld.png"}, "tile_size": [16, 16]}],\n'
+                  '  "terrain_sets": [{"name": "Ground", "mode": "blob", "terrains": [{"name": "Grass", "color": "#5fa04eff"}]}],\n'
+                  '  "tiles": [{"id": 0, "source": 0, "at": [0, 0], "terrain": {"set": 0, "center": 0}}],\n  "next_id": 1\n}\n'},
         "mocks": [
-            {"tool": "edit_tileset", "result": ok("PASS: 48 tiles, 0 missing masks, 0 problems.", {"verdict": "PASS", "missing_masks": 0})},
+            {"tool": "edit_tileset", "args": {"check": True},
+             "result": ok("WARN: 1 tiles, 46 missing masks, 0 problems.",
+                          {"verdict": "WARN", "tiles": 1, "missing_masks": 46,
+                           "terrain_sets": [{"name": "Ground", "mode": "blob", "required": 47, "missing_count": 46}], "problems": []})},
+            {"tool": "edit_tileset",
+             "result": ok("Preview of assets/Tilesets/overworld.tileset: 1 tiles (WARN). output: true writes it.",
+                          {"path": "assets/Tilesets/overworld.tileset", "created": False, "tiles": 1,
+                           "report": {"verdict": "WARN", "missing_masks": 46},
+                           "next": "A preview: nothing was written. Pass output: true to write it."})},
         ],
-        "checks": {"calls": [{"tool": "edit_tileset", "args": {"check": True}}]},
+        "checks": {"calls": [{"tool": "edit_tileset", "args": {"check": True}}],
+                   "must_not_call": [{"tool": "edit_tileset", "args": {"output": True}}]},
         "max_turns": 8,
     },
     {
         "id": "guard_import_tilemap_preview_first",
         "kind": "guard",
-        "what_happened": "import_tilemap previews by default and writes only with output: true; asked what a map would bring in, "
-                         "agents must not import it (S50 R78).",
-        "text_at_issue": "import_tilemap description: 'a preview ... until output: true writes'",
-        "source": "S50 R78",
-        "prompt": "What would importing assets/maps/level.tmj bring into the project? Don't import it yet.",
+        "what_happened": "import_tilemap previews by default and writes only with output: true; asked what a map would bring "
+                         "in, agents should take the preview (grids, layers, tilesets, skipped items) instead of reading "
+                         "the map's JSON by hand, and must not import it (S50 R78). The prompt does not say the call is "
+                         "safe: only the description does.",
+        "text_at_issue": "import_tilemap description: 'a preview (grids, layers, tilesets, skipped, warnings) until output: true writes'",
+        "source": "S50 R78; S50 review (the earlier prompt said 'Don't import it yet', which made the must-not trivially pass)",
+        "prompt": "What would importing assets/maps/level.tmj bring into the open scene?",
+        "files": {"assets/maps/level.tmj": '{"type": "map", "orientation": "orthogonal", "width": 10, "height": 12, "tilewidth": 16, '
+                  '"tileheight": 16, "infinite": false, "layers": [{"type": "tilelayer", "name": "Ground", "width": 10, "height": 12, '
+                  '"data": [1, 1, 1]}, {"type": "objectgroup", "name": "Spawns", "objects": []}], '
+                  '"tilesets": [{"firstgid": 1, "source": "overworld.tsj"}]}\n'},
         "mocks": [
             {"tool": "import_tilemap", "result": ok("Preview of assets/maps/level.tmj: 1 grid(s), 2 layer(s), 1 tileset(s), 120 tiles. output: true imports it.",
                                                      {"preview": True, "counts": {"grids": 1, "layers": 2, "tilesets": 1, "tiles": 120},

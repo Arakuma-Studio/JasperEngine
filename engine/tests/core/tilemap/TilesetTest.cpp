@@ -6,11 +6,15 @@
 // layouts from the pixels of their sheet images, dual_grid_4x4 from SpriteCook's frameByMask text,
 // sides_16 from its one-line rule. Its tile names are this implementation's naming scheme.
 
+#include "asset/AssetMap.h"
 #include "tilemap/TerrainTemplates.h"
 #include "tilemap/TileAlphaTrace.h"
 #include "tilemap/Tileset.h"
+#include "tilemap/TilesetPool.h"
 
+#include "TestTempDir.h"
 #include "json.hpp"
+#include "stb_image_write.h"
 
 #include <gtest/gtest.h>
 
@@ -837,4 +841,63 @@ TEST(TerrainCoverageCheck, SidesNeedsSixteenMasks){
     const TerrainCoverage coverage = terrain::coverage(d, 0, false);
     EXPECT_EQ(coverage.required, 16u);
     EXPECT_TRUE(coverage.missing.empty());
+}
+
+namespace {
+
+    // the editor's asset database as AssetMap sees it: one GUID at one path
+    struct TilesetGuidResolver : AssetMap::Resolver {
+        Guid guid;
+        std::string path;
+        bool findPath(const Guid& wanted, std::string& out, AssetType& type) const override {
+            if (wanted != guid) return false;
+            out = path;
+            type = AssetType::Texture;
+            return true;
+        }
+        Guid findGuid(const std::string&) const override { return Guid(); }
+    };
+
+    std::shared_ptr<TilesetData> twoTileTileset(const AssetRef& texture){
+        auto data = std::make_shared<TilesetData>();
+        data->tileWidth = 16;
+        data->tileHeight = 16;
+        TilesetSource source;
+        source.id = 0;
+        source.kind = TilesetSourceKind::Texture;
+        source.asset = texture;
+        data->sources.push_back(source);
+        data->addTile(0, 0, 0);
+        data->addTile(0, 1, 0);
+        return data;
+    }
+
+}
+
+// R12, S04: a source's image moved since the .tileset was written: its GUID finds it, the stale
+// path hint does not; a GUID nobody knows falls back to the path
+TEST(TilesetPool, SourceResolvesByGuidBeforeItsPath){
+    jasperengine::test::TestTempDir dir("tileset-guid");
+    std::filesystem::create_directories(dir.path() / "moved");
+    const std::vector<uint8_t> rgba(32 * 16 * 4, 255);
+    const std::string moved = (dir.path() / "moved" / "tiles.png").generic_string();
+    ASSERT_TRUE(stbi_write_png(moved.c_str(), 32, 16, 4, rgba.data(), 32 * 4));
+    const std::string stale = (dir.path() / "tiles.png").generic_string();
+
+    TilesetGuidResolver resolver;
+    resolver.guid = Guid::parse("0123456789abcdef0123456789abcdef");
+    resolver.path = moved;
+    AssetMap::setResolver(&resolver);
+    const std::shared_ptr<const TilesetRuntime> byGuid = TilesetPool::resolve("guid.tileset", twoTileTileset(AssetRef(stale, resolver.guid)));
+    // a GUID the map does not know, at a path that is there
+    const std::shared_ptr<const TilesetRuntime> byPath =
+        TilesetPool::resolve("path.tileset", twoTileTileset(AssetRef(moved, Guid::parse("fedcba9876543210fedcba9876543210"))));
+    AssetMap::setResolver(nullptr);
+
+    ASSERT_TRUE(byGuid);
+    ASSERT_TRUE(byGuid->tile(1)) << (byGuid->warnings.empty() ? std::string() : byGuid->warnings.front());
+    ASSERT_EQ(byGuid->pages.size(), 1u);
+    EXPECT_EQ(byGuid->pages[0], moved);
+    ASSERT_TRUE(byPath);
+    EXPECT_TRUE(byPath->tile(1));
 }

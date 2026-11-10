@@ -81,6 +81,18 @@ TEST(TextureTypeInference, SpritesFromTheirEntity){
     EXPECT_FALSE(inferenceHas(inferenceSlots("entity:8/MeshComponent.submeshes[0].material.baseColorTexture", context), TextureSlot::Sprite));
 }
 
+// S50: a .tileset's image imports as a sprite sheet does (no mips; point filtering in Pixel Art
+// Mode); another file's "Other" edge stays a colour texture
+TEST(TextureTypeInference, TilesetSourcesAreSprites){
+    TextureTypeInference::EdgeContext context;
+    context.referrerPath = [](const Guid&){ return std::string("assets/maps/overworld.tileset"); };
+    const std::vector<TextureSlot> tileset = inferenceSlots("sources[0]", context, DepEdgeKind::Other);
+    EXPECT_TRUE(inferenceHas(tileset, TextureSlot::Sprite));
+    EXPECT_FALSE(inferenceHas(tileset, TextureSlot::Color));
+    context.referrerPath = [](const Guid&){ return std::string("assets/fx/spark.particles"); };
+    EXPECT_FALSE(inferenceHas(inferenceSlots("renderer.texture", context, DepEdgeKind::Other), TextureSlot::Sprite));
+}
+
 TEST(TextureTypeInference, ShaderManifestTextures){
     TextureTypeInference::EdgeContext context;
     context.shaderTextureKind = [](const DepEdge&, const std::string& uniform, bool& cube){

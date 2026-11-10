@@ -442,6 +442,9 @@ namespace jasperengine::editor {
         // a .bitmapfont or .fnt cooked to <destination>.jfont (lossless); false (warned) when it
         // does not load, and it ships as it is
         bool cookBitmapFont(const fs::path& relPath, const fs::path& destination);
+        // S50: a .tileset written with each source's current path (its GUID resolved) and no GUIDs,
+        // so the game loads its images by path; false (it ships as it is) when it does not parse or write
+        bool writeResolvedTileset(const fs::path& source, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();

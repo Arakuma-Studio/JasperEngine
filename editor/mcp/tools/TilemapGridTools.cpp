@@ -11,6 +11,7 @@
 
 #include "McpTools.h"
 
+#include "Engine.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -39,6 +40,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -134,11 +136,17 @@ std::vector<Entity> gridLayers(SceneProject* sceneProject, Entity grid) {
     return layers;
 }
 
+// a Grid's Cell Size is in world units: a tile's pixels over the project's Pixels Per Unit, as
+// the runtime draws it (TilemapSystem) and the importers and the conversion store it
+double projectPixelsPerUnit() {
+    return static_cast<double>(std::max(Engine::getPixelsPerUnit(), 1));
+}
+
 TileGridSpec defaultSpecFor(const TilesetData* data) {
     TileGridSpec spec;
     if (data) {
-        spec.cellWidth = data->tileWidth;
-        spec.cellHeight = data->tileHeight;
+        spec.cellWidth = data->tileWidth / projectPixelsPerUnit();
+        spec.cellHeight = data->tileHeight / projectPixelsPerUnit();
     }
     return spec;
 }
@@ -286,8 +294,8 @@ ToolImage pngOf(const jasperengine::editor::pixelart::PixelImage& image) {
     return ToolImage{Base64::encode(reinterpret_cast<const unsigned char*>(png.data()), png.size()), "image/png"};
 }
 
-// R76's image: a CPU composite of a region (R83: same arguments, same bytes). The pixels per unit
-// follow the cell's size against the tile's, so a world-unit Grid lines up the same way
+// R76's image: a CPU composite of a region (R83: same arguments, same bytes), at the project's
+// Pixels Per Unit, so the image places tiles where the scene draws them
 bool compositeImage(const TileCells& cells, const TilesetRuntime* tileset, const TileGridSpec& spec, const CellRect& region, int scale,
                     double anchorX, double anchorY, bool dualGrid, ToolImage& out, Json& info, Problem& error) {
     if (!tileset || !tileset->data) {
@@ -300,7 +308,7 @@ bool compositeImage(const TileCells& cells, const TilesetRuntime* tileset, const
     params.grid = spec;
     params.region = region;
     params.scale = scale;
-    params.pixelsPerUnit = spec.cellWidth > 0.0 && tileset->data->tileWidth > 0 ? static_cast<double>(tileset->data->tileWidth) / spec.cellWidth : 1.0;
+    params.pixelsPerUnit = projectPixelsPerUnit();
     params.tileAnchorX = anchorX;
     params.tileAnchorY = anchorY;
     params.dualGrid = dualGrid;
@@ -356,6 +364,10 @@ struct GridEdit {
     std::shared_ptr<TilesetData> newTilesetData;
     std::string newTilesetPath;
     fs::path newTilesetAbsolute;
+
+    // the top-level tileset of a call on a Grid with no layer: what its first add_layer takes
+    std::shared_ptr<const TilesetRuntime> firstLayerTileset;
+    std::string firstLayerTilesetPath;
 
     explicit GridEdit(const CallPtr& c): call(c), args(c->args()), project(c->ctx().project()), sceneProject(nullptr), scene(nullptr) {}
 };
@@ -1037,9 +1049,12 @@ bool resolveTilesetArg(GridEdit& e, TilesetArg& out, Problem& error) {
     }
     if (!hasArg(args, "tileset")) {
         if (textureStored.empty()) return true;
-        // a texture alone slices by the Grid's cell size
+        // a texture alone slices by the Grid's cell size in pixels; a create without cell_size by
+        // the default tile size
         out.given = true;
-        Json slice = {{"tile_size", Json::array({e.spec.cellWidth, e.spec.cellHeight})}};
+        const bool cellKnown = !e.createGrid || hasArg(args, "cell_size");
+        const double ppu = cellKnown ? projectPixelsPerUnit() : 1.0;
+        Json slice = {{"tile_size", Json::array({std::lround(e.spec.cellWidth * ppu), std::lround(e.spec.cellHeight * ppu)})}};
         return sliceTileset(e, slice, textureStored, out, error);
     }
     out.given = true;
@@ -1082,7 +1097,7 @@ bool commitEdit(GridEdit& e, const TilesetArg& tilesetArg, Problem& error) {
     if (tilesetArg.given && tilesetArg.isSlice && tilesetArg.data) {
         Project* project = e.project;
         auto writeCommand = std::make_unique<WriteFilesCmd>(
-            std::vector<WriteFilesCmd::Item>{tm::tilesetFileItem(tilesetArg.absolute, *tilesetArg.data)},
+            std::vector<WriteFilesCmd::Item>{tm::tilesetFileItem(project, tilesetArg.absolute, *tilesetArg.data)},
             [project](const std::vector<fs::path>& changed) {
                 ProjectFileWrites::filesWritten(project, changed);
                 for (const fs::path& path : changed) TilesetPool::invalidate(path.generic_string());
@@ -1175,8 +1190,9 @@ bool commitEdit(GridEdit& e, const TilesetArg& tilesetArg, Problem& error) {
     return true;
 }
 
-// the Grid + layer picture of a Grid or layer GameObject; false after failing
-bool resolveGridTarget(GridEdit& e, Entity entity, Problem& error) {
+// the Grid + layer picture of a Grid or layer GameObject; false after failing. `allowNoLayer`: a
+// Grid without layers is kept (edit_tilemap's add_layer op gives it one)
+bool resolveGridTarget(GridEdit& e, Entity entity, Problem& error, bool allowNoLayer = false) {
     Scene* scene = e.scene;
     Entity grid = gridAbove(scene, entity);
     e.gridEntity = grid;
@@ -1186,8 +1202,10 @@ bool resolveGridTarget(GridEdit& e, Entity entity, Problem& error) {
         e.linked = gridComponent.linked;
     }
     std::vector<Entity> layers = grid != NULL_ENTITY ? gridLayers(e.sceneProject, grid) : std::vector<Entity>{entity};
-    if (layers.empty()) {
-        error = makeProblem("unknown_layer", "entity", "\"" + scene->getEntityName(entity) + "\" has no Tilemap Layer", "add one with the add_layer op");
+    if (layers.empty() && !allowNoLayer) {
+        error = makeProblem("unknown_layer", "entity", "\"" + scene->getEntityName(entity) + "\" has no Tilemap Layer",
+                            "add one: edit_tilemap ops [{\"op\": \"add_layer\"}]");
+        return false;
     }
     for (Entity layer : layers) {
         const TilemapLayerComponent& component = scene->getComponent<TilemapLayerComponent>(layer);
@@ -1201,7 +1219,7 @@ bool resolveGridTarget(GridEdit& e, Entity entity, Problem& error) {
         e.slots.push_back(std::move(slot));
     }
     e.specFromGrid = grid != NULL_ENTITY;
-    if (grid == NULL_ENTITY) {
+    if (grid == NULL_ENTITY && !e.slots.empty()) {
         const std::shared_ptr<const TilesetRuntime>& first = e.slots.front().tileset;
         e.spec = defaultSpecFor(first ? first->data.get() : nullptr);
     }
@@ -1253,6 +1271,11 @@ void addLayerSlot(GridEdit& e, const Json& op) {
         slot.tilesetPath = chosen.tilesetPath;
         slot.assignTileset = !slot.tilesetPath.empty();
         slot.tileset = chosen.tileset;
+    } else if (e.firstLayerTileset) {
+        // a Grid with no layer yet: the call's top-level tileset
+        slot.tilesetPath = e.firstLayerTilesetPath;
+        slot.assignTileset = true;
+        slot.tileset = e.firstLayerTileset;
     }
     slot.dualGrid = flagArg(op, "dual_grid", slot.tileset && slot.tileset->data && !slot.tileset->data->terrainSets.empty() &&
                                                  slot.tileset->data->terrainSets[0].mode == TerrainMode::DualGrid);
@@ -1294,7 +1317,8 @@ Json editResult(GridEdit& e, CellRect touched, const Json& ascii, bool created) 
     }
     Json grid = e.gridEntity != NULL_ENTITY ? McpRefs::entityJson(e.sceneProject, e.gridEntity) : Json{{"id", nullptr}, {"name", "Grid"}};
     for (auto it = ascii.begin(); it != ascii.end(); ++it) grid[it.key()] = it.value();
-    Json result = {{"grid", grid},
+    Json result = {{"kind", "grid"},
+                  {"grid", grid},
                   {"tilemap", layerJson},
                   {"layer", layerJson},
                   {"created", created},
@@ -1349,6 +1373,13 @@ bool editTilemapGrid(const CallPtr& call) {
         entity = McpRefs::resolveEntity(sceneProject, args["entity"], refError);
         if (entity == NULL_ENTITY) return false;
         const bool isGrid = scene->findComponent<GridComponent>(entity) || scene->findComponent<TilemapLayerComponent>(entity);
+        if ((isGrid || (convertFirst && scene->findComponent<TilemapComponent>(entity))) && legacyOnly) {
+            // a Grid's tiles are its .tileset's: these fields would be dropped without a word
+            const char* field = hasArg(args, "rects") ? "rects" : hasArg(args, "replace_rects") ? "replace_rects" : "origin";
+            failTyped(call, makeProblem("invalid_value", field, std::string(field) + " is a Free Tilemap field; a Grid's tiles come from its .tileset",
+                                        "drop it: add tiles with edit_tileset (tool_groups: tilemaps), or pass tileset as a slice object"));
+            return true;
+        }
         if (!isGrid) {
             if (!scene->findComponent<TilemapComponent>(entity)) return false;
             if (!convertFirst) {
@@ -1378,9 +1409,19 @@ bool editTilemapGrid(const CallPtr& call) {
     Problem error;
     const bool wantImage = flagArg(args, "image") || e.preview;
 
-    // ---- a legacy Free Tilemap becomes a Grid and a layer first (S50 R72)
+    // ---- a legacy Free Tilemap becomes a Grid and a layer first (S50 R72). The conversion is
+    // its own step; until the ops commit, any failure undoes it too, so the call stays all or nothing
     bool converted = false;
     std::vector<std::string> convertWarnings;
+    struct ConvertRollback {
+        CommandHistory* history = nullptr;
+        size_t mark = 0;
+        bool armed = false;
+        ~ConvertRollback() {
+            if (!armed) return;
+            while (history->position() > mark && history->canUndo() && history->undo()) {}
+        }
+    } convertRollback;
     if (hasArg(args, "entity") && convertFirst && !scene->findComponent<GridComponent>(entity) && !scene->findComponent<TilemapLayerComponent>(entity)) {
         if (e.preview) {
             const TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
@@ -1393,11 +1434,14 @@ bool editTilemapGrid(const CallPtr& call) {
                      Json{{"preview", true}, {"converted", false}, {"cells", check.cells.size()}, {"warnings", check.warnings}});
             return true;
         }
+        convertRollback.history = CommandHandle::get(sceneProject->id);
+        convertRollback.mark = convertRollback.history->mark();
         const tm::ConvertResult converting = tm::convert(project, sceneProject->id, entity);
         if (!converting.ok) {
             failTyped(call, converting.problem);
             return true;
         }
+        convertRollback.armed = true;
         converted = true;
         convertWarnings = converting.warnings;
     }
@@ -1420,7 +1464,7 @@ bool editTilemapGrid(const CallPtr& call) {
             }
         }
     } else {
-        if (!resolveGridTarget(e, entity, error)) {
+        if (!resolveGridTarget(e, entity, error, true)) {
             failTyped(call, error);
             return true;
         }
@@ -1459,8 +1503,8 @@ bool editTilemapGrid(const CallPtr& call) {
     if (tilesetArg.given) {
         tilesetRuntime = tilesetArg.isSlice ? TilesetPool::resolve(tilesetArg.path, tilesetArg.data) : TilesetPool::get(tilesetArg.path);
         if (createNew && tilesetRuntime && tilesetRuntime->data && !hasArg(args, "cell_size")) {
-            e.spec.cellWidth = tilesetRuntime->data->tileWidth;
-            e.spec.cellHeight = tilesetRuntime->data->tileHeight;
+            e.spec.cellWidth = tilesetRuntime->data->tileWidth / projectPixelsPerUnit();
+            e.spec.cellHeight = tilesetRuntime->data->tileHeight / projectPixelsPerUnit();
         }
     }
     if (createNew) {
@@ -1485,15 +1529,18 @@ bool editTilemapGrid(const CallPtr& call) {
         }
     }
     if (tilesetRuntime && !createNew) {
-        LayerSlot& slot = e.slots[static_cast<size_t>(e.chosen)];
-        slot.tileset = tilesetRuntime;
-        slot.tilesetPath = tilesetArg.path;
-        slot.assignTileset = true;
+        if (e.slots.empty()) {
+            e.firstLayerTileset = tilesetRuntime;
+            e.firstLayerTilesetPath = tilesetArg.path;
+        } else {
+            LayerSlot& slot = e.slots[static_cast<size_t>(e.chosen)];
+            slot.tileset = tilesetRuntime;
+            slot.tilesetPath = tilesetArg.path;
+            slot.assignTileset = true;
+        }
     }
-    if (e.slots.empty()) {
-        failTyped(call, makeProblem("unknown_layer", "entity", "no Tilemap Layer to edit", "add one with the add_layer op"));
-        return true;
-    }
+    const std::string targetName = entity != NULL_ENTITY ? "\"" + scene->getEntityName(entity) + "\"" : std::string("the Grid");
+    const Problem noLayer = makeProblem("unknown_layer", "entity", targetName + " has no Tilemap Layer to edit", "add one first: ops [{\"op\": \"add_layer\"}, ...]");
 
     // ---- run the ops on private copies; any failure just stops here, nothing was written
     for (size_t i = 0; i < ops.size(); i++) {
@@ -1512,6 +1559,10 @@ bool editTilemapGrid(const CallPtr& call) {
             failTyped(call, makeProblem("invalid_value", where, "convert runs alone on a Free Tilemap, as the first op", "move it to the first op, on the legacy GameObject"));
             return true;
         }
+        if (e.slots.empty()) {
+            failTyped(call, noLayer);
+            return true;
+        }
         int slotIndex = e.chosen;
         if (hasArg(op, "layer") && !pickSlot(e, op["layer"], slotIndex, error, where + ".layer")) {
             failTyped(call, error);
@@ -1523,6 +1574,10 @@ bool editTilemapGrid(const CallPtr& call) {
             failTyped(call, error, where);
             return true;
         }
+    }
+    if (e.slots.empty()) {
+        failTyped(call, noLayer);
+        return true;
     }
     for (LayerSlot& slot : e.slots) ensureOpened(e, slot);
 
@@ -1537,6 +1592,10 @@ bool editTilemapGrid(const CallPtr& call) {
         if (!commitEdit(e, tilesetArg, error)) {
             failTyped(call, error);
             return true;
+        }
+        if (converted) {
+            convertRollback.armed = false;
+            convertRollback.history->groupSince(convertRollback.mark, "Convert to Grid Tilemap");
         }
     }
     for (const std::string& warning : convertWarnings) e.warnings.push_back(warning);

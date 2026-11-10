@@ -69,6 +69,7 @@ namespace jasperengine::editor {
             std::function<std::set<std::string>(const Guid& referrer, uint64_t entity)> componentsOf;
             std::function<TextureSlot(const DepEdge& edge, const std::string& uniform, bool& cube)> shaderTextureKind;
             std::function<std::vector<TextureSlot>(const DepEdge& edge)> modelSlots;   // glTF image uses
+            std::function<std::string(const Guid& referrer)> referrerPath;          // project-relative
         };
         static std::vector<TextureSlot> classify(const DepEdge& edge, const EdgeContext& context);
 

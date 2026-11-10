@@ -151,9 +151,12 @@ namespace jasperengine::editor::tilemap {
 
         const int64_t width = (int64_t)rightEdge - leftEdge, height = (int64_t)topEdge - bottomEdge;
         if (width <= 0 || height <= 0) return true;
-        if (width * params.scale > PixelImage::kMaxSide || height * params.scale > PixelImage::kMaxSide) {
-            error = compositeProblem("region_too_large", "the image would be " + std::to_string(width * params.scale) + " x " + std::to_string(height * params.scale) + " pixels",
-                                     "ask for a smaller region or scale", "region");
+        // by area, not only per side: a 1,000,000-cell region of 16-pixel tiles is a 256-megapixel image
+        const int64_t scaledWidth = width * params.scale, scaledHeight = height * params.scale;
+        if (scaledWidth > PixelImage::kMaxSide || scaledHeight > PixelImage::kMaxSide || scaledWidth * scaledHeight > MAX_COMPOSITE_PIXELS) {
+            error = compositeProblem("region_too_large", "the image would be " + std::to_string(scaledWidth) + " x " + std::to_string(scaledHeight) +
+                                     " pixels, past the limit of " + std::to_string(MAX_COMPOSITE_PIXELS) + " pixels",
+                                     "pass a smaller region, or a lower scale", "region");
             return false;
         }
         PixelImage image((int)width, (int)height);

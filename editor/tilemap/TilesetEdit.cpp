@@ -517,8 +517,29 @@ namespace jasperengine::editor::tilemap {
         return path.generic_string();
     }
 
-    WriteFilesCmd::Item tilesetFileItem(const std::filesystem::path& absolute, const TilesetData& data) {
-        return WriteFilesCmd::Item{absolute, tileset::write(data)};
+    void stampSourceGuids(Project* project, TilesetData& data) {
+        if (!project) return;
+        const AssetDatabase& database = project->getAssetDatabase();
+        bool refreshed = false;
+        for (TilesetSource& source : data.sources) {
+            if (source.asset.path.empty() || !source.asset.guid.isNull()) continue;
+            const std::string projectRelative = project->assetHintToProjectPath(source.asset.path, AssetPathBase::Assets);
+            AssetDatabase::Resolution found = database.lookupPath(projectRelative);
+            std::error_code ec;
+            if (!found.found() && !refreshed && std::filesystem::exists(project->getProjectPath() / projectRelative, ec)) {
+                // an image written outside the editor a moment ago: the database looks at the disk now
+                project->refreshAssetDatabase(true);
+                refreshed = true;
+                found = database.lookupPath(projectRelative);
+            }
+            if (found.found()) source.asset.guid = found.guid;
+        }
+    }
+
+    WriteFilesCmd::Item tilesetFileItem(Project* project, const std::filesystem::path& absolute, const TilesetData& data) {
+        TilesetData stamped = data;
+        stampSourceGuids(project, stamped);
+        return WriteFilesCmd::Item{absolute, tileset::write(stamped)};
     }
 
     bool writeTilesetFile(Project* project, const std::filesystem::path& absolute, const TilesetData& data, std::string& error, const std::string& stepName) {
@@ -526,7 +547,7 @@ namespace jasperengine::editor::tilemap {
             ProjectFileWrites::filesWritten(project, changed);
             for (const std::filesystem::path& path : changed) TilesetPool::invalidate(path.generic_string());
         };
-        return ProjectFileWrites::writeUndoable(project, {tilesetFileItem(absolute, data)}, error, afterChange, nullptr, {}, false, stepName);
+        return ProjectFileWrites::writeUndoable(project, {tilesetFileItem(project, absolute, data)}, error, afterChange, nullptr, {}, false, stepName);
     }
 
 }

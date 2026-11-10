@@ -884,3 +884,9 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 - **R75 `create`.** `create` makes a Grid + Tilemap Layer, except with `rects`, `replace_rects` or `origin`, which keep
   making a Free Tilemap (arbitrary pixel rects have no `.tileset` source). `create_entity` `tilemap` is a Grid + layer;
   the Free Tilemap is `free_tilemap`. The result's `grid` holds the Grid's GameObject fields and the ASCII view together.
+  The result's `kind` (`grid`, `free_tilemap`) says which it made, a Free Tilemap create's `next` says why, and those
+  fields on a Grid are refused (`invalid_value`).
+- **§6.3 (the layer's tileset).** A layer stores its tileset as the `tileset` path and a sibling `tilesetGuid` key, the
+  shape every other asset field of a scene has, not a `{guid, path}` map. A `.tileset`'s sources resolve by GUID, then by
+  their path hint, in the editor; an export writes each `.tileset` with its sources' current paths and no GUIDs, so a game
+  loads them by path. A `.tileset`'s texture imports as a sprite sheet does (no mips; point filtering in Pixel Art Mode).

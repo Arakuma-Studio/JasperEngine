@@ -298,9 +298,11 @@ namespace jasperengine::editor::tilemap {
                 addOffender((int)i, tile, "its size is not the map's tile size");
                 continue;
             }
+            // a stored position may be negative (the legacy mesh build clamps it when it draws, the
+            // data keeps it): a multiple of the tile size is a cell like any other (C++ `%` keeps
+            // the sign, so a misaligned negative position leaves a remainder too)
             int px = 0, py = 0;
-            if (!convertNearInt(tile.position.x, px) || !convertNearInt(tile.position.y, py) || px < 0 || py < 0 ||
-                px % tileW != 0 || py % tileH != 0) {
+            if (!convertNearInt(tile.position.x, px) || !convertNearInt(tile.position.y, py) || px % tileW != 0 || py % tileH != 0) {
                 addOffender((int)i, tile, "its position is not on the tile grid");
                 continue;
             }
@@ -463,7 +465,7 @@ namespace jasperengine::editor::tilemap {
         };
 
         auto writeCommand = std::make_unique<WriteFilesCmd>(
-            std::vector<WriteFilesCmd::Item>{tilesetFileItem(absoluteTileset, data)},
+            std::vector<WriteFilesCmd::Item>{tilesetFileItem(project, absoluteTileset, data)},
             [project](const std::vector<fs::path>& changed) {
                 ProjectFileWrites::filesWritten(project, changed);
                 for (const fs::path& path : changed) TilesetPool::invalidate(path.generic_string());

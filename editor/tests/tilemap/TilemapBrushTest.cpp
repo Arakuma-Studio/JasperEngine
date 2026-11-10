@@ -14,11 +14,15 @@
 #include "support/EditorTestSupport.h"
 #include "support/TestTempDir.h"
 
+#include "json.hpp"
+
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -465,6 +469,92 @@ TEST(TilemapBrush, SameOperationGivesIdenticalCellsTwice) {
         EXPECT_EQ(first.second[i].cell, second.second[i].cell) << "patches agree in order too: " << i;
         EXPECT_EQ(first.second[i].newValue, second.second[i].newValue) << i;
     }
+}
+
+namespace {
+
+    using BrushJson = nlohmann::json;
+
+    uint32_t identityFlips(const BrushJson& value) {
+        uint32_t flags = 0;
+        if (!value.is_string()) return flags;
+        for (char c : value.get<std::string>()) flags |= c == 'x' ? TILE_FLIP_X : c == 'y' ? TILE_FLIP_Y : c == 't' ? TILE_TRANSPOSE : 0u;
+        return flags;
+    }
+
+    CellCoord identityCell(const BrushJson& value) {
+        return CellCoord{value[0].get<int32_t>(), value[1].get<int32_t>()};
+    }
+
+    // one edit_tilemap op through the brush, as TilemapGridTools.cpp's runOp calls it
+    bool identityOp(const BrushTarget& target, const BrushJson& op, BrushEdit& edit) {
+        const std::string kind = op["op"].get<std::string>();
+        const PaintOptions options{};
+        const auto box = [&] { return CellRect::of(identityCell(op["from"]), identityCell(op.value("to", op["from"]))); };
+        if (kind == "fill") return boxFill(target, BrushStamp::single(op["tile"].get<int32_t>(), identityFlips(op.value("flip", BrushJson()))), box(), options, edit);
+        if (kind == "line") {
+            return paintLine(target, BrushStamp::single(op["tile"].get<int32_t>(), identityFlips(op.value("flip", BrushJson()))), identityCell(op["from"]),
+                             identityCell(op["to"]), options, edit);
+        }
+        if (kind == "flood") {
+            return floodFill(target, BrushStamp::single(op["tile"].get<int32_t>(), identityFlips(op.value("flip", BrushJson()))), identityCell(op["at"]),
+                             FloodScope::Contiguous, options, edit);
+        }
+        if (kind == "erase") return eraseBox(target, box(), edit);
+        if (kind == "set") {
+            for (const BrushJson& item : op["cells"]) {
+                const CellCoord cell = identityCell(item);
+                const bool ok = item[2].is_null() ? eraseCell(target, cell, edit)
+                                                  : paintStamp(target, BrushStamp::single(item[2].get<int32_t>(), item.size() > 3 ? identityFlips(item[3]) : 0u),
+                                                               cell, options, edit);
+                if (!ok) return false;
+            }
+            return true;
+        }
+        if (kind == "random") {
+            std::vector<RandomEntry> entries;
+            for (const BrushJson& item : op["tiles"]) {
+                RandomEntry entry;
+                entry.tile = (item.is_object() ? item["tile"] : item).get<int32_t>();
+                if (item.is_object() && item.contains("weight")) entry.weight = item["weight"].get<float>();
+                entries.push_back(entry);
+            }
+            std::vector<CellCoord> cells;
+            PixelProblem error;
+            if (!boxCells(box(), cells, error)) return false;
+            return paintRandom(target, entries, op.value("seed", 0u), cells, options, edit);
+        }
+        ADD_FAILURE() << "the identity golden has an op this test does not replay: " << kind;
+        return false;
+    }
+
+}
+
+// AC6: the ops edit_tilemap takes, through the brush, give the golden cells on every layout; the
+// MCP test (test_tilemap_grid.py::test_brush_identity) sends the same ops through edit_tilemap and
+// compares with the same golden, so the two paths give identical cells
+TEST(TilemapBrush, McpOpsGiveTheGoldenCells) {
+    std::ifstream file(fs::path(JASPER_TEST_REPO_DIR) / "editor/tests/fixtures/tilemaps/brush_identity.json");
+    ASSERT_TRUE(file.good());
+    const BrushJson golden = BrushJson::parse(file);
+    TilesetData tileset;
+    for (int i = 0; i < 16; i++) tileset.addTile(0, i % 4, i / 4);
+    const std::pair<const char*, TileGridLayout> layouts[] = {{"rectangle", TileGridLayout::Rectangle}, {"isometric", TileGridLayout::Isometric},
+                                                              {"isometric_staggered", TileGridLayout::IsometricStaggered}, {"hexagon", TileGridLayout::Hexagon}};
+    BrushJson actual = BrushJson::object();
+    for (const auto& [name, layout] : layouts) {
+        TileCells cells;
+        BrushTarget target{cells, &tileset, layoutSpec(layout)};
+        BrushEdit edit;
+        for (const BrushJson& op : golden["ops"]) ASSERT_TRUE(identityOp(target, op, edit)) << name << " " << op.dump() << ": " << edit.error.message;
+        std::vector<std::array<int64_t, 4>> list;
+        cells.forEachUsed([&](CellCoord cell, uint32_t value, uint8_t) {
+            if (!cellValueEmpty(value)) list.push_back({cell.x, cell.y, cellValueTile(value), cellValueFlags(value) & (TILE_FLIP_X | TILE_FLIP_Y | TILE_TRANSPOSE)});
+        });
+        std::sort(list.begin(), list.end());
+        actual[name] = list;
+    }
+    EXPECT_EQ(actual, golden["cells"]) << "the brush's cells (paste as \"cells\" after checking them): " << actual.dump();
 }
 
 namespace {

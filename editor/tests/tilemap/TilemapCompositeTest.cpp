@@ -251,3 +251,24 @@ TEST(TilemapComposite, ScaleOutsideTheRangeIsTyped) {
     EXPECT_FALSE(compositeLayer(params, fixture.pixels, out, error));
     EXPECT_EQ(error.field, "scale");
 }
+
+// R76: the image is capped by its area, not only per side: 900 x 900 cells of 5-pixel tiles are
+// 4,500 pixels a side (under the 65,535 per side) but 20 megapixels; the error names the fix
+TEST(TilemapComposite, ImagePastThePixelLimitIsTyped) {
+    Fixture fixture({"AAAAA", "AAAAA", "AAAAA", "AAAAA", "AAAAA"}, 5, 5, 1);
+    TileCells cells;
+    cells.setTile(CellCoord{0, 0}, 0);
+    CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 5, 5);
+    params.region = CellRect::of(CellCoord{0, 0}, CellCoord{899, 899});
+    CompositeResult out;
+    PixelProblem error;
+    EXPECT_FALSE(compositeLayer(params, fixture.pixels, out, error));
+    EXPECT_EQ(error.kind, "region_too_large");
+    EXPECT_NE(error.fix.find("region"), std::string::npos) << error.fix;
+    EXPECT_NE(error.fix.find("scale"), std::string::npos) << error.fix;
+    EXPECT_TRUE(out.image.empty());
+
+    // 819 x 819 cells (4,095 pixels a side) are under the limit and draw
+    params.region = CellRect::of(CellCoord{0, 0}, CellCoord{818, 818});
+    EXPECT_TRUE(compositeLayer(params, fixture.pixels, out, error)) << error.message;
+}

@@ -21,6 +21,7 @@
 #include "tilemap/TileCells.h"
 #include "tilemap/TilemapCellsCmd.h"
 #include "tilemap/Tileset.h"
+#include "tilemap/TilesetEdit.h"
 #include "tilemap/TilesetPool.h"
 #include "tilemap/import/LdtkImporter.h"
 #include "tilemap/import/TiledImporter.h"
@@ -114,8 +115,9 @@ namespace jasperengine::editor::tilemapimport {
             return out;
         }
 
-        // The tileset document, its images assets-relative
-        std::string tilesetDocument(const ImportTileset& tileset, const fs::path& assets, const fs::path& mapDir, const ImportPlan& plan, std::vector<std::string>& warnings) {
+        // The tileset document, its images assets-relative and by GUID (they may move later)
+        std::string tilesetDocument(Project* project, const ImportTileset& tileset, const fs::path& assets, const fs::path& mapDir, const ImportPlan& plan,
+                                    std::vector<std::string>& warnings) {
             TilesetData data = tileset.data;
             for (TilesetSource& source : data.sources) {
                 // an Aseprite plan's source is an assets-relative path already
@@ -127,6 +129,7 @@ namespace jasperengine::editor::tilemapimport {
             std::vector<TilesetProblem> problems;
             tileset::validate(data, problems);
             for (const TilesetProblem& problem : problems) warnings.push_back("Tileset '" + data.name + "': " + problem.field + ": " + problem.message);
+            tilemap::stampSourceGuids(project, data);
             return tileset::write(data);
         }
 
@@ -307,7 +310,7 @@ namespace jasperengine::editor::tilemapimport {
         std::vector<TilesetFile> files = tilesetFiles(plan, target, {});
         std::vector<WriteFilesCmd::Item> items;
         for (size_t i = 0; i < files.size(); i++) {
-            items.push_back({files[i].absolute, tilesetDocument(plan.tilesets[i], assets, mapDir, plan, result.warnings)});
+            items.push_back({files[i].absolute, tilesetDocument(project, plan.tilesets[i], assets, mapDir, plan, result.warnings)});
             result.tilesetFiles.push_back(files[i].assetPath);
         }
 
@@ -426,7 +429,7 @@ namespace jasperengine::editor::tilemapimport {
         std::vector<WriteFilesCmd::Item> items;
         for (int index : usedTilesets) {
             const size_t i = static_cast<size_t>(index);
-            std::string document = tilesetDocument(plan.tilesets[i], assets, mapFile.parent_path(), plan, result.warnings);
+            std::string document = tilesetDocument(project, plan.tilesets[i], assets, mapFile.parent_path(), plan, result.warnings);
             std::string existing;
             if (!readTextFile(files[i].absolute, existing) || existing != document) items.push_back({files[i].absolute, std::move(document)});
             result.tilesetFiles.push_back(files[i].assetPath);

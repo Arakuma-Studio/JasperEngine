@@ -8,9 +8,10 @@ the same operation gives the same cells as the brush rules.
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pngdiff
-from harness import Editor
+from harness import REPO, Editor
 
 CI = True
 EDITOR = {"create": True, "name": "TilemapGrid"}
@@ -353,3 +354,117 @@ async def test_check_pixel_art_lists_a_bilinear_tile_page(ed: Editor):
     fixed = await ed.call("check_pixel_art", scope, timeout=120)
     rule = next(r for r in fixed["rules"] if r["id"] == "filtering")
     ed.check_eq(rule["status"], "PASS", f"nearest passes: {fixed['findings']}")
+
+
+async def test_cell_size_is_in_world_units(ed: Editor):
+    """Units (spec Deviations): a Grid's Cell Size is the tile's pixels over the project's Pixels Per
+    Unit, on create and for a layer without a Grid; the image places tiles where the scene does"""
+    sid = await scene(ed, "Units")
+    await ed.call("set_project_settings", values={"graphics.pixels_per_unit": 16})
+    try:
+        made = await ed.call("edit_tilemap", scene=sid, create={"name": "Units"}, tileset=TILESET, ops=[{"op": "set", "cells": [[0, 0, 0], [1, 0, 1]]}])
+        grid, layer = made["grid"]["id"], made["tilemap"]["id"]
+        read = await ed.call("get_tilemap", scene=sid, entity=grid)
+        ed.check_eq(read["cell_size"], [1, 1], "16-pixel tiles at 16 pixels per unit: one world unit a cell")
+        stored = (await ed.call("get_entity", scene=sid, entity=grid, components=["grid"]))["components"]["grid"]
+        ed.check_eq(stored["cellSize"], [1, 1], f"the Grid's Cell Size: {stored}")
+        image = await ed.call_raw("get_tilemap", {"scene": sid, "entity": layer, "image": True}, timeout=60)
+        ed.check_eq(pngdiff.decode(image.images[0][0])[:2], (32, 16), "two cells of 16 pixels")
+
+        # cells 2 units apart: 32 pixels at 16 pixels per unit, so the two tiles have a gap
+        await ed.call("set_properties", scene=sid, entity=grid, values={"grid": {"cellSize": [2, 1]}})
+        spaced = await ed.call_raw("get_tilemap", {"scene": sid, "entity": layer, "image": True}, timeout=60)
+        ed.check_eq(pngdiff.decode(spaced.images[0][0])[:2], (64, 16), "the image follows the scene's spacing")
+
+        # a layer with no Grid above it takes its tileset's tile size, in world units
+        await ed.call("remove_component", scene=sid, entity=grid, component="grid")
+        alone = await ed.call("get_tilemap", scene=sid, entity=layer)
+        ed.check_eq(alone["cell_size"], [1, 1], "a layer without a Grid")
+    finally:
+        await ed.call("set_project_settings", values={"graphics.pixels_per_unit": 1})
+
+
+async def test_convert_then_failing_op_rolls_back(ed: Editor):
+    """R75: a convert followed by a failing op leaves the Free Tilemap as it was; a convert followed by
+    ops that succeed is one undo step"""
+    sid = await scene(ed, "ConvertRollback")
+    write_sheet(ed, "assets/art/legacy.png", 16, 2, 1)
+    legacy = await ed.call("edit_tilemap", scene=sid, create={"name": "Free"}, texture="assets/art/legacy.png",
+                           rects=[{"name": "a", "rect": [0, 0, 16, 16]}, {"name": "b", "rect": [16, 0, 16, 16]}], cell_size=[16, 16],
+                           ops=[{"op": "set", "cells": [[0, 0, "a"], [1, 0, "b"]]}])
+    entity = legacy["tilemap"]["id"]
+    undo_before = await undo_count(ed, sid)
+    error = await errors_of(ed, "edit_tilemap", {"scene": sid, "entity": entity, "ops": [{"op": "convert"}, {"op": "fill", "tile": "nope", "from": [0, 0]}]})
+    ed.check_eq(error["kind"], "unknown_tile", f"the failing op's error: {error}")
+    after = await ed.call("get_tilemap", scene=sid, entity=entity)
+    ed.check("layers" not in after, f"still a Free Tilemap: {sorted(after)}")
+    ed.check_eq(await undo_count(ed, sid), undo_before, "no undo entry left")
+    ed.check(not (ed.project / "assets/art/legacy.tileset").exists(), "the conversion's tileset file is gone with it")
+
+    done = await ed.call("edit_tilemap", scene=sid, entity=entity, ops=[{"op": "convert"}, {"op": "set", "cells": [[2, 0, 0]]}])
+    ed.check(done["converted"] and done["kind"] == "grid", f"converted: {done.get('kind')}")
+    ed.check_eq(await undo_count(ed, sid), undo_before + 1, "the convert and the ops are one undo step")
+    await ed.call("undo", scene=sid)
+    ed.check("layers" not in await ed.call("get_tilemap", scene=sid, entity=entity), "one undo brings the Free Tilemap back")
+
+
+async def test_free_tilemap_fields_say_what_they_make(ed: Editor):
+    """R75: rects/origin make a create a Free Tilemap (kind and next say so); on a Grid they are refused"""
+    sid = await scene(ed, "Kinds")
+    write_sheet(ed, "assets/art/kinds.png", 16, 2, 1)
+    free = await ed.call("edit_tilemap", scene=sid, create={"name": "Free"}, texture="assets/art/kinds.png",
+                         rects=[{"name": "a", "rect": [0, 0, 16, 16]}], ops=[{"op": "set", "cells": [[0, 0, "a"]]}])
+    ed.check_eq(free["kind"], "free_tilemap", "rects made a Free Tilemap")
+    ed.check("Free Tilemap" in free.get("next", ""), f"next says so: {free.get('next')}")
+    grid = await ed.call("edit_tilemap", scene=sid, create={"name": "Grid"}, tileset=TILESET, ops=[{"op": "set", "cells": [[0, 0, 0]]}])
+    ed.check_eq(grid["kind"], "grid", "a create without them is a Grid")
+    for field, value in (("rects", [{"name": "x", "rect": [0, 0, 16, 16]}]), ("origin", [0, 0]), ("replace_rects", True)):
+        error = await errors_of(ed, "edit_tilemap", {"scene": sid, "entity": grid["tilemap"]["id"], field: value, "ops": [{"op": "set", "cells": [[1, 0, 0]]}]})
+        ed.check_eq((error["kind"], error.get("field")), ("invalid_value", field), f"{field} on a Grid is refused: {error}")
+        ed.check("edit_tileset" in error["fix"], f"the fix names the route: {error['fix']}")
+    tiles = await ed.call("get_tilemap", scene=sid, entity=grid["tilemap"]["id"], include_tiles=True)
+    ed.check_eq(tiles["cells"], [[0, 0, 0, 0]], "the refused calls changed nothing")
+
+
+async def test_grid_without_layers_takes_add_layer(ed: Editor):
+    """A Grid whose layers were deleted: the error's add_layer fix works, and the call's tileset goes
+    to the new layer"""
+    sid = await scene(ed, "Empty")
+    made = await ed.call("edit_tilemap", scene=sid, create={"name": "Bare"}, tileset=TILESET, ops=[{"op": "set", "cells": [[0, 0, 0]]}])
+    grid = made["grid"]["id"]
+    await ed.call("delete_entities", scene=sid, entity=made["tilemap"]["id"])
+    error = await errors_of(ed, "get_tilemap", {"scene": sid, "entity": grid})
+    ed.check(error["kind"] == "unknown_layer" and "add_layer" in error["fix"], f"get_tilemap names the fix: {error}")
+    error = await errors_of(ed, "edit_tilemap", {"scene": sid, "entity": grid, "ops": [{"op": "set", "cells": [[0, 0, 0]]}]})
+    ed.check(error["kind"] == "unknown_layer" and "add_layer" in error["fix"], f"edit_tilemap names the fix: {error}")
+    added = await ed.call("edit_tilemap", scene=sid, entity=grid, tileset=TILESET,
+                          ops=[{"op": "add_layer", "name": "Ground"}, {"op": "set", "cells": [[1, 1, 2]]}])
+    ed.check_eq(added["layer"]["name"], "Ground", "the new layer")
+    read = await ed.call("get_tilemap", scene=sid, entity=grid, include_tiles=True)
+    ed.check_eq([layer["name"] for layer in read["layers"]], ["Ground"], "the Grid has its layer")
+    ed.check_eq(read["layers"][0]["tileset"], TILESET, "with the call's tileset")
+    ed.check_eq(read["cells"], [[1, 1, 2, 0]], "and the op's cell")
+
+
+async def test_image_past_the_pixel_limit_names_the_fix(ed: Editor):
+    """R76: the composite is capped by its pixels (a region under the cell limit can still be a huge image)"""
+    sid = await scene(ed, "Huge")
+    made = await ed.call("edit_tilemap", scene=sid, create={"name": "Huge"}, tileset=TILESET, ops=[{"op": "set", "cells": [[0, 0, 0]]}])
+    error = await errors_of(ed, "get_tilemap", {"scene": sid, "entity": made["tilemap"]["id"], "image": True, "region": [0, 0, 299, 299]})
+    ed.check_eq(error["kind"], "region_too_large", f"300 x 300 cells of 16 pixels: {error}")
+    ed.check("region" in error["fix"] and "scale" in error["fix"], f"the fix: {error['fix']}")
+
+
+async def test_brush_identity(ed: Editor):
+    """AC6: the ops of editor/tests/fixtures/tilemaps/brush_identity.json through edit_tilemap give
+    the cells TilemapBrushTest.McpOpsGiveTheGoldenCells gets through the brush, on every layout"""
+    golden = json.loads((REPO / "editor/tests/fixtures/tilemaps/brush_identity.json").read_text())
+    ed.check(golden["cells"], "the golden has cells")
+    write_sheet(ed, "assets/art/plain.png", 16, 4, 4)
+    plain = "assets/art/plain.tileset"
+    await ed.call("edit_tileset", path=plain, output=True, sources=[{"texture": "assets/art/plain.png", "tile_size": [16, 16], "skip_empty": False}])
+    sid = await scene(ed, "Identity")
+    for layout, expected in golden["cells"].items():
+        made = await ed.call("edit_tilemap", scene=sid, create={"name": f"Id_{layout}"}, layout=layout, tileset=plain, ops=golden["ops"])
+        got = await ed.call("get_tilemap", scene=sid, entity=made["tilemap"]["id"], include_tiles=True, limit=5000)
+        ed.check_eq(sorted(got["cells"]), expected, f"{layout}: edit_tilemap and the brush give the same cells")

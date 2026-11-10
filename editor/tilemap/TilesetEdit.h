@@ -136,8 +136,12 @@ namespace jasperengine::editor::tilemap {
     // ---- documents and files
     // "<dir>/<stem>.tileset" of a texture path (the convention `<texture>.tileset`, R50, R75)
     std::string tilesetPathForTexture(const std::string& texturePath);
-    // a WriteFilesCmd item with the document's bytes (tileset::write)
-    WriteFilesCmd::Item tilesetFileItem(const std::filesystem::path& absolute, const TilesetData& data);
+    // The GUID of each source the document names by path only, from the project's asset database
+    // (an image written outside the editor a moment ago is looked for on disk first), so the
+    // tileset keeps its images when they move (TilesetPool resolves by GUID first)
+    void stampSourceGuids(Project* project, TilesetData& data);
+    // a WriteFilesCmd item with the document's bytes (tileset::write), its sources' GUIDs stamped
+    WriteFilesCmd::Item tilesetFileItem(Project* project, const std::filesystem::path& absolute, const TilesetData& data);
     // the document as one undo step (ProjectFileWrites::writeUndoable), the pool's copy invalidated
     // after the write, its undo and its redo
     bool writeTilesetFile(Project* project, const std::filesystem::path& absolute, const TilesetData& data, std::string& error,

@@ -675,6 +675,25 @@ void editTilesetTool(const CallPtr& call) {
         failProblems(call, "Nothing was written:", {tilesetProblem("play_mode", "output", "writes are refused while a scene plays (a preview works)", "stop play, then call again with output")});
         return;
     }
+    // the contact sheet's layout, checked before anything is written
+    tm::ContactSheetOptions sheetOptions;
+    struct SheetField {
+        const char* key;
+        int lowest;
+        int highest;
+        int* target;
+    };
+    for (const SheetField& field : {SheetField{"columns", 1, 256, &sheetOptions.columns}, SheetField{"scale", 1, 8, &sheetOptions.scale}}) {
+        if (!argIn(args, field.key)) continue;
+        const Json& value = args[field.key];
+        const std::string range = "an integer from " + std::to_string(field.lowest) + " to " + std::to_string(field.highest);
+        if (!value.is_number_integer() || value.get<int64_t>() < field.lowest || value.get<int64_t>() > field.highest) {
+            failProblems(call, "Can't edit the tileset:", {tilesetProblem("invalid_value", field.key, std::string(field.key) + " is " + value.dump() + ", not " + range,
+                                                                           "pass " + range + ", or omit it")});
+            return;
+        }
+        *field.target = value.get<int>();
+    }
     fs::path absolute;
     std::string pathError;
     if (!McpRefs::resolveProjectWritePath(project, given, absolute, pathError)) {
@@ -813,10 +832,7 @@ void editTilesetTool(const CallPtr& call) {
         reply.text = "Preview of " + w4::projectRelative(project, absolute) + ": " + std::to_string(data.tiles.size()) + " tiles (" + verdict + "). output: true writes it.";
     }
     if (runtime) {
-        tm::ContactSheetOptions options;
-        options.columns = argIn(args, "columns") && args["columns"].is_number() ? args["columns"].get<int>() : options.columns;
-        options.scale = argIn(args, "scale") && args["scale"].is_number() ? args["scale"].get<int>() : options.scale;
-        reply.images.push_back(pngImageOf(tm::contactSheet(*runtime, pages, options)));
+        reply.images.push_back(pngImageOf(tm::contactSheet(*runtime, pages, sheetOptions)));
         reply.text += " Image: the tiles and their ids.";
     }
     reply.structured = result;

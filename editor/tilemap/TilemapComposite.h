@@ -23,6 +23,9 @@
 
 namespace jasperengine::editor::tilemap {
 
+    // the most pixels a composite image holds (4096 x 4096, 64 MB of RGBA), after its scale
+    constexpr int64_t MAX_COMPOSITE_PIXELS = 16777216;
+
     struct CompositeParams {
         const TileCells* cells = nullptr;
         const TilesetRuntime* tileset = nullptr;
@@ -51,7 +54,7 @@ namespace jasperengine::editor::tilemap {
 
     // The region (cells with tiles, in the painter's order) on an image covering the region's cells
     // and every tile drawn in it; an empty region gives an empty image. False with `region_too_large`
-    // for a region or an image past the limits, or `parse` for a scale outside 1 to 8.
+    // for a region or an image past the limits (cells, or MAX_COMPOSITE_PIXELS), or `parse` for a scale outside 1 to 8.
     bool compositeLayer(const CompositeParams& params, TilesetPagePixels& pages, CompositeResult& out, PixelProblem& error);
 
 }

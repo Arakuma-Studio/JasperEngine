@@ -123,3 +123,27 @@ async def test_check_fail_and_typed_errors(ed: Editor):
     ed.check("n" in kind["fix"], f"the fix lists the directions: {kind['fix']}")
     await fails(ed, {"path": PATH, "tiles": [{"tile": "ghost", "name": "x"}]}, "unknown_tile")
     await fails(ed, {"path": "assets/art/new.tileset", "name": "new"}, "tileset_missing")
+
+
+async def test_sources_are_written_with_their_guid(ed: Editor):
+    """R12: a written tileset names each image by path and GUID, so a moved image still resolves"""
+    sheet(ed, "assets/art/guid.png", 16, 2, 1)
+    await ed.call("edit_tileset", path="assets/art/guid.tileset", output=True, sources=[{"texture": "assets/art/guid.png", "tile_size": [16, 16]}])
+    stored = json.loads((ed.project / "assets/art/guid.tileset").read_text())
+    info = await ed.call("get_asset_info", path="assets/art/guid.png")
+    ed.check(info.get("guid"), f"the image has a GUID: {info}")
+    source = stored["sources"][0]["texture"]
+    ed.check(isinstance(source, dict) and source.get("path", "").endswith("art/guid.png"), f"the source's path: {source}")
+    ed.check_eq(source.get("guid"), info["guid"], "and its GUID")
+
+
+async def test_contact_sheet_columns_and_scale_are_checked(ed: Editor):
+    """columns and scale are integers in their range, refused before anything is written"""
+    before = (ed.project / PATH).read_bytes()
+    for field, value in (("columns", 0), ("columns", 300), ("scale", 9), ("scale", 2.5), ("scale", "2")):
+        error = await fails(ed, {"path": PATH, "output": True, "name": "renamed", field: value}, "invalid_value")
+        ed.check_eq(error.get("field"), field, f"{field}={value!r}: {error}")
+        ed.check("integer from" in error["fix"], f"the fix gives the range: {error['fix']}")
+    ed.check_eq((ed.project / PATH).read_bytes(), before, "nothing was written")
+    ok = await ed.call_raw("edit_tileset", {"path": PATH, "columns": 2, "scale": 1}, timeout=60)
+    ed.check(not ok.is_error and ok.images, f"in range: {ok.text[:300]}")
