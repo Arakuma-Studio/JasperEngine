@@ -1,0 +1,7 @@
+# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_pixel_fx_game_fixture.py)
+[gate] pixel_fx dissolve true
+[gate] pixel_fx hit_stop true
+[gate] pixel_fx glitch burst
+[gate] pixel_fx load_scene true
+[gate] pixel_fx covered
+[gate] pixel_fx level revealed
