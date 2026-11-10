@@ -35,6 +35,15 @@
                 "color": "#201008"
               }
             }
+          },
+          {
+            "width": 6,
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#201008"
+              }
+            }
           }
         ]
       }

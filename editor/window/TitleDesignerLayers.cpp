@@ -66,7 +66,9 @@ namespace {
     // draws the shown rows, so a frame's cost does not grow with the layer count (R69)
     struct RowsCache {
         const void* window = nullptr;
-        const void* shown = nullptr;
+        // the rows point into this immutable snapshot: an edit made while they draw (a menu item)
+        // replaces the working document, never the snapshot
+        std::shared_ptr<const ta::TitleArtDoc> snapshot;
         uint64_t change = ~0ull;
         uint64_t twirls = ~0ull;
         std::vector<Row> rows;
@@ -258,7 +260,7 @@ void TitleDesignerWindow::drawLayers() {
 
     // flatten the tree: top of the list = front (S80 stores bottom first: D17)
     const uint64_t twirls = twirlsKey(v.twirls);
-    const bool rowsCurrent = rowsCache.window == this && rowsCache.shown == &shown && rowsCache.change == doc.changeCount() && rowsCache.twirls == twirls;
+    const bool rowsCurrent = rowsCache.window == this && rowsCache.snapshot == snapshot && rowsCache.change == doc.changeCount() && rowsCache.twirls == twirls;
     std::vector<Row>& rows = rowsCache.rows;
     std::function<void(const ta::Json&, int, const std::string&)> walk = [&](const ta::Json& list, int depth, const std::string& parentId) {
         if (!list.is_array()) return;
@@ -359,9 +361,9 @@ void TitleDesignerWindow::drawLayers() {
     if (!rowsCurrent) {
         JE_PROFILE_SCOPE("TD drawLayers rows");
         rows.clear();
-        walk(shown.layers(), 0, std::string());
+        walk(snapshot->layers(), 0, std::string());
         rowsCache.window = this;
-        rowsCache.shown = &shown;
+        rowsCache.snapshot = snapshot;
         rowsCache.change = doc.changeCount();
         rowsCache.twirls = twirls;
         documentPasses++;
