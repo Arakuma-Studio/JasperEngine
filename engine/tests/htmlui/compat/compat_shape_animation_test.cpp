@@ -84,6 +84,14 @@ TEST(CompatBasicShape, InterpolatesCircleAndEllipseComponents){
     EXPECT_NE(ellipse.toSvg(100, 50).find("cx=\"50\" cy=\"25\" rx=\"30\" ry=\"25\""), std::string::npos);
 }
 
+TEST(CompatBasicShape, InsetPercentageRadiiUseTheReferenceBox){
+    BasicShape shape;
+    ASSERT_TRUE(BasicShape::parse("inset(10px round 25%)", shape, nullptr));
+    EXPECT_NE(shape.toSvg(200, 100).find("M60 10H140A50 25"), std::string::npos);
+    shape = mixedShape("inset(10px round 0%)", "inset(10px round 50%)", .5f, 200, 100);
+    EXPECT_NE(shape.toSvg(200, 100).find("M60 10H140A50 25"), std::string::npos);
+}
+
 TEST(CompatBasicShape, InterpolatesPolygonAndResolvesPercentagesAgainstEachReferenceBox){
     const BasicShape small = mixedShape("polygon(0 0,100% 0,0 100%)", "polygon(20px 20px,100% 100%,100% 100%)", .5f);
     EXPECT_NE(small.toSvg(100, 50).find("points=\"10,10 100,25 50,50\""), std::string::npos);

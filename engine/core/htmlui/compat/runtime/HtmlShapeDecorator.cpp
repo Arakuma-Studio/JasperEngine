@@ -157,7 +157,7 @@ namespace {
         horizontal = expand(horizontal);
         vertical = expand(vertical);
         for (int i = 0; i < 4; i++){
-            if (!r.length(horizontal[i], w, radii[i][0]) || !r.length(vertical[i], h, radii[i][1]))
+            if (!r.length(horizontal[i], r.width, radii[i][0]) || !r.length(vertical[i], r.height, radii[i][1]))
                 return fail(error, "radius '" + horizontal[i] + "' is not a length or percentage");
             radii[i][0] = std::max(0.0f, radii[i][0]);
             radii[i][1] = std::max(0.0f, radii[i][1]);
@@ -392,12 +392,10 @@ bool BasicShape::interpolate(const BasicShape& to, float alpha, float width, flo
             if (!length(a.values[i], b.values[i], i % 2 == 0 ? height : width, offsets[i])) return false;
             result.text += (i ? " " : "") + num(offsets[i]) + "px";
         }
-        const float shapeWidth = std::max(0.0f, width - offsets[1] - offsets[3]);
-        const float shapeHeight = std::max(0.0f, height - offsets[0] - offsets[2]);
         result.text += " round";
         for (size_t i = 0; i < 8; i++){
             float radius;
-            if (!length(a.radii[i], b.radii[i], i < 4 ? shapeWidth : shapeHeight, radius)) return false;
+            if (!length(a.radii[i], b.radii[i], i < 4 ? width : height, radius)) return false;
             result.text += (i == 4 ? " / " : " ") + num(std::max(0.0f, radius)) + "px";
         }
     }else if (a.name == "circle" || a.name == "ellipse"){
