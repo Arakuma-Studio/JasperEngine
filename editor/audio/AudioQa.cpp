@@ -19,7 +19,7 @@ namespace {
 
     using Json = nlohmann::json;
 
-    constexpr double FLOOR_DB = -60.0;
+    constexpr double AUDIO_QA_FLOOR_DB = -60.0;
     constexpr int MAX_AT = qa::MAX_AT;
 
     double linear(double db) {
@@ -393,7 +393,7 @@ namespace {
                     }
                 }
             }
-            if (loudest <= FLOOR_DB) continue;
+            if (loudest <= AUDIO_QA_FLOOR_DB) continue;
             compared++;
             const double margin = level - loudest;
             if (margin < c.worstMargin) {
@@ -483,10 +483,10 @@ namespace {
                 if (!groups.contains(duck.group) || !groups.contains(duck.sidechain)) continue;
                 const double side = groups[duck.sidechain].value("rms_db", AudioMeter::SILENCE_DB);
                 const double level = groups[duck.group].value("rms_db", AudioMeter::SILENCE_DB);
-                if (side > FLOOR_DB) {
+                if (side > AUDIO_QA_FLOOR_DB) {
                     duckedOn.push_back(level);
                     sideOn.push_back(side);
-                } else if (level > FLOOR_DB) {
+                } else if (level > AUDIO_QA_FLOOR_DB) {
                     duckedOff.push_back(level);
                 }
             }
@@ -538,7 +538,7 @@ namespace {
             }
         }
         if (from < 0) return check;
-        const double floor = linear(FLOOR_DB);
+        const double floor = linear(AUDIO_QA_FLOOR_DB);
         double longest = 0.0, run = 0.0;
         double runStart = 0.0;
         const size_t first = (size_t)(from / c.frameOfMs);
@@ -683,7 +683,7 @@ namespace {
                 for (size_t k = 0; k < a.size() && k < b.size(); k++) {
                     if (!a[k].is_number() || !b[k].is_number()) continue;
                     const double x = a[k].get<double>(), y = b[k].get<double>();
-                    if (x < FLOOR_DB && y < FLOOR_DB) continue;
+                    if (x < AUDIO_QA_FLOOR_DB && y < AUDIO_QA_FLOOR_DB) continue;
                     const double moved = std::fabs(x - y);
                     if (moved > worstBand) worstBand = moved;
                     if (moved > qa.regressionBandDb && limited.empty()) {
@@ -721,7 +721,7 @@ int64_t AudioQa::onsetFrame(const AudioSessionData& data, int64_t from, int64_t 
         return peak;
     };
     const double margin = linear(marginDb);
-    const double floor = linear(FLOOR_DB);
+    const double floor = linear(AUDIO_QA_FLOOR_DB);
     const int64_t end = std::min<int64_t>(from + searchFrames, (int64_t)audio.frames);
     for (int64_t at = from; at < end; at += ms) {
         const double before = loudest(at - 50 * ms, 50 * ms);
