@@ -190,6 +190,9 @@ namespace jasperengine::titleart {
         float (*gather)(const ParamValues&) = nullptr;      // how far each output pixel reads; < 0 = the whole layer
         bool (*fillsCanvas)(const ParamValues&) = nullptr;  // null = false
         bool (*addsLight)(const ParamValues&) = nullptr;    // null = false
+        // its passes read the input's light above 1 (a threshold, an exposure): on the RGBA8 path a
+        // group's light reaches it in S83 D14's encoding (EffectContext::inputLight)
+        bool readsLight = false;
         bool outline = false;                       // traces ink (draws under light, §6.4)
         bool onParts = true;                        // allowed in part_effects
         // its output's alpha is a function of its input's alpha and its params alone (a glow, a
@@ -222,6 +225,8 @@ namespace jasperengine::titleart {
         FollowMode follow = FollowMode::None;
         float (*followReach)(const ParamValues&) = nullptr;    // how far past the followed layer it draws
         bool (*addsLight)(const ParamValues&) = nullptr;
+        // its output can hold its light in S83 D14's encoding (GeneratorContext::lightScale)
+        bool encodesLight = false;
         CostClass costClass = CostClass::C0;
         FallbackClass fallback = FallbackClass::F0;
         LiveVariant live;

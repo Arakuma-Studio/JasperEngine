@@ -42,11 +42,19 @@ vec3 tfx_overexpose(vec3 x, float shift, float white) {
     return x + (tfx_shoulder(x2) - x) * smoothstep(0.0, 0.25, shift);
 }
 
+// The input's light: TA_TEX0's colour x p4.x where it holds light / p4.x (S83 D14: a group's
+// light accumulator on the RGBA8 path; 0 = plain)
+vec4 tfx_lightInput(vec2 uv) {
+    vec4 L = texture(TA_TEX0, uv);
+    if (ta.p[4].x > 0.0) L.rgb *= ta.p[4].x;
+    return L;
+}
+
 // Emitter: the layer's light above the threshold x 2^exposure (premultiplied, so antialiased
 // edges emit their share). TA_TEX0 L. p2 = (gain, threshold, knee, custom colour 0/1),
-// p3 = (custom colour linear, 1 / headroom)
+// p3 = (custom colour linear, 1 / headroom), p4.x the input's encoding (tfx_lightInput)
 vec4 tfx_lightEmit() {
-    vec4 L = texture(TA_TEX0, ta_uv());
+    vec4 L = tfx_lightInput(ta_uv());
     vec3 e = L.rgb * tfx_emitFraction(L, ta.p[2].y, ta.p[2].z) * ta.p[2].x;
     if (ta.p[2].w > 0.5) e = tfx_colorize(e, ta.p[3].rgb);
     return vec4(max(e, 0.0) * ta.p[3].w, 0.0);
@@ -99,10 +107,11 @@ vec4 tfx_lightAccum() {
 // Direct light of the layer (its emitting part x 2^exposure) + the scattered glow (kept off the
 // face by On Face) through the over-exposure response, alpha encoding the added light.
 // TA_TEX0 L, TA_TEX1 the glow. p2 = (gain, threshold, knee, on face), p3 = (highlight shift,
-// core whiteness, headroom x glow scale (S81's scale_split multiplies it per frame))
+// core whiteness, headroom x glow scale (S81's scale_split multiplies it per frame)), p4.x the
+// input's encoding (tfx_lightInput)
 vec4 tfx_lightCompose() {
     vec2 uv = ta_uv();
-    vec4 L = texture(TA_TEX0, uv);
+    vec4 L = tfx_lightInput(uv);
     vec3 g = texture(TA_TEX1, uv).rgb * ta.p[3].z * (1.0 - (1.0 - ta.p[2].w) * L.a);
     vec3 direct = L.rgb * (1.0 + tfx_emitFraction(L, ta.p[2].y, ta.p[2].z) * (ta.p[2].x - 1.0));
     vec3 c = tfx_overexpose(max(direct + g, 0.0), ta.p[3].x, ta.p[3].y);

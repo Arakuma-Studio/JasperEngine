@@ -5,7 +5,8 @@
 // with MAX_PREMULTIPLIED so joints and crossings never exceed one segment (R21); v_quad.y runs
 // -1..1 across it, Pachislop's aAcross -1.6..1.6, and v_color is the segment's intensity in all
 // four channels. LightningCompose: TA_TEX0 the core, TA_TEX1 the tight glow, TA_TEX2 the wide
-// one; p6 = (glow linear rgb, intensity), p7 = (glow strength, 0, 0, 0).
+// one; p6 = (glow linear rgb, intensity), p7 = (glow strength, the colour's light scale (S83 D14's
+// encoding; 0 = plain), 0, 0).
 
 #ifndef TITLEART_GEN_LIGHTNING_GLSL
 #define TITLEART_GEN_LIGHTNING_GLSL
@@ -25,7 +26,10 @@ vec4 gen_lightningCompose() {
     float c = texture(TA_TEX0, uv).r, g1 = texture(TA_TEX1, uv).r, g2 = texture(TA_TEX2, uv).r;
     vec3 col = ta.p[6].rgb;
     vec3 light = c * mix(col, vec3(1.0), 0.8) * 1.6 + (g1 * 5.0 + g2 * 4.0) * col * ta.p[7].x;
-    return gen_lightPremul(light * ta.p[6].w);
+    vec4 L = gen_lightPremul(light * ta.p[6].w);
+    // the encoded light keeps its coverage
+    if (ta.p[7].y > 0.0) L.rgb *= ta.p[7].y;
+    return L;
 }
 
 #endif // TITLEART_GEN_LIGHTNING_GLSL

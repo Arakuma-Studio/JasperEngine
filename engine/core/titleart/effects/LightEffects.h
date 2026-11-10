@@ -52,8 +52,11 @@ namespace jasperengine::titleart::tfx {
         float tintAmount = 0.0f;
     };
 
+    // the headroom scatterLight divides by: D14's, or an encoded input's own when it is larger (a
+    // light accumulator's light reaches past D14's 4)
+    JASPERENGINE_API float scatterHeadroom(const EffectContext& ctx);
     // the scattered light of `input` (its emitting part x gain, through the octaves), RGB only,
-    // divided by the headroom: full size, or half size on the mobile cascade (sample it by uv)
+    // divided by scatterHeadroom: full size, or half size on the mobile cascade (sample it by uv)
     JASPERENGINE_API fx::Scratch scatterLight(EffectContext& ctx, const TargetRef& input, const ScatterOptions& options);
     // its static cost
     JASPERENGINE_API FxCost estimateScatter(const std::vector<GlowOctave>& octaves, const FxSize& size, FxTier tier);

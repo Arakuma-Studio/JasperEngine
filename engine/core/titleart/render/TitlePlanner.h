@@ -136,15 +136,27 @@ namespace jasperengine::titleart {
             TitlePx px;
             TitlePx mask;           // the content alpha a clip group reads (px itself unless part effects ran)
             TitlePx ink;
+            float light = 1.0f;     // px's colour holds light x 1 / light (S83 D14's encoding), alpha plain
         };
         TitlePx compose(const std::vector<DrawNode>& nodes, TitlePx acc, const TitlePx* clipMask);
         std::pair<TitlePx, TitlePx> composeInk(const std::vector<DrawNode>& nodes, TitlePx acc, TitlePx ink, const TitlePx* clipMask,
                                                bool wantInk);
-        Unit unit(const DrawNode& node, bool wantInk);
-        Content unitContent(const DrawNode& node, bool wantMask, bool wantInk);
+        // light > 1: the node's colour in S83 D14's encoding (an encodable light generator in a
+        // light accumulator, lightAccumulation); its cache entry is its own
+        Unit unit(const DrawNode& node, bool wantInk, float light = 1.0f);
+        Content unitContent(const DrawNode& node, bool wantMask, bool wantInk, float light = 1.0f);
+        // the headroom of the light accumulator a group composes into on the RGBA8 path (S83 D14), or
+        // 1: a group whose effects all read light above 1 (Light Glow) over Normal and Add children,
+        // one of them an Add-blended light generator that encodes its light; its children land
+        // there with their colour x 1 / headroom, that generator drawing its light so, and its first
+        // effect reads it back (EffectContext::inputLight), so light above 1 reaches the glow as on
+        // the float path
+        float lightAccumulation(const DrawNode& node) const;
         TitlePx adjustOnto(TitlePx acc, const DrawNode& node, const TitlePx* clipMask);
         // src x opacity (x the clip mask's alpha) blended into dst by `mode` (TitleBlend values, 18 = disjoint)
-        void blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId);
+        // (colourScale: src's colour alone multiplied, Normal and Add only: into a light accumulator)
+        void blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId,
+                       float colourScale = 1.0f);
         TitlePx copyOf(TitlePx src, const std::string& layerId);
         TitlePx clearedLike(const TitleRectI& rect, const std::string& layerId);
         struct Effects {
@@ -153,8 +165,9 @@ namespace jasperengine::titleart {
         };
         // inputAlpha: what `input`'s alpha is a function of (0: not known), the key the effects'
         // alpha-only results are kept under (EffectContext::inputAlphaKey)
+        // inputLight: `input`'s colour holds light x 1 / inputLight (Content::light), read back by the first effect
         Effects applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput, TitlePx inputInk,
-                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0);
+                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0, float inputLight = 1.0f);
         bool holdsLight(const DrawNode& node);
         bool contentLight(const DrawNode& node);
 
@@ -219,7 +232,8 @@ namespace jasperengine::titleart {
 #endif
 
         // ---- generators ----
-        TitlePx generator(const DrawNode& node);
+        // (lightScale: GeneratorContext::lightScale)
+        TitlePx generator(const DrawNode& node, float lightScale = 1.0f);
 
         // ---- the effect context's helpers (FieldPasses.cpp) ----
         // the signed distance of `src`'s alpha / red coverage (frames: y-up element masks)

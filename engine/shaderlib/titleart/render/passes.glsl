@@ -17,13 +17,14 @@ bool taInsideUv(vec2 uv) { return all(greaterThanEqual(uv, vec2(0.0))) && all(le
 #if TA_PROGRAM == TA_PROGRAM_COPY
 // TA_TEX0 through p[2] x opacity p[3].x; p[3].y 0 rgba, 1 the red channel as a value (r r r r);
 // p[3].z 1: transparent outside the source; p[3].w mask 0 none, 1 TA_TEX1's alpha, 2 its red,
-// through p[4]
+// through p[4]; p[5].x > 0 scales the colour alone (into a light accumulator, S83 D14)
 void main() {
     vec2 uv = taMapUv(ta.p[2]);
     vec4 s = texture(TA_TEX0, uv);
     if (ta.p[3].y > 0.5) s = vec4(s.r);
     if (ta.p[3].z > 0.5 && !taInsideUv(uv)) s = vec4(0.0);
     s *= ta.p[3].x;
+    if (ta.p[5].x > 0.0) s.rgb *= ta.p[5].x;
     if (ta.p[3].w > 0.5) {
         vec4 m = texture(TA_TEX1, taMapUv(ta.p[4]));
         s *= ta.p[3].w > 1.5 ? m.r : m.a;

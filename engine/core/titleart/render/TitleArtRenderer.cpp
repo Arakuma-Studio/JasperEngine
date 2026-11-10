@@ -258,7 +258,7 @@ void TitlePlanner::finishOutput(TitlePx acc) {
 
 // ---- generators ----
 
-TitlePx TitlePlanner::generator(const DrawNode& node) {
+TitlePx TitlePlanner::generator(const DrawNode& node, float lightScale) {
     const Json& layer = *node.layer;
     const Json& gen = layer.value("generator", Json::object());
     const std::string type = gen.value("type", std::string());
@@ -346,6 +346,7 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         ctx.followContentKey = followContentSlot >= 0 ? followContentKey : 0;
         ctx.assets = assets;
         ctx.tier = tier;
+        ctx.lightScale = lightScale;
         def->render(ctx, state.slots[(size_t)outSlot].ref,
                     ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, ctx.lightAngle, ctx.lightAltitude));
         if (reads && ctx.usesCanvasPosition) *reads = true;

@@ -1802,3 +1802,16 @@ rest of S82 lands in 6B.
     `PachislopGeneratorMap` (the `generators:` section of the same data file) and their tests.
     `.gitattributes` merges `pachislop-fx-map.yaml` and `FxCost.cpp` with the union driver, where
     each stream appends its own lines.
+37. **Implementation: D14's light accumulator for a group's Light Glow** (found by S84's gate on `elements/electric-blue`
+    and `elements/storm-counter`). Light Glow over a group of a title and an Add-blended Lightning agreed alone and not
+    together: the RGBA8 path clipped the bolts' light at 1 (in Lightning's own target and in the group) before the glow
+    read it. On the RGBA8 path such a group (`TitlePlanner::lightAccumulation`: every enabled effect `readsLight`, a new
+    `EffectDef` member set on Light Glow; Normal and Add children only; one an Add-blended generator that `encodesLight`, a
+    new `GeneratorDef` member set on Lightning, with no effects or clip group of its own) composes into an SRGB8A8
+    accumulator holding colour x 1/16 (D14's headroom squared: Lightning's cores reach about 7 and crossing bolts add),
+    the generator drawing its light so (`GeneratorContext::lightScale`, alpha plain), the other children through the
+    Copy pass's colour scale; the first effect reads it back (`EffectContext::inputLight`) and its scatter takes that
+    headroom (`tfx::scatterHeadroom`). It adds no pass, and the float path is unchanged. Measured against the float
+    path at 0.25 (fraction of pixels over 8/255): storm-counter 52 % -> 1.9 %, electric-blue 11 % -> 0.4 %; headrooms of
+    8 and 32 left 13 % and 19 % (both measured with the dither below). §6.5's Bayer dither of the scatter's 8-bit writes,
+    tried here, made the same renders worse (1.9 % -> 7.3 % at 16) and is not implemented.

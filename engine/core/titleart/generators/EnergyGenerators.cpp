@@ -646,7 +646,7 @@ namespace {
             pass.textures[1].target = g1.get();
             pass.textures[2].target = g2.get();
             pass.set(6, col.r, col.g, col.b, (float)(p.number("intensity") / 100.0));
-            pass.set(7, (float)(p.number("glow") / 100.0));
+            pass.set(7, (float)(p.number("glow") / 100.0), ctx.lightScale);
             ctx.runner.run(pass);
         });
     }
@@ -703,6 +703,7 @@ namespace {
         d.follow = FollowMode::Required;
         d.followReach = lightningReach;
         d.addsLight = [](const ParamValues&) { return true; };
+        d.encodesLight = true;
         d.costClass = CostClass::C2;
         d.fallback = FallbackClass::F1;
         d.live.kind = LiveKind::Kernel;

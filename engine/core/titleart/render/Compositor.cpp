@@ -9,6 +9,7 @@
 #include "TitlePlanner.h"
 
 #include "titleart/TitleArtIO.h"
+#include "titleart/effects/TfxPrograms.h"
 #include "titleart/effects/TitleAdjust.h"
 
 #include <algorithm>
@@ -151,6 +152,19 @@ namespace {
         if (node.type != LayerType::Generator || !node.layer) return false;
         const std::string blend = blendNameOf(*node.layer);
         return blend == "add" || blend == "screen";
+    }
+
+    // an Add-blended light generator that can draw its light in S83 D14's encoding: alone (no
+    // effects of its own, no clip group) its pixels reach a light accumulator unchanged
+    bool encodableLight(const DrawNode& node) {
+        if (node.kind != DrawNodeKind::Leaf || node.type != LayerType::Generator || !node.clipped.empty()) return false;
+        if (blendOf(*node.layer) != (int)TitleBlend::Add || anyEnabled(effectsOf(*node.layer))) return false;
+        const Json& gen = node.layer->value("generator", Json::object());
+        const GeneratorDef* def = findGenerator(gen.value("type", std::string()));
+        if (!def || !def->encodesLight || !def->addsLight) return false;
+        static const Json empty = Json::object();
+        auto params = gen.find("params");
+        return def->addsLight(ParamValues(params != gen.end() && params->is_object() ? *params : empty));
     }
 
 }
@@ -579,7 +593,7 @@ TitlePx TitlePlanner::copyOf(TitlePx src, const std::string& layerId) {
     return out;
 }
 
-void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId) {
+void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId, float colourScale) {
     const TitleRectI r = intersectRect(src.rect, dst.rect);
     if (r.empty() || !(opacity > 0.0f)) return;
     const TitleRectI rows = relative(r, dst.rect);
@@ -594,10 +608,11 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
         // light blend, colour added and coverage unioned, as blend.glsl's add
         const BlendMode blend = mode == (int)TitleBlend::Normal ? BlendMode::PREMULTIPLIED : BlendMode::LIGHT_PREMULTIPLIED;
         pass(mode == (int)TitleBlend::Normal ? "compose normal" : "compose add", layerId, dst.slot, rows, TitleRenderProgram::Copy,
-             [srcSlot, clipSlot, srcMap, clipMap, opacity](TitleJobState& s, TitleGpuPass& p, std::string&) {
+             [srcSlot, clipSlot, srcMap, clipMap, opacity, colourScale](TitleJobState& s, TitleGpuPass& p, std::string&) {
                  p.tex[0] = s.texture(srcSlot);
                  setMap(p, 2, srcMap);
                  p.params.set(3, opacity, 0.0f, 1.0f, clipSlot >= 0 ? 1.0f : 0.0f);
+                 p.params.set(5, colourScale);
                  if (clipSlot >= 0) {
                      p.tex[1] = s.texture(clipSlot);
                      setMap(p, 4, clipMap);
@@ -709,7 +724,30 @@ bool TitlePlanner::contentLight(const DrawNode& node) {
     return false;
 }
 
-TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
+float TitlePlanner::lightAccumulation(const DrawNode& node) const {
+    if (node.kind != DrawNodeKind::Group || svc.caps.floatPath || !req.keepSplits.empty()) return 1.0f;
+    // D14's headroom squared: Lightning's cores reach about 7 and crossing bolts add, past D14's 4
+    // (elements/storm-counter against the float path: x 2 leaves 13 % of pixels over 8/255, x 4 1.9 %)
+    const float headroom = 4.0f * tfx::lightHeadroom(svc.caps);
+    if (!(headroom > 4.0f)) return 1.0f;
+    bool reads = false;
+    for (const Json& e : effectsOf(*node.layer)) {
+        if (!e.value("enabled", true)) continue;
+        const EffectDef* def = findEffect(e.value("type", std::string()));
+        if (!def || !def->apply || !def->readsLight) return 1.0f;
+        reads = true;
+    }
+    if (!reads) return 1.0f;
+    bool encodable = false;
+    for (const DrawNode& c : node.children) {
+        const int mode = c.kind == DrawNodeKind::Adjust ? -1 : blendOf(*c.layer);
+        if (mode != (int)TitleBlend::Normal && mode != (int)TitleBlend::Add) return 1.0f;
+        encodable = encodable || encodableLight(c);
+    }
+    return encodable ? headroom : 1.0f;
+}
+
+TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk, float light) {
     const Json& layer = *node.layer;
     const TitleRectI rect = nodeRect(node);
     if (rect.empty()) return {};
@@ -755,6 +793,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         both(fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
         both(fnv1a64(svc.caps.pathName()));
         both(inkOnly ? 1 : 2);
+        // light drawn in S83 D14's encoding is not the plain pixels
+        if (light != 1.0f) both(hashCombine(fnv1a64("light encoded"), (uint64_t)std::lround(light * 1024.0f)));
         // generators draw their mobile reductions on the mobile tier (S83 D12)
         if (req.fxTier != FxTier::Desktop) both(fnv1a64("fx tier mobile"));
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
@@ -797,11 +837,15 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         }
     }
 
-    Content content = unitContent(node, clip, contentInk);
+    // a group whose Light Glow reads light above 1 composes into a light accumulator on the RGBA8
+    // path (not for the ink, nor for a layer's content without its effects)
+    if (node.kind == DrawNodeKind::Group) light = !wantInk && !contentInk && !contentOnly && !inkOnly && !req.glyphCell ? lightAccumulation(node) : 1.0f;
+    Content content = unitContent(node, clip, contentInk, light);
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
     Effects post = contentOnly ? Effects{content.px, content.ink}
-                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha);
+                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha,
+                                              content.light);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {
@@ -841,11 +885,26 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     return out;
 }
 
-TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantMask, bool wantInk) {
+TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantMask, bool wantInk, float light) {
     const TitleRectI rect = nodeRect(node);
     Content out;
     if (node.kind == DrawNodeKind::Group) {
         TitlePx buf = clearedLike(rect, node.layerId);
+        if (light != 1.0f) {
+            // the light accumulator (lightAccumulation): the encodable light as it draws itself,
+            // every other child's colour x 1 / light; Normal and Add stay linear in the colour
+            for (const DrawNode& c : node.children) {
+                const bool encoded = encodableLight(c);
+                Unit u = unit(c, false, encoded ? light : 1.0f);
+                if (!u.px.valid()) continue;
+                blendOnto(buf, u.px, opacityOf(*c.layer), blendOf(*c.layer), nullptr, c.layerId, encoded ? 1.0f : 1.0f / light);
+                release(u.px.slot);
+            }
+            out.px = buf;
+            out.mask = buf;
+            out.light = light;
+            return out;
+        }
         if (wantInk) {
             auto drawn = composeInk(node.children, buf, {}, nullptr, true);
             out.px = drawn.first;
@@ -858,8 +917,9 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
         return out;
     }
     if (node.type == LayerType::Generator) {
-        out.px = generator(node);
+        out.px = generator(node, 1.0f / light);
         out.mask = out.px;
+        out.light = light;
         return out;
     }
     if (!layerTypeHasStyle(node.type)) return out;
@@ -1007,7 +1067,7 @@ TitlePx TitlePlanner::adjustOnto(TitlePx acc, const DrawNode& node, const TitleP
 }
 
 TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput,
-                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha) {
+                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha, float inputLight) {
     struct Run {
         const EffectDef* def;
         Json params;
@@ -1054,7 +1114,8 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     const FxTier tier = req.fxTier;
     const std::string layerId = layer ? layer->value("id", std::string()) : std::string();
     // run one definition on `src` into a new target, with the context's content and ink
-    auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id, uint64_t srcAlpha) {
+    auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id, uint64_t srcAlpha,
+                     float srcLight) {
         TitlePx out{newSlot(TitleBuffer::Accumulator, src.rect.width, src.rect.height), src.rect};
         uint32_t passes = 1;
         if (r.def->estimate) {
@@ -1097,6 +1158,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             ctx.tier = tier;
             ctx.inputAlphaKey = srcAlpha;
             ctx.alphaKeyed = srcAlpha ? refOf(srcSlot) : nullptr;
+            ctx.inputLight = srcLight;
             TitleJobState::Slot& outRef = state.slots[(size_t)outSlot];
             def->apply(ctx, *refOf(srcSlot), outRef.ref, paramsOf(*def, effect, *doc));
             if (reads && ctx.usesCanvasPosition) *reads = true;
@@ -1113,7 +1175,8 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     for (int i = 0; i < (int)run.size(); i++) {
         const Run& r = run[(size_t)i];
         const TitlePx inputInkPx = r.def->outline && ink.valid() ? ink : cur;
-        TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId, curAlpha);
+        // the encoded input reaches the first effect alone (lightAccumulation: one that reads light)
+        TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId, curAlpha, i == 0 ? inputLight : 1.0f);
         if (curAlpha && r.def->alphaFromAlpha) {
             // its params (the global light resolves its angles) decide how alpha becomes alpha
             curAlpha = hashCombine(hashCombine(curAlpha, fnv1a64(writeTitleArtJson(r.effect))), fnv1a64(writeTitleArtJson(light)));
@@ -1127,7 +1190,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             } else if (ink.valid()) {
                 // the same effect on the ink alone (its own id: what effects keep per layer stays apart)
                 TitlePx contentInk = inputInk.valid() ? inputInk : input;
-                TitlePx inkOut = apply(r, ink, contentInk, contentInk, ink, stackId + "~ink", 0);
+                TitlePx inkOut = apply(r, ink, contentInk, contentInk, ink, stackId + "~ink", 0, 1.0f);
                 TitlePx prev = ink;
                 ink = inkOut;
                 drop(prev);

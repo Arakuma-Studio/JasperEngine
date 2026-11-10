@@ -116,8 +116,12 @@ namespace {
 
 }
 
+float tfx::scatterHeadroom(const EffectContext& ctx) {
+    return std::max(lightHeadroom(ctx.runner.caps()), ctx.inputLight);
+}
+
 fx::Scratch tfx::scatterLight(EffectContext& ctx, const TargetRef& input, const ScatterOptions& o) {
-    const float H = lightHeadroom(ctx.runner.caps());
+    const float H = scatterHeadroom(ctx);
     const bool cascade = ctx.tier == FxTier::Mobile;
     fx::Scratch emit = fx::scratch(ctx);
     if (!emit) return {};
@@ -125,6 +129,7 @@ fx::Scratch tfx::scatterLight(EffectContext& ctx, const TargetRef& input, const 
     e.textures[0].target = &input;
     e.set(2, o.gain, o.threshold, o.knee, o.custom ? 1.0f : 0.0f);
     e.set(3, o.color.r, o.color.g, o.color.b, 1.0f / H);
+    e.set(4, ctx.inputLight);
     if (!ctx.runner.run(e)) return {};
 
     std::vector<int> levels;
@@ -296,7 +301,8 @@ namespace {
         c.textures[0].target = &input;
         c.textures[1].target = glow.get();
         c.set(2, o.gain, o.threshold, o.knee, (float)p.number("on_face"));
-        c.set(3, (float)p.number("highlight_shift") / 100.0f, (float)p.number("core_white") / 100.0f, tfx::lightHeadroom(ctx.runner.caps()));
+        c.set(3, (float)p.number("highlight_shift") / 100.0f, (float)p.number("core_white") / 100.0f, tfx::scatterHeadroom(ctx));
+        c.set(4, ctx.inputLight);
         ctx.runner.run(c);
     }
 
@@ -341,6 +347,8 @@ namespace {
         // the widest octave: sigma = radius / 3, x 1.2 at full chromatic scatter, taps to 3 sigma
         d.gather = [](const ParamValues& p) { return 1.25f * (float)p.number("radius"); };
         d.addsLight = [](const ParamValues&) { return true; };
+        // the threshold and the exposure act on the input's light above 1
+        d.readsLight = true;
         d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F2;
         d.live = {LiveKind::ScaleSplit, {"intensity"}, (uint32_t)Program::LightCompose};
