@@ -1874,15 +1874,16 @@ rest of S82 lands in 6B.
     gives Minimal one (`minimal/matte-3d`) and §6.6 fixes its count at 10. The catalogue stands; `test_content`
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
-    `lint_allow`.** Status (ta/lib-last-looks, 2026-11-10): the whole gate before the merge of feature/title-art
+    `lint_allow`.** **Green**: the whole gate on the merged tree (2c86409bc, 2026-11-10; 6 shards over both build
+    boxes) passes: 301 items, 830 sample renders (looks 585, schemes 99, templates 146), 0 failures. Before that
+    (ta/lib-last-looks, 2026-11-10): the whole gate before the merge of feature/title-art
     (863cb9c78), 6 shards over both build boxes: 301 items, 829 sample renders (looks 584, schemes 99, templates 146),
     5 failures in 4 items (counter_survival at 8 delta E; the feature line's threshold is 4, Deviation 29): `3d_tier_budget` on `neon/tube-3d` and `scifi/reactor-core-3d` (Medium) and
     `gems/treasure-banner` en and ja (Low), and `counter_survival` on the scheme `mono-dark`; the briefed
     `casino/premium-black-gloss`, `casino/red-hot-rim-glow` and `gems/diamond-3d` passed. Those four are fixed on the
     feature line (S86 Deviation 35's mesher, Deviation 29's mono-dark ramp); after the merge the gate over the twelve
     items it touches (those, the three briefed, `minimal/soft-shadow`, `elements/electric-blue`, `elements/storm-counter`,
-    `casino/confirm-giraffe-3d`, `sports/goal-banner`; 30 renders) has no failure. The whole gate on the merged tree
-    is the integrator's run. Earlier states:
+    `casino/confirm-giraffe-3d`, `sports/goal-banner`; 30 renders) has no failure. Earlier states:
     - fallback_parity: none since Deviation 32 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
       `elements/storm-counter` pass since S83 Deviation 43 (Light Glow read Lightning's light clipped at 1 on the RGBA8
       path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
