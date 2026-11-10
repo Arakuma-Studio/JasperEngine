@@ -1676,7 +1676,7 @@ sn::LightSetup SpriteNormalsWindow::lightSetup() const {
     l.intensity = 1.0f;
     setup.lights.push_back(l);
     setup.ambientIntensity = light.ambient;
-    setup.lightSteps = lightSteps;
+    setup.lightSteps = effectiveLightSteps();
     if (const std::shared_ptr<sn::SpriteNormalsRun> r = shown()) {
         setup.directx = r->prepared().request.settings.directx;
         setup.alphaThreshold = r->prepared().request.settings.alphaThreshold;
@@ -1695,6 +1695,7 @@ void SpriteNormalsWindow::renderLit() {
         return;
     }
     ensureLight();
+    litSteps = effectiveLightSteps();
     int x, y, w, h;
     cellRect(frame, x, y, w, h);
     const sn::Image& normal = displayNormal();
@@ -1763,8 +1764,14 @@ void SpriteNormalsWindow::setAmbient(float a) {
 }
 
 void SpriteNormalsWindow::setLightSteps(int steps) {
-    lightSteps = std::clamp(steps, 0, sn::kMaxLightSteps);
+    lightSteps = std::clamp(steps, kSceneLightSteps, sn::kMaxLightSteps);
     litDirty = true;
+}
+
+int SpriteNormalsWindow::effectiveLightSteps() const {
+    if (lightSteps != kSceneLightSteps) return lightSteps;
+    const SceneProject* sp = project->getScene(hasAssignTarget() ? target.sceneId : project->getSelectedSceneId());
+    return sp && sp->scene ? std::clamp(sp->scene->getLight2DSteps(), 0, sn::kMaxLightSteps) : 0;
 }
 
 void SpriteNormalsWindow::setFrame(int index) {
@@ -2226,6 +2233,8 @@ void SpriteNormalsWindow::updatePreviewImages() {
         normalUploadedAt = now();
     }
     const bool litDue = litRenderedAt < 0.0 || now() - litRenderedAt >= 1.0 / 30.0 || now() < litRenderedAt;
+    // following the scene's Light Steps: an edit of the scene redraws the preview
+    if (lightSteps == kSceneLightSteps && effectiveLightSteps() != litSteps) litDirty = true;
     if (litDirty && litDue) renderLit();
     else if (litDirtyX0 < litDirtyX1 && litDirtyY0 < litDirtyY1 && litDue) renderLitRect();
 }
@@ -3748,21 +3757,27 @@ void SpriteNormalsWindow::drawToolbar() {
             litDirty = true;
         }
         tooltip("How far the light reaches, in pixels (the Light 2D's Range)");
-        const float stepsField = ImGui::GetFontSize() * 4.0f;
+        const float stepsField = ImGui::GetFontSize() * 6.0f;   // "Scene (16)"
         next(stepsField + ImGui::CalcTextSize("Light Steps").x + style.ItemSpacing.x);
         ImGui::TextUnformatted("Light Steps");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(stepsField);
-        const std::string stepsText = lightSteps > 0 ? std::to_string(lightSteps) : std::string("Off");
+        const int sceneSteps = effectiveLightSteps();
+        auto stepsName = [](int n) { return n > 0 ? std::to_string(n) : std::string("Off"); };
+        const std::string stepsText = lightSteps == kSceneLightSteps ? "Scene (" + stepsName(sceneSteps) + ")" : stepsName(lightSteps);
         if (ImGui::BeginCombo("##lightSteps", stepsText.c_str())) {
+            if (ImGui::Selectable(("Scene (" + stepsName(sceneSteps) + ")").c_str(), lightSteps == kSceneLightSteps) && lightSteps != kSceneLightSteps) {
+                setLightSteps(kSceneLightSteps);
+            }
+            UIProbe::item("spriteNormals.lightSteps.Scene");
             for (int n = 0; n <= sn::kMaxLightSteps; n++) {
-                if (ImGui::Selectable(n > 0 ? std::to_string(n).c_str() : "Off", n == lightSteps) && n != lightSteps) setLightSteps(n);
-                UIProbe::item("spriteNormals.lightSteps." + (n > 0 ? std::to_string(n) : std::string("Off")));
+                if (ImGui::Selectable(stepsName(n).c_str(), n == lightSteps) && n != lightSteps) setLightSteps(n);
+                UIProbe::item("spriteNormals.lightSteps." + stepsName(n));
             }
             ImGui::EndCombo();
         }
         UIProbe::item("spriteNormals.lightSteps");
-        tooltip("Light in flat bands, as the scene's Light Steps draw it: each light's brightness rounded up to N steps (Off: smooth)");
+        tooltip("Light in flat bands, as the scene's Light Steps draw it: each light's brightness rounded up to N steps (Scene: the scene's own setting; Off: smooth)");
         next(buttonWidth("Reset light"));
         if (ImGui::SmallButton("Reset light")) {
             project->getSpriteNormalsSettings().lightHeight = 0.0f;

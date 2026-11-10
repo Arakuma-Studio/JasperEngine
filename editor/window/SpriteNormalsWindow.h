@@ -158,9 +158,12 @@ namespace jasperengine::editor {
         void setLight(float x, float y, float height);
         void setLightColour(const Vector3& c);
         void setAmbient(float a);
-        // the lit preview's Light Steps: each light's term in N bands as the runtime's (0 = off, 1..16)
+        // the lit preview's Light Steps: each light's term in N bands as the runtime's. kSceneLightSteps
+        // (the default) follows the scene's Light Steps (the target's scene, else the open one); 0 = off, 1..16
+        static constexpr int kSceneLightSteps = -1;
         void setLightSteps(int steps);
         int getLightSteps() const { return lightSteps; }
+        int effectiveLightSteps() const;              // what the lit preview draws with (0..16)
         void setFrame(int index);                     // -1 = All
         int getFrame() const { return frame; }
         void setPlaying(bool on);
@@ -387,7 +390,8 @@ namespace jasperengine::editor {
         bool grid = true;
         bool advancedOpen = false;
         LightState light;
-        int lightSteps = 0;                      // the lit preview's Light Steps (0 off)
+        int lightSteps = kSceneLightSteps;       // the lit preview's Light Steps (kSceneLightSteps, 0 off, 1..16)
+        int litSteps = 0;                        // the steps the lit preview was last drawn with
         float zoom = 0.0f;                       // 0 = fit (computed on draw)
         bool fitRequested = true;
         ImVec2 pan = ImVec2(0, 0);

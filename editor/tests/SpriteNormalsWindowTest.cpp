@@ -1190,11 +1190,20 @@ TEST(SpriteNormalsWindowDeathTest, StonesGapsBoxyAndLightSteps) {
         ASSERT_TRUE(settle(window));
         Access::refreshWarningsNow(window);
         EXPECT_EQ(row(window, "gaps_unmatched"), nullptr);
-        // Light Steps: off by default, clamped to 0..16, the lit preview is renderLit with them
+        // Light Steps: the scene's by default (its 0: smooth), clamped to Scene..16, the lit preview
+        // is renderLit with them
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
         ASSERT_TRUE(settle(window));
-        EXPECT_EQ(window.getLightSteps(), 0);
+        ASSERT_EQ(w.p->getSelectedSceneId(), w.sceneId);
+        EXPECT_EQ(window.getLightSteps(), SpriteNormalsWindow::kSceneLightSteps);
+        EXPECT_EQ(window.effectiveLightSteps(), 0);
         const sn::Image smooth = Access::lit(window);
+        w.sceneObject()->setLight2DSteps(5);
+        EXPECT_EQ(window.effectiveLightSteps(), 5) << "follows the scene";
+        EXPECT_EQ(Access::lightSetup(window).lightSteps, 5);
+        w.sceneObject()->setLight2DSteps(0);
+        window.setLightSteps(-7);
+        EXPECT_EQ(window.getLightSteps(), SpriteNormalsWindow::kSceneLightSteps);
         window.setLightSteps(99);
         EXPECT_EQ(window.getLightSteps(), 16);
         window.setLightSteps(3);

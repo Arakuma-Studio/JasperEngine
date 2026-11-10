@@ -505,7 +505,7 @@ struct NormalsCall {
     uint32_t applyScene = 0;
     Entity applyEntity = NULL_ENTITY;
     std::string savePath;                      // project-relative, "" for none
-    int lightSteps = 0;                        // the contact sheet's Light Steps (params.light_steps)
+    int lightSteps = -1;                       // the contact sheet's Light Steps (params.light_steps); -1: the scene's
     std::vector<NormalsTarget> targets;
     bool finished = false;
     // filled on the main thread when the runs are done
@@ -572,10 +572,21 @@ struct Report {
     std::vector<uint8_t> sheet;
     std::string defaultNormal;
     bool painted = false;          // the sheet outlines painted pixels
+    int lightSteps = 0;            // the sheet's Light Steps
 };
+
+// the contact sheet's Light Steps: params.light_steps, else the Light Steps of the scene the map is
+// for (applied to, its source GameObject's, else the selected one), as the window's "Scene" choice
+int sheetLightSteps(Project* project, const NormalsCall& state) {
+    if (state.lightSteps >= 0) return state.lightSteps;
+    const uint32_t sceneId = state.apply ? state.applyScene : state.sourceEntity != NULL_ENTITY ? state.sourceScene : project->getSelectedSceneId();
+    const SceneProject* sp = project->getScene(sceneId);
+    return sp && sp->scene ? std::clamp(sp->scene->getLight2DSteps(), 0, sn::kMaxLightSteps) : 0;
+}
 
 Report report(Project* project, const NormalsCall& state, const NormalsTarget& target) {
     Report out;
+    out.lightSteps = sheetLightSteps(project, state);
     const sn::Prepared& p = target.run->prepared();
     const sn::Result& r = target.run->result();
     const sn::Settings& s = p.request.settings;
@@ -615,7 +626,7 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
         frames["frame_height"] = source.color.height;
     }
     sn::SheetOptions sheetOptions;
-    sheetOptions.lightSteps = state.lightSteps;
+    sheetOptions.lightSteps = out.lightSteps;
     if (count > static_cast<size_t>(sheetOptions.maxFrames)) {
         std::string shown;
         for (int i : sn::sheetFrames(static_cast<int>(count), sheetOptions.maxFrames)) shown += (shown.empty() ? "" : ", ") + std::to_string(i);
@@ -1011,7 +1022,8 @@ void finishNormals(const NormalsCallPtr& state) {
     }
     if (!reports[0].sheet.empty()) {
         state->images.push_back({Base64::encode(reports[0].sheet.data(), reports[0].sheet.size()), "image/png"});
-        const std::string steps = state->lightSteps > 0 ? "; Light Steps " + std::to_string(state->lightSteps) : std::string("; smooth light");
+        const int lightSteps = reports[0].lightSteps;
+        const std::string steps = lightSteps > 0 ? "; Light Steps " + std::to_string(lightSteps) : std::string("; smooth light");
         text += std::string("\nImage: the contact sheet") + (tilemap ? " of the first tileset" : "") +
                 " (per frame: colour, normal, lit from the top-left, top-right, bottom-right, bottom-left" +
                 (reports[0].painted ? "; magenta outline: painted pixels" : "") + steps + ").";
@@ -1020,7 +1032,7 @@ void finishNormals(const NormalsCallPtr& state) {
                        {"columns", Json::array({"colour", "normal", "lit from the top-left", "lit from the top-right", "lit from the bottom-right",
                                                 "lit from the bottom-left"})},
                        {"light_elevation_deg", rounded(sn::kSheetLightElevationDeg, 0)},
-                       {"light_steps", state->lightSteps}};
+                       {"light_steps", lightSteps}};
         if (reports[0].painted) legend["magenta_outline"] = "painted pixels";
         data["sheet_legend"] = legend;
     }

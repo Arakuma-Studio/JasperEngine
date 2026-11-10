@@ -232,7 +232,7 @@ image: nothing darker to cut) names the fix. A bright-grout tile is not for gaps
 The contact sheet: per frame (at most 8, spread evenly; `frames.sheet_note` says which) a row of colour, normal,
 then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2D light formula, 34° above the
 sprite); `sheet_legend` says the same. `params.light_steps: N` lights those columns in N bands as a scene's Light
-Steps does (default 0, smooth); `sheet_legend.light_steps` is the count used.
+Steps does (default: the target scene's Light Steps); `sheet_legend.light_steps` is the count used.
 
 | metric | means | warned when |
 |---|---|---|

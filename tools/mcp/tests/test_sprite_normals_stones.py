@@ -5,7 +5,7 @@ project with inputs made here (a 32 px brick tile between 1 px dark gaps, a flat
   refused naming params.gaps(.share);
 - gaps_unmatched on a flat tile, with a fix naming gaps.share;
 - params.light_steps bands the sheet's lit columns (another image), is echoed in sheet_legend, is no setting, and is
-  refused outside 0..16;
+  refused outside 0..16; without it the sheet takes the selected scene's Light Steps;
 - boxy on a crate with the default preset (its fix: props, or bevel with a radius), not with props;
 - the write step (next) and the sheet legend (sheet_legend) are in structuredContent.
 """
@@ -164,6 +164,20 @@ async def test_light_steps_band_the_sheet(ed: Editor):
     for bad in (17, -1, 2.5, "6"):
         errors = await gen_error(ed, source=f"{ART}/bricks.png", params={"light_steps": bad})
         check(errors[0]["kind"] == "invalid_settings" and errors[0].get("field") == "params.light_steps", f"{bad}: {errors}")
+
+
+async def test_light_steps_default_to_the_scenes(ed: Editor):
+    # without params.light_steps the sheet lights as the selected scene's Light Steps; 0 overrides it
+    write_inputs(ed)
+    await ed.call("set_scene_settings", settings={"light_2d_steps": 4})
+    try:
+        scened = await gen(ed, source=f"{ART}/bricks.png", preset="stones")
+        check(scened.structured["sheet_legend"]["light_steps"] == 4, f"the scene's: {scened.structured['sheet_legend']}")
+        check("Light Steps 4" in scened.text, f"the caption says so: {scened.text[-300:]}")
+        smooth = await gen(ed, source=f"{ART}/bricks.png", preset="stones", params={"light_steps": 0})
+        check(smooth.structured["sheet_legend"]["light_steps"] == 0, f"0 overrides: {smooth.structured['sheet_legend']}")
+    finally:
+        await ed.call("set_scene_settings", settings={"light_2d_steps": 0})
 
 
 async def test_boxy_crate(ed: Editor):
