@@ -346,3 +346,28 @@ TEST_F(AnimeSvgTest, ShapeLengthsResolveSvgPercentagesAndUnits){
     ASSERT_EQ(Anime::createDrawable(target("font"), 0, 1).size(), 1u);
     EXPECT_EQ(element("font").getAttribute("stroke-dasharray"), "40 0");
 }
+
+TEST_F(AnimeSvgTest, StyledDrawableOverridesDashStylesAndRestoresItsCap){
+    const std::string style = "stroke:red;stroke-width:8;stroke-dasharray:none!important;stroke-dashoffset:0!important;stroke-linecap:round;opacity:.75";
+    element("svg").setInnerHTML("<path id='styled-draw' d='M10 50L90 50' fill='none' stroke-linecap='butt' style=\"" + style + "\"/>");
+    UIElement path = element("styled-draw");
+    ASSERT_TRUE(path.isValid());
+    path.setStyle("opacity", "0.25");
+    ASSERT_EQ(Anime::createDrawable(target("styled-draw")).size(), 1u);
+    render();
+    const auto hidden = pixels();
+    ASSERT_FALSE(hidden.empty());
+    for (size_t i = 3; i < hidden.size(); i += 4) ASSERT_EQ(hidden[i], 0);
+    path.setAttribute("draw", "0 1");
+    render();
+    const auto shown = pixels();
+    ASSERT_EQ(shown.size(), 200u * 200u * 4u);
+    EXPECT_GT(shown[(100u * 200u + 15u) * 4u + 3u], 0); // the original inline round cap is restored
+    path.setAttribute("draw", "0 0.5");
+    const std::string half = element("svg").getInnerHTML();
+    for (int i = 0; i < 100; ++i) path.setAttribute("draw", i % 2 ? "0 0.5" : "0 0");
+    render();
+    EXPECT_EQ(element("svg").getInnerHTML(), half);
+    EXPECT_EQ(path.getAttribute("style"), style);
+    EXPECT_EQ(path.getStyle("opacity"), "0.25");
+}
