@@ -139,6 +139,22 @@ async def open_on(ed: Editor, path: str, verdict: str | None = None) -> dict:
     ed.fail(f"the verdict badge for {path}: {item}")
 
 
+async def close_window(ed: Editor, ui: ui_input.Ui) -> None:
+    """The close button of its tab, as a person closes a docked window: the #CLOSE item on the tab bar
+    at the top of the window's rect"""
+    focused = await ed.call("focus_window", window="pixel_art_cleanup")
+    rect = focused["rect"]
+    for _ in range(60):
+        closes = [item for item in (await ed.call("find_ui_item", label="#CLOSE")).get("items", [])
+                  if item.get("visible", True) and rect["x"] <= item["rect"]["x"] <= rect["x"] + rect["width"]
+                  and rect["y"] - 48 <= item["rect"]["y"] <= rect["y"] + 40]
+        if closes:
+            await ui.click(ui.centre(closes[0]["rect"]))
+            return
+        await ui_input.frames(ed, 2)
+    ed.fail(f"no close button on the window's tab above {rect}")
+
+
 async def test_badge_reads_fixable(ed: Editor):
     (ed.project / ART).mkdir(parents=True, exist_ok=True)
     (ed.project / HERO).write_bytes(upscale(sprite()))
@@ -195,6 +211,19 @@ async def test_undo_inside_the_window_only(ed: Editor):
     await ui_input.frames(ed, 6)
     state = await window_state(ed)
     ed.check_eq(state["recipe_moved"], 1, "Ctrl+Z outside the window leaves its edit")
+    # closed while it had the focus: its edits are out of Ctrl+Z's reach too (and it says unfocused)
+    await ed.call("focus_window", window="pixel_art_cleanup")
+    await until_state(ed, lambda s: s["focused"], "the window has the focus")
+    await close_window(ed, ui)
+    state = await until_state(ed, lambda s: not s["open"], "the window closes")
+    ed.check(not state["focused"], f"a closed window is not focused: {state}")
+    await ui_input.frames(ed, 4)
+    await ui.key("ctrl+z")
+    await ui_input.frames(ed, 6)
+    state = await window_state(ed)
+    ed.check_eq(state["recipe_moved"], 1, "Ctrl+Z after closing the window leaves its edit")
+    await ed.call("run_command", id="window.pixelArtCleanup")
+    await until_state(ed, lambda s: s["open"] and s["zoom"] > 0, "the window opens again")
     await ui.move(ui.at({"x": x, "y": y}))
     await ed.call("focus_window", window="pixel_art_cleanup")
     await ui_input.frames(ed, 4)
@@ -592,6 +621,9 @@ async def test_split_here_and_join_with_next(ed: Editor):
     await ui_input.frames(ed, 4)
     await ui.click_revealed("Split Here", WINDOW)
     split = await recipe_where(ed, lambda r: len(r["sheet"]["animations"]) == 2, "Split Here makes two animations")
+    # the player's frame belongs to the selected animation: another row cannot split there
+    other = await ui.find("Split Here", WINDOW, index=1, frames=60)
+    ed.check(other is not None and other.get("enabled") is False, f"Split Here on an unselected row is greyed out: {other}")
     ed.check_eq(split["sheet"]["animations"][0]["frames"], frames[:-1], "the head keeps the frames before")
     ed.check_eq(split["sheet"]["animations"][1]["frames"], frames[-1:], "the tail starts at the player's frame")
     await ui.click_revealed("Join With Next", WINDOW)

@@ -149,6 +149,8 @@ namespace jasperengine::editor {
         pixelart::cleanup::OutputFormat getOutputFormat() const { return outputFormat; }
         // writes the shown result (asks through the Confirm dialog on needs_person unless `confirmed`)
         bool write(std::string& error, bool confirmed = false);
+        // the confirmed replace of an existing or edited output: one write with overwrite, which never outlives it
+        bool replaceOutput(std::string& error);
         // import.pixelCleanup on the source's .meta, one undo step (R33)
         bool saveAsImportStep(std::string& error, bool confirmed = false);
         const std::vector<std::string>& lastWritten() const { return written; }
@@ -176,8 +178,8 @@ namespace jasperengine::editor {
 
         UiState uiState() const;
 
-        // Input the App routes: handled keys (arrows, Alt+Arrows, tools, Ctrl+Enter)
-        void handleShortcuts();
+        // Lints tab: the next (1) or previous (-1) spot, across the lints (the arrow keys' commands)
+        void stepLintSpot(int step);
 
     private:
         struct Gpu {

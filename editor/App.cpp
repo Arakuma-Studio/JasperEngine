@@ -2063,16 +2063,18 @@ void editor::App::showAlert(){
                 if (ImGui::Button("Yes", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onYes) {
-                        alert.onYes();
+                    // a copy: the callback may open another alert, which replaces alert.onYes while it runs
+                    if (const std::function<void()> callback = alert.onYes) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("No", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onNo) {
-                        alert.onNo();
+                    // a copy: the callback may open another alert, which replaces alert.onNo while it runs
+                    if (const std::function<void()> callback = alert.onNo) {
+                        callback();
                     }
                 }
             } else if (alert.type == AlertType::ThreeButton) {
@@ -2087,24 +2089,27 @@ void editor::App::showAlert(){
                 if (ImGui::Button(alert.yesLabel.c_str(), ImVec2(yesWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onYes) {
-                        alert.onYes();
+                    // a copy: the callback may open another alert, which replaces alert.onYes while it runs
+                    if (const std::function<void()> callback = alert.onYes) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button(alert.noLabel.c_str(), ImVec2(noWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onNo) {
-                        alert.onNo();
+                    // a copy: the callback may open another alert, which replaces alert.onNo while it runs
+                    if (const std::function<void()> callback = alert.onNo) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onCancel) {
-                        alert.onCancel();
+                    // a copy: the callback may open another alert, which replaces alert.onCancel while it runs
+                    if (const std::function<void()> callback = alert.onCancel) {
+                        callback();
                     }
                 }
             }

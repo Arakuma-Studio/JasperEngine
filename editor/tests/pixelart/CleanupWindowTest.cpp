@@ -8,11 +8,14 @@
 #include <gtest/gtest.h>
 
 #include "jobs/JobSystem.h"
+#include "support/TextureCorpus.h"
+#include "window/PixelArtCleanupEntry.h"
 #include "pixelart/cleanup/CleanupRecipe.h"
 #include "pixelart/cleanup/CleanupSynthetic.h"
 #include "window/PixelArtCleanupWindow.h"
 
 #include <cmath>
+#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -43,6 +46,16 @@ namespace jasperengine::editor {
             return w.cellRectInView(frame, ax, ay, x0, y0, x1, y1);
         }
         static const std::vector<cu::AtlasRect>& atlas(const PixelArtCleanupWindow& w) { return w.shown->atlasRects; }
+        static void setFocused(PixelArtCleanupWindow& w, bool value) { w.focused = value; }
+        static bool cacheHolds(const PixelArtCleanupWindow& w) { return w.cache && (w.cache->pipeline.hasGrid || w.cache->pipeline.hasSamples); }
+        static double lastRunMs(const PixelArtCleanupWindow& w) { return w.lastRunMs; }
+        static double lastFullRunMs(const PixelArtCleanupWindow& w) { return w.lastFullRunMs; }
+        static void applyCancelled(PixelArtCleanupWindow& w, double ms) {
+            auto bundle = std::make_shared<PixelArtCleanupWindow::Bundle>();
+            bundle->result.cancelled = true;
+            bundle->ms = ms;
+            w.applyBundle(bundle, true);
+        }
         static void stroke(PixelArtCleanupWindow& w, int x, int y, bool area) {
             w.beginStroke(x, y, area);
             w.painting = false;
@@ -351,4 +364,60 @@ TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
     ASSERT_TRUE(Access::cellInView(window, placed.index, ax, ay, x0, y0, x1, y1));
     EXPECT_DOUBLE_EQ(x0, rect->x + px);
     EXPECT_DOUBLE_EQ(y0, rect->y + py);
+}
+
+TEST(CleanupWindow, ClosingTheWindowDropsItsFocusAndItsRunCache) {
+    PixelArtCleanupWindow window(nullptr);
+    window.openDemo();
+    window.runNow();
+    Access::setFocused(window, true);
+    ASSERT_TRUE(Access::cacheHolds(window));
+    window.setOpen(false);
+    // a closed window takes no Ctrl+Z (App's lastFocusedWindow) and holds no cache
+    EXPECT_FALSE(window.isFocused());
+    EXPECT_FALSE(Access::cacheHolds(window));
+    // what it showed stays for when it opens again
+    EXPECT_TRUE(window.hasResult());
+}
+
+TEST(CleanupWindow, ACancelledRunDoesNotChangeThePrediction) {
+    PixelArtCleanupWindow window(nullptr);
+    window.openDemo();
+    Access::predict(window, 500.0, 500.0);
+    Access::applyCancelled(window, 1.0);
+    EXPECT_DOUBLE_EQ(Access::lastRunMs(window), 500.0);
+    EXPECT_DOUBLE_EQ(Access::lastFullRunMs(window), 500.0);
+}
+
+TEST(CleanupWindow, AFailedReplaceLeavesNoOverwriteBehind) {
+    // a plain file with its output beside it: Write asks to replace (the base host answers Yes), and
+    // the write fails (no project to write into): the next Write must ask again
+    jasperengine::editor::test::ScratchDir scratch("cleanup-replace");
+    const std::filesystem::path source = scratch.path / "art.png";
+    const std::string bytes = cu::demoImage().encodePng();
+    std::ofstream(source, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    std::ofstream(scratch.path / "art_clean.png", std::ios::binary) << "existing";
+    PixelArtCleanupWindow window(nullptr);
+    std::string error;
+    ASSERT_TRUE(window.openSource(source, error)) << error;
+    window.runNow();
+    ASSERT_TRUE(window.hasResult());
+    window.write(error);
+    ASSERT_NE(window.getPrepared(), nullptr);
+    EXPECT_FALSE(window.getPrepared()->spec.overwrite);
+}
+
+TEST(CleanupWindow, TheEntryCacheReadsAPlainImageOnce) {
+    jasperengine::editor::test::ScratchDir scratch("cleanup-entry");
+    const std::filesystem::path image = scratch.path / "plain.png";
+    const std::string bytes = jasperengine::editor::pixelart::PixelImage(4, 4).encodePng();
+    std::ofstream(image, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    int reads = 0;
+    const auto check = [&reads](const std::filesystem::path& projectDir, const std::filesystem::path& output) {
+        reads++;
+        return cu::checkStaleness(projectDir, output);
+    };
+    EXPECT_FALSE(cleanupentry::outputStatus(scratch.path, image, check).isOutput);
+    EXPECT_FALSE(cleanupentry::outputStatus(scratch.path, image, check).isOutput);
+    EXPECT_EQ(reads, 1);
 }

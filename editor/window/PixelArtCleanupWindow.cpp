@@ -205,20 +205,59 @@ void PixelArtCleanupWindow::open() {
 }
 
 void PixelArtCleanupWindow::setOpen(bool value) {
-    windowOpen = value;
+    if (value) {
+        if (!windowOpen) focusRequested = true;
+        windowOpen = true;
+        return;
+    }
+    windowOpen = false;
+    // a closed window holds no keys, no undo routing (App: lastFocusedWindow) and nothing heavy:
+    // the worker stops, the cache and the GPU copies go (reopening runs and uploads again)
+    focused = false;
+    focusRequested = false;
+    painting = false;
+    draggingAxis = 0;
+    draggingLine = -1;
+    draggingBox = -1;
+    addingBox = false;
+    playing = false;
+    commitEdit();
+    cancelJob();
+    cache = std::make_shared<cu::RunCache>();
+    lastFullKey.clear();
+    // a run stopped here is run again when the window opens
+    if (prepared && (!shown || shown->recipeText != cu::recipeText(recipe))) dirty = true;
+    retire(sourceGpu);
+    retire(resultGpu);
+    retire(compareGpu);
+    retire(playerGpu);
+    playerKey.clear();
+    uploadedFrame = -1;
+    uploadedResult.reset();
 }
 
 void PixelArtCleanupWindow::bindCommands(CommandCatalog& catalog) {
-    const CommandDef* existing = catalog.find("pixelArtCleanup.write");
-    if (!existing) return;
-    CommandDef def = *existing;
-    def.run = [this](const CommandArgs&) {
+    auto bind = [&catalog, this](const char* id, std::function<void()> action, std::function<bool()> enabled) {
+        const CommandDef* existing = catalog.find(id);
+        if (!existing) return;
+        CommandDef def = *existing;
+        def.run = [action](const CommandArgs&) { action(); };
+        def.enabled = std::move(enabled);
+        def.keyGate = [this]() { return takesKeys(); };
+        catalog.add(std::move(def));
+    };
+    bind("pixelArtCleanup.write", [this]() {
         std::string error;
         if (!write(error)) setStatus(error, true);
-    };
-    def.enabled = [this]() { return hasResult() && !isDemo; };
-    def.keyGate = [this]() { return takesKeys(); };
-    catalog.add(std::move(def));
+    }, [this]() { return hasResult() && !isDemo; });
+    const auto stepping = [this]() { return tab == Tab::Lints && lintSelected >= 0 && shown != nullptr; };
+    bind("pixelArtCleanup.nextSpot", [this]() { stepLintSpot(1); }, stepping);
+    bind("pixelArtCleanup.previousSpot", [this]() { stepLintSpot(-1); }, stepping);
+    const auto nudging = [this]() { return tab == Tab::Frames && shown && shown->result.animation.has_value(); };
+    bind("pixelArtCleanup.nudgeLeft", [this]() { nudgeCurrentFrame(-1, 0); }, nudging);
+    bind("pixelArtCleanup.nudgeRight", [this]() { nudgeCurrentFrame(1, 0); }, nudging);
+    bind("pixelArtCleanup.nudgeUp", [this]() { nudgeCurrentFrame(0, -1); }, nudging);
+    bind("pixelArtCleanup.nudgeDown", [this]() { nudgeCurrentFrame(0, 1); }, nudging);
 }
 
 void PixelArtCleanupWindow::shutdownJobs(double timeoutSeconds) {
@@ -560,9 +599,10 @@ PixelImage PixelArtCleanupWindow::compareForFrame(const Bundle& bundle, int fram
 }
 
 void PixelArtCleanupWindow::applyBundle(std::shared_ptr<Bundle> bundle, bool full) {
+    // a cancelled run stopped part way: its time predicts nothing (R39)
+    if (bundle->result.cancelled) return;
     lastRunMs = bundle->ms;
     if (full) lastFullRunMs = bundle->ms;
-    if (bundle->result.cancelled) return;
     if (!bundle->result.problem.empty()) {
         const PixelProblem& p = bundle->result.problem;
         setStatus(p.message + (p.fix.empty() ? std::string() : " " + p.fix), true);
@@ -648,7 +688,7 @@ void PixelArtCleanupWindow::tick() {
     tickReruns();
     // a settled edit needs no stale run; a drag lets the last run finish, so it updates as it moves
     if (job && dirty && !editBefore) job->cancel = true;
-    if (dirty && !job) startRun(true);
+    if (dirty && !job && windowOpen) startRun(true);
     if ((job || playing || !reruns.empty() || flashUntil > cleanupNow()) && cleanupEditorUi()) Backend::getApp().requestRedraw();
 }
 
@@ -688,12 +728,8 @@ bool PixelArtCleanupWindow::write(std::string& error, bool confirmed) {
                     editedSince ? name + " was edited after this cleanup. Replace it and lose those edits?\n\nUndo in the Project window brings it back."
                                 : name + " already exists. Replace it?\n\nUndo in the Project window brings it back.",
                     [this]() {
-                        // no longer a re-run over its own file: an explicit replace
-                        prepared->rerunOutput.clear();
-                        prepared->rerunOutputAbsolute.clear();
-                        prepared->spec.overwrite = true;
                         std::string message;
-                        if (!write(message, true) && !message.empty()) setStatus(message, true);
+                        if (!replaceOutput(message) && !message.empty()) setStatus(message, true);
                     });
             return true;
         }
@@ -714,6 +750,17 @@ bool PixelArtCleanupWindow::write(std::string& error, bool confirmed) {
     redoStack.clear();
     setStatus("Wrote " + (written.empty() ? outputPath : written.front()) + ".", false);
     return true;
+}
+
+bool PixelArtCleanupWindow::replaceOutput(std::string& error) {
+    if (!prepared) return false;
+    // no longer a re-run over its own file: an explicit replace, for this write only
+    prepared->rerunOutput.clear();
+    prepared->rerunOutputAbsolute.clear();
+    prepared->spec.overwrite = true;
+    const bool ok = write(error, true);
+    prepared->spec.overwrite = false;
+    return ok;
 }
 
 bool PixelArtCleanupWindow::saveAsImportStep(std::string& error, bool confirmed) {
@@ -1107,22 +1154,11 @@ void PixelArtCleanupWindow::addStroke(int ax, int ay) {
 
 // ---- shortcuts
 
-void PixelArtCleanupWindow::handleShortcuts() {
-    const ImGuiIO& io = ImGui::GetIO();
-    if (ImGui::IsAnyItemActive()) return;
-    const bool left = ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true);
-    const bool right = ImGui::IsKeyPressed(ImGuiKey_RightArrow, true);
-    const bool up = ImGui::IsKeyPressed(ImGuiKey_UpArrow, true);
-    const bool down = ImGui::IsKeyPressed(ImGuiKey_DownArrow, true);
-    if (!(left || right || up || down)) return;
-    if (io.KeyAlt && tab == Tab::Frames) {
-        nudgeCurrentFrame(right ? 1 : left ? -1 : 0, down ? 1 : up ? -1 : 0);
-        return;
-    }
+void PixelArtCleanupWindow::stepLintSpot(int step) {
     if (tab == Tab::Lints && lintSelected >= 0 && shown) {
         // the next or previous spot, across the lints that have some
         const auto& results = shown->result.report.lints.results;
-        const int step = (left || up) ? -1 : 1;
+        if (results.empty()) return;
         int lint = lintSelected, spot = spotSelected + step;
         for (size_t guard = 0; guard <= results.size(); guard++) {
             const int count = static_cast<int>(results[static_cast<size_t>(lint)].at.size());
@@ -2228,10 +2264,17 @@ void PixelArtCleanupWindow::drawFramesTab() {
             applyEdit([&](cu::Recipe& r) { givenSheet(r, currentResult).animations[static_cast<size_t>(i)].include = include; });
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Split Here")) {
+        // the player's frame is in the selected animation: only its row can split there
+        ImGui::BeginDisabled(i != animationSelected);
+        const bool splitClicked = ImGui::SmallButton("Split Here");
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", i == animationSelected ? "Split at the player's frame" : "Select this animation and pick a frame in the player first");
+        }
+        if (splitClicked) {
             // the player counts the included frames: where its frame sits among all of them
             int at = frame;
-            if (i == animationSelected && currentResult && currentResult->animation && i < static_cast<int>(currentResult->animation->clips.size())) {
+            if (currentResult && currentResult->animation && i < static_cast<int>(currentResult->animation->clips.size())) {
                 const auto& placed = currentResult->animation->clips[static_cast<size_t>(i)].placed;
                 if (frame >= 0 && frame < static_cast<int>(placed.size())) {
                     const auto where = std::find(animation.frames.begin(), animation.frames.end(), placed[static_cast<size_t>(frame)].index);
@@ -2296,14 +2339,14 @@ void PixelArtCleanupWindow::show() {
         focusRequested = false;
     }
     const bool visible = ImGui::Begin(WINDOW_NAME, &windowOpen);
-    focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    focused = windowOpen && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (!visible) {
         ImGui::End();
+        if (!windowOpen) setOpen(false);
         return;
     }
     acceptDrop();
     uploadImages();
-    if (focused) handleShortcuts();
 
     if (!prepared) {
         drawEmptyState(ImGui::GetContentRegionAvail());
@@ -2345,4 +2388,5 @@ void PixelArtCleanupWindow::show() {
         drawFooter();
     }
     ImGui::End();
+    if (!windowOpen) setOpen(false);
 }

@@ -12,6 +12,7 @@
 #include "util/FileUtils.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -27,7 +28,9 @@ namespace jasperengine::editor::cleanupentry {
         std::string source;         // as recorded
     };
 
-    inline OutputStatus outputStatus(const fs::path& projectDir, const fs::path& output) {
+    // `check` reads the files (tests count its calls)
+    using StalenessCheck = std::function<pixelart::cleanup::Staleness(const fs::path& projectDir, const fs::path& output)>;
+    inline OutputStatus outputStatus(const fs::path& projectDir, const fs::path& output, const StalenessCheck& check = pixelart::cleanup::checkStaleness) {
         struct Entry {
             fs::file_time_type outputTime{}, sourceTime{};
             uintmax_t outputSize = 0, sourceSize = 0;
@@ -43,6 +46,8 @@ namespace jasperengine::editor::cleanupentry {
         const std::string key = FileUtils::pathToGenericUtf8(output.lexically_normal());
         auto it = cache.find(key);
         if (it != cache.end() && it->second.outputTime == outputTime && it->second.outputSize == outputSize) {
+            // not an output: its own stamp is all that can change that
+            if (!it->second.status.isOutput) return it->second.status;
             std::error_code sourceError;
             const fs::file_time_type sourceTime = fs::last_write_time(it->second.source, sourceError);
             const uintmax_t sourceSize = sourceError ? 0 : fs::file_size(it->second.source, sourceError);
@@ -52,7 +57,7 @@ namespace jasperengine::editor::cleanupentry {
         Entry entry;
         entry.outputTime = outputTime;
         entry.outputSize = outputSize;
-        const pixelart::cleanup::Staleness staleness = pixelart::cleanup::checkStaleness(projectDir, output);
+        const pixelart::cleanup::Staleness staleness = check(projectDir, output);
         using State = pixelart::cleanup::Staleness::State;
         if (staleness.state == State::Fresh || staleness.state == State::Changed || staleness.state == State::Missing) {
             entry.status.isOutput = true;

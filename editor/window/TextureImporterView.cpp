@@ -908,7 +908,8 @@ void TextureImporterView::drawPixelArtCleanup(const std::string& assetPath){
         cleanupSectionKey.clear();
     }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Cook the fixed pixels instead of the source. The source file stays as it is.");
+        ImGui::SetTooltip("Cook the fixed pixels instead of the source; the source file stays as it is. Applied at once as its own undo "
+                          "step: Revert does not undo it, Ctrl+Z does.");
     ImGui::SameLine();
     if (ImGui::SmallButton("Open in Cleanup Window"))
         getEditorHost().openPixelArtCleanup(project->normalizeToProjectRelative(project->getAssetsPath() / assetPath));
