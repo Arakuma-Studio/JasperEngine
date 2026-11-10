@@ -842,12 +842,19 @@ namespace {
         return f.renderRGBA16F && f.filterRGBA16F;
     }
 
-    // the glint chain of the render (the debug view shows the full chain when the layer has none)
+    // the glint chain of the render (the debug view shows the full chain when the layer has none);
+    // it runs with or without float targets (glintFloat)
     GlintMode glintMode(const Title3DPlan& plan) {
-        const RenderFeatures& f = SystemRender::getFeatures();
-        if (!floatPasses() || !f.blendRGBA16F || plan.glintParams.intensity <= 0) return GlintMode::Off;
+        if (plan.glintParams.intensity <= 0) return GlintMode::Off;
         if (plan.glint == GlintMode::Off && plan.debugView == Title3DDebugView::Glint) return GlintMode::Full;
         return plan.glint;
+    }
+
+    // whether the glint's targets are RGBA16F (rendered, filtered and blended), else SRGB8A8 (R30)
+    bool glintFloat(uint32_t testFlags) {
+        const RenderFeatures& f = SystemRender::getFeatures();
+        if (testFlags & (TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_FLOAT_FILTER | TITLE_ART_TEST_NO_FLOAT_BLEND)) return false;
+        return f.renderRGBA16F && f.filterRGBA16F && f.blendRGBA16F;
     }
 
     bool debugGeometry(const Title3DPlan& plan) {
@@ -1433,6 +1440,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         gi.params = plan.glintParams;
         gi.mode = glint;
         gi.originTopLeft = features.originTopLeft;
+        gi.floatTargets = glintFloat(testFlags);
         if (!im.glint->render(gi, services.pool, glintOut, error)) return false;
         counters.glintPasses += glintOut.passes;
     }
@@ -1452,7 +1460,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     if (plan.debugView == Title3DDebugView::AO) debug = 1;
     else if (plan.debugView == Title3DDebugView::Glint) debug = 2;
     else if (plan.debugView == Title3DDebugView::Ink) debug = 3;
-    set4(post.p2, aoTarget ? 1.0f : 0.0f, glintOut.light ? 1.0f : 0.0f, debug);
+    set4(post.p2, aoTarget ? 1.0f : 0.0f, glintOut.light ? 1.0f : 0.0f, debug, glintOut.lightScale);
     set4(post.p3, glintOut.uv[0], glintOut.uv[1], glintOut.uv[2], glintOut.uv[3]);
     const TargetKey outKey = static_cast<SokolTitleTarget*>(out)->key();
     TargetRef toned;

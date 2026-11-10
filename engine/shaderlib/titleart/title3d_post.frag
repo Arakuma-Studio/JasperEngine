@@ -43,7 +43,8 @@ uniform u_fs_title3dPost {
     vec4 p1;    // MITCHELL: x k, y the source's last texel along the axis; AO: x radius (view units),
                 // y px per view unit at depth 1, z intensity, w 1 = origin top left; AO_BLUR: xy the
                 // axis; BOX_DOWN: x the source level, y 1 = copy the level as it is
-    vec4 p2;    // TONEMAP: x 1 = AO, y 1 = glint, z debug (1 AO, 2 glint, 3 ink); AO, AO_BLUR: xy the
+    vec4 p2;    // TONEMAP: x 1 = AO, y 1 = glint, z debug (1 AO, 2 glint, 3 ink), w the light a glint
+                // texel holds x (1, or the 8-bit glint's scale: Glint3D.h); AO, AO_BLUR: xy the
                 // grid's origin in the whole render (px), z the title centre's view depth, w its radius
     vec4 p3;    // TONEMAP: the glint texture's uv = main uv x xy + zw
     mat4 projInv;   // AO: the prepass's inverse projection
@@ -132,7 +133,7 @@ void main() {
         light *= ao;
     }
     if (tp.p2.y > 0.5) {
-        vec3 g = max(tpBilinearAux2(uv * tp.p3.xy + tp.p3.zw).rgb, vec3(0.0));
+        vec3 g = max(tpBilinearAux2(uv * tp.p3.xy + tp.p3.zw).rgb * tp.p2.w, vec3(0.0));
         if (debugView == 2) {
             float ga = clamp(max(g.r, max(g.g, g.b)), 0.0, 1.0);
             frag_color = ga > 1e-5 ? vec4(tl_toneMap(g / ga * tp.p0.y, int(tp.p0.x + 0.5)) * ga, ga) : vec4(0.0);

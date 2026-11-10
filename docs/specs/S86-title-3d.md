@@ -1507,3 +1507,24 @@ rest of S82 lands in 6B.
     discrete stars from the light it reads, and on the RGBA8 path that light has 8 bits (31): a star at a near-tie moves.
     AC9 holds a glint-on render to the mean (3/255) and a glint-off one to the share as well; the check does the same with
     one document: with its 3D glints off to the 3D share and max, with them on to the mean alone.
+33. **Implementation (R30, R32, AC9): the 3D glint runs without float targets.** Found by S84's gate review: under
+    `TITLE_ART_TEST_NO_FLOAT_TARGETS` only the main target left float; `Glint3D` kept every intermediate and its output
+    in RGBA16F at every tier (Gold 3D "BIG": 34 float targets at Bake and High, 23 at Medium, 5 at Low), and on a device
+    without renderable, filterable and blendable RGBA16F the renderer turned the glint off. Now the glint runs on every
+    device. Where RGBA16F does not render, filter or blend, or under `TITLE_ART_TEST_NO_FLOAT_TARGETS`, `_NO_FLOAT_FILTER`
+    or `_NO_FLOAT_BLEND`, the glint runs the same passes on SRGB8A8 targets. Its intermediates hold light / 64, the
+    linear encoding of 31, since the bright pass reaches 60. Its output holds light / 16, S83 D14's accumulator, because
+    past 16 every tone curve is white. The bright pass scales its write, TAME's and HIGHPASS's coverage constant comes in
+    the stored units, ADD's and the sprites' gains convert to the output's scale, the other passes are linear or take
+    ratios, and the tone map reads the output at its scale. Cost: no pass more, and half the glint's target memory.
+    No dither: dithering every intermediate write by half a code, in the sRGB coding as 31's main pass does, moved the
+    result further from the float path (Gold 3D "BIG", mean /255 at Bake, High, Medium, Low: 0.82, 0.66, 0.32, 0.29
+    against 0.62, 0.45, 0.30, 0.28 undithered). Its convex decode biases each of the chain's 30 passes upward, as S83
+    Deviation 37 found for the scatter. A dither of half a code in linear light came to 0.72, 0.54, 0.30, 0.31.
+    `TitleTargetPoolStats::floatAcquires` counts the float targets a render takes.
+    Test: `Title3DFallbackGpu.TheGlintRunsWithoutFloatTargetsOnEveryTier`. Each tier's forced render takes no float
+    target, runs as many glint passes as the float render, shows its glint, and stays within AC9's mean 3/255. Red
+    control: the earlier glint took the float targets above. Still float under the flag, and dropped on a device
+    without float: AO (R31) and the gem behind copy (R21). The environment cubes are built in RGBA16F on every device.
+    S84's `fallback_parity` keeps 32's glint-off share rule: the stars still come from 8-bit light, and Gold 3D "BIG"
+    shows up to 231/255 at a moved star.

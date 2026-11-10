@@ -55,6 +55,8 @@ namespace jasperengine::titleart {
 
     // bytes per texel of a colour format
     JASPERENGINE_API size_t colorFormatBytes(ColorFormat format);
+    // whether a colour format is a float one (RGBA16F, RGBA32F, R32F, RG16F, R16F)
+    JASPERENGINE_API bool isFloatColorFormat(ColorFormat format);
     // the GPU memory of a target: colour x samples, plus a single-sample resolve when
     // multisampled, plus depth (4 bytes per sample)
     JASPERENGINE_API size_t targetBytes(const TargetKey& key);
@@ -113,6 +115,7 @@ namespace jasperengine::titleart {
         uint64_t allocations = 0;
         uint64_t failures = 0;
         uint64_t depthOrMsaaAcquires = 0;   // acquires with a depth format or samples > 1
+        uint64_t floatAcquires = 0;         // acquires of a float colour format (the RGBA8 path makes none)
     };
 
     class JASPERENGINE_API TitleTargetPool {

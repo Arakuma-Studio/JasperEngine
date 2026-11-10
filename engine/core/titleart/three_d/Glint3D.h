@@ -18,6 +18,12 @@
 //   gets the texels the whole render has there) with the uv transform the tone map samples it
 //   through; compressed light (S86's SRGB8A8 encoding) is decoded and the MSAA shoulder expanded
 //   by the bright pass.
+// - Without float targets (S86 R30: RGBA16F not renderable, filterable or blendable, or the test
+//   flags) the same passes run on SRGB8A8 targets: the intermediates hold light / GLINT_LIGHT_8BIT
+//   (S86's linear encoding, highlights reach 60) and the output light / GLINT_OUT_8BIT (S83 D14's
+//   accumulator encoding: past 16 every tone curve is white), undithered (a dither under half a
+//   code, in the sRGB coding or in linear light, moved the result further from the float path's:
+//   S86 Deviation 33).
 // - Thread-safety: main thread (GPU passes).
 
 #pragma once
@@ -52,10 +58,12 @@ namespace jasperengine::titleart {
         Glint3DParams params;
         GlintMode mode = GlintMode::Full;
         bool originTopLeft = true;          // the sprites' clip-space rows
+        bool floatTargets = true;           // RGBA16F targets; false: SRGB8A8 holding scaled light
     };
 
     struct Glint3DOutput {
-        TargetRef light;                    // RGBA16F added light on the level-B lattice
+        TargetRef light;                    // added light on the level-B lattice (RGBA16F, or SRGB8A8)
+        float lightScale = 1;               // a texel of `light` x this = light
         float uv[4] = {1, 1, 0, 0};         // region uv -> light uv: x scale, y scale, x offset, y offset
         uint32_t passes = 0;
     };
@@ -79,5 +87,8 @@ namespace jasperengine::titleart {
 
     // the point detector's feature size, % of the source size (Pachislop GLINT_DETAIL)
     constexpr double GLINT_DETAIL = 1.5;
+    // the light an 8-bit intermediate and the 8-bit output hold at most (x white)
+    constexpr double GLINT_LIGHT_8BIT = 64;
+    constexpr double GLINT_OUT_8BIT = 16;
 
 }

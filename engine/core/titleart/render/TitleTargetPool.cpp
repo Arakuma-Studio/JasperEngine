@@ -24,6 +24,21 @@ size_t titleart::colorFormatBytes(ColorFormat format) {
     return 4;
 }
 
+bool titleart::isFloatColorFormat(ColorFormat format) {
+    switch (format) {
+        case ColorFormat::RGBA16F:
+        case ColorFormat::RGBA32F:
+        case ColorFormat::R32F:
+        case ColorFormat::RG16F:
+        case ColorFormat::R16F: return true;
+        case ColorFormat::RED:
+        case ColorFormat::RGBA:
+        case ColorFormat::RED16:
+        case ColorFormat::SRGB8A8: return false;
+    }
+    return false;
+}
+
 size_t titleart::targetBytes(const TargetKey& key) {
     const size_t pixels = (size_t)std::max(0, key.width) * (size_t)std::max(0, key.height);
     const size_t samples = (size_t)std::max(1, key.samples);
@@ -121,6 +136,7 @@ bool TitleTargetPool::evictIdleFor(size_t bytes) {
 TargetRef TitleTargetPool::acquire(const TargetKey& key, std::string* error) {
     counters.acquires++;
     if (key.depth != TitleDepthFormat::None || key.samples > 1) counters.depthOrMsaaAcquires++;
+    if (isFloatColorFormat(key.format)) counters.floatAcquires++;
     TargetRef ref;
     if (key.width <= 0 || key.height <= 0) {
         counters.failures++;

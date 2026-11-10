@@ -4,7 +4,9 @@
 // S86 AC9, AC10 (partly), AC13 (CPU twin), AC15, AC27 (zero cost): a Dimension 3D layer through
 // the S80 renderer on the headless device. A gold 3D plate draws lit pixels where its 2D twin
 // does and nothing outside its region; the ramp's bend changes the image (red control: bend 0);
-// the compressed-light path agrees with the float path; the debug views; AO (AC16) darkens the
+// the compressed-light path agrees with the float path, and Gold 3D "BIG"'s glint runs without a
+// float target on every tier within AC9's mean (Title3DFallbackGpu; red control: the glint's
+// float targets before its 8-bit path); the debug views; AO (AC16) darkens the
 // crevices and keeps open faces; gems refract the layer's own opaque parts (AC11); a part's own
 // environment lights that part only; the glint (AC17) adds light past the letters on every tier
 // (red control: a threshold nothing passes); an environment build is spread over frames (the 21 s
@@ -24,6 +26,7 @@
 #include "titleart/three_d/mesher/TitleMesher.h"
 
 #include <cmath>
+#include <cstdio>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -75,6 +78,24 @@ namespace {
         void SetUp() override { JASPER_REQUIRE_GPU(); }
     };
 
+    class Title3DFallbackGpu : public Title3DRendererGpu {};
+
+    // AC9's fixture: Gold 3D "BIG" (S84's metal/gold-3d structure, as the bake bench builds it),
+    // with S83's stock star glint or none
+    std::shared_ptr<const TitleArtDoc> goldBig(bool glint) {
+        Json gold = materialPreset("gold");
+        Json bands = Json::array();
+        bands.push_back(Json{{"grow", 1.5}, {"depth", 10}, {"bevel", {{"width", 1.2}, {"depth", 1.2}, {"profile", "chamfer"}}}, {"material", gold}});
+        bands.push_back(Json{{"grow", 0.6}, {"depth", 8}, {"bevel", {{"width", 0.3}, {"depth", 0.6}, {"profile", "step"}}},
+                             {"material", materialPreset("black_gloss")}});
+        bands.push_back(Json{{"grow", 2.2}, {"depth", 6}, {"plate", {{"kind", "hull"}}}, {"material", materialPreset("black_gloss")}});
+        Json style = Json{{"depth", 12}, {"curve_segments", 10}, {"bevel", {{"width", 2.5}, {"depth", 2.5}, {"profile", "round"}}},
+                          {"face", gold}, {"bands", bands}, {"glint", {{"enabled", glint}}}};
+        Json layer = Json{{"id", "00000001"}, {"type", "text"}, {"name", "BIG"}, {"text", "BIG"}, {"font", fontRef(DELA_GOTHIC)},
+                          {"size", 200}, {"dimension", "3d"}, {"style_3d", style}};
+        return makeDoc({{"canvas", canvas(768, 384)}, {"layers", Json::array({layer})}});
+    }
+
 }
 
 TEST_F(Title3DRendererGpu, AGold3DPlateDrawsLitPixels) {
@@ -118,6 +139,46 @@ TEST_F(Title3DRendererGpu, CompressedLightAgreesWithFloat) {
     const Difference d = compare(floats, compressed, 24.0);
     EXPECT_LE(d.mean, 3.0);
     EXPECT_LE(d.overFraction, 0.02);
+}
+
+TEST_F(Title3DFallbackGpu, TheGlintRunsWithoutFloatTargetsOnEveryTier) {
+    // AC9, R30, R32: Gold 3D "BIG" with the glint on, at Bake and High (the full chain), Medium (the
+    // reduction) and Low (the sprites), with float targets and with TITLE_ART_TEST_NO_FLOAT_TARGETS:
+    // the forced render acquires no float target, the glint's included, runs the glint's passes (as
+    // many as the float render), shows its glint (it differs from the forced render without one) and
+    // agrees with the float render within mean 3/255. Red control: the glint's RGBA16F targets
+    // before it had its 8-bit path (the forced render acquired them)
+    const RenderFeatures& f = SystemRender::getFeatures();
+    if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F || !f.msaaRGBA16F) GTEST_SKIP() << "no float passes here";
+    static TestAssetResolver assets;
+    const uint32_t forced = TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F;
+    for (int tier : {0, 1, 2, 3}) {
+        SCOPED_TRACE("tier " + std::to_string(tier));
+        auto renderer = geometryRenderer();
+        auto request = [&](bool glint, uint32_t flags) {
+            RenderRequest r = requestOf(goldBig(glint), flags);
+            r.tier = tier;
+            r.assets = &assets;
+            return r;
+        };
+        const Pixels floats = render(*renderer, request(true, 0));
+        const Title3DStats* st = stats3D(*renderer);
+        ASSERT_TRUE(st);
+        const uint64_t floatGlintPasses = st->glintPasses;
+        const uint64_t floatTargets = renderer->poolStats().floatAcquires;
+        EXPECT_GT(floatGlintPasses, 0u) << "the glint ran";
+        EXPECT_GT(floatTargets, 0u) << "the float render takes float targets";
+        const Pixels fallback = render(*renderer, request(true, forced));
+        EXPECT_EQ(renderer->poolStats().floatAcquires, floatTargets) << "the forced render took a float target";
+        EXPECT_EQ(st->glintPasses - floatGlintPasses, floatGlintPasses) << "the forced glint runs the same passes";
+        const Pixels fallbackOff = render(*renderer, request(false, forced));
+        const Difference d = compare(floats, fallback, 24.0);
+        const Difference shown = compare(fallback, fallbackOff, 24.0);
+        std::printf("[title3d-fallback] tier %d: glint on, float vs forced mean %.3f/255, %.4f %% over 24/255, max %.0f; glint shown on %.3f %% of px\n",
+                    tier, d.mean, d.overFraction * 100, d.max, shown.overFraction * 100);
+        EXPECT_LE(d.mean, 3.0);
+        EXPECT_GT(shown.overFraction, 0.0) << "the forced render shows the glint";
+    }
 }
 
 TEST_F(Title3DRendererGpu, The3DRegionIsTheProjectedMesh) {
@@ -303,8 +364,6 @@ TEST_F(Title3DRendererGpu, TheGlintAddsLightPastTheLetters) {
     // AC17: a gold plate's bevel highlights make a glint that reaches past the plate (alpha raised
     // where the plain render is empty), on the full chain (Bake), the reduction (Medium) and the
     // sprites (Low); a threshold nothing passes changes nothing (red control)
-    const RenderFeatures& f = SystemRender::getFeatures();
-    if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F) GTEST_SKIP() << "no float passes here";
     auto withGlint = [](double threshold) {
         Json layer = plate3D(0.6, "chrome");
         layer["style_3d"]["glint"] = Json{{"enabled", true}, {"threshold", threshold}, {"intensity", 2}, {"radius", 5},
