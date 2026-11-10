@@ -264,6 +264,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-10: S50's review found one blocker (`edit_tilemap create` sets the Grid's cell size in
+  pixels instead of world units, so PPU ≠ 1 scenes are wrong) and 15 should-fixes: cell-rect overflow
+  past the region cap, off-screen chunks re-dirtied on every edit, offset mismatches between picking,
+  colliders and rendering, tilesets resolved by path only, Tileset Editor fields that never commit or
+  commit every frame, per-frame waste. Plus missing timing and export tests. All went back to S50's
+  implementer on box C. S48's web build passes; android and AC26 still running on box D.
+
 - 2026-11-10: S50 passed its lighter gate at `aee48ed46` on box C (`WERROR` build, core 264/264,
   editor 303/303, MCP 233 passed, 1 failed, 3 skipped; `check_fanout` with `MeshComponent.h` at 150 of
   150). The one failure is `test_lua_api_resource`: eight S52 `SpriteBatch` functions lack parser
