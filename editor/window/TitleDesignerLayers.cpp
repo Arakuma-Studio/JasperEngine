@@ -141,23 +141,44 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     if (!doc.isSelected({NodeKind::Layer, layerId, {}, {}})) doc.selectOne({NodeKind::Layer, layerId, {}, {}});
     const bool editable = doc.editable();
     const ta::Json* layer = layerById(doc.committed(), layerId);
+    // an item that edits replaces the committed document: read the layer again before the next one
+    const auto refresh = [&] { layer = layerById(doc.committed(), layerId); };
     const ta::LayerType type = layer ? ta::layerTypeOf(*layer) : ta::LayerType::Unknown;
     // the texts are the catalog's, so a rebound key shows its new binding
     auto keys = [](std::string_view id) { return CommandCatalog::editor().menuShortcutText(id); };
-    if (ImGui::MenuItem("Rename", keys("titleDesigner.rename").c_str(), false, editable)) runCommand("titleDesigner.rename");
-    if (ImGui::MenuItem("Duplicate", keys("titleDesigner.duplicate").c_str(), false, editable)) duplicateSelection();
-    if (ImGui::MenuItem("Delete", keys("titleDesigner.delete").c_str(), false, editable)) deleteSelection();
+    if (ImGui::MenuItem("Rename", keys("titleDesigner.rename").c_str(), false, editable)) {
+        runCommand("titleDesigner.rename");
+        refresh();
+    }
+    if (ImGui::MenuItem("Duplicate", keys("titleDesigner.duplicate").c_str(), false, editable)) {
+        duplicateSelection();
+        refresh();
+    }
+    if (ImGui::MenuItem("Delete", keys("titleDesigner.delete").c_str(), false, editable)) {
+        deleteSelection();
+        refresh();
+    }
     ImGui::Separator();
-    if (ImGui::MenuItem("Group", keys("titleDesigner.group").c_str(), false, editable)) groupSelection();
-    if (ImGui::MenuItem("Ungroup", keys("titleDesigner.ungroup").c_str(), false, editable && type == ta::LayerType::Group)) ungroupSelection();
+    if (ImGui::MenuItem("Group", keys("titleDesigner.group").c_str(), false, editable)) {
+        groupSelection();
+        refresh();
+    }
+    if (ImGui::MenuItem("Ungroup", keys("titleDesigner.ungroup").c_str(), false, editable && type == ta::LayerType::Group)) {
+        ungroupSelection();
+        refresh();
+    }
     const bool clipped = layer && layer->value("clip", false);
-    if (ImGui::MenuItem(clipped ? "Release Clipping Mask" : "Create Clipping Mask", keys("titleDesigner.clip").c_str(), false, editable)) toggleClip();
+    if (ImGui::MenuItem(clipped ? "Release Clipping Mask" : "Create Clipping Mask", keys("titleDesigner.clip").c_str(), false, editable)) {
+        toggleClip();
+        refresh();
+    }
     if (ta::layerTypeHasStyle(type)) {
         const std::string owner = TitleArtOps::pendingOwner("set_dimension");
         const bool is3d = layer && layer->value("dimension", std::string("2d")) == "3d";
         if (ImGui::MenuItem(is3d ? "Convert to 2D" : "Convert to 3D", nullptr, false, editable && owner.empty())) {
             commitNamed(ta::Json::array({ta::Json{{"op", "set_dimension"}, {"layer", "id:" + layerId}, {"dimension", is3d ? "2d" : "3d"}}}),
                         is3d ? "Set Dimension 2D" : "Set Dimension 3D");
+            refresh();
         }
         if (!owner.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("3D titles arrive with %s", owner.c_str());
     }
@@ -188,6 +209,7 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
                 for (auto it = values.begin(); it != values.end(); ++it) edits.push_back({id, it.key(), it.value()});
             }
             commitNamed(editsToOps(edits), "Paste Look");
+            refresh();
         }
     }
     if (ImGui::MenuItem("Save As Look...", nullptr, false, library)) {
@@ -197,6 +219,7 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     if (ImGui::MenuItem("Revert to Look", nullptr, false, library && editable && layer && !str(layer->value("look", ta::Json::object()), "id").empty())) {
         const std::string lookId = str(layer->value("look", ta::Json::object()), "id");
         commitNamed(ta::Json::array({ta::Json{{"op", "apply_look"}, {"layer", "id:" + layerId}, {"look", lookId}}}), "Revert to Look");
+        refresh();
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Expose Text as Parameter...", nullptr, false, editable && type == ta::LayerType::Text)) exposeField({layerId, "text"}, "Text");
