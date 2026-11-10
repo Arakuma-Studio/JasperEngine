@@ -223,5 +223,3 @@ article's *look* and its pitfalls caught early:
 - **R19, R21 (WP-B):** the window's Light Steps control is Off or 1..16 and `params.light_steps`
   defaults to 0; the "Scene" choice and the scene's value as the default come with the integration of
   WP-A's `SceneSettings::light2DSteps`.
-- **Tests (WP-B):** `jasperengine-spritenormals-tests` links the engine library: the texsynth sources it
-  compiles call the engine's atomic file writes and named threads.
