@@ -23,13 +23,15 @@
 #include "registry/PhysicsLayers.h"
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
-#include "object/sound/Audio.h"
 #include "render/SystemRender.h"
 #include "object/TerrainEdit.h"
-#include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "object/sound/Audio.h"
+#include "subsystem/AudioSystem.h"
+#endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
 #endif
@@ -936,6 +938,7 @@ float ParticleSubsystem::significanceOf(const ParticleSystemState& state, float&
 }
 
 void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitterPosition){
+#if JASPERENGINE_SOUND_LAYER
     // the tree's: a child's bursts are in its own document, its entries' in its parent's
     for (size_t c = 0; c < runtime.childCount(); c++){
         if (EmitterRuntime* child = runtime.child(c))
@@ -967,6 +970,10 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
         AudioSystem::playFree(guid->empty() ? *path : *guid, options, "particles");
     }
     runtime.takeSoundEvents();
+#else
+    (void)runtime;
+    (void)emitterPosition;
+#endif
 }
 
 void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
