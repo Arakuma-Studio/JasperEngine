@@ -143,6 +143,31 @@ TEST(BitmapText, NoSdf){
     EXPECT_FALSE(t.uiComponent().pixelOriginSnap);
 }
 
+TEST(TextAtlas, VectorFontLoadsKeepTextureFilters){
+    for (const auto& [minFilter, magFilter] : std::vector<std::pair<TextureFilter, TextureFilter>>{
+            {TextureFilter::NEAREST, TextureFilter::NEAREST},
+            {TextureFilter::NEAREST, TextureFilter::LINEAR},
+            {TextureFilter::LINEAR, TextureFilter::NEAREST}}){
+        BitmapTextScene t("Regular text", 20);
+        t.text().font[0] = "";
+        t.uiComponent().texture.setMinFilter(minFilter);
+        t.uiComponent().texture.setMagFilter(magFilter);
+
+        t.update();
+        ASSERT_TRUE(t.text().stbtext);
+        EXPECT_FALSE(t.text().bitmapText);
+        EXPECT_EQ(t.uiComponent().texture.getMinFilter(), minFilter);
+        EXPECT_EQ(t.uiComponent().texture.getMagFilter(), magFilter);
+
+        t.text().fontSize = 32;
+        t.text().needReloadAtlas = true;
+        t.update();
+        ASSERT_TRUE(t.text().stbtext);
+        EXPECT_EQ(t.uiComponent().texture.getMinFilter(), minFilter);
+        EXPECT_EQ(t.uiComponent().texture.getMagFilter(), magFilter);
+    }
+}
+
 TEST(BitmapTextCache, ColourChangeNoRebuild){
     BitmapTextScene t("Score 120", 27);
     t.text().outlineWidth = 1.0f;
