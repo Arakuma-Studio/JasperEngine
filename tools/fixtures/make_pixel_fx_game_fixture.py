@@ -151,17 +151,18 @@ async def main() -> int:
         await ed.call("edit_build_scenes", action="set_start", scene=main)
         value = {"path": TEXTURE, "min_filter": "nearest", "mag_filter": "nearest"}
         for i, (name, preset) in enumerate(SPRITES):
-            made = await ed.call("create_entity", scene=main, type="sprite", name=name, position=[-100 + 50 * i, 0, 0],
+            # across the 320 x 180 canvas (the 2D camera's origin is its bottom left), 4 units a texel
+            made = await ed.call("create_entity", scene=main, type="sprite", name=name, position=[32 + 64 * i, 90, 0],
                                  values={"mesh": {M + "baseColorTexture": value},
-                                         "sprite": {"pivotPreset": "center", "width": 24, "height": 24}})
+                                         "sprite": {"pivotPreset": "center", "width": 48, "height": 48}})
             await sprite_preset(ed, main, made["entity_id"], preset)
         await ed.call("set_scene_settings", scene=main, settings={"post_processing": {"glitch_enabled": True, "glitch_intensity": 0.0}})
         holder = (await ed.call("create_entity", scene=main, name="Driver"))["entity_id"]
         await ed.call("create_script", kind="lua", name="PixelFxGame", content=MAIN, scene=main, entity=holder)
         # what the revealed Level shows: a Ramp Recolour sprite (the flow's last frame, compared with the editor's)
-        statue = await ed.call("create_entity", scene=level, type="sprite", name="Statue", position=[0, 0, 0],
+        statue = await ed.call("create_entity", scene=level, type="sprite", name="Statue", position=[160, 90, 0],
                                values={"mesh": {M + "baseColorTexture": value},
-                                       "sprite": {"pivotPreset": "center", "width": 48, "height": 48}})
+                                       "sprite": {"pivotPreset": "center", "width": 96, "height": 96}})
         await sprite_preset(ed, level, statue["entity_id"], "frozen")
         sign = (await ed.call("create_entity", scene=level, name="Level"))["entity_id"]
         await ed.call("create_script", kind="lua", name="PixelFxLevel", content=LEVEL, scene=level, entity=sign)

@@ -1,6 +1,6 @@
 formatVersion: 8
-guid: 74619016cd5ea1194361c5a23d58b7a8
-id: 1035113827
+guid: 04f90028852efcf53a7fd217f4eae608
+id: 1725839094
 name: Level
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -50,7 +50,7 @@ entities:
     name: Statue
     components:
       transform:
-        position: [0, 0, 0]
+        position: [160, 90, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true
@@ -134,8 +134,8 @@ entities:
         windingOrder: ccw
       sprite:
         enabled: true
-        width: 48
-        height: 48
+        width: 96
+        height: 96
         automaticFlipY: true
         flipY: true
         textureScaleFactor: 0
