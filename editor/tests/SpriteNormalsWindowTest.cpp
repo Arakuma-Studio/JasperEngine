@@ -85,6 +85,7 @@ namespace jasperengine::editor {
             w.renderLit();
             return w.litRgba;
         }
+        static sn::LightSetup lightSetup(W& w) { return w.lightSetup(); }
         static bool gpuValid(W& w) { return w.colorGpu.valid() || w.normalGpu.valid() || w.litGpu.valid(); }
         static void light(W& w, float& x, float& y, float& height) {
             w.ensureLight();
@@ -1122,6 +1123,107 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
         ASSERT_TRUE(other.applyFix("size_mismatch", "Use Base Texture", error)) << error;
         EXPECT_TRUE(other.currentSpec().hasSprite());
         EXPECT_FALSE(other.applyFix("size_mismatch", "Nonsense", error));
+    });
+}
+
+// S78: the Stones preset and Dark Gaps Are Edges, the boxy and gaps_unmatched rows with their
+// fixes in the window's words, and the lit preview's Light Steps (the runtime's formula)
+TEST(SpriteNormalsWindowDeathTest, StonesGapsBoxyAndLightSteps) {
+    IN_EDITOR("stones", {
+        // a crate (a 20 px box on transparency) and a flat opaque tile
+        ts::Image crate = ts::Image::make(32, 32, 4, 8);
+        ts::Image flat = ts::Image::make(32, 32, 4, 8);
+        for (int y = 0; y < 32; y++) {
+            for (int x = 0; x < 32; x++) {
+                uint8_t* c = crate.pixel(x, y);
+                if (x >= 6 && x < 26 && y >= 6 && y < 26) c[0] = 160, c[1] = 110, c[2] = 60, c[3] = 255;
+                uint8_t* f = flat.pixel(x, y);
+                f[0] = 120, f[1] = 110, f[2] = 100, f[3] = 255;
+            }
+        }
+        writePng(w.file("assets/crate.png"), crate);
+        writePng(w.file("assets/flat.png"), flat);
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        // boxy: the default preset rounds a box into a pillow; Use Bevel takes the offered radius
+        ASSERT_TRUE(window.openSources({w.file("assets/crate.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        Access::refreshWarningsNow(window);
+        const SpriteNormalsWindow::WarningRow* boxy = row(window, "boxy");
+        ASSERT_NE(boxy, nullptr);
+        EXPECT_EQ(boxy->fixes, (std::vector<std::string>{"Use Bevel (radius 1)", "Use Props"}));
+        EXPECT_NE(boxy->text.find("Rounded profile"), std::string::npos) << boxy->text;
+        ASSERT_TRUE(window.applyFix("boxy", "Use Bevel (radius 1)", error)) << error;
+        EXPECT_EQ(window.getSettings().profile, sn::Profile::Bevel);
+        ASSERT_TRUE(window.getSettings().radius.has_value());
+        EXPECT_FLOAT_EQ(*window.getSettings().radius, 1.0f);
+        ASSERT_TRUE(settle(window));
+        Access::refreshWarningsNow(window);
+        EXPECT_EQ(row(window, "boxy"), nullptr) << "bevel is no pillow";
+        window.setPreset(sn::Preset::Default);
+        ASSERT_TRUE(settle(window));
+        Access::refreshWarningsNow(window);
+        ASSERT_NE(row(window, "boxy"), nullptr);
+        ASSERT_TRUE(window.applyFix("boxy", "Use Props", error)) << error;
+        EXPECT_EQ(window.getSettings().preset, sn::Preset::Props);
+        // the Stones preset: gaps 30%, dome, wrap; another preset turns gaps off and unwraps
+        window.setPreset(sn::Preset::Stones);
+        EXPECT_FLOAT_EQ(window.getSettings().gaps.share, 0.3f);
+        EXPECT_EQ(window.getSettings().profile, sn::Profile::Dome);
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Wrap);
+        window.setPreset(sn::Preset::Crisp);
+        EXPECT_FALSE(window.getSettings().gaps.on());
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Transparent);
+        // a flat tile has no dark gaps: the row offers to lower the amount or turn gaps off
+        ASSERT_TRUE(window.openSources({w.file("assets/flat.png")}, error)) << error;
+        window.setPreset(sn::Preset::Stones);
+        ASSERT_TRUE(settle(window));
+        Access::refreshWarningsNow(window);
+        const SpriteNormalsWindow::WarningRow* gaps = row(window, "gaps_unmatched");
+        ASSERT_NE(gaps, nullptr);
+        EXPECT_EQ(gaps->fixes, (std::vector<std::string>{"Lower Gap Amount", "Turn Off Dark Gaps"}));
+        EXPECT_NE(gaps->text.find("Dark Gaps Are Edges"), std::string::npos) << gaps->text;
+        ASSERT_TRUE(window.applyFix("gaps_unmatched", "Lower Gap Amount", error)) << error;
+        EXPECT_FLOAT_EQ(window.getSettings().gaps.share, 0.15f);
+        ASSERT_TRUE(window.applyFix("gaps_unmatched", "Turn Off Dark Gaps", error)) << error;
+        EXPECT_FALSE(window.getSettings().gaps.on());
+        ASSERT_TRUE(settle(window));
+        Access::refreshWarningsNow(window);
+        EXPECT_EQ(row(window, "gaps_unmatched"), nullptr);
+        // Light Steps: off by default, clamped to 0..16, the lit preview is renderLit with them
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        EXPECT_EQ(window.getLightSteps(), 0);
+        const sn::Image smooth = Access::lit(window);
+        window.setLightSteps(99);
+        EXPECT_EQ(window.getLightSteps(), 16);
+        window.setLightSteps(3);
+        const sn::LightSetup setup = Access::lightSetup(window);
+        EXPECT_EQ(setup.lightSteps, 3);
+        const sn::Image stepped = Access::lit(window);
+        ASSERT_FALSE(stepped.empty());
+        EXPECT_NE(stepped.data, smooth.data);
+        const std::shared_ptr<sn::SpriteNormalsRun> shown = Access::shown(window);
+        ASSERT_TRUE(shown);
+        EXPECT_EQ(stepped.data, sn::renderLit(shown->result().normal, shown->prepared().source.color, setup).data);
+        // the controls draw (ten presets, the gap rows, the Light Steps combo)
+        ImGuiContext* context = ImGui::CreateContext();
+        ImGui::SetCurrentContext(context);
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = ImVec2(1400, 900);
+        io.DeltaTime = 1.0f / 60.0f;
+        unsigned char* pixels;
+        int width, height;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        window.open();
+        window.setPreset(sn::Preset::Stones);
+        window.setView(SpriteNormalsWindow::View::Lit);
+        ASSERT_TRUE(settle(window));
+        Access::drawFrame(window);
+        EXPECT_FLOAT_EQ(window.getSettings().gaps.share, 0.3f) << "drawing changes nothing";
+        EXPECT_EQ(window.getLightSteps(), 3);
+        ImGui::DestroyContext(context);
     });
 }
 

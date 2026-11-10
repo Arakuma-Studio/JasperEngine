@@ -158,6 +158,9 @@ namespace jasperengine::editor {
         void setLight(float x, float y, float height);
         void setLightColour(const Vector3& c);
         void setAmbient(float a);
+        // the lit preview's Light Steps: each light's term in N bands as the runtime's (0 = off, 1..16)
+        void setLightSteps(int steps);
+        int getLightSteps() const { return lightSteps; }
         void setFrame(int index);                     // -1 = All
         int getFrame() const { return frame; }
         void setPlaying(bool on);
@@ -384,6 +387,7 @@ namespace jasperengine::editor {
         bool grid = true;
         bool advancedOpen = false;
         LightState light;
+        int lightSteps = 0;                      // the lit preview's Light Steps (0 off)
         float zoom = 0.0f;                       // 0 = fit (computed on draw)
         bool fitRequested = true;
         ImVec2 pan = ImVec2(0, 0);
@@ -577,6 +581,7 @@ namespace jasperengine::editor {
         void drawPresetAndSliders();
         void drawToonSteps(const spritenormals::Settings& base);              // after Volume: Off / 4 / 8 / 16
         void drawToonAdvanced(const spritenormals::Settings& base, bool& changed);   // directions, tilt rings, flat, rotation
+        void drawGaps(const spritenormals::Settings& base);                   // Dark Gaps Are Edges, Gap Amount
         void drawAdvanced();
         void drawRegions();
         void drawOutput();
