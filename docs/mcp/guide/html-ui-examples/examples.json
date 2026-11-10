@@ -154,7 +154,7 @@
   "description": "A six-second portrait composition with masked character reveals, SVG drawing and fill, a shape morph, a motion-path follower and thirty seeded procedural stars.",
   "demonstrates": ["anime.splitText", "grapheme-safe character stagger", "overflow masks", "anime.createDrawable", "anime.morphTo", "anime.createMotionPath", "seeded procedural SVG", "timeline seek", "fixed-fps recording", "Profiler.sample"],
   "html": "motion_graphics.html", "css": "motion_graphics.css", "lua": "MotionGraphicsUI.lua",
-  "assets": [],
+  "assets": ["assets/motion-roboto.woff2", "assets/LICENSE-Roboto.txt"],
   "viewports": [[1080, 1350]],
   "checks": [{"type": "count", "selector": "#headline", "count": 1},
              {"type": "within_viewport", "selector": ".composition"},
