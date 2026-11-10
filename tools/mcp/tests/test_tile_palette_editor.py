@@ -104,6 +104,18 @@ async def choose_tile(ed: Editor, col: int, row: int) -> None:
     await ui(ed).click(ui(ed).at(rect, ((col + 0.5) * scale, (row + 0.5) * scale)))
 
 
+async def close_tileset_editor(ed: Editor) -> None:
+    """The Tileset Editor's title-bar close button, when its window is open; then it is gone, so a
+    Scene-view screenshot after it shows the view whatever ran before"""
+    items = [i for i in (await ed.call("find_ui_item", label="#CLOSE", window=EDITOR_WINDOW)).get("items", []) if i.get("visible", True)]
+    if not items:
+        return
+    await ui(ed).click(ui(ed).centre(items[0]["rect"]))
+    await ui_input.frames(ed, 4)
+    left = (await ed.call("find_ui_item", label="#CLOSE", window=EDITOR_WINDOW)).get("items", [])
+    ed.check(not left, f"the Tileset Editor closed: {left}")
+
+
 async def tool(ed: Editor, name: str) -> None:
     await click_item(ed, f"###tool_{name}")
 
@@ -228,57 +240,11 @@ async def test_terrain_painting(ed: Editor):
     await shot(ed, "scene-terrain")
 
 
-async def test_tileset_editor_peering_and_template(ed: Editor):
-    await ed.call("run_command", id="window.tilesetEditor", payload=TILESET)
-    await ui_input.frames(ed, 6)
-    await shot(ed, "tileset-editor")
-    tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
-    step = CELL * 2 + 1   # the grid's 2x zoom and its one-pixel gap
-
-    def peering_n() -> object:
-        doc = json.loads((ed.project / TILESET).read_text())
-        return next(t for t in doc["tiles"] if t["id"] == 1)["terrain"]["peering"]["n"]
-
-    # tile 1 of sides_16 has its north side: the painter turns that region to None
-    original = peering_n()
-    ed.check(original != "none", f"the fixture's tile 1 has a north side: {original}")
-    await ui(ed).click(ui(ed).at(tiles, (step * 1.5, step * 0.5)))
-    await ui_input.frames(ed, 4)
-    await click_item(ed, "None##paintNone", EDITOR_WINDOW)
-    canvas = (await ui(ed).reveal("##peeringCanvas", EDITOR_WINDOW))["rect"]
-    await ui(ed).click(ui(ed).at(canvas, (canvas["width"] / 2, canvas["height"] / 6)))   # the 3 x 3 painter's north region
-    await ui_input.frames(ed, 4)
-    ed.check_eq(peering_n(), "none", "the painter wrote the peering value")
-    await shot(ed, "tileset-editor-peering")
-
-    # the template's origin is the selected tile; applying it from tile 0 restores tile 1's north
-    tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
-    await ui(ed).click(ui(ed).at(tiles, (step * 0.5, step * 0.5)))
-    await ui_input.frames(ed, 4)
-    await click_item(ed, "Apply Terrain Template...", EDITOR_WINDOW)
-    dialog = None
-    for _ in range(200):
-        dialog = (await ed.call("editor_status")).get("dialog")
-        if dialog:
-            break
-        await ui_input.frames(ed, 3)
-    ed.check(dialog, "the template modal opened")
-    ed.check("template" in {f["name"] for f in dialog.get("fields", [])}, f"its fields: {dialog}")
-    await ed.call("respond_dialog", choice="ok", values={"template": "Sides 16 (4x4)", "terrain": "Water"})
-    still_open = None
-    for _ in range(40):
-        still_open = (await ed.call("editor_status")).get("dialog")
-        if not still_open:
-            break
-        await ui_input.frames(ed, 3)
-    ed.check(not still_open, f"Apply closed the dialog: {still_open}")
-    ed.check_eq(peering_n(), original, "the template assigned the peering values again")
-    await shot(ed, "tileset-editor-template")
-
-
 async def test_each_layout_from_the_menu_and_its_overlay(ed: Editor):
-    """R63: each menu row makes its layout; R65: the overlay is drawn on it (the screenshots, AC13)"""
+    """R63: each menu row makes its layout; R65: the overlay is drawn on it (the screenshots, AC13),
+    before the Tileset Editor's window opens over the Scene view"""
     sid = STATE["scene"]
+    await close_tileset_editor(ed)
     await ed.call("focus_window", window="scene")
     rect = await scene_rect(ed)
     await tool(ed, "Paint")
@@ -297,3 +263,55 @@ async def test_each_layout_from_the_menu_and_its_overlay(ed: Editor):
         await ui(ed).move(cell_point(ed, rect, 4, 4))
         await ui_input.frames(ed, 4)
         await shot(ed, f"overlay-{command}")
+
+
+async def test_tileset_editor_peering_and_template(ed: Editor):
+    try:
+        await ed.call("run_command", id="window.tilesetEditor", payload=TILESET)
+        await ui_input.frames(ed, 6)
+        await shot(ed, "tileset-editor")
+        tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
+        step = CELL * 2 + 1   # the grid's 2x zoom and its one-pixel gap
+
+        def peering_n() -> object:
+            doc = json.loads((ed.project / TILESET).read_text())
+            return next(t for t in doc["tiles"] if t["id"] == 1)["terrain"]["peering"]["n"]
+
+        # tile 1 of sides_16 has its north side: the painter turns that region to None
+        original = peering_n()
+        ed.check(original != "none", f"the fixture's tile 1 has a north side: {original}")
+        await ui(ed).click(ui(ed).at(tiles, (step * 1.5, step * 0.5)))
+        await ui_input.frames(ed, 4)
+        await click_item(ed, "None##paintNone", EDITOR_WINDOW)
+        canvas = (await ui(ed).reveal("##peeringCanvas", EDITOR_WINDOW))["rect"]
+        await ui(ed).click(ui(ed).at(canvas, (canvas["width"] / 2, canvas["height"] / 6)))   # the 3 x 3 painter's north region
+        await ui_input.frames(ed, 4)
+        ed.check_eq(peering_n(), "none", "the painter wrote the peering value")
+        await shot(ed, "tileset-editor-peering")
+
+        # the template's origin is the selected tile; applying it from tile 0 restores tile 1's north
+        tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
+        await ui(ed).click(ui(ed).at(tiles, (step * 0.5, step * 0.5)))
+        await ui_input.frames(ed, 4)
+        await click_item(ed, "Apply Terrain Template...", EDITOR_WINDOW)
+        dialog = None
+        for _ in range(200):
+            dialog = (await ed.call("editor_status")).get("dialog")
+            if dialog:
+                break
+            await ui_input.frames(ed, 3)
+        ed.check(dialog, "the template modal opened")
+        ed.check("template" in {f["name"] for f in dialog.get("fields", [])}, f"its fields: {dialog}")
+        await ed.call("respond_dialog", choice="ok", values={"template": "Sides 16 (4x4)", "terrain": "Water"})
+        still_open = None
+        for _ in range(40):
+            still_open = (await ed.call("editor_status")).get("dialog")
+            if not still_open:
+                break
+            await ui_input.frames(ed, 3)
+        ed.check(not still_open, f"Apply closed the dialog: {still_open}")
+        ed.check_eq(peering_n(), original, "the template assigned the peering values again")
+        await shot(ed, "tileset-editor-template")
+    finally:
+        # the window floats over the Scene view: a later test's screenshots must not show it
+        await close_tileset_editor(ed)
