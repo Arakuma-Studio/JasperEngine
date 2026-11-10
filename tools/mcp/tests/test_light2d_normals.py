@@ -280,8 +280,11 @@ async def test_light_low_over_a_large_sprite(ed: Editor):
     sid = made["scene"]["id"]
     await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_intensity": 0.2})
     await ed.call("select_scene", scene=sid)
-    await ed.call("create_entity", scene=sid, type="sprite", name="Boss", values={"mesh": {M + "baseColorTexture": BIG_WHITE}})
-    await ed.call("create_entity", scene=sid, type="sprite", name="Imp", values={"mesh": {M + "baseColorTexture": SMALL_WHITE}})
+    # drawn at their textures' sizes (a Sprite's Width and Height are what light_low measures)
+    await ed.call("create_entity", scene=sid, type="sprite", name="Boss",
+                  values={"mesh": {M + "baseColorTexture": BIG_WHITE}, "sprite": {"width": 512, "height": 512}})
+    await ed.call("create_entity", scene=sid, type="sprite", name="Imp",
+                  values={"mesh": {M + "baseColorTexture": SMALL_WHITE}, "sprite": {"width": 16, "height": 16}})
     lamp = (await ed.call("create_entity", scene=sid, type="light_2d", name="Lamp"))["entity_id"]
     ed.check_eq(await light_height(ed, sid, lamp), 64.0, "the editor's height")
 
