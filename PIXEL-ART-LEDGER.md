@@ -209,8 +209,8 @@ deadline of 2026-11-11 19:0x UTC:
 |---|---|---|---|
 | A | 5.161.240.186 | 205d9b263da5 | destroyed 2026-11-10 after S46 landed (logs in `/tmp/je-logs/boxA-archive/`) |
 | B | 5.161.235.8 | 32dda2ca7cd1 | destroyed 2026-11-10 (idle after S47 and S48 runtime fixes; logs in `/tmp/je-logs/boxB-archive/`) |
-| C | 5.161.197.83 | 961a152cfd81 | S49 |
-| D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
+| C | 5.161.197.83 | 961a152cfd81 | destroyed 2026-11-10 after S50 landed (logs in `/tmp/je-logs/boxC-archive/`) |
+| D | 5.161.197.6 | dd138a2601b3 | destroyed 2026-11-10 after S50 landed (logs in `/tmp/je-logs/boxD-archive/`) |
 
 - `/var/lib/orquester/workspaces/jaspersito/je-remote/rbox <box> '<cmd>' | --img '<cmd>' |
   --fetch <path> <dst>`.
@@ -264,6 +264,7 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-10: boxes C and D destroyed; no build boxes remain (total about $87 for A–D).
 - 2026-11-10: S50 Grid Tilemap merged (`46021c04d`). All twelve specs S41–S52 are on `main`. Gate on
   the merged tree, boxes C and D: `WERROR` build; core 341/341; editor 377/377 with the shared-data
   suites; timing tests 5/5 with perf slack; GPU 83/83 on glcore, Vulkan and GLES3; MCP 228 passed, 4
