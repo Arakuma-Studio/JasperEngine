@@ -208,7 +208,7 @@ deadline of 2026-11-11 19:0x UTC:
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
 | A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
-| B | 5.161.235.8 | 32dda2ca7cd1 | S47, batch landings (earlier S42) |
+| B | 5.161.235.8 | 32dda2ca7cd1 | destroyed 2026-11-10 (idle after S47 and S48 runtime fixes; logs in `/tmp/je-logs/boxB-archive/`) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
@@ -263,6 +263,9 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: box B destroyed, idle once S47 landed and S48's runtime fixes finished. D takes S48's
+  final gate and batch checks and goes after S48 lands; A (S46) and C (S50) stay to the end.
 
 - 2026-11-10: S47 Agent Sprite Drawing merged (`293a1ce45`), with `fix/main-neutral-hashes`
   (terrain bound `Input.getPenPressure` and two `NavMeshSurface` fields without updating the reviewed
