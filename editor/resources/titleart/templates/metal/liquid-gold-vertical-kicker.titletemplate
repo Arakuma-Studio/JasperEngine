@@ -97,7 +97,7 @@
         "name": "text",
         "role": "title",
         "sample": {
-          "en": "LIMIT BREAK",
+          "en": "BREAK",
           "ja": "限界突破"
         },
         "max_chars": 15

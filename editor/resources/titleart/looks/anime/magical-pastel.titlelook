@@ -93,7 +93,10 @@
       "scope": "layer",
       "blend": "add",
       "opacity": 1,
-      "params": {},
+      "params": {
+        "large": 3,
+        "small": 4
+      },
       "effects": []
     },
     {

@@ -1043,11 +1043,11 @@
           "params": {
             "align": "canvas",
             "alpha_mode": "hard",
-            "alpha_threshold": 0.5,
+            "alpha_threshold": 0.55,
             "dither": "bayer4",
             "dither_amount": 0.5,
             "gap": 0,
-            "levels": 4,
+            "levels": 7,
             "palette": null,
             "shape": "square",
             "size": 1.28

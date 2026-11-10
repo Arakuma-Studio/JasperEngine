@@ -86,7 +86,8 @@
         "style": "slime",
         "length": 20,
         "color_mode": "custom",
-        "color": "#7cff2a"
+        "color": "#7cff2a",
+        "seed": 2
       }
     }
   ],

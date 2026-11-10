@@ -350,6 +350,14 @@
           "generator": "glints",
           "name": "Glints",
           "follow": "Title"
+        },
+        {
+          "op": "set",
+          "layer": "Glints",
+          "values": {
+            "gen.large": 3,
+            "gen.small": 3
+          }
         }
       ]
     }
