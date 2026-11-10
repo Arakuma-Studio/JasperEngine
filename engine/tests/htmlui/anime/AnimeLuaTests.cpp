@@ -113,6 +113,34 @@ TEST_F(AnimeLuaTest, PlainTableTargets){
     EXPECT_EQ(number("t[2].v"), 40);
 }
 
+TEST_F(AnimeLuaTest, DetachedPreviewReleasesLuaCallbacksAtPinnedTime){
+    AnimEngine& engine = AnimEngine::instance();
+    auto unrelated = Anime::createTimer();
+    const size_t initialLive = AnimEngine::getLiveTimerCount();
+    const size_t initialLuaRefs = AnimLua::getLiveLuaRefs();
+    std::vector<std::shared_ptr<AnimTimer>> roots;
+    {
+        AnimEngine::ScopedTickPause pause(&roots);
+        ASSERT_EQ(run("t = {x = 0}; a = anime.animate(t, {x = 100, duration = 1000, onUpdate = function() t.seen = true end})"), "");
+    }
+    EXPECT_EQ(roots.size(), 1u);
+    EXPECT_GT(AnimLua::getLiveLuaRefs(), initialLuaRefs);
+    for (const auto& root : roots){
+        root->paused = true;
+        root->cancel();
+        engine.detachRoot(*root);
+    }
+    roots.clear();
+    ASSERT_EQ(run("a, t = nil, nil; collectgarbage('collect')"), "");
+    EXPECT_EQ(AnimLua::getLiveLuaRefs(), initialLuaRefs);
+    EXPECT_EQ(AnimEngine::getLiveTimerCount(), initialLive);
+    EXPECT_EQ(engine.getActiveCount(), 1u);
+    EXPECT_TRUE(unrelated->running);
+    EXPECT_FALSE(unrelated->isCancelled());
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::UI), now);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
+}
+
 TEST_F(AnimeLuaTest, CallbacksInOrderWithLoopsAndAlternate){
     ASSERT_EQ(run(R"(
         log = {}

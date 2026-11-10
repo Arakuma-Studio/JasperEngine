@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 using namespace jasperengine;
 
 TEST(AnimeClock, ScopedPreviewTicksLeaveBothClocksAndCallbacksAlone){
@@ -132,5 +134,62 @@ TEST(AnimeClock, ManualPreviewSeekFlushesAdditiveValuesWithoutClockTicks){
     animation->seek(250);
     engine.alignClockSources(1, 1);
     EXPECT_NEAR(target->getNumber("v"), 25, 1e-9);
+    engine.reset();
+}
+
+TEST(AnimeClock, DetachCancelledPreviewRootsWithoutAdvancingPinnedClocks){
+    AnimEngine& engine = AnimEngine::instance();
+    engine.reset();
+    engine.tickMilliseconds(1000, 500);
+    const size_t initialLive = AnimEngine::getLiveTimerCount();
+    std::vector<std::shared_ptr<AnimTimer>> roots;
+    {
+        AnimEngine::ScopedTickPause pause(&roots);
+        Anime::createTimer();
+    }
+    int unrelatedUpdates = 0;
+    AnimParam params = AnimParam::object({{"duration", 1000}});
+    params.set("onUpdate", AnimParam::callback([&](AnimTimer&){ ++unrelatedUpdates; }));
+    auto unrelated = Anime::createTimer(params);
+    {
+        AnimEngine::ScopedTickPause pause(&roots);
+        Anime::createTimer();
+        Anime::createTimer();
+    }
+    EXPECT_EQ(roots.size(), 3u);
+    std::vector<std::weak_ptr<AnimTimer>> released;
+    for (const auto& root : roots) released.push_back(root);
+    // Middle, head, then tail: every unlink path leaves the foreign root intact.
+    if (roots.size() == 3) std::swap(roots[0], roots[1]);
+    for (const auto& root : roots){
+        root->paused = true;
+        root->cancel();
+        engine.detachRoot(*root);
+        EXPECT_FALSE(root->running);
+        EXPECT_FALSE(root->engineRef);
+        EXPECT_EQ(root->prev, nullptr);
+        EXPECT_EQ(root->next, nullptr);
+        engine.detachRoot(*root);
+    }
+    roots.clear();
+    for (const auto& root : released) EXPECT_TRUE(root.expired());
+    EXPECT_EQ(AnimEngine::getLiveTimerCount(), initialLive + 1);
+    EXPECT_EQ(engine.getActiveCount(), 1u);
+    EXPECT_EQ(engine.head, unrelated.get());
+    EXPECT_EQ(engine.tail, unrelated.get());
+    EXPECT_TRUE(engine.hasChildren);
+    EXPECT_TRUE(unrelated->running);
+    EXPECT_FALSE(unrelated->isCancelled());
+    EXPECT_EQ(unrelatedUpdates, 0);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::UI), 1000);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
+    engine.tickMilliseconds(1000, 500);
+    EXPECT_EQ(unrelatedUpdates, 0);
+    unrelated->cancel();
+    engine.detachRoot(*unrelated);
+    EXPECT_EQ(engine.getActiveCount(), 0u);
+    EXPECT_FALSE(engine.hasChildren);
+    EXPECT_EQ(engine.head, nullptr);
+    EXPECT_EQ(engine.tail, nullptr);
     engine.reset();
 }

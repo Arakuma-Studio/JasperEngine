@@ -76,6 +76,7 @@ namespace jasperengine {
 
         // ---- internal (AnimTimer, AnimComposer) ----
         void add(AnimTimer& timer);          // resume(): into the running list
+        void detachRoot(AnimTimer& timer);  // private preview cleanup, without ticking or callbacks
         void captureTimer(AnimTimer& timer); // private preview roots, including paused and zero-duration timers
         static void registerAnimation(AnimAnimation* animation, bool alive);
         AnimTimer* head = nullptr;

@@ -136,6 +136,19 @@ void AnimEngine::captureTimer(AnimTimer& timer){
     timerCollector->push_back(timer.shared_from_this());
 }
 
+void AnimEngine::detachRoot(AnimTimer& timer){
+    if (timer.parent || !timer.running) return;
+    std::shared_ptr<AnimTimer> keep = timer.engineRef;
+    if (timer.prev) timer.prev->next = timer.next; else head = timer.next;
+    if (timer.next) timer.next->prev = timer.prev; else tail = timer.prev;
+    timer.prev = nullptr;
+    timer.next = nullptr;
+    timer.running = false;
+    hasChildren = tail != nullptr;
+    timer.engineRef.reset();
+    keep.reset();
+}
+
 void AnimEngine::update(){
     updating = true;
     AnimTimer* active = head;
