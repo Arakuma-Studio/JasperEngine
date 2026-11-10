@@ -1155,8 +1155,126 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 - **Lifetime of handles**: an animation handle kept in a global stays valid after play stops,
   but cancelled.
 - Differences from Anime.js: `andThen` for `then` (no Promises), string forms of the ease
-  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no SVG,
-  draggable, scroll, layout, text, WAAPI, scope or animatable modules.
+  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no draggable,
+  scroll, layout, WAAPI, scope or animatable modules.
+
+### Shape and gradient reveals
+
+`clip-path` animates in `@keyframes` and `transition`: `inset()`, `circle()` and `ellipse()`
+interpolate their components, including length/percentage radii. `polygon()` interpolates
+when both endpoints have the same vertex count and fill rule. Keep the same reference box at
+both endpoints; percentages resolve against that box. The shape updates on every animated
+frame, including after its reference box resizes.
+
+```css
+.image-reveal { animation: reveal 1s cubic-bezier(.16,1,.3,1) both; }
+@keyframes reveal {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.soft-reveal {
+  mask-image: linear-gradient(to bottom, #000 45%, transparent 55%);
+  mask-size: 100% 200%;
+  mask-position: 0 100%;
+  animation: soft-reveal 1s ease-out forwards;
+}
+@keyframes soft-reveal { to { mask-position: 0 0; } }
+```
+
+Linear and radial gradient masks support animated `mask-position` and `mask-size`. Set an
+explicit `mask-size` when animating its dimensions. Changing between gradient `mask-image`
+values is discrete, as in CSS; move or scale the gradient for a continuous soft reveal.
+
+### Splitting text for reveals
+
+`anime.splitText(target, options)` returns a splitter with animatable `chars`, `words` and
+`lines` arrays of `UIElement`s. A character is a grapheme cluster: `ñ`, a letter plus combining
+accents and joined emoji stay together. `words` defaults to true; `chars` and `lines` default
+to false. `includeSpaces = true` includes spaces in `chars`. `accessible = true` (the default)
+keeps the unsplit text as the accessible label and hides the visual wrappers from assistive
+technology.
+
+```lua
+local title = anime.splitText("#headline", {
+    chars = { wrap = "clip" }, words = true, lines = { wrap = "clip" },
+})
+anime.animate(title.chars, {
+    translateY = { from = "110%", to = "0%" },
+    duration = 850, delay = anime.stagger(38), ease = "cubicBezier(.16,1,.3,1)",
+})
+```
+
+Each split option accepts a boolean or `{ wrap = "clip", class = "my-class" }`. A `clip` or
+`hidden` wrapper uses `overflow: hidden`, so translated glyphs emerge from inside their line.
+`splitter:revert()` restores the original markup and accessibility attributes.
+`splitter:refresh()` rebuilds from that original content after layout or style changes; a
+width, font-size or line-height change also refreshes automatically. Refresh replaces the
+wrappers: retrieve the arrays again and restart animations targeting them. To adopt newly
+authored text, revert first, edit the text, then call `anime.splitText` again.
+
+### Drawing and following SVG shapes
+
+Inline SVG children are selectable `UIElement`s. Changing `d`, `points`, `stroke-dasharray`,
+`stroke-dashoffset` or `transform` with `setAttribute` invalidates the SVG geometry for its next
+render. Keep editable SVG inline; an `<img src="logo.svg">` exposes the image element.
+
+```lua
+local path = doc:getElementById("logo-path")
+local drawable = anime.createDrawable(path)       -- UIElement array, initially draw = "0 0"
+anime.animate(drawable, { draw = "0 1", duration = 1500, ease = "inOutSine" })
+-- Other ranges reveal just that fraction of the stroke, for example draw = "0.5 1".
+
+local destination = doc:getElementById("round-shape")
+anime.animate(path, { d = anime.morphTo(destination), duration = 1200 })
+-- Use points = anime.morphTo(destination) for polygons and polylines.
+
+local motion = anime.createMotionPath(doc:getElementById("route"))
+anime.animate("#follower", {
+    translateX = motion.translateX, translateY = motion.translateY, rotate = motion.rotate,
+    duration = 4000, ease = "linear",
+})
+```
+
+`createDrawable(targets, start, end)` supports paths, lines, polylines, polygons, circles and
+ellipses; start/end default to zero and use normalized stroke positions. `morphTo(target,
+precision)` returns a function value for `d` or `points`, resampling shapes with different
+point counts (default precision `.33`). `createMotionPath(path, offset)` returns three
+function values; offset defaults to zero. Put an HTML follower over the SVG viewport to use
+the path's position and tangent as its transform.
+
+### Procedural geometry and exact time
+
+Use a timeline's `currentTime` in `onRender` (or `onUpdate`) to generate SVG each frame. Create
+seeded random parameters once, then calculate geometry from those parameters and the current
+time. Seeking backwards and rendering the same time again then produces the same geometry.
+Avoid accumulating positions from the wall clock or drawing new random values each frame.
+
+```lua
+local random = anime.utils.createSeededRandom(2718)
+local phase = random(0, 6283) / 1000
+local state = { time = 0 }
+local root = anime.createTimeline({
+    onRender = function(animation)
+        local t = animation.currentTime / 1000
+        local y = 80 + math.sin(t + phase) * 30
+        doc:getElementById("wave"):setAttribute("d",
+            string.format("M0 80 Q150 %.4f 300 80", y))
+    end,
+})
+root:add(state, { time = 6, duration = 6000, ease = "linear" }, 0)
+root:pause()
+root:seek(2500)                              -- milliseconds, callbacks update geometry too
+```
+
+`record_game` advances both the default UI clock and `clock = "game"` by the fixed recording
+step; game-clock animations still obey `Engine.timeScale`. At 30 fps, frame `k` samples time
+`k / 30` seconds. An animation or root timeline already has `seek(ms)` for exact sampling.
+The `motion_graphics` example contains thirty seeded stars updated in one SVG path, a masked
+letter stagger, a drawn-and-filled logo, a morph and a motion-path follower. Its
+`motion_graphics.procedural` profiler scope measures the Lua geometry callback; SVG
+rasterization belongs to the renderer's scopes. Use `capture_profile` and `get_cpu_profile`
+to measure both on the target device.
 
 ### Animating custom properties (@property)
 
@@ -1934,7 +2052,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 
 ## Examples
 
-Thirteen polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Fourteen examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1957,6 +2075,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, virtual_window, visible, within_viewport |
 | `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
 | `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
+| `motion_graphics` | a six-second 1080 × 1350 composition: masked `splitText` stagger, SVG draw and fill, morph, motion path and thirty procedural stars from a fixed seed | count, within_viewport, text_fits; every decoded frame of two 180-frame recordings compared exactly |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with

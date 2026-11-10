@@ -695,7 +695,10 @@ async def quest_log_after(ed: Editor, n: str) -> None:
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('progress').textContent") == ["2 of 6 done"], "the progress counts it")
 
 
-STEPS = {name: (globals()[f"{name}_before"], globals()[f"{name}_after"]) for name in NAMES if name != "blank"}
+# The portrait composition has frame-by-frame recording/seek/layout coverage in
+# test_html_ui_motion_graphics.py; this harness captures landscape interactive menus.
+INTERACTIVE_NAMES = [name for name in NAMES if name not in {"blank", "motion_graphics"}]
+STEPS = {name: (globals()[f"{name}_before"], globals()[f"{name}_after"]) for name in INTERACTIVE_NAMES}
 
 
 # ---------------------------------------------------------------------------------------- per example
@@ -779,6 +782,5 @@ def _make_tests(name: str) -> None:
     globals()[play_golden.__name__] = play_golden
 
 
-for _name in NAMES:
-    if _name != "blank":
-        _make_tests(_name)
+for _name in INTERACTIVE_NAMES:
+    _make_tests(_name)
