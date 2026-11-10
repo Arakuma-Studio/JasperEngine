@@ -115,7 +115,7 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
     ed.check(ffmpeg is not None, "FFmpeg is available to extract the visual review frames")
     samples = ed.scratch.root / "motion-graphics-samples"
     samples.mkdir()
-    process = subprocess.run([ffmpeg, "-v", "error", "-framerate", str(FPS), "-i",
+    process = subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-framerate", str(FPS), "-i",
                               str(ed.scratch.root / "motion-graphics-1/frame_%04d.png"), "-vf",
                               "select=eq(n\\,0)+eq(n\\,9)+eq(n\\,30)+eq(n\\,75)+eq(n\\,135)+eq(n\\,179)",
                               "-vsync", "vfr", str(samples / "sample_%02d.png")],
