@@ -260,6 +260,7 @@ if(API_BACKEND STREQUAL "linux")
         ${EDITOR_DIR}/backend/BackendLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
         ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
         ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
     )
@@ -442,6 +443,11 @@ string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_
 file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
 configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
 
+# Built-in Noise Graphs (editor/resources/noisegraphs/*.noisegraph) embedded in the editor (T2 R34;
+# editor/noise/TerrainPresets.cpp, the only includer)
+include(tools/noise/golden/EmbedPresets.cmake)
+jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/noisegraphs" "${GENERATED_DIR}/noise_presets.gen.h")
+
 # Built-in palettes (editor/resources/palettes/*.palette, S43 R9) embedded in the editor
 # (editor/pixelart/BuiltinPalettes.cpp, the only includer)
 file(GLOB BUILTIN_PALETTE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/palettes/*.palette")
@@ -620,6 +626,15 @@ include_directories (${JASPERENGINE_ROOT}/renders)
 set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
 jasperengine_msvc_parallel_compile()
 
+# The editor bakes and previews Noise Graphs and compares the back ends (T2 R42, R51)
+if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
+endif()
+set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
+# The editor's terrain tools run the operation engine (T1)
+if(DEFINED JASPERENGINE_TERRAIN_EDIT AND NOT JASPERENGINE_TERRAIN_EDIT)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_TERRAIN_EDIT: only players can leave it out")
+endif()
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -767,7 +782,11 @@ set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/mo
 set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
+include(${EDITOR_DIR}/terrain/TerrainEditorSources.cmake)
+include(${EDITOR_DIR}/terrainworld/TerrainWorldEditorSources.cmake)
 set(JASPERENGINE_EDITOR_SOURCES
+    ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
+    ${JASPERENGINE_TERRAIN_WORLD_EDITOR_SOURCES}
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
@@ -777,6 +796,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
+    ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
+    ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
+    ${EDITOR_DIR}/voxel/VoxelAssetFile.cpp
+    ${EDITOR_DIR}/voxel/VoxelGeneration.cpp
+    ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/cook/BuildReport.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
@@ -834,11 +858,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TerrainWorldReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
@@ -935,6 +961,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
+    ${EDITOR_DIR}/noise/NoiseGraphDocument.cpp
+    ${EDITOR_DIR}/noise/NoisePreviewService.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainGenerationTools.cpp
+    ${EDITOR_DIR}/noise/TerrainGeneration.cpp
+    ${EDITOR_DIR}/noise/TerrainPresets.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProceduralMaterialTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
@@ -945,6 +976,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
@@ -957,6 +989,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
+    ${EDITOR_DIR}/mcp/tools/VoxelTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainWorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
@@ -995,6 +1030,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
+    ${EDITOR_DIR}/reload/handlers/Voxel.cpp
     ${EDITOR_DIR}/reload/handlers/Palettes.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
@@ -1044,6 +1080,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
+    ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
@@ -1077,7 +1114,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/physics/PlacementCli.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
-    ${EDITOR_DIR}/util/TerrainErosion.cpp
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
@@ -1176,6 +1212,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderListCache.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+    # S48: library:sprite's texture reads (frame_cost, SpriteVariants.TapBudget)
+    ${EDITOR_DIR}/shader/SpriteTaps.cpp
     ${EDITOR_DIR}/texture/AstcEncoder.cpp
     ${EDITOR_DIR}/texture/BasisEncoder.cpp
     ${EDITOR_DIR}/texture/BC7TransparentEndpointRepair.cpp
@@ -1243,6 +1281,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
     ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorSorting.cpp
+    ${EDITOR_DIR}/window/InspectorPixelFx.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1295,6 +1334,18 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainGenerateSection.cpp
+    ${EDITOR_DIR}/window/NoiseGraphWindow.cpp
+    ${EDITOR_DIR}/window/TerrainQualityPanel.cpp
+    ${EDITOR_DIR}/texture/TerrainSliceCook.cpp
+    ${EDITOR_DIR}/window/TerrainFoliagePanel.cpp
+    ${EDITOR_DIR}/foliage/TreeDataFile.cpp
+    ${EDITOR_DIR}/foliage/FoliageOpRunner.cpp
+    ${EDITOR_DIR}/command/type/TreeEditCmd.cpp
+    ${EDITOR_DIR}/util/ImpostorBaker.cpp
+    ${EDITOR_DIR}/mcp/tools/FoliageTools.cpp
+    ${EDITOR_DIR}/window/TerrainSettingsPanel.cpp
+    ${EDITOR_DIR}/window/HeightImportFields.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
@@ -1482,6 +1533,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/SortingLayersCmd.cpp
+    # S48 Screen Transitions
+    ${EDITOR_DIR}/command/type/TransitionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
@@ -1500,14 +1553,19 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/PrefabOverrideCmd.cpp
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
-    ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainWorldImportCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainWorldTilesCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainTextureEditCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
     ${EDITOR_DIR}/command/type/SplineEditCmd.cpp
+    ${EDITOR_DIR}/command/type/VoxelEditCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
@@ -1530,6 +1588,8 @@ endif()
 
 # navigation (S19): its own list, so the streams adding editor files do not meet here
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
+# the Voxel Volume's human editor (T6 R59-R65)
+include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
@@ -1623,6 +1683,11 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/search/AssetQuery.cpp
         ${EDITOR_DIR}/shortcuts/Chord.cpp
         ${EDITOR_DIR}/spline/SplineEditor.cpp
+        ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+        ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
+        ${EDITOR_DIR}/tests/terrain/TerrainMapDeltaCmdTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainMapPersistenceTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainStrokeSessionTest.cpp
         ${EDITOR_DIR}/tests/PhysicsPlacementWorkspaceTest.cpp
         ${EDITOR_DIR}/tests/ProjectSaveTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimationClipAssetsTest.cpp
@@ -1740,7 +1805,7 @@ function(configure_jasperengine_editor_target target_name)
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
                 ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                 ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
-                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp)
+                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)

@@ -5,6 +5,8 @@
 // draw them: per-collider-type rows, shape previews, body-picking rows).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "Engine.h"
 #include "object/physics/Joint3D.h"
 #include "reflect/Reflect.h"
@@ -58,6 +60,7 @@
 #include "Widgets.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -91,6 +94,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include "util/WaterExclusion.h"
 #include "subsystem/AudioSystem.h"

@@ -1,0 +1,26 @@
+{
+  "description": "tools/test-projects/foliage (WEB_PROJECT=foliage tools/build.sh web): T5 AC1, AC4. FoliageScatter's fixture hashed in wasm with one thread: the constant below is what FoliageScatter.GoldenHashOnEveryTarget pins natively, so the gate fails when placement's bytes differ from x86-64. A camera jump then fills a new ring with every cell placed and the p99 frame's foliage work within 4 ms. The canvas only says the engine ran that far.",
+  "rgb": [
+    40,
+    200,
+    90
+  ],
+  "tolerance": 40,
+  "isolated": true,
+  "seconds": 15,
+  "ordered": true,
+  "console": [
+    {
+      "text": "[gate] foliage d32745bfa2c90c1d",
+      "level": "log"
+    },
+    {
+      "text": "[gate] foliage cells complete",
+      "level": "log"
+    },
+    {
+      "text": "[gate] foliage p99 within 4 ms",
+      "level": "log"
+    }
+  ]
+}

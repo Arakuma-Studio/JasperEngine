@@ -183,7 +183,10 @@ namespace jasperengine{
         HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
         // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
         // resolve (oit_resolve.frag)
-        LIGHTING_PASS
+        LIGHTING_PASS,
+        // S48's screen transition (transition.frag): one premultiplied fullscreen triangle over
+        // the finished frame (pixelart::ScreenTransition)
+        TRANSITION
     };
 
     enum class AttributeType{
@@ -276,7 +279,15 @@ namespace jasperengine{
         FRAMERECT,
         SNAPPIVOT,
         INSTANCESPRITEFX,
-        INSTANCESNAPPIVOT
+        INSTANCESNAPPIVOT,
+        // foliage's compact instance (includes/foliage_instance.glsl, T5 F3)
+        INSTANCEPACKED0,
+        INSTANCEPACKED1,
+        INSTANCEPACKED2,
+        INSTANCEPACKED3,
+        // a Voxel Volume's vertex (T6 R49): four 4-bit slots in x (ushort2n), the weights over them (ubyte4n)
+        VOXELSLOTS,
+        VOXELWEIGHTS
     };
 
     enum class AttributeDataType{
@@ -296,6 +307,7 @@ namespace jasperengine{
         PBR_FS_PARAMS,
         PBR_FS_TEXCOORDSETS,
         PBR_VS_FADE,
+        PBR_VS_FOLIAGE,
         FS_LIGHTING,
         FS_REFLECTION_PROBE,
         FS_FOG,
@@ -340,7 +352,8 @@ namespace jasperengine{
         BLIT_FS_PARAMS,
         PROBE_FILTER_FS_PARAMS,
         PARTICLES_VS_PARAMS,
-        PARTICLES_FS_PARAMS
+        PARTICLES_FS_PARAMS,
+        FS_VOXEL_LAYERS
     };
 
     enum class StorageBufferType{
@@ -384,7 +397,9 @@ namespace jasperengine{
         PARTICLESIXWAYA,     // six-way lighting: the two response maps
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
-        VAT                  // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        TERRAINHOLES,        // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
+        VOXELDETAIL          // a Voxel Volume's texture array (T6 R50, includes/voxel_fs.glsl)
     };
 
     enum class TextureType {

@@ -61,6 +61,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
+            {ComponentType::VoxelVolumeComponent, "A box of smooth voxel terrain: caves, overhangs and destruction"},
             {ComponentType::LatticeComponent, "Cage of control points that bends the meshes bound to it"},
             {ComponentType::LatticeModifierComponent, "Deforms this mesh (and children) with lattices"},
             {ComponentType::LatticeFollowerComponent, "Moves with a point of a lattice's deformation"},
@@ -172,6 +173,9 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::MorphTracksComponent, "Blend shape keyframes"},
             {ComponentType::LatticeTracksComponent, "Lattice point keyframes"},
             {ComponentType::BoneComponent, "Skeleton bone of a model"},
+        }},
+        {"Pixel Art", ICON_FA_TABLE_CELLS, {
+            {ComponentType::HitStopExemptComponent, "Keeps this GameObject (and its children) running through a hit-stop"},
         }},
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},

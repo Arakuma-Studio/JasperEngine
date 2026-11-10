@@ -7,7 +7,8 @@
 using namespace jasperengine;
 
 float Time::getDeltaTime(){
-    return Engine::isInFixedStep() ? Engine::getUpdateTime() : Engine::getDeltatime();
+    // inside a Hit Stop Exempt GameObject's callbacks: the delta without the hit-stop (S48)
+    return Engine::isInFixedStep() ? Engine::getUpdateTime() : Engine::getScriptDeltatime();
 }
 
 float Time::getUnscaledDeltaTime(){

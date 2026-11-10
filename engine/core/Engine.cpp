@@ -40,6 +40,9 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIClock.h"
 #if JASPERENGINE_HTMLUI
@@ -78,6 +81,10 @@
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pixelart/PaletteSwap.h"
+#include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -149,6 +156,10 @@ Vector2 Engine::viewShift = Vector2(0, 0);
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+FoliageQuality Engine::foliageQualityDefaults[3] = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+bool Engine::foliageQualityUncapped = true;
+bool Engine::foliageQualityOverridden = false;
+FoliageQuality Engine::foliageQualityOverride = FoliageQuality::HIGH;
 float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
 bool Engine::foliageDistanceScaleOverridden = false;
 float Engine::foliageDistanceScaleOverride = 1.0f;
@@ -234,6 +245,7 @@ Semaphore Engine::drawSemaphore;
 
 Framebuffer* Engine::framebuffer = nullptr;
 Framebuffer Engine::compositeFramebuffer;
+bool Engine::compositeExpected = false;
 
 //-----JasperEngine user events-----
 FunctionSubscribe<void()> Engine::onViewLoaded;
@@ -483,6 +495,14 @@ void Engine::removeAllScenes(){
         drawSemaphore.release();
 }
 
+void Engine::setCompositeExpected(bool expected){
+    compositeExpected = expected;
+}
+
+bool Engine::isCompositeExpected(){
+    return compositeExpected;
+}
+
 bool Engine::isSceneRunning(Scene* scene){
     if (!scene) {
         return false;
@@ -513,7 +533,8 @@ Scene* Engine::getLastScene(){
 
 bool Engine::advanceGameClocks(Scheduler& scheduler, double frameTime) {
     if (paused || simulationHeld || gameEventsPaused) return false;
-    scheduler.advance(TimeDomain::Game, frameTime * timeScale);
+    // a hit-stop freezes the game timers with the game delta
+    scheduler.advance(TimeDomain::Game, frameTime * timeScale * pixelart::HitStop::getWorldFactor());
     scheduler.advance(TimeDomain::Unscaled, frameTime);
     scheduler.advance(TimeDomain::Frames, 1.0);
     return true;
@@ -1034,6 +1055,42 @@ bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
 }
 
+void Engine::setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped){
+    foliageQualityDefaults[0] = desktop;
+    foliageQualityDefaults[1] = mobile;
+    foliageQualityDefaults[2] = web;
+    foliageQualityUncapped = uncapped;
+}
+
+FoliageQuality Engine::getFoliageQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+            return foliageQualityDefaults[1];
+        case Platform::Web:
+            return foliageQualityDefaults[2];
+        default:
+            return foliageQualityDefaults[0];
+    }
+}
+
+void Engine::setFoliageQuality(FoliageQuality quality){
+    foliageQualityOverride = quality;
+    foliageQualityOverridden = true;
+}
+
+FoliageQuality Engine::getFoliageQuality(){
+    return foliageQualityOverridden ? foliageQualityOverride : getFoliageQualityDefault(getPlatform());
+}
+
+void Engine::resetFoliageQuality(){
+    foliageQualityOverridden = false;
+}
+
+bool Engine::isFoliageQualityUncapped(){
+    return foliageQualityUncapped && !foliageQualityOverridden;
+}
+
 namespace {
     // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
     float clampFoliageDistanceScale(float scale){
@@ -1128,6 +1185,10 @@ double Engine::getFrameCpuTime(){
 
 float Engine::getDeltatime(){
     return deltatime;
+}
+
+float Engine::getScriptDeltatime(){
+    return (float)pixelart::HitStop::getScriptDeltaTime();
 }
 
 void Engine::beginFrameStats(){
@@ -1456,6 +1517,10 @@ int Engine::defaultStreamStagingBytes(){
     return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
 }
 
+int Engine::defaultTerrainUploadBytes(){
+    return (smallGpuMemoryPlatform() ? 2 : 8) * 1024 * 1024;
+}
+
 int Engine::defaultDescriptorBytes(){
     return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
 }
@@ -1529,7 +1594,8 @@ void Engine::beginCompositeFramebuffer(){
 // backends draw them straight to the swapchain (re-check when sokol_gfx is updated).
 // A screenshot's capture frame draws offscreen on every backend, to be read after it.
 #if defined(SOKOL_VULKAN)
-    const bool stacked = scenes.size() > 1;
+    // a screen transition is one more pass over the scenes (S48)
+    const bool stacked = scenes.size() > 1 || (pixelart::ScreenTransition::isEngineDrawEnabled() && pixelart::ScreenTransition::needsDraw());
 #else
     const bool stacked = false;
 #endif
@@ -2096,6 +2162,19 @@ void Engine::systemViewLoaded(){
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
+#if defined(SOKOL_VULKAN)
+    {
+        // the build carries the screen transition's program (its scripts mention Transition):
+        // one can play and be composited offscreen from any frame on Vulkan
+        const ShaderKey transition = ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
+        for (ShaderKey key : ShaderPool::getPrecompiledShaderKeys()) {
+            if (ShaderPool::normalizeKey(key) == transition) {
+                setCompositeExpected(true);
+                break;
+            }
+        }
+    }
+#endif
 #endif
 
     if (mouseCursorType != CursorType::ARROW){
@@ -2394,12 +2473,15 @@ void Engine::runFrame(bool draw){
     if (fixedDeltatime > 0.0){
         frameTime = fixedDeltatime;
     }
-    deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
     // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
     // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
     // events paused (the editor's Play pause, edit time)
     // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
     unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // S48's Hit-Stop counts down on that unscaled delta and scales the game delta for the part
+    // of the frame it covers (pixelart/HitStop.h); idle, its factor is 1
+    const double unfrozenDeltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    deltatime = unfrozenDeltatime * pixelart::HitStop::beginFrame(unscaledDeltatime, unfrozenDeltatime);
     // the UI clock: the same, but it keeps running while only the game events are paused (HTML
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
@@ -2407,7 +2489,8 @@ void Engine::runFrame(bool draw){
     // (scaled ones hold at time scale 0; both hold while the app or the simulation is held, and on
     // the deterministic driver while its pump holds: what a Play's pause lasted is not in the mix)
     const bool audioHeld = paused || simulationHeld || (!onUpdate.isEnabled() && AudioSystem::getOutputMode() == AudioOutputMode::Deterministic);
-    AudioMixer::update(audioHeld ? 0.0 : deltatime, audioHeld ? 0.0 : frameTime);
+    // (a hit-stop does not reach the audio: its scaled values follow the unfrozen delta)
+    AudioMixer::update(audioHeld ? 0.0 : unfrozenDeltatime, audioHeld ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
     Scheduler& scheduler = Scheduler::game();
@@ -2448,6 +2531,10 @@ void Engine::runFrame(bool draw){
             jobSystem.pump(threadingSettingsStorage().webPumpBudgetMs);
         jobSystem.sampleFrame();
     }
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 D9: the Terrain Worlds' pump, after the job pump and on paused frames too
+    TerrainWorldSystem::pumpAll();
+#endif
 
     {
         JE_PROFILE_SCOPE("SokolCmdQueue execute");
@@ -2587,6 +2674,13 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
+        // the PixelFX effects (S48 R24): after the scenes' update, before the coroutines, so a
+        // Coroutine.waitFor(handle) resumes the frame its effect ends; idle, one empty check
+        pixelart::PixelFxPlayer::update(frameDelta, unscaledDeltatime);
+        // the screen transition and the scripted glitch run on unscaled time (S48): a hit-stop or
+        // the time scale never slows them; a transition's onCovered runs here, with the scripts
+        pixelart::ScreenTransition::update(unscaledDeltatime);
+        pixelart::Glitch::update(unscaledDeltatime);
         // timers (the Scheduler's, the Lua Timer's among them), then the coroutines waiting
         // seconds, frames, predicates, timers or other work: after the update, before the
         // post-update (Unity's yield null / WaitForSeconds point: after Update, before
@@ -2634,9 +2728,19 @@ void Engine::runFrame(bool draw){
         drawStart = stm_now();
         {
             JE_PROFILE_SCOPE("Draw");
+            // the screen transition (S48 R16): over every scene, or with Cover UI off right after
+            // the main scene, under its layer scenes; never while idle
+            const bool transition = pixelart::ScreenTransition::isEngineDrawEnabled() && pixelart::ScreenTransition::needsDraw();
+            bool transitionDrawn = false;
             for (int i = 0; i < scenes.size(); i++){
                 scenes[i]->draw();
+                if (transition && !pixelart::ScreenTransition::isCoverUI() && scenes[i] == mainScene){
+                    pixelart::ScreenTransition::draw(framebuffer);
+                    transitionDrawn = true;
+                }
             }
+            if (transition && !transitionDrawn)
+                pixelart::ScreenTransition::draw(framebuffer);
 
             // the debug overlay above every scene (the loading scene too), outside the game's
             // frame statistics
@@ -2759,6 +2863,10 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         baseLayer = false;
     }
 
+    // the screen transition over a view that previews the game (the editor's Game view in edit mode)
+    if (viewId != 0 && viewId == pixelart::ScreenTransition::getViewDrawId() && pixelart::ScreenTransition::needsDraw())
+        pixelart::ScreenTransition::draw(target);
+
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();
@@ -2787,6 +2895,8 @@ void Engine::systemViewDestroyed(){
 
     // the overlay's Scene goes with the GPU objects (it is made again when shown)
     DebugOverlay::viewDestroyed();
+    // the screen transition's program is made again on its next use
+    pixelart::ScreenTransition::releaseGpu();
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
@@ -2825,6 +2935,9 @@ void Engine::systemShutdown(){
 
     // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
+    // a screen transition's callbacks may hold Lua too (S48)
+    pixelart::ScreenTransition::reset();
+    pixelart::Glitch::stop();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
@@ -2836,6 +2949,8 @@ void Engine::systemShutdown(){
 #endif
     Scheduler::game().clear();
     ScriptScheduler::clear();
+    // the PixelFX effects' onFinished callbacks may hold Lua (S48)
+    pixelart::PixelFxPlayer::reset();
     InputActions::unload();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();

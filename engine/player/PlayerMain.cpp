@@ -21,6 +21,9 @@
 #include "player/PlayerConfig.h"
 #include "player/RunControl.h"
 #include "serialization/CookedScene.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "util/Sha256.h"
 
 #include <algorithm>
@@ -315,16 +318,29 @@ JASPERENGINE_INIT void init() {
     pixelart::BitmapTextCache::get().setBudgetMiB(game.bitmapTextCacheMiB);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
+    Engine::setFoliageQualityDefaults(game.foliageQuality[0], game.foliageQuality[1], game.foliageQuality[2], game.foliageQualityUncapped);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
+#if JASPERENGINE_VOXEL
+    if (game.voxelMaxDimension > 0 || game.voxelCpuBudgetMB > 0 || game.voxelMeshBudgetMB > 0) {
+        constexpr int64_t mebibyte = 1024 * 1024;
+        VoxelLimits limits = voxelPlatformLimits();
+        if (game.voxelMaxDimension > 0) limits.maxDimension = std::min(limits.maxDimension, game.voxelMaxDimension);
+        if (game.voxelCpuBudgetMB > 0) limits.cpuBudget = std::min(limits.cpuBudget, game.voxelCpuBudgetMB * mebibyte);
+        if (game.voxelMeshBudgetMB > 0) limits.meshBudget = std::min(limits.meshBudget, game.voxelMeshBudgetMB * mebibyte);
+        setVoxelLimitsOverride(limits);
+    }
+#endif
     Engine::setTextureDefaults(game.textureDefaults[0], game.textureDefaults[1], game.textureDefaults[2]);
     UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
     Engine::setDynamicBatchingDefault(game.dynamicBatching);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
+    // Screen Transitions (S48): Lua's defaults
+    pixelart::ScreenTransition::setDefaults(game.transitions);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
     // the Device Tier the GPU gets applies from here on (spec S56)

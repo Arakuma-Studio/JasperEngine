@@ -55,6 +55,9 @@ namespace jasperengine::editor {
     constexpr int PRESET_MASK_REF = 0x10;
     constexpr int PRESET_MASK_BITS = 0xF0;
 
+    // the Pixel FX presets' ramp slot (S48 R9, library:sprite's u_fxRampTexture)
+    constexpr const char* PIXEL_FX_RAMP_UNIFORM = "u_fxRampTexture";
+
     // the presets, in menu order
     const std::vector<MaterialPreset>& getMaterialPresets();
     // the preset with this id, or null

@@ -1,0 +1,9 @@
+{
+  "format": "jasperengine.anim",
+  "version": 1,
+  "frame_rate": 30,
+  "wrap": "loop",
+  "tracks": [
+    {"path": "", "channel": "position", "relative": true, "keys": [[0, [0, 0, 0]], [0.5, [0.5, 0, 0]], [1, [0, 0, 0]]]}
+  ]
+}

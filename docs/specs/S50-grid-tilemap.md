@@ -845,9 +845,9 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 - **R31-R33 (chunks through S52).** S52's attach takes one batch per GameObject; S50 adds `SpriteInstanceChunkList`
   (`RenderSystem::attachInstanceChunks`): a lead batch the mesh loads with, and one `SpriteInstanceBatch` per chunk whose
   buffers are swapped in for its draw, each culled, built on first view and uploaded on its own.
-- **R35 `CLAMP_FRAME`.** A MESH variant bit, `Tcl` (49, `TILE_CLAMP_FRAME`), set for a Tilemap Layer's instanced
+- **R35 `CLAMP_FRAME`.** A MESH variant bit, `Tcl` (54, `TILE_CLAMP_FRAME`), set for a Tilemap Layer's instanced
   variant: the fragment stage clamps the first UV set half a texel inside the instance's frame (mesh.frag and
-  library:sprite). Shader cache v62 here; it takes the next free bit and version at the batch merge (S48 holds v62).
+  library:sprite). Shader cache v65 (after the terrain programme's v63 and S48's v64).
 - **R2, §6.3 (sorting and material).** Sorting Layer, Order in Layer and the material live on the layer's MeshComponent,
   as for Sprites (S52's renderer fields), not on `TilemapLayerComponent`; the Inspector shows them in the layer section.
 - **D4, R86, R87 (encoding).** Each chunk starts with a header byte (log2 of the chunk size, a terrain-plane bit), so a
@@ -864,7 +864,8 @@ print(layer.cellCount, grid.cellSize, grid.layout)
   4 bytes.
 - **R38 (surface).** `TilemapCollider2DComponent` lists the Collider2D surface fields it shares (friction, restitution,
   material, category, mask, group, events) instead of holding a `Collider2D`; category and mask are 32-bit fields
-  narrowed to Box2D's 16 bits.
+  narrowed to Box2D's 16 bits. The Inspector and MCP refuse wider values; one set from Lua or C++ is clamped (category
+  and mask to 65535, group to -32768..32767) with one warning per change of the fields.
 - **Units.** A Grid's Cell Size is in world units; a tile's image is its pixels over the project's Pixels Per Unit.
   Colliders are built in texels and scaled back.
 - **R12 (aseprite source).** The Aseprite importer (version 2) writes each tileset's strip and resolves

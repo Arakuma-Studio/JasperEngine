@@ -71,13 +71,18 @@ const ToolModule TOOL_MODULES[] = {
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
     {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
+    {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerVoxelTools, "Voxel Volumes", "voxels"},   // T6
+    {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerTilesetTools, "Tilemaps: tilesets and map import", "tilemaps"},   // S50
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
     {registerPixelArtTools, "Pixel art: the validator", "pixel_art"},   // S42
+    {registerPixelFxTools, "Pixel art: effect contact sheets and checks", "pixel_art"},   // S48
+    {registerPixelArtCleanupTools, "Pixel art: cleanup and lints", "pixel_art"},   // S46
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29

@@ -238,6 +238,12 @@ namespace jasperengine::editor{
         // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
         SortingGroupComponent,
         SpriteBatchComponent,
+        // T6: a bounded box of smooth voxel terrain
+        VoxelVolumeComponent,
+        // T4: a Terrain's tiles past one map, streamed round its focuses
+        TerrainWorldComponent,
+        // pixel art (S48): keeps a GameObject running through a hit-stop
+        HitStopExemptComponent,
         // grid tilemaps (S50): the cell layout, a layer of cells, its colliders
         GridComponent,
         TilemapLayerComponent,

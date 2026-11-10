@@ -41,7 +41,7 @@ VERBS = {
     "move", "rename", "copy", "paste", "duplicate", "update", "reset", "inspect", "assert", "send", "sample",
     "sculpt", "bake", "capture", "record", "play", "preview", "sync", "search", "view", "focus", "frame", "link",
     "attach", "detach", "fork", "replace", "instantiate", "unpack", "clear", "cancel", "respond", "configure",
-    "build", "eval", "measure", "query", "toggle", "commit", "diff", "lock", "unlock", "revert", "publish",
+    "build", "eval", "measure", "query", "toggle", "fix", "lint", "commit", "diff", "lock", "unlock", "revert", "publish",
     "verify", "enable", "disable", "validate", "convert", "cook", "paint", "place", "fill", "flatten", "profile",
     "test", "load", "reload", "simulate", "step", "pick", "show", "hide", "group", "ungroup", "align", "snap",
     "discard", "wait", "resolve", "retarget", "raycast", "reimport", "render", "control",

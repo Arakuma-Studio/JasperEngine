@@ -16,7 +16,10 @@
 #include "RenderSystem.h"
 
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "registry/SortingLayers.h"
 
 #include <algorithm>

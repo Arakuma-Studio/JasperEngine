@@ -74,6 +74,7 @@ namespace jasperengine::editor{
     class PoseAnimationWindow;
     class AnimatorWindow;
     class AvatarWindow;
+    class NoiseGraphWindow;
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
@@ -85,6 +86,7 @@ namespace jasperengine::editor{
     class ApplyPaletteDialog;
     class PaletteWindow;
     class PixelArtCheckWindow;
+    class PixelArtCleanupWindow;
     namespace tilemap {
         class TilePaletteWindow;
         class TilesetEditorWindow;
@@ -111,6 +113,8 @@ namespace jasperengine::editor{
     class UndoHistoryWindow;
     class InputActionsWindow;
     class NavigationWindow;
+    class VoxelEditWindow;
+    class VoxelSliceView;
     class PlayModeChangesWindow;
     class SearchPalette;
     class ShortcutsWindow;
@@ -263,6 +267,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow;
         AvatarWindow* avatarWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
+        NoiseGraphWindow* noiseGraphWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         ParticleEffectWindow* particleEffectWindow;
@@ -273,6 +278,7 @@ namespace jasperengine::editor{
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
+        PixelArtCleanupWindow* pixelArtCleanupWindow = nullptr;
         tilemap::TilePaletteWindow* tilePaletteWindow = nullptr;
         tilemap::TilesetEditorWindow* tilesetEditorWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;
@@ -296,6 +302,8 @@ namespace jasperengine::editor{
         InputActionsWindow* inputActionsWindow;
         // Window > AI > Navigation (S19)
         NavigationWindow* navigationWindow;
+        VoxelEditWindow* voxelEditWindow;
+        VoxelSliceView* voxelSliceView;
         PlayModeChangesWindow* playModeChangesWindow;
         // S25: Edit > Search All..., Edit > Shortcuts... (and Help > Keyboard Shortcuts),
         // Window > General > Bookmarks
@@ -419,7 +427,9 @@ namespace jasperengine::editor{
             AnimationClip,
             // the Sprite Normal Map window: its paint strokes first, then the scene of its last
             // Save & Assign while that assign is the scene's newest step, else the timeline
-            SpriteNormals
+            SpriteNormals,
+            // the Pixel Art Cleanup window: its recipe edits first (local until Write), else the timeline
+            PixelArtCleanup
         } lastFocusedWindow;
 
         void saveFunc();
@@ -724,6 +734,8 @@ namespace jasperengine::editor{
         void openAvatarWindow(uint32_t sceneId, Entity entity);
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        VoxelEditWindow* getVoxelEditWindow() const { return voxelEditWindow; }
+        NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
@@ -739,6 +751,8 @@ namespace jasperengine::editor{
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
+        void openPixelArtCleanup(const std::filesystem::path& image) override;
+        void rerunPixelArtCleanup(const std::filesystem::path& output) override;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
@@ -750,6 +764,7 @@ namespace jasperengine::editor{
         void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
+        PixelArtCleanupWindow* getPixelArtCleanupWindow() const { return pixelArtCleanupWindow; }
         tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }
         tilemap::TilesetEditorWindow* getTilesetEditorWindow() const { return tilesetEditorWindow; }
         ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }

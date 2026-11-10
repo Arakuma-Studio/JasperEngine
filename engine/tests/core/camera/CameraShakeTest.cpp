@@ -674,7 +674,8 @@ TEST(ShakeFile, LenientValuesAndHardErrors){
 }
 
 TEST(ShakeFile, BuiltinsMatchTheGamesMilkShakeAssets){
-    EXPECT_EQ(builtinShakePresets().size(), 16u);
+    // MilkShake's 13, EZ Camera Shake's 3 and S48's pixel-art pixel_hit, pixel_heavy, pixel_rumble
+    EXPECT_EQ(builtinShakePresets().size(), 19u);
     const ShakePreset* punch = findBuiltinShakePreset("punch");
     ASSERT_TRUE(punch);
     EXPECT_EQ(*punch, preset(ShakeType::OneShot, 0.5f, 2.5f, 0.05f, 1.0f, Vector3(4, 0, 0), Vector3(20, 90, 20)));
@@ -730,7 +731,8 @@ TEST_F(Shake, LuaApi){
         lua_getfield(L, -1, name);
         lua_remove(L, -2);
     };
-    field("names"); EXPECT_EQ(lua_tointeger(L, -1), 16); lua_pop(L, 1);
+    // (16 before S48's pixel_hit, pixel_heavy and pixel_rumble)
+    field("names"); EXPECT_EQ(lua_tointeger(L, -1), 19); lua_pop(L, 1);
     field("valid"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
     field("scale"); EXPECT_FLOAT_EQ((float)lua_tonumber(L, -1), 0.5f); lua_pop(L, 1);
     field("state"); EXPECT_STREQ(lua_tostring(L, -1), "fading_in"); lua_pop(L, 1);

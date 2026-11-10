@@ -3,6 +3,7 @@
 
 #include "EntityRegistry.h"
 #include "component/ActionComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
@@ -66,6 +67,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -81,6 +83,7 @@
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
@@ -158,6 +161,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<ScaleTracksComponent>(ComponentOrder::Insertion, "ScaleTracksComponent");
     registerComponent<ScriptComponent>(ComponentOrder::Insertion, "ScriptComponent");
     registerComponent<TerrainComponent>(ComponentOrder::Insertion, "TerrainComponent");
+    registerComponent<TerrainWorldComponent>(ComponentOrder::Insertion, "TerrainWorldComponent");
     registerComponent<AudioSourceComponent>(ComponentOrder::Hierarchy, "AudioSourceComponent");
     registerComponent<TilemapComponent>(ComponentOrder::Insertion, "TilemapComponent");
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -199,6 +203,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
     registerComponent<SplineComponent>(ComponentOrder::Insertion, "SplineComponent");
     registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
+    registerComponent<VoxelVolumeComponent>(ComponentOrder::Insertion, "VoxelVolumeComponent");
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
     registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
@@ -225,6 +230,8 @@ EntityRegistry::EntityRegistry() {
     // 2D sorting and Sprite Batch (S52)
     registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
     registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
+    // S48 Pixel FX
+    registerComponent<HitStopExemptComponent>(ComponentOrder::Insertion, "HitStopExemptComponent");
     registerComponent<GridComponent>(ComponentOrder::Insertion, "GridComponent");
     registerComponent<TilemapLayerComponent>(ComponentOrder::Insertion, "TilemapLayerComponent");
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");

@@ -21,6 +21,7 @@ Libraries of the engine, the editor and the tools:
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
 | [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [Transvoxel](https://github.com/EricLengyel/Transvoxel) | `51a494f03c5b` | `engine/libs/transvoxel/` (`LICENSE`; `Transvoxel.cpp` verbatim, included by `engine/core/voxel/TransvoxelTables.cpp`) | MIT | the regular and transition cell tables of the Voxel Volume mesher (left out of a player without the `voxel` module) |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) | 2.0.1 | `engine/libs/clipper2/` (`LICENSE`) | BSL-1.0 | polygon union of the tilemap colliders |
@@ -140,6 +141,7 @@ Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)):
 | Source | License | What was taken | Where |
 |---|---|---|---|
 | [SideFX Labs](https://github.com/sideeffects/SideFXLabs): the Houdini Vertex Animation Textures ROP 3.0 and its Unity Shader Graphs (`VAT_SoftBodyDeformation`, `VAT_RigidBodyDynamics`, `VAT_DynamicRemeshing`) | BSD | the VAT 3 format and its decoding: the flags in the bounds' digits, texel addressing, LDR remaps, Two Position Textures, smallest-three rigid quaternions, the precomputed-angle slerp, smooth trajectories, compressed spheremap normals, the fluid lookup table; also the quaternion tangent frame | the Houdini importer (`editor/vat/import/HoudiniVat3.cpp`, decoded on the CPU at import) |
+| [Terrain3D](https://github.com/TokisanGames/Terrain3D) (Copyright (c) 2023-2026 Cory Petkovsek, Roope Palmroos, and Contributors) | MIT | the height blend formula | `engine/shaderlib/includes/terrain_height_blend.glsl` |
 | G4ND44/Godot_VAT3 (GitHub) | MIT | a second reference for the VAT 3 decoding | `editor/vat/import/HoudiniVat3.cpp` |
 | OpenVAT's engine decoders (OpenVAT-Engine_Tools) | MIT | the OpenVAT file layout (per-channel remap, packed normals, `remap_info.json` animations); the A/B crossfade computed on the GPU from one clock | `editor/vat/import/OpenVat.cpp`, `engine/shaderlib/includes/vat.glsl`. The OpenVAT Blender add-on (GPL) is not used |
 | keijiro/HdrpVatExample (GitHub) | Unlicense | integer-addressed `texelFetch` decoding; the shrinking of rigid pieces that lerped matrices cause, which Bones mode avoids (quaternion nlerp) | `engine/shaderlib/includes/vat.glsl` |
@@ -356,6 +358,16 @@ holds only the copies a project makes of them) are colour data, credited here an
 | `resurrect-64` | Kerrie Lake | [Lospec: Resurrect 64](https://lospec.com/palette-list/resurrect-64) | free to use, credited |
 | `aap-64` | Adigun A. Polack | [Lospec: AAP-64](https://lospec.com/palette-list/aap-64) | free to use, credited |
 
+The agent sprite drawing tools (`editor/pixelart/draw/`, docs/specs/S47-agent-sprite-drawing.md) take their design from
+[tenten](https://github.com/debuffjp/tenten) by debuff (MIT) and port these algorithms, keeping the headers in the sources:
+[Pixelorama](https://github.com/Orama-Interactive/Pixelorama) (MIT, Copyright (c) 2019-present Orama Interactive and contributors): the
+pixel-perfect line (`src/Classes/Drawers.gd`), the scanline flood fill (`src/Classes/FloodFillObject.gd`, from Allegro 4.2.1's `flood.c` by
+Shawn Hargreaves), Zingl's ellipse and rounded rectangles (`src/Autoload/DrawingAlgos.gd`), the outline neighbourhoods
+(`src/Shaders/Effects/OutlineInline.gdshaderinc`), hue-shift shading (`src/Tools/DesignTools/Shading.gd`) and the rotxel and nearest
+rotations; [cleanEdge](https://torcado.com/cleanEdge/) by torcado (MIT, Copyright (c) 2022 torcado) and
+[OmniScale](https://github.com/libretro/glsl-shaders) by Lior Halphon (MIT, Copyright (c) 2015-2016 Lior Halphon, no-AA version by deakcor),
+ported to the CPU as the rotations of `edit_sprite`.
+
 Test data: the Endesga 32 files under `editor/tests/fixtures/palettes/` (`lospec-endesga-32.*`) and
 the recorded Lospec answers under `tools/mcp/tests/fixtures/lospec-mirror/` are Lospec's own
 downloads of the palettes above. The palette importers follow GIMP's `gimppalette-load.c` layout as
@@ -374,9 +386,25 @@ Ported, each file keeping the original notice next to ours:
 | CIELAB D65, CIEDE2000 and the cached nearest-colour matcher (`engine/core/pixelart/PixelColor.cpp`); Apply Palette's lost-colour groups (`editor/pixelart/ApplyPalette.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `packages/tools/src/pixel/core/color.ts`, `lost.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 | `fitRamp` and `rampAt` (`engine/core/pixelart/PixelColor.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/color.js` `fit` and `at` | MIT, Copyright (c) 2026 Patch |
 | The ordered pair-mix dither (`PaletteMatcher::ditherPair`, Palette Quantize's table) | Joel Yliluoma, "Arbitrary-palette positional dithering algorithm" (the algorithm, no code) | — |
+| S48's screen transitions (`engine/core/pixelart/ScreenTransition.cpp`, `engine/shaderlib/transition.frag`: the cover/hold/reveal structure, the kinds, the field rule for constant-width rims) and their default ember ramp; the Glitch burst structure (`engine/core/pixelart/Glitch.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/fx/transitions/` (`_lib.js` `field`, `iris.js`, `crt-off.js`, `pixel-dissolve.js`, `burn-away.js`), `src/core/color.js` `PAL.ember`, `src/fx/scifi/glitch.js` (the techniques, written fresh; no Sprite Fusion particle code) | MIT, Copyright (c) 2026 Patch |
 
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).
+
+## Pixel FX game feel (S48)
+
+Ported, each function keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The kick shake (`camera::kickOffset`, `engine/core/camera/ShakeInstance.cpp`) and the held-pose time (`anim::holdPoseTime`, `engine/core/animation/KeyframeSampling.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/act.js` (`get shake()`, `poseAt`), which credits Hollow Crown's skills for the freeze, the shake and the 12 fps held poses | MIT, Copyright (c) 2026 Patch; Copyright (c) 2026 rehan-remade (Hollow Crown) |
+
+## Pixel FX contact sheets and effect lints (S48)
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The contact sheet's backdrops (`editor/pixelart/fx/ContactSheet.cpp`: dark, ground, sky, light, black and their colours) and its grid | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/scene.js` `backdrop`, `tools/lib/fxlib.mjs` `contactSheet` | MIT, Copyright (c) 2026 Patch |
+| The spill, one-shot end, loop seam, determinism and slow-frame rules (`editor/pixelart/lint/EffectLints.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `tools/check.mjs` | MIT, Copyright (c) 2026 Patch |
 
 ## Pixel particles (S49)
 
@@ -386,6 +414,15 @@ Ported or copied, each file keeping the original notices next to ours:
 |---|---|---|
 | The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
 
+## Pixel Art Cleanup (S46)
+
+Ported, each file keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The pixel fixer (`editor/pixelart/cleanup/Cleanup{Grid,Sample,Palette,Specks,Outline,Reduce,Lost,Background,Edits,Pipeline,Sheet,Animation,SheetOutput,Recipe,Report,Synthetic}.*`) and its ported tests (`editor/tests/pixelart/Cleanup*Test.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `103c46b11218`, `packages/tools/src/pixel/core/` and `packages/tools/test/` | MIT, Copyright (c) 2026 Sandro Maglione |
+| The outline repair and stroke-preserving shrink within that port (`CleanupOutline.*`, `CleanupReduce.*`) | ritmo's `outline.ts` and `reduce.ts`, which follow [ToPixel](https://github.com/daisuqe/ToPixel) | MIT, Copyright (c) 2026 Sandro Maglione; ToPixel as its authors publish it |
+| The craft and rule lints (`editor/pixelart/lint/CraftLints.*`) | ritmo `packages/tools/src/pixel/core/lint.ts`, `packages/tools/src/fx/core/craft.ts`, `check.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 ## Grid tilemaps (S50)
 
 Ported or copied, each file keeping the original notice next to ours:

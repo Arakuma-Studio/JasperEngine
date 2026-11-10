@@ -51,6 +51,10 @@ namespace jasperengine::editor {
 
     class TextureTypeInference {
     public:
+        // In EdgeContext::componentsOf's set: the entity's terrain has Allow Runtime Edits (T1 R77),
+        // so its blend maps are read on the CPU. Not a component name.
+        static constexpr const char* TERRAIN_RUNTIME_EDITS_MARK = "#terrainRuntimeEdits";
+
         // What the references of `projectRelative` (and its file name) say
         // (main thread: the index's overlay of unsaved documents)
         static TextureInference infer(Project& project, const std::string& projectRelative);

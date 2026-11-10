@@ -5,6 +5,7 @@
 // animations, animations and keyframe tracks (key lists kept aligned with their tangents).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "window/AnimationWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
@@ -57,6 +58,7 @@
 #include "Widgets.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/LatticeTracksComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"

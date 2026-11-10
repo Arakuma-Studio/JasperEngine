@@ -885,3 +885,191 @@ characters. The test asserts `capture_contact_sheet` is hidden until `tool_group
 
 ## Deviations
 
+Implementation notes that change what the spec says. Each item names the requirement it touches.
+
+### Whole spec
+- **Guide.** Per the ledger's upstream MCP rules, the agent guide gets one "Other areas" entry, `pixel-fx
+  (capture_contact_sheet)` with `jasper://docs/pixel-fx`, instead of a line in a `## Pixel art` digest section (R46).
+  Everything else is in `docs/mcp/guide/pixel-fx.md`; user docs are `docs/pixel-fx.md`.
+- **S52 names (R10, R30, R31).** S52 calls the FX stream `a_spriteFx` / `i_spriteFx` (FLOAT4, read through
+  `spriteFx(slot)` from `includes/sprite_fx.glsl`) and the manifest line `// @batchable framerect=...`, not `i_fx`
+  (HALF4) and `@instanceable`. `ditherFadeAmount` is `instance=fx.z` and `dissolveProgress` `instance=fx.w`; the
+  Pixel FX features that read the frame rect (pixel outlines, Drop Shadow, Dissolve, Ramp Recolour, Dither Fade) are in
+  `@batchable framerect=`. AC11 is `PixelArtBatchGpu.FxSlotsDitherFadeDissolve` beside S52's `FxSlotsZW`.
+- **Shader cache.** S48's sources are cached under v64 (S49 took v60, S52 v61, the terrain programme v63).
+- **Mobile budgets (R34, AC25).** No Adreno 610 / Mali-G57-class device was available: the phone numbers are not
+  measured. R35's CPU costs are inferred from the code (idle paths return at once, no draw, upload or allocation).
+- **AC26's fixture.** The exported-game fixture is `tools/fixtures/pixel-fx-game` (written by
+  `tools/fixtures/make_pixel_fx_game_fixture.py`; `tools/fixtures/pixel-fx` holds the lint fixtures). It runs static stages
+  (`PFX_STAGE`) so the game's and the editor's frames compare whatever the wall clock; `test_pixel_fx_export.py` compares
+  them on GL, Vulkan and GLES3 (the editor simulates the device tier the game logs), and the web build is
+  `tools/test-projects/pixel-fx` with `GATE=pixel-fx`.
+- **Test names.** GPU gtests end in `Gpu` (docs/testing.md), so the spec's GPU test names take that suffix.
+
+### Sprite features (M1)
+- **D6 / R7, quad growth in the geometry.** The sprite's quad grows in `MeshSystem`'s CPU geometry (createSprite, buildSpriteGrid for sheet frames and lattice grids, the 9-slice in buildSpriteSliced), driven by the manifest's `@expand` rules, not by a `sprite.vert` hook with a `spriteParams.frameTexels` uniform (S52 D6 requires geometry growth for its batches). Culling, picking and sorting use the grown bounds with no extra code. The quad rebuilds when the material's features or values change: `MeshSystem::update` compares `SpriteComponent::builtFxExpand` when `customUniformWrites` moved since the last compare (a write the draw already flushed, from a coroutine or `onPostUpdate`) or while `needUpdateShaderUniforms` or `needReload` is set, and the shader is the one `getSubmeshShader` gives, so a `customShader` or the scene's default shader grows the quad too. Growth applies only to the pixel outline styles (`@expand outlineWidth feature=OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8`) and Drop Shadow (`@expand shadowOffset feature=DROP_SHADOW`). The smooth OUTLINE and GLOW keep today's quad, because R1, AC2 and AC7 require the legacy variants to stay identical in source and pixels, and GLOW reads no neighbour, so a grown quad would add only transparent pixels. There is no `@expand 4 feature=GLOW`. Texels beyond the frame read transparent (`SPRITE_FX_GROWN`).
+- **D3, scoped keywords.** `@keywords GROUP … feature=<DEFINE>` defines nothing while its feature is off. Its first value (`OUTLINE_STYLE_SMOOTH`) also defines nothing while the feature is on, so materials made before the group keep their variant name and source (`library:sprite#…,OUTLINE`, AC27). `ShaderManifest::getKeywordChoice` gives the choice the Inspector shows. Only a `@feature` may scope a group.
+- **R5, pixel-only outline options.** Outline Colour From, Ramp Steps, Inline Width and Inline Colour exist on the pixel styles only (rows `feature=OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8`). The smooth outline is unchanged. The manifest's `feature=` on properties and textures takes a comma list, meaning shown while one of them is on.
+- **R3 / D4, the dissolve key.** With a direction, the key is the texel's height along the direction, displaced by value noise of up to 0.75 × noise × cell texels. The noise is scaled by cell over the frame's extent, so up to a noise of about 0.6 the key keeps rising along the direction. A jitter is shared by each line of texels along the direction, giving a ragged front of straight columns. Without a direction ((0, 0)) the key is the noise alone plus a per-texel jitter. All keys are normalised into [0, 1). With a direction, the bands are exact whole texels along it: a texel is in the edge band when the texel `edge` steps back toward the front is burnt. This costs two extra key evaluations and needs no derivative. AC6 measures 10,359 of 10,359 front columns exact. Without a direction, the bands use pixelfx's field rule: the key difference over the gradient, clamped to 0.45 to 3 times a straight front's gradient. The shader cost is above R33's "≤ 40 ALU" estimate: about 12 hashes in the bands.
+- **R4, ramp recolour details.** `rampLow` and `rampHigh` are floats, where a negative value counts from the end (defaults 1 and −1), because N comes from the texture. `rampBevel` is a dithered per-texel choice (Bayer 4x4 below the value), the same as `rampAmount`. For outline, inline, shadow casters and the bevel, "opaque" means alpha ≥ 0.5.
+- **R11, FLASH.** FLASH is a legacy feature (R1): a FLASH drawn alone, unbatched, keeps its pre-S48 source (`SpriteVariants.LegacyIdentical`), so the idle branch applies where the variant has S48's structure (another Pixel FX feature's `SPRITE_FX`) or S52's batched slots (`HAS_SPRITE_FX`).
+- **R2, alpha and screen space.** A fragment the dither keeps keeps its own alpha: the effect makes no partial alpha but does not change the art's. Screen space uses `gl_FragCoord`, with S41 divided by `frame.pixelSnap.w` (carried as a flat varying from the vertex stage) and without S41 as it is. Both read `gl_FragCoord`'s vertical origin, which is the backend's, so the screen-space pattern can mirror vertically between GL and D3D/Metal/Vulkan on the S41 path as well. Sprite space, the default, is identical on every backend.
+- **AC2–AC5, AC9, AC10 test names and counting.** GPU suites must end in `Gpu` (docs/testing.md), so AC2, AC3, AC4, AC5 and AC10 are core GPU gtests `SpritePixelFxGpu.{LegacyCombinationsUnchanged, NewFeatures, LegacyBlocksUniform, KeyMatchesCpu, IdleEqualsOff}` with `GrownQuad` (R7). They render at an exact 4× scale into the headless target; the goldens are in `engine/tests/core/golden/sprite_fx/`. `test_pixel_fx_golden.py` holds AC27. AC9 counts texture reads (OpImageSample*, OpImageFetch, OpImageGather) statically in the Vulkan SPIR-V. Functions are not inlined, so the count is a lower bound on the per-fragment taps.
+- **AC27, re-save test.** The fixtures predate `main`'s current scene format (format stamp, guid, newer keys: main's to migrate), so a byte comparison with the fixture is not S48's. The test saves each `shader-library-export` scene and two fixture `.material` files twice. It checks that the second save is byte-identical, that no S48 name appears in a file that does not use it, and that the legacy OUTLINE variant keeps its pre-S48 name.
+- **R38 / D2, S42 parts.** "Pixel Art Mode picks PIXEL4" is `PixelArtMode::pickPixelOutline`, called when the
+  Inspector ticks Outline (same undo step). The 24-variant export warning is S42's `sprite_variants` rule, which counts
+  every distinct `library:sprite` variant (S48's features included) and names the materials that add the most.
+- **R38, presets.**
+    - Presets set `shaderParams`.
+    - The animated amounts are left at 0, idle until played, in Hit Flash, Teleport Fade, Burn Away and Enemy.
+    - The Enemy preset's id is `pixel_enemy`.
+    - Built-in ramps are named `builtin:<id>#ramp:<name>` and resolved to the project's copy of that palette, written if missing: `editor::resolvePresetPalettes` with S43's `usePalette` and `linkPaletteCopy`. The copy is written in the same undo step as the edit.
+    - Thumbnails show beside every feature row of a Sprite's material (Sprites only, not tilemaps or polygons).
+    - The Preview row covers the four animated amounts, in edit mode only.
+    - Guide text: the area's section is in `docs/mcp/guide/pixel-fx.md`. The README row and the "Other areas" entry are left to the landing.
+
+### Screen transitions and Glitch (M3)
+- R13/AC12 rim width: the rim is exactly `rim` art pixels across every row and column it crosses.
+  A covered pixel is rim at depth s when the pixel s steps along a row or column is uncovered (an axis
+  dilation of the uncovered side). A per-kind bound on how fast the field changes per art pixel (1 for
+  iris, blinds and slash, 2.2 for burn away) lets pixels deeper than `rim` steps skip the walk. The §4
+  gradient rule (`1/clamp(|grad f|, 0.45, 3)`, by finite differences, no dFdx) only places the glow
+  outside the edge: with the gradient rule alone, a noise field (burn away) gave rims of varying width.
+- R45: `Transition` and `PixelFX` are LuaBridge classes with static members (`beginClass<Tag>`), not
+  namespaces. tools/lua_api's docs and doctest see only classes. `PixelFX`'s tag is
+  `pixelart::PixelFxLua` (engine/core/pixelart/PixelFxLua.h): every file adding to PixelFX reopens it.
+  `TransitionKind` is an integer enum (IRIS..FADE = 0..6); names ("iris") are accepted too.
+- R12/R13: the iris `center` is normalized over the screen from its top-left (x right, y down). A
+  Vector4 `color` is read as an sRGB display colour, as picked; `"#rrggbb"` works as well.
+- R18: `glitchEnabled` alone sets `UBER_GLITCH`, also at intensity 0, which keeps the variant for
+  scripted bursts (PixelFX.glitch) only. The corruption of each frame (split, interlace, up to 8 tears)
+  is picked on the CPU (engine/core/pixelart/Glitch.cpp, a pure function of floor(time·glitchFps) and
+  the seed) and uploaded as 3 vec4 appended to u_fs_uberParams. Interlace darkens odd source rows by 0.7.
+- AC12: the GPU images per kind × progress × pixel size are compared against the CPU twin (ScreenTransition::evaluate;
+  ScreenTransitionGpu.MatchesTheCpuTwinWithHardPixels, glcore and Vulkan). The stored PNG goldens are the contact-sheet route
+  (`tools/mcp/tests/golden/transitions/`, `test_transitions.py::test_contact_sheet_route`).
+- R40: in edit mode the Engine's own transition draw is off (the Scene view must not show it). The
+  Game view's preview draws inside Engine::drawView for the view ScreenTransition::setViewDrawId names
+  (GAME_VIEW_ID), and through the Engine frame of the Game view pass. Cover UI does not apply to the
+  edit-mode preview: it draws over the layers.
+- R13 ramp: at runtime a ramp is a `.palette` asset's ramp ("<palette>.palette#ramp:<name>", or
+  `palette` + `ramp`). `builtin:` palettes exist only in the editor (templates), so the default is the
+  built-in ember ramp embedded in the engine; a missing ramp falls back to it with a warning
+  (palette_ramp_missing). Ramps are uploaded as display sRGB, at most 16 steps (fitRamp).
+- R16 on Vulkan: the transition is one more pass over the frame, so it composites offscreen
+  (`Engine::beginCompositeFramebuffer`). A game whose build ships the transition's program bakes its objects' offscreen
+  pipelines from load (`Engine::setCompositeExpected`, `getScenePipelines`): the first composite frame draws them at once
+  and nothing reloads when a transition starts or ends. Vulkan only; the other backends draw it to the swapchain.
+- R15: SceneManager gained `isLoadingSceneShown()` and `isLoadComplete()`. If the load completes before
+  the reveal onto the loading scene reaches 0, the second cover starts from the current coverage.
+- R14: `play()` with `hold` takes the hold out of `duration`: cover = reveal = (duration − hold) / 2.
+- Not measured: R34/AC25 mobile budgets (no device). R35 CPU costs are inferred (idle update returns at
+  once; no draw, upload or allocation while idle).
+
+### Game feel (M2)
+- `.shake` also gains a `tick` key (Hz), needed by `pixel_rumble`'s "tick 30".
+- A kick's length is its `fade_out`.
+- A hit-stop takes effect from the next frame.
+- `exclude` lists of overlapping calls of the same kind add up; an `only` call replaces a world hit's lists (and the reverse).
+- An Action or Tween follows the exemption of the GameObject it moves (its target).
+- An Animator in Animate Physics mode follows the physics world.
+- The script scope covers Lua engine events, script messages and a GameObject's Lua coroutines and `self:invoke` timers (their game-time waits follow the unfrozen delta for exempt GameObjects, and freeze for a hit's `only` targets). The global `Timer.after` and a C++ script's `ScriptBase::invoke` have no GameObject and keep the game clock; a C++ script's own `Engine::onUpdate` subscriptions call `HitStop::deltaFor`.
+- Pose Animator steps count from each transition's start and arrival.
+- Animation Player fade weights step on the player's clock.
+- On the retargeted humanoid path the hips position stays smooth.
+- AC suites: engine/tests/core/player/HitStopTest.cpp, engine/tests/core/camera/CameraShakePixelTest.cpp, engine/tests/core/animation/PoseFrameRateTest.cpp (AnimatorInstance.*).
+
+### Agent tooling (M5)
+- **Check rows (coordinator, S91 consistency).** The lints compute S44's `lint::LintResult` (what S46 and S49 call), and
+  `capture_contact_sheet` returns them as the verdict tools' rows (`util/QaChecks.h`, S35 R21 / S91 D5, the rows
+  `preview_particle_effect` returns), through `lint::toCheckRow`: `id`, `kind` `effect`, `status`, `round`,
+  `measured`, `threshold`, `threshold_source`, `limited_by` (the LintResult message), `at` (the spotted frames'
+  times, seconds), `fix_hint` (the fix), `method` `capture`, plus S44's `count` and its pixel spots as `spots
+  [[frame, x, y]]` (S44's `at`). The array is `checks` (S91's name), not R27's `lints`; S35's anti-gaming rounds
+  (`qa::FailRounds`, 2 fix rounds), `thresholds {values, changed}` and `qa::guidance` (in `next`) come with them.
+  `verdict` stays the family's `clean | fixable | needs_person` (ledger, R28); the S35 roll-up is `check_status`,
+  since S91's `status` key holds the job status.
+- **Shared machinery.** The offscreen draw and read-back of S91's ParticleEffectPreview moved to
+  `editor/render/OffscreenDraw.{h,cpp}` (`drawOffscreen`), which both ParticleEffectPreview and S48's
+  EffectCapture call; each band of the sheet is a `PoseContactSheet` (the sheet S91's filmstrips draw), so labels,
+  strips and separators match. EffectCapture keeps its own scratch-scene stepping (whole GameObjects, not only
+  particle systems) and S91's frame pump pattern (processFrame from App::engineRender).
+- **Scene-mode stepping.** In Play the paused game steps at a fixed 1/60 s (Project::step, the play tool's auto_pause
+  hold lifted for the capture through `w3::GameAdvance`) and a frame is read at the step nearest each time, instead of
+  `fixed_fps = frames / duration` (D12): the game simulates at its normal rate whatever the frame count. Its
+  `determinism` fresh captures load the played scene again (SceneManager.loadScene of the current scene) twice.
+  Scene mode stopped copies the scene into a scratch scene (main scene only; layer scenes are drawn in Play).
+- **Isolated mode runs no scripts** (the Lua state is the editor's); a script-driven effect is checked in scene mode
+  in Play. Seeds: a Particle System with seed 0 takes the run's seed; spill's runs vary explicit seeds too. Unscaled
+  particles run on the capture's one clock.
+- **frame_cost.** The CPU time is the median of 9 frames shown and 9 hidden (isolated, release builds); the static taps
+  are below (R28 frame_cost); GPU time (S15) is not measured by the capture. With no time measured (scene mode, a debug
+  build) the taps alone are no PASS: the row is SKIP with the reason, or WARN over R33's taps budget.
+- **transition_edges.** A transition's capture takes the rim's width from its CPU evaluation (`ScreenTransition::measureRim`: the
+  run along each row or column away from the uncovered side, the rule the shader draws by, in art pixels at any `pixel_size`),
+  because a colour image cannot tell which axis a rim pixel was measured along; every frame read back is compared with that
+  evaluation pixel by pixel, at most 1 of 255 per channel apart (rounding only), a larger difference WARNs naming the art
+  pixels, and the row's `limited_by` always gives the largest channel difference. Pixel Dissolve and Fade have no continuous
+  edge and report SKIP unless the read-back differs. `lintTransitionEdges` on bare images (mean rim run times the cosine of the fitted edge slope, over 7
+  lines) stays for callers with frames only.
+- **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker. Its Target
+  combo has R27's four targets: the selected GameObject, an `.anim` clip on it, a `.particles` asset, a transition kind with its
+  options (the Project Settings' defaults, per kind). The toolbar button still needs the one selected GameObject, whatever the
+  target. Clips and effects come from a scan of the assets folder at open and when the target changes.
+- **Capture limits (review).** `capture_contact_sheet` and the window refuse a frame over 4,096 px a side or over 33,554,432
+  px (128 MiB) of frames in all, `capture_too_large` with the fix (only a transition's art grid times its pixel size can get
+  there). The tool and the window refuse a capture while another runs (`capture_running`, `EffectCapture::anyRunning`): captures
+  share the capture view and a Play capture holds the game's fixed step and pause.
+- **Scene-mode lints.** `flicker`, `off_palette` and `partial_alpha` SKIP in scene mode with the reason: the frames are the whole
+  opaque view (the scene behind the target, alpha forced to 255), so they could not measure the target.
+- **Verdict.** `verdict` is not `clean` when every lint skipped: nothing was measured, so it reads `needs_person`.
+- **Annotations.** `capture_contact_sheet` is not read-only or idempotent (determinism in Play reloads the played scene, `output`
+  writes a file); its busy policy stays Read, and the result's `next` says when the scene was reloaded.
+- **Guide.** One "Other areas" entry `pixel-fx (capture_contact_sheet)` (ledger rule, no digest line).
+
+### PixelFX player and the contact sheet's effect and transition targets (M4, M5)
+- R24 end values: every effect ends with its animated value at the neutral 0 except the one-way `fade_out` and
+  `dissolve`, which end at 1 (the sprite gone, as asked); `stop()` puts the value back at 0 and does not call
+  `onFinished`. `outline_pulse` pulses whole on/off (never a partial alpha) and ends hidden when it turned OUTLINE on
+  itself, else at the material's own outline colour; it turns on OUTLINE with `OUTLINE_STYLE_PIXEL4`.
+- R24 one effect per feature: a new effect of the same library:sprite feature on a GameObject replaces the running
+  one (no `onFinished`); effects of different features run together. `PixelFX.set(go, name, value)` takes a channel
+  (`flash`, `fade`, `dissolve`, `ramp`) or any library:sprite property, stops that feature's effect and turns the
+  feature on. `PixelFX.activeCount` added (the effects still playing).
+- R24 status looks: petrify/freeze set Ramp Bevel 1, poison Bevel 0.5 and Pulse 2 (as the presets); in, held
+  (`opts.hold`, default half the duration), out over the rest. Ramps: `opts.ramp`, else the material's ramp, else the
+  grey default: `builtin:` palettes exist only in the editor, so the runtime cannot name the presets' built-in ramps
+  (the presets copy them into the project at authoring time).
+- R25: a Sprite whose material has no shader takes library:sprite with the feature; a material with another shader is
+  refused with the fix (give it a Sprite or a Pixel FX preset). The log line is the spec's, once per material (its
+  `.material` path, else `"<GameObject>"'s material`) per Play session, in development builds (the editor's Play is
+  one). The effect waits for `mesh.loaded && !needReload && !needVariantReload` (S32's stand-in variant counts as not
+  ready) and counts from zero the frame it is ready.
+- R26 embers: `opts.embers` names a Pixel Particles preset ("ember" is `pixel_ember`), which the editor resolves to the
+  preset's effect for the project's Pixels Per Unit (passed inline to emitAt), or a `.particles` path, which an
+  exported game needs (S49's presets live in the editor). Embers come from the texels whose cached key lies between the
+  burn fronts of the frame's two progresses (`pfxDissolveBurnFront`, the shader's `fxBurnt`), opaque texels only
+  (alpha >= 0.5 from the texture's pixels in memory, else its file read once per texture and rect; a compressed or
+  unreadable texture counts every texel opaque), at most `emberRate` a second, spread evenly over the crossing texels.
+  Only Sprites emit (tilemaps and polygons have no frame).
+- R27 contact sheet targets `target {entity, effect, effect_options}` (`effect_options`:
+  duration, ease, color, count, ramp, hold; the effect's time is the capture's, no embers) and
+  `target {transition, transition_options}` (Transition.play's options in snake_case plus `phase` play/cover/reveal
+  and `width`/`height` art pixels, default 160 x 90; drawn by ScreenTransition::renderInto over transparent black at
+  pixel_size screen pixels per art pixel, 0 meaning 1 since no Pixel Perfect Camera draws a capture). A transition
+  reports `spill` SKIP (it draws over the whole screen) and `frame_cost` SKIP (its cost is its pass). `drawOffscreen`
+  gained an `after` hook (draw over the target before the read-back).
+- R27 labels: the sheet's titles and frame labels are drawn in S51's built-in pixel font (`builtin:pixel`, 6 x 9
+  cells) instead of PoseImage's 6 x 10 font; the strips keep PoseContactSheet's geometry.
+- R28 frame_cost: the taps are the copies' library:sprite features' texture reads beyond the base sprite, counted in
+  the Vulkan SPIR-V by the same counter as SpriteVariants.TapBudget (moved to editor/shader/SpriteTaps.{h,cpp}); GPU
+  time stays unmeasured (no S15 timer in the capture). `hit_stop_length`: in a Play scene-mode capture the longest
+  HitStop.play requested during it (HitStop's stats reset at the capture's start; 0 when none); elsewhere SKIP.
+- S49 R38 hand-off: preview_particle_effect's S48 rows run S48's EffectLints on the pixel view's cells (base pixels,
+  premultiplied from the draws on black and white): off_palette SKIP (a particle effect names no palette),
+  partial_alpha (SKIP for additive emitters), spill (the emitters' origin plus 24 base pixels, one seed),
+  one_shot_end (SKIP unless a cell sits at the run's end), loop_seam, determinism SKIP (a preview is one run; its
+  state_hash compares runs). The rows keep S49's kind `content`.
+- AC23 dissolve fixture: library:sprite's DISSOLVE at progress 1 always hides every texel, so the red fixture is a
+  dissolve still burning when the capture ends (`tools/fixtures/pixel-fx/effects/dissolve_late.json`, 1.25 s captured
+  for 1 s); its twin reaches 1 at the end.

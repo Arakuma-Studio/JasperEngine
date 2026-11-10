@@ -6,6 +6,7 @@
 #include "McpTools.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "window/StatusBar.h"
+#include "window/PixelArtCleanupWindow.h"
 
 #include "mcp/McpAutoSync.h"
 #include "reload/HotReloadService.h"
@@ -355,7 +356,7 @@ void undoRedo(const CallPtr& call, bool undo) {
             CommandHistory* stepHistory = done[i].project ? project->getProjectCommandHistory() : CommandHandle::get(done[i].sceneId);
             if (stepHistory && !stepHistory->lastUndoProblem().empty()) report.problems.push_back(stepHistory->lastUndoProblem());
         }
-        if (!moved && why.empty() && next && next.history && !next.history->lastRefusal().empty()) {
+        if (!moved && next && next.history && !next.history->lastRefusal().empty()) {
             report.refusedWhy = next.history->lastRefusal();
         }
         return moved;
@@ -380,6 +381,11 @@ void undoRedo(const CallPtr& call, bool undo) {
             }
         } else {
             stopped = !UndoTimeline::jumpTo(sceneId, target, &why, &done);
+            if (stopped) {
+                // the step that refused is the next one, its history kept why
+                UndoTimeline::EntryView next = undo ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+                if (next && next.history && !next.history->lastRefusal().empty()) report.refusedWhy = next.history->lastRefusal();
+            }
         }
     } else {
         for (int i = 0; i < steps; i++) {
@@ -431,7 +437,12 @@ void undoRedo(const CallPtr& call, bool undo) {
         data["can_redo"] = UndoTimeline::canRedo(sceneId);
     }
     if (done.empty()) {
-        call->fail(busy ? why : refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        std::string empty = std::string("Nothing to ") + verb + " in the " + scope + " history.";
+        // An asset step (a graph file, an import) is newer than the scene's: Ctrl+Z would take it
+        if (scope == "scene" && (undo ? UndoTimeline::canUndo(sceneId) : UndoTimeline::canRedo(sceneId))) {
+            empty += std::string(" The last step is an asset edit: ") + verb + " scope timeline takes it, as Ctrl+Z does.";
+        }
+        call->fail(busy ? why : refused ? refusal : empty, data);
         return;
     }
     std::string names;
@@ -712,6 +723,18 @@ void reportEditorStatus(const CallPtr& call) {
     }
     if (MissingAssetsWindow* missing = app.getMissingAssetsWindow()) {
         ui["missing_assets"] = {{"open", missing->isOpen()}};
+    }
+    if (PixelArtCleanupWindow* cleanup = app.getPixelArtCleanupWindow()) {
+        const PixelArtCleanupWindow::UiState state = cleanup->uiState();
+        Json spots = Json::array();
+        for (const PixelArtCleanupWindow::UiState::Spot& spot : state.spots) spots.push_back({{"lint", spot.lint}, {"spot", spot.spot}, {"x", spot.x}, {"y", spot.y}});
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        ui["pixel_art_cleanup"] = {{"open", state.open}, {"focused", state.focused}, {"source", state.source}, {"view", state.view}, {"verdict", state.verdict},
+                                   {"confidence", state.confidence}, {"running", state.running}, {"tab", state.tab}, {"undo_depth", state.undoDepth},
+                                   {"zoom", state.zoom}, {"center", {state.centerX, state.centerY}},
+                                   {"image_min", {state.imageMinX - origin.x, state.imageMinY - origin.y}},
+                                   {"recipe_moved", state.recipeMoved}, {"copied_recipe", state.copiedRecipe}, {"highlight", state.highlight},
+                                   {"xs", state.xs}, {"ys", state.ys}, {"spots", spots}};
     }
     if (SearchPalette* palette = app.getSearchPalette()) {
         const SearchPalette::UiState state = palette->uiState();

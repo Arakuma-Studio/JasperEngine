@@ -7,11 +7,14 @@
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/GraphEditorWindow.h"
+#include "graph/GraphEditorHooks.h"
+#include "graph/GraphRegistry.h"
 #include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/PixelArtCleanupWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -1593,18 +1596,28 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = ParticleEffectWindow::WINDOW_NAME;
     } else if (window == "graph_editor") {
         // `path` opens that graph where a double-click on it does (its kind's window: a .procmat's is
-        // Procedural Material); without it, the one open
+        // Procedural Material, a .noisegraph's Noise Graph); without it, the one open
         GraphEditorWindow* graphs = app.getGraphEditorWindow();
-        if (args.contains("path")) {
-            const std::string path = args.value("path", std::string());
-            if (GraphEditorWindow* own = GraphEditorWindow::windowFor(path)) graphs = own;
-            if (!graphs->openGraph(path)) {
-                call->fail("path: " + graphs->getStatus() + ".");
+        const std::string path = args.value("path", std::string());
+        const auto kind = args.contains("path") ? graph::GraphRegistry::get().kindForFile(path) : nullptr;
+        const auto own = kind ? graphEditorHooks().kindWindows.find(kind->id) : graphEditorHooks().kindWindows.end();
+        if (own != graphEditorHooks().kindWindows.end()) {
+            if (!own->second.open(path)) {
+                call->fail("path: " + path + " is not a file of the project.");
                 return;
             }
+            imguiName = own->second.windowName;
+        } else {
+            if (args.contains("path")) {
+                if (GraphEditorWindow* kindWindow = GraphEditorWindow::windowFor(path)) graphs = kindWindow;
+                if (!graphs->openGraph(path)) {
+                    call->fail("path: " + graphs->getStatus() + ".");
+                    return;
+                }
+            }
+            graphs->setOpen(true);
+            imguiName = graphs->windowName();
         }
-        graphs->setOpen(true);
-        imguiName = graphs->windowName();
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1652,10 +1665,13 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "sprite_normals") {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
+    } else if (window == "pixel_art_cleanup") {
+        app.getPixelArtCleanupWindow()->open();
+        imguiName = PixelArtCleanupWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals, graph_editor.");
+                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -2138,14 +2154,14 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. for a watching human. Not needed for "
+            "Open and bring an editor panel to the front for a watching human. Not needed for "
             "screenshot. console: returns its rows, categories and selection; preferences: opens a page; "
             "systems: returns each row's Enabled rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
-                                       "graph_editor"})},
+                                       "pixel_art_cleanup", "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},

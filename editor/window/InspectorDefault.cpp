@@ -11,6 +11,8 @@
 // (componentDrawer).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Catalog.h"
 #include "Theme.h"
@@ -22,6 +24,7 @@
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "external/IconsFontAwesome6.h"
+#include "terrainworld/TerrainWorldPanel.h"
 
 #include "imgui.h"
 
@@ -54,6 +57,8 @@ namespace {
         {"modelEntity", RowPropertyType::LocalEntity},
         {"curve", RowPropertyType::Curve},
         {"gradient", RowPropertyType::Gradient},
+        // S48: Smooth / 8 / 12 / 24 / Custom (drawPoseFrameRateRow)
+        {"poseFrameRate", RowPropertyType::Float},
     };
 
     bool drawsColor(const reflect::FieldDesc& field) {
@@ -256,7 +261,12 @@ void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, ScenePr
                 }
                 const bool enabled = !(field.flags & reflect::ReadOnly) && (!field.enabledIf || field.enabledIf(comps.front()));
                 if (!enabled) ImGui::BeginDisabled();
-                propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
+                if (field.drawer && std::string_view(field.drawer) == "poseFrameRate" && field.kind == reflect::Kind::Float) {
+                    const reflect::FieldRef value = reflect::resolve(*desc, comps.front(), field.name);
+                    drawPoseFrameRateRow(cpType, sceneProject, entities, value ? *static_cast<const float*>(value.ref) : 0.0f);
+                } else {
+                    propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
+                }
                 if (!enabled) ImGui::EndDisabled();
             }
             endTable();
@@ -369,6 +379,9 @@ void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, Sc
             ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
         }
     }
+    if (cpType == ComponentType::TerrainWorldComponent) {
+        TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
+    }
 }
 
 editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawer(ComponentType cpType) {
@@ -453,6 +466,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
+        // T6 R65 (InspectorVoxels.cpp)
+        case ComponentType::VoxelVolumeComponent: return &InspectorWindow::drawVoxelVolumeComponent;
         // upstream's (InspectorUpstream.cpp)
         case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
         case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;

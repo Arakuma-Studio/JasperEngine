@@ -168,3 +168,31 @@ TEST(PixelArtMode, SavedReferencesStayBilinearWhilePlaying){
     EXPECT_EQ(Stream::savedTexture().getMagFilter(), TextureFilter::LINEAR);
     Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 }
+
+// S48 R38: in a Pixel Art Mode project, ticking library:sprite's Outline picks the 4-neighbour pixel
+// style; a chosen style, another shader, Outline off or the mode off leave the features alone
+TEST(PixelArtMode, OutlinePicksThePixelStyle){
+    std::vector<std::string> features = {"FLASH", "OUTLINE"};
+    PixelArtMode::pickPixelOutline(features, "library:sprite", true);
+    EXPECT_EQ(features, (std::vector<std::string>{"FLASH", "OUTLINE", "OUTLINE_STYLE_PIXEL4"}));
+
+    std::vector<std::string> off = {"FLASH", "OUTLINE"};
+    PixelArtMode::pickPixelOutline(off, "library:sprite", false);
+    EXPECT_EQ(off, (std::vector<std::string>{"FLASH", "OUTLINE"}));
+
+    std::vector<std::string> chosen = {"OUTLINE", "OUTLINE_STYLE_PIXEL8"};
+    PixelArtMode::pickPixelOutline(chosen, "library:sprite", true);
+    EXPECT_EQ(chosen, (std::vector<std::string>{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}));
+
+    std::vector<std::string> smooth = {"OUTLINE", "OUTLINE_STYLE_SMOOTH"};
+    PixelArtMode::pickPixelOutline(smooth, "library:sprite", true);
+    EXPECT_EQ(smooth, (std::vector<std::string>{"OUTLINE", "OUTLINE_STYLE_SMOOTH"}));
+
+    std::vector<std::string> noOutline = {"FLASH"};
+    PixelArtMode::pickPixelOutline(noOutline, "library:sprite", true);
+    EXPECT_EQ(noOutline, (std::vector<std::string>{"FLASH"}));
+
+    std::vector<std::string> otherShader = {"OUTLINE"};
+    PixelArtMode::pickPixelOutline(otherShader, "library:lit", true);
+    EXPECT_EQ(otherShader, (std::vector<std::string>{"OUTLINE"}));
+}

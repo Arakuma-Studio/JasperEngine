@@ -3261,8 +3261,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1098 (GridComponent)
-        scene->setEntityName(1098, "GridComponent");
+        // Entity 1098 (VoxelVolumeComponent)
+        scene->setEntityName(1098, "VoxelVolumeComponent");
 
         // Entity components initialization
         Transform transform;
@@ -3277,21 +3277,26 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1098, transform);
 
-        GridComponent grid;
-        grid.layout = TileGridLayout::Hexagon;
-        grid.cellSize = Vector2(8.000000f, 12.000000f);
-        grid.cellGap = Vector2(1.000000f, 2.000000f);
-        grid.plane = TileGridPlane::XZ;
-        grid.staggerAxis = StaggerAxis::X;
-        grid.staggerIndex = StaggerIndex::Even;
-        grid.hexSideLength = 5.000000f;
-        grid.linked = true;
-        scene->addComponent<GridComponent>(1098, grid);
+        VoxelVolumeComponent voxelVolume;
+        voxelVolume.enabled = false;
+        voxelVolume.quality = VoxelQuality::Low;
+        voxelVolume.lodLevels = 4;
+        voxelVolume.lodRadius = 6;
+        voxelVolume.maxDrawDistance = 4.400000f;
+        voxelVolume.castShadows = false;
+        voxelVolume.collision = false;
+        voxelVolume.collisionRadius = 7;
+        voxelVolume.rescueBodies = false;
+        voxelVolume.terrainCut = VoxelTerrainCut::Automatic;
+        voxelVolume.overlapDepth = 2.000000f;
+        voxelVolume.cutTolerance = 1.000000f;
+        voxelVolume.runtimeGeneration = true;
+        scene->addComponent<VoxelVolumeComponent>(1098, voxelVolume);
     }
 
     {
-        // Entity 1099 (TilemapLayerComponent)
-        scene->setEntityName(1099, "TilemapLayerComponent");
+        // Entity 1099 (TerrainWorldComponent)
+        scene->setEntityName(1099, "TerrainWorldComponent");
 
         // Entity components initialization
         Transform transform;
@@ -3306,28 +3311,22 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1099, transform);
 
-        TilemapLayerComponent tilemapLayer;
-        tilemapLayer.tileset = "";
-        tilemapLayer.tint = Vector4(0.500000f, 0.600000f, 0.700000f, 0.800000f);
-        tilemapLayer.mode = TilemapRenderMode::Individual;
-        tilemapLayer.chunkSize = 32;
-        tilemapLayer.tileAnchor = Vector2(0.500000f, 0.250000f);
-        tilemapLayer.animationSpeed = 2.500000f;
-        tilemapLayer.dualGrid = true;
-        tilemapLayer.seed = 9;
-        tilemapLayer.gpuResidency = TilemapGpuResidency::Always;
-        tilemapLayer.enabled = false;
-        {
-            std::string chunkError;
-            tilemapLayer.cells.edit().decodeChunk(ChunkCoord{-1, 2}, 
-                "BYAIAQAAAA==", chunkError);
-        }
-        scene->addComponent<TilemapLayerComponent>(1099, tilemapLayer);
+        TerrainWorldComponent terrainWorld;
+        terrainWorld.enabled = false;
+        terrainWorld.useCameraFocus = false;
+        terrainWorld.poolSize = 4;
+        terrainWorld.lodDistance = 6.900000f;
+        terrainWorld.uploadBudget = 8.600000f;
+        terrainWorld.collisionRadius = 7.500000f;
+        terrainWorld.collisionChunkQuads = 6;
+        terrainWorld.autoAddTiles = false;
+        terrainWorld.overviewCastsShadows = true;
+        scene->addComponent<TerrainWorldComponent>(1099, terrainWorld);
     }
 
     {
-        // Entity 1100 (TilemapCollider2DComponent)
-        scene->setEntityName(1100, "TilemapCollider2DComponent");
+        // Entity 1100 (HitStopExemptComponent)
+        scene->setEntityName(1100, "HitStopExemptComponent");
 
         // Entity components initialization
         Transform transform;
@@ -3342,22 +3341,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1100, transform);
 
-        TilemapCollider2DComponent tilemapCollider2D;
-        tilemapCollider2D.enabled = false;
-        tilemapCollider2D.source = TileColliderSource::Terrain;
-        tilemapCollider2D.geometry = TileColliderGeometry::Polygons;
-        tilemapCollider2D.merge = false;
-        tilemapCollider2D.offset = Vector2(1.500000f, 2.500000f);
-        tilemapCollider2D.friction = 0.250000f;
-        tilemapCollider2D.restitution = 0.500000f;
-        tilemapCollider2D.categoryBits = 2;
-        tilemapCollider2D.maskBits = 4;
-        tilemapCollider2D.groupIndex = -3;
-        tilemapCollider2D.contactEvents = false;
-        tilemapCollider2D.sensorEvents = true;
-        tilemapCollider2D.enableHitEvents = true;
-        tilemapCollider2D.solidTerrains = {"Water", "Lava"};
-        scene->addComponent<TilemapCollider2DComponent>(1100, tilemapCollider2D);
+        HitStopExemptComponent hitStopExempt;
+        hitStopExempt.includeChildren = false;
+        hitStopExempt.enabled = false;
+        scene->addComponent<HitStopExemptComponent>(1100, hitStopExempt);
     }
 
     // Default Camera 1

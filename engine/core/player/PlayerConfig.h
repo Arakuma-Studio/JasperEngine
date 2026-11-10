@@ -19,6 +19,7 @@
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
+#include "pixelart/ScreenTransition.h"
 
 #include "json.hpp"
 
@@ -88,11 +89,17 @@ namespace jasperengine::player {
         ThreadingSettings threading;
         uint32_t particleWorldBudget = 0;   // 0: the platform's default
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
+        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        bool foliageQualityUncapped = true;
         // Quality > Foliage Distance (desktop, mobile, web)
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
         nav::NavigationSettings navigation;
+        // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
+        int voxelMaxDimension = 0;
+        int voxelCpuBudgetMB = 0;
+        int voxelMeshBudgetMB = 0;
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
         int htmlUiMsaa = 4;
         int glyphAtlasMiB = 0;
@@ -101,11 +108,17 @@ namespace jasperengine::player {
         PbrTier mobilePbrTier = PbrTier::REDUCED;
         // Project Settings > Graphics > Light Mode
         LightMode lightMode = LightMode::AUTOMATIC;
+        // Project Settings > Graphics > Screen Transitions (S48): "transitions", written when not the defaults
+        pixelart::TransitionDefaults transitions;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
         // upload budget (spec S56): "device", what differs from the defaults
         DeviceSettings device;
+        // T3 R2, R34: terraincore::TerrainQuality by Engine::Platform (absent: High), and the tiers the
+        // build ships, which the tier a terrain asks for clamps to
+        std::array<int, 6> terrainQualityTiers{};
+        uint32_t terrainShippedTiers = 7;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         // Sorting Layers and Graphics > Transparency Sort (spec S52 R40); empty: Default alone

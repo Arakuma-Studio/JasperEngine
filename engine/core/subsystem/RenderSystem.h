@@ -13,6 +13,8 @@
 #include "RenderSystemLighting.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include <map>
+#include <memory>
 #include "component/ModelComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -26,12 +28,16 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
-#include "component/TerrainComponent.h"
+#include "terrain/TerrainMacroNormal.h"
+#include "jobs/JobSystem.h"
+#include <atomic>
+#include "terrain/TerrainQuality.h"
+#include "render/TerrainNodes.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "pixelart/PixelSnap.h"
-#include "component/Transform.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"
@@ -69,6 +75,7 @@ namespace jasperengine::pixelart{
 
 namespace jasperengine{
 
+	struct FoliageViewList;
 	// S52 (component/SpriteBatchComponent.h)
 	struct SpriteBatchComponent;
 	struct SpriteBatchState;
@@ -187,12 +194,13 @@ namespace jasperengine{
 		lit_frame_t lit;
 	} lit_frame_block_t;
 
+	// u_fs_terrainLayers: the arrays hold 9 entries, or 12 with TERRAIN_EXTENDED_LAYERS, and the features'
+	// parameters end the block (T3 R33): packed by RenderSystem::applyTerrainLayersUniform
 	typedef struct fs_terrain_layers_t {
-		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
+		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = normal strength
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
-		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
-		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
-		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
+		Vector4 surface[MAX_TERRAIN_LAYERS];     // x = Stochastic Tiling cell size or -1 - hex rotation; yzw = 12-bit factor pairs
+		Vector4 codes[(MAX_TERRAIN_LAYERS + 3) / 4]; // a component a layer: PBR, Flat Only, normal and surface slice
 	} fs_terrain_layers_t;
 
 	// u_fs_planarReflection (includes/planar_reflection.glsl)
@@ -395,6 +403,9 @@ namespace jasperengine{
 		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
 		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
 		Vector4 palette;             // Palette Quantize: x cells per axis, y dither size (0 none), w 1 when its table is baked
+		Vector4 glitch;              // Glitch (S48): x RGB split (source texels, signed), y interlace darkening, z tear count
+		Vector4 glitchTearsA;        // tears 0-3 (pixelart::packGlitchTear)
+		Vector4 glitchTearsB;        // tears 4-7
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -487,6 +498,13 @@ namespace jasperengine{
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
+		// T3 R2, R34: the project's tier of the platform, the forced one (editor preview, Engine.
+		// setTerrainQuality), what the build shipped, and the Scene view's debug view
+		terraincore::TerrainQuality terrainTier = terraincore::TerrainQuality::HIGH;
+		bool terrainForced = false;
+		terraincore::TerrainQuality terrainForcedTier = terraincore::TerrainQuality::HIGH;
+		uint32_t terrainShippedMask = terraincore::TERRAIN_ALL_TIERS;
+		int terrainDebugView = 0;
 		// S57 (RenderSystemLighting.cpp): the pixel lights come from screen tiles ('Til'), the
 		// shadowed lit variants take capsule ('Cap') and contact ('Cts') shadows (contact shadows
 		// need every opaque mesh's depth program), alpha-blended submeshes an OIT render ('Oit')
@@ -530,7 +548,8 @@ namespace jasperengine{
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
 		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
 		UBER_PALETTE      = 1u << 19, // 'Pal' Palette Quantize (S43): the frame onto a palette, ordered dither per art pixel
-		UBER_FEATURE_COUNT = 20
+		UBER_GLITCH       = 1u << 20, // 'Gli' Glitch (S48): torn rows, RGB split and interlace in bursts, source texels
+		UBER_FEATURE_COUNT = 21
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -626,9 +645,15 @@ namespace jasperengine{
 		bool terrain = false;
 		bool terrainBlendMaps = false;
 		bool terrainSurface = false;
+		// a Voxel Volume's chunk: the tier (MeshComponent::voxelTier), 0 for anything else
+		uint8_t voxelTier = 0;
 		bool instanced = false;
 		bool tileClamp = false;          // a Tilemap Layer's variant (S50 'Tcl')
 		bool instanceFade = false;
+		// a foliage prototype (T5): 'Cin', 'Wnd', 'Dth'
+		bool compactInstance = false;
+		bool foliageWind = false;
+		bool foliageDither = false;
 		bool mirror = false;
 		// bound to lattices (LatticeMeshState::count > 0, never a terrain): the 'Ltc' variants,
 		// with the vertex colour a mask channel reads
@@ -655,6 +680,12 @@ namespace jasperengine{
 		bool terrainHex = false;
 		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
 		bool terrainHexStochastic = false;
+		// the terrain has a hole map (T3 R20): every pass of its variant reads it ('Thl')
+		bool terrainHoles = false;
+		// the Terrain is a Terrain World (T4 R58): every pass reads its pages ('Twd')
+		bool terrainWorld = false;
+		// what the Terrain says of its variant (T3 D2); the tier is the environment's with it
+		terraincore::TerrainVariantInputs terrainVariant;
 		// a pixel-art drawable (a Sprite or a Tilemap): snapped under a Pixel Perfect Camera (S41)
 		bool pixelArt = false;
 		// the pixel-art batching inputs its mesh carries (MeshComponent::batchAttributes, S52)
@@ -968,6 +999,9 @@ namespace jasperengine{
 		static constexpr int DEFAULT_PARTICLE_SIZE = 64;
 		static uint32_t pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 		static TextureRender defaultParticle;
+		// @texture default "ramp_grey" (S48 R9, a Pixel FX ramp left unset): 8 steps black to
+		// white, Nearest; made the first time a draw binds it
+		static TextureRender defaultRampGrey;
 		static TextureRender emptyCubeGray;
 		// zeros for the morph inputs a mesh's shader declares and the mesh has none of
 		// (bindUnfedMorphInputs): one vertex buffer per size asked for, shared by every
@@ -1337,7 +1371,8 @@ namespace jasperengine{
 		struct MirrorView{
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			// behind a pointer so this header only names Transform (T1: Transform.h fan-out)
+			std::unique_ptr<Transform> transform;
 			PassObjects objects;
 			Matrix4 viewProjection; // oblique, for the mirror surface's projective lookup
 			// lighting and shadow maps of the reflection camera
@@ -1381,7 +1416,7 @@ namespace jasperengine{
 			uint64_t lastUsed = 0;
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			std::unique_ptr<Transform> transform;
 			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
 			CameraShadows shadows;
 #ifdef JASPERENGINE_EDITOR
@@ -2603,6 +2638,7 @@ namespace jasperengine{
 		// the S13 effects' uber parameters (VHS, halation, film grain and damage) at that time,
 		// for an output viewport of that size
 		void fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight);
+		void fillUberGlitch(const PostProcessingSettings& settings, double time, int sourceRows);
 		void destroyUber();
 		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
 		// whether the variants the loaded points, lines and sky take with the current colour bit
@@ -2726,17 +2762,103 @@ namespace jasperengine{
 			TextureWrap wrapU = TextureWrap::REPEAT;
 			TextureWrap wrapV = TextureWrap::REPEAT;
 			bool failed = false;
+			// the tier's largest size it was built at, and what it came to (T3 R16, R43)
+			int maxSize = MAX_TERRAIN_DETAIL_SIZE;
+			GpuTextureFormat format = GpuTextureFormat::RGBA8;
+			uint64_t bytes = 0;
 		};
 		std::unordered_map<Entity, TerrainDetailArray> terrainDetailArrays;
 
+		// T3 R14 (RenderSystemTerrain.cpp): the bake of a macro normal map, in progress
+		struct TerrainMacroNormalWork{
+			std::vector<uint8_t> pixels;
+			terraincore::MacroNormalSource source;
+			std::vector<terraincore::MacroNormalLevel> levels;
+			std::atomic<bool> done{false};
+			bool threaded = false;
+			int nextRow = 0;
+			uint64_t revision = 0;
+			jobs::Task<void> task;
+		};
+		struct TerrainMacroNormalMap{
+			TextureRender render;
+			std::shared_ptr<TerrainMacroNormalWork> work;
+			uint64_t bakedRevision = 0;
+			double lastUpload = -1000.0;
+		};
+		std::unordered_map<Entity, TerrainMacroNormalMap> terrainMacroNormals;
+		// T3 R17 (RenderSystemTerrain.cpp): Off-screen Shadows at the terrain's tier, which shadowTerrainCut reads
+		bool terrainDrawsOffscreenShadows(const TerrainComponent& terrain) const;
+	public:
+		// T3 R43: what a terrain's detail array came to; false when it has none
+		bool getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const;
+		bool isTerrainMacroNormalReady(Entity entity);
+	private:
+		// the Holes view's classes (T3 R30), one per hole map (its pixels' address), made when the view is on
+		// and again when the map changes: every render of the terrain binds the same one
+		struct TerrainHoleOverlay{
+			TextureRender render;
+			uint32_t revision = 0;
+		};
+		std::unordered_map<const void*, TerrainHoleOverlay> terrainHoleOverlays;
+		void destroyTerrainHoleOverlays();
+		void updateTerrainMacroNormal(Entity entity, TerrainComponent& terrain, const MeshComponent& mesh);
+		void destroyTerrainMacroNormal(Entity entity);
+
 		TerrainDetailArray* getTerrainDetailArray(Entity entity, TerrainComponent& terrain);
 		void destroyTerrainDetailArray(Entity entity);
-		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain);
+		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain, uint64_t litDefineBits, bool extendedBlock);
+		// T3 D1 (RenderSystemTerrain.cpp)
+		void applyTerrainMacroVertexUniform(ObjectRender& render, int slot, const TerrainComponent& terrain);
+	public:
+		static uint64_t getTerrainDefineBits(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals);
+		static terraincore::TerrainQualityResolved resolveTerrainTier(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs);
+	private:
 		bool loadTerrainTextures(Entity entity, TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
+		// T3 R20, R21 (RenderSystemTerrain.cpp): a variant with holes reads this map in every pass
+		bool loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh);
+#if JASPERENGINE_VOXEL
+		// A volume's array (T6 R50; RenderSystemVoxel.cpp): every slot's maps as slices of one texture.
+		// One whose slots are all linked uses its terrain's array itself.
+		struct VoxelDetailArray{
+			TextureRender render;
+			std::vector<std::string> sliceKeys;
+			std::array<int, 16> colorSlice;
+			std::array<int, 16> normalSlice;
+			std::array<int, 16> surfaceSlice;
+			bool failed = false;
+			bool sharesTerrain = false;
+		};
+		std::unordered_map<Entity, VoxelDetailArray> voxelDetailArrays;
+		VoxelDetailArray* getVoxelDetailArray(Entity owner, TextureRender*& bound);
+		void destroyVoxelDetailArrays();
+		bool loadVoxelTextures(Entity owner, ObjectRender& render, ShaderData& shaderData);
+		void applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner, const Vector3& eye);
+#endif
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
+		// foliage (RenderSystemFoliage.cpp, T5 F1)
+		FoliageViewList& foliageList(const void* owner, int slot);
+		void buildFoliageLists(const void* owner, CameraComponent& camera, Transform& cameraTransform, const LodView& lodView, bool main);
+		void buildFoliageShadowLists(const void* owner, int firstSlot, const Vector3& eye);
+		void buildFoliageCameraList(CameraComponent& camera, Transform& cameraTransform, int terrainView);
+		void uploadFoliageList(FoliageViewList& list);
+		void uploadFoliageViews();
+		FoliageViewList* currentFoliageList(int instanceView);
+		unsigned int foliageDrawCount(const InstancedMeshComponent& instmesh, int instanceView);
+		void applyFoliageUniforms(ObjectRender& render, int slot, Entity entity, int instanceView);
+		void drawFoliageSubmesh(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent& instmesh, int instanceView);
+		std::map<std::pair<const void*, int>, std::unique_ptr<FoliageViewList>> foliageLists;
+		const void* foliageLastOwner = nullptr;
+		int foliageLastSlot = -1;
+		FoliageViewList* foliageLastList = nullptr;
+		// the render-to-texture camera's view being drawn (its terrain view), 0 the main camera's
+		int foliagePassView = 0;
+		// the camera of the pass being drawn, for the fade and the billboards
+		Vector3 foliagePassEye;
+		uint64_t foliageUploadBytes = 0;
 		void uploadInstanceViews(RenderView& renderView);
 		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
 		// The UI scissor of a pass entity (a RectTransform): its parent's (unless ignoreScissor)
@@ -3371,7 +3493,7 @@ namespace jasperengine{
 		void renderGBufferPass(CameraComponent& camera);
 		// the SSR G-buffer: a mesh's draw record, when it draws (visible, loaded, a submesh to draw)
 		bool collectGBufferDraw(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, GBufferDraw& record);
-		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
+		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 		// the SSR march and its glossy blur (their own passes): the reflection the composite reads
@@ -3539,6 +3661,13 @@ namespace jasperengine{
 		                         Vector3& fitPosition, Vector3& fitForward);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
+		// T4 (RenderSystemTerrainWorld.cpp): a World's selection into the view's grids, its pages and
+		// overview before the passes, and its draw items in a pass
+		enum class TerrainWorldPass { COLOR, DEPTH, SHADOW, GBUFFER };
+		void selectTerrainWorld(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
+		void updateTerrainWorldPages(Entity entity, TerrainComponent& terrain);
+		bool drawTerrainWorldItems(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, TerrainComponent& terrain, TerrainView& view,
+		                           TerrainWorldPass pass, int slotTerrain);
 		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 
@@ -3806,6 +3935,10 @@ namespace jasperengine{
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
+		// fragment program knows the fade
+		static bool shaderSupportsCompactInstances(const std::string& shader);
+		static bool shaderSupportsFoliageDither(const std::string& shader);
 		// The custom shader strings (with the "#FEATURES" suffix the material's features
 		// resolve to) its color and depth variants are keyed by; "" for built-in. The depth
 		// pass draws with the library shader's @depth program, else the mesh's depth fork.
@@ -3975,6 +4108,10 @@ namespace jasperengine{
 		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
 		// array read from the files is built again
 		void invalidateTerrainDetailArray(Entity entity);
+#if JASPERENGINE_VOXEL
+		// A slot changed: the array is built again when the chunks bind (R50: a slot change rebuilds it whole)
+		void invalidateVoxelDetailArray(Entity owner);
+#endif
 		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
 		// strip (read by path, cached while the path stays) is read again and the user chain
 		// reloads, taking its pass textures again from the scene

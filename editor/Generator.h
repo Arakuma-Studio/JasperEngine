@@ -28,6 +28,7 @@
 #include "io/watch/FileIdentity.h"
 #include "manager/SceneManager.h"
 #include "shader/ShaderGlobals.h"
+#include "pixelart/ScreenTransition.h"
 
 namespace fs = std::filesystem;
 
@@ -272,13 +273,20 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        bool foliageQualityUncapped = true;
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
+        // T3 R34: the terrain tiers the game ships, a mask of TerrainQuality bits (all three: no line)
+        uint32_t shippedTerrainTiers = 0x7u;
         DrawSubmissionSettings drawSubmission;
+        // Project Settings > Graphics > Screen Transitions (S48)
+        jasperengine::pixelart::TransitionDefaults transitionDefaults;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
+        std::string voxelSettingsCode;
         // Project Settings > Quality > Device Tiers and the rest (DeviceSettings::toJson)
         std::string deviceSettingsJson = "{}";
         // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
@@ -412,6 +420,7 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
+
         void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
         // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
         // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
@@ -435,13 +444,19 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool uncapped) { foliageQuality = quality; foliageQualityUncapped = uncapped; }
         void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
+        // Project::getGeneratedTerrainTiers; set before configure()
+        void setShippedTerrainTiers(uint32_t mask) { shippedTerrainTiers = mask; }
         void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
+        void setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults) { transitionDefaults = defaults; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
+        // what Project Settings > Voxels lowers (generateVoxelSettingsCode); set before configure()
+        void setVoxelSettingsCode(const std::string& code) { voxelSettingsCode = code; }
         // the device settings the game applies its Device Tier with (DeviceSettings::toJson); set
         // before configure()
         void setDeviceSettingsJson(const std::string& json) { deviceSettingsJson = json; }

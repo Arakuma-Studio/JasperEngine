@@ -6,6 +6,7 @@
 #include "animation/AnimationClipIO.h"
 #include "json.hpp"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -19,7 +20,7 @@ namespace{
     using OJson = nlohmann::ordered_json;
 
     const char* const knownKeys[] = {"format", "version", "guid", "type", "strength", "roughness", "fade_in",
-                                     "fade_out", "position_influence", "rotation_influence"};
+                                     "fade_out", "position_influence", "rotation_influence", "units", "tick"};
 
     bool isKnownKey(const std::string& name){
         for (const char* key : knownKeys){
@@ -157,7 +158,7 @@ namespace{
                 }
             }else if (name == "type"){
                 if (!value.is_string() || !shakeTypeFromName(value.get<std::string>(), preset.type)){
-                    warnings.push_back("type: expected \"one_shot\" or \"sustained\", using \"one_shot\"");
+                    warnings.push_back("type: expected \"one_shot\", \"sustained\" or \"kick\", using \"one_shot\"");
                     preset.type = ShakeType::OneShot;
                 }
             }else if (name == "strength"){
@@ -172,6 +173,13 @@ namespace{
                 readVector(name, value, preset.positionInfluence, defaults.positionInfluence);
             }else if (name == "rotation_influence"){
                 readVector(name, value, preset.rotationInfluence, defaults.rotationInfluence);
+            }else if (name == "units"){
+                if (!value.is_string() || !shakeUnitsFromName(value.get<std::string>(), preset.units)){
+                    warnings.push_back("units: expected \"view\" or \"pixels\", using \"view\"");
+                    preset.units = ShakeUnits::View;
+                }
+            }else if (name == "tick"){
+                readFloat(name, value, preset.tick, defaults.tick);
             }else{
                 file.unknownKeys.push_back({name, value.dump(-1, ' ', false, OJson::error_handler_t::replace)});
                 unknownNames += (unknownNames.empty() ? "" : ", ") + name;
@@ -191,7 +199,8 @@ namespace{
 bool ShakePreset::operator==(const ShakePreset& other) const{
     return type == other.type && strength == other.strength && roughness == other.roughness &&
            fadeIn == other.fadeIn && fadeOut == other.fadeOut &&
-           positionInfluence == other.positionInfluence && rotationInfluence == other.rotationInfluence;
+           positionInfluence == other.positionInfluence && rotationInfluence == other.rotationInfluence &&
+           units == other.units && tick == other.tick;
 }
 
 std::string ShakeParseResult::errorText() const{
@@ -229,6 +238,9 @@ std::string camera::writeShakePreset(const ShakePresetFile& file){
     text += "  \"fade_out\": " + number(preset.fadeOut) + ",\n";
     text += "  \"position_influence\": " + vector(preset.positionInfluence) + ",\n";
     text += "  \"rotation_influence\": " + vector(preset.rotationInfluence) + ",\n";
+    // S48's keys only when set: a file without them re-saves byte for byte
+    if (preset.units != ShakeUnits::View) text += std::string("  \"units\": ") + quote(shakeUnitsName(preset.units)) + ",\n";
+    if (preset.tick > 0.0f) text += "  \"tick\": " + number(preset.tick) + ",\n";
     // unknown keys in file order (the last of a repeated name), verbatim
     for (size_t i = 0; i < file.unknownKeys.size(); i++){
         const auto& entry = file.unknownKeys[i];
@@ -253,7 +265,35 @@ std::string camera::writeShakePreset(const ShakePreset& preset){
 }
 
 const char* camera::shakeTypeName(ShakeType type){
+    if (type == ShakeType::Kick) return "kick";
     return type == ShakeType::Sustained ? "sustained" : "one_shot";
+}
+
+const char* camera::shakeUnitsName(ShakeUnits units){
+    return units == ShakeUnits::Pixels ? "pixels" : "view";
+}
+
+bool camera::shakeUnitsFromName(const std::string& name, ShakeUnits& out){
+    if (name == "view"){
+        out = ShakeUnits::View;
+        return true;
+    }
+    if (name == "pixels"){
+        out = ShakeUnits::Pixels;
+        return true;
+    }
+    return false;
+}
+
+ShakePreset camera::makeKickPreset(float amplitudePx, float seconds){
+    ShakePreset preset;
+    preset.type = ShakeType::Kick;
+    preset.units = ShakeUnits::Pixels;
+    preset.strength = std::isfinite(amplitudePx) ? std::max(0.0f, amplitudePx) : 0.0f;
+    preset.fadeOut = std::isfinite(seconds) ? std::max(0.0f, seconds) : 0.0f;
+    preset.roughness = 1.0f;
+    preset.rotationInfluence = Vector3(0, 0, 0);
+    return preset;
 }
 
 bool camera::shakeTypeFromName(const std::string& name, ShakeType& out){
@@ -263,6 +303,10 @@ bool camera::shakeTypeFromName(const std::string& name, ShakeType& out){
     }
     if (name == "sustained"){
         out = ShakeType::Sustained;
+        return true;
+    }
+    if (name == "kick"){
+        out = ShakeType::Kick;
         return true;
     }
     return false;
@@ -283,6 +327,7 @@ void camera::sanitizeShakePreset(ShakePreset& preset, std::vector<std::string>* 
     clampField("roughness", preset.roughness, defaults.roughness);
     clampField("fade_in", preset.fadeIn, defaults.fadeIn);
     clampField("fade_out", preset.fadeOut, defaults.fadeOut);
+    clampField("tick", preset.tick, defaults.tick);
     auto finiteVector = [&](const char* key, Vector3& value, const Vector3& fallback){
         if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z)){
             value = fallback;
@@ -294,6 +339,8 @@ void camera::sanitizeShakePreset(ShakePreset& preset, std::vector<std::string>* 
 }
 
 float camera::shakePreviewDuration(const ShakePreset& preset){
+    // a kick is over at fade_out (plus a beat of rest for the graph)
+    if (preset.type == ShakeType::Kick) return std::max(0.05f, preset.fadeOut) + 0.25f;
     if (preset.fadeIn <= 0.0f && preset.fadeOut <= 0.0f) return 3.0f;
     return preset.fadeIn + 1.0f + preset.fadeOut;
 }

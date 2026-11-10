@@ -136,6 +136,8 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::ParticleEffect: return "particle_effect";
         case AssetKind::ModelOrPrefab: return "model_or_prefab";
         case AssetKind::Palette: return "palette";
+        case AssetKind::TreeData: return "tree_data";
+        case AssetKind::TerrainWorld: return "terrain_world";
         case AssetKind::Tileset: return "tileset";
     }
     return "";

@@ -11,11 +11,15 @@
 file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
     ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
+# the allocation counter of the "no whole-map buffer" tests (T1 AC15, AC20): it counts at malloc,
+# wrapped by GNU ld below, so it counts on Linux; elsewhere those tests skip
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/engine/tests/core/support/AllocationCounter.cpp)
 # the reflection codec's benchmark against the frozen numbers of the codecs it replaced
 # (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 # the Aseprite codec's and importer's budgets (docs/specs/S44-aseprite-import.md AC15)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/pixelart/AsepriteBench.cpp)
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/pixelart/SpriteDrawBench.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)
@@ -88,6 +92,14 @@ jasperengine_add_test_target(jasperengine-editor-tests
         JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
+    # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
+    # definitions are its own; only its source reads the switch
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/engine/tests/core/support/AllocationCounter.cpp
+        PROPERTIES COMPILE_DEFINITIONS "JE_TEST_COUNTS_ALLOCATIONS;JE_TEST_BINARY_HAS_NEW")
+    target_link_options(jasperengine-editor-tests PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc")
+endif()
 
 # A process with nothing but the engine (the editor's static App builds a Scene before main, so
 # the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest

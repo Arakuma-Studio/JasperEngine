@@ -53,8 +53,14 @@
 #include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
 #include "Jolt/Physics/Collision/Shape/SphereShape.h"
 #include "Jolt/Physics/Collision/Shape/StaticCompoundShape.h"
+#include "Jolt/Physics/Collision/Shape/HeightFieldShape.h"
 
 #include "meshoptimizer.h"
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+#include "component/TerrainWorldComponent.h"
+#include "physics/TerrainWorldCollision.h"
+#include "subsystem/TerrainWorldRuntime.h"
 #endif
 
 #include <algorithm>
@@ -225,6 +231,19 @@ namespace {
         const Matrix4& model = transform->modelMatrix;
 
         if (TerrainComponent* terrain = terrainOf(scene, entity)) {
+#if JASPERENGINE_TERRAIN_WORLD
+            // T4 R4: a World translates only, over the box of its tiles
+            if (terrain->world && terrain->world->started()) {
+                jasperengine::terraincore::TileCoord low, high;
+                if (terrain->world->occupancy().bounds(low, high)) {
+                    const float size = terrain->world->lattice().tileSize();
+                    const Vector3& at = transform->worldPosition;
+                    bounds.merge(AABB(at.x + low.x * size, at.y, at.z + low.z * size, at.x + (high.x + 1) * size, at.y + terrain->world->maxHeight(),
+                                      at.z + (high.z + 1) * size));
+                }
+                return bounds;
+            }
+#endif
             const float half = terrain->terrainSize * 0.5f;
             bounds.merge(model * AABB(-half, std::min(0.0f, terrain->maxHeight), -half, half, std::max(0.0f, terrain->maxHeight), half));
         } else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
@@ -1174,6 +1193,11 @@ struct PlacementWorld::Impl {
     std::unordered_map<uint32_t, BodyRef> bodies;
     // entities ensureContext has dealt with (context, neighbour parts, or nothing to add)
     std::unordered_set<Entity> processed;
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R23: the fine chunks of each Terrain World in the world (tile key << 32 | chunk x << 16 | chunk z);
+    // a World is never processed whole, as each region reaches chunks of its own
+    std::map<Entity, std::set<uint64_t>> worldChunks;
+#endif
 
     Impl() {
         broadPhaseLayers.MapObjectToBroadPhaseLayer(Layers::STATIC, BroadPhaseLayers::STATIC);
@@ -1308,6 +1332,9 @@ struct PlacementWorld::Impl {
     }
 
     void removeContextOf(Entity entity) {
+#if JASPERENGINE_TERRAIN_WORLD
+        worldChunks.erase(entity);
+#endif
         auto found = contextByEntity.find(entity);
         if (found == contextByEntity.end()) return;
         for (const ContextBody& body : found->second) destroyBody(body.id);
@@ -1551,6 +1578,62 @@ struct PlacementWorld::Impl {
         return true;
     }
 
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R23: a Terrain World's fine chunks that region reaches, from its tiles read now (sampled as
+    // its own collider samples them), one static body each, so placed objects rest on the drawn surface
+    void addWorldChunks(Entity entity, TerrainComponent& terrainComponent, const AABB& region, std::vector<JPH::BodyID>& added) {
+        TerrainWorldRuntime* runtime = terrainComponent.world;
+        Transform* transform = scene->findComponent<Transform>(entity);
+        terraincore::TileCoord low, high;
+        if (!runtime || !runtime->started() || !transform || !runtime->occupancy().bounds(low, high)) return;
+        resolveTransform(scene, entity);
+        const terraincore::WorldLattice& lattice = runtime->lattice();
+        const TerrainWorldComponent* component = scene->findComponent<TerrainWorldComponent>(entity);
+        const int wanted = component ? component->collisionChunkQuads : 64;
+        const int quads = std::clamp(terraincore::isPowerOfTwo(wanted) ? wanted : 64, 32, lattice.tileQuads);
+        const int perTile = lattice.tileQuads / quads;
+        const float chunkSize = static_cast<float>(quads) * lattice.spacing;
+        const float tileSize = lattice.tileSize();
+        const Vector3 origin = transform->worldPosition;
+        // the region over the World's tiles, in chunks
+        const float minX = std::max(region.getMinimum().x - origin.x, static_cast<float>(low.x) * tileSize);
+        const float maxX = std::min(region.getMaximum().x - origin.x, static_cast<float>(high.x + 1) * tileSize);
+        const float minZ = std::max(region.getMinimum().z - origin.z, static_cast<float>(low.z) * tileSize);
+        const float maxZ = std::min(region.getMaximum().z - origin.z, static_cast<float>(high.z + 1) * tileSize);
+        if (minX > maxX || minZ > maxZ) return;
+        std::set<uint64_t>& made = worldChunks[entity];
+        JPH::BodyInterface& bi = bodyInterface();
+        for (int gz = static_cast<int>(std::floor(minZ / chunkSize)); gz <= static_cast<int>(std::floor(maxZ / chunkSize)); gz++) {
+            for (int gx = static_cast<int>(std::floor(minX / chunkSize)); gx <= static_cast<int>(std::floor(maxX / chunkSize)); gx++) {
+                const terraincore::TileCoord tile(terraincore::floorDiv(gx, perTile), terraincore::floorDiv(gz, perTile));
+                const int cx = gx - tile.x * perTile, cz = gz - tile.z * perTile;
+                if (!tile.addressable() || !runtime->occupancy().present(tile)) continue;
+                const uint64_t key = (static_cast<uint64_t>(tile.key()) << 32) | (static_cast<uint64_t>(static_cast<uint16_t>(cx)) << 16) | static_cast<uint16_t>(cz);
+                if (made.count(key)) continue;
+                if (physics.GetNumBodies() >= MAX_BODIES) return;
+                std::vector<float> samples;
+                if (!TerrainWorldCollision::chunkSamplesNow(*runtime, tile, quads, cx, cz, samples)) continue;
+                JPH::HeightFieldShapeSettings field(samples.data(), JPH::Vec3::sZero(), JPH::Vec3(lattice.spacing, 1.0f, lattice.spacing),
+                                                    static_cast<JPH::uint32>(quads + 1));
+                field.mBitsPerSample = std::min<JPH::uint32>(8u, std::max<JPH::uint32>(1u, field.CalculateBitsPerSampleForError(TerrainWorldCollision::CHUNK_MAX_ERROR)));
+                JPH::ShapeSettings::ShapeResult result = field.Create();
+                if (!result.IsValid()) continue;
+                const Vector3 at(origin.x + static_cast<float>(gx) * chunkSize, origin.y, origin.z + static_cast<float>(gz) * chunkSize);
+                JPH::BodyCreationSettings creation(result.Get(), JPH::RVec3(toJolt(at)), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::STATIC);
+                creation.mFriction = FRICTION;
+                creation.mUserData = entity;
+                JPH::Body* body = bi.CreateBody(creation);
+                if (!body) return;
+                made.insert(key);
+                contextByEntity[entity].push_back(ContextBody{body->GetID()});
+                contextBodyCount++;
+                bodies[bodyKey(body->GetID())] = BodyRef{entity, nullptr};
+                added.push_back(body->GetID());
+            }
+        }
+    }
+#endif
+
     // Adds the context in region (or only's subtree, static); returns the neighbours it made
     std::vector<Entity> gatherContext(const AABB* region, Entity only) {
         std::vector<Entity> newNeighbours;
@@ -1579,6 +1662,15 @@ struct PlacementWorld::Impl {
         }
 
         for (Entity entity : candidates) {
+#if JASPERENGINE_TERRAIN_WORLD
+            if (TerrainComponent* terrain = terrainOf(scene, entity); terrain && terrain->world) {
+                if (!scene->isEntityActiveInHierarchy(entity) || layerIgnored(scene, entity, settings.ignoreLayerMask)) continue;
+                // a whole World is too much: a region, else what the context reaches so far
+                const AABB* reach = region ? region : (contextRegion.isNull() ? nullptr : &contextRegion);
+                if (reach) addWorldChunks(entity, *terrain, *reach, added);
+                continue;
+            }
+#endif
             // cheapest first: most entities give no shape
             if (processed.count(entity) || !contributes(entity) || foliage.count(entity)) continue;
             if (!scene->isEntityActiveInHierarchy(entity) || layerIgnored(scene, entity, settings.ignoreLayerMask)) continue;

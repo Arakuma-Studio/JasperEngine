@@ -12,6 +12,7 @@
 // compares); wall-clock budgets hold on the benchmark server E only.
 
 #include "Engine.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "jobs/JobSystem.h"

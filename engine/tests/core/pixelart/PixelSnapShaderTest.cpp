@@ -127,13 +127,19 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
         int index = 0;
         while (index < 64 && shaderPropertyBit(index) != bit) index++;
         EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
-        // S49's 'Pxl' and 'Ana' took PARTICLES 12 and 13 after it (ParticlePixelShader.VariantBitsArePinned)
-        const int after = type == ShaderType::PARTICLES ? 2 : 0;
-        EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1 + after) << "'Pxs' is the last bit of its type but S49's";
+        // S49's 'Pxl' and 'Ana' took PARTICLES 12 and 13 after it (ParticlePixelShader.VariantBitsArePinned);
+        // the terrain programme's bits come after it on MESH and DEPTH (D19)
+        if (type == ShaderType::PARTICLES || type == ShaderType::UI) {
+            const int after = type == ShaderType::PARTICLES ? 2 : 0;
+            EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1 + after) << "'Pxs' is the last bit of its type but S49's";
+        } else {
+            EXPECT_GE(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is a bit of its type";
+        }
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
-    // S43's Palette Quantize took the next one, 19 'Pal' (PostProcessingTiers.PaletteQuantizeBit)
+    // S43's Palette Quantize took the next one, 19 'Pal' (PostProcessingTiers.PaletteQuantizeBit),
+    // and S48's Glitch 20 'Gli' (PostProcessingTiers.GlitchBit)
     EXPECT_GE(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
 }
 

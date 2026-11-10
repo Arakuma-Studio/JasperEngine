@@ -55,6 +55,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"   // S48
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -94,6 +95,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -112,6 +114,7 @@
 #include "component/NavGridComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/SplineInstantiateComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/RigidbodyComponent.h"

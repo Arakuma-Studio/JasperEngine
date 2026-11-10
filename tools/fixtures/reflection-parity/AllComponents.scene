@@ -3003,10 +3003,76 @@ entities:
         sortInstances: true
   - type: Entity
     entity: 1098
-    name: GridComponent
+    name: VoxelVolumeComponent
     components:
       transform:
         position: [97, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      voxelvolume:
+        enabled: false
+        quality: low
+        lodLevels: 6
+        lodRadius: 5
+        maxDrawDistance: 4.4
+        castShadows: false
+        collision: false
+        collisionRadius: 7
+        rescueBodies: false
+        terrainCut: automatic
+        overlapDepth: 2
+        cutTolerance: 1
+        runtimeGeneration: true
+  - type: Entity
+    entity: 1099
+    name: TerrainWorldComponent
+    components:
+      transform:
+        position: [98, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      terrainworld:
+        enabled: false
+        useCameraFocus: false
+        poolSize: 4
+        lodDistance: 6.9
+        uploadBudget: 8.6
+        collisionRadius: 7.5
+        collisionChunkQuads: 6
+        autoAddTiles: false
+        overviewCastsShadows: true
+  - type: Entity
+    entity: 1100
+    name: HitStopExemptComponent
+    components:
+      transform:
+        position: [99, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      hitstopexempt:
+        enabled: false
+        includeChildren: false
+  - type: Entity
+    entity: 1101
+    name: GridComponent
+    components:
+      transform:
+        position: [100, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true
@@ -3024,11 +3090,11 @@ entities:
         hexSideLength: 5
         linked: true
   - type: Entity
-    entity: 1099
+    entity: 1102
     name: TilemapLayerComponent
     components:
       transform:
-        position: [98, 0, 0]
+        position: [101, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true
@@ -3050,11 +3116,11 @@ entities:
         chunks:
           "-1,2": "BYAIAQAAAA=="
   - type: Entity
-    entity: 1100
+    entity: 1103
     name: TilemapCollider2DComponent
     components:
       transform:
-        position: [99, 0, 0]
+        position: [102, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true

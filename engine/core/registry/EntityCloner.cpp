@@ -4,6 +4,8 @@
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainWorldComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -54,6 +56,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -90,6 +93,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "subsystem/MeshSystem.h"
@@ -445,6 +449,7 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
 template<>
 void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& ctx) {
     remapFramebufferTexture(terrain.heightMap, ctx);
+    remapFramebufferTexture(terrain.holeMap, ctx);
     for (Texture& blendMap : terrain.blendMaps) {
         remapFramebufferTexture(blendMap, ctx);
     }
@@ -465,6 +470,11 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.needUpdateTerrain = true;
     terrain.needUpdateTexture = false;
     terrain.needUpdateFoliage = true;
+    // a hold belongs to the volume attached to the original (T3 R29)
+    terrain.holeMapHolds = 0;
+    terrain.surfaceRevision = 0;
+    terrain.editState.reset();
+    terrain.world = nullptr;
 }
 
 template<>
@@ -1218,6 +1228,15 @@ void prepare<NavMeshSurfaceComponent>(NavMeshSurfaceComponent& surface, Entity, 
 }
 
 template<>
+void prepare<VoxelVolumeComponent>(VoxelVolumeComponent& volume, Entity, CloneContext& ctx) {
+    volume.terrain = ctx.remap(volume.terrain);
+    volume.focus = ctx.remap(volume.focus);
+    volume.onEdited.clear();
+    volume.onCollisionUpdated.clear();
+    volume.onBodyRescued.clear();
+}
+
+template<>
 void prepare<NavGridComponent>(NavGridComponent& grid, Entity, CloneContext& ctx) {
     grid.sourceEntity = ctx.remap(grid.sourceEntity);
     if (grid.map)
@@ -1338,6 +1357,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1376,6 +1396,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<TranslateTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScaleTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TerrainComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TerrainWorldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AudioSourceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1401,6 +1422,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<NavGridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineExtrudeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VoxelVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineInstantiateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineAnimateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

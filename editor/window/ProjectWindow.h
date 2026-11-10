@@ -62,6 +62,7 @@ namespace jasperengine::editor {
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
         PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
         PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
+        NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET             // .tileset (the Tileset Editor; a thumbnail of its tiles)
     };
 
@@ -308,6 +309,8 @@ namespace jasperengine::editor {
         uint64_t dirTreeGeneration = 1;
         // the SpriteNormalsWatcher revision the badges were last read at
         uint64_t spriteNormalsRevision = 0;
+        // the last time cleanup outputs' sources were compared (they have no watcher of their own)
+        double pixelArtCleanupBadgesAt = -1.0;
 
         bool windowOpen;
         bool focusRequested;
@@ -422,6 +425,10 @@ namespace jasperengine::editor {
         // both badges of an image, from scratch: the sprite-normals one, else the bake's
         void updateImageBadges(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
+        // S46 R43: "Pixel Art Cleanup..." on an image, "Re-run Pixel Art Cleanup" on an output
+        void drawPixelArtCleanupMenuItems(const fs::path& filePath);
+        // S46 R32: a cleanup output's "Source changed" badge, as a generated normal map's
+        void updatePixelArtCleanupBadge(FileEntry& file, const fs::path& path);
         // S43 R37: a palette's Export menu, a texture's Apply Palette... / Reduce Colours... /
         // Extract Palette, a foreign palette file's Import as Palette
         void drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath);
@@ -609,6 +616,11 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);
+        // Create > Noise Graph (T2 R62): a preset's copy, or with an empty id the Blank graph (a single
+        // output_height on a Constant), in directory, one project undo step, then renamed in place
+        void assetsCreateNoiseGraph(const std::string& presetId, const fs::path& directory);
+        // the Create list's Noise Graph entry: a submenu of Blank and the presets
+        void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();

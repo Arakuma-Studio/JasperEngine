@@ -5,11 +5,13 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "mcp/TerrainMaterialInfo.h"
 #include "util/ProjectUtils.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "model/ModelAudit.h"
 #include "McpTools.h"
+#include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
 #include "AnimationKeys.h"
@@ -26,6 +28,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 #include "mcp/TerrainMaps.h"
+#include "mcp/tools/TerrainToolsSupport.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -535,7 +538,7 @@ Json detailLayerJson(Project* project, const TerrainFoliageLayer& layer) {
     Json out = {{"mesh", McpValues::assetPathToJson(project, layer.meshPath)},
                 {"density_map", McpValues::assetPathToJson(project, layer.densityMap.getPath())},
                 {"seed", layer.seed}, {"cast_shadows", layer.castShadows}};
-    for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) out[range.key] = McpValues::number(layer.*range.field);
+    for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) out[range.key] = McpValues::number(layer.*range.field);
     return out;
 }
 
@@ -563,7 +566,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"height_map_loaded", terrain.heightMap.hasData()},
         // false until the editor has rebuilt the mesh (and collision) from the current height map
         {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
-        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"details", details}
+        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"details", details},
+        {"material", terrainMaterialJson(scene, entity)}, {"holes", terrainHolesJson(terrain)}
     };
 }
 
@@ -598,7 +602,12 @@ void sculptTerrainTool(const CallPtr& call) {
         const std::string where = "strokes[" + std::to_string(s) + "]";
         std::string error;
         TerrainScriptedBrush brush;
-        if (!item.is_object() || !pickName(brushModes(), stringOr(item, "mode", "raise"), brush.mode, where + ".mode", error)) {
+        // T5's Paint Trees brush, its own two modes over the object brush's
+        const std::string modeName = item.is_object() ? stringOr(item, "mode", "raise") : std::string();
+        brush.trees = modeName == "paint_trees" || modeName == "erase_trees";
+        if (brush.trees) {
+            brush.mode = modeName == "paint_trees" ? TerrainBrushMode::PlaceObject : TerrainBrushMode::EraseObject;
+        } else if (!item.is_object() || !pickName(brushModes(), modeName, brush.mode, where + ".mode", error)) {
             step.fail(call, error.empty() ? where + " must be an object." : error);
             return;
         }
@@ -658,12 +667,22 @@ void sculptTerrainTool(const CallPtr& call) {
             }
             points.push_back(local);
         }
+        // T1 R60: each terrain's own limits, from half a texel to the whole terrain
+        float minSize = 0.0f, maxSize = 0.0f;
+        TerrainEditWindow::brushSizeLimits(scene->getComponent<TerrainComponent>(target.entity), minSize, maxSize);
+        const bool sizeClamped = brush.size < minSize || brush.size > maxSize;
         int placed = 0;
         if (!window->scriptedStroke(target.sceneId(), target.entity, brush, points, error, &placed)) {
             step.fail(call, where + ": " + error);
             return;
         }
-        Json result = {{"mode", nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
+        Json result = {{"mode", brush.trees ? modeName : nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
+        if (sizeClamped) {
+            result["warnings"] = Json::array({{{"code", "size_clamped"},
+                                               {"message", "size " + std::to_string(brush.size) + " is outside this terrain's " + std::to_string(minSize) +
+                                                           " to " + std::to_string(maxSize) + "; the stroke used " +
+                                                           std::to_string(std::clamp(brush.size, minSize, maxSize)) + "."}}});
+        }
         if (brush.mode == TerrainBrushMode::PlaceObject || brush.mode == TerrainBrushMode::EraseObject) {
             result[brush.mode == TerrainBrushMode::PlaceObject ? "placed" : "erased"] = placed;
         } else {
@@ -995,11 +1014,11 @@ void editTerrainDetailsTool(const CallPtr& call) {
         for (auto it = item.begin(); it != item.end(); ++it) {
             const std::string& key = it.key();
             const bool known = std::find(other.begin(), other.end(), key) != other.end() ||
-                std::any_of(editor::terrain::detailRanges().begin(), editor::terrain::detailRanges().end(),
-                            [&key](const editor::terrain::DetailRange& range) { return key == range.key; });
+                std::any_of(editor::terraindetail::detailRanges().begin(), editor::terraindetail::detailRanges().end(),
+                            [&key](const editor::terraindetail::DetailRange& range) { return key == range.key; });
             if (!known || (isAdd && key == "index")) {
                 std::string valid = "mesh, density_map, seed, cast_shadows";
-                for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) valid += std::string(", ") + range.key;
+                for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) valid += std::string(", ") + range.key;
                 error = where + ": unknown field \"" + key + "\". Fields: " + (isAdd ? "" : "index, ") + valid + ".";
                 return false;
             }
@@ -1017,7 +1036,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 error = where + ".mesh: " + error;
                 return false;
             }
-            if (!editor::terrain::isDetailMeshPath(stored)) {
+            if (!editor::terraindetail::isDetailMeshPath(stored)) {
                 error = where + ".mesh \"" + mesh.get<std::string>() + "\" is not a model a detail layer draws: use an .obj, .gltf, .glb or .fbx file.";
                 return false;
             }
@@ -1027,7 +1046,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
             error = where + ".mesh is required: the model each instance draws (.obj, .gltf, .glb or .fbx).";
             return false;
         }
-        for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) {
+        for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) {
             if (!has(item, range.key)) continue;
             const Json& value = item[range.key];
             if (!value.is_number()) {
@@ -1097,7 +1116,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 return false;
             }
         }
-        const std::string invalid = editor::terrain::checkDetailLayer(layer);
+        const std::string invalid = editor::terraindetail::checkDetailLayer(layer);
         if (!invalid.empty()) {
             error = where + ": " + invalid;
             return false;
@@ -1232,17 +1251,26 @@ void sampleTerrainTool(const CallPtr& call) {
             return;
         }
         Json samples = Json::array();
+        const bool fullMaterial = args["points"].size() <= MAX_MATERIAL_POINTS;
+        if (!fullMaterial) {
+            data["note"] = "Over " + std::to_string(MAX_MATERIAL_POINTS) + " points each says only hole: ask for collision_gap, "
+                           "nav_excluded, layers_painted, layers_drawn and fetches at fewer points.";
+        }
         for (const Json& p : args["points"]) {
             Vector3 local;
             if (!terrainPoint(p, world, inverseModel, transform.worldPosition.y, local)) {
                 call->fail("points: each point is [x, z] or [x, y, z] numbers.");
                 return;
             }
-            samples.push_back(terrainSample(scene, target.entity, local));
+            Json sample = terrainSample(scene, target.entity, local);
+            addTerrainPointMaterial(scene, target.entity, local.x, local.z, fullMaterial, sample);
+            addTerrainWorldPointState(scene, target.entity, local.x, local.z, sample);
+            samples.push_back(std::move(sample));
         }
         data["samples"] = samples;
     }
-    const int grid = intOr(args, "grid", has(args, "points") ? 0 : 9);
+    if (!sampleTerrainExtras(call, target.project, target.scene, target.entity, world, data)) return;
+    const int grid = intOr(args, "grid", has(args, "points") || sampleTerrainAsksExtras(args) ? 0 : 9);
     if (grid >= 2) {
         const int n = std::min(grid, 65);
         const float half = terrain.terrainSize * 0.5f;
@@ -1263,6 +1291,26 @@ void sampleTerrainTool(const CallPtr& call) {
         }
         data["grid"] = {{"size", n}, {"rows_from", "local -z to +z"}, {"columns_from", "local -x to +x"},
                         {"world_heights", rows}, {"min", lo}, {"max", hi}, {"mean", sum / static_cast<float>(n * n)}};
+    }
+    if (args.value("foliage", false)) {
+        // T5 R55: over T1's region (world or local, as the call's space)
+        std::optional<FoliageRegionXZ> region;
+        if (has(args, "region")) {
+            const Json& box = args["region"];
+            if (!box.is_object() || !box.contains("min") || !box.contains("max") || !box["min"].is_array() || !box["max"].is_array() || box["min"].size() != 2 || box["max"].size() != 2) {
+                call->fail("region must be {min: [x, z], max: [x, z]}.");
+                return;
+            }
+            const float offsetX = world ? transform.worldPosition.x : 0.0f;
+            const float offsetZ = world ? transform.worldPosition.z : 0.0f;
+            region = FoliageRegionXZ{box["min"][0].get<float>() - offsetX, box["min"][1].get<float>() - offsetZ,
+                                     box["max"][0].get<float>() - offsetX, box["max"][1].get<float>() - offsetZ};
+        }
+        data["foliage"] = foliageStatsJson(target.project, target.scene, target.entity, region);
+    }
+    if (has(args, "world")) {
+        sampleTerrainWorld(call, target.project, target.scene, target.entity, std::move(data));
+        return;
     }
     call->ok("Sampled terrain \"" + scene->getEntityName(target.entity) + "\".", data);
 }
@@ -6415,7 +6463,8 @@ void registerWorldTools(McpRegistry& registry) {
         "Terrain-window brush strokes (a mouse drag): the brush moves along each stroke's points, "
         "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
         "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
-        "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
+        "stamp needs mask; place/erase_object: asset, one per point within size. paint/erase_trees: tree prototypes "
+        "(asset picks one), a Terrain World across tiles. Missing maps are created. "
         "Returns heights after each stroke. Whole maps: set_terrain_maps.",
         object({
             {"scene", sceneRef()},
@@ -6425,9 +6474,10 @@ void registerWorldTools(McpRegistry& registry) {
             {"strokes", Json{{"type", "array"}, {"minItems", 1},
                 {"items", object({
                     {"mode", stringEnum("", {"raise", "lower", "smooth", "flatten", "sharpen", "noise", "terrace", "stamp", "erode", "ramp",
-                                             "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object"})},
+                                             "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object",
+                                             "paint_trees", "erase_trees"})},
                     {"points", array(array(numberItem, ""), "[x, z] or [x, y, z] points.")},
-                    {"size", withDefault(number("Radius, world units.", 0.1, 50), 4)},
+                    {"size", withDefault(number("Radius, world units.", 0.01, 100000), 4)},
                     {"strength", withDefault(number("", 0.01, 1), 0.5)},
                     {"shape", withDefault(stringEnum("", {"circle", "square"}), "circle")},
                     {"falloff", withDefault(stringEnum("", {"smooth", "linear", "constant"}), "smooth")},
@@ -6455,7 +6505,7 @@ void registerWorldTools(McpRegistry& registry) {
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{path|color, index}: slot index's r,g,b weight layers 3*index..+2. layers: textures, uv_scale, tint and "
         "factors per surface layer, stochastic_tiling (up to 3x the reads) and its cell_size/blend_sharpness/"
-        "contrast/rotation. Images under the assets dir.",
+        "contrast/rotation. Images in the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -6512,7 +6562,15 @@ void registerWorldTools(McpRegistry& registry) {
             {"entity", entityRef("Default: the only terrain.")},
             {"points", array(array(numberItem, ""), "[x, z] points.")},
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
-            {"grid", integer("Default 9 without points.", 0, 65)}
+            {"grid", integer("Default 9 without points.", 0, 65)},
+            {"region", anyObject("{min:[x,z],max:[x,z]}")},
+            {"stats", array(string(""), "height, slope, layers, coverage (holes, layer counts).")},
+            {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
+            {"issues", withDefault(boolean("Problems and fixes."), false)},
+            {"hash", withDefault(boolean("Content hash of each map."), false)},
+            {"foliage", withDefault(boolean("Details and trees in region."), false)},
+            {"world", anyObject("Terrain World streaming status: {tiles?, wait_for?: {x, z, radius, level}}.")},
+            {"timeout_seconds", number("wait_for's.", 0, 3600)}
         }),
         sampleTerrainTool, true, true);
     group.clear();

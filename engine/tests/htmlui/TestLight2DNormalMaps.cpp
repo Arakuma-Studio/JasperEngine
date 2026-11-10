@@ -15,6 +15,7 @@
 // normal map in the OpenGL convention (and its DirectX twin, green inverted).
 
 #include "TestGoldenCommon.h"
+#include "component/Transform.h"
 
 #include "Scene.h"
 #include "component/LatticeModifierComponent.h"

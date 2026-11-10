@@ -119,6 +119,7 @@
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
 #include "render/AtmosphereQuality.h"
+#include "render/FoliageQuality.h"
 #include "pixelart/PixelPerfectLayout.h"
 #include "math/Vector2.h"
 #include <atomic>
@@ -285,6 +286,8 @@ namespace jasperengine {
         static int defaultUniformBytes();
         static int defaultStreamStagingBytes();
         static int defaultDescriptorBytes();
+        // T1 DC9: what a frame's terrain map uploads may take, 2 MB mobile/web, 8 MB desktop
+        static int defaultTerrainUploadBytes();
 
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
@@ -454,6 +457,10 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static FoliageQuality foliageQualityDefaults[3];
+        static bool foliageQualityUncapped;
+        static bool foliageQualityOverridden;
+        static FoliageQuality foliageQualityOverride;
         static float foliageDistanceScaleDefaults[3];
         static bool foliageDistanceScaleOverridden;
         static float foliageDistanceScaleOverride;
@@ -505,6 +512,10 @@ namespace jasperengine {
         static std::vector<Scene*> getInputScenes(bool keys);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
+        // a screen transition may draw this frame through the composite target (Vulkan,
+        // beginCompositeFramebuffer): the scenes must have their PIP_RTT pipelines before it
+        static bool compositeExpected;
+
         static void endCompositeFramebuffer();
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
@@ -535,6 +546,10 @@ namespace jasperengine {
         static void removeAllScenes();
 
         static bool isSceneRunning(Scene* scene);
+        // a game whose build can draw a screen transition (S48): objects bake the composite
+        // target's pipelines from load, so its first frame finds them ready
+        static void setCompositeExpected(bool expected);
+        static bool isCompositeExpected();
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
         // The scene drawn first, which clears the frame: the main scene, or before there is one
@@ -706,8 +721,19 @@ namespace jasperengine {
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
 
+        // Foliage Quality (T5 R21): scales and caps, never writes a Terrain. uncapped: a project from
+        // before the field, High everywhere with no instance or draw cap, so it looks the same (F12).
+        static void setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped = false);
+        static FoliageQuality getFoliageQualityDefault(Platform platform);
+        static void setFoliageQuality(FoliageQuality quality);
+        static FoliageQuality getFoliageQuality();
+        static void resetFoliageQuality();
+        // the tier in effect has no caps: no game override, and a project that never said
+        static bool isFoliageQualityUncapped();
+
         // Foliage Distance (Unity's QualitySettings.terrainDetailDistanceFactor): multiplies every
-        // terrain foliage layer's Draw Distance and Min Draw Distance. The project's scale per
+        // terrain foliage layer's Draw and Min Draw Distance, and (T5 R66) Tree Distance and Billboard
+        // Start: the one global distance knob. The project's scale per
         // platform group (Project Settings > Quality, 1 by default), which a game may override at
         // runtime (0 draws no foliage; clamped to [0, 10], non-finite values ignored).
         // getFoliageDistanceScale is the scale in effect: the override, else this platform's default.
@@ -726,6 +752,9 @@ namespace jasperengine {
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
+        // getDeltatime() as the script being called sees it: inside a Hit Stop Exempt
+        // GameObject's callbacks the delta without the hit-stop (S48, pixelart/HitStop.h)
+        static float getScriptDeltatime();
         // the last frame's wall-clock period (from the frame before's start to its start) and
         // the CPU time it took from its start to its submission (the update and the draw,
         // without the wait to present), seconds: dynamic resolution's frame law reads them

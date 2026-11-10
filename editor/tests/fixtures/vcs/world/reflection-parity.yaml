@@ -104,11 +104,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 60, 0, 0, 1]
-  GridComponent:
-    position: [97, 0, 0]
+  HitStopExemptComponent:
+    position: [99, 0, 0]
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 97, 0, 0, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 99, 0, 0, 1]
   ImageComponent:
     position: [24, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -409,6 +409,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1]
+  TerrainWorldComponent:
+    position: [98, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 98, 0, 0, 1]
   TextComponent:
     position: [43, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -419,21 +424,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 87, 0, 0, 1]
-  TilemapCollider2DComponent:
-    position: [99, 0, 0]
-    rotation: [1, 0, 0, 0]
-    scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 99, 0, 0, 1]
   TilemapComponent:
     position: [45, 0, 0]
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 45, 0, 0, 1]
-  TilemapLayerComponent:
-    position: [98, 0, 0]
-    rotation: [1, 0, 0, 0]
-    scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 98, 0, 0, 1]
   TouchAreaComponent:
     position: [83, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -484,6 +479,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 59, 0, 0, 1]
+  VoxelVolumeComponent:
+    position: [97, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 97, 0, 0, 1]
   WaterExcluderComponent:
     position: [92, 0, 0]
     rotation: [1, 0, 0, 0]

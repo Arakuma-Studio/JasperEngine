@@ -56,7 +56,16 @@ shaderKeys:
     properties: 2
   - type: lines
     properties: 42
+  - type: mesh
+    properties: 12587096
+  - type: mesh
+    properties: 8602521688
+  - type: mesh
+    properties: 68732063832
+  - type: mesh
+    properties: 77321998424
   - type: sky
+  - type: depth
   - type: ui
     properties: 2
   - type: ui
@@ -104,6 +113,18 @@ shaderKeys:
   - type: particles
     properties: 512
   - type: htmluiprim
+  - type: mesh
+    properties: 12587096
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 8602521688
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 68732063832
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 77321998424
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
   - type: particles
     customShader: library:particles#BLEND_ALPHA
   - type: particles
@@ -2774,7 +2795,7 @@ entities:
         sortInstances: true
   - type: Entity
     entity: 1098
-    name: GridComponent
+    name: VoxelVolumeComponent
     components:
       transform:
         position: [97, 0, 0]
@@ -2785,18 +2806,23 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      grid:
-        layout: hexagon
-        cellSize: [8, 12]
-        cellGap: [1, 2]
-        plane: xz
-        staggerAxis: x
-        staggerIndex: even
-        hexSideLength: 5
-        linked: true
+      voxelvolume:
+        enabled: false
+        quality: low
+        lodLevels: 4
+        lodRadius: 6
+        maxDrawDistance: 4.4
+        castShadows: false
+        collision: false
+        collisionRadius: 7
+        rescueBodies: false
+        terrainCut: automatic
+        overlapDepth: 2
+        cutTolerance: 1
+        runtimeGeneration: true
   - type: Entity
     entity: 1099
-    name: TilemapLayerComponent
+    name: TerrainWorldComponent
     components:
       transform:
         position: [98, 0, 0]
@@ -2807,23 +2833,19 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      tilemaplayer:
-        version: 1
+      terrainworld:
         enabled: false
-        tileset: ""
-        tint: [0.5, 0.6, 0.7, 0.8]
-        mode: individual
-        chunkSize: 32
-        tileAnchor: [0.5, 0.25]
-        animationSpeed: 2.5
-        dualGrid: true
-        seed: 9
-        gpuResidency: always
-        chunks:
-          -1,2: BYAIAQAAAA==
+        useCameraFocus: false
+        poolSize: 4
+        lodDistance: 6.9
+        uploadBudget: 8.6
+        collisionRadius: 7.5
+        collisionChunkQuads: 6
+        autoAddTiles: false
+        overviewCastsShadows: true
   - type: Entity
     entity: 1100
-    name: TilemapCollider2DComponent
+    name: HitStopExemptComponent
     components:
       transform:
         position: [99, 0, 0]
@@ -2834,20 +2856,6 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      tilemapcollider2d:
+      hitstopexempt:
         enabled: false
-        source: terrain
-        solidTerrains:
-          - Water
-          - Lava
-        geometry: polygons
-        merge: false
-        offset: [1.5, 2.5]
-        friction: 0.25
-        restitution: 0.5
-        categoryBits: 2
-        maskBits: 4
-        groupIndex: -3
-        contactEvents: false
-        sensorEvents: true
-        enableHitEvents: true
+        includeChildren: false

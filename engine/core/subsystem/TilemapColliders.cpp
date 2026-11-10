@@ -128,6 +128,13 @@ void tilemapcolliders::update(Scene* scene, Entity entity, const TilemapLayerCom
         collider.needUpdate = false;
         replaceAll = true;
         state.allDirty = true;
+        // once per change of the fields, not per rebuilt chunk: the clamp itself is colliderTemplate's
+        if (collider.categoryBits > 0xFFFFu || collider.maskBits > 0xFFFFu || collider.groupIndex < INT16_MIN || collider.groupIndex > INT16_MAX){
+            Log::warn("Tilemap Collider 2D on '%s': Category %u, Mask %u or Group %d is past Box2D's 16 bits and is clamped to %u, %u, %d.",
+                      scene->getEntityName(entity).c_str(), collider.categoryBits, collider.maskBits, collider.groupIndex,
+                      std::min<uint32_t>(collider.categoryBits, 0xFFFFu), std::min<uint32_t>(collider.maskBits, 0xFFFFu),
+                      std::clamp<int32_t>(collider.groupIndex, INT16_MIN, INT16_MAX));
+        }
     }
     if (!state.allDirty && state.dirty.empty()){
         return;

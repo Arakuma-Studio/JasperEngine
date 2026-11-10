@@ -1968,6 +1968,15 @@ OVERRIDES = {
     },
 }
 
+# T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
+OVERRIDES[('TerrainWorld', 'waitForArea')] = {
+    'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('timeoutSeconds?', 'number')], 'boolean')]}
+OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
+    'doc': ['Calls callback once, in the update phase, when the area is ready.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
+OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
+
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -2081,6 +2090,31 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
 # Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+# T2's noise API: lua_CFunctions take optional arguments C++ signatures cannot state (docs/scripting/noise.md)
+for _name, _doc in (('perlin', 'Perlin noise, -1..1.'), ('simplex', 'Simplex noise, -1..1.'), ('value', 'Value noise, -1..1.')):
+    OVERRIDES[('Noise', _name)] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                   'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+    OVERRIDES[('Noise', _name + '3')] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                         'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+OVERRIDES[('Noise', 'cellular')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                    'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+OVERRIDES[('Noise', 'cellular3')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                     'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+_FRACTAL_PARAMS = [('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('octaves?', 'integer'), ('lacunarity?', 'number'), ('gain?', 'number'), ('basis?', 'NoiseBasis')]
+OVERRIDES[('Noise', 'fbm')] = {'doc': ["FBm, in the basis' range: 4 octaves, lacunarity 2 and gain 0.5 by default."], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('Noise', 'ridged')] = {'doc': ['Ridged fractal, 0..1: 4 octaves, lacunarity 2 and gain 0.5 by default.'], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('NoiseGraph', 'load')] = {'doc': ['A compiled Noise Graph, or nil after logging the issues. A graph with an erosion or Terrain Height node does not load in a game.'],
+                                     'overloads': [([('path', 'string')], 'NoiseGraph?')]}
+OVERRIDES[('NoiseGraph', 'rangeOf')] = {'doc': ["An output's analytic range: min, max. The default output is height, else the first."],
+                                        'overloads': [([('output?', 'string')], 'number, number')]}
+OVERRIDES[('NoiseGraph', 'sample')] = {'doc': ['The output at one point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                       'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sample3')] = {'doc': ['The output at one 3D point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                        'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 points, on this thread.'], 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGrid')]}
+OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
+                                                'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
+OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2771,6 +2805,9 @@ PROPERTY_OVERRIDES = {
     ('Button', 'onClick'): ('FunctionSubscribe', False),
     ('BaseEventData', 'target'): ('GameObject?', False),
     ('BaseEventData', 'selectedObject'): ('GameObject?', False),
+    # T5 R33: write-only handlers (the getter is nil), docs/scripting/foliage.md
+    ('Terrain', 'onTreeHit'): ('fun(hit: table)|nil', False),
+    ('Terrain', 'onTreeRemoved'): ('fun(id: integer, pose: table)|nil', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -2890,6 +2927,63 @@ for _cls, _who, _example in (
                 'max(0, 1 - d / radius), d the distance from the shaker (x/y only in 2D); none at d >= radius.'],
         'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
                         ('options?', 'ShakeOptions')], 'ShakeInstance')]}
+
+# S52 Sprite Batch: lua_CFunctions taking tables of numbers or frames (engine/core/script/binding/SortingClassesLua.cpp)
+OVERRIDES[('SpriteBatch', 'frameId')] = {
+    'doc': ['The index of the Sprite\'s frame with this name; an error when it has none.'],
+    'overloads': [([('name', 'string')], 'integer')]}
+OVERRIDES[('SpriteBatch', 'add')] = {
+    'doc': ['Adds an instance at (x, y) showing `frame` (an index or a frame name, default 0) and returns its index.'],
+    'overloads': [([('x', 'number'), ('y', 'number'), ('frame?', 'integer|string')], 'integer')]}
+OVERRIDES[('SpriteBatch', 'setPositions')] = {
+    'doc': ['Every instance\'s position, `stride` numbers each (2 by default).'],
+    'overloads': [([('values', 'number[]'), ('stride?', 'integer')], '')]}
+OVERRIDES[('SpriteBatch', 'setRotations')] = {
+    'doc': ['Every instance\'s rotation, one number each.'],
+    'overloads': [([('values', 'number[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setScales')] = {
+    'doc': ['Every instance\'s scale, `stride` numbers each (1 by default).'],
+    'overloads': [([('values', 'number[]'), ('stride?', 'integer')], '')]}
+OVERRIDES[('SpriteBatch', 'setColors')] = {
+    'doc': ['Every instance\'s colour.'],
+    'overloads': [([('values', 'number[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setFrames')] = {
+    'doc': ['Every instance\'s frame, an index or a frame name each.'],
+    'overloads': [([('frames', '(integer|string)[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setFx')] = {
+    'doc': ['Every instance\'s amount of one effect slot: `"palette"`, `"flash"`, `"fade"` or `"dissolve"`.'],
+    'overloads': [([('slot', 'string'), ('amounts', 'number[]')], '')]}
+
+# S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
+OVERRIDES[('HitStop', 'play')] = {
+    'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',
+            'physics, game timers, actions, tweens, animations, scaled particles and shakes. `opts.exclude` keeps',
+            'GameObjects running, `opts.only` freezes just those, `opts.shake` shakes through the freeze.',
+            'Overlapping calls keep the longer remaining time and the lower scale.',
+            '`HitStop.play(0.08, {shake = "pixel_hit"})`'],
+    'overloads': [([('seconds', 'number'), ('opts?', 'HitStopOptions')], '')]}
+# S48 screen transitions: lua_CFunctions taking a kind (name or TransitionKind), a duration and an
+# options table (TransitionOptions in engine/core/script/binding/stubs/Transition.lua)
+_TRANSITION_ARGS = [('kind?', 'TransitionKindName|integer'), ('duration?', 'number'), ('options?', 'TransitionOptions')]
+OVERRIDES[('Transition', 'play')] = {
+    'doc': ['Covers the screen (45 % of `duration`), holds it covered (10 %, or `options.hold`) and reveals it',
+            '(45 %), calling `options.onCovered` at the hold. A running transition is replaced from its coverage.',
+            'Left-out arguments come from Project Settings > Graphics > Screen Transitions.',
+            '`local h = Transition.play("crt_off", 1.2); Coroutine.waitFor(h)`'],
+    'overloads': [(_TRANSITION_ARGS, 'TransitionHandle')]}
+OVERRIDES[('Transition', 'cover')] = {
+    'doc': ['Covers the screen and keeps it covered until reveal() or stop(); done once covered.'],
+    'overloads': [(_TRANSITION_ARGS, 'TransitionHandle')]}
+OVERRIDES[('Transition', 'reveal')] = {
+    'doc': ['Uncovers the screen from the running transition\'s coverage (from covered when none runs).'],
+    'overloads': [([('kind?', 'TransitionKindName|integer'), ('duration?', 'number'), ('options?', 'TransitionOptions')],
+                   'TransitionHandle')]}
+OVERRIDES[('Transition', 'loadScene')] = {
+    'doc': ['Covers, calls `options.onCovered`, loads the scene stack (SceneManager.loadScene), holds while it',
+            'loads and reveals once the new scenes drew a frame; a loading scene shown meanwhile is revealed',
+            'and covered again. The handle is invalid when SceneManager has no such scene.',
+            '`Transition.loadScene("Level2", "iris", 0.8, {shape = "diamond"})`'],
+    'overloads': [([('scene', 'string')] + _TRANSITION_ARGS, 'TransitionHandle')]}
 
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)
@@ -3079,6 +3173,19 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# T1 R75: the terrain writes, raw functions taking and returning tables (docs/scripting/terrain.md)
+OVERRIDES[('Terrain', 'applyOps')] = {
+    'doc': ['Runs edit_terrain\'s op tables (world X and Z, world heights), all or nothing; needs Allow Runtime',
+            'Edits. Returns the result: changed, ops, stats, warnings. docs/scripting/terrain.md.'],
+    'overloads': [([('ops', 'table[]')], 'table')]}
+OVERRIDES[('Terrain', 'getHeights')] = {
+    'doc': ['w * h terrain-local heights of the height map\'s texel rectangle, row by row.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer')], 'number[]')]}
+OVERRIDES[('Terrain', 'setHeights')] = {
+    'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
+            'Returns the result table, as applyOps.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
@@ -3162,6 +3269,24 @@ OVERRIDES[('Palette', 'getRamp')] = {
     'overloads': [([('name', 'string')], 'Vector4[]')]}
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
+
+# S48 PixelFX player: lua_CFunctions taking a GameObject, an effect name and an options table
+# (PixelFXOptions in engine/core/script/binding/stubs/PixelFX.lua)
+OVERRIDES[('PixelFX', 'play')] = {
+    'doc': ['Plays a sprite effect on the GameObject\'s own library:sprite material for `duration` seconds (game',
+            'time, hit-stop aware, unless `opts.unscaled`), turning the feature it needs on in that material when',
+            'it lacks it. One effect per feature: a running one is replaced. Errors on a GameObject with no',
+            'library:sprite material.',
+            '`local h = PixelFX.play(enemy, "dissolve", 0.9, {embers = "ember"}); Coroutine.waitFor(h)`'],
+    'overloads': [([('go', 'EntityHandle'), ('effect', 'PixelFXEffectName'), ('duration', 'number'),
+                    ('opts?', 'PixelFXOptions')], 'PixelFXHandle')]}
+OVERRIDES[('PixelFX', 'set')] = {
+    'doc': ['Sets a value directly: a channel ("flash", "fade", "dissolve", "ramp", their amounts 0..1) or any',
+            'library:sprite property by name (colours linear). It stops a running effect of that feature and',
+            'turns the feature on when needed.',
+            '`PixelFX.set(player, "fade", 0.5)`'],
+    'overloads': [([('go', 'EntityHandle'), ('name', 'string'), ('value', 'number|Vector2|Vector3|Vector4')], '')]}
+PROPERTY_OVERRIDES[('PixelFXHandle', 'onFinished')] = ('fun()|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {

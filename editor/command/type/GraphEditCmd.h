@@ -24,12 +24,13 @@ namespace jasperengine::editor{
         std::string before;
         std::string after;
         std::string label;
+        bool creates = false;   // the step made the file: undo removes it (T2 R16)
         bool write(const std::string& text) const;
 
     public:
         using ChangeListener = std::function<void(const std::filesystem::path& file)>;
 
-        GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label);
+        GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label, bool createsFile = false);
 
         // Called after each write of execute (a redo too) and undo, with the absolute path; not when
         // the write failed. Main thread, like the history. Returns what removes it: do that before
@@ -43,7 +44,7 @@ namespace jasperengine::editor{
         bool affectsStructure() const override { return false; }
         std::string describe() const override { return label; }
         const char* typeName() const override { return "GraphEditCmd"; }
-        bool isNoOp() const override { return before == after; }
+        bool isNoOp() const override { return !creates && before == after; }
         size_t memoryBytes() const override { return sizeof(*this) + before.size() + after.size(); }
         bool releaseOffThread() const override { return true; }
         std::vector<Touched> touchedPaths(bool) const override { return {{file, false}}; }

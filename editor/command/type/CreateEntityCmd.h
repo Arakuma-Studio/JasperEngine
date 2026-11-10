@@ -128,7 +128,11 @@ namespace jasperengine::editor{
         // GameObject > 2D Object > Sprite Batch (S52 R10): a Sprite with a Sprite Batch
         SPRITE_BATCH,
         // a Text in the built-in pixel font at x1 (S51 R25)
-        TEXT_PIXEL
+        TEXT_PIXEL,
+        // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
+        VOXEL_VOLUME,
+        // a Terrain World: the Hierarchy's row opens Create Terrain World (T4 R40), which makes it with its folder
+        TERRAIN_WORLD
     };
 
     class CreateEntityCmd: public Command{

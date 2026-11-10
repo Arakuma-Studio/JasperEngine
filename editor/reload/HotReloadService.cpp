@@ -499,6 +499,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadVoxelVolumes(ctx, files(external, "voxel"));
     reload::reloadPalettes(ctx, both("palette"));
     reload::reloadTilesets(ctx, both("tileset"));
     {

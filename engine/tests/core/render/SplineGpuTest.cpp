@@ -271,6 +271,67 @@ TEST_F(SplineGpu, FenceAndWall){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// T3 R26: an item whose origin is over a hole goes, deterministically; a road bridges one and warns
+TEST_F(SplineGpu, InstantiateDropsOverHole){
+    JASPER_REQUIRE_GPU();
+    makeTerrain(10.0f, [](float, float){ return 0.3f; });
+    std::vector<spline::SplineKnot> knots = {knotAt(-40, 3, 0, 1), knotAt(40, 3, 0, 1)};
+    const Entity road = splineObject(knots, litColor(0.3f, 0.3f, 0.3f));
+    SplineExtrudeComponent extrude;
+    extrude.shape = SplineExtrudeShape::Crown;
+    extrude.conform = SplineConform::TerrainHeight;
+    scene.addComponent<SplineExtrudeComponent>(road, extrude);
+
+    const Entity row = splineObject(knots, litColor(0.45f, 0.3f, 0.18f), spline::SplineType::Linear);
+    scene.removeComponent<MeshComponent>(row);
+    SplineInstantiateComponent instantiate;
+    instantiate.mode = SplineInstantiateMode::Spacing;
+    instantiate.items.push_back({AssetRef("splines/post.obj"), 1.0f});
+    instantiate.spacing = 4.0f;
+    instantiate.conform = SplineConform::TerrainHeight;
+    instantiate.seed = 7;
+    scene.addComponent<SplineInstantiateComponent>(row, instantiate);
+    camera.setPosition(0.0f, 30.0f, 40.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+    ASSERT_TRUE(render());
+    std::shared_ptr<SplineSystem> system = scene.getSystem<SplineSystem>();
+    const uint32_t solid = system->getInstantiateStats(row).instances;
+    ASSERT_GT(solid, 10u);
+    for (const SplineWarning& warning : system->getExtrudeWarnings(road)){
+        EXPECT_NE(warning.kind, SplineWarningKind::OverHole);
+    }
+
+    // a hole across the middle of the row: x from -16 to 16
+    std::vector<unsigned char> holes(static_cast<size_t>(16) * 16, 255);
+    for (int y = 0; y < 16; y++){
+        for (int x = 6; x < 10; x++){
+            holes[static_cast<size_t>(y) * 16 + x] = 0;
+        }
+    }
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain->getEntity());
+    component.holeMap.setData("spline-gpu-holes", TextureData(16, 16, static_cast<unsigned int>(holes.size()), ColorFormat::RED, 1, holes.data()));
+    component.needUpdateTexture = true;
+    component.holeMapRevision++;
+    system->rebuildNow(road);
+    system->rebuildNow(row);
+    ASSERT_TRUE(render());
+
+    const uint32_t cut = system->getInstantiateStats(row).instances;
+    // 32 m of the 80 m row is over the hole; the items that stay did not move, so a second build agrees
+    EXPECT_LE(cut, solid - 3u);
+    EXPECT_GE(cut, solid / 2u);
+    system->rebuildNow(row);
+    ASSERT_TRUE(render());
+    EXPECT_EQ(system->getInstantiateStats(row).instances, cut);
+    bool warned = false;
+    for (const SplineWarning& warning : system->getExtrudeWarnings(road)){
+        warned = warned || warning.kind == SplineWarningKind::OverHole;
+    }
+    EXPECT_TRUE(warned) << "a road over a hole bridges it and says so";
+    TextureDataPool::remove("spline-gpu-holes");
+}
+
 TEST_F(SplineGpu, RiverFlowsBetweenItsBanks){
     JASPER_REQUIRE_GPU();
     // a valley winding along z = 6 sin(x / 15), deepest on its line

@@ -21,6 +21,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/SplineAnimateComponent.h"
@@ -63,9 +64,11 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -630,6 +633,8 @@ namespace {
         rows.push_back(enabledRow<ModelComponent>("model"));
         rows.push_back(enabledRow<TilemapComponent>("tilemap"));
         rows.push_back(enabledRow<TerrainComponent>("terrain"));
+        rows.push_back(enabledRow<VoxelVolumeComponent>("voxelvolume"));
+        rows.push_back(enabledRow<TerrainWorldComponent>("terrainworld"));
         rows.push_back(enabledRow<PointsComponent>("points"));
         rows.push_back(enabledRow<LineRendererComponent>("linerenderer"));
         rows.push_back(enabledRow<TrailRendererComponent>("trailrenderer"));
@@ -662,6 +667,7 @@ namespace {
         rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
         rows.push_back(enabledRow<SortingGroupComponent>("sortinggroup"));
         rows.push_back(enabledRow<SpriteBatchComponent>("spritebatch"));
+        rows.push_back(enabledRow<HitStopExemptComponent>("hitstopexempt"));
         rows.push_back(enabledRow<TilemapLayerComponent>("tilemaplayer"));
         rows.push_back(enabledRow<TilemapCollider2DComponent>("tilemapcollider2d"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
@@ -1232,7 +1238,8 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
                     case ShaderPropertyKind::FLOAT:
                     case ShaderPropertyKind::RANGE:
                     case ShaderPropertyKind::TOGGLE: binding.kind = PropertyKind::Float; break;
-                    case ShaderPropertyKind::INT: binding.kind = PropertyKind::Float; break;
+                    case ShaderPropertyKind::INT:
+                    case ShaderPropertyKind::CHOICE: binding.kind = PropertyKind::Float; break;
                     case ShaderPropertyKind::COLOR:
                     case ShaderPropertyKind::HDRCOLOR:
                         binding.kind = PropertyKind::Color4;

@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/ImpostorBaker.h"
+#include "terrain/TerrainMapPersistence.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldEditor.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#endif
+#include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -29,6 +36,7 @@
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
+#include "window/PixelArtCleanupWindow.h"
 #include "tilemap/TilePaletteWindow.h"
 #include "tilemap/TilesetEditorWindow.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -40,6 +48,8 @@
 #include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
+#include "window/NoiseGraphWindow.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -99,6 +109,10 @@
 #include "window/vcs/VcsUi.h"
 #include "window/InputActionsWindow.h"
 #include "navigation/NavigationWindow.h"
+#include "voxel/VoxelBrushTool.h"
+#include "window/VoxelCreateDialog.h"
+#include "window/VoxelEditWindow.h"
+#include "window/VoxelSliceView.h"
 #include "command/PlayChangeReview.h"
 #include "pose/PoseEditSession.h"
 #include "widget/ColorPickerWindow.h"
@@ -125,6 +139,7 @@
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "pixelart/cleanup/CleanupSession.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -155,6 +170,7 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "particles/ParticleEffectPreview.h"
+#include "pixelart/fx/EffectCapture.h"
 #include "procmat/ProceduralRun.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
@@ -255,6 +271,7 @@ editor::App::App(){
     animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
     avatarWindow = new AvatarWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    noiseGraphWindow = new NoiseGraphWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
     particleEffectWindow = new ParticleEffectWindow(&project);
@@ -265,6 +282,7 @@ editor::App::App(){
     applyPaletteDialog = new ApplyPaletteDialog(&project);
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
+    pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
     tilePaletteWindow = new tilemap::TilePaletteWindow(&project);
     tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project, projectWindow);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
@@ -292,6 +310,8 @@ editor::App::App(){
     StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
     inputActionsWindow = new InputActionsWindow(&project);
     navigationWindow = new NavigationWindow(&project);
+    voxelEditWindow = new VoxelEditWindow(&project);
+    voxelSliceView = new VoxelSliceView(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -617,6 +637,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             if (spriteNormalsWindow->canUndoPaint()) undoLabel = "Undo Paint Stroke";
             if (spriteNormalsWindow->canRedoPaint()) redoLabel = "Redo Paint Stroke";
         }
+        // the Pixel Art Cleanup window's recipe edits come first, until Write
+        if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow) {
+            if (pixelArtCleanupWindow->canUndo()) undoLabel = "Undo Cleanup Edit";
+            if (pixelArtCleanupWindow->canRedo()) redoLabel = "Redo Cleanup Edit";
+        }
     }
 
     // Every item below is a catalog command (shortcuts/DefaultCommands.cpp): its shortcut
@@ -797,7 +822,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("Visual Effects", {
             catalogItem("window.particleEffect", windowMenuLabel(ParticleEffectWindow::WINDOW_NAME))
         }),
-        catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Terrain", {
+            catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+            catalogItem("window.noiseGraph", windowMenuLabel(NoiseGraphWindow::WINDOW_NAME)),
+            catalogItem("window.voxelVolume", windowMenuLabel(VoxelEditWindow::WINDOW_NAME)),
+            catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME))
+        }),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
             catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
@@ -823,6 +853,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME)),
+            catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME)),
             catalogItem("window.tilePalette", windowMenuLabel(tilemap::TilePaletteWindow::WINDOW_NAME)),
             catalogItem("window.tilesetEditor", windowMenuLabel(tilemap::TilesetEditorWindow::WINDOW_NAME))
         }),
@@ -1061,6 +1092,18 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleNoiseGraph:
+            showEditorWindow(noiseGraphWindow);
+            break;
+        case AppMenuCommand::AssetsCreateNoiseGraph:
+            projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::ToggleVoxelVolume:
+            showEditorWindow(voxelEditWindow);
+            break;
+        case AppMenuCommand::ToggleVoxelSlice:
+            showEditorWindow(voxelSliceView);
+            break;
         case AppMenuCommand::ToggleProfiler:
             showEditorWindow(profilerWindow);
             break;
@@ -1118,6 +1161,13 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::TogglePixelArtCheck:
             pixelArtCheckWindow->open();
+            break;
+        case AppMenuCommand::TogglePixelArtCleanup:
+            if (command.payload.empty()) {
+                pixelArtCleanupWindow->open();
+            } else {
+                openPixelArtCleanup(FileUtils::pathFromUtf8(command.payload));
+            }
             break;
         case AppMenuCommand::ToggleTilePalette:
             tilePaletteWindow->setOpen(true);
@@ -1586,6 +1636,7 @@ editor::UndoTimeline::Target editor::App::undoTarget() const{
         case LastFocusedWindow::AnimationClip:
         // its assigns are steps too; its paint strokes are its own (undoRedo takes them first)
         case LastFocusedWindow::SpriteNormals: focused = UndoTimeline::FocusedWindow::Other; break;
+        case LastFocusedWindow::PixelArtCleanup: focused = UndoTimeline::FocusedWindow::Other; break;
     }
     return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
 }
@@ -1617,6 +1668,15 @@ void editor::App::undoRedo(bool undo){
             else CommandHandle::get(routedScene)->redo();
             return;
         }
+    }
+    // the Pixel Art Cleanup window's recipe edits are its own until Write (S46 R43)
+    if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow) {
+        if (undo ? pixelArtCleanupWindow->canUndo() : pixelArtCleanupWindow->canRedo()) {
+            if (undo) pixelArtCleanupWindow->undoEdit();
+            else pixelArtCleanupWindow->redoEdit();
+            return;
+        }
+        if (undo) pixelArtCleanupWindow->dropRedo();
     }
     const bool dragging = CommandHistory::anyInteractiveOpen();
     std::string why;
@@ -2055,16 +2115,18 @@ void editor::App::showAlert(){
                 if (ImGui::Button("Yes", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onYes) {
-                        alert.onYes();
+                    // a copy: the callback may open another alert, which replaces alert.onYes while it runs
+                    if (const std::function<void()> callback = alert.onYes) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("No", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onNo) {
-                        alert.onNo();
+                    // a copy: the callback may open another alert, which replaces alert.onNo while it runs
+                    if (const std::function<void()> callback = alert.onNo) {
+                        callback();
                     }
                 }
             } else if (alert.type == AlertType::ThreeButton) {
@@ -2079,24 +2141,27 @@ void editor::App::showAlert(){
                 if (ImGui::Button(alert.yesLabel.c_str(), ImVec2(yesWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onYes) {
-                        alert.onYes();
+                    // a copy: the callback may open another alert, which replaces alert.onYes while it runs
+                    if (const std::function<void()> callback = alert.onYes) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button(alert.noLabel.c_str(), ImVec2(noWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onNo) {
-                        alert.onNo();
+                    // a copy: the callback may open another alert, which replaces alert.onNo while it runs
+                    if (const std::function<void()> callback = alert.onNo) {
+                        callback();
                     }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel", ImVec2(120, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
-                    if (alert.onCancel) {
-                        alert.onCancel();
+                    // a copy: the callback may open another alert, which replaces alert.onCancel while it runs
+                    if (const std::function<void()> callback = alert.onCancel) {
+                        callback();
                     }
                 }
             }
@@ -2263,6 +2328,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(VoxelEditWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
@@ -2279,6 +2345,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(NoiseGraphWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -2301,6 +2368,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(PixelArtCleanupWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2551,6 +2619,7 @@ void editor::App::setup() {
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
     ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    pixelart::fx::EffectCapture::setFrameRequester([this]() { requestRedraw(); });
     procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
     ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
 
@@ -2591,6 +2660,7 @@ void editor::App::setup() {
     // the Palette context's commands (a later add takes the user's stored binding too)
     paletteWindow->bindCommands(CommandCatalog::editor());
     pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
+    pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
     tilePaletteWindow->bindCommands(CommandCatalog::editor());
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
@@ -2952,7 +3022,7 @@ void editor::App::show(){
         // the Animator, Particle Effect and graph windows edit project assets (their selection in the Inspector too)
         // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animationStatisticsWindow->isFocused() || animatorWindow->isFocused() ||
-                particleEffectWindow->isFocused() || spritePreviewWindow->isFocused() || GraphEditorWindow::focused() ||
+                particleEffectWindow->isFocused() || noiseGraphWindow->isFocused() || spritePreviewWindow->isFocused() || GraphEditorWindow::focused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
                  (animatorWindow->inspectorShowsSelection() || GraphEditorWindow::anyInspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
@@ -2960,6 +3030,8 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (spriteNormalsWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::SpriteNormals;
+        } else if (pixelArtCleanupWindow->isFocused()) {
+            lastFocusedWindow = LastFocusedWindow::PixelArtCleanup;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
         } else if (clipUndoGoesToProject(placementBusy)) {
@@ -3035,6 +3107,9 @@ void editor::App::show(){
     aboutWindow.show();
     projectSettingsWindow.show();
     nativePluginDialog.show();
+    // Create Terrain opens from the Hierarchy and from the Terrain window's empty state: drawn here, where it
+    // shows whichever of the two asked and whether the Inspector is drawn or behind another tab
+    CreateTerrainDialog::instance().show();
     // a native plugin was made (either dialog): its Lua mock opens in the code editor
     for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
         if (created.empty()) continue;
@@ -3061,6 +3136,17 @@ void editor::App::show(){
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
+    noiseGraphWindow->show();
+    voxelEditWindow->show();
+    voxelSliceView->show();
+    VoxelCreateDialog::instance().draw();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R40, R41: drawn here, so they show whichever tab opened them
+    CreateTerrainWorldDialog::instance().show();
+    ConvertTerrainWorldDialog::instance().show();
+    ImportHeightmapDialog::instance().show();
+    TerrainWorldPanel::instance().show();
+#endif
     textureSynthesisWindow->show();
     audioMixerWindow->show();
     particleEffectWindow->show();
@@ -3069,6 +3155,7 @@ void editor::App::show(){
     // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
     paletteWindow->show();
     pixelArtCheckWindow->show();
+    pixelArtCleanupWindow->show();
     tilePaletteWindow->show();
     tilesetEditorWindow->show();
     applyPaletteDialog->show();
@@ -3334,6 +3421,10 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // S46: detection spreads over the job pool; check_pixel_art gains cleanup_outputs. Here, not in the
+    // constructor: the editor's App is static, and the test binary must start with S42's registry empty
+    pixelart::cleanup::installEditorJobs();
+    pixelart::cleanup::registerCleanupOutputsRule();
     // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
     SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 
@@ -4076,11 +4167,23 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
+    ImpostorBaker::update();
+    if (ImpostorBaker::isRunning()) requestFrame();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     // Pixel Art Mode's checks on import and at Play (S42 R1, R25): nothing while the mode is off
     pixelart::PixelArtMode::get().tick(&project);
     project.updateGeneratedSources();
+    // screen transitions (S48): the Engine draws them over the game's frame while a game runs; in
+    // edit mode the Game view's preview draws them itself (never the Scene view) on the editor's clock
+    {
+        const bool playing = project.isAnyScenePlaying();
+        jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(playing);
+        jasperengine::pixelart::ScreenTransition::setViewDrawId(playing ? 0 : GAME_VIEW_ID);
+        if (!playing)
+            jasperengine::pixelart::ScreenTransition::update(ImGui::GetIO().DeltaTime);
+    }
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
         animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
@@ -4092,6 +4195,19 @@ void editor::App::engineRender(){
     // Physics Placement gesture (its preview poses are in the scene)
     project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // an edited terrain map reaches its file a second after the last edit (T1 R29)
+    TerrainMapPersistence::get().update();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: the worlds' pump (an idle editor runs no engine frame) and their tiles' debounce (R31)
+    {
+        static bool hostInstalled = false;
+        if (!hostInstalled) {
+            installTerrainWorldHost(&project);
+            hostInstalled = true;
+        }
+        updateTerrainWorlds(TerrainMapPersistence::clockSeconds());
+    }
+#endif
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();
@@ -4372,6 +4488,9 @@ void editor::App::engineRender(){
     // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
     // private scenes step and draw here, whether a view shows or not
     ParticleEffectPreview::processFrame();
+    // contact sheet captures (capture_contact_sheet, the Contact Sheet dialog): their scratch scenes
+    // step and draw here too
+    pixelart::fx::EffectCapture::processFrame();
     // Procedural Material evaluations and their lit balls (preview_procedural_material, bake_procedural_material):
     // the evaluator draws its own passes here, outside any render pass
     procmat::ProceduralRun::processFrame();
@@ -4668,6 +4787,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
+    // (the Game view's transition preview draws inside it: ScreenTransition::setViewDrawId)
     Engine::drawView(GAME_VIEW_ID, target, layers);
 
     gameWindow->markEditPassRendered(sceneProject.id);
@@ -4733,7 +4853,10 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     renderSystem->setDisableClouds(false);
     renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
+    // the Game view's transition preview: this frame is the game's, the Engine draws it over the scenes
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(true);
     Engine::systemDraw();
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(false);
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
@@ -5247,6 +5370,7 @@ void editor::App::shutdownBackgroundWork() {
     if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
     // Shift-click generations and Regenerates: cancelled, waited for a moment
     if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
+    if (pixelArtCleanupWindow) pixelArtCleanupWindow->shutdownJobs(2.0);
     if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
         Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
     }
@@ -5254,6 +5378,7 @@ void editor::App::shutdownBackgroundWork() {
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
     ParticleEffectPreview::setFrameRequester(nullptr);
+    pixelart::fx::EffectCapture::setFrameRequester(nullptr);
     procmat::ProceduralRun::setFrameRequester(nullptr);
     ProceduralMaterialWindow::setFrameRequester(nullptr);
 }
@@ -5269,6 +5394,7 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
+    pixelart::fx::EffectCapture::releaseGpu();
     procmat::ProceduralRun::releaseGpu();
     ProceduralMaterialWindow::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
@@ -5349,6 +5475,7 @@ void editor::App::prepareForProjectSwitch() {
     poseAnimationWindow->prepareForProjectSwitch();
     // the Animator window's preview goes back, its controller document is dropped
     animatorWindow->prepareForProjectSwitch();
+    noiseGraphWindow->prepareForProjectSwitch();
     avatarWindow->stopPreview();
     avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
@@ -5366,6 +5493,7 @@ void editor::App::prepareForProjectSwitch() {
     // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
     paletteWindow->resetForProjectSwitch();
     pixelArtCheckWindow->resetForProjectSwitch();
+    pixelArtCleanupWindow->resetForProjectSwitch();
     tilePaletteWindow->resetForProjectSwitch();
     tilesetEditorWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
@@ -5517,6 +5645,7 @@ void editor::App::stopTransientPreviews() {
     if (animationClipAppHooks().stopTransientPreviews) {
         animationClipAppHooks().stopTransientPreviews();
     }
+    VoxelBrushTool::get().disarm();
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -5913,9 +6042,20 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
     //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
     //      (pixelSnapInstanceMode).
-    // v62: S50's tilemap tiles: MESH 'Tcl' 49 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
+    // v63: the terrain programme re-appended after S91, S43, S49 and S52: T5's foliage
+    //      (MESH 'Cin' 'Wnd' 'Dth' 49-51, DEPTH 21-23, GBUFFER 19-21; library:impostor), T3's holes
+    //      and tiers ('Thl': MESH 52, DEPTH 24, GBUFFER 22; GBUFFER 'Tqm' 'Tql' 'Txl' 23-25 and the
+    //      terrain's Lit defines), T6's Voxel Volumes (HAS_VOXEL and its tiers as Lit defines,
+    //      GBUFFER 'Vox' 26; includes/voxel_vs.glsl and voxel_fs.glsl), T3's u_fs_terrainLayers
+    //      packed to three vectors and a component a layer (includes/terrain_fs.glsl) and T4's Terrain
+    //      Worlds (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl; 'Twd': MESH 53, DEPTH 25, GBUFFER
+    //      27). The programme's own v58-v62 caches held other sources and numbers, so v63 is new to both sides.
+    // v64: S48's Pixel FX (after the terrain programme's v63): library:sprite's DITHER_FADE, DISSOLVE, RAMP_RECOLOR,
+    //      DROP_SHADOW and OUTLINE_STYLE (includes/pixel_fx.glsl, u_fxRampTexture), the uber pass's Glitch
+    //      (BLIT 'Gli' 20) and the screen transition program.
+    // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v62";
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -6037,6 +6177,20 @@ void editor::App::openSpriteNormals(const std::vector<std::filesystem::path>& im
     }
 }
 
+void editor::App::openPixelArtCleanup(const std::filesystem::path& image){
+    std::string error;
+    if (!pixelArtCleanupWindow->open(image, error)) {
+        registerAlert("Pixel Art Cleanup", "Can't open " + FileUtils::pathToUtf8(image.filename()) + ": " + error);
+    }
+}
+
+void editor::App::rerunPixelArtCleanup(const std::filesystem::path& output){
+    std::string error;
+    if (!pixelArtCleanupWindow->startRerun(output, error)) {
+        registerAlert("Pixel Art Cleanup", "Can't re-run " + FileUtils::pathToUtf8(output.filename()) + ": " + error);
+    }
+}
+
 void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now){
     std::string error;
     if (!spriteNormalsWindow->openForEntity(sceneId, static_cast<Entity>(entity), submesh, now, error)) {
@@ -6133,7 +6287,8 @@ namespace {
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
                       editor::AudioMixerWindow* audioMixer, editor::ParticleEffectWindow* particleEffect,
-                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial) {
+                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial,
+                      editor::NoiseGraphWindow* noiseGraph, editor::VoxelEditWindow* voxelVolume, editor::VoxelSliceView* voxelSlice) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -6161,6 +6316,9 @@ namespace {
         visit(editor::ParticleEffectWindow::WINDOW_NAME, particleEffect);
         visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
         visit(editor::ProceduralMaterialWindow::WINDOW_NAME, proceduralMaterial);
+        visit(editor::NoiseGraphWindow::WINDOW_NAME, noiseGraph);
+        visit(editor::VoxelEditWindow::WINDOW_NAME, voxelVolume);
+        visit(editor::VoxelSliceView::WINDOW_NAME, voxelSlice);
     }
 
 }
@@ -6179,7 +6337,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
     return panels;
 }
 
@@ -6192,7 +6350,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -6204,6 +6362,8 @@ void editor::App::applyDefaultLayout(){
     poseAnimationWindow->setOpen(false);
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
+    voxelEditWindow->setOpen(false);
+    voxelSliceView->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     audioMixerWindow->setOpen(false);
     particleEffectWindow->setOpen(false);
@@ -6392,6 +6552,7 @@ void editor::App::applyPanelVisibilitySettings() {
     soundBrowserWindow->setOpen(visibility.soundBrowser);
     graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
+    pixelArtCleanupWindow->setOpen(visibility.pixelArtCleanup);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
@@ -6415,6 +6576,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.graphEditor = graphEditorWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
+    visibility.pixelArtCleanup = pixelArtCleanupWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();

@@ -3,6 +3,7 @@
 
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -36,6 +37,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"

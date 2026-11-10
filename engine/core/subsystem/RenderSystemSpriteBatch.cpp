@@ -13,6 +13,8 @@
 #include "RenderSystem.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"

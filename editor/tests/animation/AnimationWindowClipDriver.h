@@ -25,6 +25,7 @@
 
 #include "window/AnimationWindowClip.h"
 #include "component/Transform.h"
+#include "component/MeshComponent.h"
 #include "window/AnimationWindowClipUtil.h"
 #include "window/AnimationWindowClipCurves.h"
 #include "window/AnimationWindow.h"
@@ -47,6 +48,7 @@
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 #include "window/InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "audio/TimelineAudioPreview.h"
 #include "animation/ClipAudio.h"
 

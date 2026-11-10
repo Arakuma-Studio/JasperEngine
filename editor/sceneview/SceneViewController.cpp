@@ -30,6 +30,7 @@
 #include "window/StatusBar.h"
 
 #include "component/InstancedMeshComponent.h"
+#include "component/Transform.h"
 
 #include <algorithm>
 #include <cctype>

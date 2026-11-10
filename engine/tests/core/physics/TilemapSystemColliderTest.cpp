@@ -9,6 +9,7 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "LogCapture.h"
 #include "Scene.h"
 #include "component/GridComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -192,13 +193,23 @@ TEST_F(TilemapSystemColliders, UnrelatedEditsKeepRestingContacts) {
     ASSERT_EQ(ends, 0);
     ASSERT_FALSE(physics->getContactSummary2D(box).empty());
 
-    // the copy on write: the first write clones the store
+    // what an edit of chunk (2, 0) rebuilds on a store nobody else holds
+    uint64_t built = state().chunksBuilt;
+    layer->setCell(21, 6, 0);
+    frame();
+    const uint64_t oneChunkEdit = state().chunksBuilt - built;
+    ASSERT_GT(oneChunkEdit, 0u);
+
+    // the copy on write: the first write clones the store; the clone's chunks keep their
+    // revisions, so the same edit rebuilds the same chunks, not every one
     const TileCellsRef snapshot = component().cells;
     const TileCells* before = &component().cells.read();
     layer->setCell(20, 6, 0);
     ASSERT_NE(&component().cells.read(), before);
     const uint64_t replaced = state().chunksReplaced;
+    built = state().chunksBuilt;
     frame(30);
+    EXPECT_EQ(state().chunksBuilt - built, oneChunkEdit) << "a copy's edit rebuilds what the same edit did before it";
     EXPECT_EQ(state().chunksReplaced - replaced, 1u) << "only the edited chunk's colliders";
     EXPECT_EQ(ends, 0) << "the box's contact did not end";
     EXPECT_EQ(begins, 1);
@@ -237,11 +248,15 @@ TEST_F(TilemapSystemColliders, DisabledColliderReleasesOnce) {
 
 // R38: Box2D filters are 16 bits: wider values clamp instead of wrapping onto other categories
 TEST_F(TilemapSystemColliders, FilterBitsClampToSixteenBits) {
+    const test::LogCapture log;
+    const char* clampWarning = "past Box2D's 16 bits";
     collider().categoryBits = 0x12345u;
     collider().maskBits = 0xFFFFFFFFu;
     collider().groupIndex = 40000;
     floor();
     frame(2);
+    // once for the change, not again on the frames after it
+    EXPECT_EQ(log.count(D_LOG_WARN, clampWarning), 1u);
     ASSERT_TRUE(body().generated);
     ASSERT_FALSE(body().generated->chunks.empty());
     for (const auto& [coord, chunk] : body().generated->chunks) {
@@ -255,4 +270,12 @@ TEST_F(TilemapSystemColliders, FilterBitsClampToSixteenBits) {
     collider().needUpdate = true;
     frame();
     EXPECT_EQ(body().generated->chunks.begin()->second.colliders[0].groupIndex, -32768);
+    EXPECT_EQ(log.count(D_LOG_WARN, clampWarning), 2u);
+    // values Box2D holds warn nothing
+    collider().categoryBits = 2;
+    collider().maskBits = 0xFFFFu;
+    collider().groupIndex = -3;
+    collider().needUpdate = true;
+    frame();
+    EXPECT_EQ(log.count(D_LOG_WARN, clampWarning), 2u);
 }

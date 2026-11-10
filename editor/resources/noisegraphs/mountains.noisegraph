@@ -1,0 +1,224 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 16,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "ridged",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "basis": "perlin",
+        "dimensions": "2d",
+        "frequency": 2.5,
+        "octaves": 8,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "seed_offset": 0
+      }
+    },
+    {
+      "id": "n2",
+      "type": "fbm",
+      "position": [
+        0.0,
+        200.0
+      ],
+      "params": {
+        "basis": "perlin",
+        "dimensions": "2d",
+        "frequency": 1.5,
+        "octaves": 4,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "seed_offset": 7
+      }
+    },
+    {
+      "id": "n3",
+      "type": "remap",
+      "position": [
+        240.0,
+        200.0
+      ],
+      "params": {
+        "from_min": -0.6,
+        "from_max": 0.6,
+        "to_min": 0.0,
+        "to_max": 1.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n5",
+      "type": "math",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "op": "multiply",
+        "b": 1.0
+      }
+    },
+    {
+      "id": "n8",
+      "type": "remap",
+      "position": [
+        720.0,
+        0.0
+      ],
+      "params": {
+        "from_min": 0.0,
+        "from_max": 0.7,
+        "to_min": 0.02,
+        "to_max": 1.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n10",
+      "type": "output_height",
+      "position": [
+        960.0,
+        0.0
+      ],
+      "params": {
+        "unit": "normalized"
+      }
+    },
+    {
+      "id": "n12",
+      "type": "slope_mask",
+      "position": [
+        960.0,
+        200.0
+      ],
+      "params": {
+        "min_angle": 30.0,
+        "max_angle": 90.0,
+        "falloff": 8.0
+      }
+    },
+    {
+      "id": "n14",
+      "type": "output_layer",
+      "position": [
+        1200.0,
+        200.0
+      ],
+      "params": {
+        "layer": 1,
+        "optional": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e4",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n3",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e6",
+      "from": {
+        "node": "n1",
+        "port": "out"
+      },
+      "to": {
+        "node": "n5",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "n3",
+        "port": "out"
+      },
+      "to": {
+        "node": "n5",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e9",
+      "from": {
+        "node": "n5",
+        "port": "out"
+      },
+      "to": {
+        "node": "n8",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e11",
+      "from": {
+        "node": "n8",
+        "port": "out"
+      },
+      "to": {
+        "node": "n10",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e13",
+      "from": {
+        "node": "n8",
+        "port": "out"
+      },
+      "to": {
+        "node": "n12",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e15",
+      "from": {
+        "node": "n12",
+        "port": "out"
+      },
+      "to": {
+        "node": "n14",
+        "port": "weight"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "mountains",
+      "name": "Mountains",
+      "description": "Sharp ridges over broad massifs.",
+      "tags": [
+        "rugged",
+        "rock"
+      ],
+      "terrain_size": 2000.0,
+      "max_height": 600.0
+    }
+  }
+}

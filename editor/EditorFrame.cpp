@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorFrame.h"
+#include "terrain/TerrainMapPersistence.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
 #include "diag/HangWatchdog.h"
@@ -168,7 +169,9 @@ bool EditorFrame::run(EditorFrameState& state){
                                  app->hasPendingMainThreadTasks() || frameRequest ||
                                  textFocused || !SystemRender::isGpuCreationIdle() ||
                                  // Auto Save runs in a frame: an idle editor wakes when a backup is due
-                                 project->isAutosaveDue();
+                                 project->isAutosaveDue() ||
+                                 // and so does a terrain map's write (T1 R29)
+                                 TerrainMapPersistence::get().isDue();
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
     // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames

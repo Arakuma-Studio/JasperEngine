@@ -119,3 +119,18 @@ TEST_F(NavGridTilemapTest, DualGridLayersGiveTheDrawnTile) {
     EXPECT_EQ(navGrid.getCellArea(GridCell{1, 1}), nav::AREA_NOT_WALKABLE);
     EXPECT_EQ(navGrid.getCellArea(GridCell{2, 1}), 4);
 }
+
+// the layer's tileAnchor moves its tiles, and the NavGrid reads the tile drawn over each cell's
+// centre: an anchor of one cell right shows tile (x - 1, y) there (tilegrid::tileShift, R8)
+TEST_F(NavGridTilemapTest, TileAnchorGivesTheDrawnTile) {
+    layer->getComponent<TilemapLayerComponent>().tileAnchor = Vector2(1.0f, 0.0f);
+    layer->setCell(0, 0, 1);
+    layer->setCell(2, 1, 0);
+    resolveTransforms(*scene);
+    NavGrid navGrid(scene.get(), grid);
+    ASSERT_TRUE(navGrid.rebuild());
+    EXPECT_EQ(navGrid.getCellArea(GridCell{0, 0}), nav::AREA_NOT_WALKABLE) << "the logical cell (0, 0) draws one cell right";
+    EXPECT_EQ(navGrid.getCellArea(GridCell{1, 0}), 3);
+    EXPECT_EQ(navGrid.getCellArea(GridCell{2, 1}), nav::AREA_NOT_WALKABLE);
+    EXPECT_EQ(navGrid.getCellArea(GridCell{3, 1}), 4);
+}

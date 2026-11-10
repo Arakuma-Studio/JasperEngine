@@ -614,6 +614,21 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         // with Stochastic Tiling layers beside the hex ones (TERRAIN_HEX_STOCHASTIC)
         terrain.terrainHexStochastic = true;
         add("terrain hex tiling and stochastic tiling, pixel", RenderSystem::getSubmeshShaderVariant(worst, terrain));
+
+        // T3 R21, R32: holes take the base occlusion's slot, the most a lit painted terrain binds. With
+        // the post colour and without it (the base emissive stays then), and the base normal map's slot
+        terrain.terrainHex = false;
+        terrain.terrainHexStochastic = false;
+        terrain.terrainHoles = true;
+        terrain.metallicRoughnessTexture = terrain.normalTexture = terrain.occlusionTexture = terrain.emissiveTexture = true;
+        add("terrain holes, pixel", RenderSystem::getSubmeshShaderVariant(worst, terrain));
+        MeshShaderEnvironment noPost = worst;
+        noPost.postColor = false;
+        add("terrain holes, pixel, no post colour", RenderSystem::getSubmeshShaderVariant(noPost, terrain));
+        add("terrain holes, unlit", RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), terrain));
+        MeshShaderEnvironment gbuffer = worst;
+        gbuffer.ssr = true;
+        add("terrain holes, G-buffer", RenderSystem::getSubmeshShaderVariant(gbuffer, terrain));
     }
 
     // the High Lit Quality on the base variants (with lobes too)

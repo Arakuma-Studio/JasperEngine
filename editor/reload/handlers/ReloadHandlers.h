@@ -52,6 +52,8 @@ namespace jasperengine::editor::reload {
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .particles effects: read again; every Particle System playing one rebinds (S20 R1)
     void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .voxelvolume files another program changed: the volumes read them again (T6 R77)
+    void reloadVoxelVolumes(Context& ctx, const std::vector<std::filesystem::path>& files);
     // What a .particles file says wrong as it is now: errors and unknown fields
     void addParticleEffectFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
     // graph files: another program's checked (their problems reported); open documents (the Graph

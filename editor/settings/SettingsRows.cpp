@@ -23,6 +23,9 @@
 #include "command/type/DebugSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/SortingLayersCmd.h"
+#include "command/type/TransitionSettingsCmd.h"
+#include "pixelart/PaletteRampTexture.h"
+#include "pixelart/PixelColor.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -49,6 +52,7 @@
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
+#include <cmath>
 #include <algorithm>
 #include <fstream>
 #include <cctype>
@@ -116,12 +120,16 @@ const EnumMap<Scaling> scalingModes[] = {
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<FoliageQuality> foliageQualities[] = {
+    {"low", FoliageQuality::LOW}, {"medium", FoliageQuality::MEDIUM}, {"high", FoliageQuality::HIGH}};
 const EnumMap<LightMode> lightModes[] = {
     {"automatic", LightMode::AUTOMATIC}, {"per_object", LightMode::PER_OBJECT}, {"tiled", LightMode::TILED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
+const EnumMap<terraincore::TerrainQuality> terrainQualities[] = {
+    {"high", terraincore::TerrainQuality::HIGH}, {"medium", terraincore::TerrainQuality::MEDIUM}, {"low", terraincore::TerrainQuality::LOW}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<ScreenOrientation> playerOrientations[] = {
@@ -806,6 +814,19 @@ bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply
             error = "the sorting settings could not be applied";
             return false;
         }
+    }
+    return true;
+}
+
+// Screen Transitions (S48 R41): the defaults changed, applied as one undoable step (undo scope project)
+bool setTransitionDefaults(SettingsContext& ctx, const std::function<void(jasperengine::pixelart::TransitionDefaults&)>& change, bool apply) {
+    Project* p = ctx.project();
+    jasperengine::pixelart::TransitionDefaults changed = p->getTransitionDefaults();
+    change(changed);
+    if (apply && changed != p->getTransitionDefaults()) {
+        auto* command = new TransitionSettingsCmd(p, changed);
+        command->setNoMerge();
+        p->getProjectCommandHistory()->addCommand(command);
     }
     return true;
 }
@@ -2227,6 +2248,51 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // graphics.terrainQuality.<platform>: the terrain material's tier a terrain of Quality Auto draws with (T3 R51)
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(terrainQualities);
+            s.description = std::string("Terrain Quality of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for terrains whose Quality is Auto: high, medium, low "
+                            "(absent means high; docs/mcp/guide/terrain.md)";
+            s.get = [platform](SettingsContext& ctx) { return Json(enumName(terrainQualities, ctx.project()->getTerrainQualityTier(platform))); };
+            s.set = [platform](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                terraincore::TerrainQuality tier;
+                if (!parseEnum(terrainQualities, value, tier, error)) return false;
+                if (apply) {
+                    ctx.project()->setTerrainQualityTier(platform, tier);
+                    ctx.project()->setTerrainQualityWritten(true);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("graphics.ship_all_terrain_tiers", "Export the variants of all three terrain Quality tiers, for a game that changes them at runtime.",
+                        [](Project& p) { return p.isShipAllTerrainTiers(); }, [](Project& p, bool v) { p.setShipAllTerrainTiers(v); }));
+        add(boolSetting("graphics.compress_terrain_layers", "Exports cook each terrain layer map as a compressed array slice, and the sources no longer ship.",
+                        [](Project& p) { return p.isCompressTerrainLayers(); }, [](Project& p, bool v) { p.setCompressTerrainLayers(v); }));
+        // get_project_settings says what an export would ship (T3 R46); the tiers follow from the rows above
+        {
+            Setting s;
+            s.key = "graphics.shipped_terrain_tiers";
+            s.type = "string";
+            s.set = [](SettingsContext&, const Json&, bool, std::string& error) {
+                error = "graphics.shipped_terrain_tiers follows from the other terrain settings: set those";
+                return false;
+            };
+            s.description = "The terrain Quality tiers an export ships: the platforms' tiers, any component's own, all three when a script names them or Ship All is on.";
+            s.get = [](SettingsContext& ctx) {
+                const uint32_t mask = ctx.project()->getShippedTerrainTiers();
+                std::string text;
+                for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++) {
+                    if (mask & (1u << tier)) text += (text.empty() ? "" : ",") + std::string(terraincore::terrainQualityName(static_cast<terraincore::TerrainQuality>(tier)));
+                }
+                return Json(text);
+            };
+            add(s);
+        }
         add(boolSetting("graphics.dynamic_batching", "Consecutive Sprites, small meshes and UI elements that share a material draw as one draw call (Unity's Dynamic Batching). The same image; off draws each one alone, for comparison.",
                         [](Project& p) { return p.isDynamicBatching(); }, [](Project& p, bool v) { p.setDynamicBatching(v); }));
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
@@ -2289,6 +2355,95 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // Screen Transitions (S48 R41): what Lua's Transition and the Game view's preview take by default
+        {
+            using jasperengine::pixelart::TransitionDefaults;
+            auto transitionSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                         std::function<Json(const TransitionDefaults&)> get,
+                                         std::function<bool(TransitionDefaults&, const Json&, std::string&)> set,
+                                         std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.values = std::move(values);
+                s.description = description + " Undoable (undo scope project).";
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTransitionDefaults()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    TransitionDefaults changed = ctx.project()->getTransitionDefaults();
+                    if (!set(changed, value, error)) return false;
+                    return setTransitionDefaults(ctx, [&changed](TransitionDefaults& settings) { settings = changed; }, apply);
+                };
+                add(s);
+            };
+            std::vector<std::string> kinds;
+            for (int k = 0; k < jasperengine::pixelart::kTransitionKindCount; k++)
+                kinds.push_back(jasperengine::pixelart::transitionKindName((jasperengine::pixelart::TransitionKind)k));
+            transitionSetting("graphics.screen_transitions.kind", "enum", "The screen transition Transition.play and the Game view use when none is named.",
+                [](const TransitionDefaults& t) { return Json(jasperengine::pixelart::transitionKindName(t.kind)); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    if (!v.is_string() || !jasperengine::pixelart::transitionKindFromName(v.get<std::string>(), t.kind)) {
+                        e = "must be one of iris, blinds, slash, pixel_dissolve, crt_off, burn_away, fade";
+                        return false;
+                    }
+                    return true;
+                }, kinds);
+            transitionSetting("graphics.screen_transitions.duration", "number", "Seconds of a whole transition (cover, hold, reveal) when none is given.",
+                [](const TransitionDefaults& t) { return Json(t.duration); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    double d;
+                    if (!readNumber(v, 0.0, 30.0, d, e)) return false;
+                    t.duration = (float)d;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.color", "string", "The ink the screen is covered in, \"#rrggbb\" (sRGB).",
+                [](const TransitionDefaults& t) {
+                    auto byte = [](float c) { return (uint8_t)std::lround(std::clamp(c, 0.0f, 1.0f) * 255.0f); };
+                    return Json(jasperengine::pixelart::toHex(jasperengine::pixelart::Rgba8{byte(t.color.x), byte(t.color.y), byte(t.color.z), 255}, false));
+                },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    jasperengine::pixelart::Rgba8 c;
+                    if (!v.is_string() || !jasperengine::pixelart::parseHex(v.get<std::string>(), c)) {
+                        e = "must be \"#rrggbb\"";
+                        return false;
+                    }
+                    t.color = Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, 1.0f);
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.ramp", "string",
+                "The rims' ramp, \"<palette>.palette#ramp:<name>\" (\"\": the built-in ember ramp).",
+                [](const TransitionDefaults& t) { return Json(t.ramp); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    std::string ramp;
+                    if (!readString(v, ramp, e, 512)) return false;
+                    if (!ramp.empty() && !jasperengine::pixelart::parsePaletteRampPath(ramp)) {
+                        e = "must be \"<palette>.palette#ramp:<name>\" or \"\"";
+                        return false;
+                    }
+                    t.ramp = ramp;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.rim", "int", "Rim width in art pixels (0..8).",
+                [](const TransitionDefaults& t) { return Json(t.rim); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 8, n, e)) return false;
+                    t.rim = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.pixel_size", "int",
+                "Screen pixels per art pixel (0: the Pixel Perfect Camera's grid, else 1 without one).",
+                [](const TransitionDefaults& t) { return Json(t.pixelSize); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 64, n, e)) return false;
+                    t.pixelSize = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.cover_ui", "bool",
+                "On: transitions cover every scene (the HUD too). Off: they draw after the main scene, under its layer scenes.",
+                [](const TransitionDefaults& t) { return Json(t.coverUI); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) { return readBool(v, t.coverUI, e); });
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -2321,7 +2476,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = keys[group];
             s.type = "number";
             s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
-                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance, and Tree Distance and Billboard Start; 0 draws none (Lua: Engine.foliageDistanceScale).";
             s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
             s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 double v;
@@ -2330,6 +2485,29 @@ std::vector<Setting> mcpSettingsTable() {
                     std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
                     all[group] = static_cast<float>(v);
                     ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        // T5 R21: what foliage scales and caps per platform group
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "enum";
+            s.values = enumNames(foliageQualities);
+            s.description = std::string("Foliage Quality (detail density, instance and draw caps, impostor blending: low, medium, high) of ") + groups[group] + ".";
+            s.get = [group](SettingsContext& ctx) { return Json(enumName(foliageQualities, ctx.project()->getFoliageQuality()[group])); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                FoliageQuality quality;
+                if (!parseEnum(foliageQualities, value, quality, error)) return false;
+                if (apply) {
+                    std::array<FoliageQuality, 3> all = ctx.project()->getFoliageQuality();
+                    all[group] = quality;
+                    ctx.project()->setFoliageQuality(all);
                 }
                 return true;
             };
@@ -2558,6 +2736,43 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // ---- voxels (T6 R7): each lowers its target's limit, never raises it
+        add(boolSetting("voxel.ignore_dimension_limits", "Voxel Volumes: an export goes on with a volume over its target's maximum dimension.",
+                        [](Project& p) { return p.getVoxelSettings().ignoreDimensionLimits; },
+                        [](Project& p, bool v) { VoxelProjectSettings n = p.getVoxelSettings(); n.ignoreDimensionLimits = v; p.setVoxelSettings(n); }));
+        {
+            struct VoxelLimitRow {
+                const char* key;
+                const char* description;
+                int maximum;
+                int VoxelProjectSettings::*field;
+            };
+            const VoxelLimitRow voxelLimitRows[] = {
+                {"voxel.max_dimension", "Voxel Volumes: voxels per axis at most, below the target's 1024, 512 or 256 (0: the target's).", 1024, &VoxelProjectSettings::maxDimension},
+                {"voxel.cpu_budget_mb", "Voxel Volumes: CPU memory of all volumes in MiB, below the target's 256, 64 or 32 (0: the target's).", 256, &VoxelProjectSettings::cpuBudgetMB},
+                {"voxel.mesh_budget_mb", "Voxel Volumes: mesh memory of all volumes in MiB, below the target's 128, 32 or 24 (0: the target's).", 128, &VoxelProjectSettings::meshBudgetMB},
+            };
+            for (const VoxelLimitRow& limitRow : voxelLimitRows) {
+                Setting s;
+                s.key = limitRow.key;
+                s.type = "int";
+                s.description = limitRow.description;
+                const auto field = limitRow.field;
+                const int maximum = limitRow.maximum;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getVoxelSettings().*field); };
+                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, 0, maximum, v, error)) return false;
+                    if (apply) {
+                        VoxelProjectSettings n = ctx.project()->getVoxelSettings();
+                        n.*field = static_cast<int>(v);
+                        ctx.project()->setVoxelSettings(n);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
         // ---- the Default Palette (S43 R4b): Snap to Palette, apply_palette without a palette, the
         // pixel-art tools' new art
         add(pathSetting("palettes.default", "The Default Palette: the .palette used where none is named (apply_palette, Snap to "
@@ -3512,6 +3727,25 @@ std::vector<Setting> mcpSettingsTable() {
             s.preference = true;
             add(s);
         }
+        {
+            Setting s;
+            s.key = "preferences.pixel_art.agent_edit_highlight";
+            s.type = "bool";
+            s.preference = true;
+            s.description = "Pixel Art: outline the pixels an agent changed in the Sprite Preview, fading over 3 s.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                if (apply) {
+                    PixelArtPreferences settings = AppSettings::getPixelArtPreferences();
+                    settings.agentEditHighlight = b;
+                    AppSettings::setPixelArtPreferences(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
         auto stringPreference = [&add](const std::string& key, const std::string& description,
                                        std::function<std::string()> get, std::function<void(const std::string&)> set) {
             Setting s;
@@ -3915,10 +4149,21 @@ const Placement placements[] = {
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"graphics.transparency_sort_mode", "Graphics", "", "Transparency Sort Mode", "2d sorting axis custom axis top-down"},
     {"graphics.transparency_sort_axis", "Graphics", "", "Transparency Sort Axis", "2d sorting axis custom axis top-down"},
+    // S48 R41
+    {"graphics.screen_transitions.kind", "Graphics", "Screen Transitions", "Default Kind", "transition iris wipe fade scene change pixel"},
+    {"graphics.screen_transitions.duration", "Graphics", "Screen Transitions", "Duration", "transition seconds"},
+    {"graphics.screen_transitions.color", "Graphics", "Screen Transitions", "Colour", "transition ink color"},
+    {"graphics.screen_transitions.ramp", "Graphics", "Screen Transitions", "Ramp", "transition rim palette ramp"},
+    {"graphics.screen_transitions.rim", "Graphics", "Screen Transitions", "Rim", "transition rim width art pixels"},
+    {"graphics.screen_transitions.pixel_size", "Graphics", "Screen Transitions", "Pixel Size", "transition art pixel grid"},
+    {"graphics.screen_transitions.cover_ui", "Graphics", "Screen Transitions", "Cover UI", "transition hud layer scenes"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_quality_desktop", "Quality", "", "Foliage Quality (Desktop)", "grass trees details impostors"},
+    {"quality.foliage_quality_mobile", "Quality", "", "Foliage Quality (Mobile)", "grass trees details impostors"},
+    {"quality.foliage_quality_web", "Quality", "", "Foliage Quality (Web)", "grass trees details impostors"},
     {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},
@@ -3937,6 +4182,10 @@ const Placement placements[] = {
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
     {"navigation.carve_tiles_per_tick", "Navigation", "", "Carve Tiles Per Tick", "navmesh obstacle carving budget tile cache"},
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
+    {"voxel.max_dimension", "Voxels", "", "Max Dimension", "voxel volume limit size"},
+    {"voxel.cpu_budget_mb", "Voxels", "", "CPU Memory Budget", "voxel volume memory limit"},
+    {"voxel.mesh_budget_mb", "Voxels", "", "Mesh Memory Budget", "voxel volume memory limit"},
+    {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
@@ -4238,6 +4487,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
         {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
         {"Pixel Art", SettingsScope::Project, 17, "pixel art 2d palette palettes colours colors swatches"},
+        {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -4449,12 +4699,18 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
         "Top and left rulers in 2D, UI and orthographic axis views"));
+    addOrAbort(registry, uiRow("preferences.scene_view.alt_alternates", sceneView, "Brushes", "Alt Alternates While Painting", "alt alternate terrain voxel brush orbit",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().altAlternates); },
+        "With a terrain or voxel brush armed, Alt held is the tool's alternate and Alt+drag paints it instead of orbiting"));
     addOrAbort(registry, uiRow("preferences.scene_view.preview_particles", sceneView, "Animation", "Preview Particle Systems", "animator animation preview particles vfx scrub",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().previewParticles); },
         "Animation previews in edit mode (Animator, Animation windows) play and scrub the Particle Systems under the previewed GameObject"));
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     const char* diagnostics = "Diagnostics";
+    addOrAbort(registry, uiRow("preferences.pixel_art.agent_edit_highlight", "Pixel Art", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels",
+        [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); },
+        "The Sprite Preview outlines the pixels an agent changed, fading over 3 s"));
     addOrAbort(registry, uiRow("preferences.diagnostics.hang_watchdog", diagnostics, "", "Hang Watchdog", "hang freeze not responding report",
         [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().hangWatchdog); },
         "Writes a hang report when the editor stops responding (set_hang_watchdog sets it)."));

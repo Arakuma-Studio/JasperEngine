@@ -417,6 +417,22 @@ TEST_F(TilemapGpu, DrawsPerChunkAndCullsChunksOutOfView) {
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// the culling bounds of a chunk move with its tiles: a tileAnchor of 16 cells draws chunk (0, 0)'s tile
+// in view while the chunk's cells lie left of it (tilegrid::tileShift in TilemapSystem's chunk list)
+TEST_F(TilemapGpu, CullingBoundsFollowTheTileAnchor) {
+    JASPER_REQUIRE_GPU();
+    TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();
+    component.tileAnchor = Vector2(16.0f, 0.0f);
+    component.needUpdate = true;
+    layer->setPosition(-200.0f, 64.0f, 0.0f);
+    layer->setCell(0, 0, 1);
+    ASSERT_TRUE(settle());
+    // the cell at x = -200, drawn 16 x 16 px right: x = 56
+    expectBox(image(), 56, 64, 56 + TILE, 64 + TILE, kColours[1], "the anchored tile");
+    EXPECT_EQ(stats().draws, 1u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 // R33: an edit re-uploads only its chunk; R36: frames without a change upload nothing
 TEST_F(TilemapGpu, AnimatedChunkOnly) {
     JASPER_REQUIRE_GPU();

@@ -60,6 +60,11 @@ namespace jasperengine::editor::pixelart {
         // (the project's default Upscale Mode), not an undo step (part of the creation)
         static void setupNewScene(Project& project, uint32_t sceneId);
 
+        // S48 R38: ticking Outline on a library:sprite material of a Pixel Art Mode project picks
+        // the 4-neighbour pixel style (OUTLINE_STYLE_PIXEL4) when no style was chosen; anything
+        // else is left as it is
+        static void pickPixelOutline(std::vector<std::string>& features, const std::string& shader, bool pixelArtMode);
+
     private:
         bool importHook = false;
         bool playHook = false;

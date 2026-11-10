@@ -1,0 +1,162 @@
+formatVersion: 8
+guid: 04f90028852efcf53a7fd217f4eae608
+id: 1725839094
+name: Level
+scene:
+  backgroundColor: [0.231, 0.298, 0.475, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_2d
+mainCamera: 0
+shaderKeys:
+  - type: mesh
+    properties: 140737488358403
+  - type: blit
+  - type: blit
+    properties: 4096
+  - type: transition
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,RAMP_RECOLOR
+entities:
+  - type: Entity
+    entity: 1001
+    name: Statue
+    components:
+      transform:
+        position: [160, 90, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/sprites/hero.png
+                guid: 285f43386104de31384f177d38b95ded
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                rampAmount: [1, 0, 0, 0]
+                rampBevel: [1, 0, 0, 0]
+                rampPulse: [0, 0, 0, 0]
+              shaderTextures:
+                u_fxRampTexture:
+                  textureType: 2D
+                  source: path
+                  path: Palettes/ice.palette#ramp:ice
+                  guid: d68dafc19da740d2802a11f8b9f087ce
+                  minFilter: nearest
+                  magFilter: nearest
+                  wrapU: clamp_to_edge
+                  wrapV: clamp_to_edge
+                  releaseDataAfterLoad: true
+              shaderFeatures: [RAMP_RECOLOR]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 917504
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 96
+        height: 96
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1002
+    name: Level
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: PixelFxLevel.lua
+            pathGuid: d077ce312c84afa71d16c863e956261d
+            className: PixelFxLevel
+            enabled: true

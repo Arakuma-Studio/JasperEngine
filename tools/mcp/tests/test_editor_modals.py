@@ -98,6 +98,16 @@ SITES = {
     ("tilemap/TilesetEditorWindow.cpp", "Apply Terrain Template###TilesetTemplate"): "not driven here: test_tile_palette_editor.py's test_tileset_editor_peering_and_template opens and answers it",
     ("window/HierarchyWindow.cpp", "Import Tile Map###HierarchyTilemapImport"): "not driven: a .tmj/.tmx/.ldtk dropped in the Hierarchy opens it; import_tilemap gives the same report for agents",
     ("window/dialog/PixelArtPresetDialog.cpp", "POPUP_NAME"): "not driven here: a button of Project Settings > Pixel Art opens it; test_pixel_art_check_window.py's test_preset_dialog answers it",
+    ("window/dialog/CreateTerrainDialog.cpp", "Create Terrain##CreateTerrainModal"): "not driven: from the Hierarchy's create menu and the Terrain window's empty state; create_entity type terrain, then edit_terrain create, does the same for agents (TerrainGenerateSeamTest drives its presets)",
+    ("terrainworld/TerrainWorldPanel.cpp", "Create Terrain World##CreateTerrainWorldModal"): "not driven: from the Hierarchy's create menu and the Terrain World panel; edit_terrain_world create does the same for agents (test_terrain_world)",
+    ("terrainworld/TerrainWorldPanel.cpp", "Convert to Terrain World##ConvertTerrainWorldModal"): "not driven: from a Terrain's Inspector; edit_terrain_world create.from_terrain does the same for agents (test_terrain_world)",
+    ("terrainworld/TerrainWorldPanel.cpp", "Import Heightmap##TerrainWorldImportModal"): "not driven: from a Terrain World's Inspector; edit_terrain_world op import_heightmap does the same for agents",
+    ("window/TerrainSettingsPanel.cpp", "Resize Terrain Map"): "not driven: from a map row's Resize... in the Terrain window's Terrain Settings tool, which needs a selected Terrain with maps",
+    ("window/TerrainSettingsPanel.cpp", "Import Raw Heightmap"): "not driven: as above, Import Raw...; edit_terrain op import_heightmap does the same for agents",
+    ("window/TerrainSettingsPanel.cpp", "Export Raw Heightmap"): "not driven: as above, Export Raw...; export_terrain_heightmap does the same for agents",
+    ("window/TerrainFoliagePanel.cpp", "Remove Tree Prototype"): "not driven: from a tree prototype's remove button in the Terrain window's Paint Trees tool, when trees use it; set_properties treePrototypes and edit_terrain clear_foliage do the same for agents",
+    ("window/TerrainFoliagePanel.cpp", "Mass Place Trees"): "not driven: from the Paint Trees tool, which needs tree prototypes; edit_terrain scatter_by_rules does the same for agents (test_foliage)",
+    ("window/VoxelCreateDialog.cpp", "Create Voxel Volume"): "not driven: from the Hierarchy's create menu; edit_voxels create does the same for agents",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -183,8 +193,10 @@ async def test_sites_table_is_complete(ed: Editor):
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
     # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
     # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
-    # S42's Fix All and Apply Pixel Art Preset: 78; S50's Apply Terrain Template and the Hierarchy's map import preview: 80
-    ed.check_eq(sum(found.values()), 80, "the 80 sites")
+    # S42's Fix All and Apply Pixel Art Preset: 78; T1's Create Terrain and its three Terrain Settings
+    # dialogs, T4's three Terrain World dialogs, T5's Remove Tree Prototype and Mass Place Trees, T6's
+    # Create Voxel Volume: 88; S50's Apply Terrain Template and the Hierarchy's map import preview: 90
+    ed.check_eq(sum(found.values()), 90, "the 90 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
