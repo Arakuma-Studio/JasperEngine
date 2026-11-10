@@ -181,8 +181,10 @@ async def test_listing_latency(ed: Editor):
 
 
 async def test_fallback_parity_after_a_render(ed: Editor):
-    """A forced-RGBA8 render must not reuse the node cache of the float render that came before it
-    (red run: sports/goal-banner measured mean 80.65 after render_title, 0.31 before it)."""
+    """The checks' renders after render_title meet the node cache it filled: two generators that
+    follow one layer from one place (the template's Speed Lines and its look's Fire) must not share
+    a node entry, which drew the Fire twice and no Speed Lines on the float path (red run, before
+    generator params joined the content hash: mean 80.65 against the fresh RGBA8 render)."""
     await ed.call("tool_groups", enable=["title_art"])
     path = "assets/parity-after-render.titleart"
     await ed.call("edit_title", path=path, create={"template": "sports/goal-banner", "language": "en"}, bake="never")

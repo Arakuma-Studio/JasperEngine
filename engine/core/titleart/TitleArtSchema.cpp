@@ -523,7 +523,9 @@ namespace {
             KindBuilder k(schema, "layer.generator", "Generator", HashScope::Geometry);
             k.kind().base = "layer";
             k.hash(HashScope::Geometry);
-            k.object("generator", "generator_ref");
+            // the generator's type and params are what its pixels are: an object member inherits the
+            // walk's Node scope, which the node cache's content key leaves out
+            k.object("generator", "generator_ref").hash = HashScope::Geometry;
             k.add("follow", ValueType::LayerRef, "");
         }
         {

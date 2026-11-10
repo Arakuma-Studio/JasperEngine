@@ -1903,7 +1903,10 @@ rest of S82 lands in 6B.
     `Monoton` (declared in `OFL.txt` only) and `MedievalSharp` (declared in ID 13) would have shipped subsets under a reserved
     name. Detection now reads IDs 0 and 13 and a small table of the pack's fonts whose names do not declare it;
     `TitleFontSubset.ReservedNamesOfThePackFonts` holds all three plus an ID-0 font.
-28. **Open renderer bugs found by the gate:** after `render_title` on a document, the forced RGBA8 render of the same document
-    at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
-    the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
+28. **Renderer bugs found by the gate.** After `render_title`, `fallback_parity` failed on `sports/goal-banner`: not the RGBA8
+    path (it was the fresh render, Speed Lines drawn) but the float render, which met the node cache and drew the look's Fire
+    twice and no Speed Lines. Generator params sat in the Node hash scope (an object member inherits the walk's scope), which
+    the node cache's content key leaves out, so two generators following one layer from one place shared an entry (and a
+    param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
+    and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
