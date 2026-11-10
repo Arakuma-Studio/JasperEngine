@@ -64,6 +64,7 @@ namespace{
         31, // Pcl
         33, // Shq
         44, // Dlo (the lights' types a constant of the variant: nothing per object)
+        54, // Lst (the scene's Light Steps, in u_fs_lighting2d: nothing per object)
         // pixel-art S52
         45, // Pxs (the snap mode a key section; mode 2 with Spv only)
         46, // Sfx (the instance= amounts baked into a_spriteFx)

@@ -250,6 +250,11 @@ namespace {
         environment.lights2D = (facts & FACT_LIGHTS_2D) != 0;
         // RenderSystem::loadLights2D: a shadow-casting 2D light with an occluder to cast
         environment.shadows2D = (facts & FACT_SHADOW_LIGHTS_2D) && (facts & FACT_OCCLUDERS_2D);
+        // RenderSystem::checkLightsAndShadow: the 2D ambient of a scene without a Light 2D (S78
+        // R6), and the scene's Light Steps
+        environment.ambient2D = !environment.lights2D &&
+                                RenderSystem::isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
+        environment.light2DSteps = scene->getLight2DSteps() > 0;
         environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
@@ -286,6 +291,7 @@ namespace {
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
             (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
+            (e.ambient2D ? (1ull << 40) : 0ull) | (e.light2DSteps ? (1ull << 41) : 0ull) |
             // T3 R34: the tier a build may force
             (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
@@ -329,7 +335,7 @@ namespace {
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
                                                              bool allLightCapacities, const std::vector<bool>& postColor,
                                                              const std::vector<bool>& shadowHQ, bool allLitQualities,
-                                                             PbrTier mobilePbrTier, uint32_t terrainTiers){
+                                                             PbrTier mobilePbrTier, uint32_t terrainTiers, bool allLight2DStates){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -369,6 +375,26 @@ namespace {
                                 environments.push_back(environment);
                             }
                         }
+                    }
+                }
+            }
+        }
+        // a script setting the 2D ambient or the Light Steps reaches their other states: the
+        // ambient of a scene without a Light 2D tinting or not, the steps on or off (S78)
+        if (allLight2DStates){
+            const size_t scripted = environments.size();
+            for (size_t e = 0; e < scripted; e++){
+                for (int state = 1; state < 4; state++){
+                    MeshShaderEnvironment other = environments[e];
+                    if (state & 1){
+                        if (other.lights2D)
+                            continue;
+                        other.ambient2D = !other.ambient2D;
+                    }
+                    if (state & 2)
+                        other.light2DSteps = !other.light2DSteps;
+                    if (distinct.insert(environmentBits(other)).second){
+                        environments.push_back(other);
                     }
                 }
             }
@@ -1422,7 +1448,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
                                                   const std::vector<std::string>& scriptPostProcessingFields,
                                                   bool scriptsSetShadowQuality, bool scriptsSetLitQuality,
-                                                  PbrTier mobilePbrTier, uint32_t terrainTiers){
+                                                  PbrTier mobilePbrTier, uint32_t terrainTiers, bool scriptsSetLight2D){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -1443,7 +1469,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         if (!resolved.insert(signature).second)
             return;
         collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
-                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers);
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers, scriptsSetLight2D);
     };
     QualityResolver::setTier(std::nullopt);
     QualityResolver::forceThermalResponse(ThermalState::Nominal);
@@ -1471,7 +1497,8 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                            bool scriptsSetPostProcessing,
                                                            const std::vector<std::string>& scriptPostProcessingFields,
                                                            bool allLightCapacities, bool scriptsSetShadowQuality,
-                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers){
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers,
+                                                           bool scriptsSetLight2D){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
@@ -1490,7 +1517,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
 
     const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
                                                                                   shadowHQStates(scene, scriptsSetShadowQuality),
-                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers);
+                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers, scriptsSetLight2D);
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);

@@ -64,6 +64,10 @@ namespace jasperengine::editor {
     // a script sets scene.litQuality) and the material lobes for desktop and, with a mobile
     // tier other than FULL, the lobes Android, iOS and HTML5 draw (MaterialPbr::resolveTier).
     //
+    // The 2D-lit variants follow the scene's Light Steps ('Lst') and, without a Light 2D, its
+    // Ambient Light 2D (S78: 'L2d' on the unlit variants while it tints); with scriptsSetLight2D
+    // (a script sets either) both states of each are collected.
+    //
     // The post-processing colour (phase 4, one global variant bit of mesh, points, lines and
     // sky variants) follows the scene's PostProcessingSettings; with scriptsSetPostProcessing
     // (a project script mentions postProcessing) both states are collected. The uber pass's
@@ -99,7 +103,8 @@ namespace jasperengine::editor {
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
                                  bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
-                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS);
+                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS,
+                                 bool scriptsSetLight2D = false);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,
@@ -133,7 +138,7 @@ namespace jasperengine::editor {
                                           const std::filesystem::path& projectRoot, bool scriptsSetPostProcessing,
                                           const std::vector<std::string>& scriptPostProcessingFields, bool allLightCapacities,
                                           bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier,
-                                          uint32_t terrainTiers);
+                                          uint32_t terrainTiers, bool scriptsSetLight2D);
     };
 
 }

@@ -5963,7 +5963,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      packed to three vectors and a component a layer (includes/terrain_fs.glsl) and T4's Terrain
     //      Worlds (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl; 'Twd': MESH 53, DEPTH 25, GBUFFER
     //      27). The programme's own v58-v62 caches held other sources and numbers, so v63 is new to both sides.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v63";
+    // v64: S78's Light Steps: MESH 'Lst' 54 (LIGHT2D_STEPS in includes/lighting2d.glsl, the count in
+    //      u_fs_lighting2d's atlasInfo.z, which held the 2D shadow atlas's width and no shader read).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v64";
 }
 
 void editor::App::pushTabNotificationStyle(){

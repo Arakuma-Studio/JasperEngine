@@ -18,6 +18,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/Primitive.h"
+#include "pool/ShaderPool.h"
 #include "render/LightingTiers.h"
 #include "subsystem/RenderSystem.h"
 
@@ -190,5 +191,74 @@ TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
                 HeadlessContext::getBackendName(), darker, largest);
     EXPECT_GT(darker, (size_t)(width * height) / 1000) << "the capsules cast no shadow worth the name";
     EXPECT_GT(largest, 40);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S78 R4: the Light Steps reach a lit variant that reads its 2D lights from the records (the count
+// is the records tail's atlasInfo.z, as the block's): at 1 step every lit pixel of the 2D light
+// takes its full light, so no pixel darkens and the light's falloff brightens
+TEST_F(LitLightRecordsGpu, LightStepsBandThe2DLightsOfTheRecords){
+    JASPER_REQUIRE_GPU();
+    Primitive ground(&scene);
+    ground.createPlane(12.0f, 12.0f);
+    ground.setColor(0.85f, 0.85f, 0.85f);
+    Primitive body(&scene);
+    body.createBox(0.6f, 1.8f, 0.4f);
+    body.setPosition(0.0f, 0.9f, 0.0f);
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.5f, -1.0f, -0.3f);
+    sun.setIntensity(1.0f);
+    sun.setShadows(true);
+    scene.getComponent<LightComponent>(sun.getEntity()).contactShadows = true;
+    scene.addComponent<CapsuleShadowCasterComponent>(body.getEntity(), CapsuleShadowCasterComponent());
+    CapsuleShadowCaster caster(&scene, body.getEntity());
+    caster.setCastShadows(CapsuleCastShadows::CAPSULES_ONLY);
+    caster.addCapsule("", 0.3f, 0.6f);
+    scene.setCapsuleShadowsEnabled(true);
+    std::vector<std::unique_ptr<Light>> points;
+    for (int i = 0; i < 12; i++){
+        points.push_back(std::make_unique<Light>(&scene));
+        points.back()->setType(LightType::POINT);
+        points.back()->setPosition(-5.0f + 0.9f * (float)i, 0.5f, -5.0f);
+        points.back()->setRange(1.0f);
+        points.back()->setShadows(false);
+    }
+    Light2D light2d(&scene);
+    light2d.setPosition(1.5f, 0.0f, 0.0f);
+    light2d.setRange(4.0f);
+    light2d.setIntensity(1.0f);
+    light2d.setFalloff(2.0f);
+    light2d.setColor(1.0f, 0.5f, 0.2f);
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
+
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(ground.getEntity());
+    if (std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
+        ASSERT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "the ground's Lit does not read the light records";
+    }
+    const int width = (int)GpuEnvironment::target().getWidth();
+    const int height = (int)GpuEnvironment::target().getHeight();
+    std::vector<uint8_t> smooth, stepped;
+    readTexture(GpuEnvironment::target().getRender().getColorTexture(), width, height, smooth);
+
+    scene.setLight2DSteps(1);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    ASSERT_NE(mesh.submeshes[0].shaderProperties & ShaderPool::getLight2DStepsProperty(), 0u);
+    if (std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
+        ASSERT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "the stepped variant reads the light records too";
+    }
+    readTexture(GpuEnvironment::target().getRender().getColorTexture(), width, height, stepped);
+    size_t darker = 0, brighter = 0;
+    for (size_t i = 0; i + 3 < smooth.size() && i + 3 < stepped.size(); i += 4){
+        const int before = smooth[i];
+        const int after = stepped[i];
+        darker += after + 2 < before ? 1 : 0;
+        brighter += after > before + 8 ? 1 : 0;
+    }
+    std::printf("[gpu] lit records light steps on %s: %zu pixels brighter by over 8, %zu darker\n",
+                HeadlessContext::getBackendName(), brighter, darker);
+    EXPECT_EQ(darker, 0u);
+    EXPECT_GT(brighter, (size_t)(width * height) / 100) << "the steps did not reach the records' 2D light";
     EXPECT_NO_ENGINE_ERRORS();
 }

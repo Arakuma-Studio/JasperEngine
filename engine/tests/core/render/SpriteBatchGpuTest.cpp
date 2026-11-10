@@ -25,6 +25,7 @@
 #include "object/ui/Image.h"
 #include "object/ui/Text.h"
 #include "pool/MeshBufferPool.h"
+#include "pool/ShaderPool.h"
 #include "render/LightingTiers.h"
 #include "render/ObjectRender.h"
 #include "render/RenderStats.h"
@@ -318,6 +319,25 @@ TEST_F(SpriteBatchGpu, MatchesUnbatchedLight2D){
     light.setPosition(128.0f, 128.0f, 0.0f);
     ASSERT_TRUE(render());
     expectSameImage(8, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S78 R3: Light Steps ('Lst') are the scene's, nothing per object: stepped sprites batch as smooth ones
+TEST_F(SpriteBatchGpu, MatchesUnbatchedLightSteps){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    scene.setLight2DSteps(4);
+    const TextureData sheet = batchChecker(220, 220, 220);
+    for (int i = 0; i < 30; i++)
+        sprite("sprite-batch-steps", sheet, (float)(i % 6) * 40.0f + 12.0f, (float)(i / 6) * 48.0f + 12.0f, 32, 32);
+    Light2D light(&scene);
+    light.setIntensity(1.5f);
+    light.setRange(160.0f);
+    light.setPosition(128.0f, 128.0f, 0.0f);
+    ASSERT_TRUE(render());
+    ASSERT_NE(sprites[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & ShaderPool::getLight2DStepsProperty(), 0u);
+    expectSameImage(8, 2);
+    EXPECT_EQ(onStats.breaks[(size_t)BatchBreak::INELIGIBLE_SHADER_PROPERTY], 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
