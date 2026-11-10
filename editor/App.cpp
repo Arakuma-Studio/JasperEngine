@@ -267,8 +267,6 @@ editor::App::App(){
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
     pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
-    pixelart::cleanup::installEditorJobs();
-    pixelart::cleanup::registerCleanupOutputsRule();
     pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
     pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
@@ -3346,6 +3344,10 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // S46: detection spreads over the job pool; check_pixel_art gains cleanup_outputs. Here, not in the
+    // constructor: the editor's App is static, and the test binary must start with S42's registry empty
+    pixelart::cleanup::installEditorJobs();
+    pixelart::cleanup::registerCleanupOutputsRule();
     // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
     SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 

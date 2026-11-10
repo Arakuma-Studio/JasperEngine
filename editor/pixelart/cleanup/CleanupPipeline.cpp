@@ -186,6 +186,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             use.samplesGrid = outcome.grid;
             use.samplesKey = key;
             use.hasSamples = true;
+            use.hasSnap = use.hasOwn = false;
         }
         outcome.samples = use.samples;
         const CellSamples& samples = outcome.samples;
@@ -198,7 +199,14 @@ namespace jasperengine::editor::pixelart::cleanup {
         snap.metric = recipe.metric;
         snap.dither = recipe.dither;
         snap.ditherStrength = recipe.ditherStrength;
-        PixelArt art = quantize(samples, snap);
+        std::string snapKey = std::to_string(int(recipe.metric)) + "/" + std::to_string(int(recipe.dither)) + "/" + std::to_string(recipe.ditherStrength) + "/";
+        for (const Rgba8& color : palette) snapKey += std::to_string(jasperengine::pixelart::packRgb(color)) + ",";
+        if (!use.hasSnap || use.snapKey != snapKey) {
+            use.snapped = quantize(samples, snap);
+            use.snapKey = snapKey;
+            use.hasSnap = true;
+        }
+        PixelArt art = use.snapped;
         if (outcome.outlines) art = thinOutlines(art, outcome.grid, use.mask);
 
         // 7: each cell's own colour, where the background is told apart from the subject; lost colours
@@ -206,7 +214,13 @@ namespace jasperengine::editor::pixelart::cleanup {
         if (!palette.empty()) {
             QuantizeOptions plain;
             plain.metric = recipe.metric;
-            own = quantize(samples, plain);
+            const std::string ownKey = std::to_string(int(recipe.metric));
+            if (!use.hasOwn || use.ownKey != ownKey) {
+                use.own = quantize(samples, plain);
+                use.ownKey = ownKey;
+                use.hasOwn = true;
+            }
+            own = use.own;
             std::vector<uint8_t> skip;
             if (recipe.removeBackground) skip = findBackground(own, backgroundColors(own), recipe.background);
             outcome.lost = lostColors(samples, art, recipe.lostThreshold, recipe.removeBackground ? &skip : nullptr, 2, &own);

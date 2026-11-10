@@ -42,6 +42,15 @@ namespace jasperengine::editor::pixelart::cleanup {
         Grid samplesGrid;
         std::string samplesKey;
         CellSamples samples;
+
+        // R39: the cells snapped to the palette (before outline thinning) and the cells' own colours,
+        // kept with the samples they were read from, so a slider past the snap re-runs no vote
+        bool hasSnap = false;
+        std::string snapKey;
+        PixelArt snapped;
+        bool hasOwn = false;
+        std::string ownKey;
+        PixelArt own;
     };
 
     struct Outcome {
