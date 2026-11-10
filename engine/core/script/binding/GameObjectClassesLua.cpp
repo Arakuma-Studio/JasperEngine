@@ -1899,6 +1899,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRange", &Light2D::setRange)
         .addProperty("falloff", &Light2D::getFalloff, &Light2D::setFalloff)
         .addFunction("setFalloff", &Light2D::setFalloff)
+        // the virtual height above the 2D plane that normal maps answer (0: they are ignored);
+        // Light2D(scene) starts at 64, Light2D(scene, entity) keeps the stored value
         .addProperty("height", &Light2D::getHeight, &Light2D::setHeight)
         .addFunction("setHeight", &Light2D::setHeight)
         .addProperty("shadows", &Light2D::isShadows, &Light2D::setShadows)

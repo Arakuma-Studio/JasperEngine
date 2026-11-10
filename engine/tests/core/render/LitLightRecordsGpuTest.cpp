@@ -138,6 +138,8 @@ TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
         light.setShadows(false);
     }
     Light2D light2d(&scene);
+    // the golden is drawn with the 2D light at height 0 (pure radial)
+    light2d.setHeight(0.0f);
     light2d.setPosition(1.5f, 0.0f, 0.0f);
     light2d.setRange(4.0f);
     light2d.setIntensity(1.5f);

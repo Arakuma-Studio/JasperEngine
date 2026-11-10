@@ -9,7 +9,9 @@
 using namespace jasperengine;
 
 Light2D::Light2D(Scene* scene): GameObject(scene){
-    addComponent<Light2DComponent>();
+    Light2DComponent light;
+    light.height = Light2DComponent::NEW_HEIGHT;
+    addComponent<Light2DComponent>(light);
 }
 
 Light2D::Light2D(Scene* scene, Entity entity): GameObject(scene, entity){
