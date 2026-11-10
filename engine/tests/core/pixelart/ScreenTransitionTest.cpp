@@ -222,10 +222,12 @@ TEST(ScreenTransitionController, IrisCentreIsLatchedOnceItsSceneStops){
     scene->addComponent<CameraComponent>(camera, CameraComponent());
     scene->setCamera(camera);
     const Entity target = scene->createEntity();
-    Transform transform;
-    transform.worldPosition = Vector3(0.5f, 0.0f, 0.0f);
-    scene->addComponent<Transform>(target, transform);
+    scene->addComponent<Transform>(target, Transform());
     Engine::setScene(scene);
+    // after setScene: where a view exists (a GPU suite ran before) it loads the scene, whose
+    // first update of the transforms and camera would replace these
+    scene->getComponent<Transform>(target).worldPosition = Vector3(0.5f, 0.0f, 0.0f);
+    scene->getComponent<CameraComponent>(camera).viewProjectionMatrix = Matrix4();
 
     TransitionOptions options;
     options.centerScene = scene;
@@ -247,7 +249,7 @@ TEST(ScreenTransitionController, IrisCentreIsLatchedOnceItsSceneStops){
     // and deleted for real, as the generated factory does: nothing reads it any more
     delete scene;
     EXPECT_NEAR(centreX(), 75.0f, 1e-3f) << "the latched point after the scene is gone";
-    Engine::setScene(nullptr);
+    Engine::removeScene(&next);
 }
 
 // Vulkan draws a transition through the composite target (Engine::beginCompositeFramebuffer):
@@ -261,10 +263,14 @@ TEST(ScreenTransitionController, ACompositeTransitionBakesOffscreenPipelines){
     scene.setCamera(camera);
     auto render = scene.getSystem<RenderSystem>();
     ASSERT_NE(render, nullptr);
+    // a GPU suite before this one leaves the Engine drawing into its target, which asks for them
+    Framebuffer* target = Engine::getFramebuffer();
+    Engine::setFramebuffer(nullptr);
     Engine::setScene(&scene);
     EXPECT_EQ(render->getScenePipelines() & PIP_RTT, 0) << "drawn on the swapchain, offscreen pipelines cost nothing yet";
     Engine::setCompositeExpected(true);
     EXPECT_NE(render->getScenePipelines() & PIP_RTT, 0) << "a game that can play one bakes them from load";
     Engine::setCompositeExpected(false);
-    Engine::setScene(nullptr);
+    Engine::removeScene(&scene);
+    Engine::setFramebuffer(target);
 }
