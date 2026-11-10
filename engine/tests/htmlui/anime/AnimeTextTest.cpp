@@ -220,6 +220,16 @@ TEST_F(AnimeTextTest, AccessibilityCopySeparatesExplicitAndBlockLines){
     EXPECT_EQ(splitter->getChars().size(), 8u);
 }
 
+TEST_F(AnimeTextTest, InitiallyHiddenTargetsKeepTheirAccessibleReadingText){
+    label.setTextContent("niño");
+    label.setStyleProperty("display", "none");
+    auto splitter = split(AnimParam::object({{"chars", true}}));
+    const auto copies = label.querySelectorAll("[data-anime-accessible]");
+    ASSERT_EQ(copies.size(), 1u);
+    EXPECT_EQ(copies[0].getTextContent(), "niño");
+    EXPECT_EQ(splitter->getChars().size(), 4u);
+}
+
 TEST_F(AnimeTextTest, SplitCharactersUseAnimeStaggerAtExactTimes){
     // Same three targets and seek times as the upstream Anime.js 4.5.0 text reference.
     label.setTextContent("ñáe\xcc\x81");

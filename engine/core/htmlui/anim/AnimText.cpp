@@ -71,7 +71,7 @@ namespace {
             return;
         }
         const auto display = element->GetComputedValues().display();
-        if (display == Rml::Style::Display::None || element->GetAttribute<std::string>("aria-hidden", "") == "true") return;
+        if (nested && (display == Rml::Style::Display::None || element->GetAttribute<std::string>("aria-hidden", "") == "true")) return;
         const bool block = nested && (display == Rml::Style::Display::Block || display == Rml::Style::Display::FlowRoot ||
             display == Rml::Style::Display::Flex || display == Rml::Style::Display::Grid || display == Rml::Style::Display::Table ||
             display == Rml::Style::Display::TableRow || display == Rml::Style::Display::TableCell);
@@ -289,6 +289,9 @@ std::shared_ptr<AnimText> AnimText::create(const UIElement& target, const AnimPa
         for (const auto& splitter : splitters) splitter->revert();
     });
     (void)listener;
+    if (auto* root = UIElementAccess::get(target)){
+        if (Rml::Context* context = root->GetContext()) context->Update();
+    }
     auto splitter = std::shared_ptr<AnimText>(new AnimText(target, params));
     if (!target.isValid()){
         Log::warn("[HTML UI] anime.splitText: no matching text element");
