@@ -881,6 +881,15 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 - **R82, §6.1 (MCP guide).** No `## Pixel art` line: per the ledger's upstream rule change the area is one "Other
   areas" entry (`tilemaps (edit_tilemap)`, `jasper://docs/tilemaps`). The guide's room came from moving the Unity-names
   sentence on Build Settings and Scenes in Build to `docs/unity-glossary.md` (already there) and the Code section.
+- **R2, R8 (tileAnchor).** `tileAnchor` (ax, ay) moves every tile by ax cell pitches along the plane's u and ay along v, on
+  every layout (not along the isometric cell axes). One rule (`tilegrid::tileShift` in `TileGridLayout.h`: tileAnchor plus the
+  R27 dual-grid shift) places the drawn instances, the colliders, the culling bounds, picking (R10), `getCellAt`, the NavGrid
+  source (R51) and the editor's previews.
+- **§6.4 (`Grid(scene, entity)`).** It adds a Grid to a GameObject that has none, as the other component wrappers do
+  (SortingGroup, CanvasGroup, Animator, PixelPerfectCamera); `TilemapLayer(scene, entity)` adds nothing, and its calls on a
+  GameObject without a Tilemap Layer raise a Lua error.
+- **R89 (load report).** A layer whose tileset does not load gets an Info `fallback` issue on `tileset` ("tileset_missing: ...
+  keeps its N cells and draws nothing"); chunks that do not read are refused whole as an invalid value (their text kept).
 - **R75 `create`.** `create` makes a Grid + Tilemap Layer, except with `rects`, `replace_rects` or `origin`, which keep
   making a Free Tilemap (arbitrary pixel rects have no `.tileset` source). `create_entity` `tilemap` is a Grid + layer;
   the Free Tilemap is `free_tilemap`. The result's `grid` holds the Grid's GameObject fields and the ASCII view together.

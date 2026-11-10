@@ -154,6 +154,24 @@ TEST(TilemapBrush, BoxOverTheRegionLimitIsTyped) {
     EXPECT_TRUE(cells.empty());
 }
 
+// a box over the whole int32 range has 2^64 cells: its count must not wrap past the limit
+TEST(TilemapBrush, BoxesAtTheInt32ExtremesAreTyped) {
+    TileCells cells;
+    const TilesetData tileset = makeTileset();
+    BrushTarget target{cells, &tileset, layoutSpec(TileGridLayout::Rectangle)};
+    const CellRect all = rectOf(INT32_MIN, INT32_MIN, INT32_MAX, INT32_MAX);
+    BrushEdit edit;
+    EXPECT_FALSE(boxFill(target, BrushStamp::single(0), all, PaintOptions{}, edit));
+    EXPECT_EQ(edit.error.kind, "region_too_large");
+    BrushEdit erase;
+    EXPECT_FALSE(eraseBox(target, all, erase));
+    EXPECT_EQ(erase.error.kind, "region_too_large");
+    BrushEdit row;
+    EXPECT_FALSE(boxFill(target, BrushStamp::single(0), rectOf(INT32_MIN, 0, INT32_MAX, 0), PaintOptions{}, row));
+    EXPECT_EQ(row.error.kind, "region_too_large");
+    EXPECT_TRUE(cells.empty());
+}
+
 TEST(TilemapBrush, LineFollowsEachLayout) {
     struct Case {
         TileGridLayout layout;

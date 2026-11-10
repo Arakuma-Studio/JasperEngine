@@ -81,18 +81,17 @@ namespace jasperengine::editor::tilemap {
             return false;
         }
         if (params.region.isEmpty()) return true;
-        if (params.region.area() > MAX_TILE_REGION_CELLS) {
+        if (params.region.exceeds(MAX_TILE_REGION_CELLS)) {
             error = compositeProblem("region_too_large", "the region has " + std::to_string(params.region.area()) + " cells, past the limit of " + std::to_string(MAX_TILE_REGION_CELLS),
                                      "ask for a smaller region", "region");
             return false;
         }
         const TileGridSpec& grid = params.grid;
         const double ppu = params.pixelsPerUnit > 0.0 ? params.pixelsPerUnit : 1.0;
-        double shiftX = 0.0, shiftY = 0.0;
-        if (params.dualGrid) {
-            if (grid.layout != TileGridLayout::Isometric) shiftX = -tilegrid::pitchX(grid) * 0.5;
-            shiftY = -tilegrid::pitchY(grid) * 0.5;
-        }
+        // the region's frame: its cells where the tiles of a dual grid sit; the tiles: tileShift
+        const TilePoint frameShift = params.dualGrid ? tilegrid::dualGridShift(grid) : TilePoint{0.0, 0.0};
+        const double shiftX = frameShift.x, shiftY = frameShift.y;
+        const TilePoint tileShift = tilegrid::tileShift(grid, params.tileAnchorX, params.tileAnchorY, params.dualGrid);
 
         std::vector<CompositeCell> cells;
         double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
@@ -133,8 +132,8 @@ namespace jasperengine::editor::tilemap {
                 continue;
             }
             TilePoint anchor = tilegrid::cellToLocal(grid, cell.cell);
-            anchor.x += params.tileAnchorX * tilegrid::pitchX(grid) + shiftX;
-            anchor.y += params.tileAnchorY * tilegrid::pitchY(grid) + shiftY;
+            anchor.x += tileShift.x;
+            anchor.y += tileShift.y;
             // R8: the image's bottom-left at a rectangle's anchor, its bottom-centre at the others'
             double baseX = anchor.x * ppu;
             if (grid.layout != TileGridLayout::Rectangle) baseX -= image->width() * 0.5;
