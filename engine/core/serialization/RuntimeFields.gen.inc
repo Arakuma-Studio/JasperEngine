@@ -290,6 +290,13 @@ template<> struct Codec<VoxelMaterialSlot> {
 template<> struct TextureVisit<VoxelMaterialSlot> {
     static void visit(VoxelMaterialSlot& value, const TextureVisitor& f);
 };
+template<> struct Codec<TitleArtOverride> {
+    static void write(Writer& w, const TitleArtOverride& value);
+    static void read(Reader& r, TitleArtOverride& value);
+};
+template<> struct TextureVisit<TitleArtOverride> {
+    static void visit(TitleArtOverride& value, const TextureVisitor& f);
+};
 
 }
 
@@ -931,6 +938,17 @@ const StructTable kStruct_VoxelMaterialSlot{"VoxelMaterialSlot", kStruct_VoxelMa
 void Codec<VoxelMaterialSlot>::write(Writer& w, const VoxelMaterialSlot& value) { writeStruct(w, kStruct_VoxelMaterialSlot, &value); }
 void Codec<VoxelMaterialSlot>::read(Reader& r, VoxelMaterialSlot& value) { readStruct(r, kStruct_VoxelMaterialSlot, &value); }
 void TextureVisit<VoxelMaterialSlot>::visit(VoxelMaterialSlot& value, const TextureVisitor& f) { visitStructTextures(kStruct_VoxelMaterialSlot, &value, f); }
+
+const FieldEntry kStruct_TitleArtOverride_fields[] = {
+    JE_RF(TitleArtOverride, name, 0x1f0cbcd3u, String),
+    JE_RF(TitleArtOverride, type, 0x7384e358u, String),
+    JE_RF(TitleArtOverride, value, 0x85e07201u, Vector4),
+    JE_RF(TitleArtOverride, text, 0x69016c27u, String),
+};
+const StructTable kStruct_TitleArtOverride{"TitleArtOverride", kStruct_TitleArtOverride_fields, std::size(kStruct_TitleArtOverride_fields)};
+void Codec<TitleArtOverride>::write(Writer& w, const TitleArtOverride& value) { writeStruct(w, kStruct_TitleArtOverride, &value); }
+void Codec<TitleArtOverride>::read(Reader& r, TitleArtOverride& value) { readStruct(r, kStruct_TitleArtOverride, &value); }
+void TextureVisit<TitleArtOverride>::visit(TitleArtOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_TitleArtOverride, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -2596,6 +2614,57 @@ const FieldEntry kBody_TerrainWorldComponent_fields[] = {
 };
 const StructTable kBody_TerrainWorldComponent{"terrainworld", kBody_TerrainWorldComponent_fields, std::size(kBody_TerrainWorldComponent_fields)};
 
+const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
+    JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
+    JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
+    JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
+    JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
+    JE_RF(TitleArtRendererComponent, language, 0xeddbbcbau, String),
+    JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
+    JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
+    JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),
+    JE_RF(TitleArtRendererComponent, resolutionScale, 0x678e8488u, Float),
+    JE_RF(TitleArtRendererComponent, priority, 0x563a6d68u, Int),
+    JE_RF(TitleArtRendererComponent, renderWhenHidden, 0x8f5afbccu, Bool),
+    JE_RF(TitleArtRendererComponent, prebakeInitialState, 0xd0114565u, Bool),
+    JE_RF(TitleArtRendererComponent, transition, 0x94135a73u, Enum),
+    JE_RF(TitleArtRendererComponent, transitionDuration, 0xe5c04ac7u, Float),
+    JE_RF(TitleArtRendererComponent, additionalCharacters, 0x41e10ba1u, String),
+    JE_RF(TitleArtRendererComponent, atlasPageSize, 0x6f83f7c5u, Int),
+    JE_RF(TitleArtRendererComponent, atlasMaxPages, 0xc2052205u, Int),
+    JE_RF(TitleArtRendererComponent, qualityTier, 0x4068c6e5u, String),
+    JE_RF(TitleArtRendererComponent, runtimeEnvironments, 0xe2b2abf2u, Array),
+    JE_RF(TitleArtRendererComponent, liveTime, 0x6bc5ba13u, Float),
+    JE_RF(TitleArtRendererComponent, liveUnscaledTime, 0x85bfbd8au, Bool),
+    JE_RF(TitleArtRendererComponent, sweepEnabled, 0x27274359u, Bool),
+    JE_RF(TitleArtRendererComponent, sweepPosition, 0xe589397bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepWidth, 0x11436d24u, Float),
+    JE_RF(TitleArtRendererComponent, sweepAngle, 0xb532596bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepSoftness, 0x084a67ebu, Float),
+    JE_RF(TitleArtRendererComponent, sweepColor, 0x93319b9fu, Vector4),
+    JE_RF(TitleArtRendererComponent, sweepAuto, 0x5f89e1dfu, Bool),
+    JE_RF(TitleArtRendererComponent, sweepSpeed, 0x335a0863u, Float),
+    JE_RF(TitleArtRendererComponent, sweepInterval, 0x94dac011u, Float),
+    JE_RF(TitleArtRendererComponent, glowEnabled, 0x7b24955au, Bool),
+    JE_RF(TitleArtRendererComponent, glowPulse, 0xc56d714au, Float),
+    JE_RF(TitleArtRendererComponent, glowColor, 0xcc286034u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintEnabled, 0x03ba7ceeu, Bool),
+    JE_RF(TitleArtRendererComponent, tintColor, 0xfd588c88u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintAmount, 0x47c1b439u, Float),
+    JE_RF(TitleArtRendererComponent, glintsEnabled, 0x7295f1beu, Bool),
+    JE_RF(TitleArtRendererComponent, glintAmount, 0xf520f618u, Float),
+    JE_RF(TitleArtRendererComponent, glintSize, 0xa1be8c4du, Float),
+    JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
+    JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
+    JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
+    JE_RF(TitleArtRendererComponent, playAutomatically, 0xac579117u, Bool),
+    JE_RF(TitleArtRendererComponent, defaultAnimation, 0x0fdb5e95u, String),
+    JE_RF(TitleArtRendererComponent, animationSpeed, 0x7c0a3fa1u, Float),
+    JE_RF(TitleArtRendererComponent, animationUnscaledTime, 0x134a2c36u, Bool),
+    JE_RF(TitleArtRendererComponent, driveAnimation, 0xb93fb9c6u, String),
+};
+const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2710,6 +2779,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SpriteBatchComponent, "spritebatch", 0xb9349884u),
     JE_RF_COMPONENT(VoxelVolumeComponent, "voxelvolume", 0x973a2f61u),
     JE_RF_COMPONENT(TerrainWorldComponent, "terrainworld", 0x98e87442u),
+    JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENTS_END
 };
 
