@@ -228,3 +228,13 @@ article's *look* and its pitfalls caught early:
   size is a Sprite's drawn size (its pixels over its Pixels Per Unit) times the world scale; without
   one (no Sprite, or no size yet), the largest frame of the result over the entity's or the
   project's Pixels Per Unit.
+- **WP-A: "Lit (PBR) materials" in R6 is the lit shading path.** A material whose variant is lit (a 3D light, a
+  sky or a probe lights it) keeps its variant and image with no Light 2D: that path adds 2D lights and never the 2D
+  ambient. A Lit material drawn unlit because nothing lights it in 3D takes the unlit path, which multiplies the
+  base colour, so a tinting 2D ambient tints it, as one Light 2D out of range already did.
+- **WP-A: exports ship both states when scripts set them.** A scene's 'L2d' (ambient without a Light 2D) and
+  'Lst' variants follow its saved settings; a project whose scripts mention the 2D ambient or the Light Steps
+  (`Project::scriptsSetLight2D`) ships both states of each (`ShaderVariantCollector::collectScene`
+  `scriptsSetLight2D`), as Lit Quality does: a sprite made unlit-tinted by a script would otherwise lack its variant
+  in a build without the runtime compiler. 'Lst' is also the first bit a build missing a variant gives up
+  (`ShaderPool::getFallbackProperties`): the light draws smooth rather than not at all.

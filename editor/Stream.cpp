@@ -4990,6 +4990,9 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
+    // Light Steps (S78 R1): written only when on, so scenes saved before them re-save unchanged
+    if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
+        sceneNode["light2DSteps"] = scene->getLight2DSteps();
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
     sceneNode["ssaoEnabled"] = scene->isSSAOEnabled();
     sceneNode["ssaoRadius"] = scene->getSSAORadius();
@@ -5159,6 +5162,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     } else if (node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
+    scene->setLight2DSteps(node["light2DSteps"] ? YamlNumbers::as<int>(node["light2DSteps"]) : SceneSettings().light2DSteps);
 
     if (node["shadow2DQuality"]) {
         scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));

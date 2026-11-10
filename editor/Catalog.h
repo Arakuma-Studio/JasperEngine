@@ -630,6 +630,11 @@ namespace jasperengine::editor{
                     return scene->getAmbientLight2DIntensity();
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getLight2DSteps();
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     return scene->getShadow2DQuality();
@@ -930,6 +935,9 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.ambientLight2DIntensity;
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.light2DSteps;
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) return d.shadow2DQuality;
             }
@@ -1168,6 +1176,11 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setAmbientLight2D(value);
+                }
+            }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setLight2DSteps(value);
                 }
             }
             else if (propertyName == "shadows_2d_quality") {

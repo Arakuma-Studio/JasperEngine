@@ -456,7 +456,9 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
             break;
         case ScenePropertyInputType::DragInt:
             if constexpr (std::is_same_v<T, int>) {
-                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue);
+                // Light Steps' 0 is Off
+                const char* format = (propertyName == "light_2d_steps" && value == 0) ? "Off" : "%d";
+                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue, format);
             }
             break;
         case ScenePropertyInputType::SliderFloat:
@@ -13731,11 +13733,14 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Ambient Light (2D)");
 
                 if (ImGui::BeginTable("scene_ambient2d_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Light Steps"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<Vector3>(sceneProject, "ambient_light_2d_color", "Color", ScenePropertyInputType::ColorRGB);
                     drawScenePropertyRow<float>(sceneProject, "ambient_light_2d_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<int>(sceneProject, "light_2d_steps", "Light Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 0.0f, 16.0f,
+                        "Draws each 2D light in this many hard bands, the stepped look of pixel-art lighting (6 is a common choice). "
+                        "Off keeps the light smooth. The ambient is not banded.");
 
                     ImGui::EndTable();
                 }

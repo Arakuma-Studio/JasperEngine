@@ -322,3 +322,29 @@ TEST(StreamScene, WaterWakeSettings){
     read.setWaterWakeFade(1000.0f);
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
+
+// S78 R1, R26: Light Steps, written only away from 0 (scenes saved before re-save unchanged), read
+// back; a scene without the key is off, a stored value out of range is clamped
+TEST(StreamScene, LightStepsSetting){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("light2DSteps"), std::string::npos) << "off is not written";
+
+    Scene scene;
+    scene.setLight2DSteps(6);
+    const std::string yaml = dumpScene(&scene);
+    EXPECT_NE(yaml.find("light2DSteps: 6"), std::string::npos) << yaml;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(yaml));
+    EXPECT_EQ(read.getLight2DSteps(), 6);
+    EXPECT_EQ(dumpScene(&read), yaml);
+
+    // an old scene (no key) over a stepped one: off
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    EXPECT_EQ(read.getLight2DSteps(), 0);
+
+    YAML::Node edited = YAML::Load(yaml);
+    edited["light2DSteps"] = 99;
+    Stream::decodeScene(&read, edited);
+    EXPECT_EQ(read.getLight2DSteps(), 16);
+}
