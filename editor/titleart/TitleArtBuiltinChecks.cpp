@@ -1139,7 +1139,10 @@ namespace {
         titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
             if (layer.contains("generator") && layer["generator"].is_object() && layer.value("visible", true)) {
                 const std::string type = str(layer["generator"], "type");
-                gridLayout = gridLayout || type == "lightning" || type == "backlight";
+                // Glints that follow a layer pick their stars from its 8-bit analysis grid the same way
+                // (HighlightFinder over readGrid): a star at a borderline cell moves between the paths
+                const bool follows = !str(layer, "follow").empty();
+                gridLayout = gridLayout || type == "lightning" || type == "backlight" || (type == "glints" && follows);
             }
             return true;
         });
