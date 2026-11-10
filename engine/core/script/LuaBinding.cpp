@@ -143,6 +143,7 @@ uint64_t LuaBinding::luastateGeneration = 0;
 
 // modules the engine itself loads, anything after this is project code
 static std::set<std::string> baselineLuaModules;
+static unsigned int luaPreviewDepth = 0;
 
 // require() reads this registry table, package.loaded is only an alias to it
 static void collectLoadedModuleNames(lua_State* L, std::set<std::string>& out){
@@ -361,6 +362,81 @@ lua_State* LuaBinding::getLuaState(){
 
 uint64_t LuaBinding::getLuaStateGeneration(){
     return luastateGeneration;
+}
+
+int LuaBinding::createPreviewModuleCache(){
+    lua_State* L = luastate;
+    if (!L) return LUA_NOREF;
+    checkLuaThread();
+    lua_newtable(L);
+    const int fresh = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    for (const std::string& name : baselineLuaModules){
+        lua_pushlstring(L, name.data(), name.size());
+        lua_rawget(L, -2);
+        lua_setfield(L, fresh, name.c_str());
+    }
+    lua_pop(L, 1);
+    return luaL_ref(L, LUA_REGISTRYINDEX);
+}
+
+LuaBinding::ScopedModuleCache::ScopedModuleCache(int moduleCacheRef){
+    lua_State* L = LuaBinding::getLuaState();
+    if (!L) return;
+    checkLuaThread();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, moduleCacheRef);
+    if (!lua_istable(L, -1)){
+        lua_pop(L, 1);
+        Log::error("A Lua preview module cache must be a live table from createPreviewModuleCache()");
+        return;
+    }
+    const int next = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    previousRegistryRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_getglobal(L, "package");
+    previousPackageLoadedRef = LUA_NOREF;
+    if (lua_istable(L, -1)){
+        lua_pushliteral(L, "loaded");
+        lua_rawget(L, -2);
+        previousPackageLoadedRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        lua_pushliteral(L, "loaded");
+        lua_pushvalue(L, next);
+        lua_rawset(L, -3);
+    }
+    previousPackageRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_pushvalue(L, next);
+    lua_setfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_pop(L, 1);
+    state = L;
+    stateGeneration = LuaBinding::getLuaStateGeneration();
+    ++luaPreviewDepth;
+}
+
+LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
+    if (!state) return;
+    --luaPreviewDepth;
+    if (state != LuaBinding::getLuaState() || stateGeneration != LuaBinding::getLuaStateGeneration()) return;
+    checkLuaThread();
+    auto pushRef = [&](int ref){
+        if (ref == LUA_NOREF || ref == LUA_REFNIL) lua_pushnil(state);
+        else lua_rawgeti(state, LUA_REGISTRYINDEX, ref);
+    };
+    pushRef(previousRegistryRef);
+    lua_setfield(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    pushRef(previousPackageRef);
+    if (lua_istable(state, -1)){
+        lua_pushliteral(state, "loaded");
+        pushRef(previousPackageLoadedRef);
+        lua_rawset(state, -3);
+    }
+    lua_setglobal(state, "package");
+    luaL_unref(state, LUA_REGISTRYINDEX, previousRegistryRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageLoadedRef);
+}
+
+bool LuaBinding::isPreviewContext(){
+    return luaPreviewDepth != 0;
 }
 
 lua_State* LuaBinding::mainThread(lua_State* L){

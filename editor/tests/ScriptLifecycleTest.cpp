@@ -170,6 +170,55 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewInvalidatesOnlyItsSavedScriptChunk) {
     EXPECT_EQ(takeLog(), "preview-new other-old") << "a preview refreshes only its own saved script";
 }
 
+TEST_F(ScriptLifecycleTest, PrivatePreviewModulesPersistOnlyWithinTheirOwnScratch) {
+    writeScript("PreviewModuleCounter", "return {n = 0}");
+    EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = 41; return m.n"), "41");
+    const int first = LuaBinding::createPreviewModuleCache();
+    const int second = LuaBinding::createPreviewModuleCache();
+    EXPECT_FALSE(LuaBinding::isPreviewContext());
+    {
+        LuaBinding::ScopedModuleCache cache(first);
+        EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED and require('math') == math"), "true");
+        EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
+        {
+            LuaBinding::ScopedModuleCache nested(second);
+            EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
+        }
+        EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "1");
+    }
+    EXPECT_FALSE(LuaBinding::isPreviewContext());
+    EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "41");
+    {
+        LuaBinding::ScopedModuleCache cache(first);
+        EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "2");
+    }
+    EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "41");
+    LuaBinding::releaseLuaRef(first);
+    LuaBinding::releaseLuaRef(second);
+}
+
+TEST_F(ScriptLifecycleTest, PrivatePreviewRestoresPackageLoadedAliasIndependently) {
+    lua_getglobal(L(), "package");
+    lua_getfield(L(), -1, "loaded");
+    const int originalAlias = luaL_ref(L(), LUA_REGISTRYINDEX);
+    lua_pop(L(), 1);
+    EXPECT_EQ(lua("package.loaded = {keep_alias = true}; return package.loaded == debug.getregistry()._LOADED"), "false");
+    const int cache = LuaBinding::createPreviewModuleCache();
+    {
+        LuaBinding::ScopedModuleCache scope(cache);
+        EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED"), "true");
+    }
+    EXPECT_EQ(lua("return package.loaded.keep_alias and package.loaded ~= debug.getregistry()._LOADED"), "true");
+    lua_getglobal(L(), "package");
+    lua_rawgeti(L(), LUA_REGISTRYINDEX, originalAlias);
+    lua_setfield(L(), -2, "loaded");
+    lua_pop(L(), 1);
+    LuaBinding::releaseLuaRef(originalAlias);
+    LuaBinding::releaseLuaRef(cache);
+}
+
 // 2. a disabled script: init runs (Unity Awake), onEnable / start / onUpdate do not until enabled
 TEST_F(ScriptLifecycleTest, DisabledScriptInitsButWaitsForEnabled) {
     writeLogger("L1");

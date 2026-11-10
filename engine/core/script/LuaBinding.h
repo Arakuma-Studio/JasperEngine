@@ -160,6 +160,24 @@ namespace jasperengine {
         // in the same process) has a new generation, even at the address of the one it replaces
         static uint64_t getLuaStateGeneration();
 
+        // A private editor preview owns this registry reference until releaseLuaRef(). Its
+        // require() cache starts with engine modules only and persists across preview slices.
+        static int createPreviewModuleCache();
+        class JASPERENGINE_API ScopedModuleCache {
+        public:
+            explicit ScopedModuleCache(int moduleCacheRef);
+            ~ScopedModuleCache();
+            ScopedModuleCache(const ScopedModuleCache&) = delete;
+            ScopedModuleCache& operator=(const ScopedModuleCache&) = delete;
+        private:
+            lua_State* state = nullptr;
+            uint64_t stateGeneration = 0;
+            int previousRegistryRef = 0;
+            int previousPackageRef = 0;
+            int previousPackageLoadedRef = 0;
+        };
+        static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it
         // (onControllerColliderHit after a CharacterController's move)
