@@ -147,3 +147,46 @@ async def test_contact_sheet_columns_and_scale_are_checked(ed: Editor):
     ed.check_eq((ed.project / PATH).read_bytes(), before, "nothing was written")
     ok = await ed.call_raw("edit_tileset", {"path": PATH, "columns": 2, "scale": 1}, timeout=60)
     ed.check(not ok.is_error and ok.images, f"in range: {ok.text[:300]}")
+
+
+async def test_an_image_imported_first_switches_to_the_sprite_import(ed: Editor):
+    """R12, R53: an image imported before any .tileset names it has S14's default type written down
+    (mips, block compression). Making it a tileset's image is the user's choice: it becomes a
+    pixel-art sprite (no mips, point filtering, uncompressed) in the tileset's own undo step, and
+    `next` names its other uses"""
+    image, tileset = "assets/art/imported.png", "assets/art/imported.tileset"
+    await ed.call("tool_groups", enable=["tilemaps", "assets_pipeline"])
+    sheet(ed, image, 16, 2, 1)
+    material = ed.project / "assets/materials/Wall.material"
+    material.parent.mkdir(parents=True, exist_ok=True)
+    material.write_text("name: materials/Wall.material\nbaseColorTexture: {textureType: 2D, source: path, path: art/imported.png}\n")
+    await ed.call("sync_files", paths=[image, "assets/materials/Wall.material"])
+    await ed.call("reimport_textures", paths=[image])
+    before = await ed.call("get_texture_import_settings", path=image)
+    ed.check_eq((before["stored"] or {}).get("type"), "default", f"its first cook wrote the default type down: {before['stored']}")
+    ed.check(before["resolved"]["desktop"]["mipmaps"], f"with mips before: {before['resolved']['desktop']}")
+
+    written = await ed.call("edit_tileset", path=tileset, output=True, sources=[{"texture": image, "tile_size": [16, 16], "skip_empty": False}])
+    note = written.get("next", "")
+    ed.check_in("now imports as a pixel-art Sprite", note)
+    ed.check_in("Wall.material", note)
+    after = await ed.call("get_texture_import_settings", path=image)
+    ed.check_eq(after["stored"].get("type"), "sprite", f"stored: {after['stored']}")
+    for family in ("desktop", "mobile", "web"):
+        resolved = (await ed.call("get_texture_import_settings", path=image, platform=family))["resolved"][family]
+        ed.check_eq((resolved["mipmaps"], resolved["quality"]), (False, "none"), f"{family}: no mips, uncompressed: {resolved}")
+    ed.check_eq(after["pixel_art"]["filter_mode"], "point", f"point filtering: {after['pixel_art']}")
+
+    # one undo step: the tileset and the image's settings go back together
+    await ed.call("undo", scope="project")
+    ed.check(not (ed.project / tileset).exists(), "the undo removes the tileset")
+    undone = await ed.call("get_texture_import_settings", path=image)
+    ed.check_eq((undone["stored"] or {}).get("type"), "default", f"and puts the image's settings back: {undone['stored']}")
+
+    # an image the tileset already named keeps what the user chose for it since
+    await ed.call("edit_tileset", path=tileset, output=True, sources=[{"texture": image, "tile_size": [16, 16], "skip_empty": False}])
+    await ed.call("set_texture_import_settings", paths=[image], settings={"filter_mode": "bilinear"})
+    edited = await ed.call("edit_tileset", path=tileset, output=True, tiles=[{"id": 0, "name": "left"}])
+    ed.check("next" not in edited or "now imports" not in edited["next"], f"no switch on a later edit: {edited.get('next')}")
+    kept = await ed.call("get_texture_import_settings", path=image)
+    ed.check_eq(kept["stored"].get("filter_mode"), "bilinear", f"the user's later choice stays: {kept['stored']}")

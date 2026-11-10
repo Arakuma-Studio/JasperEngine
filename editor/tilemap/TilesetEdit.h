@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -142,9 +143,20 @@ namespace jasperengine::editor::tilemap {
     void stampSourceGuids(Project* project, TilesetData& data);
     // a WriteFilesCmd item with the document's bytes (tileset::write), its sources' GUIDs stamped
     WriteFilesCmd::Item tilesetFileItem(Project* project, const std::filesystem::path& absolute, const TilesetData& data);
-    // the document as one undo step (ProjectFileWrites::writeUndoable), the pool's copy invalidated
-    // after the write, its undo and its redo
+
+    // R12, R53: making a texture a tileset's image is the user's choice of how it imports: a
+    // pixel-art sprite (Sprite, no mips, point filtering, uncompressed), whatever S14's inference
+    // wrote down when it was first imported. The commands that set it on each texture `data`
+    // names and the file at `absolute` did not (every one, for a new file) whose settings differ,
+    // for the caller to add to its write's undo step; an Aseprite source's pages import as its
+    // file says (S44). `notes` gets a line per texture switched, naming its other uses.
+    std::vector<std::unique_ptr<Command>> sourceImageImportCommands(Project* project, const std::filesystem::path& absolute,
+                                                                    const TilesetData& data, std::vector<std::string>& notes);
+
+    // the document and its new images' import settings (sourceImageImportCommands) as one undo
+    // step (ProjectFileWrites::writeUndoable), the pool's copy invalidated after the write, its
+    // undo and its redo; `notes`: the images switched (also logged)
     bool writeTilesetFile(Project* project, const std::filesystem::path& absolute, const TilesetData& data, std::string& error,
-                          const std::string& stepName = {});
+                          const std::string& stepName = {}, std::vector<std::string>* notes = nullptr);
 
 }

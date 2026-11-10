@@ -1,6 +1,7 @@
 """A tileset map in exports (docs/specs/S50-grid-tilemap.md R12, R53, AC15): the .tileset names its
-image by GUID, so the image can move; the editor still draws the layer after the move, the image
-imports as a sprite sheet (no mips), and a source export ships the image and a .tileset that names
+image by GUID, so the image can move; the editor still draws the layer after the move; the image,
+imported before the tileset named it, switches to the pixel-art Sprite import when the tileset is made
+(no mips, uncompressed, as the export cooks it); and a source export ships the image and a .tileset that names
 it at its new path with no GUID (a game loads by path), with the scene's layer referencing it. With
 JASPER_SLOW_BUILD=1 a Desktop game built with the prebuilt glcore player draws the layer (the
 player's own screenshot).
@@ -62,9 +63,17 @@ async def wait_job(ed: Editor, result: dict, timeout: float) -> dict:
 
 
 async def test_setup_and_move_the_image(ed: Editor):
-    await ed.call("tool_groups", enable=["tilemaps"])
+    await ed.call("tool_groups", enable=["tilemaps", "assets_pipeline"])
     write_tiles(ed)
-    await ed.call("edit_tileset", path=TILESET, output=True, sources=[{"texture": TEXTURE, "tile_size": [16, 16], "skip_empty": False}])
+    # the image is imported before any .tileset names it (dropped in, then made a tileset): its first
+    # cook writes S14's inference down, the default type with mips
+    await ed.call("sync_files", paths=[TEXTURE])
+    await ed.call("reimport_textures", paths=[TEXTURE])
+    first = await ed.call("get_texture_import_settings", path=TEXTURE)
+    ed.check_eq((first["stored"] or {}).get("type"), "default", f"imported before the tileset: {first['stored']}")
+    ed.check(first["resolved"]["desktop"]["mipmaps"], f"with mips until a tileset names it: {first['resolved']['desktop']}")
+    made = await ed.call("edit_tileset", path=TILESET, output=True, sources=[{"texture": TEXTURE, "tile_size": [16, 16], "skip_empty": False}])
+    ed.check_in("now imports as a pixel-art Sprite", made.get("next", ""))
     made = await ed.call("create_scene", name="Map", type="2d", path="scenes/Map")
     sid = made["scene"]["id"]
     await ed.call("select_scene", scene=sid)
@@ -86,6 +95,7 @@ async def test_setup_and_move_the_image(ed: Editor):
 
     settings = await ed.call("get_texture_import_settings", path=MOVED)
     ed.check_eq(settings["inferred"]["type"], "sprite", f"a tileset's image imports as a sprite sheet: {settings['inferred']}")
+    ed.check_eq((settings["stored"] or {}).get("type"), "sprite", f"the tileset's choice is written down: {settings['stored']}")
     ed.check_eq(settings["resolved"]["desktop"]["mipmaps"], False, "without mips")
 
 
@@ -102,6 +112,13 @@ async def test_source_export_ships_the_image_and_a_resolved_tileset(ed: Editor):
     source = json.loads(shipped.read_text())["sources"][0]["texture"]
     ed.check_eq(source, {"path": MOVED}, "the image at its current path, no GUID")
     ed.check((assets / MOVED).is_file() or cooked_at(assets, MOVED), "the image ships")
+    # cooked as a pixel-art sprite: one level (mips blend the next tile in at a minifying zoom, the
+    # seams of R35) and no block compression
+    for index in sorted((assets / "je-cooked").rglob("index.json")):
+        entry = json.loads(index.read_text()).get("textures", {}).get(MOVED)
+        ed.check(entry, f"{index.parent.name}: the image is cooked: {index.read_text()[:300]}")
+        ed.check_eq(entry["levels"], 1, f"{index.parent.name}: one mip level: {entry}")
+        ed.check(not any(entry["format"].startswith(codec) for codec in ("BC", "ETC", "ASTC")), f"{index.parent.name}: uncompressed: {entry}")
     ed.check(not (assets / TEXTURE).exists() and not cooked_at(assets, TEXTURE), "nothing at the old path")
     referrers = [p for p in project.rglob("*") if p.is_file() and p != shipped and p.suffix not in (".png", ".ktx2")
                  and b"world.tileset" in p.read_bytes()]

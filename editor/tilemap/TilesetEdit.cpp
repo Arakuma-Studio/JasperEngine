@@ -12,12 +12,20 @@
 #include "sprite/SpriteSheetPool.h"
 #include "tilemap/TileAlphaTrace.h"
 #include "util/ProjectFileWrites.h"
+#include "Out.h"
+#include "asset/AssetFileWrite.h"
+#include "command/CommandHistory.h"
+#include "command/type/SetAssetMetaCmd.h"
+#include "texture/TextureCookQueue.h"
+#include "texture/TextureImportSettings.h"
+#include "texture/TextureTypeInference.h"
 
 #include "json.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <set>
 #include <utility>
 
 namespace jasperengine::editor::tilemap {
@@ -542,12 +550,92 @@ namespace jasperengine::editor::tilemap {
         return WriteFilesCmd::Item{absolute, tileset::write(stamped)};
     }
 
-    bool writeTilesetFile(Project* project, const std::filesystem::path& absolute, const TilesetData& data, std::string& error, const std::string& stepName) {
+    std::vector<std::unique_ptr<Command>> sourceImageImportCommands(Project* project, const std::filesystem::path& absolute,
+                                                                    const TilesetData& data, std::vector<std::string>& notes) {
+        std::vector<std::unique_ptr<Command>> commands;
+        if (!project) return commands;
+        const AssetDatabase& database = project->getAssetDatabase();
+        // where a source's texture is now (its GUID first: the image may have moved since)
+        const auto texturePath = [&](const TilesetSource& source) {
+            const std::string hint = project->assetHintToProjectPath(source.asset.path, AssetPathBase::Assets);
+            const AssetDatabase::Resolution found = database.resolve(source.asset.guid, hint, AssetType::Texture, true);
+            return found.found() ? found.path : hint;
+        };
+        // the images the file named already were chosen then: a later change of their settings stays
+        std::set<std::string> before;
+        std::string text;
+        std::error_code ec;
+        if (std::filesystem::exists(absolute, ec) && assetio::readFile(absolute, text)) {
+            TilesetData old;
+            std::vector<TilesetProblem> problems;
+            tileset::parse(text, old, problems);
+            for (const TilesetSource& source : old.sources) {
+                if (!source.asset.path.empty() || !source.asset.guid.isNull()) before.insert(texturePath(source));
+            }
+        }
+        TilesetData stamped = data;
+        stampSourceGuids(project, stamped);
+        std::set<std::string> seen;
+        for (const TilesetSource& source : stamped.sources) {
+            if (source.kind == TilesetSourceKind::Aseprite || (source.asset.path.empty() && source.asset.guid.isNull())) continue;
+            const std::string projectRelative = texturePath(source);
+            // a .spriteatlas sheet cooks its own pages (S45)
+            if (!isCookableTexture(projectRelative) || before.count(projectRelative) || !seen.insert(projectRelative).second) continue;
+            const std::filesystem::path textureAbsolute = project->getProjectPath() / std::filesystem::path(projectRelative);
+            const YAML::Node stored = SetAssetMetaCmd::read(textureAbsolute, TextureImportSettings::metaKey);
+            TextureImportSettings settings;
+            const bool parsed = stored && stored.IsMap() && TextureImportSettings::parse(stored, settings);
+            TextureImportSettings wanted = settings;
+            wanted.type = TextureImportType::Sprite;
+            wanted.mipmaps = false;
+            wanted.filterMode = TextureFilterMode::Point;
+            wanted.quality = TextureCookQuality::None;
+            // the user's choice now, not an inference
+            wanted.inferredFrom.clear();
+            for (TexturePlatformSettings& platform : wanted.platforms) {
+                platform.format.reset();
+                platform.quality.reset();
+            }
+            if (parsed && wanted == settings) continue;
+            std::string others;
+            for (const TextureReferenceUse& use : TextureTypeInference::infer(*project, projectRelative).uses) {
+                if (use.slot == TextureSlot::Sprite || use.slot == TextureSlot::CpuReadable || use.slot == TextureSlot::SourceFile) continue;
+                others += (others.empty() ? "" : "; ") + use.where;
+            }
+            auto command = std::make_unique<SetAssetMetaCmd>(project, std::filesystem::path(projectRelative), TextureImportSettings::metaKey, wanted.serialize());
+            command->setAction("Import As Tileset Image");
+            commands.push_back(std::move(command));
+            notes.push_back(projectRelative + " now imports as a pixel-art Sprite (no mips, point filtering, uncompressed) for the tileset" +
+                            (others.empty() ? std::string(".") : "; it is also used by " + others + ", which now reads it as a Sprite too."));
+        }
+        return commands;
+    }
+
+    bool writeTilesetFile(Project* project, const std::filesystem::path& absolute, const TilesetData& data, std::string& error, const std::string& stepName,
+                          std::vector<std::string>* notes) {
         const auto afterChange = [project](const std::vector<std::filesystem::path>& changed) {
             ProjectFileWrites::filesWritten(project, changed);
             for (const std::filesystem::path& path : changed) TilesetPool::invalidate(path.generic_string());
         };
-        return ProjectFileWrites::writeUndoable(project, {tilesetFileItem(project, absolute, data)}, error, afterChange, nullptr, {}, false, stepName);
+        // against the file as it is before the write
+        std::vector<std::string> switched;
+        std::vector<std::unique_ptr<Command>> imports = sourceImageImportCommands(project, absolute, data, switched);
+        CommandHistory* history = project ? project->getProjectCommandHistory() : nullptr;
+        const size_t mark = history ? history->mark() : 0;
+        if (!ProjectFileWrites::writeUndoable(project, {tilesetFileItem(project, absolute, data)}, error, afterChange, nullptr, {}, false, stepName)) return false;
+        if (imports.empty()) return true;
+        for (std::unique_ptr<Command>& command : imports) {
+            if (!history->addCommandNoMerge(command.release())) {
+                while (history->position() > mark && history->canUndo() && history->undo()) {}
+                history->freeRedo();
+                error = "Writing the tileset image's import settings failed: nothing was changed.";
+                return false;
+            }
+        }
+        history->groupSince(mark, stepName);
+        for (const std::string& note : switched) Out::info("[Tileset] %s", note.c_str());
+        if (notes) notes->insert(notes->end(), switched.begin(), switched.end());
+        return true;
     }
 
 }

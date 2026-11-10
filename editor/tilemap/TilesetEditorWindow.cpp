@@ -40,6 +40,13 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor::tileseteditor {
 
+    // the image notes of a write (writeTilesetFile), one sentence after another
+    std::string joinedNotes(const std::vector<std::string>& notes) {
+        std::string text;
+        for (const std::string& note : notes) text += (text.empty() ? "" : " ") + note;
+        return text;
+    }
+
     constexpr float kTilePixelZoom = 2.0f;
     constexpr int kPainterZoom = 8;
 
@@ -172,11 +179,13 @@ std::filesystem::path TilesetEditorWindow::createFromSource(const fs::path& sour
     fs::path target = source.parent_path() / (name + ".tileset");
     for (int n = 2; fs::exists(target); n++) target = source.parent_path() / (name + " " + std::to_string(n) + ".tileset");
     std::string error;
-    if (!writeTilesetFile(project, target, data, error, "Create Tileset")) {
+    std::vector<std::string> imageNotes;
+    if (!writeTilesetFile(project, target, data, error, "Create Tileset", &imageNotes)) {
         Out::error("Create Tileset: %s", error.c_str());
         return {};
     }
     open(target);
+    if (!imageNotes.empty()) setNotice(joinedNotes(imageNotes), false);
     return target;
 }
 
@@ -236,11 +245,12 @@ bool TilesetEditorWindow::edit(const std::string& name, const std::function<void
         return false;
     }
     std::string error;
-    if (!writeTilesetFile(project, file, next, error, name)) {
+    std::vector<std::string> imageNotes;
+    if (!writeTilesetFile(project, file, next, error, name, &imageNotes)) {
         setNotice(error, true);
         return false;
     }
-    setNotice(name, false);
+    setNotice(imageNotes.empty() ? name : name + ": " + joinedNotes(imageNotes), false);
     setDocument(next);
     std::error_code timeError;
     fileTime = fs::last_write_time(file, timeError);

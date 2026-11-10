@@ -20,6 +20,12 @@ Create one from GameObject > 2D Object > Tilemap (Rectangular, Isometric, Isomet
 Hexagonal Pointy Top or Flat Top). That makes a Grid with a child Tilemap. Create tilesets from
 Assets > Create > 2D > Tileset, or from a texture's right-click menu.
 
+A texture that becomes a tileset's image (Create Tileset, the Tileset Editor, `edit_tileset`, a
+Tiled or LDtk import) switches to the pixel-art Sprite import: no mipmaps, Point filtering and no
+compression, so tiles never blend with their neighbours in the atlas. The switch is part of the
+same undo step, and the Console names any other asset (a material, say) that uses the texture too.
+An Aseprite tileset's images follow its file's own import settings.
+
 ## The Tile Palette
 
 Window > 2D > Tile Palette paints tiles in the Scene view. Choose the Active Tilemap, then a tool:

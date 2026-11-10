@@ -17,6 +17,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpValues.h"
 
+#include "Out.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -357,6 +358,8 @@ struct GridEdit {
     int chosen = 0;                       // the slot of the top-level `layer`
     std::map<int32_t, char> preferredChars;
     std::vector<std::string> warnings;
+    // the textures the call's new tileset switched to the Sprite import (tm::sourceImageImportCommands)
+    std::vector<std::string> imageNotes;
     int painted = 0;
     int erased = 0;
 
@@ -1104,7 +1107,12 @@ bool commitEdit(GridEdit& e, const TilesetArg& tilesetArg, Problem& error) {
                 for (const fs::path& path : changed) TilesetPool::invalidate(path.generic_string());
             });
         writeCommand->setName("Create Tileset " + tilesetArg.absolute.filename().generic_string());
+        // against the file before the write: the images it newly names
+        std::vector<std::unique_ptr<Command>> imports = tm::sourceImageImportCommands(project, tilesetArg.absolute, *tilesetArg.data, e.imageNotes);
         if (!add(writeCommand.release(), "write the tileset file")) return false;
+        for (std::unique_ptr<Command>& command : imports) {
+            if (!add(command.release(), "set the tileset image's import settings")) return false;
+        }
         // the pool is keyed by the stored path: the call's document is what later reads see
         TilesetPool::set(tilesetArg.path, tilesetArg.data);
     }
@@ -1338,6 +1346,14 @@ Json editResult(GridEdit& e, CellRect touched, const Json& ascii, bool created) 
         result["next"] = "A preview: nothing was written. Call again without preview to apply it.";
     } else if (noTile) {
         result["next"] = "Check the terrains: edit_tileset {path, check: true} lists the masks without a tile (tool_groups: tilemaps).";
+    }
+    if (!e.preview && !e.imageNotes.empty()) {
+        std::string next = result.contains("next") ? result["next"].get<std::string>() : std::string();
+        for (const std::string& note : e.imageNotes) {
+            next += (next.empty() ? "" : " ") + note;
+            Out::info("[Tileset] %s", note.c_str());
+        }
+        result["next"] = next;
     }
     return result;
 }

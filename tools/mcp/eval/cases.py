@@ -4730,6 +4730,30 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_tileset_image_other_use_reported",
+        "kind": "guard",
+        "what_happened": "Making a texture a tileset's image switches its import to a pixel-art Sprite (no mips, point "
+                         "filtering, uncompressed; S50 R12, R53), also when a material uses the same image. Only edit_tileset's "
+                         "`next` says the material's texture changed; asked to report what changes for the material, the agent "
+                         "must pass it on instead of answering that nothing changed.",
+        "text_at_issue": "edit_tileset result next: '<image> now imports as a pixel-art Sprite (no mips, point filtering, "
+                         "uncompressed) for the tileset; it is also used by <use>, which now reads it as a Sprite too.'",
+        "source": "S50 review: a tileset image imported before its .tileset kept S14's default type (mips, seams in exports)",
+        "prompt": "Make a tileset from assets/art/bricks.png with 16x16 tiles. The Wall material uses the same image: tell me "
+                  "whether anything about it changes.",
+        "mocks": [
+            {"tool": "edit_tileset",
+             "result": ok("Wrote assets/art/bricks.tileset: 8 tiles (PASS, one undo step).",
+                          {"path": "assets/art/bricks.tileset", "created": True, "tiles": 8, "sources": 1,
+                           "written": "assets/art/bricks.tileset", "warnings": [],
+                           "next": "assets/art/bricks.png now imports as a pixel-art Sprite (no mips, point filtering, "
+                                   "uncompressed) for the tileset; it is also used by baseColorTexture of "
+                                   "assets/materials/Wall.material, which now reads it as a Sprite too."})},
+        ],
+        "checks": {"calls": ["edit_tileset"], "reply_must": [r"sprite|mip|point|filter|compress"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_import_tilemap_preview_first",
         "kind": "guard",
         "what_happened": "import_tilemap previews by default and writes only with output: true; asked what a map would bring "

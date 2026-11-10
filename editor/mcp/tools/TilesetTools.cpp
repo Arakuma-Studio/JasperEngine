@@ -817,7 +817,8 @@ void editTilesetTool(const CallPtr& call) {
     ToolResult reply;
     if (output) {
         std::string writeError;
-        if (!tm::writeTilesetFile(project, absolute, data, writeError, "Edit Tileset " + FileUtils::pathToUtf8(absolute.filename()))) {
+        std::vector<std::string> imageNotes;
+        if (!tm::writeTilesetFile(project, absolute, data, writeError, "Edit Tileset " + FileUtils::pathToUtf8(absolute.filename()), &imageNotes)) {
             failProblems(call, "Nothing was written:", {tilesetProblem("tileset_missing", "path", writeError, "check the path is writable")});
             return;
         }
@@ -826,6 +827,11 @@ void editTilesetTool(const CallPtr& call) {
         const UndoEntry* top = history ? history->top() : nullptr;
         if (top) result["undo"] = Json{{"id", top->info.id}, {"name", top->name()}};
         result["written"] = w4::projectRelative(project, absolute);
+        if (!imageNotes.empty()) {
+            std::string next;
+            for (const std::string& note : imageNotes) next += (next.empty() ? "" : " ") + note;
+            result["next"] = next;
+        }
         reply.text = "Wrote " + w4::projectRelative(project, absolute) + ": " + std::to_string(data.tiles.size()) + " tiles (" + verdict + ", one undo step).";
     } else {
         result["next"] = "A preview: nothing was written. Pass output: true to write it.";
@@ -871,6 +877,11 @@ Json importApplyResult(const ti::ImportResult& result, SceneProject* sceneProjec
     for (Entity layer : result.layers) layers.push_back(McpRefs::entityJson(sceneProject, layer));
     Json out = {{"grids", grids}, {"layers", layers}, {"tileset_files", result.tilesetFiles}, {"warnings", result.warnings}};
     if (!result.prefab.empty()) out["prefab"] = result.prefab;
+    if (!result.imageNotes.empty()) {
+        std::string next;
+        for (const std::string& note : result.imageNotes) next += (next.empty() ? "" : " ") + note;
+        out["next"] = next;
+    }
     return out;
 }
 

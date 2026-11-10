@@ -71,6 +71,9 @@ namespace jasperengine::editor::tilemapimport {
         std::vector<std::string> tilesetFiles;  // assets-relative
         std::string prefab;                     // project-relative, when one was written
         std::vector<std::string> warnings;
+        // the textures the tilesets newly name, switched to the Sprite import in the same step
+        // (tilemap::sourceImageImportCommands)
+        std::vector<std::string> imageNotes;
     };
 
     // Makes the plan real, as one undo step; on any failure the step is rolled back

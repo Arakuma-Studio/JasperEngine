@@ -870,11 +870,14 @@ print(layer.cellCount, grid.cellSize, grid.layout)
   Colliders are built in texels and scaled back.
 - **R12 (aseprite source).** The Aseprite importer (version 2) writes each tileset's strip and resolves
   `"<file>#tileset#<index>"`, so the runtime and exports read the tiles without the `.aseprite` file.
-- **R12, R53 (sprite import, open).** A tileset's image infers Sprite (no mips) only when it gets its first import
-  settings after the `.tileset` names it. An image imported before (dropped in, then made a tileset) keeps the `default`
-  type S14 wrote down ("written then, never silently re-inferred"): it cooks with mips and the exported map shows seams
-  at a minifying zoom. Setting the source image's type from `edit_tileset` and the Tileset Editor is left to the
-  coordinator's decision (it changes S14's rule).
+- **R12, R53 (sprite import).** A texture becomes a pixel-art Sprite (Sprite, no mips, Point filtering, quality none:
+  uncompressed) when `edit_tileset`, the Tileset Editor, Create Tileset, `edit_tilemap`'s tileset slice or the Tiled/LDtk
+  import makes it a tileset's image: the user's choice, not S14's inference, so an image imported before its `.tileset`
+  (S14 had written its default type down) no longer cooks with mips and BC1 and shows seams in exports. It is one
+  `SetAssetMetaCmd` per image in the tileset write's undo step; only images the file did not name before switch, so a
+  later choice of the user stays; other uses of the image are named in `next` and the Console. An Aseprite source's
+  pages follow its file's own import (S44, lossless by default); the legacy Tilemap conversion keeps its texture's
+  settings (the legacy Tilemap already infers Sprite).
 - **AC5, AC15 (measurement).** No `je-bench-tilemap` binary: the R56-R61 timings are measured in the unit tests through
   `perfSlack()`, and the mobile (Pixel 6a, iPhone 12) and web numbers are not measured (no devices on this host). Web,
   Android, Vulkan and the smoke export run at the batch landing (owner decision of 2026-11-08). The GPU placement tests

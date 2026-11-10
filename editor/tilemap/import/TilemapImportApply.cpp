@@ -117,7 +117,7 @@ namespace jasperengine::editor::tilemapimport {
 
         // The tileset document, its images assets-relative and by GUID (they may move later)
         std::string tilesetDocument(Project* project, const ImportTileset& tileset, const fs::path& assets, const fs::path& mapDir, const ImportPlan& plan,
-                                    std::vector<std::string>& warnings) {
+                                    std::vector<std::string>& warnings, TilesetData* written = nullptr) {
             TilesetData data = tileset.data;
             for (TilesetSource& source : data.sources) {
                 // an Aseprite plan's source is an assets-relative path already
@@ -130,6 +130,7 @@ namespace jasperengine::editor::tilemapimport {
             tileset::validate(data, problems);
             for (const TilesetProblem& problem : problems) warnings.push_back("Tileset '" + data.name + "': " + problem.field + ": " + problem.message);
             tilemap::stampSourceGuids(project, data);
+            if (written) *written = data;
             return tileset::write(data);
         }
 
@@ -309,8 +310,12 @@ namespace jasperengine::editor::tilemapimport {
         const fs::path assets = project->getAssetsPath();
         std::vector<TilesetFile> files = tilesetFiles(plan, target, {});
         std::vector<WriteFilesCmd::Item> items;
+        std::vector<std::unique_ptr<Command>> imports;
         for (size_t i = 0; i < files.size(); i++) {
-            items.push_back({files[i].absolute, tilesetDocument(project, plan.tilesets[i], assets, mapDir, plan, result.warnings)});
+            TilesetData written;
+            items.push_back({files[i].absolute, tilesetDocument(project, plan.tilesets[i], assets, mapDir, plan, result.warnings, &written)});
+            for (std::unique_ptr<Command>& command : tilemap::sourceImageImportCommands(project, files[i].absolute, written, result.imageNotes))
+                imports.push_back(std::move(command));
             result.tilesetFiles.push_back(files[i].assetPath);
         }
 
@@ -321,6 +326,9 @@ namespace jasperengine::editor::tilemapimport {
             return applyFailure(std::move(result), std::string("the import could not ") + what, "check the project's files, then try again");
         };
         if (!items.empty() && !step.add(writeTilesetsCommand(project, std::move(items), "Write Imported Tilesets"))) return fail("write the tileset files");
+        for (std::unique_ptr<Command>& command : imports) {
+            if (!step.add(command.release())) return fail("set a tileset image's import settings");
+        }
 
         const std::string importSource = target.linked ? mapSourcePath(project, target.mapFile) : std::string();
         for (const ImportGrid* grid : grids) {
@@ -364,6 +372,7 @@ namespace jasperengine::editor::tilemapimport {
         }
 
         step.commit("Import Tilemap " + target.mapFile.filename().generic_string());
+        for (const std::string& note : result.imageNotes) Out::info("[Tilemap] %s", note.c_str());
         result.ok = true;
         return result;
     }
@@ -427,11 +436,17 @@ namespace jasperengine::editor::tilemapimport {
         const std::vector<TilesetFile> files = tilesetFiles(plan, target, kept);
         const fs::path assets = project->getAssetsPath();
         std::vector<WriteFilesCmd::Item> items;
+        std::vector<std::unique_ptr<Command>> imports;
         for (int index : usedTilesets) {
             const size_t i = static_cast<size_t>(index);
-            std::string document = tilesetDocument(project, plan.tilesets[i], assets, mapFile.parent_path(), plan, result.warnings);
+            TilesetData written;
+            std::string document = tilesetDocument(project, plan.tilesets[i], assets, mapFile.parent_path(), plan, result.warnings, &written);
             std::string existing;
-            if (!readTextFile(files[i].absolute, existing) || existing != document) items.push_back({files[i].absolute, std::move(document)});
+            if (!readTextFile(files[i].absolute, existing) || existing != document) {
+                for (std::unique_ptr<Command>& command : tilemap::sourceImageImportCommands(project, files[i].absolute, written, result.imageNotes))
+                    imports.push_back(std::move(command));
+                items.push_back({files[i].absolute, std::move(document)});
+            }
             result.tilesetFiles.push_back(files[i].assetPath);
         }
 
@@ -442,6 +457,9 @@ namespace jasperengine::editor::tilemapimport {
             return applyFailure(std::move(result), std::string("the re-import could not ") + what, "check the project's files, then try again");
         };
         if (!items.empty() && !step.add(writeTilesetsCommand(project, std::move(items), "Write Imported Tilesets"))) return fail("write the tileset files");
+        for (std::unique_ptr<Command>& command : imports) {
+            if (!step.add(command.release())) return fail("set a tileset image's import settings");
+        }
 
         // the Grid's layout: only what changed, so an unchanged map adds no undo step
         const float ppu = static_cast<float>(Engine::getPixelsPerUnit());
@@ -500,6 +518,7 @@ namespace jasperengine::editor::tilemapimport {
         }
 
         if (step.changed()) step.commit("Reimport " + mapFile.filename().generic_string());
+        for (const std::string& note : result.imageNotes) Out::info("[Tilemap] %s", note.c_str());
         result.ok = true;
         return result;
     }
