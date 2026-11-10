@@ -143,7 +143,7 @@ TEST_F(AnimeLuaTest, DetachedPreviewReleasesLuaCallbacksAtPinnedTime){
 
 TEST_F(AnimeLuaTest, PreviewReferenceCyclesReleaseOnlyTheirOwnContext){
     AnimEngine& engine = AnimEngine::instance();
-    ASSERT_EQ(run("t = {x = 0}; a = anime.animate(t, {x = 100, duration = 1000, onUpdate = function() t.seen = true end})"), "");
+    ASSERT_EQ(run("t = {x = 0}; a = anime.animate(t, {x = 100, duration = 1000, ease = 'linear', onUpdate = function() t.seen = true end})"), "");
     const size_t outsideRefs = AnimLua::getLiveLuaRefs();
     const size_t outsideTimers = AnimEngine::getLiveTimerCount();
     const int firstCache = LuaBinding::createPreviewModuleCache();
