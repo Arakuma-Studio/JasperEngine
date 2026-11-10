@@ -6,7 +6,9 @@ answers PASS/WARN/FAIL, and every property and peering error is typed.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 
 import pngdiff
 from harness import Editor
@@ -153,23 +155,31 @@ async def test_an_image_imported_first_switches_to_the_sprite_import(ed: Editor)
     """R12, R53: an image imported before any .tileset names it has S14's default type written down
     (mips, block compression). Making it a tileset's image is the user's choice: it becomes a
     pixel-art sprite (no mips, point filtering, uncompressed) in the tileset's own undo step, and
-    `next` names its other uses"""
+    `next` names its other uses (here a box's material in a saved scene)"""
     image, tileset = "assets/art/imported.png", "assets/art/imported.tileset"
     await ed.call("tool_groups", enable=["tilemaps", "assets_pipeline"])
     sheet(ed, image, 16, 2, 1)
-    material = ed.project / "assets/materials/Wall.material"
-    material.parent.mkdir(parents=True, exist_ok=True)
-    material.write_text("name: materials/Wall.material\nbaseColorTexture: {textureType: 2D, source: path, path: art/imported.png}\n")
-    await ed.call("sync_files", paths=[image, "assets/materials/Wall.material"])
+    # a box's material in a saved scene uses the same image as its colour texture
+    scene = (await ed.call("create_scene", name="Walls", type="3D", path="scenes/Walls"))["scene"]["id"]
+    wall = (await ed.call("create_entity", scene=scene, type="box", name="Wall"))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=wall, values={"mesh": {"submeshes[0].material.baseColorTexture": image}})
+    await ed.call("save_scene", scene=scene)
     await ed.call("reimport_textures", paths=[image])
-    before = await ed.call("get_texture_import_settings", path=image)
+    # the dependency index names the scene's use once it has read the saved file
+    deadline = time.monotonic() + 60
+    while True:
+        before = await ed.call("get_texture_import_settings", path=image)
+        if "Walls" in before["inferred"]["reason"] or time.monotonic() > deadline:
+            break
+        await asyncio.sleep(0.5)
+    ed.check_in("Walls", before["inferred"]["reason"], "the scene's use is indexed")
     ed.check_eq((before["stored"] or {}).get("type"), "default", f"its first cook wrote the default type down: {before['stored']}")
     ed.check(before["resolved"]["desktop"]["mipmaps"], f"with mips before: {before['resolved']['desktop']}")
 
     written = await ed.call("edit_tileset", path=tileset, output=True, sources=[{"texture": image, "tile_size": [16, 16], "skip_empty": False}])
     note = written.get("next", "")
     ed.check_in("now imports as a pixel-art Sprite", note)
-    ed.check_in("Wall.material", note)
+    ed.check_in("Walls", note)
     after = await ed.call("get_texture_import_settings", path=image)
     ed.check_eq(after["stored"].get("type"), "sprite", f"stored: {after['stored']}")
     for family in ("desktop", "mobile", "web"):
