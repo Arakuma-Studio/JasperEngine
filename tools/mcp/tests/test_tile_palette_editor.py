@@ -136,6 +136,37 @@ async def project_steps(ed: Editor, name: str) -> int:
     return sum(1 for entry in got["entries"] if entry["name"].startswith(name))
 
 
+async def drag_held(ed: Editor, start: tuple[int, int], end: tuple[int, int], steps: int = 10) -> int:
+    """A drag a frame per step: how many times the .tileset changed on disk before the release"""
+    path = ed.project / TILESET
+    seen, writes = path.read_bytes(), 0
+    await ui(ed).press(start)
+    for k in range(1, steps + 1):
+        ui(ed).xdo("mousemove", str(int(start[0] + (end[0] - start[0]) * k / steps)), str(int(start[1] + (end[1] - start[1]) * k / steps)))
+        await ui_input.frames(ed, 2)
+        now = path.read_bytes()
+        writes += now != seen
+        seen = now
+    await ui(ed).release()
+    return writes
+
+
+async def type_held(ed: Editor, text: str) -> int:
+    """Types into the active field a key at a time, then Return: how many times the .tileset
+    changed on disk before the Return"""
+    path = ed.project / TILESET
+    seen, writes = path.read_bytes(), 0
+    await ui(ed).key("ctrl+a")
+    for char in text:
+        await ui(ed).type(char)
+        await ui_input.frames(ed, 2)
+        now = path.read_bytes()
+        writes += now != seen
+        seen = now
+    await ui(ed).key("Return")
+    return writes
+
+
 def tile_doc(ed: Editor, tile: int) -> dict:
     doc = json.loads((ed.project / TILESET).read_text())
     return next((t for t in doc["tiles"] if t["id"] == tile), {})
@@ -378,8 +409,9 @@ async def close_window(ed: Editor, window: str) -> None:
 
 async def test_tileset_editor_fields_commit_once(ed: Editor):
     """R67, R70: the fields read the document every frame; one held across frames (a drag, a
-    slider, typing) shows its edited value until it is let go, then writes the file once: one undo
-    step (a drag never wrote, a slider or a keystroke wrote every frame)"""
+    slider, typing) shows its edited value until it is let go, then writes the file once, one undo
+    step (a drag never wrote; a slider, a colour or a keystroke wrote the file every frame, which
+    the undo history merged into one step)"""
     path = ed.project / TILESET
     doc = json.loads(path.read_text())
     doc["property_schema"] = [{"name": "speed", "type": "float"}, {"name": "tint", "type": "color", "default": "#808080ff"}]
@@ -403,8 +435,9 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
         before = await project_steps(ed, "Set Probability")
         item = (await ui(ed).reveal("Probability##probability", EDITOR_WINDOW))["rect"]
         start = ui(ed).at(item, (item["width"] * 0.3, item["height"] / 2))
-        await ui(ed).drag(start, (start[0] + 60, start[1]), steps=12)
+        writes = await drag_held(ed, start, (start[0] + 60, start[1]))
         await ui_input.frames(ed, 4)
+        expect(writes == 0, f"the probability drag wrote the file {writes} time(s) while held")
         expect(tile_doc(ed, 2).get("probability", 1.0) > 1.2, f"the drag wrote the probability: {tile_doc(ed, 2)}")
         expect((n := await project_steps(ed, "Set Probability") - before) == 1, f"one undo step for the drag: {n}")
 
@@ -414,10 +447,9 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
             before = await project_steps(ed, name)
             x0, y0, x1, y1 = await probe(ed, f"tilesetEditor.{label}")
             await ui(ed).click(ui(ed).at([x0 + (x1 - x0) * 0.1, (y0 + y1) / 2]))
-            await ui(ed).key("ctrl+a")
-            await ui(ed).type(text)
-            await ui(ed).key("Return")
+            writes = await type_held(ed, text)
             await ui_input.frames(ed, 4)
+            expect(writes == 0, f"typing {label} wrote the file {writes} time(s) before Return")
             expect(tile_doc(ed, 2).get(key) == want, f"{label} typed: {tile_doc(ed, 2).get(key)}")
             expect((n := await project_steps(ed, name) - before) == 1, f"one undo step for typing {label}: {n}")
 
@@ -425,8 +457,9 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
         before = await project_steps(ed, "Set Alpha Threshold")
         item = (await ui(ed).reveal("Alpha Threshold##threshold", EDITOR_WINDOW))["rect"]
         y = item["height"] / 2
-        await ui(ed).drag(ui(ed).at(item, (item["width"] * 0.1, y)), ui(ed).at(item, (item["width"] * 0.4, y)), steps=12)
+        writes = await drag_held(ed, ui(ed).at(item, (item["width"] * 0.1, y)), ui(ed).at(item, (item["width"] * 0.4, y)))
         await ui_input.frames(ed, 4)
+        expect(writes == 0, f"the slider wrote the file {writes} time(s) while held")
         threshold = tile_doc(ed, 2).get("collision", {}).get("threshold", 128)
         expect(threshold != 128, f"the slider wrote the threshold: {tile_doc(ed, 2)}")
         expect((n := await project_steps(ed, "Set Alpha Threshold") - before) == 1, f"one undo step for the slider: {n}")
@@ -435,15 +468,17 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
         before = await project_steps(ed, "Set Tile Property")
         item = (await ui(ed).reveal("speed##prop", EDITOR_WINDOW))["rect"]
         start = ui(ed).at(item, (item["width"] * 0.3, item["height"] / 2))
-        await ui(ed).drag(start, (start[0] + 60, start[1]), steps=12)
+        writes = await drag_held(ed, start, (start[0] + 60, start[1]))
         await ui_input.frames(ed, 4)
+        expect(writes == 0, f"the float drag wrote the file {writes} time(s) while held")
         speed = tile_doc(ed, 2).get("properties", {}).get("speed", 0.0)
         expect(speed > 10.0, f"the drag wrote the float property: {tile_doc(ed, 2)}")
         expect((n := await project_steps(ed, "Set Tile Property") - before) == 1, f"one undo step for the float drag: {n}")
         x0, y0, x1, y1 = await probe(ed, "tilesetEditor.tint##prop")
         start = ui(ed).at([x0 + (x1 - x0) * 0.04, (y0 + y1) / 2])
-        await ui(ed).drag(start, (start[0] + 40, start[1]), steps=10)
+        writes = await drag_held(ed, start, (start[0] + 40, start[1]))
         await ui_input.frames(ed, 4)
+        expect(writes == 0, f"the colour drag wrote the file {writes} time(s) while held")
         tint = tile_doc(ed, 2).get("properties", {}).get("tint", "#808080ff")
         expect(tint.lower() != "#808080ff", f"the drag wrote the colour: {tile_doc(ed, 2)}")
         expect((n := await project_steps(ed, "Set Tile Property") - before) == 2, f"one undo step for the colour drag: {n}")
@@ -467,7 +502,7 @@ async def test_scene_view_rests_with_a_tool_up(ed: Editor):
     await ui_input.frames(ed, 6)
     up = await rest_frames(ed)
     print(f"     [frames] 3 s at rest: {rest} without a tool, {up} with the Paint tool up")
-    ed.check(up <= rest * 2 + 15, f"with a tool up the editor rests too: {up} frames in 3 s, {rest} without one")
+    ed.check(up <= rest * 1.4 + 5, f"with a tool up the editor rests too: {up} frames in 3 s, {rest} without one")
 
 
 async def test_overlay_is_capped_off_the_view(ed: Editor):
