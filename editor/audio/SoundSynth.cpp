@@ -93,7 +93,7 @@ double clampFrequency(double freq, double rate) {
     return std::clamp(freq, 20.0, 0.45 * rate);
 }
 
-size_t framesOf(double milliseconds, double rate) {
+size_t soundSynthFramesOf(double milliseconds, double rate) {
     return std::max<size_t>(1, (size_t)std::llround(milliseconds * rate / 1000.0));
 }
 
@@ -155,7 +155,7 @@ double paramOf(const Json& params, const char* name, double fallback) {
 void click(const Json& p, SoundSynth::Random& random, double jitter, double rate, std::vector<float>& out) {
     const double freq = clampFrequency(paramOf(p, "freq_hz", 3000.0) * jitter, rate);
     const double decay = paramOf(p, "decay_ms", 1.5) / 1000.0;
-    const size_t frames = framesOf(paramOf(p, "length_ms", 30.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 30.0), rate);
     Biquad first, second;
     first.highPass(freq, BUTTERWORTH_Q1, rate);
     second.highPass(freq, BUTTERWORTH_Q2, rate);
@@ -170,7 +170,7 @@ void pluck(const Json& p, SoundSynth::Random& random, double jitter, double rate
     const double freq = clampFrequency(paramOf(p, "freq_hz", 440.0) * jitter, rate);
     const double damping = paramOf(p, "damping", 0.996);
     const double brightness = paramOf(p, "brightness", 0.5);
-    const size_t frames = framesOf(paramOf(p, "length_ms", 600.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 600.0), rate);
     const double period = rate / freq;
     // the loop's two-point average delays by half a sample
     const double delay = std::max(1.0, period - 0.5);
@@ -211,7 +211,7 @@ void bell(const Json& p, SoundSynth::Random& random, double jitter, double rate,
     static const double RATIOS[] = {1.0, 2.0, 2.76, 5.40, 8.93};
     const double freq = paramOf(p, "freq_hz", 880.0) * jitter;
     const double brightness = paramOf(p, "brightness", 0.5);
-    const size_t frames = framesOf(paramOf(p, "length_ms", 1500.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 1500.0), rate);
     std::vector<double> sum(frames, 0.0);
     for (double ratio : RATIOS) {
         // a slight per-seed detune of each partial
@@ -233,7 +233,7 @@ void whoosh(const Json& p, SoundSynth::Random& random, double jitter, double rat
     const double low = clampFrequency(paramOf(p, "low_hz", 400.0) * jitter, rate);
     const double high = clampFrequency(paramOf(p, "high_hz", 2500.0) * jitter, rate);
     const double q = paramOf(p, "q", 1.0);
-    const size_t frames = framesOf(paramOf(p, "length_ms", 500.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 500.0), rate);
     Biquad filter;
     out.resize(frames);
     for (size_t i = 0; i < frames; i++) {
@@ -251,7 +251,7 @@ void riser(const Json& p, SoundSynth::Random& random, double jitter, double rate
     const double start = paramOf(p, "start_hz", 200.0) * jitter;
     const double end = paramOf(p, "end_hz", 2000.0) * jitter;
     const double noise = paramOf(p, "noise", 0.4);
-    const size_t frames = framesOf(paramOf(p, "length_ms", 2000.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 2000.0), rate);
     const double peak = 0.95 * (double)frames;
     double phase = 0.0;
     out.resize(frames);
@@ -272,7 +272,7 @@ void thump(const Json& p, SoundSynth::Random& random, double jitter, double rate
     const double drop = paramOf(p, "drop_hz", 70.0) * jitter;
     const double decay = paramOf(p, "decay_ms", 150.0) / 1000.0;
     const double clickLevel = paramOf(p, "click", 0.3);
-    const size_t frames = framesOf(paramOf(p, "length_ms", 400.0), rate);
+    const size_t frames = soundSynthFramesOf(paramOf(p, "length_ms", 400.0), rate);
     double phase = 0.0;
     out.resize(frames);
     for (size_t i = 0; i < frames; i++) {
