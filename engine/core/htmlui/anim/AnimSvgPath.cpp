@@ -79,12 +79,15 @@ AnimSvgPath AnimSvgPath::fromAttributes(const std::string& tag, const std::map<s
         result.valid = true;
         return result;
     } else if (tag == "ellipse"){
-        plutovg_path_add_ellipse(path.get(), (float)svgNumber(attributes, "cx"), (float)svgNumber(attributes, "cy"),
-                                (float)std::max(0.0, svgNumber(attributes, "rx")), (float)std::max(0.0, svgNumber(attributes, "ry")));
+        const float rx = (float)std::max(0.0, svgNumber(attributes, "rx"));
+        const float ry = (float)std::max(0.0, svgNumber(attributes, "ry"));
+        if (rx == 0 || ry == 0){ result.valid = true; return result; }
+        plutovg_path_add_ellipse(path.get(), (float)svgNumber(attributes, "cx"), (float)svgNumber(attributes, "cy"), rx, ry);
     } else if (tag == "rect"){
         const float x = (float)svgNumber(attributes, "x"), y = (float)svgNumber(attributes, "y");
         const float width = (float)std::max(0.0, svgNumber(attributes, "width"));
         const float height = (float)std::max(0.0, svgNumber(attributes, "height"));
+        if (width == 0 || height == 0){ result.valid = true; return result; }
         const float rx = (float)std::max(0.0, attributes.count("rx") ? svgNumber(attributes, "rx") : svgNumber(attributes, "ry"));
         const float ry = (float)std::max(0.0, attributes.count("ry") ? svgNumber(attributes, "ry") : svgNumber(attributes, "rx"));
         plutovg_path_add_round_rect(path.get(), x, y, width, height, std::min(rx, width / 2), std::min(ry, height / 2));

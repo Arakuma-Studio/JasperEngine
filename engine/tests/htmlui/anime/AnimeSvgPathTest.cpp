@@ -67,6 +67,8 @@ TEST(AnimeSvgPath, SvgCommandsAndDisjointSubpaths){
 
 TEST(AnimeSvgPath, DegenerateAndInvalidGeometry){
     EXPECT_FALSE(AnimSvgPath::fromAttributes("div", {}).isValid());
+    EXPECT_DOUBLE_EQ(AnimSvgPath::fromAttributes("ellipse", {{"rx", "0"}, {"ry", "10"}}).length(), 0);
+    EXPECT_DOUBLE_EQ(AnimSvgPath::fromAttributes("rect", {{"width", "0"}, {"height", "10"}}).length(), 0);
     EXPECT_FALSE(AnimSvgPath::fromAttributes("polyline", {{"points", "0 1 2"}}).isValid());
     const auto point = AnimSvgPath::fromAttributes("path", {{"d", "M12 34"}});
     EXPECT_DOUBLE_EQ(point.length(), 0);
