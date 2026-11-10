@@ -870,6 +870,11 @@ print(layer.cellCount, grid.cellSize, grid.layout)
   Colliders are built in texels and scaled back.
 - **R12 (aseprite source).** The Aseprite importer (version 2) writes each tileset's strip and resolves
   `"<file>#tileset#<index>"`, so the runtime and exports read the tiles without the `.aseprite` file.
+- **R12, R53 (sprite import, open).** A tileset's image infers Sprite (no mips) only when it gets its first import
+  settings after the `.tileset` names it. An image imported before (dropped in, then made a tileset) keeps the `default`
+  type S14 wrote down ("written then, never silently re-inferred"): it cooks with mips and the exported map shows seams
+  at a minifying zoom. Setting the source image's type from `edit_tileset` and the Tileset Editor is left to the
+  coordinator's decision (it changes S14's rule).
 - **AC5, AC15 (measurement).** No `je-bench-tilemap` binary: the R56-R61 timings are measured in the unit tests through
   `perfSlack()`, and the mobile (Pixel 6a, iPhone 12) and web numbers are not measured (no devices on this host). Web,
   Android, Vulkan and the smoke export run at the batch landing (owner decision of 2026-11-08). The GPU placement tests
