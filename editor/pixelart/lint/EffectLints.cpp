@@ -37,8 +37,12 @@ namespace jasperengine::editor::pixelart::lint {
             return image.row(y)[x * 4 + 3] != 0;
         }
 
+        // two clear pixels are the same whatever colour lies under alpha 0: nothing of it is seen
         bool samePixel(const PixelImage& a, const PixelImage& b, int x, int y) {
-            return std::memcmp(a.row(y) + x * 4, b.row(y) + x * 4, 4) == 0;
+            const uint8_t* p = a.row(y) + x * 4;
+            const uint8_t* q = b.row(y) + x * 4;
+            if (p[3] == 0 && q[3] == 0) return true;
+            return std::memcmp(p, q, 4) == 0;
         }
 
         // pixels that differ (sizes differing: every pixel of the larger one)
