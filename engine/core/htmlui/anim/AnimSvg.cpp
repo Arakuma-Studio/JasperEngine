@@ -15,9 +15,12 @@
 #include "../../../libs/lunasvg/plutovg/include/plutovg.h"
 
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/Property.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cctype>
 #include <sstream>
 
 using namespace jasperengine;
@@ -31,8 +34,90 @@ namespace {
         return native ? native->GetTagName() : std::string();
     }
 
+    double svgLengthInUserUnits(const std::string& text, double reference, double fontSize){
+        char* end = nullptr;
+        const double value = std::strtod(text.c_str(), &end);
+        if (end == text.c_str() || !std::isfinite(value)) return 0;
+        while (std::isspace((unsigned char)*end)) ++end;
+        std::string unit(end);
+        while (!unit.empty() && std::isspace((unsigned char)unit.back())) unit.pop_back();
+        if (unit == "%") return value * reference / 100;
+        if (unit == "em") return value * fontSize;
+        if (unit == "ex") return value * fontSize / 2;
+        if (unit == "in") return value * 96;
+        if (unit == "cm") return value * 96 / 2.54;
+        if (unit == "mm") return value * 96 / 25.4;
+        if (unit == "pt") return value * 96 / 72;
+        if (unit == "pc") return value * 16;
+        return value;
+    }
+
+    double svgGeometryFontSize(Rml::Element* element){
+        std::vector<Rml::Element*> lineage;
+        size_t root = 0;
+        for (Rml::Element* current = element; current; current = current->GetParentNode()){
+            lineage.push_back(current);
+            if (current->GetTagName() == "svg") root = lineage.size() - 1;
+        }
+        // The rasterizer's SVG initial font size and ex factor (LunaSVG SVGLayoutState and
+        // LengthContext); SVG presentation attributes and inline CSS inherit down the tree.
+        double size = 12;
+        for (size_t i = root + 1; i-- > 0;){
+            Rml::Element* current = lineage[i];
+            std::string value = current->GetAttribute<Rml::String>("font-size", "");
+            std::istringstream styles(current->GetAttribute<Rml::String>("style", ""));
+            std::string declaration;
+            while (std::getline(styles, declaration, ';')){
+                const size_t colon = declaration.find(':');
+                if (colon == std::string::npos) continue;
+                std::string name = declaration.substr(0, colon);
+                name.erase(0, name.find_first_not_of(" \t\r\n"));
+                const size_t last = name.find_last_not_of(" \t\r\n");
+                if (last != std::string::npos) name.resize(last + 1);
+                if (name == "font-size") value = declaration.substr(colon + 1);
+            }
+            const auto& local = current->GetLocalStyleProperties();
+            auto property = local.find(Rml::PropertyId::FontSize);
+            if (property != local.end()) value = property->second.ToString();
+            if (!value.empty()) size = std::max(0.0, svgLengthInUserUnits(value, size, size));
+        }
+        return size;
+    }
+
     AnimSvgPath svgGeometry(const UIElement& element){
-        return element.isValid() ? AnimSvgPath::fromAttributes(svgTag(element), element.getAttributes()) : AnimSvgPath();
+        if (!element.isValid()) return AnimSvgPath();
+        const std::string tag = svgTag(element);
+        auto attributes = element.getAttributes();
+        if (tag == "path" || tag == "polygon" || tag == "polyline")
+            return AnimSvgPath::fromAttributes(tag, attributes);
+        Rml::Element* native = UIElementAccess::get(element);
+        Rml::Element* viewport = native;
+        while (viewport && viewport->GetTagName() != "svg") viewport = viewport->GetParentNode();
+        double width = 0, height = 0;
+        if (viewport){
+            std::string viewBox = viewport->GetAttribute<Rml::String>("viewBox", "");
+            if (viewBox.empty()) viewBox = viewport->GetAttribute<Rml::String>("viewbox", "");
+            std::replace(viewBox.begin(), viewBox.end(), ',', ' ');
+            std::istringstream values(viewBox);
+            double x = 0, y = 0;
+            if (!(values >> x >> y >> width >> height) || width <= 0 || height <= 0){
+                const auto size = viewport->GetBox().GetSize(Rml::BoxArea::Content);
+                width = size.x;
+                height = size.y;
+            }
+        }
+        const double font = svgGeometryFontSize(native);
+        const char* horizontal[] = {"x", "x1", "x2", "cx", "rx", "width"};
+        const char* vertical[] = {"y", "y1", "y2", "cy", "ry", "height"};
+        const auto resolve = [&](const char* name, double reference){
+            auto found = attributes.find(name);
+            if (found != attributes.end())
+                found->second = AnimMath::toString(svgLengthInUserUnits(found->second, reference, font));
+        };
+        for (const char* name : horizontal) resolve(name, width);
+        for (const char* name : vertical) resolve(name, height);
+        resolve("r", std::hypot(width, height) / std::sqrt(2.0));
+        return AnimSvgPath::fromAttributes(tag, attributes);
     }
 
     bool svgMorphTag(const std::string& tag){ return tag == "path" || tag == "polygon" || tag == "polyline"; }

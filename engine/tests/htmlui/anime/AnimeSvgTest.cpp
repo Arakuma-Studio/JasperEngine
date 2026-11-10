@@ -333,3 +333,16 @@ TEST_F(AnimeSvgTest, MotionPathKeepsAnime450UserSpaceAnglesUnderTransforms){
     // Upstream motionpath.js applies CTM only to x/y, and reports a user-space tangent.
     EXPECT_NEAR(object->getNumber("rotate"), 90, 1e-9);
 }
+
+TEST_F(AnimeSvgTest, ShapeLengthsResolveSvgPercentagesAndUnits){
+    element("svg").setAttribute("viewBox", "0 0 200 100");
+    element("svg").setInnerHTML("<circle id='percent' cx='50%' cy='50%' r='25%' stroke='red'/><line id='absolute' x1='0' y1='0' x2='1in' y2='0' stroke='blue'/><g font-size='20'><line id='font' x1='0' y1='0' x2='2em' y2='0' stroke='green'/></g>");
+    render();
+    ASSERT_EQ(Anime::createDrawable(target("percent"), 0, 1).size(), 1u);
+    const double radius = std::hypot(200.0, 100.0) / std::sqrt(2.0) * .25;
+    EXPECT_NEAR(AnimMath::parseFloat(element("percent").getAttribute("stroke-dasharray")), 2 * std::acos(-1.0) * radius, 1e-6);
+    ASSERT_EQ(Anime::createDrawable(target("absolute"), 0, 1).size(), 1u);
+    EXPECT_EQ(element("absolute").getAttribute("stroke-dasharray"), "96 0");
+    ASSERT_EQ(Anime::createDrawable(target("font"), 0, 1).size(), 1u);
+    EXPECT_EQ(element("font").getAttribute("stroke-dasharray"), "40 0");
+}
