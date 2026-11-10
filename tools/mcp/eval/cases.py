@@ -119,6 +119,20 @@ TERRAIN_IMPORT_DRY = {
 
 
 CASES = [
+    {
+        "id": "guard_ui_frames_exact_preview",
+        "kind": "guard",
+        "what_happened": "UI motion design needs exact CSS/anime sample times without entering Play or recording intermediate frames.",
+        "text_at_issue": "render_ui_frames: exact seconds without Play; document, times, out and watch",
+        "source": "requested motion-graphics preview",
+        "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
+        "mocks": [{"tool": "render_ui_frames", "result": ok("Rendered 3 UI frame(s).", {
+            "files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1})}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png"}}],
+            "must_not_call": ["record_game", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
         "id": "control_readme_typo",

@@ -5378,6 +5378,7 @@ void editor::App::shutdownBackgroundWork() {
 }
 
 void editor::App::engineViewDestroyed(){
+    mcp::stopUiFramePreviews();
     imageViewerWindow->closeAll();
     // no thumbnail step renders off the main thread (and commits to the render queue) from
     // here on, nor touches the scenes the view's destruction removes
@@ -5618,6 +5619,7 @@ void editor::App::updateWindowTitle(const std::string& projectName) {
 }
 
 void editor::App::stopTransientPreviews() {
+    mcp::stopUiFramePreviews();
     // before a scene save or play: posed bones go back to their saved transforms
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();

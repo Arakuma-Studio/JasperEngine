@@ -916,7 +916,9 @@ int runCall(const std::vector<std::string>& args, const char* executableName) {
             throw UsageError(message);
         }
         CallOutcome out = outcomeOf(o, tool, toolCall(session, o, tool, arguments));
-        if (o.waitJob && out.exit == Ok && isRunningJob(out.structured)) out = waitForJob(session, o, out);
+        const bool watchingUi = tool == "render_ui_frames" && arguments.value("watch", false);
+        if (watchingUi && out.exit == Ok && isRunningJob(out.structured)) print(o, out, session.editor);
+        if ((o.waitJob || watchingUi) && out.exit == Ok && isRunningJob(out.structured)) out = waitForJob(session, o, out);
         print(o, out, session.editor);
         return out.exit;
     } catch (const UsageError& e) {

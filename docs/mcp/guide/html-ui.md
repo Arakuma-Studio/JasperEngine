@@ -1874,6 +1874,28 @@ introduced it (errors every time). JSON findings carry `code` and `suggestion`. 
 `docs/mcp/checks.md` in the engine repository; `jasperengine-editor ui-support` prints the support
 tables as JSON.
 
+### Exact-time frame previews
+
+`render_ui_frames` (group `html_ui`) renders CSS animations and document-script `anime`
+tweens at requested seconds while the editor stays out of Play. Pass `document` with a
+project-relative HTML/RML asset, or `scene` for its enabled screen UI Documents. Each sample
+starts from a fresh document at time zero; request order and duplicate times are preserved.
+Inline Lua and Lua scripts attached to the scene's UI Documents run in the isolated preview,
+including `init` and `start`. Procedural `onUpdate`/`onRender` code should derive its output
+from the animation's current time and a fixed seed. Use `record_game` for gameplay.
+
+```sh
+jasperengine-editor call --project P render_ui_frames --document assets/ui/title.html --times 0.3,1,2.5 --out sheet.png
+jasperengine-editor call --project P render_ui_frames --times 0.3,1,2.5 --out sheet.png --watch
+```
+
+The default output is a labelled contact sheet. `layout: "frames"` writes one PNG per time
+into the `out` directory. `width` and `height` default to the project canvas; `columns` sets
+the sheet's grid. `watch: true` renders once, then regenerates when the existing file watcher
+reports a change to a document or dependency. Its result includes a running `job_id`;
+`cancel_job` stops it. The CLI stays attached until Ctrl-C. Stop Play and other captures
+before starting a preview.
+
 ### UI hot reload
 
 The editor checks every document's files (the `.html`, stylesheets, templates, images, fonts,
