@@ -76,6 +76,11 @@ startFrame, warnings, wallSeconds`) with `files` or `movie`; `<output>.recording
 same. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
 recording and restored after (`overrode_fixed_fps`).
 
+Fresh recordings restart HTML UI documents at UI time zero before Play initializes scripts.
+CSS, `anime` and UI effects hold that clock during loading and advance by exactly 1/fps for
+each game frame. `anime`'s `clock = "game"` follows the fixed scaled game delta. Recording
+mid-Play preserves the current UI origin; finishing restores the editor's previous clock.
+
 From a shell: `jasperengine-editor call --project P --wait-job record_game --frames 90 --format mp4 --output out.mp4`.
 
 Check a recording by reading back a frame (`view_asset` on a PNG) or the sidecar's frame count;

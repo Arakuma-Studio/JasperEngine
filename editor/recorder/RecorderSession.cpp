@@ -12,6 +12,8 @@
 #include "Out.h"
 #include "audio/AudioTap.h"
 #include "htmlui/VideoImporter.h"
+#include "htmlui/HtmlUIClock.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "Scene.h"
@@ -799,9 +801,27 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     // the game frames from now on are the recording's (frame 0: the first one Play runs)
     gameFramesAtStart = Engine::getGameFrames();
     gameFramesSeen = gameFramesAtStart;
+    previousFixedUiTime = HtmlUIClock::getFixedTime();
+    previousUiTime = HtmlUIClock::now();
+    recordingUiStart = playing && !fromPlayStart ? previousUiTime : 0.0;
+    // Documents may load before Play's first frame. Holding their origin throughout arming
+    // keeps CSS, anime and seeded UI effects independent of how long that load took.
+    HtmlUIClock::setFixedTime(recordingUiStart);
+    animationClocksAligned = false;
+    Engine::onUpdate.add("RecorderSession.UiClock", [this]() {
+        if (!recording()) return;
+        const uint64_t frames = Engine::getGameFrames();
+        const uint64_t index = frames > gameFramesAtStart ? frames - gameFramesAtStart - 1 : 0;
+        HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate);
+        if (!animationClocksAligned) {
+            AnimEngine::instance().alignClockSources(HtmlUIClock::now(), Engine::getGameTime());
+            animationClocksAligned = true;
+        }
+    });
     startTime = Clock::now();
     startedPlay = false;
     currentState = State::Arming;
+    if ((!playing || fromPlayStart) && host.resetUiDocuments) host.resetUiDocuments();
     if (!playing && !fromPlayStart) {
         std::string playError;
         if (!host.startPlay || !host.startPlay(playError)) {
@@ -1046,6 +1066,10 @@ void RecorderSession::stop() {
 
 void RecorderSession::restoreEngine() {
     releaseHold();
+    Engine::onUpdate.remove("RecorderSession.UiClock");
+    HtmlUIClock::setFixedTime(previousFixedUiTime ? previousFixedUiTime : std::optional<double>(previousUiTime));
+    if (!previousFixedUiTime) HtmlUIClock::setFixedTime(std::nullopt);
+    AnimEngine::instance().alignClockSources(HtmlUIClock::now(), Engine::getGameTime());
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {

@@ -34,6 +34,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,7 @@ namespace jasperengine::editor::recorder {
         std::function<bool()> isPlayStarting;             // a play session is loading
         std::function<bool(std::string&)> startPlay;
         std::function<void()> stopPlay;
+        std::function<void()> resetUiDocuments;         // fresh Play: CSS starts at the recording's clock origin
         std::function<Framebuffer*()> gameFramebuffer;
         std::function<Scene*()> gameScene;                // the running game's (null when none)
         std::function<void(int, int)> setGameRenderSize;  // 0, 0: the view's own
@@ -165,6 +167,10 @@ namespace jasperengine::editor::recorder {
         // the audio tap's subscription while it runs
         int audioTap = 0;
         double previousFixedDelta = 0.0;
+        std::optional<double> previousFixedUiTime;
+        double previousUiTime = 0.0;
+        double recordingUiStart = 0.0;
+        bool animationClocksAligned = false;
         std::chrono::steady_clock::time_point startTime;
         FfmpegInfo ffmpegInfo;
         std::future<FfmpegInfo> ffmpegProbe;

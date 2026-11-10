@@ -19,6 +19,8 @@ TEST(AnimeClock, ScopedPreviewTicksLeaveBothClocksAndCallbacksAlone){
     auto ui = Anime::animate({uiTarget}, params);
     params.set("clock", "game");
     auto game = Anime::animate({gameTarget}, params);
+    ASSERT_NE(ui, nullptr);
+    ASSERT_NE(game, nullptr);
     {
         AnimEngine::ScopedTickPause outer;
         engine.tickMilliseconds(10000, 10000);
@@ -61,10 +63,35 @@ TEST(AnimeClock, PreviewCollectsOnlyTimersCreatedInItsScope){
         }
     }
     auto after = Anime::createTimer();
+    ASSERT_NE(outside, nullptr);
+    ASSERT_NE(after, nullptr);
     ASSERT_EQ(outerTimers.size(), 2u);
     EXPECT_EQ(outerTimers[0], first);
     EXPECT_EQ(outerTimers[1], second);
     ASSERT_EQ(innerTimers.size(), 1u);
     EXPECT_EQ(innerTimers[0], inner);
+    engine.reset();
+}
+
+TEST(AnimeClock, AligningSourcesPreservesProgressAndDiscardsLoadingTime){
+    AnimEngine& engine = AnimEngine::instance();
+    engine.reset();
+    engine.tick(10, 20);
+    auto uiTarget = std::make_shared<AnimObjectTarget>(std::initializer_list<std::pair<const std::string, AnimRawValue>>{{"v", AnimRawValue(0.0)}});
+    auto gameTarget = std::make_shared<AnimObjectTarget>(std::initializer_list<std::pair<const std::string, AnimRawValue>>{{"v", AnimRawValue(0.0)}});
+    auto ui = Anime::animate({uiTarget}, AnimParam::object({{"v", 1000}, {"duration", 1000}, {"ease", "linear"}}));
+    auto game = Anime::animate({gameTarget}, AnimParam::object({{"v", 1000}, {"duration", 1000}, {"ease", "linear"}, {"clock", "game"}}));
+    ASSERT_NE(ui, nullptr);
+    ASSERT_NE(game, nullptr);
+    engine.tick(10.1, 20.1);
+    EXPECT_NEAR(uiTarget->getNumber("v"), 100, 1e-8);
+    EXPECT_NEAR(gameTarget->getNumber("v"), 100, 1e-8);
+    engine.alignClockSources(0, 50);
+    engine.tick(0, 50);
+    EXPECT_NEAR(uiTarget->getNumber("v"), 100, 1e-8);
+    EXPECT_NEAR(gameTarget->getNumber("v"), 100, 1e-8);
+    engine.tick(0.1, 50.1);
+    EXPECT_NEAR(uiTarget->getNumber("v"), 200, 1e-8);
+    EXPECT_NEAR(gameTarget->getNumber("v"), 200, 1e-8);
     engine.reset();
 }

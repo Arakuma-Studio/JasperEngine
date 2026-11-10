@@ -91,6 +91,20 @@ void AnimEngine::tickMilliseconds(double uiTimeMs, double gameTimeMs){
     update();
 }
 
+void AnimEngine::alignClockSources(double uiTimeSeconds, double gameTimeSeconds){
+    const double nextUi = uiTimeSeconds * AnimConst::K;
+    const double shift = nextUi - now(AnimClock::UI);
+    for (AnimTimer* timer = head; timer; timer = timer->next){
+        if (timer->clock == AnimClock::UI){
+            timer->startTime += shift;
+            timer->lastTickTime += shift;
+        }
+    }
+    uiNow = nextUi;
+    lastGameSource = gameTimeSeconds * AnimConst::K;
+    ticked = true;
+}
+
 double AnimEngine::now(AnimClock clock) const{
     if (clock == AnimClock::GAME)
         return gameNow;

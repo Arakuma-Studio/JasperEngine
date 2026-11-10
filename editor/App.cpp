@@ -11,6 +11,7 @@
 #include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
+#include "component/UIDocumentComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"
@@ -3641,6 +3642,16 @@ void editor::App::setupRecorder() {
         return project.getPlaySessionSceneId() != NULL_PROJECT_SCENE;
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
+    host.resetUiDocuments = [this]() {
+        for (SceneProject* source : project.getHtmlUIScenes()) {
+            if (!source || !source->scene) continue;
+            auto system = source->scene->getSystem<UIDocumentSystem>();
+            auto documents = source->scene->getComponentArray<UIDocumentComponent>();
+            std::vector<Entity> entities;
+            for (size_t i = 0; i < documents->size(); ++i) entities.push_back(documents->getEntity(i));
+            for (Entity entity : entities) system->reloadDocument(entity, false, UIReloadMode::REBUILD);
+        }
+    };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
     host.gameScene = [playScene]() -> Scene* {
         const SceneProject* scene = playScene();

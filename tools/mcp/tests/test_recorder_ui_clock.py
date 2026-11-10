@@ -1,0 +1,73 @@
+"""CSS and both anime clocks advance once per recorded frame, including cold UI loads."""
+
+from pathlib import Path
+
+from harness import Editor
+import pngdiff
+
+CI = True
+EDITOR = {"create": True, "name": "RecorderUiClock"}
+TIMEOUT = 900
+
+HTML = """<html><head><style>
+body { position: absolute; inset: 0; margin: 0; background: #000; }
+.marker { position: absolute; left: 4px; width: 8px; height: 8px; }
+#css { top: 8px; background: #f00; animation: slide 3s linear both; }
+#ui { top: 40px; background: #0f0; }
+#game { top: 72px; background: #00f; }
+@keyframes slide { from { left: 4px; } to { left: 94px; } }
+</style></head><body><div id="css" class="marker"></div>
+<div id="ui" class="marker"></div><div id="game" class="marker"></div></body></html>
+"""
+
+SCRIPT = """---@class RecordedUiClock : ScriptInstance
+local RecordedUiClock = { properties = {} }
+function RecordedUiClock:init()
+    local doc = UIDocument(self.scene, self.entity)
+    anime.animate(doc:getElementById('ui'), { translateX = 90, duration = 3000, ease = 'linear' })
+    anime.animate(doc:getElementById('game'), { translateX = 90, duration = 3000, ease = 'linear', clock = 'game' })
+end
+return RecordedUiClock
+"""
+
+
+def centre(png: bytes, channel: int, first_row: int) -> float:
+    width, height, rgba = pngdiff.decode(png)
+    xs = []
+    for y in range(first_row, min(height, first_row + 8)):
+        for x in range(width):
+            p = (y * width + x) * 4
+            if rgba[p + channel] > 200 and all(rgba[p + c] < 50 for c in range(3) if c != channel):
+                xs.append(x)
+    return sum(xs) / len(xs) if xs else -1.0
+
+
+async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
+    await ed.call("set_project_settings", values={"graphics.canvas_width": 128, "graphics.canvas_height": 128})
+    scene = (await ed.call("create_scene", name="RecordedUi", type="UI", path="scenes/RecordedUi"))["scene"]["id"]
+    await ed.call("write_file", path="assets/ui/recorded.html", content=HTML)
+    entity = (await ed.call("create_entity", scene=scene, type="ui_document", name="Animated"))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=entity, values={"uidocument": {"filename": "assets/ui/recorded.html"}})
+    await ed.call("create_script", kind="lua", name="RecordedUiClock", content=SCRIPT, scene=scene, entity=entity)
+    await ed.call("save_scene", scene=scene)
+    recordings = []
+    for take in range(2):
+        # Different edit-time progress must have no effect on a fresh recording's CSS origin.
+        await ed.call("screenshot", view="game")
+        out = ed.scratch.root / f"ui-take-{take}"
+        result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
+                               output=str(out), exit_play=True, timeout_seconds=600)
+        ed.check_eq(result["frames"], 16, "every requested frame was recorded")
+        files = [Path(path) for path in result["files"]]
+        ed.check_eq(len(files), 16)
+        frames = [path.read_bytes() for path in files]
+        recordings.append(frames)
+        for channel, top in ((0, 8), (1, 40), (2, 72)):
+            first = centre(frames[0], channel, top)
+            ed.check(first >= 0, f"clock {channel} marker exists")
+            for index in (3, 9, 15):
+                position = centre(frames[index], channel, top)
+                ed.check(abs(position - first - index) <= 0.6,
+                         f"clock {channel}, frame {index}: moved {position - first}, expected {index}")
+    ed.check_eq(sum(a == b for a, b in zip(*recordings)), 16,
+                "CSS and both anime clocks produce byte-identical repeated recordings")

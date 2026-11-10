@@ -53,6 +53,10 @@ namespace jasperengine {
         // milliseconds, as Anime counts (reference tests)
         void tickMilliseconds(double uiTimeMs, double gameTimeMs);
 
+        // A recorder's first frame starts after asynchronous scene loading. Align the input
+        // clocks without treating that load as animation time; existing progress is preserved.
+        void alignClockSources(double uiTimeSeconds, double gameTimeSeconds);
+
         // cancels and drops every timer, the additive state and the element targets' state,
         // and calls the reset listeners (the Lua binding frees its registry refs there)
         void reset();
