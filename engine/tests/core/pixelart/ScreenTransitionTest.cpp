@@ -8,6 +8,12 @@
 
 #include "pixelart/ScreenTransition.h"
 
+#include "Engine.h"
+#include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
+#include "subsystem/RenderSystem.h"
+
 #include <gtest/gtest.h>
 
 using namespace jasperengine;
@@ -204,4 +210,67 @@ TEST(ScreenTransitionNames, RoundTrip){
     EXPECT_FALSE(transitionKindFromName("swirl", kind));
     EXPECT_EQ(applyTransitionEase(TransitionEase::IN_OUT, 0.5f), 0.5f);
     EXPECT_EQ(applyTransitionEase(TransitionEase::IN, 1.0f), 1.0f);
+}
+
+// R13's GameObject centre: the iris stays on the point it last saw once the GameObject's scene
+// is no longer running (Transition.loadScene's factory deletes that scene), instead of following
+// (or reading) the old scene
+TEST(ScreenTransitionController, IrisCentreIsLatchedOnceItsSceneStops){
+    Scene* scene = new Scene();
+    const Entity camera = scene->createEntity();
+    scene->addComponent<Transform>(camera, Transform());
+    scene->addComponent<CameraComponent>(camera, CameraComponent());
+    scene->setCamera(camera);
+    const Entity target = scene->createEntity();
+    scene->addComponent<Transform>(target, Transform());
+    Engine::setScene(scene);
+    // after setScene: where a view exists (a GPU suite ran before) it loads the scene, whose
+    // first update of the transforms and camera would replace these
+    scene->getComponent<Transform>(target).worldPosition = Vector3(0.5f, 0.0f, 0.0f);
+    scene->getComponent<CameraComponent>(camera).viewProjectionMatrix = Matrix4();
+
+    TransitionOptions options;
+    options.centerScene = scene;
+    options.centerObject = target;
+    TransitionGrid grid;
+    grid.artWidth = grid.artHeight = grid.targetWidth = grid.targetHeight = 100.0f;
+    auto centreX = [&](){
+        return ScreenTransition::makeUniforms(TransitionKind::IRIS, options, 0.5f, TransitionPhase::COVER, grid).params0.x;
+    };
+    EXPECT_NEAR(centreX(), 75.0f, 1e-3f) << "on the GameObject while its scene runs";
+
+    // replaced by another scene: the GameObject moving afterwards does not move the iris
+    Scene next;
+    Engine::setScene(&next);
+    ASSERT_FALSE(Engine::isSceneRunning(scene));
+    scene->getComponent<Transform>(target).worldPosition = Vector3(-0.5f, 0.0f, 0.0f);
+    ASSERT_NEAR(centreX(), 75.0f, 1e-3f) << "latched once its scene stopped";
+
+    // and deleted for real, as the generated factory does: nothing reads it any more
+    delete scene;
+    EXPECT_NEAR(centreX(), 75.0f, 1e-3f) << "the latched point after the scene is gone";
+    Engine::removeScene(&next);
+}
+
+// Vulkan draws a transition through the composite target (Engine::beginCompositeFramebuffer):
+// where one can play, every object has its offscreen pipelines from load, so the frame switching
+// to the composite finds them ready and no object reloads when a transition starts or ends
+TEST(ScreenTransitionController, ACompositeTransitionBakesOffscreenPipelines){
+    Scene scene;
+    const Entity camera = scene.createEntity();
+    scene.addComponent<Transform>(camera, Transform());
+    scene.addComponent<CameraComponent>(camera, CameraComponent());
+    scene.setCamera(camera);
+    auto render = scene.getSystem<RenderSystem>();
+    ASSERT_NE(render, nullptr);
+    // a GPU suite before this one leaves the Engine drawing into its target, which asks for them
+    Framebuffer* target = Engine::getFramebuffer();
+    Engine::setFramebuffer(nullptr);
+    Engine::setScene(&scene);
+    EXPECT_EQ(render->getScenePipelines() & PIP_RTT, 0) << "drawn on the swapchain, offscreen pipelines cost nothing yet";
+    Engine::setCompositeExpected(true);
+    EXPECT_NE(render->getScenePipelines() & PIP_RTT, 0) << "a game that can play one bakes them from load";
+    Engine::setCompositeExpected(false);
+    Engine::removeScene(&scene);
+    Engine::setFramebuffer(target);
 }

@@ -197,16 +197,17 @@ namespace {
     // S48 R7: the texels a sprite's quad grows by on each side for what its material draws around
     // the art (a pixel outline, a drop shadow: the manifest's @expand rules); zero for a sprite
     // without a library shader or fork, so a plain sprite pays nothing
-    ShaderExpand spriteFxExpand(const MeshComponent& mesh){
+    ShaderExpand spriteFxExpand(const MeshComponent& mesh, const std::string& sceneMeshShader){
         if (mesh.numSubmeshes == 0)
             return {};
-        const Material& material = mesh.submeshes[0].material;
-        if (material.shader.empty())
+        const Submesh& submesh = mesh.submeshes[0];
+        const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, sceneMeshShader);
+        if (shader.empty())
             return {};
-        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(material.shader);
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
         if (!manifest || manifest->expands.empty())
             return {};
-        return manifest->resolveExpand(manifest->resolveFeatures(material.shaderFeatures), material.shaderParams);
+        return manifest->resolveExpand(manifest->resolveFeatures(submesh.material.shaderFeatures), submesh.material.shaderParams);
     }
 
     // SpriteComponent::builtFxExpand: the four sides a byte each
@@ -975,7 +976,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     float vBottom = sprite.flipY ? (float)(1.0 - texCutRatioH) : texCutRatioH;
     float vTop = sprite.flipY ? texCutRatioH : (float)(1.0 - texCutRatioH);
     // what the material draws around the art (S48 R7): the quad, and so its bounds, grow
-    const ShaderExpand fxExpand = spriteFxExpand(mesh);
+    const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
     sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
     growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, frameRect.getWidth() < 0.0f,
                    frameRect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
@@ -1075,7 +1076,7 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         const Rect& rect = mesh.submeshes[0].textureRect;
         const float rectWidth = std::fabs(rect.getWidth()) > 0.0f ? std::fabs(rect.getWidth()) : 1.0f;
         const float rectHeight = std::fabs(rect.getHeight()) > 0.0f ? std::fabs(rect.getHeight()) : 1.0f;
-        const ShaderExpand fxExpand = spriteFxExpand(mesh);
+        const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
         sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
         growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, rect.getWidth() < 0.0f,
                        rect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
@@ -1161,7 +1162,7 @@ void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh,
     // corners keep their texel scale
     SpriteSlicedMesh sliced = slicedIn;
     {
-        const ShaderExpand fxExpand = spriteFxExpand(mesh);
+        const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
         sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
         const Texture& texture = mesh.submeshes[0].material.baseColorTexture;
         const float frameX = std::fabs(sliced.textureRect.getWidth()) * (float)texture.getWidth();
@@ -7673,11 +7674,14 @@ void MeshSystem::update(double dt){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
-            // the material's features or values changed: a quad grown for them (S48 R7) follows
-            if (!sprite.needUpdateSprite && (mesh.needUpdateShaderUniforms || mesh.needReload) && mesh.numSubmeshes > 0 &&
-                    !mesh.submeshes[0].material.shader.empty() &&
-                    packSpriteFxExpand(spriteFxExpand(mesh)) != sprite.builtFxExpand){
-                sprite.needUpdateSprite = true;
+            // the material's features or values changed: a quad grown for them (S48 R7) follows.
+            // A write after this update (a coroutine, onPostUpdate) was flushed at the draw and
+            // reaches this frame only through the write counter
+            if (!sprite.needUpdateSprite && mesh.numSubmeshes > 0 &&
+                    (mesh.customUniformWrites != sprite.fxWritesSeen || mesh.needUpdateShaderUniforms || mesh.needReload)){
+                sprite.fxWritesSeen = mesh.customUniformWrites;
+                if (packSpriteFxExpand(spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH))) != sprite.builtFxExpand)
+                    sprite.needUpdateSprite = true;
             }
 
             if (sprite.tagPlaying){

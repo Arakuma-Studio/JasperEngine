@@ -534,7 +534,15 @@ void main() {
     #endif
 
     #ifdef FLASH
-        color.rgb = mix(color.rgb, customParams.flashColor.rgb, (customParams.flashAmount + spriteFx(y)) * customParams.flashColor.a);
+        #if defined(HAS_SPRITE_FX) || defined(SPRITE_FX)
+            // R11: idle at amount 0, a uniform or flat branch (a lone FLASH keeps the legacy
+            // source, R1)
+            float fxFlash = customParams.flashAmount + spriteFx(y);
+            if (fxFlash != 0.0)
+                color.rgb = mix(color.rgb, customParams.flashColor.rgb, fxFlash * customParams.flashColor.a);
+        #else
+            color.rgb = mix(color.rgb, customParams.flashColor.rgb, (customParams.flashAmount + spriteFx(y)) * customParams.flashColor.a);
+        #endif
     #endif
 
     #if defined(DISSOLVE) && defined(SPRITE_FX)
@@ -560,7 +568,10 @@ void main() {
     float spriteAlpha = color.a;
 
     #if defined(OUTLINE_PIXEL) && defined(SPRITE_FX)
-        if (color.a >= 0.5 && customParams.inlineWidth >= 0.5){
+        // "opaque" is the art's own alpha (a tint below 0.5 keeps the body a body); dissolved
+        // (color.a 0) is not, so the outline follows the burnt silhouette
+        bool fxSolid = texel.a >= 0.5 && color.a > 0.0;
+        if (fxSolid && customParams.inlineWidth >= 0.5){
             // the inline: opaque texels with a transparent 4-neighbour within its width
             int width = int(clamp(floor(customParams.inlineWidth + 0.5), 1.0, 2.0));
             bool edgeTexel = false;
@@ -576,7 +587,7 @@ void main() {
                                                                  : customParams.inlineColor.rgb;
             }
         }
-        if (color.a < 0.5){
+        if (!fxSolid){
             // the outline: a transparent texel with an opaque neighbour at whole-texel steps
             // 1..width, in the 4 (PIXEL4) or 8 (PIXEL8) directions, behind the sprite
             int width = int(clamp(floor(customParams.outlineWidth + 0.5), 1.0, 2.0));

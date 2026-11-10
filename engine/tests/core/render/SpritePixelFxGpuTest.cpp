@@ -456,6 +456,65 @@ TEST_F(SpritePixelFxGpu, GrownQuad){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// A tint alpha below 0.5 keeps the art a solid body (R1: "opaque" is the art's alpha >= 0.5): the
+// pixel outline stays around it and never paints over it
+TEST_F(SpritePixelFxGpu, TintAlphaKeepsTheBodyOutOfTheOutline){
+    Sprite sprite(&scene);
+    setup_(sprite, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", Vector4(0.0f, 1.0f, 0.0f, 1.0f)}, {"outlineWidth", v1(1.0f)}}});
+    sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 0.4f);
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> crop = readCrop();
+    // the green of the crop's pixel at a texel's middle (texels from the top left of the art)
+    auto green = [&](int texelX, int texelY){
+        const int x = kCrop / 2 - 32 + 4 * texelX + 2, y = kCrop / 2 - 32 + 4 * texelY + 2;
+        return (int)crop[(size_t(y) * kCrop + x) * 4 + 1];
+    };
+    EXPECT_LT(green(8, 9), 90) << "the body (58, 68, 102) tinted, not the green outline over it";
+    EXPECT_GT(green(8, 2), 100) << "the outline still draws around the art (texel above the top row of the body)";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A value written after the update (a coroutine, onPostUpdate): the draw flushes it, so at the
+// next update needUpdateShaderUniforms is already clear and only the write counter says so
+TEST_F(SpritePixelFxGpu, AWriteAfterTheUpdateGrowsTheQuad){
+    const float texel = float(kScale);
+    Sprite sprite(&scene);
+    setup_(sprite, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineWidth", v1(1.0f)}}});
+    ASSERT_TRUE(settle());
+    MeshComponent& mesh = sprite.getComponent<MeshComponent>();
+    EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x - mesh.aabb.getMinimum().x, 64.0f + 2.0f * texel);
+    mesh.submeshes[0].material.shaderParams = {{"outlineWidth", v1(2.0f)}};
+    mesh.needUpdateShaderUniforms = false;
+    mesh.customUniformWrites++;
+    ASSERT_TRUE(settle());
+    GpuEnvironment::drawFrames(2);
+    EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x - mesh.aabb.getMinimum().x, 64.0f + 4.0f * texel);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R7: the quad grows for the shader the sprite draws with: its own, the mesh's or the scene's
+TEST_F(SpritePixelFxGpu, TheQuadGrowsWithTheMeshOrSceneShader){
+    const float texel = float(kScale);
+    Sprite sprite(&scene);
+    setup_(sprite, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineWidth", v1(2.0f)}}});
+    MeshComponent& mesh = sprite.getComponent<MeshComponent>();
+    mesh.submeshes[0].material.shader.clear();
+    mesh.customShader = "library:sprite";
+    ASSERT_TRUE(settle());
+    EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x - mesh.aabb.getMinimum().x, 64.0f + 4.0f * texel) << "the mesh's custom shader";
+    EXPECT_NO_ENGINE_ERRORS();
+
+    Sprite other(&scene);
+    setup_(other, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineWidth", v1(2.0f)}}});
+    scene.setDefaultCustomShader(ShaderType::MESH, "library:sprite");
+    other.getComponent<MeshComponent>().submeshes[0].material.shader.clear();
+    ASSERT_TRUE(settle());
+    MeshComponent& otherMesh = other.getComponent<MeshComponent>();
+    EXPECT_FLOAT_EQ(otherMesh.aabb.getMaximum().x - otherMesh.aabb.getMinimum().x, 64.0f + 4.0f * texel) << "the scene's default shader";
+    scene.setDefaultCustomShader(ShaderType::MESH, "");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 namespace {
 
     // library:sprite as a project fork whose fragment writes the dissolve key of its texel as

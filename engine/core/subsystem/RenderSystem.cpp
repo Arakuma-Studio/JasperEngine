@@ -17451,8 +17451,10 @@ uint16_t RenderSystem::getScenePipelines() const{
 
         // (a scene-colour reader: the scene camera switches between the swapchain and an
         // offscreen target without reloading)
+        // (a game that can play a screen transition composites it offscreen on Vulkan, starting
+        // mid-run: its objects have these pipelines from load and do not reload when it does)
         if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect ||
-                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity)){
+                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity) || Engine::isCompositeExpected()){
             pipelines |= camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
         }
 

@@ -38,6 +38,7 @@
 #include "pool/FontPool.h"
 #include "pixelart/BitmapFont.h"
 #include "pixelart/BitmapText.h"
+#include "pixelart/HitStop.h"
 #include "htmlui/HtmlUIClock.h"
 
 using namespace jasperengine;
@@ -2344,7 +2345,8 @@ void UISystem::updateTextEffects(double dt){
     lastTextEffectsTime = now;
     // the frame's delta before Engine.timeScale (dt is the scaled one)
     const double timeScale = Engine::getTimeScale();
-    const double unscaledDt = (timeScale > 0.0) ? dt / timeScale : (double)Engine::getUnscaledDeltatime();
+    // (a hit-stop's freeze is in dt too, so that frame divides nothing out)
+    const double unscaledDt = (timeScale > 0.0 && !pixelart::HitStop::isFrameActive()) ? dt / timeScale : (double)Engine::getUnscaledDeltatime();
 
     struct Pending {
         Entity entity;

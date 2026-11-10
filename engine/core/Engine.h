@@ -512,6 +512,10 @@ namespace jasperengine {
         static std::vector<Scene*> getInputScenes(bool keys);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
+        // a screen transition may draw this frame through the composite target (Vulkan,
+        // beginCompositeFramebuffer): the scenes must have their PIP_RTT pipelines before it
+        static bool compositeExpected;
+
         static void endCompositeFramebuffer();
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
@@ -542,6 +546,10 @@ namespace jasperengine {
         static void removeAllScenes();
 
         static bool isSceneRunning(Scene* scene);
+        // a game whose build can draw a screen transition (S48): objects bake the composite
+        // target's pipelines from load, so its first frame finds them ready
+        static void setCompositeExpected(bool expected);
+        static bool isCompositeExpected();
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
         // The scene drawn first, which clears the frame: the main scene, or before there is one

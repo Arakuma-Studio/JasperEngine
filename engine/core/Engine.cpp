@@ -245,6 +245,7 @@ Semaphore Engine::drawSemaphore;
 
 Framebuffer* Engine::framebuffer = nullptr;
 Framebuffer Engine::compositeFramebuffer;
+bool Engine::compositeExpected = false;
 
 //-----JasperEngine user events-----
 FunctionSubscribe<void()> Engine::onViewLoaded;
@@ -492,6 +493,14 @@ void Engine::removeAllScenes(){
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
+}
+
+void Engine::setCompositeExpected(bool expected){
+    compositeExpected = expected;
+}
+
+bool Engine::isCompositeExpected(){
+    return compositeExpected;
 }
 
 bool Engine::isSceneRunning(Scene* scene){
@@ -2153,6 +2162,19 @@ void Engine::systemViewLoaded(){
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
+#if defined(SOKOL_VULKAN)
+    {
+        // the build carries the screen transition's program (its scripts mention Transition):
+        // one can play and be composited offscreen from any frame on Vulkan
+        const ShaderKey transition = ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
+        for (ShaderKey key : ShaderPool::getPrecompiledShaderKeys()) {
+            if (ShaderPool::normalizeKey(key) == transition) {
+                setCompositeExpected(true);
+                break;
+            }
+        }
+    }
+#endif
 #endif
 
     if (mouseCursorType != CursorType::ARROW){
