@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "htmlui/HtmlUIInspectorInternal.h"
+#include "htmlui/anim/AnimSvg.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
@@ -290,6 +291,10 @@ std::string UIElement::getAttribute(const std::string& name) const{
 
 void UIElement::setAttribute(const std::string& name, const std::string& value){
     HTMLUI_ELEMENT()
+    if (name == "draw" && element->HasAttribute("data-anime-drawable")){
+        AnimSvg::setDraw(*this, value);
+        return;
+    }
     if (isCompatElement(element)){
         if (LuaHooks::isHiddenAttribute(name)){
             Log::warn("[HTML UI] UIElement::setAttribute: '%s' is reserved for the engine", name.c_str());

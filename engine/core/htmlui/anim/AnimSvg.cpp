@@ -26,8 +26,13 @@ namespace {
 
     constexpr double motionPi = 3.14159265358979323846;
 
+    std::string svgTag(const UIElement& element){
+        const Rml::Element* native = UIElementAccess::get(element);
+        return native ? native->GetTagName() : std::string();
+    }
+
     AnimSvgPath svgGeometry(const UIElement& element){
-        return element.isValid() ? AnimSvgPath::fromAttributes(element.getTagName(), element.getAttributes()) : AnimSvgPath();
+        return element.isValid() ? AnimSvgPath::fromAttributes(svgTag(element), element.getAttributes()) : AnimSvgPath();
     }
 
     bool svgMorphTag(const std::string& tag){ return tag == "path" || tag == "polygon" || tag == "polyline"; }
@@ -122,19 +127,19 @@ void AnimSvg::setDraw(const UIElement& original, const std::string& value){
     if (start == end) element.setAttribute("stroke-linecap", "butt");
     else if (cap.empty()) element.removeAttribute("stroke-linecap");
     else element.setAttribute("stroke-linecap", cap);
-    element.setAttribute("draw", value);
+    if (Rml::Element* native = UIElementAccess::get(element)) native->SetAttribute("draw", value);
 }
 
 AnimParam AnimSvg::morphTo(const AnimTargetList& targets, double precision){
     UIElement destination = firstSvgElement(targets);
-    if (!destination.isValid() || !svgMorphTag(destination.getTagName()) || !std::isfinite(precision) || precision < 0){
+    if (!destination.isValid() || !svgMorphTag(svgTag(destination)) || !std::isfinite(precision) || precision < 0){
         Log::warn("[HTML UI] anime.morphTo: target must be a path, polygon or polyline and precision must be finite and non-negative");
         return AnimParam();
     }
     return AnimParam::function([destination, precision](const AnimFunctionArgs& args){
         UIElement source = AnimTargets::getElement(args.target);
-        if (!source.isValid() || !destination.isValid() || !svgMorphTag(source.getTagName())) return AnimParam();
-        const bool path = source.getTagName() == "path";
+        if (!source.isValid() || !destination.isValid() || !svgMorphTag(svgTag(source))) return AnimParam();
+        const bool path = svgTag(source) == "path";
         const char* attribute = path ? "d" : "points";
         if (args.previousValue.isTruthy()) source.setAttribute(attribute, args.previousValue.toString());
         if (precision == 0)

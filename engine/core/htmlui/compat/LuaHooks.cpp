@@ -114,6 +114,10 @@ std::string LuaHooks::tagName(const Rml::Element* element){
     std::string name = localName(element);
     if (name == "svg" || name == "lottie" || name == "#text")
         return name;
+    for (const Rml::Element* ancestor = element ? element->GetParentNode() : nullptr; ancestor; ancestor = ancestor->GetParentNode()){
+        if (ancestor->GetTagName() == "svg")
+            return name;
+    }
     for (char& c : name){
         if (c >= 'a' && c <= 'z')
             c = (char)(c - 'a' + 'A');

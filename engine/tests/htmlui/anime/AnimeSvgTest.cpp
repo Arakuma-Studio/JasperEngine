@@ -8,11 +8,12 @@
 #include "LuaBinding.h"
 #include "htmlui/anim/Anime.h"
 #include "htmlui/anim/AnimCommon.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "object/ui/UIElementInternal.h"
 
 #include "json.hpp"
-#include "LuaBridge.h"
 #include "lua.hpp"
+#include "LuaBridge.h"
 
 #include <RmlUi/Core.h>
 
@@ -66,6 +67,7 @@ namespace {
             Rml::RemoveContext("anime-svg-test");
             Rml::ReleaseTextures(&recording);
             Rml::ReleaseRenderManagers();
+            htmlSource.reset();
             HtmlUI::release();
             EXPECT_EQ(recording.getLiveTextureCount(), 0u);
             EXPECT_EQ(recording.getLiveGeometryCount(), 0u);
@@ -97,6 +99,7 @@ namespace {
         RecordingRenderInterface recording;
         Rml::Context* context = nullptr;
         Rml::ElementDocument* document = nullptr;
+        std::shared_ptr<const htmlui::compat::CompatDocument> htmlSource;
     };
 
 }
@@ -196,6 +199,9 @@ TEST_F(AnimeSvgTest, LuaFactoriesAndProceduralAttributeWrites){
         assert(type(anime.svg) == 'table' and type(anime.svg.createDrawable) == 'function')
         local drawable = anime.svg.createDrawable(from)
         assert(#drawable == 1)
+        drawable[1]:setAttribute('draw', '0 1')
+        assert(from:getAttribute('stroke-dasharray') == '100 0')
+        drawable[1]:setAttribute('draw', '0 0')
         local draw = anime.animate(drawable, {draw='0 1', autoplay=false, duration=1000, ease='linear'})
         draw:seek(500)
         assert(from:getAttribute('draw') == '0 0.5')
@@ -268,4 +274,26 @@ TEST_F(AnimeSvgTest, SvgMotionTargetsSerializeTransformsInUserUnits){
     const std::string source = element("svg").getInnerHTML();
     EXPECT_NE(source.find("matrix(1 0 0 1 0 10)"), std::string::npos);
     EXPECT_NE(before, pixels());
+}
+
+TEST_F(AnimeSvgTest, HtmlSvgDescendantsUseSvgNamesAndDrawableGeometry){
+    context->UnloadAllDocuments();
+    context->Update();
+    htmlSource = htmlui::compat::DocumentLoader::compileString(R"(
+        <!doctype html><html><head><style>svg{width:200px;height:200px}</style></head><body>
+        <svg id="svg" width="200" height="200" viewBox="0 0 100 100"><path id="source" d="M0 0L100 0" stroke="red" stroke-width="4"/></svg>
+        </body></html>)", "p1/vector/anime-svg.html", htmlui::compat::CompatOptions());
+    ASSERT_TRUE(htmlSource->compiled);
+    document = context->LoadDocumentFromMemory(htmlSource->rml, htmlSource->sourcePath);
+    ASSERT_NE(document, nullptr);
+    document->Show();
+    render();
+    ASSERT_TRUE(element("source").isValid());
+    EXPECT_EQ(element("source").getTagName(), "path");
+    const auto drawable = Anime::createDrawable(target("source"));
+    ASSERT_EQ(drawable.size(), 1u);
+    element("source").setAttribute("draw", "0 .5");
+    EXPECT_EQ(element("source").getAttribute("stroke-dasharray"), "50 51");
+    render();
+    EXPECT_FALSE(pixels().empty());
 }
