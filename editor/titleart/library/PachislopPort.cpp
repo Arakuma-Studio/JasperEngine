@@ -11,6 +11,7 @@
 #include "PachislopColourways.h"
 #include "TitleLibraryFormats.h"
 
+#include "titleart/ColorScheme.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
