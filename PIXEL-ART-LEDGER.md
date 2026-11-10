@@ -174,7 +174,7 @@ never build or run them.
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | in review |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
-| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
+| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | merged and pushed |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | in review |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
@@ -263,6 +263,19 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S48 Pixel FX merged (`309dbc384`). Gate on the merged tree, box D: `WERROR` build;
+  core 179/179; editor 219/219 with the shared-data suites; MCP 182 passed, 0 failed, 3 skipped
+  (`test_golden_resave_prefab_*`, no TappyPlane); post-FX 3/3; GPU 37/37 on Vulkan and 37/37 on
+  GLES3; web and android builds; AC26 compiled smoke on GL, Vulkan and GLES3; editor-vs-export
+  comparison 4/4 (largest difference 0; red run `set` vs `idle`: 178, 2.85% over 24); web Debug gate
+  `pixel-fx`. Transition twin difference at most 1/255 on every backend. The finishing work found
+  one engine bug: the transition draw applied an empty bindings set, which sokol's validation
+  rejects in Debug and web Debug, so nothing drew there (`SokolObject.cpp`, red run 5 empty calls).
+  It also brings the S52 `SpriteBatch` Lua signatures and the alpha-0 `samePixel` fix. Shader cache
+  v64, Hit Stop Exempt component 99 and reflection-parity entity 1100, `UBER_GLITCH` bit 20. Open:
+  phone budgets (AC25/R34, no device), R35 inferred, eval cases at the end. One android failure
+  (`LogSink` undeclared) passed alone and on `main`; a concurrent `rbox` sync is the likely cause.
 
 - 2026-11-10: S50's review found one blocker (`edit_tilemap create` sets the Grid's cell size in
   pixels instead of world units, so PPU ≠ 1 scenes are wrong) and 15 should-fixes: cell-rect overflow
