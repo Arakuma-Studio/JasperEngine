@@ -1018,13 +1018,15 @@ void Element::UpdateOpacityLeaf()
 	if (opacity < 1.f && opacity > 0.f && !computed.has_filter() && !computed.has_backdrop_filter() && !computed.has_mask_image())
 	{
 		bool has_text = false, has_element_child = false;
-		for (const ElementPtr& child : children)
-		{
-			if (child->GetTagName() == "#text")
-				has_text = true;
-			else
-				has_element_child = true;
-		}
+		// Editable SVG descendants are rasterized into the one replaced image, not painted as HTML children.
+		if (tag != "svg")
+			for (const ElementPtr& child : children)
+			{
+				if (child->GetTagName() == "#text")
+					has_text = true;
+				else
+					has_element_child = true;
+			}
 		if (!has_element_child)
 		{
 			const auto visible_border = [&computed](float width, Colourb color) { return width > 0.f && color.alpha > 0; };

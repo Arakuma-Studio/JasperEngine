@@ -74,7 +74,8 @@ namespace {
 					const auto x = resolved.GetRow(0), y = resolved.GetRow(1);
 					value = CreateString("matrix(%.9g %.9g %.9g %.9g %.9g %.9g)", x[0], y[0], x[1], y[1], x[3], y[3]);
 				}
-				style += ";" + StyleSheetSpecification::GetPropertyName(property.first) + ":" + value;
+				if (!style.empty() && style.back() != ';') style += ';';
+				style += StyleSheetSpecification::GetPropertyName(property.first) + ":" + value;
 			}
 			if (!style.empty()) output += " style=\"" + StringUtilities::EncodeRml(style) + "\"";
 			if (GetNumChildren() > 0)

@@ -273,6 +273,7 @@ TEST_F(AnimeSvgTest, SvgMotionTargetsSerializeTransformsInUserUnits){
     render();
     const std::string source = element("svg").getInnerHTML();
     EXPECT_NE(source.find("matrix(1 0 0 1 0 10)"), std::string::npos);
+    EXPECT_EQ(source.find("style=\";"), std::string::npos); // LunaSVG cannot read a leading empty declaration.
     EXPECT_NE(before, pixels());
 }
 
