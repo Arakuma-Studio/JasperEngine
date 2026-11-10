@@ -103,7 +103,9 @@ async def test_revert_and_save_as(ed: Editor):
     await layer_menu(ed, helper, "Save As Look...")
     name = await helper.find("Name")
     ed.check(name, "the Save As dialog draws its Name field")
-    await helper.click(helper.centre(name["rect"]))
+    # the field, left of its label
+    field = name["rect"]
+    await helper.click(helper.centre({"x": field["x"], "y": field["y"], "width": field["width"] * 0.4, "height": field["height"]}))
     await helper.type("Saved Gold")
     await helper.frames(10)
     await helper.click_item("Save")
@@ -117,8 +119,7 @@ async def test_three_tabs_draw(ed: Editor):
     out = os.environ.get("JASPER_TEST_WRITE_ACTUAL")
     for tab in ("looks", "color_schemes", "templates"):
         await open_designer(ed, helper, tab, "")
-        items = (await ed.call("find_ui_item", label="##tile")).get("items", [])
-        ed.check(items, f"{tab}: the tab shows tiles")
+        ed.check(await helper.find("##tile"), f"{tab}: the tab shows tiles")
         shot = await ed.screenshot("title_designer", max_width=0)
         ed.check(len(shot) > 1000, f"{tab}: a screenshot")
         if out:

@@ -186,6 +186,7 @@ async def test_red_controls(ed: Editor):
             await ed.call("edit_title", path=good_path, ops=fix.get("ops", []))
         good = await failing(ed, good_path)
         ed.check(check not in good, f"{name}: the twin passes {check}: {good.get(check)}")
-        extra = set(bad) - set(good) - {check}
+        # a fixture may name what its fault also is (a rim of the face's colour is the lint's contrast case too)
+        extra = set(bad) - set(good) - {check} - set(entry.get("also", []))
         ed.check(not {e for e in extra if e.split(".")[0] in ("style_lint", "color_scheme_match", "metal_range") or e == check.split(".")[0]},
                  f"{name}: the bad fixture fails only {check} beyond its twin: {sorted(extra)}")
