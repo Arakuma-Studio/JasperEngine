@@ -88,9 +88,9 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
 
     # Establish a nonzero UI epoch before creating an unrelated animation. A fresh take
     # must not reset that process-wide clock and leave this context behind its old origin.
-    await ed.call("play", action="start", scene=scene, fixed_fps=30)
+    await ed.call("play", action="start", scene=scene, fixed_fps=30, auto_pause=False)
     await ed.call("wait", frames=60)
-    await ed.call("play", action="stop")
+    await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     unrelated = (await ed.call("create_scene", name="UnrelatedUi", type="UI", path="scenes/UnrelatedUi"))["scene"]["id"]
     await ed.call("write_file", path="assets/ui/unrelated.html", content="""<html><head><style>
         #probe { position:absolute; top:0; left:100px; width:8px; height:8px;
@@ -123,7 +123,7 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
     await ed.call("select_scene", scene=scene)
 
     # Ending a mid-Play recording must not rewind a running CSS animation.
-    await ed.call("play", action="start", scene=scene, fixed_fps=30)
+    await ed.call("play", action="start", scene=scene, fixed_fps=30, auto_pause=False)
     await ed.call("eval_lua", code="recordedUiClockWentBack = false")
     try:
         out = ed.scratch.root / "ui-mid-play"
@@ -134,7 +134,7 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         ed.check_eq(state["values"], [False], "CSS time never moves backward when a recording ends without exiting Play")
 
         # Paused gameplay keeps its CSS UI clock running, including while it records.
-        await ed.call("play", action="pause")
+        await ed.call("play", action="pause", auto_pause=False)
         await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'none')")
         await ed.call("wait", frames=2)
         await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'slide')")
@@ -145,4 +145,4 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         ed.check(centre(frames[-1], 0, 8) - centre(frames[0], 0, 8) >= 14.0,
                  "paused Play records a moving CSS UI rather than a frozen clock")
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
