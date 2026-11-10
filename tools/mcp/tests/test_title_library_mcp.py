@@ -161,6 +161,14 @@ async def test_listing_latency(ed: Editor):
     it is an upper bound; the shared build box gets three times the budget."""
     await ed.call("tool_groups", enable=["title_art"])
     await ed.call("list_title_library")
+    # what MCP itself costs on this machine, to tell it from the tool's own time
+    baseline = []
+    for _ in range(9):
+        start = time.monotonic()
+        await ed.call("editor_status")
+        baseline.append((time.monotonic() - start) * 1000.0)
+    round_trip = sorted(baseline)[len(baseline) // 2]
+    print(f"[AC21] an editor_status round trip: {round_trip:.1f} ms")
     for label, args in (("catalogue", {}), ("rows", {"kind": "looks", "limit": 40})):
         samples = []
         for _ in range(9):
@@ -168,7 +176,7 @@ async def test_listing_latency(ed: Editor):
             await ed.call("list_title_library", **args)
             samples.append((time.monotonic() - start) * 1000.0)
         median = sorted(samples)[len(samples) // 2]
-        print(f"[AC21] list_title_library {label}: {median:.1f} ms (R40 30, MCP round trip included)")
+        print(f"[AC21] list_title_library {label}: {median:.1f} ms, {median - round_trip:.1f} ms over a round trip (R40 30)")
         ed.check(median <= 90.0, f"{label} within three times the budget: {median:.1f} ms")
 
 
