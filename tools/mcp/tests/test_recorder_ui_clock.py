@@ -79,7 +79,7 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
             first = centre(frames[0], channel, top)
             ed.check(first >= 0, f"clock {channel} marker exists")
             ed.check(abs(first - 7.5) <= 0.6, f"clock {channel} starts at its initial value in frame zero: {first}")
-            for index in (3, 9, 15):
+            for index in (1, 3, 9, 15):
                 position = centre(frames[index], channel, top)
                 ed.check(abs(position - first - index) <= 0.6,
                          f"clock {channel}, frame {index}: moved {position - first}, expected {index}")
