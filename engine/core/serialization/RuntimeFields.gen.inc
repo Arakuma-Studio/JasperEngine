@@ -2624,6 +2624,7 @@ const FieldEntry kBody_HitStopExemptComponent_fields[] = {
     JE_RF(HitStopExemptComponent, includeChildren, 0xd531599cu, Bool),
 };
 const StructTable kBody_HitStopExemptComponent{"hitstopexempt", kBody_HitStopExemptComponent_fields, std::size(kBody_HitStopExemptComponent_fields)};
+
 const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
     JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
     JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
