@@ -29,6 +29,10 @@
 
 #include <memory>
 
+namespace jasperengine::voxel {
+    class BaseSource;
+}
+
 namespace jasperengine::editor::pixelart::aseprite {
     struct ImportRecord;
 }
@@ -242,6 +246,9 @@ namespace jasperengine::editor {
         ExportResult result;
         std::vector<cook::CookedFileBytes> cookedFiles;
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
+        // assets-relative: the volumes some component ships with runtimeGeneration on (T6 R78)
+        std::set<std::string> voxelKeptGenerators;
+        std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases;
         std::shared_ptr<PlayerInfo> player;
         // S34: what the project reaches of the optional modules, found while every scene was
         // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)
@@ -352,6 +359,7 @@ namespace jasperengine::editor {
         bool isCancelled() const;
 
         void resolveShaderKeys();
+        std::vector<int> terrainExportPlatforms() const;
         bool loadShaderWarmup();
 
         fs::path getExportProjectRoot() const;
@@ -535,6 +543,10 @@ namespace jasperengine::editor {
 
 
     public:
+        // T2 R45: whether an asset of the project ships, as far as the noise module decides it. Noise Graphs
+        // are recipes: they ship only when the game can load one at run time, and then all of them, since a
+        // Lua string can name any. usage null: not known (a source export), which keeps everything.
+        static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
         // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
         // project, its assets or its Lua folder (the editor would import the exported files as
         // project assets), unless it is below a hidden folder or the project's top-level build/

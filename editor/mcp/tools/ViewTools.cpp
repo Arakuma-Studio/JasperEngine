@@ -7,6 +7,8 @@
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/GraphEditorWindow.h"
+#include "graph/GraphEditorHooks.h"
+#include "graph/GraphRegistry.h"
 #include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
@@ -1735,18 +1737,28 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = ParticleEffectWindow::WINDOW_NAME;
     } else if (window == "graph_editor") {
         // `path` opens that graph where a double-click on it does (its kind's window: a .procmat's is
-        // Procedural Material); without it, the one open
+        // Procedural Material, a .noisegraph's Noise Graph); without it, the one open
         GraphEditorWindow* graphs = app.getGraphEditorWindow();
-        if (args.contains("path")) {
-            const std::string path = args.value("path", std::string());
-            if (GraphEditorWindow* own = GraphEditorWindow::windowFor(path)) graphs = own;
-            if (!graphs->openGraph(path)) {
-                call->fail("path: " + graphs->getStatus() + ".");
+        const std::string path = args.value("path", std::string());
+        const auto kind = args.contains("path") ? graph::GraphRegistry::get().kindForFile(path) : nullptr;
+        const auto own = kind ? graphEditorHooks().kindWindows.find(kind->id) : graphEditorHooks().kindWindows.end();
+        if (own != graphEditorHooks().kindWindows.end()) {
+            if (!own->second.open(path)) {
+                call->fail("path: " + path + " is not a file of the project.");
                 return;
             }
+            imguiName = own->second.windowName;
+        } else {
+            if (args.contains("path")) {
+                if (GraphEditorWindow* kindWindow = GraphEditorWindow::windowFor(path)) graphs = kindWindow;
+                if (!graphs->openGraph(path)) {
+                    call->fail("path: " + graphs->getStatus() + ".");
+                    return;
+                }
+            }
+            graphs->setOpen(true);
+            imguiName = graphs->windowName();
         }
-        graphs->setOpen(true);
-        imguiName = graphs->windowName();
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;

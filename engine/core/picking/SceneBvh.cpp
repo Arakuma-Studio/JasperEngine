@@ -6,6 +6,8 @@
 // 2026 Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "SceneBvh.h"
+#include "MeshRaycast.h"
+#include "subsystem/FoliageSystem.h"
 #include "BinnedSah.h"
 #include "MeshBvhSimd.h"
 #include "MeshPose.h"
@@ -829,6 +831,9 @@ bool SceneBvh::computeLeafBounds(const Leaf& leaf, AABB& bounds) const{
             return true;
         }
         case PickKind::ICON:
+        // foliage has no leaves: raycast walks its cells (T5 R35)
+        case PickKind::TREE:
+        case PickKind::DETAIL:
             return false;
     }
     return false;
@@ -1016,13 +1021,13 @@ void SceneBvh::raycast(const Vector3& origin, const Vector3& direction, float ra
                        std::vector<PickHit>& out, bool all){
     JE_PROFILE_SCOPE("SceneBvh raycast");
     update();
-    if (tree.empty() || !(range > 0.0f)){
+    if (!(range > 0.0f)){
         return;
     }
     const size_t first = out.size();
     PickHit best;
     bool found = false;
-    tree.raycast(origin, direction, range, [&](uint32_t index, float tEnter) -> float {
+    if (!tree.empty()) tree.raycast(origin, direction, range, [&](uint32_t index, float tEnter) -> float {
         const float bound = found && !all ? best.distance : range;
         (void)tEnter;
         const Leaf& leaf = leaves[index];
@@ -1046,6 +1051,50 @@ void SceneBvh::raycast(const Vector3& origin, const Vector3& direction, float ra
         }
         return best.distance;
     });
+
+    // T5 R35: foliage has no leaves: a cell walk along the ray, then LOD0's triangles
+    if (filter.kinds & (PICK_TREE | PICK_DETAIL)){
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (foliage && foliage->hasDrawables()){
+            const Ray ray(origin, direction);
+            const auto consider = [&](Entity terrain, Entity meshEntity, const Matrix4& world, float sphereDistance, PickKind kind, uint64_t id, int prototype){
+                if (!all && found && sphereDistance > best.distance) return false;
+                Leaf terrainLeaf;
+                terrainLeaf.entity = terrain;
+                if (!passes(terrainLeaf, filter) || meshEntity == NULL_ENTITY) return true;
+                const MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
+                if (!mesh || !mesh->loaded) return true;
+                Leaf leaf;
+                leaf.entity = meshEntity;
+                leaf.kind = PickKind::INSTANCE;
+                leaf.bounds = world * mesh->verticesAABB;
+                PickHit hit;
+                if (!picking::testMeshAt(*this, leaf, world, origin, direction, (found && !all) ? best.distance : range, filter, hit)) return true;
+                hit.entity = terrain;
+                hit.kind = kind;
+                hit.instance = -1;
+                hit.foliageId = id;
+                hit.prototype = prototype;
+                if (all){
+                    out.push_back(hit);
+                }else if (!found || hit.distance < best.distance){
+                    best = hit;
+                    found = true;
+                }
+                return true;
+            };
+            if (filter.kinds & PICK_TREE){
+                foliage->forEachTreeAlongRay(ray, range, [&](Entity terrain, terraincore::TreeId id, int prototype, const Matrix4& world, float distance){
+                    return consider(terrain, foliage->getPrototypeEntity(terrain, prototype), world, distance, PickKind::TREE, id, prototype);
+                });
+            }
+            if (filter.kinds & PICK_DETAIL){
+                foliage->forEachDetailAlongRay(ray, range, [&](Entity terrain, int layer, const Matrix4& world, float distance){
+                    return consider(terrain, foliage->getDetailEntity(terrain, layer), world, distance, PickKind::DETAIL, 0, layer);
+                });
+            }
+        }
+    }
 
     if (all){
         std::sort(out.begin() + (std::ptrdiff_t)first, out.end(), [](const PickHit& a, const PickHit& b){

@@ -10,6 +10,7 @@
 // Sort Priority and distance, under a UI hierarchy right after it in the effect's order.
 
 #include "RenderSystem.h"
+#include "component/Transform.h"
 
 #include "Engine.h"
 #include "Log.h"

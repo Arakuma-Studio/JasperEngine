@@ -23,6 +23,7 @@
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
 #include "titleart/anim/TitleAnimationPanel.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
@@ -59,6 +60,7 @@
 #include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
+#include "voxel/VoxelBrushTool.h"
 
 #include "imgui_internal.h"
 
@@ -393,6 +395,54 @@ void editor::App::registerCommands(){
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
 
+    // ---- A terrain brush's keys (T1 R57, Table 5); its context says when: armed, pointer over the Scene view
+    auto terrainTool = [this, &bind](const char* id, TerrainBrushMode mode) {
+        bind(id, [this, mode](const CommandArgs&) { terrainEditWindow->armBrush(mode); });
+    };
+    terrainTool("terrain.tool.raise", TerrainBrushMode::Raise);
+    terrainTool("terrain.tool.setHeight", TerrainBrushMode::Flatten);
+    terrainTool("terrain.tool.smooth", TerrainBrushMode::Smooth);
+    terrainTool("terrain.tool.ramp", TerrainBrushMode::Ramp);
+    terrainTool("terrain.tool.noise", TerrainBrushMode::Noise);
+    terrainTool("terrain.tool.terrace", TerrainBrushMode::Terrace);
+    terrainTool("terrain.tool.erode", TerrainBrushMode::Erode);
+    terrainTool("terrain.tool.stamp", TerrainBrushMode::Stamp);
+    terrainTool("terrain.tool.paintTexture", TerrainBrushMode::PaintLayer);
+    terrainTool("terrain.tool.paintDetails", TerrainBrushMode::PaintDensity);
+    terrainTool("terrain.tool.placeObjects", TerrainBrushMode::PlaceObject);
+    terrainTool("terrain.tool.cutHoles", TerrainBrushMode::CutHole);
+    bind("terrain.pick", [this](const CommandArgs&) { terrainEditWindow->armPickHeight(); });
+    bind("terrain.invertSlopeFilter", [this](const CommandArgs&) { terrainEditWindow->toggleSlopeFilterInvert(); });
+    bind("terrain.alternate", [this](const CommandArgs&) { terrainEditWindow->toggleAlternate(); });
+    auto terrainOverlay = [this, &bind](const char* id, const char* source) {
+        bind(id, [this, source](const CommandArgs&) {
+            if (SceneProject* scene = project.getSelectedScene()) scene->displaySettings.terrainOverlay.source = source;
+        });
+    };
+    terrainOverlay("terrain.overlay.height", "height");
+    terrainOverlay("terrain.overlay.slope", "slope");
+    terrainOverlay("terrain.overlay.contours", "contours");
+    terrainOverlay("terrain.overlay.layerWeights", "layer_weights");
+    terrainOverlay("terrain.overlay.off", "");
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed: while the
+    // button is held too, so the release after a cancel does not land as a selection click
+    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr,
+         []() { return !CommandHistory::anyInteractiveOpen() && !ImGui::IsMouseDown(ImGuiMouseButton_Left); });
+
+    // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
+    auto voxelTool = [&bind](const char* id, VoxelTool tool) {
+        bind(id, [tool](const CommandArgs&) { VoxelBrushTool::get().arm(tool); });
+    };
+    voxelTool("voxel.tool.dig", VoxelTool::Dig);
+    voxelTool("voxel.tool.add", VoxelTool::Add);
+    voxelTool("voxel.tool.smooth", VoxelTool::Smooth);
+    voxelTool("voxel.tool.paint", VoxelTool::Paint);
+    voxelTool("voxel.tool.pick", VoxelTool::Pick);
+    bind("voxel.brushSmaller", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.0f / 1.15f); }, nullptr, noDrag);
+    bind("voxel.brushLarger", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.15f); }, nullptr, noDrag);
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed
+    bind("voxel.disarm", [](const CommandArgs&) { VoxelBrushTool::get().disarm(); }, nullptr, []() { return !CommandHistory::anyInteractiveOpen(); });
+
     // ---- Lattice points, while the selected scene edits a lattice's points
     auto points = [this, &bind, noDrag](const char* id, LatticeSceneTools::PointAction action) {
         bind(id, [this, action](const CommandArgs&) { LatticeSceneTools::runPointAction(&project, project.getSelectedSceneId(), action); },
@@ -548,6 +598,12 @@ void editor::App::registerPanelClaims(){
                  {Verb::Duplicate, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
                                     []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
                  {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
+    // T2 R57: its selected nodes and wires
+    claims.add({"Noise Graph", [this]() { return noiseGraphWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return noiseGraphWindow->canDelete(); }, [this]() { noiseGraphWindow->deleteSelection(); }}},
+                 {Verb::Copy, {{}, [this]() { return noiseGraphWindow->canCopy(); }, [this]() { noiseGraphWindow->copySelection(); }}},
+                 {Verb::Paste, {{}, [this]() { return noiseGraphWindow->canPaste(); }, [this]() { noiseGraphWindow->paste(); }}},
+                 {Verb::Duplicate, {{}, [this]() { return noiseGraphWindow->canDuplicate(); }, [this]() { noiseGraphWindow->duplicateSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
@@ -638,6 +694,13 @@ editor::ShortcutState editor::App::shortcutState() const{
     state.nativeMenuOwnsKeys = Backend::nativeMenuHandlesKeyEquivalents();
     if (hierarchyWindow->isFocused()) state.panels.push_back(ShortcutContext::Hierarchy);
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
+    if (sceneWindow->isHovered() && project.getSelectedScene() && VoxelBrushTool::get().isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::VoxelBrush);
+    }
+    if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
+        terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::TerrainBrush);
+    }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an

@@ -126,6 +126,10 @@ namespace jasperengine::editor{
         SPRITE_BATCH,
         // a Text in the built-in pixel font at x1 (S51 R25)
         TEXT_PIXEL,
+        // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
+        VOXEL_VOLUME,
+        // a Terrain World: the Hierarchy's row opens Create Terrain World (T4 R40), which makes it with its folder
+        TERRAIN_WORLD,
         // GameObject > UI > Title Art and 2D Object > Title Art (S81 R6): an Image or a Sprite with a
         // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
         TITLE_ART_UI,

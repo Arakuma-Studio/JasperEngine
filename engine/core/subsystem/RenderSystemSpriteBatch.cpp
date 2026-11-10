@@ -13,8 +13,11 @@
 #include "RenderSystem.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "pixelart/PixelRotation.h"
 #include "registry/SortingLayers.h"
 #include "render/sprite/SpriteInstanceBatch.h"

@@ -1,0 +1,1270 @@
+{
+  "kind_version": 1,
+  "node_types": [
+    {
+      "id": "position",
+      "category": "Input",
+      "display_name": "Position",
+      "ports": [
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "coord",
+          "name": "Position",
+          "multi": true
+        },
+        {
+          "id": "x",
+          "direction": "out",
+          "type": "field",
+          "name": "X",
+          "multi": true
+        },
+        {
+          "id": "y",
+          "direction": "out",
+          "type": "field",
+          "name": "Y",
+          "multi": true
+        },
+        {
+          "id": "z",
+          "direction": "out",
+          "type": "field",
+          "name": "Z",
+          "multi": true
+        }
+      ],
+      "params": [],
+      "dynamic_ports": false
+    },
+    {
+      "id": "terrain_uv",
+      "category": "Input",
+      "display_name": "Terrain UV",
+      "ports": [
+        {
+          "id": "u",
+          "direction": "out",
+          "type": "field",
+          "name": "U",
+          "multi": true
+        },
+        {
+          "id": "v",
+          "direction": "out",
+          "type": "field",
+          "name": "V",
+          "multi": true
+        }
+      ],
+      "params": [],
+      "dynamic_ports": false
+    },
+    {
+      "id": "constant",
+      "category": "Input",
+      "display_name": "Constant",
+      "ports": [
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "value",
+          "kind": "float",
+          "default": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "variable",
+      "category": "Input",
+      "display_name": "Variable",
+      "ports": [
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "name",
+          "kind": "string",
+          "default": ""
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "terrain_height",
+      "category": "Input",
+      "display_name": "Terrain Height",
+      "ports": [
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Height",
+          "multi": true
+        }
+      ],
+      "params": [],
+      "dynamic_ports": false
+    },
+    {
+      "id": "perlin",
+      "category": "Noise",
+      "display_name": "Perlin",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "simplex",
+      "category": "Noise",
+      "display_name": "Simplex",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "value",
+      "category": "Noise",
+      "display_name": "Value",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "cellular",
+      "category": "Noise",
+      "display_name": "Cellular",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        },
+        {
+          "name": "metric",
+          "kind": "enum",
+          "default": "euclidean",
+          "values": [
+            "euclidean",
+            "manhattan",
+            "chebyshev"
+          ]
+        },
+        {
+          "name": "return",
+          "kind": "enum",
+          "default": "f1",
+          "values": [
+            "f1",
+            "f2",
+            "f2_minus_f1",
+            "cell_value"
+          ]
+        },
+        {
+          "name": "jitter",
+          "kind": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "fbm",
+      "category": "Fractal",
+      "display_name": "FBm",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "basis",
+          "kind": "enum",
+          "default": "perlin",
+          "values": [
+            "perlin",
+            "simplex",
+            "value",
+            "cellular"
+          ]
+        },
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "octaves",
+          "kind": "int",
+          "default": 6,
+          "min": 1.0,
+          "max": 12.0
+        },
+        {
+          "name": "lacunarity",
+          "kind": "float",
+          "default": 2.0
+        },
+        {
+          "name": "gain",
+          "kind": "float",
+          "default": 0.5
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "ridged",
+      "category": "Fractal",
+      "display_name": "Ridged",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "basis",
+          "kind": "enum",
+          "default": "perlin",
+          "values": [
+            "perlin",
+            "simplex",
+            "value",
+            "cellular"
+          ]
+        },
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "octaves",
+          "kind": "int",
+          "default": 6,
+          "min": 1.0,
+          "max": 12.0
+        },
+        {
+          "name": "lacunarity",
+          "kind": "float",
+          "default": 2.0
+        },
+        {
+          "name": "gain",
+          "kind": "float",
+          "default": 0.5
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "domain_warp",
+      "category": "Domain",
+      "display_name": "Domain Warp",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "strength",
+          "direction": "in",
+          "type": "field",
+          "name": "Strength",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "coord",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "basis",
+          "kind": "enum",
+          "default": "perlin",
+          "values": [
+            "perlin",
+            "simplex",
+            "value",
+            "cellular"
+          ]
+        },
+        {
+          "name": "dimensions",
+          "kind": "enum",
+          "default": "2d",
+          "values": [
+            "2d",
+            "3d"
+          ]
+        },
+        {
+          "name": "frequency",
+          "kind": "float",
+          "default": 4.0
+        },
+        {
+          "name": "amplitude",
+          "kind": "float",
+          "default": 0.1
+        },
+        {
+          "name": "octaves",
+          "kind": "int",
+          "default": 3,
+          "min": 1.0,
+          "max": 12.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "domain_transform",
+      "category": "Domain",
+      "display_name": "Domain Scale/Offset",
+      "ports": [
+        {
+          "id": "coord",
+          "direction": "in",
+          "type": "coord",
+          "name": "Coord",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "coord",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "scale",
+          "kind": "vector3",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "offset",
+          "kind": "vector3",
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "rotation_y",
+          "kind": "float",
+          "default": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "scale_offset",
+      "category": "Math",
+      "display_name": "Scale/Offset",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "scale",
+          "kind": "float",
+          "default": 1.0
+        },
+        {
+          "name": "offset",
+          "kind": "float",
+          "default": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "math",
+      "category": "Math",
+      "display_name": "Math",
+      "ports": [
+        {
+          "id": "a",
+          "direction": "in",
+          "type": "field",
+          "name": "A"
+        },
+        {
+          "id": "b",
+          "direction": "in",
+          "type": "field",
+          "name": "B",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "op",
+          "kind": "enum",
+          "default": "add",
+          "values": [
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "min",
+            "max",
+            "power",
+            "modulo",
+            "abs",
+            "negate",
+            "one_minus",
+            "sqrt",
+            "floor",
+            "frac",
+            "sin",
+            "cos"
+          ]
+        },
+        {
+          "name": "b",
+          "kind": "float",
+          "default": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "clamp",
+      "category": "Math",
+      "display_name": "Clamp",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "min",
+          "kind": "float",
+          "default": 0.0
+        },
+        {
+          "name": "max",
+          "kind": "float",
+          "default": 1.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "remap",
+      "category": "Math",
+      "display_name": "Remap",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "from_min",
+          "kind": "float",
+          "default": -1.0
+        },
+        {
+          "name": "from_max",
+          "kind": "float",
+          "default": 1.0
+        },
+        {
+          "name": "to_min",
+          "kind": "float",
+          "default": 0.0
+        },
+        {
+          "name": "to_max",
+          "kind": "float",
+          "default": 1.0
+        },
+        {
+          "name": "clamp",
+          "kind": "bool",
+          "default": false
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "curve",
+      "category": "Math",
+      "display_name": "Curve",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "keys",
+          "kind": "any",
+          "default": [
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "terrace",
+      "category": "Math",
+      "display_name": "Terrace",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "steps",
+          "kind": "int",
+          "default": 8,
+          "min": 2.0,
+          "max": 64.0
+        },
+        {
+          "name": "smoothness",
+          "kind": "float",
+          "default": 0.2,
+          "min": 0.0,
+          "max": 1.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "select",
+      "category": "Math",
+      "display_name": "Select",
+      "ports": [
+        {
+          "id": "a",
+          "direction": "in",
+          "type": "field",
+          "name": "A"
+        },
+        {
+          "id": "b",
+          "direction": "in",
+          "type": "field",
+          "name": "B"
+        },
+        {
+          "id": "mask",
+          "direction": "in",
+          "type": "field",
+          "name": "Mask"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "kind": "float",
+          "default": 0.5
+        },
+        {
+          "name": "falloff",
+          "kind": "float",
+          "default": 0.0,
+          "min": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "blend",
+      "category": "Math",
+      "display_name": "Blend",
+      "ports": [
+        {
+          "id": "a",
+          "direction": "in",
+          "type": "field",
+          "name": "A"
+        },
+        {
+          "id": "b",
+          "direction": "in",
+          "type": "field",
+          "name": "B"
+        },
+        {
+          "id": "weight",
+          "direction": "in",
+          "type": "field",
+          "name": "Weight",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "weight",
+          "kind": "float",
+          "default": 0.5,
+          "min": 0.0,
+          "max": 1.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "height_mask",
+      "category": "Mask",
+      "display_name": "Height Mask",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "min",
+          "kind": "float",
+          "default": 0.0
+        },
+        {
+          "name": "max",
+          "kind": "float",
+          "default": 1.0
+        },
+        {
+          "name": "falloff",
+          "kind": "float",
+          "default": 0.0,
+          "min": 0.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "slope_mask",
+      "category": "Mask",
+      "display_name": "Slope Mask",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Out",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "min_angle",
+          "kind": "float",
+          "default": 0.0,
+          "min": 0.0,
+          "max": 90.0
+        },
+        {
+          "name": "max_angle",
+          "kind": "float",
+          "default": 45.0,
+          "min": 0.0,
+          "max": 90.0
+        },
+        {
+          "name": "falloff",
+          "kind": "float",
+          "default": 5.0,
+          "min": 0.0,
+          "max": 90.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "hydraulic_erosion",
+      "category": "Stage",
+      "display_name": "Hydraulic Erosion",
+      "ports": [
+        {
+          "id": "height",
+          "direction": "in",
+          "type": "field",
+          "name": "Height"
+        },
+        {
+          "id": "hardness",
+          "direction": "in",
+          "type": "field",
+          "name": "Hardness",
+          "optional": true
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Height",
+          "multi": true
+        },
+        {
+          "id": "flow",
+          "direction": "out",
+          "type": "field",
+          "name": "Flow",
+          "multi": true
+        },
+        {
+          "id": "sediment",
+          "direction": "out",
+          "type": "field",
+          "name": "Sediment",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "droplets_per_texel",
+          "kind": "float",
+          "default": 0.25,
+          "min": 0.01,
+          "max": 4.0
+        },
+        {
+          "name": "lifetime",
+          "kind": "int",
+          "default": 48,
+          "min": 8.0,
+          "max": 128.0
+        },
+        {
+          "name": "inertia",
+          "kind": "float",
+          "default": 0.05,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "capacity",
+          "kind": "float",
+          "default": 4.0,
+          "min": 0.0
+        },
+        {
+          "name": "min_slope",
+          "kind": "float",
+          "default": 0.01,
+          "min": 0.0
+        },
+        {
+          "name": "erode_rate",
+          "kind": "float",
+          "default": 0.3,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "deposit_rate",
+          "kind": "float",
+          "default": 0.3,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "evaporation",
+          "kind": "float",
+          "default": 0.02,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "gravity",
+          "kind": "float",
+          "default": 4.0,
+          "min": 0.0
+        },
+        {
+          "name": "radius",
+          "kind": "int",
+          "default": 2,
+          "min": 1.0,
+          "max": 4.0
+        },
+        {
+          "name": "seed_offset",
+          "kind": "int",
+          "default": 0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "thermal_erosion",
+      "category": "Stage",
+      "display_name": "Thermal Erosion",
+      "ports": [
+        {
+          "id": "height",
+          "direction": "in",
+          "type": "field",
+          "name": "Height"
+        },
+        {
+          "id": "out",
+          "direction": "out",
+          "type": "field",
+          "name": "Height",
+          "multi": true
+        }
+      ],
+      "params": [
+        {
+          "name": "iterations",
+          "kind": "int",
+          "default": 8,
+          "min": 1.0,
+          "max": 64.0
+        },
+        {
+          "name": "talus_angle",
+          "kind": "float",
+          "default": 35.0,
+          "min": 0.0,
+          "max": 89.0
+        },
+        {
+          "name": "rate",
+          "kind": "float",
+          "default": 0.5,
+          "min": 0.0,
+          "max": 1.0
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "output_height",
+      "category": "Output",
+      "display_name": "Height Output",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        }
+      ],
+      "params": [
+        {
+          "name": "unit",
+          "kind": "enum",
+          "default": "normalized",
+          "values": [
+            "normalized",
+            "metres"
+          ]
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "output_layer",
+      "category": "Output",
+      "display_name": "Layer Output",
+      "ports": [
+        {
+          "id": "weight",
+          "direction": "in",
+          "type": "field",
+          "name": "Weight"
+        }
+      ],
+      "params": [
+        {
+          "name": "layer",
+          "kind": "int",
+          "default": 0,
+          "min": 0.0,
+          "max": 11.0
+        },
+        {
+          "name": "optional",
+          "kind": "bool",
+          "default": false
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "output_density",
+      "category": "Output",
+      "display_name": "Foliage Density Output",
+      "ports": [
+        {
+          "id": "density",
+          "direction": "in",
+          "type": "field",
+          "name": "Density"
+        }
+      ],
+      "params": [
+        {
+          "name": "foliage_layer",
+          "kind": "int",
+          "default": 0,
+          "min": 0.0
+        },
+        {
+          "name": "optional",
+          "kind": "bool",
+          "default": false
+        }
+      ],
+      "dynamic_ports": false
+    },
+    {
+      "id": "output_value",
+      "category": "Output",
+      "display_name": "Value Output",
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "field",
+          "name": "In"
+        }
+      ],
+      "params": [
+        {
+          "name": "name",
+          "kind": "string",
+          "default": "value"
+        }
+      ],
+      "dynamic_ports": false
+    }
+  ]
+}

@@ -700,6 +700,12 @@ void EditorSettingsWindow::drawSceneViewSettings() {
             toggleRow("preferences.scene_view.rulers", "Rulers", "Top and left rulers in 2D, UI and orthographic axis views.",
                       m_sceneView.rulers, defaults.rulers);
         }
+        if (sectionRow("Brushes")) {
+            toggleRow("preferences.scene_view.alt_alternates", "Alt Alternates While Painting",
+                      "With a terrain or voxel brush armed, Alt held is the tool's alternate and Alt+drag paints it instead of orbiting the view "
+                      "(a tool with no alternate keeps orbit and pick).",
+                      m_sceneView.altAlternates, defaults.altAlternates);
+        }
         if (sectionRow("Animation")) {
             toggleRow("preferences.scene_view.preview_particles", "Preview Particle Systems",
                       "Animation previews in edit mode (the Animator and Animation windows) play and scrub the Particle Systems under the "

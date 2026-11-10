@@ -40,10 +40,16 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# Terrain Worlds (S34 module terrainworld, spec T4): tiled terrain past one map, streamed, with paged
+# collision. OFF leaves them out: a World draws and collides as nothing, and a player refuses content
+# that needs one (S34 R3).
+option(JASPERENGINE_TERRAIN_WORLD "Compile Terrain Worlds (tiles, streaming, collision paging)" ON)
 # The sound layer (S34 module soundlayer, specs S36 and S37): Sound Events, triggers, free voices and
 # what a clip's import settings do at run time. A Compile build leaves it out when its project does
 # not use it.
 option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and clip import settings" ON)
+option(JASPERENGINE_NOISE "Compile the noise library and Noise Graphs for scripts and voxels" ON)
+option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end beside Native (editor and tests)" OFF)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
 # libwebm). A player variant or a Compile build leaves out what its project cannot reach
@@ -61,6 +67,14 @@ option(JASPERENGINE_TITLE_ART "Compile Title Art (engine/core/titleart)" ON)
 include(CMakeDependentOption)
 cmake_dependent_option(JASPERENGINE_TITLE_ART_3D "Compile Realtime 3D titles (engine/core/titleart/three_d)" ON "JASPERENGINE_TITLE_ART" OFF)
 cmake_dependent_option(JASPERENGINE_TITLE_ART_MESHER "Compile the runtime mesher of 3D titles (dynamic 3D text)" ON "JASPERENGINE_TITLE_ART_3D" OFF)
+# Voxel Volumes (docs/specs/T6-voxel-volumes.md): bounded smooth voxel terrain, Transvoxel LOD, destruction.
+# A player variant or a Compile build leaves it out when its project cannot reach it.
+option(JASPERENGINE_VOXEL "Compile Voxel Volumes (needs JASPERENGINE_NOISE)" ON)
+# Runtime terrain edits (docs/specs/T1-terrain-authoring.md R54, R75): the operation engine behind
+# Terrain:applyOps and setHeights, the op JSON, the edit targets' uploads and the collider refresh. A
+# player variant or a Compile build leaves them out when its project cannot reach them; the queries
+# (getHeightAt, raycast...) stay.
+option(JASPERENGINE_TERRAIN_EDIT "Compile runtime terrain edits (Terrain:applyOps, setHeights)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -605,6 +619,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
             ${PLATFORM_ROOT}/X11Visibility.cpp
+            ${PLATFORM_ROOT}/X11Pen.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
             ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
@@ -1136,6 +1151,10 @@ add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
 # The optional modules (docs/specs/S34-player-size.md R1): the video of an HTML UI, and the
 # editor's shared engine has every module (its windows and the Play of any project use them)
+# R47: generation goes through T2's runtime, so a volume without it could not read its own base
+if(JASPERENGINE_VOXEL AND NOT JASPERENGINE_NOISE)
+    message(FATAL_ERROR "JASPERENGINE_VOXEL needs JASPERENGINE_NOISE: turn both on, or JASPERENGINE_VOXEL off")
+endif()
 if(JASPERENGINE_VIDEO AND NOT JASPERENGINE_HTMLUI)
     message(STATUS "JASPERENGINE_VIDEO needs JASPERENGINE_HTMLUI: the build has no video")
     set(JASPERENGINE_VIDEO OFF)
@@ -1683,6 +1702,8 @@ set(JASPERENGINE_SRCS
     core/object/Sprite.cpp
     core/object/TitleArt.cpp
     core/object/Terrain.cpp
+    core/object/TerrainEdit.cpp
+    core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
@@ -1741,6 +1762,7 @@ set(JASPERENGINE_SRCS
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
     core/physics/RagdollBuilder.cpp
@@ -1796,17 +1818,20 @@ set(JASPERENGINE_SRCS
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
+    core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/NativeClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
     core/script/binding/ParticleClassesLua.cpp
+    core/script/binding/FoliageLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
+    core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
@@ -1848,6 +1873,7 @@ set(JASPERENGINE_SRCS
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
@@ -1864,8 +1890,13 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemFoliage.cpp
+    core/subsystem/FoliageSystem.cpp
+    core/subsystem/FoliagePhysics.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
+    core/subsystem/RenderSystemTerrain.cpp
+    core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/RenderSystemSorting.cpp
     core/subsystem/RenderSystemSpriteBatch.cpp
@@ -1890,6 +1921,7 @@ set(JASPERENGINE_SRCS
     core/texture/Ktx2.cpp
     core/texture/Ktx2Write.cpp
     core/texture/MipChain.cpp
+    core/texture/TerrainDetailBuilder.cpp
     core/texture/MaterialPbr.cpp
     core/texture/TexturePack.cpp
     core/texture/Texture.cpp
@@ -2043,6 +2075,32 @@ endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
+include(core/terrain/TerrainSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
+if(JASPERENGINE_TERRAIN_WORLD)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_WORLD_SRCS})
+endif()
+# The runtime terrain edit module: what applyOps and setHeights reach, T5's registered foliage ops
+# among them, which run only through it
+if(NOT JASPERENGINE_TERRAIN_EDIT)
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
+        "^core/(terrain/(TerrainOps|OverlayMapStore|TerrainStroke|TerrainPlacement|TerrainErosion|FoliageOps)|object/TerrainOpsJson|subsystem/MeshSystemTerrainEdit|physics/JoltTerrainRefresh)[.]cpp$")
+endif()
+include(core/noise/NoiseSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
+if(JASPERENGINE_VOXEL)
+    # Voxel Volumes (T6): the pure module, then what ties it to the scene
+    include(core/voxel/VoxelSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VOXEL_SRCS}
+        core/subsystem/VoxelSystem.cpp
+        core/subsystem/VoxelSystemPhysics.cpp
+        core/subsystem/VoxelSystemTerrain.cpp
+        core/subsystem/RenderSystemVoxel.cpp
+        core/object/voxel/VoxelVolume.cpp
+        core/script/binding/VoxelClassesLua.cpp)
+endif()
+# always there: with the module off it is the plain terrain query (T6 R45)
+list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2170,6 +2228,11 @@ if(JASPERENGINE_TITLE_ART_SRCS)
         REASON "the Title Art sources: several streams' per-file helper sets with the same names"
         SOURCES ${JASPERENGINE_TITLE_ART_SRCS})
 endif()
+if(JASPERENGINE_VOXEL)
+    jasperengine_skip_unity_build(
+        REASON "the voxel sources build with their own floating-point flags, and include the Transvoxel tables"
+        SOURCES ${JASPERENGINE_VOXEL_SRCS} core/subsystem/RenderSystemVoxel.cpp core/subsystem/VoxelSystem.cpp core/subsystem/VoxelSystemPhysics.cpp core/subsystem/VoxelSystemTerrain.cpp)
+endif()
 if(JASPERENGINE_SPLINE_SRCS)
     jasperengine_skip_unity_build(
         REASON "the spline sources build with their own floating-point flags"
@@ -2214,6 +2277,7 @@ jasperengine_skip_unity_build(
         core/graph/GraphRegistry.cpp
         core/lattice/LatticePresets.cpp
         core/lattice/LatticeSolver.cpp
+        core/object/TerrainEdit.cpp
         core/object/spline/SplineAnimate.cpp
         core/object/spline/SplineInstantiate.cpp
         core/pose/PoseAnimationIO.cpp
@@ -2247,12 +2311,16 @@ target_compile_definitions(jasperengine
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
         JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
+        JASPERENGINE_NOISE=$<BOOL:${JASPERENGINE_NOISE}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
+        JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
         JASPERENGINE_TITLE_ART=$<BOOL:${JASPERENGINE_TITLE_ART}>
         JASPERENGINE_TITLE_ART_3D=$<BOOL:${JASPERENGINE_TITLE_ART_3D}>
         JASPERENGINE_TITLE_ART_MESHER=$<BOOL:${JASPERENGINE_TITLE_ART_MESHER}>
+        JASPERENGINE_TERRAIN_EDIT=$<BOOL:${JASPERENGINE_TERRAIN_EDIT}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
@@ -2349,6 +2417,22 @@ endif()
 jasperengine_skip_unity_build(
     REASON "the Animator's pose kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
+
+# the terrain operation engine and its query (docs/specs/T1-terrain-authoring.md R8): a map's bytes
+# are the same on every CPU only without floating-point contraction
+if(MSVC)
+    set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+    set_source_files_properties(${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+else()
+    set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    set_source_files_properties(${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "the terrain kernels: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_TERRAIN_SRCS} ${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the noise kernels build with their own floating-point flags"
+    SOURCES ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
 
 # the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
 # cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's
@@ -2554,7 +2638,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         jasperengine_skip_unity_build(
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
-                    ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)

@@ -166,6 +166,8 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     settingsPlane.help = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane";
     RowSettings settingsCarving;
     settingsCarving.help = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)";
+    RowSettings settingsFollow;
+    settingsFollow.help = "Bake the Terrain World's tiles round its focus (its Focus GameObject or camera) and rebake as the focus moves";
     RowSettings settingsData;
     settingsData.help = "The baked .navmesh asset";
     RowSettings settingsVolume;
@@ -175,11 +177,19 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
 
     const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entities[0]);
 
-    beginTable(cpType, getLabelSize("Runtime Carving"));
+    beginTable(cpType, getLabelSize("Follow Terrain World Focus"));
     propertyRow(RowPropertyType::Enum, cpType, "agentType", "Agent Type", sceneProject, entities, settingsAgent);
     propertyRow(RowPropertyType::Enum, cpType, "defaultArea", "Default Area", sceneProject, entities, settingsArea);
     propertyRow(RowPropertyType::Enum, cpType, "plane", "Plane", sceneProject, entities, settingsPlane);
     propertyRow(RowPropertyType::Bool, cpType, "runtimeCarving", "Runtime Carving", sceneProject, entities, settingsCarving);
+    // T4 R25: open worlds bake the region round the player
+    propertyRow(RowPropertyType::Bool, cpType, "followTerrainWorldFocus", "Follow Terrain World Focus", sceneProject, entities, settingsFollow);
+    if (surface.followTerrainWorldFocus) {
+        RowSettings child = settingsAdvanced;
+        child.indent = true;
+        child.help = "How far round the focus the Terrain World's tiles are baked (metres)";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "followRadius", "Radius", sceneProject, entities, child);
+    }
     endTable();
 
     ImGui::SeparatorText("Object Collection");

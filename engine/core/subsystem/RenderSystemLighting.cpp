@@ -11,6 +11,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/Transform.h"
 #include "jobs/JobSystem.h"
 #include "pool/ShaderPool.h"
 #include "render/BlueNoise64.h"

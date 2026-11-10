@@ -9,6 +9,7 @@
 #include "titleart/three_d/TitleCooked3D.h"
 
 #include "ShaderNeutralApi.h"
+#include "component/TerrainComponent.h"
 #include "Project.h"
 #include "DocumentFile.h"
 #include "util/Prefab.h"
@@ -32,8 +33,11 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include <algorithm>
 #include <cctype>
@@ -51,7 +55,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit"};
         return modules;
     }
 
@@ -297,6 +301,12 @@ namespace {
                 usage.evidence.erase(std::remove_if(usage.evidence.begin(), usage.evidence.end(),
                                                     [](const ModuleEvidence& e) { return e.module == "video"; }), usage.evidence.end());
             }
+            // T6 R48 (T2 R43, D18): whatever reached Voxel Volumes reaches Noise Graphs through their
+            // generators. T2's module joins player::allModules(), and this then needs it.
+            const std::vector<std::string>& known = player::allModules();
+            if (usage.needs("voxel") && std::find(known.begin(), known.end(), "noise") != known.end()) {
+                add("noise", usage.firstEvidence("voxel"), "Voxel Volume (its generators use Noise Graphs)");
+            }
             return std::move(usage);
         }
 
@@ -358,6 +368,14 @@ namespace {
             if (videoUses.size() < MAX_EVIDENCE) videoUses.push_back({where, what});
         }
 
+        // what a Voxel Volume's Navigation Update would rebake
+        static bool hasNavMeshSurface(const ModuleContent& content) {
+            for (Entity entity : content.entities) {
+                if (content.registry->isEntityCreated(entity) && content.registry->findComponent<NavMeshSurfaceComponent>(entity)) return true;
+            }
+            return false;
+        }
+
         void scanContent(const ModuleContent& content) {
             EntityRegistry* registry = content.registry;
             if (!registry) {
@@ -391,6 +409,19 @@ namespace {
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
+                if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
+                    // T1 R54: a terrain a game may edit loads its maps for edits and uploads them
+                    if (terrain->allowRuntimeEdits) add("terrainedit", content.label, "Allow Runtime Edits on " + object);
+                    // T5 R18, R39: foliage stays in core; only its capsules need the physics module
+                    for (const TerrainTreePrototype& prototype : terrain->treePrototypes) {
+                        if (prototype.collision == TerrainTreeCollision::Capsule) {
+                            add("physics3d", content.label, "Tree capsules on " + object);
+                            break;
+                        }
+                    }
+                }
+                // T4 R55: the tiles stream, draw and page their colliders in the module alone
+                if (has(registry->findComponent<TerrainWorldComponent>(entity))) add("terrainworld", content.label, "Terrain World on " + object);
                 // a Convex Hull excluder's hull is built by Jolt (a box of the mesh's bounds without it)
                 if (const WaterExcluderComponent* excluder = registry->findComponent<WaterExcluderComponent>(entity);
                         excluder && excluder->shape == WaterExcluderShape::CONVEX_HULL)
@@ -398,6 +429,14 @@ namespace {
                 if (has(registry->findComponent<Rigidbody2DComponent>(entity))) add("physics2d", content.label, "Rigidbody 2D on " + object);
                 if (has(registry->findComponent<Joint2DComponent>(entity))) add("physics2d", content.label, "Joint 2D on " + object);
                 if (has(registry->findComponent<CharacterController2DComponent>(entity))) add("physics2d", content.label, "Character Controller 2D on " + object);
+                if (const VoxelVolumeComponent* volume = registry->findComponent<VoxelVolumeComponent>(entity)) {
+                    // T6 R48
+                    add("voxel", content.label, "Voxel Volume on " + object);
+                    if (volume->collision) add("physics3d", content.label, "Voxel Volume collision on " + object);
+                    if (volume->navigationUpdate == VoxelNavigationUpdate::Automatic && hasNavMeshSurface(content)) {
+                        add("navigation", content.label, "Voxel Volume navigation update on " + object);
+                    }
+                }
                 if (const SplineExtrudeComponent* extrude = registry->findComponent<SplineExtrudeComponent>(entity)) {
                     if (extrude->collision == SplineCollision::Mesh) add("physics3d", content.label, "Spline Extrude collision (Mesh) on " + object);
                     if (extrude->collision == SplineCollision::Chain2D) add("physics2d", content.label, "Spline Extrude collision (Chain 2D) on " + object);

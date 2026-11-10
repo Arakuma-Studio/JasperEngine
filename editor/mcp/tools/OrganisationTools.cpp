@@ -209,7 +209,8 @@ void listShortcutsTool(const CallPtr& call) {
     if (!contextName.empty()) {
         context = parseShortcutContext(contextName);
         if (!context) {
-            call->fail("context is global, editor, scene_view, hierarchy, project, console, animation, pose_animation, curve or color_picker.");
+            call->fail("context is global, editor, scene_view, hierarchy, project, console, animation, pose_animation, curve, color_picker, "
+                       "voxel_brush or terrain_brush.");
             return;
         }
     }
@@ -797,7 +798,8 @@ void registerOrganisationTools(McpRegistry& registry) {
             "menu_shortcut, conflicts, shadowed_by}. Ctrl means Cmd on macOS.";
         tool.inputSchema = object({
             {"group", string("File, Edit, Tools, Scene View...")},
-            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve", "color_picker", "sprite_preview"})},
+            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve",
+                                        "color_picker", "sprite_preview", "voxel_brush", "terrain_brush"})},
             {"conflicts_only", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;

@@ -89,5 +89,9 @@ void NavMeshSurface::setSize(Vector3 size){ component().volumeSize = size; }
 Vector3 NavMeshSurface::getSize() const{ return component().volumeSize; }
 void NavMeshSurface::setRuntimeCarving(bool carving){ component().runtimeCarving = carving; }
 bool NavMeshSurface::isRuntimeCarving() const{ return component().runtimeCarving; }
+void NavMeshSurface::setFollowTerrainWorldFocus(bool follow){ system()->setFollowTerrainWorldFocus(entity, follow); }
+bool NavMeshSurface::isFollowTerrainWorldFocus() const{ return component().followTerrainWorldFocus; }
+void NavMeshSurface::setFollowRadius(float radius){ component().followRadius = std::max(radius, 0.0f); }
+float NavMeshSurface::getFollowRadius() const{ return component().followRadius; }
 
 FunctionSubscribe<void(NavMeshSurface)>& NavMeshSurface::getOnBakeCompleted(){ return component().onBakeCompleted; }

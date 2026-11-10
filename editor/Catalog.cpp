@@ -3,6 +3,7 @@
 
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
@@ -35,6 +36,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"

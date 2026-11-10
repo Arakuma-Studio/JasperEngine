@@ -417,6 +417,10 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
     if (prop & ShaderPool::getWaterExclusionProperty()) defs.push_back({"USE_WATER_EXCLUSION", "1"}); // 'Wex'
     if (prop & ShaderPool::getWaterWakeProperty()) defs.push_back({"USE_WATER_WAKE", "1"});           // 'Wwk'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     // S57's lighting: the screen-tile lights of a pixel-lit variant, the capsule and contact
     // shadows of a shadowed one, and the OIT accumulation (its main is wrapped, prepareVariantArgs)
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)) defs.push_back({"USE_TILED_LIGHTS", "1"});       // 'Til'
@@ -424,6 +428,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS)) defs.push_back({"USE_CONTACT_SHADOWS", "1"}); // 'Cts'
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)) defs.push_back({"USE_OIT", "1"});                         // 'Oit'
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
+    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) defs.push_back({"TERRAIN_HOLES", "1"});       // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::MESH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});   // 'Twd'
     // S52: a batchable sprite's FX slots, frame rect and snap pivot
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) defs.push_back({"HAS_SPRITE_FX", "1"});         // 'Sfx'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
@@ -453,6 +459,12 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::DEPTH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
+    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH)) defs.push_back({"TERRAIN_HOLES", "1"});      // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});  // 'Twd'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
 }
 
@@ -478,6 +490,17 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_OCCLUSION_TEXTURE", "1"});         // 'Occ'
     if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
     if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
+    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER)) defs.push_back({"TERRAIN_HOLES", "1"});    // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER)) defs.push_back({"HAS_TERRAIN_WORLD", "1"}); // 'Twd'
+    // T3 D2: Lit defines do not reach a G-buffer, so its tier and its twelve layers are bits
+    if (prop & ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality::MEDIUM)) defs.push_back({"TERRAIN_QUALITY_MEDIUM", "1"}); // 'Tqm'
+    if (prop & ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality::LOW)) defs.push_back({"TERRAIN_QUALITY_LOW", "1"});       // 'Tql'
+    if (prop & ShaderPool::getTerrainExtendedProperty()) defs.push_back({"TERRAIN_EXTENDED_LAYERS", "1"});                            // 'Txl'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
+    if (prop & ShaderPool::getGBufferVoxelProperty()) defs.push_back({"HAS_VOXEL", "1"});                       // 'Vox'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -775,7 +798,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }
 
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
-        args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
+        args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(TERRAIN_SHADER_BASE_LAYERS)});
     }
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER){
         // the record layout of includes/lattice.glsl (lattice/LatticeTypes.h)
@@ -901,7 +924,7 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
         appendSignaturePart(input, "pipeline", compilerPipelineVersion);
         // engine limits the variants are compiled with (see setupShaderArgs)
         appendSignaturePart(input, "limits",
-            std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
+            std::to_string(TERRAIN_SHADER_BASE_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
             std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +

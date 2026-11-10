@@ -49,6 +49,7 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "object/Camera.h"
 #include "object/LineRenderer.h"
 #include "object/Primitive.h"

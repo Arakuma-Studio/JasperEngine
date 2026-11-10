@@ -55,15 +55,16 @@
 #include "component/SpriteComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "object/TerrainEdit.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
-#include "component/TrailRendererComponent.h"
 #include "spline/SplinePresets.h"
 
 #include "audio/AudioMixerDocument.h"
@@ -76,6 +77,8 @@
 #include "object/environment/Water.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
+#include "component/TerrainComponent.h"
 #include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>
@@ -999,11 +1002,17 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
+    }else if (type == EntityCreationType::VOXEL_VOLUME){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<VoxelVolumeComponent>(entity, {});
+
     }else if (type == EntityCreationType::TERRAIN){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
+        applyNewTerrainDefaults(scene->getComponent<TerrainComponent>(entity));
 
     }else if (type >= EntityCreationType::SPLINE_EMPTY && type <= EntityCreationType::SPLINE_CIRCLE_2D){
 

@@ -1,10 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "pixelart/PixelArtAssign.h"
 #include "pixelart/BitmapFontPool.h"
 #include "pixelart/FontPixelReport.h"
 #include "SceneWindow.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldOverlay.h"
+#endif
+#include "window/TerrainEditWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/RectTransformComponent.h"
 #include "titleart/runtime/TitleArtCreate.h"
@@ -16,6 +22,7 @@
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
 #include "sprite/SpriteSheetPool.h"
 #include "widget/ColorField.h"
+#include "voxel/VoxelBrushTool.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "pixelart/PixelSnap.h"
 #include "component/PixelPerfectCameraComponent.h"
@@ -81,6 +88,12 @@
 #include <cmath>
 
 using namespace jasperengine;
+
+// T1 R63: the Alt gesture of an armed terrain brush, as T6's voxel brush keeps its own
+static editor::VoxelAltGesture& terrainAltGesture(){
+    static editor::VoxelAltGesture gesture;
+    return gesture;
+}
 
 namespace {
 
@@ -1332,6 +1345,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // Paint Dye (FluidEditorTools): the left button paints the fluid, no selection or gizmo
     bool fluidPainting = sceneProject->sceneRender->isFluidPainting();
     bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting;
+    // T1 R56: with Alt Alternates While Painting, Alt+LMB paints an armed terrain brush's alternate instead of orbiting
+    TerrainEditWindow* terrainBrush = Backend::getApp().getTerrainEditWindow();
+    const bool terrainBrushArmed = terrainBrush && terrainBrush->isEditingScene(sceneProject->scene);
+    const bool terrainAltPaints = altHeld && terrainBrushArmed && terrainBrush->altPaints();
     bool altGizmoDuplicate = altGizmoDrag &&
         (gizmoSelected != GizmoSelected::OBJECT2D || gizmo2DSide == Gizmo2DSideSelected::CENTER);
 
@@ -1390,7 +1407,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             SplineSceneTools::doubleClick(project, sceneProject, x, y);
         }
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag || terrainAltPaints) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
                 splinePress != SplineSceneTools::Press::Captured){
             subSelectionClickConsumesRelease[sceneId] = false;
             if (splinePress == SplineSceneTools::Press::Selected){
@@ -1812,7 +1829,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
         }
 
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag || terrainAltPaints) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;
@@ -2009,8 +2026,46 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
     }
 
+    // T6 R60 (T1 DC12): Alt on an armed Voxel Volume brush starts no stroke. Past the drag threshold it
+    // is the orbit below, and a release before it picks the material under the pointer.
+    VoxelBrushTool& voxelBrush = VoxelBrushTool::get();
+    // Alt pressed mid-stroke keeps the release from the view's own path below
+    if (voxelBrush.isStrokeActive() && altHeld && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        voxelBrush.endStroke();
+    }
+    if (voxelBrush.isEditingScene(sceneProject->scene)) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            voxelBrush.altPress(mousePos.x, mousePos.y);
+        }
+        voxelBrush.altMove(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (voxelBrush.altActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            voxelBrush.altRelease(sceneProject->scene, sceneProject->sceneRender->screenToRay(pickX, pickY));
+        }
+    }
+
+    // T1 R63 (DC12): the same on an armed terrain brush, unless Alt+LMB paints its alternate: a release before
+    // the drag threshold picks (T5's tree prototype, the layer on Paint Texture, else the height)
+    VoxelAltGesture& terrainAlt = terrainAltGesture();
+    if (terrainBrushArmed && !terrainAltPaints) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            terrainAlt.press(mousePos.x, mousePos.y);
+        }
+        terrainAlt.move(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (terrainAlt.isActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && terrainAlt.release()) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            terrainBrush->altPick(sceneProject->scene, sceneProject->sceneRender->screenToRay(pickX, pickY));
+        }
+    } else if (terrainAlt.isActive()) {
+        terrainAlt.cancel();
+    }
+
     if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
-            (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse))) {
+            (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse && !terrainAltPaints))) {
         draggingMouse[sceneId] = true;
 
         // X11 still delivers motion queued before the pointer was warped to the centre,
@@ -2178,7 +2233,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
 
         // Alt+LMB orbit
-        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked) {
+        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding() &&
+                !(terrainAlt.isActive() && !terrainAlt.isOrbit())) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -2748,6 +2804,69 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // T1 R65: the terrain overlays, saved with the workspace per scene
+    if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Terrain")) {
+        TerrainOverlaySettings& overlay = sceneProject.displaySettings.terrainOverlay;
+        const std::vector<std::string> sources = TerrainOverlay::sourceNames();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(ICON_FA_MOUNTAIN " Overlay");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+#if JASPERENGINE_TERRAIN_WORLD
+        const std::string worldLabel = terrainWorldOverlayLabel(overlay.source);
+#else
+        const std::string worldLabel;
+#endif
+        const char* preview = overlay.source.empty() ? "None" : (!worldLabel.empty() ? worldLabel.c_str() : overlay.source.c_str());
+        if (ImGui::BeginCombo("##terrainoverlay", preview)) {
+            if (ImGui::Selectable("None", overlay.source.empty())) {
+                overlay.source.clear();
+                sceneProject.needUpdateRender = true;
+                project->saveWorkspaceFile();
+            }
+            for (const std::string& name : sources) {
+                if (ImGui::Selectable(name.c_str(), overlay.source == name)) {
+                    overlay.source = name;
+                    sceneProject.needUpdateRender = true;
+                    project->saveWorkspaceFile();
+                }
+            }
+#if JASPERENGINE_TERRAIN_WORLD
+            // T4 R42: a Terrain World's own overlay, in Play too
+            ImGui::SeparatorText("Terrain World");
+            for (const std::string& name : terrainWorldOverlaySources()) {
+                if (ImGui::Selectable(terrainWorldOverlayLabel(name), overlay.source == name)) {
+                    overlay.source = name;
+                    sceneProject.needUpdateRender = true;
+                    project->saveWorkspaceFile();
+                }
+            }
+#endif
+            ImGui::EndCombo();
+        }
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::BeginDisabled(overlay.source.empty());
+        ImGui::TextUnformatted("    Opacity");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##terrainoverlayopacity", &overlay.opacity, 0.0f, 1.0f, "%.2f")) sceneProject.needUpdateRender = true;
+        if (ImGui::IsItemDeactivatedAfterEdit()) project->saveWorkspaceFile();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("    Contour Interval");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::DragFloat("##terrainoverlaycontour", &overlay.contourInterval, 0.5f, 0.0f, 10000.0f, overlay.contourInterval > 0.0f ? "%.1f m" : "Auto")) {
+            overlay.contourInterval = std::max(0.0f, overlay.contourInterval);
+            sceneProject.needUpdateRender = true;
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) project->saveWorkspaceFile();
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+
     // Physics Placement's own gizmos: per user, like its panel (every 3D Scene view)
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Physics Placement")) {
         PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
@@ -3079,6 +3198,11 @@ void editor::SceneWindow::show() {
                 // align to surface, Scene Camera
                 if (!isCameraPreview) {
                     viewController->drawToolbar(sceneProject, rightX);
+                    // T3 R42: the terrain's preview, for scenes with a terrain
+                    if (sceneProject.scene && sceneProject.scene->getComponentArray<TerrainComponent>()->size() > 0) {
+                        ImGui::SameLine();
+                        drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject.id));
+                    }
                 }
                 // S41 R21: Pixel Zoom (2D scenes drawn through a Pixel Perfect Camera)
                 drawPixelZoomToolbar(sceneProject);
@@ -3423,6 +3547,9 @@ void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     if (sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL)
         drawLodLegend(drawList, imageMin, imageMax);
+    if (sceneProject.sceneRender && !sceneProject.displaySettings.terrainOverlay.source.empty())
+        drawTerrainOverlayLegend(drawList, imageMin, imageMax, "Terrain: " + sceneProject.displaySettings.terrainOverlay.source,
+                                 sceneProject.sceneRender->getTerrainOverlayLegend(), sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL);
     if (!sceneProject.displaySettings.showStats)
         return;
     // in Edit mode the Scene view is the engine's frame, while playing a view of its own

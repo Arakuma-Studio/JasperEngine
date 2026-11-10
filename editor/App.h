@@ -74,6 +74,7 @@ namespace jasperengine::editor{
     class PoseAnimationWindow;
     class AnimatorWindow;
     class AvatarWindow;
+    class NoiseGraphWindow;
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
@@ -108,6 +109,8 @@ namespace jasperengine::editor{
     class UndoHistoryWindow;
     class InputActionsWindow;
     class NavigationWindow;
+    class VoxelEditWindow;
+    class VoxelSliceView;
     class PlayModeChangesWindow;
     class SearchPalette;
     class ShortcutsWindow;
@@ -260,6 +263,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow;
         AvatarWindow* avatarWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
+        NoiseGraphWindow* noiseGraphWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         ParticleEffectWindow* particleEffectWindow;
@@ -292,6 +296,8 @@ namespace jasperengine::editor{
         InputActionsWindow* inputActionsWindow;
         // Window > AI > Navigation (S19)
         NavigationWindow* navigationWindow;
+        VoxelEditWindow* voxelEditWindow;
+        VoxelSliceView* voxelSliceView;
         PlayModeChangesWindow* playModeChangesWindow;
         // S25: Edit > Search All..., Edit > Shortcuts... (and Help > Keyboard Shortcuts),
         // Window > General > Bookmarks
@@ -720,6 +726,8 @@ namespace jasperengine::editor{
         void openAvatarWindow(uint32_t sceneId, Entity entity);
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        VoxelEditWindow* getVoxelEditWindow() const { return voxelEditWindow; }
+        NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }

@@ -45,6 +45,8 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::SpritePreview: return "Sprite Preview";
         case ShortcutContext::Palette: return "Palette";
         case ShortcutContext::PixelArtCheck: return "Pixel Art Check";
+        case ShortcutContext::VoxelBrush: return "Voxel Brush";
+        case ShortcutContext::TerrainBrush: return "Terrain Brush";
         case ShortcutContext::TitleDesigner: return "Title Designer";
         case ShortcutContext::TitleAnimation: return "Title Animation";
     }
@@ -68,6 +70,8 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::SpritePreview: return "sprite_preview";
         case ShortcutContext::Palette: return "palette";
         case ShortcutContext::PixelArtCheck: return "pixel_art_check";
+        case ShortcutContext::VoxelBrush: return "voxel_brush";
+        case ShortcutContext::TerrainBrush: return "terrain_brush";
         case ShortcutContext::TitleDesigner: return "title_designer";
         case ShortcutContext::TitleAnimation: return "title_animation";
     }

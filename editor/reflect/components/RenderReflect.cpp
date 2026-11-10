@@ -7,6 +7,7 @@
 // tables give their properties, schemas, Inspector metadata and asset locators.
 
 #include "reflect/components/MaterialReflect.h"
+#include "reflect/components/TerrainLayerReflect.h"
 
 #include "Factory.h"
 #include "Stream.h"
@@ -120,6 +121,8 @@ namespace {
         // as the layer's other fields)
         JE_FIELD(TerrainSurfaceLayer, hexTiling, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainSurfaceLayer, hexRotation, .updateFlags = kTerrainTexture, .uiMin = 0.0f, .uiMax = 1.0f),
+        // T3 R11: a variant define (TERRAIN_CLIFF) and a uniform
+        JE_FIELD(TerrainSurfaceLayer, cliffProjection, .enumDesc = &enums::kTerrainCliffProjection, .updateFlags = kTerrainTexture, .tooltip = "Auto: the Quality tier's projection. Flat Only: never reads a side plane, for ground that never sits on a cliff."),
     };
 
     constexpr uint64_t kFoliage = UpdateFlags_Terrain_Foliage;
@@ -140,6 +143,36 @@ namespace {
         JE_FIELD(TerrainFoliageLayer, minDrawDistance, .flags = OmitIfDefault, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(TerrainFoliageLayer, seed, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, castShadows, .updateFlags = kFoliage),
+        JE_FIELD(TerrainFoliageLayer, minHeightRatio, .updateFlags = kFoliage, .min = 0.01f, .max = 1.99f),
+        JE_FIELD(TerrainFoliageLayer, maxHeightRatio, .updateFlags = kFoliage, .min = 0.01f, .max = 1.99f),
+        JE_FIELD(TerrainFoliageLayer, healthyColor, .updateFlags = kFoliage),
+        JE_FIELD(TerrainFoliageLayer, dryColor, .updateFlags = kFoliage),
+        JE_FIELD(TerrainFoliageLayer, noiseSpread, .updateFlags = kFoliage, .min = 0.0f),
+        JE_FIELD(TerrainFoliageLayer, windBend, .updateFlags = kFoliage, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainFoliageLayer, densityFalloffStart, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainFoliageLayer, farDensity, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainFoliageLayer, densityScale, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainFoliageLayer, algorithmVersion, .updateFlags = kFoliage),
+    };
+
+    constexpr FieldDesc kTerrainTreePrototypeFields[] = {
+        JE_FIELD(TerrainTreePrototype, id),
+        JE_FIELD(TerrainTreePrototype, meshPath, .updateFlags = kFoliage, .asset = AssetKind::Model, .label = "Mesh"),
+        JE_FIELD(TerrainTreePrototype, lodMeshes, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kFoliage, .asset = AssetKind::Model),
+        JE_FIELD(TerrainTreePrototype, lodDistances, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, bendFactor, .updateFlags = kFoliage, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainTreePrototype, windMask, .enumDesc = &enums::kTerrainTreeWindMask, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, shadowLodMask, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, collision, .enumDesc = &enums::kTerrainTreeCollision, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, collisionRadius, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainTreePrototype, collisionHeight, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainTreePrototype, navObstacle),
+        JE_FIELD(TerrainTreePrototype, impostorAlbedo, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, impostorNormal, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, impostorViews, .updateFlags = kFoliage, .min = 0.0f),
+        JE_FIELD(TerrainTreePrototype, impostorBoundsCenter, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, impostorSize, .updateFlags = kFoliage),
+        JE_FIELD(TerrainTreePrototype, impostorSourceHash),
     };
 
     constexpr uint64_t kSubmeshAll = UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms;
@@ -170,10 +203,11 @@ JE_REFLECT_STRUCT_TRAITS(LineData, kLineStruct);
 const StructDesc kLineStruct = JE_STRUCT_DESC(LineData, "LineData", kLineFields);
 JE_REFLECT_STRUCT_TRAITS(InstanceData, kInstanceStruct);
 const StructDesc kInstanceStruct = JE_STRUCT_DESC(InstanceData, "InstanceData", kInstanceFields);
-JE_REFLECT_STRUCT_TRAITS(TerrainSurfaceLayer, kTerrainSurfaceLayerStruct);
 const StructDesc kTerrainSurfaceLayerStruct = JE_STRUCT_DESC(TerrainSurfaceLayer, "TerrainSurfaceLayer", kTerrainSurfaceLayerFields);
 JE_REFLECT_STRUCT_TRAITS(TerrainFoliageLayer, kTerrainFoliageLayerStruct);
 const StructDesc kTerrainFoliageLayerStruct = JE_STRUCT_DESC(TerrainFoliageLayer, "TerrainFoliageLayer", kTerrainFoliageLayerFields);
+JE_REFLECT_STRUCT_TRAITS(TerrainTreePrototype, kTerrainTreePrototypeStruct);
+const StructDesc kTerrainTreePrototypeStruct = JE_STRUCT_DESC(TerrainTreePrototype, "TerrainTreePrototype", kTerrainTreePrototypeFields);
 JE_REFLECT_STRUCT_TRAITS(Submesh, kSubmeshStruct);
 const StructDesc kSubmeshStruct = JE_STRUCT_DESC(Submesh, "Submesh", kSubmeshFields);
 
@@ -396,6 +430,10 @@ namespace {
     constexpr FieldDesc kTerrainFields[] = {
         JE_FIELD(TerrainComponent, enabled),
         JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage, .assetMoved = &terrainHeightMapMoved),
+        // cut and filled by operations, never picked by hand (T1 R12)
+        JE_FIELD(TerrainComponent, holeMap, .flags = Hidden, .updateFlags = kTerrainTexture),
+        // T1 R77: a game may write the maps (Terrain:applyOps); the collider keeps room for every height
+        JE_FIELD(TerrainComponent, allowRuntimeEdits, .label = "Allow Runtime Edits"),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, offset),
         JE_FIELD(TerrainComponent, terrainSize, .updateFlags = kTerrain | kFoliage, .unit = Unit::Meters, .min = 0.0f),
@@ -405,10 +443,38 @@ namespace {
         JE_FIELD(TerrainComponent, textureDetailTiles, .min = 0.0f),
         JE_FIELD(TerrainComponent, rootGridSize, .updateFlags = kTerrain | kMeshReload, .min = 1.0f),
         JE_FIELD(TerrainComponent, levels, .updateFlags = kTerrain | kMeshReload, .min = 1.0f),
+        // T3 R49: each picks a variant define or a uniform, which RenderSystem follows
+        JE_FIELD(TerrainComponent, quality, .enumDesc = &enums::kTerrainQualitySetting, .updateFlags = kTerrainTexture, .tooltip = "Auto: the project's Quality for the running platform."),
+        JE_FIELD(TerrainComponent, limitLayersPerPixel, .updateFlags = kTerrainTexture, .tooltip = "High only: draw the 4 strongest layers of each pixel."),
+        JE_FIELD(TerrainComponent, offscreenShadows, .enumDesc = &enums::kTerrainOffscreenShadows, .label = "Off-screen Shadows", .tooltip = "Terrain outside the view casts into the shadow maps. Auto: on at High and Medium."),
+        JE_FIELD(TerrainComponent, macroMode, .enumDesc = &enums::kTerrainMacroMode, .updateFlags = kTerrainTexture, .label = "Macro Variation", .tooltip = "Noise tints the ground with two colours. Base Map multiplies the layers by the base material's colour texture."),
+        JE_FIELD(TerrainComponent, macroScale, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.01f),
+        JE_FIELD(TerrainComponent, macroStrength, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, macroTintA, .updateFlags = kTerrainTexture),
+        JE_FIELD(TerrainComponent, macroTintB, .updateFlags = kTerrainTexture),
+        JE_FIELD(TerrainComponent, macroSlopeFade, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, resampleEnabled, .updateFlags = kTerrainTexture, .label = "Distance Resampling"),
+        JE_FIELD(TerrainComponent, resampleNear, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainComponent, resampleFar, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainComponent, resampleReduction, .updateFlags = kTerrainTexture, .min = 0.01f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, heightBlendSharpness, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, macroNormal, .updateFlags = kTerrainTexture, .label = "Macro Normal Map"),
         JE_FIELD(TerrainComponent, ranges, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, blendMaps, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainComponent, surfaceLayers, .flags = ListWhole | ListTemplate, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainComponent, foliageLayers, .flags = ListWhole | ListTemplate, .updateFlags = kFoliage),
+        JE_FIELD(TerrainComponent, detailDistance, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f, .label = "Detail Distance"),
+        JE_FIELD(TerrainComponent, detailDensity, .min = 0.0f, .max = 1.0f, .label = "Detail Density"),
+        JE_FIELD(TerrainComponent, treeDistance, .unit = Unit::Meters, .min = 0.0f, .label = "Tree Distance"),
+        JE_FIELD(TerrainComponent, billboardStart, .unit = Unit::Meters, .min = 0.0f, .label = "Billboard Start"),
+        JE_FIELD(TerrainComponent, fadeLength, .unit = Unit::Meters, .min = 0.0f, .label = "Fade Length"),
+        JE_FIELD(TerrainComponent, maxMeshTrees, .min = 0.0f, .label = "Max Mesh Trees"),
+        JE_FIELD(TerrainComponent, windDirection, .label = "Wind Direction"),
+        JE_FIELD(TerrainComponent, windSpeed, .min = 0.0f, .label = "Wind Speed"),
+        JE_FIELD(TerrainComponent, windSize, .min = 0.01f, .label = "Wind Size"),
+        JE_FIELD(TerrainComponent, windBending, .min = 0.0f, .label = "Wind Bending"),
+        JE_FIELD(TerrainComponent, treePrototypes, .flags = ListWhole | ListTemplate, .updateFlags = kFoliage, .label = "Tree Prototypes"),
+        JE_FIELD(TerrainComponent, treeData, .updateFlags = kFoliage, .asset = AssetKind::TreeData, .label = "Tree Data"),
     };
 
     // ---------------------------------------------------------------- Sprite and tilemap
@@ -694,7 +760,7 @@ namespace {
     // terrains saved before blend maps and surface layers
     constexpr const char* kTerrainLegacyTextureKeys[] = {"blendMap", "textureLayers[]", "textureDetailRed", "textureDetailGreen", "textureDetailBlue"};
 
-    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
+    constexpr const char* kTerrainKnownKeys[] = {"allowRuntimeEdits", "autoSetRanges", "billboardStart", "blendMap", "blendMaps", "detailDensity", "detailDistance", "enabled", "fadeLength", "foliageLayers", "heightBlendSharpness", "heightMap", "holeMap", "levels", "limitLayersPerPixel", "macroMode", "macroNormal", "macroScale", "macroSlopeFade", "macroStrength", "macroTintA", "macroTintB", "maxHeight", "maxMeshTrees", "offscreenShadows", "offset", "quality", "ranges", "resampleEnabled", "resampleFar", "resampleNear", "resampleReduction", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers", "treeData", "treeDistance", "treePrototypes", "windBending", "windDirection", "windSize", "windSpeed"};
 
 }
 

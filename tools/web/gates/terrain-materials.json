@@ -1,0 +1,16 @@
+{
+  "description": "tools/test-projects/terrain-materials (WEB_PROJECT=terrain-materials tools/build.sh web): a painted terrain at Low with a hole at the canvas centre: the centre is the background seen through the hole, by texelFetch on WebGL2 (T3 AC23)",
+  "rgb": [
+    255,
+    0,
+    255
+  ],
+  "tolerance": 40,
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] terrain-materials",
+      "level": "log"
+    }
+  ]
+}

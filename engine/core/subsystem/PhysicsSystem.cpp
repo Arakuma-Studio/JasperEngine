@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "terrain/TerrainEditModule.h"
+#if JASPERENGINE_TERRAIN_EDIT
+#include "physics/JoltTerrainRefresh.h"
+#endif
 #include "component/Joint3DComponent.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"
@@ -2415,6 +2420,25 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
     return true;
 }
 
+bool PhysicsSystem::setPrebuiltBodyShape3D(Entity entity, const JPH::ShapeRefC& shape){
+    ensureWorld3D();
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body || !shape || steppingWorld3D){
+        return false;
+    }
+    if (!body->body.IsInvalid()){
+        getBodyInterface3D().SetShape(body->body, shape, false, JPH::EActivation::DontActivate);
+    }else if (!createGenericJoltBody(entity, *body, shape)){
+        return false;
+    }
+    body->needReloadBody = false;
+    body->needUpdateColliders = false;
+    body->massDirty = false;
+    body->needApplyParameters = false;
+    body->newBody = false;
+    return true;
+}
+
 bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
     if (body.body.IsInvalid()){
         return syncRigidbodyColliders(entity, body);
@@ -2914,6 +2938,47 @@ b2WorldId PhysicsSystem::getWorld2D() const{
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+JPH::BodyID PhysicsSystem::createStaticBodyForShape(Entity entity, const JPH::Shape* shape){
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!body || !transform || !shape){
+        return JPH::BodyID();
+    }
+    ensureWorld3D();
+    const JPH::ObjectLayer layer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body->categoryBits, body->maskBits);
+    const JPH::Vec3 position(transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z);
+    const JPH::Quat rotation = toValidatedJoltRotation(transform->worldRotation, entity, -1);
+    JPH::BodyCreationSettings settings(shape, position, rotation, JPH::EMotionType::Static, layer);
+    settings.mFriction = body->friction;
+    settings.mRestitution = body->restitution;
+    settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body->collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
+    settings.mUserData = PhysicsCallbacks::packBodyUserData(entity, 0);
+    JPH::Body* created = getBodyInterface3D().CreateBody(settings);
+    if (!created){
+        objectLayerTable3D->release(layer);
+        if (!reportedBodyLimit3D){
+            reportedBodyLimit3D = true;
+            Log::error("Cannot create the 3D body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > Max Bodies",
+                       scene->getEntityName(entity).c_str(), maxBodies3D);
+        }
+        return JPH::BodyID();
+    }
+    body->body = created->GetID();
+    body->previousPosition = transform->worldPosition;
+    body->previousRotation = transform->worldRotation;
+    body->needReloadBody = false;
+    body->needUpdateColliders = false;
+    return body->body;
+}
+
+JPH::BodyInterface::AddState PhysicsSystem::prepareBodies(std::span<JPH::BodyID> ids){
+    return getBodyInterface3D().AddBodiesPrepare(ids.data(), static_cast<int>(ids.size()));
+}
+
+void PhysicsSystem::finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state){
+    getBodyInterface3D().AddBodiesFinalize(ids.data(), static_cast<int>(ids.size()), state, JPH::EActivation::DontActivate);
+}
+
 JPH::PhysicsSystem* PhysicsSystem::getWorld3D(){
     ensureWorld3D();
     return &world3D;
@@ -4195,6 +4260,10 @@ void PhysicsSystem::fixedUpdate(double dt){
     syncMaterials3D();
     // the ragdolls switch their parts before the bodies sync
     updateRagdolls();
+    // terrain edits reach their heightfields; what must be built again is, in the sync below
+#if JASPERENGINE_TERRAIN_EDIT
+    JoltTerrainRefresh::apply(scene, *this);
+#endif
 
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
     bool stepped3D = false;
