@@ -5,13 +5,17 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import signal
 
 import harness
 import pngdiff
-from harness import Editor
+from harness import Editor, free_port
 
 CI = True
-EDITOR = {"create": True, "name": "UI frame preview"}
+PORT = free_port()
+TOKEN = "ui-frame-test-token"
+EDITOR = {"create": True, "name": "UI frame preview", "env": {"JASPER_TEXTURE_LOAD_DELAY_MS": "250"},
+          "extra_args": ["--http-port", str(PORT)], "settings": {"mcp": {"http_token": TOKEN}}}
 TIMEOUT = 300
 
 HTML = """<!doctype html><html><head><link rel="stylesheet" href="frames.css"></head><body>
@@ -128,7 +132,7 @@ return ui
     scene = (await ed.call("create_scene", name="Attached UI preview", type="UI"))["scene"]["id"]
     made = await ed.call("create_entity", scene=scene, type="ui_document", name="Attached UI")
     entity = made["entity_id"]
-    await ed.call("set_properties", scene=scene, entity=entity, values={"uidocument": {"filename": "ui/attached.html"}})
+    await ed.call("set_properties", scene=scene, entity=entity, values={"uidocument": {"filename": "assets/ui/attached.html"}})
     await ed.call("attach_script", scene=scene, entity=entity, path="scripts/PreviewUI.lua")
     await ed.call("render_ui_frames", scene=scene, times=[0.5], width=128, height=96, layout="frames", out="attached-frames")
     width, _, rgba = pngdiff.decode((ed.project / "attached-frames/frame_0.png").read_bytes())
@@ -136,6 +140,242 @@ return ui
     ed.check_eq(pixel(rgba, width, 48, 72), (0, 0, 255, 255), "attached start creates the game-clock animation")
     state = await ed.call("editor_status")
     ed.check(not state.get("playing", False), "attached UI scripts run in the isolated preview")
+    watched = await ed.call("render_ui_frames", scene=scene, times=[0.5], width=128, height=96,
+                            layout="frames", out="attached-watch", watch=True)
+    job_id = watched["job_id"]
+    try:
+        frame = ed.project / "attached-watch/frame_0.png"
+        previous = frame.read_bytes()
+        script_path = scripts / "PreviewUI.lua"
+        script_path.write_text(script_path.read_text(encoding="utf-8").replace("to=80", "to=40"), encoding="utf-8")
+        await ed.call("sync_files")
+        for _ in range(200):
+            await ed.call("get_job", job_id=job_id)
+            if frame.read_bytes() != previous:
+                break
+        width, _, rgba = pngdiff.decode(frame.read_bytes())
+        ed.check_eq(pixel(rgba, width, 28, 40), (0, 255, 0, 255), "watch recompiles the changed attached Lua chunk")
+        ed.check_eq(pixel(rgba, width, 28, 72), (0, 0, 255, 255), "watch recompiles lifecycle start code")
+    finally:
+        await ed.call("cancel_job", job_id=job_id)
+        for _ in range(40):
+            if (await ed.call("get_job", job_id=job_id))["status"] != "running":
+                break
+
+
+async def test_callback_started_css_transition_has_its_frame_history(ed: Editor):
+    await setup(ed)
+    (ed.project / "assets/ui/mixed.html").write_text('''<!doctype html><html><head><style>
+body {margin:0; width:128px; height:96px; background:#000;}
+#box {position:absolute; left:0; top:0; width:16px; height:16px; background:#ff0000; transition:left 1s linear;}
+</style></head><body><div id="box"></div><script type="text/lua">
+local completions = 0
+anime.createTimer({duration=500,onComplete=function()
+    completions = completions + 1
+    if completions > 1 then document:getElementById("box"):setStyle("background-color", "#0000ff") end
+    document:getElementById("box"):setStyle("left","80px")
+end})
+</script></body></html>''', encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("render_ui_frames", document="assets/ui/mixed.html", times=[1,1.5], fps=60,
+                  width=128, height=96, layout="frames", out="mixed")
+    for i, x in enumerate((48, 88)):
+        width, _, rgba = pngdiff.decode((ed.project / "mixed" / f"frame_{i}.png").read_bytes())
+        ed.check_eq(pixel(rgba, width, x, 8), (255, 0, 0, 255), "callback starts the transition at0.5s")
+        ed.check_eq(pixel(rgba, width, 8, 8), (0, 0, 0, 255), "capture includes transition history")
+
+
+async def test_lua_callback_errors_fail_without_publishing(ed: Editor):
+    await setup(ed)
+    broken = HTML.replace('duration = 1000, ease = "linear" })',
+                          'duration = 1000, ease = "linear", onUpdate=function() error("preview callback failure") end })', 1)
+    (ed.project / "assets/ui/broken.html").write_text(broken, encoding="utf-8")
+    await ed.call("sync_files")
+    result = await ed.call_raw("render_ui_frames", {"document": "assets/ui/broken.html", "times": [0.5],
+                                                    "width": 128, "height": 96, "out": "broken.png"})
+    ed.check(result.is_error and "preview callback failure" in result.text, "callback errors explain why preview failed")
+    ed.check(not (ed.project / "broken.png").exists(), "a failed preview publishes no PNG")
+    await ed.call("clear_console")
+
+
+async def test_individual_pngs_use_straight_alpha(ed: Editor):
+    await setup(ed)
+    (ed.project / "assets/ui/alpha.html").write_text('''<!doctype html><html><head><style>
+body {margin:0; width:128px; height:96px; background:transparent;}
+#box {position:absolute; left:0; top:0; width:16px; height:16px; background:rgba(255,0,0,0.5);}
+</style></head><body><div id="box"></div></body></html>''', encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("render_ui_frames", document="assets/ui/alpha.html", times=[0], width=128, height=96,
+                  layout="frames", out="alpha")
+    width, _, rgba = pngdiff.decode((ed.project / "alpha/frame_0.png").read_bytes())
+    red, green, blue, alpha = pixel(rgba, width, 8, 8)
+    ed.check(red >= 254 and green == 0 and blue == 0 and 126 <= alpha <= 129, "PNG retains straight red with half alpha")
+    ed.check_eq(pixel(rgba, width, 64, 64), (0, 0, 0, 0), "outside document art remains transparent")
+
+
+async def test_callback_created_roots_start_at_their_birth_time(ed: Editor):
+    await setup(ed)
+    page = HTML[:HTML.index('<script type="text/lua">')] + '''<script type="text/lua">
+anime.createTimer({duration=500,onComplete=function()
+    anime.animate("#anime", {left={from=0,to=80}, duration=1000, ease="linear"})
+    anime.animate("#game", {left={from=0,to=80}, duration=1000, ease="linear", clock="game"})
+end})
+</script></body></html>'''
+    (ed.project / "assets/ui/birth.html").write_text(page, encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("render_ui_frames", document="assets/ui/birth.html", times=[0.5,1], fps=60,
+                  width=128, height=96, layout="frames", out="birth")
+    for i, x in enumerate((8,48)):
+        width, _, rgba = pngdiff.decode((ed.project / "birth" / f"frame_{i}.png").read_bytes())
+        ed.check_eq(pixel(rgba, width, x,40), (0,255,0,255), "UI root begins at callback birth")
+        ed.check_eq(pixel(rgba, width, x,72), (0,0,255,255), "game root begins at callback birth")
+
+
+async def test_waits_for_image_assets_before_returning(ed: Editor):
+    await setup(ed)
+    (ed.project / "assets/ui/pixel.png").write_bytes(pngdiff.encode(4,4,bytes((255,0,255,255))*16))
+    (ed.project / "assets/ui/image.html").write_text('''<!doctype html><html><head><style>
+body {margin:0; width:128px; height:96px; background:#000;}
+img {position:absolute; left:0; top:0; width:32px; height:32px;}
+</style></head><body><img src="pixel.png"></body></html>''', encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("render_ui_frames", document="assets/ui/image.html", times=[0], width=128, height=96,
+                  layout="frames", out="loaded-image")
+    width, _, rgba = pngdiff.decode((ed.project / "loaded-image/frame_0.png").read_bytes())
+    ed.check_eq(pixel(rgba,width,8,8), (255,0,255,255), "delayed image is loaded instead of a stand-in")
+
+
+async def test_real_cli_one_shot_and_watch(ed: Editor):
+    await setup(ed)
+    command = harness.editor_command() + ["call", "--port", str(PORT), "--token", TOKEN, "--json", "render_ui_frames",
+        "--document", "assets/ui/frames.html", "--times", "0.5", "--width", "128", "--height", "96"]
+    one = await asyncio.to_thread(subprocess.run, command + ["--out", "cli.png"], cwd=str(ed.scratch.root),
+                                  capture_output=True, text=True, timeout=120)
+    ed.check_eq(one.returncode, 0, f"CLI one-shot: {one.stderr}")
+    ed.check((ed.project / "cli.png").is_file(), "CLI writes the requested sheet")
+    ed.check_eq(json.loads(one.stdout)["structured"]["times"], [0.5], "CLI passes the exact sample")
+    process = await asyncio.create_subprocess_exec(*command, "--layout", "frames", "--out", "cli-watch", "--watch",
+        cwd=str(ed.scratch.root), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    job_id = None
+    try:
+        line = await asyncio.wait_for(process.stdout.readline(), timeout=120)
+        ed.check(bool(line), "watch returns its first result before waiting")
+        result = json.loads(line)["structured"]
+        ed.check(result["watching"] and result["status"] == "running", "CLI watch stays attached")
+        job_id = result["job_id"]
+        frame = ed.project / "cli-watch/frame_0.png"
+        old = frame.read_bytes()
+        (ed.project / "assets/ui/frames.css").write_text(CSS.replace("CSS_COLOR", "#00ffff"), encoding="utf-8")
+        await ed.call("sync_files")
+        for _ in range(200):
+            await ed.call("get_job", job_id=job_id)
+            if frame.read_bytes() != old:
+                break
+        width, _, rgba = pngdiff.decode(frame.read_bytes())
+        ed.check_eq(pixel(rgba,width,48,8), (0,255,255,255), "CLI watch regenerates on a stylesheet save")
+        ed.check(process.returncode is None, "CLI continues watching after regeneration")
+    finally:
+        if process.returncode is None:
+            process.send_signal(signal.SIGINT)
+        await asyncio.wait_for(process.communicate(), timeout=15)
+        if job_id:
+            for _ in range(40):
+                job = await ed.call("get_job", job_id=job_id)
+                if job["status"] != "running": break
+            ed.check_eq(job["status"], "cancelled", "CLI Ctrl-C cancels the editor watch")
+
+
+async def test_preview_private_require_cache_and_dependency_watch(ed: Editor):
+    await setup(ed)
+    scripts = ed.project / "scripts"
+    scripts.mkdir(exist_ok=True)
+    module = scripts / "motion_counter.lua"
+    module.write_text("return {n=0}", encoding="utf-8")
+    page = '''<!doctype html><html><head><style>
+body {margin:0; width:128px; height:96px; background:#000;}
+#box {position:absolute; left:0; top:0; width:16px; height:16px; background:#ff0000;}
+</style></head><body><div id="box"></div><script type="text/lua">
+local m=require("motion_counter"); m.n=m.n+1
+anime.animate("#box", {left=m.n*20,duration=0})
+</script></body></html>'''
+    (ed.project / "assets/ui/modules.html").write_text(page, encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("render_ui_frames", document="assets/ui/modules.html", times=[0,0], width=128,height=96,
+                  layout="frames",out="module-duplicates")
+    ed.check_eq((ed.project / "module-duplicates/frame_0.png").read_bytes(),
+                (ed.project / "module-duplicates/frame_1.png").read_bytes(), "duplicate times get fresh private project modules")
+    result = await ed.call("render_ui_frames", document="assets/ui/modules.html",times=[0],width=128,height=96,
+                           layout="frames",out="module-watch",watch=True)
+    job_id=result["job_id"]
+    try:
+        frame=ed.project/"module-watch/frame_0.png"
+        old=frame.read_bytes()
+        module.write_text("return {n=2}",encoding="utf-8")
+        await ed.call("sync_files")
+        for _ in range(200):
+            await ed.call("get_job",job_id=job_id)
+            if frame.read_bytes()!=old: break
+        width,_,rgba=pngdiff.decode(frame.read_bytes())
+        ed.check_eq(pixel(rgba,width,68,8),(255,0,0,255),"saving a required module recompiles the watched preview")
+    finally:
+        await ed.call("cancel_job",job_id=job_id)
+        for _ in range(40):
+            if (await ed.call("get_job",job_id=job_id))["status"]!="running": break
+
+
+async def test_external_exposed_scene_references_are_rejected(ed: Editor):
+    await setup(ed)
+    other=(await ed.call("create_scene",name="Protected scene",type="UI"))["scene"]["id"]
+    target=(await ed.call("create_entity",scene=other,type="ui_document",name="Protected"))["entity_id"]
+    source=(await ed.call("create_scene",name="Referencing scene",type="UI"))["scene"]["id"]
+    host=(await ed.call("create_entity",scene=source,type="ui_document",name="Host"))["entity_id"]
+    await ed.call("set_properties",scene=source,entity=host,values={"uidocument":{"filename":"assets/ui/frames.html"}})
+    script='''local ui={properties={{name="other",type="entity"}}}
+function ui:init() self.other.name="leaked" end
+return ui
+'''
+    await ed.call("create_script",scene=source,entity=host,kind="lua",name="CrossScenePreview",content=script)
+    await ed.call("set_script_properties",scene=source,entity=host,values={"other":{"scene":other,"entity":target}})
+    result=await ed.call_raw("render_ui_frames",{"scene":source,"times":[0.5],"width":128,"height":96,"out":"external.png"})
+    ed.check(result.is_error and "external scene" in result.text,"external scene references fail before script init")
+    tree=json.dumps(await ed.call("get_scene_tree",scene=other))
+    ed.check("Protected" in tree and "leaked" not in tree,"the other scene is unchanged")
+    ed.check(not(ed.project/"external.png").exists(),"unsafe preview publishes no output")
+
+
+async def test_ownerless_timer_and_coroutine_scheduling_is_rejected(ed: Editor):
+    await setup(ed)
+    for index,code in enumerate(('Timer.every(0.1,function() end,{clock="real"})',
+                                  'Coroutine.start(function() while true do Timer.wait(0.1) end end)')):
+        page=HTML[:HTML.index('<script type="text/lua">')]+ '<script type="text/lua">'+code+'</script></body></html>'
+        path=f"assets/ui/no-scheduler-{index}.html"
+        (ed.project/path).write_text(page,encoding="utf-8")
+        await ed.call("sync_files")
+        result=await ed.call_raw("render_ui_frames",{"document":path,"times":[0],"width":128,"height":96})
+        ed.check(result.is_error and "anime.createTimer" in result.text,"game scheduling gives the supported UI alternative")
+        await ed.call("clear_console")
+    ed.check(not(await ed.call("editor_status")).get("playing",False),"rejected scheduling leaves the editor responsive and stopped")
+
+
+async def test_runaway_inline_and_start_callbacks_are_bounded(ed: Editor):
+    await setup(ed)
+    page=HTML[:HTML.index('<script type="text/lua">')]+ '<script type="text/lua">while true do end</script></body></html>'
+    (ed.project/"assets/ui/runaway.html").write_text(page,encoding="utf-8")
+    await ed.call("sync_files")
+    result=await ed.call_raw("render_ui_frames",{"document":"assets/ui/runaway.html","times":[0],"width":128,"height":96},timeout=30)
+    ed.check(result.is_error and "exceeded 5 seconds" in result.text,"runaway inline Lua returns a bounded error")
+    await ed.call("clear_console")
+    scene=(await ed.call("create_scene",name="Runaway start",type="UI"))["scene"]["id"]
+    host=(await ed.call("create_entity",scene=scene,type="ui_document",name="Runaway"))["entity_id"]
+    plain=HTML[:HTML.index('<script type="text/lua">')]+"</body></html>"
+    (ed.project/"assets/ui/start.html").write_text(plain,encoding="utf-8")
+    await ed.call("set_properties",scene=scene,entity=host,values={"uidocument":{"filename":"assets/ui/start.html"}})
+    await ed.call("create_script",scene=scene,entity=host,kind="lua",name="RunawayStart",
+                  content="local ui={} function ui:start() while true do end end return ui")
+    result=await ed.call_raw("render_ui_frames",{"scene":scene,"times":[0],"width":128,"height":96},timeout=30)
+    ed.check(result.is_error and "exceeded 5 seconds" in result.text,"runaway lifecycle start returns a bounded error")
+    await ed.call("clear_console")
+    ed.check(not(await ed.call("editor_status")).get("playing",False),"the editor remains responsive after the runaway scripts")
 
 
 async def test_invalid_times_and_output(ed: Editor):

@@ -87,6 +87,8 @@ namespace {
     // Lua `start` runs as an engine coroutine (it may Coroutine.wait); false when the script
     // has no Lua start (C++ scripts go through call)
     bool startLuaCoroutine(Scene* scene, Entity entity, size_t index) {
+        // A private UI preview runs a bounded, non-yielding start on the guarded Lua state.
+        if (LuaBinding::isPreviewContext()) return false;
         ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
         if (!scripts || index >= scripts->scripts.size()) {
             return false;
