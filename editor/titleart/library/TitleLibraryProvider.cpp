@@ -233,13 +233,6 @@ namespace {
                 dialogError.clear();
             }
             const std::vector<std::string> layers = state.selectedLayers();
-            ImGui::TextUnformatted((std::string("Save As ") + libraryKindLabel(kind)).c_str());
-            ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer));
-            ImGui::InputText("ID", idBuffer, sizeof(idBuffer));
-            const char* scopes[] = {"Project", "My Library"};
-            ImGui::Combo("Scope", &scopeIndex, scopes, 2);
-            if (kind != LibraryKind::ColorScheme) ImGui::InputText("Family", familyBuffer, sizeof(familyBuffer));
-            ImGui::InputText("Tags", tagsBuffer, sizeof(tagsBuffer));
             titleart::Json op = titleart::Json{{"name", std::string(nameBuffer)}, {"scope", scopeIndex == 0 ? "project" : "user"}};
             if (idBuffer[0]) op["id"] = std::string(idBuffer);
             if (kind != LibraryKind::ColorScheme) op["family"] = std::string(familyBuffer);
@@ -268,8 +261,8 @@ namespace {
             }
             // the dialog validates with the op itself (a dry run of the same function)
             const TitleOpsResult check = TitleArtOps::apply(state.committed(), titleart::Json::array({op}));
-            if (!check.ok) ImGui::TextColored(ImVec4(1, 0.45f, 0.35f, 1), "%s", check.error().c_str());
-            else if (!dialogError.empty()) ImGui::TextColored(ImVec4(1, 0.45f, 0.35f, 1), "%s", dialogError.c_str());
+            ImGui::TextUnformatted((std::string("Save As ") + libraryKindLabel(kind)).c_str());
+            ImGui::SameLine();
             bool closed = false;
             ImGui::BeginDisabled(!check.ok);
             if (ImGui::Button("Save")) {
@@ -284,6 +277,14 @@ namespace {
             ImGui::EndDisabled();
             ImGui::SameLine();
             if (ImGui::Button("Cancel")) closed = true;
+            if (!check.ok) ImGui::TextColored(ImVec4(1, 0.45f, 0.35f, 1), "%s", check.error().c_str());
+            else if (!dialogError.empty()) ImGui::TextColored(ImVec4(1, 0.45f, 0.35f, 1), "%s", dialogError.c_str());
+            ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer));
+            ImGui::InputText("ID", idBuffer, sizeof(idBuffer));
+            const char* scopes[] = {"Project", "My Library"};
+            ImGui::Combo("Scope", &scopeIndex, scopes, 2);
+            if (kind != LibraryKind::ColorScheme) ImGui::InputText("Family", familyBuffer, sizeof(familyBuffer));
+            ImGui::InputText("Tags", tagsBuffer, sizeof(tagsBuffer));
             if (closed) dialogKind = -1;
             return closed;
         }
