@@ -899,6 +899,11 @@ Implementation notes that change what the spec says. Each item names the require
 - **Shader cache.** S48's sources are cached under v64 (S49 took v60, S52 v61, the terrain programme v63).
 - **Mobile budgets (R34, AC25).** No Adreno 610 / Mali-G57-class device was available: the phone numbers are not
   measured. R35's CPU costs are inferred from the code (idle paths return at once, no draw, upload or allocation).
+- **AC26's fixture.** The exported-game fixture is `tools/fixtures/pixel-fx-game` (written by
+  `tools/fixtures/make_pixel_fx_game_fixture.py`; `tools/fixtures/pixel-fx` holds the lint fixtures). It runs static stages
+  (`PFX_STAGE`) so the game's and the editor's frames compare whatever the wall clock; `test_pixel_fx_export.py` compares
+  them on GL, Vulkan and GLES3 (the editor simulates the device tier the game logs), and the web build is
+  `tools/test-projects/pixel-fx` with `GATE=pixel-fx`.
 - **Test names.** GPU gtests end in `Gpu` (docs/testing.md), so the spec's GPU test names take that suffix.
 
 ### Sprite features (M1)
