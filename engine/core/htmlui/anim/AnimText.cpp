@@ -30,9 +30,11 @@ using namespace jasperengine;
 
 namespace {
 
+    std::vector<std::shared_ptr<AnimText>>* animTextRegistered = nullptr;
+
     std::vector<std::shared_ptr<AnimText>>& animTextSplitters(){
-        static auto* splitters = new std::vector<std::shared_ptr<AnimText>>();
-        return *splitters;
+        if (!animTextRegistered) animTextRegistered = new std::vector<std::shared_ptr<AnimText>>();
+        return *animTextRegistered;
     }
 
     bool animTextEnabled(const AnimParam& params, const char* name, bool fallback){
@@ -261,6 +263,7 @@ AnimText::~AnimText() = default;
 
 std::shared_ptr<AnimText> AnimText::create(const UIElement& target, const AnimParam& params){
     static const uint64_t listener = AnimEngine::instance().addResetListener([](){
+        if (!animTextRegistered) return;
         auto splitters = std::move(animTextSplitters());
         animTextSplitters().clear();
         for (const auto& splitter : splitters) splitter->revert();
@@ -393,6 +396,7 @@ AnimText& AnimText::revert(){
 }
 
 bool AnimText::updateLayouts(Rml::Context* context){
+    if (!animTextRegistered) return false;
     bool changed = false;
     auto& splitters = animTextSplitters();
     for (size_t i = 0; i < splitters.size();){
