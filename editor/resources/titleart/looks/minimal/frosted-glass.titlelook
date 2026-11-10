@@ -1,0 +1,85 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/frosted-glass",
+  "revision": 1,
+  "name": {
+    "en": "Frosted Glass",
+    "ja": "すりガラス"
+  },
+  "description": {
+    "en": "White face under a pale frosted glass with a soft white inner glow, edged by a faint translucent hairline.",
+    "ja": "柔らかい白の内側の光を持つ淡いすりガラスを重ねた白い面、かすかな半透明の細線で縁取り。"
+  },
+  "family": "minimal",
+  "tags": [
+    "glass",
+    "frosted",
+    "white",
+    "minimal",
+    "translucent",
+    "clean"
+  ],
+  "synonyms": {
+    "en": [
+      "glassmorphism",
+      "frosted",
+      "matte glass",
+      "ice glass"
+    ],
+    "ja": [
+      "すりガラス",
+      "ガラス",
+      "半透明",
+      "白",
+      "surigarasu",
+      "hantōmei"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 800
+    }
+  },
+  "style": {
+    "face": {
+      "inner_glow": {
+        "enabled": true,
+        "opacity": 0.4
+      },
+      "glass": {
+        "enabled": true,
+        "color": "#e8f4ff",
+        "tint": 0.2,
+        "opacity": 0.5
+      }
+    },
+    "rims": [
+      {
+        "width": 0.5,
+        "material": {
+          "fill": {
+            "color": "#b8c8d8"
+          },
+          "opacity": 0.6
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

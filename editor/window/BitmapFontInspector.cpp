@@ -263,19 +263,21 @@ int BitmapFontInspector::cellInkRight(int cell) const{
     return -1;
 }
 
-void BitmapFontInspector::draw(const fs::path& file){
+void BitmapFontInspector::draw(const fs::path& file, bool header){
     std::error_code ec;
     const fs::file_time_type now = fs::last_write_time(file, ec);
     if (file != asset || now != stamp)
         reload(file);
 
-    ImGui::TextUnformatted(ICON_FA_FONT);
-    ImGui::SameLine();
-    ImGui::TextUnformatted(FileUtils::pathToUtf8(file.filename()).c_str());
-    ImGui::SameLine();
     const std::string ext = bfiExtension(file);
-    ImGui::TextDisabled("%s", ext == ".bitmapfont" ? "Bitmap Font" : ext == ".fnt" ? "BMFont" : "Font");
-    ImGui::Separator();
+    if (header){
+        ImGui::TextUnformatted(ICON_FA_FONT);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(FileUtils::pathToUtf8(file.filename()).c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", ext == ".bitmapfont" ? "Bitmap Font" : ext == ".fnt" ? "BMFont" : "Font");
+        ImGui::Separator();
+    }
 
     if (ext == ".bitmapfont")
         drawBitmapFont();

@@ -1,0 +1,147 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/carved-stone",
+  "revision": 1,
+  "name": {
+    "en": "Carved Stone",
+    "ja": "石彫り"
+  },
+  "description": {
+    "en": "Grey stone gradient face with a grunge surface, a concrete mottle and a deep chamfer, a dark line and a chamfered stone border, an inner shadow and a soft drop shadow.",
+    "ja": "グランジの表面、コンクリートのまだら模様、深い面取りを持つ灰色の石のグラデーションの面、暗い線、面取りした石の縁、内側の影、柔らかいドロップシャドウ。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "stone",
+    "carved",
+    "grey",
+    "rock",
+    "ancient",
+    "chamfer"
+  ],
+  "synonyms": {
+    "en": [
+      "granite",
+      "monument",
+      "ruins",
+      "chiselled"
+    ],
+    "ja": [
+      "石",
+      "石彫り",
+      "遺跡",
+      "岩",
+      "ishi",
+      "iseki"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#a8a49c"
+            },
+            {
+              "pos": 1,
+              "color": "#6a665e"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "chamfer",
+        "depth": 5
+      },
+      "pattern": {
+        "kind": "concrete",
+        "color": "#5a564e",
+        "color2": "#b8b4ac",
+        "opacity": 0.3,
+        "relief": 0.2
+      },
+      "texture": {
+        "kind": "grunge",
+        "amount": 0.5,
+        "target": "surface"
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#2a2824"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#8a867e"
+                },
+                {
+                  "pos": 1,
+                  "color": "#5a564e"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "chamfer",
+            "size": 1.2,
+            "depth": 4
+          },
+          "texture": {
+            "kind": "grunge",
+            "amount": 0.4,
+            "target": "surface"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "inner_shadow",
+      "params": {
+        "distance": 4,
+        "size": 4
+      }
+    },
+    {
+      "type": "drop_shadow",
+      "params": {
+        "distance": 8,
+        "size": 18,
+        "opacity": 0.5
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -42,6 +42,7 @@
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
+#include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
 #include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
@@ -235,7 +236,7 @@ namespace jasperengine::editor{
         std::vector<Entity> selectedEntities;
         fs::path filepath;
         bool needUpdateRender = true;
-        // when the editor last moved its clock while stopped (Animate water, updateSceneRender)
+        // when the editor last moved its clock while stopped (Always Refresh, updateSceneRender)
         std::chrono::steady_clock::time_point editClockLast;
         bool editClockValid = false;
         // Extra frames to keep drawing after a change so late async uploads still show.
@@ -677,6 +678,19 @@ namespace jasperengine::editor{
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
+    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3):
+    // the languages the game ships (empty: every language of every title) and the default one ("":
+    // the first of `languages`, else "en"); names a later project-wide localisation reuses
+    struct LocalizationSettings {
+        std::vector<std::string> languages;     // BCP 47, canonical case
+        std::string defaultLanguage;
+
+        // the default with its fallbacks applied ("" -> the first language, else "en")
+        std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
+        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -1028,6 +1042,7 @@ namespace jasperengine::editor{
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
+        LocalizationSettings localizationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -1050,6 +1065,7 @@ namespace jasperengine::editor{
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
+        TitleArtProjectSettings titleArtSettings;
         // applyDebugSettingsForPlay ran for the running Play (until it stops): changes apply live
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
@@ -2121,6 +2137,8 @@ namespace jasperengine::editor{
         const ApplicationSettings& getApplicationSettings() const;
         PresentationSettings& getPresentationSettings();
         const PresentationSettings& getPresentationSettings() const;
+        LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
+        const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();
@@ -2244,6 +2262,11 @@ namespace jasperengine::editor{
         // the engine as Play starts: the log buffer and stack traces, the development build
         // flag, DebugOverlay::configure (development mode: on in the editor's Play)
         void applyDebugSettingsForPlay() const;
+
+        // Project Settings > Title Art (project.yaml `titleArt:`), changed through
+        // TitleArtSettingsCmd (undoable); read by Auto Bake and the export
+        const TitleArtProjectSettings& getTitleArtSettings() const { return titleArtSettings; }
+        void setTitleArtSettings(const TitleArtProjectSettings& settings) { titleArtSettings = settings; }
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;

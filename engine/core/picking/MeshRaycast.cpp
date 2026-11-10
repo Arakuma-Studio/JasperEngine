@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "Engine.h"
+#include "component/TilemapLayerComponent.h"
+#include "subsystem/TilemapSystem.h"
 #include "MeshRaycast.h"
 #include "MeshPose.h"
 #include "PickCache.h"
@@ -325,6 +328,67 @@ namespace {
         return true;
     }
 
+    // R10: a Tilemap Layer is hit where it shows a tile: the point's cell holds one (the first
+    // test), or an overhanging tile's image covers the point (tall tiles, offsets), front to back
+    bool testTilemapLayer(Scene* scene, const SceneBvh::Leaf& leaf, const TilemapLayerComponent& layer, const Transform& transform,
+                          const Vector3& origin, const Vector3& direction, float maxDistance, PickHit& hit){
+        const TileGridSpec spec = scene->getSystem<TilemapSystem>()->layerSpec(leaf.entity, layer);
+        const Matrix4 inverse = transform.modelMatrix.inverse();
+        const Vector3 localOrigin = inverse * origin;
+        const Vector3 localDirection = inverse * (origin + direction) - localOrigin;
+        const bool xz = spec.plane == TileGridPlane::XZ;
+        const float along = xz ? localDirection.y : localDirection.z;
+        if (std::fabs(along) < 1e-12f){
+            return false;
+        }
+        const float t = -(xz ? localOrigin.y : localOrigin.z) / along;
+        if (t < 0.0f || t > maxDistance){
+            return false;
+        }
+        const Vector3 local = localOrigin + localDirection * t;
+        const float xyz[3] = {local.x, local.y, local.z};
+        const TilePoint point = tilegrid::localToPlane(spec, xyz);
+        const TilePoint shift = tilegrid::tileShift(spec, layer.tileAnchor.x, layer.tileAnchor.y, layer.dualGrid);
+        const TileCells& cells = layer.cells.read();
+        const CellCoord cell = tilegrid::shownCellAt(spec, point, shift);
+        bool found = cells.getTile(cell) != NO_TILE;
+        std::shared_ptr<const TilesetRuntime> tileset = found || !layer.state ? nullptr : layer.state->tileset;
+        if (!found && tileset){
+            // the tiles whose images may reach this cell: the anchors below and beside it
+            const double ppu = (double)Engine::getPixelsPerUnit();
+            const int reachY = (int)std::ceil(layer.state->overhangY / std::max(tilegrid::pitchY(spec), 1e-6)) + 1;
+            const int reachX = (int)std::ceil(layer.state->overhangX / std::max(tilegrid::pitchX(spec), 1e-6)) + 1;
+            for (int y = cell.y - reachY; y <= cell.y && !found; y++){
+                for (int x = cell.x - reachX; x <= cell.x + reachX && !found; x++){
+                    uint32_t flags = 0;
+                    const int32_t id = cells.getTile(CellCoord{x, y}, &flags);
+                    const TileRenderInfo* info = id == NO_TILE ? nullptr : tileset->tile(id);
+                    if (!info)
+                        continue;
+                    TilePoint anchor = tilegrid::cellToLocal(spec, CellCoord{x, y});
+                    anchor.x += shift.x;
+                    anchor.y += shift.y;
+                    const double width = ((flags & TILE_TRANSPOSE) ? info->height : info->width) / ppu;
+                    const double height = ((flags & TILE_TRANSPOSE) ? info->width : info->height) / ppu;
+                    const double left = anchor.x + (spec.layout == TileGridLayout::Rectangle ? 0.0 : -width * 0.5) + info->offsetX / ppu;
+                    const double bottom = anchor.y + info->offsetY / ppu;
+                    found = point.x >= left && point.x < left + width && point.y >= bottom && point.y < bottom + height;
+                }
+            }
+        }
+        if (!found){
+            return false;
+        }
+        hit = PickHit();
+        hit.entity = leaf.entity;
+        hit.kind = PickKind::MESH;
+        hit.distance = t;
+        hit.point = origin + direction * t;
+        hit.faceNormal = facing(transformNormal(inverse, xz ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f)), direction);
+        hit.normal = hit.faceNormal;
+        return true;
+    }
+
     bool testUI(Scene* scene, const SceneBvh::Leaf& leaf, const Vector3& origin, const Vector3& direction, float maxDistance, PickHit& hit){
         const RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(leaf.entity);
         const Transform& transform = scene->getComponent<Transform>(leaf.entity);
@@ -421,6 +485,9 @@ bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3&
     switch (leaf.kind){
         case PickKind::MESH:{
             const Transform& transform = scene->getComponent<Transform>(leaf.entity);
+            if (const TilemapLayerComponent* layer = scene->findComponent<TilemapLayerComponent>(leaf.entity)){
+                return testTilemapLayer(scene, leaf, *layer, transform, origin, direction, maxDistance, hit);
+            }
             return testMesh(bvh, leaf, transform.modelMatrix, origin, direction, maxDistance, filter, hit);
         }
         case PickKind::INSTANCE:{

@@ -5,6 +5,7 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -18,6 +19,8 @@
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/TitleArtSystem.h"
+#include "subsystem/TilemapSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
@@ -47,6 +50,8 @@
 #include "component/AnimatorComponent.h"
 #include "pool/AnimatorAssetPool.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -3499,6 +3504,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
+    settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3522,6 +3528,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    // S87: a Play starts in the device's language with the project's default
+    TitleArtLanguage::setGlobal("");
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -6432,6 +6441,10 @@ void editor::Project::resetConfigs() {
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
     VatDocument::closeAll();
+    // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
+    TitleArtDocument::closeAll();
+    TitleArtAutoBake::get().reset();
+    TitleArtRenderHost::editor().reset();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();
@@ -6644,7 +6657,7 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // the scene clock (the water's waves) holds with the bodies; a stopped scene's moves by the
-    // Scene view's Animate water (updateSceneRender)
+    // Scene view's Always Refresh (updateSceneRender)
     scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
@@ -6668,6 +6681,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<UISystem>()->setEditMode(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
+    // Title Art's Live Time runs in Play only (S81 R38) and Edit mode takes the editor's frame budget
+    if (auto titles = scene->findSystem<TitleArtSystem>()) titles->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
@@ -6677,6 +6692,9 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
     // the wakes hold with the game (a hull dragged in edit mode leaves none)
     if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
+    // only the tile animation clock (S50 R73): the layers keep drawing; a stopped scene's moves
+    // while the Scene view's Always Refresh is on (updateSceneRender)
+    if (auto tilemaps = scene->findSystem<TilemapSystem>()) tilemaps->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {
@@ -9184,13 +9202,17 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
 
     syncSceneRenderEditLayer(sceneId);
     // a stopped scene's clock (its paused one: Engine::runFrame leaves it) moves with the editor's
-    // frames while Animate water is on, once a frame, with its inline child scenes
+    // frames while Always Refresh is on, once a frame, with its inline child scenes
     {
         const auto now = std::chrono::steady_clock::now();
         const double delta = sceneProject->editClockValid
             ? std::clamp(std::chrono::duration<double>(now - sceneProject->editClockLast).count(), 0.0, 0.25) : 0.0;
         sceneProject->editClockLast = now;
         sceneProject->editClockValid = true;
+        // tile animations follow the same switch (R73): the scene clock is the option, not water alone
+        if (sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            if (auto tilemaps = sceneProject->scene->findSystem<TilemapSystem>()) tilemaps->setPaused(!sceneProject->displaySettings.animateWater);
+        }
         if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->displaySettings.animateWater && delta > 0.0){
             if (sceneProject->scene)
                 sceneProject->scene->advanceSceneTime(delta, true);

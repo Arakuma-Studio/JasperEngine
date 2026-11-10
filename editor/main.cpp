@@ -5,12 +5,14 @@
 #include "Out.h"
 #include "audio/SoundLibraryCli.h"
 #include "cli/CallCommand.h"
+#include "cli/TitleArtCli.h"
 #include "cli/CommandLine.h"
 #include "cli/ProceduralMaterialCommand.h"
 #include "cli/ShippingCommands.h"
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
+#include "titleart/library/TitleLibraryCli.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
 #include "util/TextEncoding.h"
@@ -81,6 +83,7 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "sound-library") == 0) {
         return editor::SoundLibraryCli::runSoundLibrary(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "title-library") == 0) return editor::TitleLibraryCli::run(argc - 1, argv + 1, argv[0]);
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
     }
@@ -111,6 +114,13 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "place-physics") == 0) {
         return editor::CommandLine::runPlacePhysicsCommand(argc - 1, argv + 1, argv[0]);
+    }
+    // S87: Title Art's batch import and export
+    if (argc >= 2 && std::strcmp(argv[1], "import-title-art") == 0) {
+        return editor::TitleArtCli::runImport(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "export-title-art") == 0) {
+        return editor::TitleArtCli::runExport(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "bake-vat") == 0) {
         return editor::CommandLine::runBakeVatCommand(argc - 1, argv + 1, argv[0]);

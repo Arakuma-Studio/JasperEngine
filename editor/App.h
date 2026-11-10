@@ -87,10 +87,15 @@ namespace jasperengine::editor{
     class PaletteWindow;
     class PixelArtCheckWindow;
     class PixelArtCleanupWindow;
+    namespace tilemap {
+        class TilePaletteWindow;
+        class TilesetEditorWindow;
+    }
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
     class SpriteNormalsWindow;
+    class TitleDesignerWindow;
     class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
@@ -275,10 +280,13 @@ namespace jasperengine::editor{
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
         PixelArtCleanupWindow* pixelArtCleanupWindow = nullptr;
+        tilemap::TilePaletteWindow* tilePaletteWindow = nullptr;
+        tilemap::TilesetEditorWindow* tilesetEditorWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
+        TitleDesignerWindow* titleDesignerWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
         SpritePreviewWindow* spritePreviewWindow;
@@ -741,6 +749,7 @@ namespace jasperengine::editor{
         VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
+        TitleDesignerWindow* getTitleDesignerWindow() const;
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
@@ -759,6 +768,8 @@ namespace jasperengine::editor{
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
         PixelArtCleanupWindow* getPixelArtCleanupWindow() const { return pixelArtCleanupWindow; }
+        tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }
+        tilemap::TilesetEditorWindow* getTilesetEditorWindow() const { return tilesetEditorWindow; }
         ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

@@ -1,0 +1,299 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "wa/dry-brush-ink",
+  "revision": 1,
+  "name": {
+    "en": "Dry-brush Ink",
+    "ja": "かすれ墨"
+  },
+  "description": {
+    "en": "A black gradient face with a bevel and a brushed texture, two rims (white, a black dropped base), dry-brush edges and an outer glow.",
+    "ja": "黒のグラデーションの面（ベベル、ブラッシュのテクスチャ）、2本の縁（白、黒の台）、かすれた縁、外側の光彩。"
+  },
+  "family": "wa",
+  "tags": [
+    "wa",
+    "2d",
+    "black",
+    "gradient",
+    "bevel",
+    "brushed",
+    "outline",
+    "brush",
+    "glow",
+    "ink"
+  ],
+  "synonyms": {
+    "en": [
+      "japanese",
+      "traditional",
+      "flat",
+      "dark",
+      "jet black",
+      "ramp",
+      "fade",
+      "emboss",
+      "chiselled",
+      "stroke",
+      "border",
+      "rim",
+      "calligraphy",
+      "ink brush",
+      "dry brush",
+      "light",
+      "bloom",
+      "shine",
+      "sumi"
+    ],
+    "ja": [
+      "和風",
+      "和",
+      "わふう",
+      "wafu",
+      "平面",
+      "へいめん",
+      "heimen",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "グラデーション",
+      "gurade-shon",
+      "guradeshon",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "筆文字",
+      "毛筆",
+      "ふでもじ",
+      "fudemoji",
+      "かすれ",
+      "kasure",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "墨",
+      "すみ",
+      "sumi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "yuji-syuku",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#2a2a2a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#2a2a2a"
+            },
+            {
+              "pos": 0.5,
+              "color": "#050505"
+            },
+            {
+              "pos": 1,
+              "color": "#141414"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 1,
+        "depth": 2,
+        "light_altitude": 40,
+        "gloss": "cove",
+        "highlight_opacity": 0.45,
+        "shadow_opacity": 0.5
+      },
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        }
+      },
+      "texture": {
+        "kind": "brushed",
+        "amount": 0.2,
+        "scale": 3,
+        "seed": 2
+      }
+    },
+    "rims": [
+      {
+        "width": 1.4,
+        "join": "round",
+        "material": {
+          "fill": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#ffffff"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffffff"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "color": "#000000",
+            "gradient": {
+              "stops": [
+                {},
+                {
+                  "pos": 1
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "erode": {
+      "enabled": true,
+      "amount": 0.55,
+      "scale": 14,
+      "seed": 4
+    }
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#c80010",
+        "intensity": 0.7,
+        "opacity": 0.8,
+        "size": 26,
+        "spread": 0.05
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 918,
+    "item": "f-brush-kasure",
+    "license_note": "used with the author's permission"
+  }
+}

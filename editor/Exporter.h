@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
 #include "cook/BuildReport.h"
@@ -219,6 +220,8 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S87 R25: the Title Art language sets the build leaves out, and the sidecars it rewrites
+        TitleLanguageShipping titleLanguages;
         // S53: the same for models (and the .bin files only they read)
         std::set<std::string> cookedModelSources;
         // S51 R34: the files only bitmap fonts read (sheets, pages, TrueType sources), which ship
@@ -408,6 +411,12 @@ namespace jasperengine::editor {
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
+        // S80 R35: Title Art outputs stale or missing before the textures cook
+        bool prepareTitleArt();
+        // S81: what the build's Realtime and Glyph Atlas titles need at runtime (after copyAssets)
+        bool writeTitleArtRuntime();
+        // the platforms this export builds for (buildPlatformName's names; a source export: all)
+        std::vector<std::string> exportPlatformNames() const;
         bool cookTextures();
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
@@ -450,6 +459,9 @@ namespace jasperengine::editor {
         // a .bitmapfont or .fnt cooked to <destination>.jfont (lossless); false (warned) when it
         // does not load, and it ships as it is
         bool cookBitmapFont(const fs::path& relPath, const fs::path& destination);
+        // S50: a .tileset written with each source's current path (its GUID resolved) and no GUIDs,
+        // so the game loads its images by path; false (it ships as it is) when it does not parse or write
+        bool writeResolvedTileset(const fs::path& source, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();

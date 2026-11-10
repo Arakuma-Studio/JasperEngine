@@ -1,0 +1,177 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Contract (docs/specs/S80-title-art-core.md R10-R19, R18a, R49, §6.3)
+// - Purpose: the one Title Art renderer. The editor's previews, thumbnails, bakes and checks and
+//   S81's Realtime titles all render through begin(): no editor-only path. A request names an
+//   immutable document snapshot and what to render (the canvas or a region, at a px_scale; one
+//   layer alone; one output's content; field overrides; kept splits; one glyph cell).
+// - Pipeline per render (§6.3): overrides are applied to a copy of the snapshot (values never
+//   reach the document) and hashed like an edit, so a colour override reuses every cache a colour
+//   change would; then the draw tree (DrawTree.h), then per node in draw order: content -> part
+//   effects -> layer effects -> clip group -> masks -> blend and opacity onto the parent, each
+//   node in a target covering only its region of interest (TitleFrame.h), the whole as the flat
+//   step list of a TitleRenderJob.
+// - Pixel contract: linear premultiplied RGBA16F intermediates where the device renders and
+//   filters them, else the RGBA8 fallback (TitleArtCaps.h) with the same passes; the output pass
+//   writes straight-alpha sRGB with a dither of under one code that never moves exact codes.
+// - Caches: per-layer node pixels in an LRU of RendererLimits::nodeCacheBytes keyed by (node hash,
+//   px_scale, region), plus the cascade of TitleArtHash.h; targets from the renderer's
+//   TitleTargetPool, within RendererLimits::poolBytes. A new SystemRender::getContextId() (device
+//   loss) drops the pool, the caches and the pipelines before the next begin().
+// - Determinism (R17): every random element is seeded from document data (`seed` + an element
+//   seed); nothing depends on ids, id order, timing, cache state or slicing.
+// - Idle (R49): with no job alive the renderer holds no targets after trim() and does no work.
+// - Thread-safety: main thread.
+
+#pragma once
+
+#include "Export.h"
+#include "titleart/TitleArtDoc.h"
+#include "titleart/TitleArtTypes.h"
+#include "titleart/TitleEffectRegistry.h"
+#include "titleart/render/TitleRenderJob.h"
+
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace jasperengine::titleart {
+
+    class AssetResolver;
+    class TitleContentProvider;
+    struct TitleGpuStats;
+
+    // one glyph of a text layer rendered alone in a cell padded by the style's reach (S81's
+    // Glyph Atlas, S85's cells): its back part (rims, glows) or front part (the face)
+    struct GlyphCellRequest {
+        enum Part : uint8_t { Back, Front };
+        std::string layerId;
+        uint32_t cluster = 0;       // the grapheme cluster index of LaidOutText
+        Part part = Back;
+    };
+
+    // the pixels of a job's image (TitleImage)
+    enum class TitleOutputFormat : uint8_t {
+        Srgb8,              // RGBA8 straight-alpha sRGB, dithered under one code (8-bit bakes, previews)
+        Srgb16,             // RGBA16F straight-alpha sRGB, undithered (16-bit bakes; RGBA8 where floats do not render)
+        PremultipliedSrgb8, // RGBA8 premultiplied sRGB (displays that blend ONE, ONE_MINUS_SRC_ALPHA)
+        Linear              // the accumulator itself: linear premultiplied (S81's live compose)
+    };
+
+    struct TitleMesh;
+    struct TitleCacheEntry;
+
+    // S81's live compose (docs/specs/S81-title-art-runtime.md R9, S83 D10): the names of the
+    // inputs a render keeps for it and a later live frame starts from
+    // the stack input of a layer's effect (`effect`: its index in the layer's `effects`)
+    inline std::string titleLiveStackKey(const std::string& layerId, int effect) { return "fx:" + layerId + "@" + std::to_string(effect); }
+    // a layer's pixels before its effects (the effects' `content`)
+    inline std::string titleLiveContentKey(const std::string& layerId) { return "content:" + layerId; }
+    // a generator layer's followed layer, cut to its target, styled and without its own effects
+    inline std::string titleLiveFollowKey(const std::string& generatorId) { return "follow:" + generatorId; }
+    inline std::string titleLiveFollowContentKey(const std::string& generatorId) { return "follow_content:" + generatorId; }
+    using TitleLiveInputs = std::map<std::string, std::shared_ptr<TitleCacheEntry>>;
+
+    struct RenderRequest {
+        std::shared_ptr<const TitleArtDoc> doc;     // immutable snapshot (what-if copies are snapshots too)
+        float pxScale = 1.0f;                       // output pixels per canvas pixel
+        TitleRectI region;                          // canvas pixels, y down from the canvas top-left; empty = canvas
+        std::string isolateLayer;                   // render one layer alone, with its effects and masks
+        OutputContent content = OutputContent::All;
+        std::vector<std::string> contentLayers;     // OutputContent::Layers: these layer ids
+        std::vector<FieldOverride> overrides;       // applied to the snapshot copy (applyFieldOverrides)
+        // S87: the language to draw ("" = the source): the snapshot copy is the document resolved
+        // for it (TitleTranslations.h), then the overrides, then fit (TitleFit.h); a monolingual
+        // document without fit is drawn as it is
+        std::string language;
+        std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
+        // S81 R9: the live inputs (titleLive*Key) to keep (TitleSplits::live); their layers and
+        // ancestors are planned, never read from the node cache
+        std::vector<std::string> keepLive;
+        // a live frame: those inputs, read instead of planning the content and the effects (or
+        // the followed layer) before them; an input whose rectangle no longer matches is planned
+        // as usual (TitleSplits::liveInputsUsed tells)
+        TitleLiveInputs liveInputs;
+        // the Glow content's light times this before the output (check_title's fx_hdr_on_8bit
+        // reads light above 1 / lightScale as full codes)
+        float lightScale = 1.0f;
+        std::optional<GlyphCellRequest> glyphCell;
+        int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
+        // the device tier S83's effects and generators draw for (D11, D12, §6.7's mobile tier:
+        // EffectContext::tier, GeneratorContext::tier); S81 sets it per device, tests set it.
+        // Named apart from S86's `tier` above
+        FxTier fxTier = FxTier::Desktop;
+        int debugView3D = 0;                        // S86 render_title debug_view (Title3DDebugView): 0 none, 1 normals,
+                                                    // 2 environment, 3 ao, 4 glint, 5 ink, 6 wireframe
+        // S86 R38: cooked meshes (.titlemesh) by 3D layer id; a layer with one at the request's tier
+        // draws it and skips the mesher (a player built without it)
+        std::map<std::string, std::shared_ptr<const TitleMesh>> cookedMeshes3D;
+        // S86 R26: cooked environment cubes (KTX2) by environment preset id; a 3D layer lights with
+        // the one of its environment instead of building it (a player has no builder's sources)
+        std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cookedEnvironments3D;
+        bool includeGuides = false;                 // the editor's views draw guides; outputs never do
+        // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
+        // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes
+        // per pixel)
+        int outputBitDepth = 8;
+        uint32_t testFlags = 0;                     // TITLE_ART_TEST_* (TitleArtCaps.h): per request
+        // the image's pixels; Srgb8 with outputBitDepth 16 writes Srgb16
+        TitleOutputFormat output = TitleOutputFormat::Srgb8;
+        const AssetResolver* assets = nullptr;      // fonts, images, SVGs (editor or player resolver)
+    };
+
+    struct RendererLimits {
+        size_t poolBytes = 512u << 20;
+        size_t nodeCacheBytes = 128u << 20;
+        int maxSide = 8192;                         // larger outputs reduce their scale (problem output_downscaled)
+    };
+
+    struct RendererStats {
+        uint64_t passes = 0;                // GPU passes run since construction
+        uint64_t renders = 0;               // jobs finished
+        size_t bytesLive = 0;               // targets lent now (pool) plus cached node pixels
+        size_t peakBytes = 0;
+        uint64_t cacheHits = 0, cacheMisses = 0;
+        const char* path = "";              // "rgba16f" or "rgba8" of the last job
+        // jump-flood passes the jobs recorded, and what unbounded fields would have taken (R43)
+        uint64_t floodPasses = 0, floodPassesUnbounded = 0;
+    };
+
+    class JASPERENGINE_API TitleArtRenderer {
+    public:
+        explicit TitleArtRenderer(const RendererLimits& limits = {});
+        ~TitleArtRenderer();
+        TitleArtRenderer(const TitleArtRenderer&) = delete;
+        TitleArtRenderer& operator=(const TitleArtRenderer&) = delete;
+
+        // A job for `request`; null only when the request has no document. A job that cannot
+        // render (a newer version, out of target memory) fails with error() and problems().
+        std::unique_ptr<TitleRenderJob> begin(const RenderRequest& request);
+        const RendererStats& stats() const;
+        // frees idle targets and the node cache
+        void trim();
+
+        // the text and geometry the 2D title passes draw from (TitleContent.h); a renderer starts
+        // with the process default
+        void setContentProvider(std::shared_ptr<TitleContentProvider> provider);
+        // tests: the next job sees a lost device (R19)
+        void simulateDeviceLossForTesting();
+        // tests: the S86 3D renderer of this renderer's services (a Title3DRenderer), null until a
+        // 3D layer made it
+        std::shared_ptr<void> title3DRendererForTesting() const;
+        // the cache's entries and bytes, the pool's targets (tests, the editor's stats)
+        size_t cacheEntries() const;
+        const TitleTargetPoolStats& poolStats() const;
+        // the GPU passes' counters (the longest pass: a new variant's driver compile)
+        const TitleGpuStats& gpuStats() const;
+
+    private:
+        struct Impl;
+        std::unique_ptr<Impl> impl;
+    };
+
+}

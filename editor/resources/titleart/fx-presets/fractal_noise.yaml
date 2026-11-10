@@ -1,0 +1,172 @@
+{
+  "presets": [
+    {
+      "id": "clouds",
+      "name": "Clouds",
+      "aliases": [
+        "clouds",
+        "雲"
+      ],
+      "params": {
+        "noise": "fbm",
+        "scale": 400,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#000000",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        }
+      }
+    },
+    {
+      "id": "fog",
+      "name": "Fog",
+      "aliases": [
+        "fog",
+        "mist",
+        "霧"
+      ],
+      "params": {
+        "noise": "fbm",
+        "contrast": 0.6,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#c8d0dc",
+              "alpha": 0,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#c8d0dc",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        }
+      }
+    },
+    {
+      "id": "plasma",
+      "name": "Plasma",
+      "aliases": [
+        "plasma",
+        "プラズマ"
+      ],
+      "params": {
+        "noise": "turbulent",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2bd6",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#29f0ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        }
+      }
+    },
+    {
+      "id": "caustics",
+      "name": "Caustics",
+      "aliases": [
+        "caustics",
+        "water light",
+        "水面"
+      ],
+      "params": {
+        "noise": "ridged",
+        "contrast": 2,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#002a4a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#bff6ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        }
+      }
+    },
+    {
+      "id": "static",
+      "name": "Static",
+      "aliases": [
+        "static",
+        "tv noise",
+        "砂嵐"
+      ],
+      "params": {
+        "noise": "fbm",
+        "scale": 4,
+        "contrast": 3
+      }
+    },
+    {
+      "id": "nebula",
+      "name": "Nebula",
+      "aliases": [
+        "nebula",
+        "space",
+        "星雲"
+      ],
+      "params": {
+        "noise": "fbm",
+        "complexity": 7,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#0a0018",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#7a2cff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ff6ad5",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        }
+      },
+      "cost": "C2"
+    }
+  ]
+}

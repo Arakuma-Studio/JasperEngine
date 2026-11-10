@@ -293,6 +293,7 @@ elseif(API_BACKEND STREQUAL "win")
         ole32
         uuid
         advapi32
+        imm32
     )
 
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
@@ -717,6 +718,23 @@ set(MINIZ_SOURCES libs/miniz/miniz.c)
 set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
 set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
 
+# The Brotli and google/woff2 decoders turn the .woff2 fonts the Title Designer imports into
+# TrueType or OpenType files (editor/titleart/fonts/WebFontDecode, docs/specs/S82-title-designer.md
+# R59). A library of their own, so the editor's precompiled header and unity batches stay off the
+# vendored code. Editor only: players never link it.
+file(GLOB WOFF2_DECODER_BROTLI_SOURCES CONFIGURE_DEPENDS libs/brotli/c/common/*.c libs/brotli/c/dec/*.c)
+add_library(woff2_decoder STATIC
+    ${WOFF2_DECODER_BROTLI_SOURCES}
+    libs/woff2/src/woff2_dec.cc
+    libs/woff2/src/woff2_common.cc
+    libs/woff2/src/table_tags.cc
+    libs/woff2/src/variable_length.cc
+    libs/woff2/src/woff2_out.cc)
+target_include_directories(woff2_decoder PRIVATE libs/brotli/c/include)
+target_include_directories(woff2_decoder SYSTEM PUBLIC libs/woff2/include)
+target_compile_options(woff2_decoder PRIVATE ${EXTERNAL_WARNING_FLAG})
+jasperengine_apply_cxx_standard(woff2_decoder)
+
 # ImGui has no target of its own; only one of these backends builds per platform
 set_property(
     SOURCE
@@ -794,6 +812,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
+    ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
@@ -872,6 +891,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -999,6 +1019,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
     ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TilemapGridTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TilesetTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -1022,6 +1044,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ApplePrivacy.cpp
     ${EDITOR_DIR}/util/NativeNeeds.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/util/ImePreedit.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
     ${EDITOR_DIR}/reload/handlers/Animations.cpp
@@ -1578,6 +1601,8 @@ set(JASPERENGINE_EDITOR_SOURCES
 if(APPLE)
     # NSPasteboard image/file-URL reading for the AI chat attachment paste.
     list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/ClipboardMac.mm)
+    # the Title Designer's system font list (CoreText; the titleart glob takes .cpp files only)
+    list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/titleart/fonts/SystemFontListMac.mm)
 endif()
 
 if(WIN32)
@@ -1590,12 +1615,17 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+# Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
+include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
 # the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
+# grid tilemaps (S50): tileset editing, brushes, importers, the Tile Palette and Tileset Editor
+include(${EDITOR_DIR}/tilemap/TilemapEditorSources.cmake)
 
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
@@ -1767,15 +1797,18 @@ function(configure_jasperengine_editor_target target_name)
         bc7enc_rdo
         astcenc
         basisu_encoder
+        harfbuzz-subset
         ufbx
         tinyexr
         draco_decoder
         webp_decoder
+        woff2_decoder
     )
 
     if(WIN32)
-        # dbghelp resolves the crash-report backtrace; ws2_32 is the MCP HTTP server's Winsock.
-        target_link_libraries(${target_name} PRIVATE dbghelp ws2_32)
+        # dbghelp resolves the crash-report backtrace; ws2_32 is the MCP HTTP server's Winsock;
+        # dwrite lists the system fonts (editor/titleart/fonts/SystemFontList.cpp).
+        target_link_libraries(${target_name} PRIVATE dbghelp ws2_32 dwrite)
     else()
         # -rdynamic names the editor's own frames in the crash backtrace, at about 10 MB of
         # symbol table. A Release build stays lean and is resolved with addr2line instead.
@@ -1972,6 +2005,32 @@ add_custom_command(
 add_custom_target(copy_jasperengine_editor_sound_library DEPENDS ${JASPERENGINE_SOUND_LIBRARY_STAMP})
 add_dependencies(jasperengine-editor copy_jasperengine_editor_sound_library)
 
+# The 3D titles' Poly Haven HDRIs (S86, editor/resources/titleart/hdri) beside the editor, which reads
+# them in place (Title3DEditor.cpp); players get cooked environments only
+if(APPLE)
+    set(JASPERENGINE_EDITOR_TITLE_HDRI_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/titleart/hdri)
+else()
+    set(JASPERENGINE_EDITOR_TITLE_HDRI_DIR $<TARGET_FILE_DIR:jasperengine-editor>/titleart/hdri)
+endif()
+add_custom_command(TARGET jasperengine-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri ${JASPERENGINE_EDITOR_TITLE_HDRI_DIR}
+    VERBATIM)
+# The Title Art library's font pack and thumbnails (S84 R39) beside them, read in place
+# (FileUtils::getTitleArtLibraryDir); a project gets a copy of a font only when a document uses it
+if(APPLE)
+    set(JASPERENGINE_EDITOR_TITLEART_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/titleart)
+else()
+    set(JASPERENGINE_EDITOR_TITLEART_DIR $<TARGET_FILE_DIR:jasperengine-editor>/titleart)
+endif()
+add_custom_command(TARGET jasperengine-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/fonts ${JASPERENGINE_EDITOR_TITLEART_DIR}/fonts
+    VERBATIM)
+if(EXISTS ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails)
+    add_custom_command(TARGET jasperengine-editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails ${JASPERENGINE_EDITOR_TITLEART_DIR}/thumbnails
+        VERBATIM)
+endif()
+
 set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 
 # jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
@@ -2115,6 +2174,24 @@ foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
         )
     endif()
 endforeach()
+
+# The 3D titles' HDRIs beside the editor (S86)
+if(APPLE)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/titleart)
+else()
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/titleart)
+endif()
+# The Title Art library's fonts and thumbnails beside them (S84 R39); each font directory's OFL.txt
+# is also in licenses/ as titleart-font-<dir>-OFL.txt, through the licence manifest above (R31)
+if(APPLE)
+    set(JASPERENGINE_TITLEART_INSTALL_DIR bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/titleart)
+else()
+    set(JASPERENGINE_TITLEART_INSTALL_DIR bin/titleart)
+endif()
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/fonts DESTINATION ${JASPERENGINE_TITLEART_INSTALL_DIR})
+if(EXISTS ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails DESTINATION ${JASPERENGINE_TITLEART_INSTALL_DIR})
+endif()
 
 # The starter library beside the editor: the editor reads it in place (FileUtils::getSoundLibraryDir),
 # no player ever does. The install's folder is replaced, not merged, so a clip dropped from the

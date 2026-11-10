@@ -1,0 +1,57 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "jelly",
+  "name": "Jelly",
+  "group": "emphasis",
+  "role": "emphasis",
+  "duration": 0.6,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Squashes and wobbles back like jelly.",
+  "params": [
+    {
+      "name": "amount",
+      "label": "Amount",
+      "type": "number",
+      "default": 0.2,
+      "min": 0,
+      "max": 0.6
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.stretch",
+      "relative": true,
+      "pivot": "bottom",
+      "keys": [
+        [
+          0,
+          [
+            "1+amount",
+            "1-amount"
+          ],
+          "sine_out"
+        ],
+        [
+          "0.35*D",
+          [
+            "1-amount/2",
+            "1+amount/2"
+          ],
+          "elastic_out"
+        ],
+        [
+          "D",
+          [
+            1,
+            1
+          ]
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

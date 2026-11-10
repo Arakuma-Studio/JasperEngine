@@ -26,7 +26,7 @@ CI = True
 DOCS = ["animation", "assets", "camera", "cpp-scripting", "data-safety", "debugging", "html-ui", "input",
         "lattice", "lines-trails", "lua-api", "lua-scripting", "palettes", "particles", "physics",
         "platform-services", "post-processing", "prefabs", "safe-area", "scene-view", "shaders",
-        "sprite-normals", "ui", "undo", "unity-glossary", "vertex-animation"]
+        "sprite-normals", "tilemaps", "ui", "undo", "unity-glossary", "vertex-animation"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:
@@ -203,3 +203,26 @@ async def test_tool_reference_has_no_other_section(ed: Editor):
     text = (REPO / "docs" / "mcp" / "TOOLS.md").read_text()
     ed.check("\n## Other\n" not in text and "[Other](#other)" not in text, "a tool is listed under Other: add its module to gen_tool_docs.py")
     ed.check("- [Vertex animation](#vertex-animation) (1): `bake_vertex_animation`" in text, "bake_vertex_animation under Vertex animation")
+
+
+async def test_title_golden_ledger(ed: Editor):
+    """S80 §7: every Title Art golden added or changed since main has its row in docs/titleart/goldens.md
+    (tools/titleart/check_golden_ledger.py; its red controls are tools/ci/test_check_title_golden_ledger.py)."""
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-I", str(harness.REPO / "tools" / "titleart" / "check_golden_ledger.py"),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    text, _ = await asyncio.wait_for(proc.communicate(), 120)
+    ed.check(proc.returncode == 0, f"the title golden ledger is incomplete:\n{text.decode(errors='replace')[-2000:]}")
+
+
+async def test_title_library_docs_current(ed: Editor):
+    """S84 R47, AC27: docs/mcp/guide/title-library.md is what `title-library gen-docs` makes from the
+    built-in library (re-run it after a library change), and it is served per family."""
+    proc = await asyncio.create_subprocess_exec(
+        *harness.editor_command(), "title-library", "gen-docs", "--check", "--out", str(harness.REPO / "docs" / "mcp" / "guide" / "title-library.md"),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(harness.REPO))
+    text, _ = await asyncio.wait_for(proc.communicate(), 300)
+    ed.check(proc.returncode == 0, f"title-library.md is stale:\n{text.decode(errors='replace')[-1500:]}")
+    listed = await ed.session.list_resources()
+    uris = {str(r.uri) for r in listed.resources}
+    ed.check(any(u.startswith("jasper://docs/title-library") for u in uris), "jasper://docs/title-library is served")

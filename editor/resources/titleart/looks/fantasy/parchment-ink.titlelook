@@ -1,0 +1,84 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/parchment-ink",
+  "revision": 1,
+  "name": {
+    "en": "Parchment Ink",
+    "ja": "羊皮紙のインク"
+  },
+  "description": {
+    "en": "Dark sepia ink face with eroded, bleeding edges and no rims, over a light spatter of ink behind.",
+    "ja": "にじんで欠けた縁を持つ濃いセピアのインクの面、縁取りなし、背後に軽いインクの飛沫。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "ink",
+    "sepia",
+    "parchment",
+    "eroded",
+    "fantasy",
+    "splatter"
+  ],
+  "synonyms": {
+    "en": [
+      "quill",
+      "old manuscript",
+      "scroll",
+      "handwritten"
+    ],
+    "ja": [
+      "インク",
+      "羊皮紙",
+      "古文書",
+      "にじみ",
+      "inku",
+      "komonjo"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "light",
+  "font": {
+    "latin": "medievalsharp",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#2a1a0a"
+      }
+    },
+    "erode": {
+      "enabled": true,
+      "amount": 0.35,
+      "edge": 4
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "ink_splatter",
+      "preset": "ink_behind",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "amount": 30,
+        "spread": 100,
+        "size": 14
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

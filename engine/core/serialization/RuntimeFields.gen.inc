@@ -290,6 +290,13 @@ template<> struct Codec<VoxelMaterialSlot> {
 template<> struct TextureVisit<VoxelMaterialSlot> {
     static void visit(VoxelMaterialSlot& value, const TextureVisitor& f);
 };
+template<> struct Codec<TitleArtOverride> {
+    static void write(Writer& w, const TitleArtOverride& value);
+    static void read(Reader& r, TitleArtOverride& value);
+};
+template<> struct TextureVisit<TitleArtOverride> {
+    static void visit(TitleArtOverride& value, const TextureVisitor& f);
+};
 
 }
 
@@ -931,6 +938,17 @@ const StructTable kStruct_VoxelMaterialSlot{"VoxelMaterialSlot", kStruct_VoxelMa
 void Codec<VoxelMaterialSlot>::write(Writer& w, const VoxelMaterialSlot& value) { writeStruct(w, kStruct_VoxelMaterialSlot, &value); }
 void Codec<VoxelMaterialSlot>::read(Reader& r, VoxelMaterialSlot& value) { readStruct(r, kStruct_VoxelMaterialSlot, &value); }
 void TextureVisit<VoxelMaterialSlot>::visit(VoxelMaterialSlot& value, const TextureVisitor& f) { visitStructTextures(kStruct_VoxelMaterialSlot, &value, f); }
+
+const FieldEntry kStruct_TitleArtOverride_fields[] = {
+    JE_RF(TitleArtOverride, name, 0x1f0cbcd3u, String),
+    JE_RF(TitleArtOverride, type, 0x7384e358u, String),
+    JE_RF(TitleArtOverride, value, 0x85e07201u, Vector4),
+    JE_RF(TitleArtOverride, text, 0x69016c27u, String),
+};
+const StructTable kStruct_TitleArtOverride{"TitleArtOverride", kStruct_TitleArtOverride_fields, std::size(kStruct_TitleArtOverride_fields)};
+void Codec<TitleArtOverride>::write(Writer& w, const TitleArtOverride& value) { writeStruct(w, kStruct_TitleArtOverride, &value); }
+void Codec<TitleArtOverride>::read(Reader& r, TitleArtOverride& value) { readStruct(r, kStruct_TitleArtOverride, &value); }
+void TextureVisit<TitleArtOverride>::visit(TitleArtOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_TitleArtOverride, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -2607,6 +2625,105 @@ const FieldEntry kBody_HitStopExemptComponent_fields[] = {
 };
 const StructTable kBody_HitStopExemptComponent{"hitstopexempt", kBody_HitStopExemptComponent_fields, std::size(kBody_HitStopExemptComponent_fields)};
 
+const FieldEntry kBody_GridComponent_fields[] = {
+    JE_RF(GridComponent, layout, 0xb55794f7u, Enum),
+    JE_RF(GridComponent, cellSize, 0xb3da7c14u, Vector2),
+    JE_RF(GridComponent, cellGap, 0xd7f08577u, Vector2),
+    JE_RF(GridComponent, plane, 0x886c692du, Enum),
+    JE_RF(GridComponent, staggerAxis, 0x7d1986a5u, Enum),
+    JE_RF(GridComponent, staggerIndex, 0x65183050u, Enum),
+    JE_RF(GridComponent, hexSideLength, 0x18e33029u, Float),
+    JE_RF(GridComponent, importSource, 0x61ad7eb9u, AssetPath),
+    JE_RF(GridComponent, linked, 0x680b4728u, Bool),
+};
+const StructTable kBody_GridComponent{"grid", kBody_GridComponent_fields, std::size(kBody_GridComponent_fields)};
+
+const FieldEntry kBody_TilemapLayerComponent_fields[] = {
+    JE_RF(TilemapLayerComponent, version, 0xf62e9c74u, Int),
+    JE_RF(TilemapLayerComponent, enabled, 0x29852799u, Bool),
+    JE_RF(TilemapLayerComponent, tileset, 0xaef943f4u, AssetPath),
+    JE_RF(TilemapLayerComponent, tint, 0xb4bb818du, Vector4),
+    JE_RF(TilemapLayerComponent, mode, 0x5e09679bu, Enum),
+    JE_RF(TilemapLayerComponent, chunkSize, 0x4dcc4cdcu, Int),
+    JE_RF(TilemapLayerComponent, tileAnchor, 0x43084d8du, Vector2),
+    JE_RF(TilemapLayerComponent, animationSpeed, 0xac32f839u, Float),
+    JE_RF(TilemapLayerComponent, dualGrid, 0x845e6f66u, Bool),
+    JE_RF(TilemapLayerComponent, seed, 0x5ef5fb7du, UInt),
+    JE_RF(TilemapLayerComponent, gpuResidency, 0xa006c136u, Enum),
+    JE_RF(TilemapLayerComponent, cells, 0xc612bda2u, Custom),
+};
+const StructTable kBody_TilemapLayerComponent{"tilemaplayer", kBody_TilemapLayerComponent_fields, std::size(kBody_TilemapLayerComponent_fields)};
+
+const FieldEntry kBody_TilemapCollider2DComponent_fields[] = {
+    JE_RF(TilemapCollider2DComponent, enabled, 0x68ad2374u, Bool),
+    JE_RF(TilemapCollider2DComponent, source, 0x23d3d08au, Enum),
+    JE_RF(TilemapCollider2DComponent, solidTerrains, 0xea576528u, Array),
+    JE_RF(TilemapCollider2DComponent, geometry, 0x2fc6fca7u, Enum),
+    JE_RF(TilemapCollider2DComponent, merge, 0xb5ac7185u, Bool),
+    JE_RF(TilemapCollider2DComponent, offset, 0xdb1af314u, Vector2),
+    JE_RF(TilemapCollider2DComponent, friction, 0x4e7e6381u, Float),
+    JE_RF(TilemapCollider2DComponent, restitution, 0x2ab5453du, Float),
+    JE_RF(TilemapCollider2DComponent, material, 0x51ad5a96u, String),
+    JE_RF(TilemapCollider2DComponent, categoryBits, 0x4dacf007u, UInt),
+    JE_RF(TilemapCollider2DComponent, maskBits, 0x1ed454dfu, UInt),
+    JE_RF(TilemapCollider2DComponent, groupIndex, 0xe9da907au, Int),
+    JE_RF(TilemapCollider2DComponent, contactEvents, 0x503adc20u, Bool),
+    JE_RF(TilemapCollider2DComponent, sensorEvents, 0x3fad7e08u, Bool),
+    JE_RF(TilemapCollider2DComponent, enableHitEvents, 0x7174992cu, Bool),
+};
+const StructTable kBody_TilemapCollider2DComponent{"tilemapcollider2d", kBody_TilemapCollider2DComponent_fields, std::size(kBody_TilemapCollider2DComponent_fields)};
+
+const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
+    JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
+    JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
+    JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
+    JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
+    JE_RF(TitleArtRendererComponent, language, 0xeddbbcbau, String),
+    JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
+    JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
+    JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),
+    JE_RF(TitleArtRendererComponent, resolutionScale, 0x678e8488u, Float),
+    JE_RF(TitleArtRendererComponent, priority, 0x563a6d68u, Int),
+    JE_RF(TitleArtRendererComponent, renderWhenHidden, 0x8f5afbccu, Bool),
+    JE_RF(TitleArtRendererComponent, prebakeInitialState, 0xd0114565u, Bool),
+    JE_RF(TitleArtRendererComponent, transition, 0x94135a73u, Enum),
+    JE_RF(TitleArtRendererComponent, transitionDuration, 0xe5c04ac7u, Float),
+    JE_RF(TitleArtRendererComponent, additionalCharacters, 0x41e10ba1u, String),
+    JE_RF(TitleArtRendererComponent, atlasPageSize, 0x6f83f7c5u, Int),
+    JE_RF(TitleArtRendererComponent, atlasMaxPages, 0xc2052205u, Int),
+    JE_RF(TitleArtRendererComponent, qualityTier, 0x4068c6e5u, String),
+    JE_RF(TitleArtRendererComponent, runtimeEnvironments, 0xe2b2abf2u, Array),
+    JE_RF(TitleArtRendererComponent, liveTime, 0x6bc5ba13u, Float),
+    JE_RF(TitleArtRendererComponent, liveUnscaledTime, 0x85bfbd8au, Bool),
+    JE_RF(TitleArtRendererComponent, sweepEnabled, 0x27274359u, Bool),
+    JE_RF(TitleArtRendererComponent, sweepPosition, 0xe589397bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepWidth, 0x11436d24u, Float),
+    JE_RF(TitleArtRendererComponent, sweepAngle, 0xb532596bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepSoftness, 0x084a67ebu, Float),
+    JE_RF(TitleArtRendererComponent, sweepColor, 0x93319b9fu, Vector4),
+    JE_RF(TitleArtRendererComponent, sweepAuto, 0x5f89e1dfu, Bool),
+    JE_RF(TitleArtRendererComponent, sweepSpeed, 0x335a0863u, Float),
+    JE_RF(TitleArtRendererComponent, sweepInterval, 0x94dac011u, Float),
+    JE_RF(TitleArtRendererComponent, glowEnabled, 0x7b24955au, Bool),
+    JE_RF(TitleArtRendererComponent, glowPulse, 0xc56d714au, Float),
+    JE_RF(TitleArtRendererComponent, glowColor, 0xcc286034u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintEnabled, 0x03ba7ceeu, Bool),
+    JE_RF(TitleArtRendererComponent, tintColor, 0xfd588c88u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintAmount, 0x47c1b439u, Float),
+    JE_RF(TitleArtRendererComponent, glintsEnabled, 0x7295f1beu, Bool),
+    JE_RF(TitleArtRendererComponent, glintAmount, 0xf520f618u, Float),
+    JE_RF(TitleArtRendererComponent, glintSize, 0xa1be8c4du, Float),
+    JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
+    JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
+    JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
+    JE_RF(TitleArtRendererComponent, playAutomatically, 0xac579117u, Bool),
+    JE_RF(TitleArtRendererComponent, defaultAnimation, 0x0fdb5e95u, String),
+    JE_RF(TitleArtRendererComponent, animationSpeed, 0x7c0a3fa1u, Float),
+    JE_RF(TitleArtRendererComponent, animationUnscaledTime, 0x134a2c36u, Bool),
+    JE_RF(TitleArtRendererComponent, driveAnimation, 0xb93fb9c6u, String),
+};
+const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2722,6 +2839,10 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(VoxelVolumeComponent, "voxelvolume", 0x973a2f61u),
     JE_RF_COMPONENT(TerrainWorldComponent, "terrainworld", 0x98e87442u),
     JE_RF_COMPONENT(HitStopExemptComponent, "hitstopexempt", 0xc2813c75u),
+    JE_RF_COMPONENT(GridComponent, "grid", 0xaf871a91u),
+    JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
+    JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
+    JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENTS_END
 };
 

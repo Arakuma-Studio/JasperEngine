@@ -1,0 +1,116 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/hud-cyan",
+  "revision": 1,
+  "name": {
+    "en": "Cyan HUD",
+    "ja": "シアン HUD"
+  },
+  "description": {
+    "en": "Translucent cyan face with scanlines, a cyan hairline over a translucent blue plate, an added cyan glow and a HUD ring circle below.",
+    "ja": "走査線入りの半透明シアンの面、半透明の青いプレートの上のシアンの細線、加算のシアンのグロー、下に HUD のリング。"
+  },
+  "family": "scifi",
+  "tags": [
+    "hud",
+    "cyan",
+    "scanlines",
+    "hologram",
+    "interface",
+    "tech"
+  ],
+  "synonyms": {
+    "en": [
+      "heads up display",
+      "cockpit",
+      "targeting",
+      "screen ui"
+    ],
+    "ja": [
+      "HUD",
+      "ホログラム",
+      "近未来",
+      "シアン",
+      "heddo appu disupurei",
+      "kinmirai"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "orbitron",
+    "ja": "train-one",
+    "variations": {
+      "wght": 900
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#00a8d8"
+      },
+      "opacity": 0.2
+    },
+    "rims": [
+      {
+        "width": 0.8,
+        "material": {
+          "fill": {
+            "color": "#8af6ff"
+          }
+        }
+      },
+      {
+        "width": 4.4,
+        "material": {
+          "fill": {
+            "color": "#0070a0"
+          },
+          "opacity": 0.35
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#00e0ff",
+        "size": 20,
+        "mode": "add"
+      }
+    }
+  ],
+  "part_effects": {
+    "face": [
+      {
+        "type": "scanlines",
+        "params": {
+          "intensity": 0.35
+        }
+      }
+    ]
+  },
+  "generators": [
+    {
+      "type": "magic_circle",
+      "preset": "hud",
+      "place": "below",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

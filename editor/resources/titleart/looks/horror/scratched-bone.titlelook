@@ -1,0 +1,108 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/scratched-bone",
+  "revision": 1,
+  "name": {
+    "en": "Scratched Bone",
+    "ja": "引っかき傷の骨"
+  },
+  "description": {
+    "en": "Bone gradient face with a grunge texture and a low smooth bevel in a dark outline, scratched across by distress, over a soft dark red shadow.",
+    "ja": "グランジの質感と低いなめらかなベベルを持つ骨色グラデーションの面、暗い縁取り、全体を引っかく傷、柔らかい暗赤色の影。"
+  },
+  "family": "horror",
+  "tags": [
+    "bone",
+    "scratched",
+    "horror",
+    "distressed",
+    "ivory",
+    "grunge"
+  ],
+  "synonyms": {
+    "en": [
+      "skeleton",
+      "claw marks",
+      "ossuary",
+      "aged bone"
+    ],
+    "ja": [
+      "骨",
+      "引っかき傷",
+      "ホラー",
+      "骸骨",
+      "hone",
+      "gaikotsu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "creepster",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#f0e8d0"
+            },
+            {
+              "pos": 1,
+              "color": "#b0a080"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 1
+      },
+      "texture": {
+        "kind": "grunge",
+        "amount": 0.4
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#2a2010"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "distress",
+      "params": {
+        "pattern": "scratches",
+        "angle": 70
+      }
+    },
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 18,
+        "color": "#2a0000",
+        "opacity": 0.5
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

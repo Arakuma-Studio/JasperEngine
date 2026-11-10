@@ -1,0 +1,10 @@
+# Glitch presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: digital
+    name: Digital
+    aliases: [blocks, datamosh]
+    params: {mode: blocks, amount: 0.5}
+  - id: vhs
+    name: VHS
+    aliases: [tape, analog glitch]
+    params: {mode: slices, split: 12, slices: 30}

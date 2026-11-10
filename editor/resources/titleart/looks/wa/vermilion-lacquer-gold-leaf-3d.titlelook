@@ -1,0 +1,401 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "wa/vermilion-lacquer-gold-leaf-3d",
+  "revision": 1,
+  "name": {
+    "en": "Vermilion Lacquer + Gold Leaf 3D",
+    "ja": "朱塗り + 金箔 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a red face and a round bevel, five bands (pale gold, red metal, gloss black, red metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "赤の面の3D押し出し文字（ベベル付き）、5本の帯（淡い金、赤のメタル、黒の光沢、赤のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "wa",
+  "tags": [
+    "wa",
+    "3d",
+    "red",
+    "bevel",
+    "gold",
+    "metal",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "vermilion"
+  ],
+  "synonyms": {
+    "en": [
+      "japanese",
+      "traditional",
+      "three-dimensional",
+      "extruded",
+      "crimson",
+      "scarlet",
+      "emboss",
+      "chiselled",
+      "golden",
+      "gilded",
+      "yellow gold",
+      "metallic",
+      "metal finish",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "cinnabar red"
+    ],
+    "ja": [
+      "和風",
+      "和",
+      "わふう",
+      "wafu",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "赤",
+      "レッド",
+      "あか",
+      "aka",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "金",
+      "ゴールド",
+      "きん",
+      "kin",
+      "gorudo",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "朱",
+      "朱色",
+      "しゅいろ",
+      "shuiro"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 11.9,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1,
+      "depth": 1
+    },
+    "face": {
+      "color": "#e0280e",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ff9a6a"
+          },
+          {
+            "pos": 0.2,
+            "color": "#f03a14"
+          },
+          {
+            "pos": 0.4,
+            "color": "#a01002"
+          },
+          {
+            "pos": 0.47,
+            "color": "#ff7048"
+          },
+          {
+            "pos": 0.53,
+            "color": "#8a0a00"
+          },
+          {
+            "pos": 0.75,
+            "color": "#b81404"
+          },
+          {
+            "pos": 1,
+            "color": "#ff5a30"
+          }
+        ]
+      },
+      "gradient_angle": 70,
+      "metallic": 0.1,
+      "roughness": 0.05,
+      "env_multiplier": 0.8,
+      "specular_multiplier": 1.6,
+      "clearcoat": 1
+    },
+    "bands": [
+      {
+        "grow": 1.5,
+        "depth": 10.6,
+        "offset": -11.9,
+        "bevel": {
+          "width": 1.5,
+          "depth": 1.3,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "pale_gold",
+          "color": "#f3dc9a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fffef5"
+              },
+              {
+                "pos": 0.22,
+                "color": "#fbeec0"
+              },
+              {
+                "pos": 0.45,
+                "color": "#d2b26a"
+              },
+              {
+                "pos": 0.52,
+                "color": "#7d6430"
+              },
+              {
+                "pos": 0.6,
+                "color": "#c9a85f"
+              },
+              {
+                "pos": 0.8,
+                "color": "#f7e7b0"
+              },
+              {
+                "pos": 1,
+                "color": "#fffbe8"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.1,
+          "env_multiplier": 1.3,
+          "clearcoat": 0.3,
+          "surface": {
+            "kind": "crumple",
+            "amount": 0.08,
+            "scale": 3,
+            "seed": 4
+          }
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#2a0800",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#2a0a02",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "depth": 7,
+        "material": {
+          "preset": "black_gloss",
+          "color": "#080404",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1,
+          "pattern": {
+            "kind": "seigaiha",
+            "color": "#d8a640",
+            "opacity": 0.55,
+            "scale": 5,
+            "shade": 0.8
+          }
+        }
+      },
+      {
+        "grow": 1,
+        "depth": 4,
+        "bevel": {
+          "width": 0.8,
+          "depth": 0.8
+        },
+        "material": {
+          "preset": "red_metal",
+          "color": "#d02008",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ff6a40"
+              },
+              {
+                "pos": 0.45,
+                "color": "#c01806"
+              },
+              {
+                "pos": 0.55,
+                "color": "#500600"
+              },
+              {
+                "pos": 1,
+                "color": "#e83a14"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 3,
+      "intensity": 0.4,
+      "radius": 5,
+      "length": 32,
+      "angle": 15,
+      "tint": "#fff4e0"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#0a0200",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff4a1a",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 0.8,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#ffb070"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": 20,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetA.ts",
+    "line": 50,
+    "item": "f-3d-shu-lacquer",
+    "license_note": "used with the author's permission"
+  }
+}

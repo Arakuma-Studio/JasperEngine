@@ -1,0 +1,18 @@
+{
+  "grids": [{
+    "layout": "hexagon", "cell": [32, 28], "stagger_axis": "y", "stagger_index": "even", "hex_side": 14, "origin": [0, 0],
+    "layers": [{
+      "name": "Hex", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0,
+      "cells": [[0, 0, 2, ""], [1, 0, 3, ""], [0, 1, 0, ""], [1, 1, 1, ""]]
+    }]
+  }],
+  "tilesets": [{
+    "name": "cells", "tile_size": [32, 28], "shape": "hex_pointy", "external": "",
+    "images": [{"source": 0, "path": "images/cells.png", "size": [64, 56]}],
+    "sources": [{"id": 0, "kind": "texture", "path": "images/cells.png", "tile_size": [32, 28], "margin": 0, "spacing": 0, "skip_empty": false}],
+    "tile_total": 4, "next_id": 4, "tiles": [], "terrain_sets": [], "schema": []
+  }],
+  "warnings": [],
+  "skipped": [{"kind": "hex_rotation", "name": "Hex", "count": 2}],
+  "counts": {"grids": 1, "layers": 1, "tilesets": 1, "images": 1, "tiles": 4, "terrain_cells": 0, "skipped": 1, "warnings": 0}
+}

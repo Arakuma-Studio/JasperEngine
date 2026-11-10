@@ -1,0 +1,6 @@
+# Chromatic Aberration presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: rgb_split
+    name: RGB Split
+    aliases: [rgb shift, anaglyph]
+    params: {type: directional, amount: 10, smooth: false}

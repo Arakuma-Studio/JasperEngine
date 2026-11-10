@@ -1,0 +1,72 @@
+{
+  "presets": [
+    {
+      "id": "ink_behind",
+      "name": "Ink Behind (墨)",
+      "aliases": [
+        "墨 behind",
+        "ink behind",
+        "墨"
+      ],
+      "source": "inkSplatter/black",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "place": "below"
+      }
+    },
+    {
+      "id": "red_ink",
+      "name": "Red Ink (赤)",
+      "aliases": [
+        "赤 ink",
+        "red ink",
+        "赤"
+      ],
+      "source": "inkSplatter/red",
+      "params": {
+        "color": "#b0000c"
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below"
+      }
+    },
+    {
+      "id": "ink_over",
+      "name": "Ink Spattered Over (墨)",
+      "aliases": [
+        "墨 spattered over",
+        "ink spattered over"
+      ],
+      "source": "inkSplatter/over",
+      "params": {
+        "amount": 30,
+        "spread": 120,
+        "size": 14
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "above"
+      }
+    },
+    {
+      "id": "swept",
+      "name": "Swept Streaks",
+      "aliases": [
+        "swept streaks",
+        "ink streaks"
+      ],
+      "source": "inkSplatter/swept",
+      "params": {
+        "streaks": 80,
+        "streak_length": 220,
+        "direction": "directional"
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below"
+      }
+    }
+  ]
+}

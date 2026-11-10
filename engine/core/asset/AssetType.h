@@ -42,17 +42,18 @@ namespace jasperengine {
         Palette = 24,               // a .palette palette (S43)
         AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
         SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
+        Tileset = 27,               // a .tileset Tileset (S50; its GUID in its .meta)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
         ProceduralMaterial = 29,    // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
         // The terrain programme's (T2-T6) follow upstream's 29. Stored in assetmap.bin: these never move.
         TreeData = 30,              // a .jetrees file of a Terrain's trees (T5 R22)
         TerrainWorld = 31,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
-        NoiseGraph = 33             // a .noisegraph Noise Graph (T2)
+        NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
+        TitleArt = 34               // a .titleart Title Art document (S80; its GUID in its JSON)
     };
-
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::NoiseGraph);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::TitleArt);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -84,11 +85,13 @@ namespace jasperengine {
             case AssetType::Palette: return "palette";
             case AssetType::AsepriteSprite: return "aseprite_sprite";
             case AssetType::SpriteAtlas: return "sprite_atlas";
+            case AssetType::Tileset: return "tileset";
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::ProceduralMaterial: return "procedural_material";
             case AssetType::TerrainWorld: return "terrain_world";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
+            case AssetType::TitleArt: return "title_art";
             case AssetType::Unknown: break;
         }
         return "unknown";

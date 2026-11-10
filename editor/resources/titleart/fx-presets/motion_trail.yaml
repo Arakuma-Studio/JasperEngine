@@ -1,0 +1,10 @@
+# Motion Trail presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: echo
+    name: Echo (残像)
+    aliases: [残像, afterimage, copies]
+    params: {mode: echo, copies: 4}
+  - id: smear
+    name: Smear
+    aliases: [smear trail]
+    params: {}

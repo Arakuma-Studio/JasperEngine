@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <set>
+#include <utility>
 
 using namespace jasperengine;
 using namespace jasperengine::editor::htmlui;
@@ -182,6 +183,12 @@ namespace {
 }
 
 GoogleFontsImporter::GoogleFontsImporter(RemoteImporter& importer): importer(importer) {}
+
+GoogleFontsImporter::GoogleFontsImporter(RemoteImporter& importer, Options options): importer(importer), options(std::move(options)) {}
+
+std::string GoogleFontsImporter::fontPath(const std::string& relative) const{
+    return options.dir.empty() ? importer.importPath("fonts/" + relative) : options.dir + "/" + relative;
+}
 
 bool GoogleFontsImporter::isGoogleFontsUrl(const std::string& url){
     std::string host, path, query;
@@ -629,7 +636,7 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
             fileName = slug + "/" + stem + "-" + std::to_string(n) + "." + sniffed.extension();
         usedNames.insert(fileName);
 
-        const std::string local = importer.importPath("fonts/" + fileName);
+        const std::string local = fontPath(fileName);
         staging.add(local, std::move(font));
         fontFiles.push_back(local);
         edits.push_back(CssEdit{face.srcOffset, face.srcLength, cssUrl(fileName) + " format(\"" +
@@ -647,7 +654,8 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
         cssStem += "-more";
     cssStem += "-" + urlHash(url, 6);
     const std::string cssPath = importer.importPath("fonts/" + cssStem + ".css");
-    staging.add(cssPath, applyCssEdits(css, edits));
+    if (options.writeCss)
+        staging.add(cssPath, applyCssEdits(css, edits));
 
     // licenses, one file per family; a failure only leaves the license unknown
     std::vector<std::pair<std::string, std::string>> licenses;   // family, asset path
@@ -678,7 +686,7 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
                     if (lowered.find("ofl") == std::string::npos && lowered.find("license") == std::string::npos &&
                         lowered.find("ufl") == std::string::npos)
                         continue;
-                    const std::string local = importer.importPath("fonts/" + familySlug(family) + "/" + fileName);
+                    const std::string local = fontPath(familySlug(family) + "/" + fileName);
                     const std::string contents = file["contents"].get<std::string>();
                     staging.add(local, contents);
                     licenses.emplace_back(family, local);
@@ -701,6 +709,34 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
                                 return name;
                             }() + "/license");
         }
+    }
+
+    if (!options.writeManifest){
+        // fonts-only: the font files and each family's licence, nothing that names them
+        std::string committed;
+        if (options.staging){
+            for (const auto& file : staging.files()){
+                options.staging->add(file.first, file.second);
+                result.written.push_back(file.first);
+            }
+        }else if (!staging.commit(importer.target(), result.written, committed)){
+            result.error = committed;
+            importer.report(codes::DownloadFailed, at, url, "import of '" + url + "' failed: " + committed);
+            return result;
+        }
+        result.ok = true;
+        if (!licenses.empty()){
+            std::string licenseFiles;
+            for (const auto& license : licenses)
+                licenseFiles += (licenseFiles.empty() ? "" : ", ") + license.second;
+            importer.report(codes::LicenseNote, at, url, "Google Fonts " + familyList(families) + ": " + [&licenseNames]{
+                                std::string names;
+                                for (const std::string& name : licenseNames)
+                                    names += (names.empty() ? "" : ", ") + name;
+                                return names;
+                            }() + " (" + licenseFiles + "); the license file ships with the game in the assets");
+        }
+        return result;
     }
 
     ImportEntry entry;

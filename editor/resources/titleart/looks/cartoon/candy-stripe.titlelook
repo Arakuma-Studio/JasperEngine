@@ -1,0 +1,89 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/candy-stripe",
+  "revision": 1,
+  "name": {
+    "en": "Candy Stripe",
+    "ja": "キャンディストライプ"
+  },
+  "description": {
+    "en": "White face with raised red diagonal candy stripes and a gloss band, a dark red line, a white band and a dark red base below.",
+    "ja": "盛り上がった赤い斜めのキャンディ縞と光沢の帯を持つ白い面、暗い赤の線、白い帯、下にずらした暗い赤の台。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "candy",
+    "stripes",
+    "red",
+    "white",
+    "cartoon",
+    "sweet"
+  ],
+  "synonyms": {
+    "en": [
+      "candy cane",
+      "peppermint",
+      "lollipop",
+      "christmas"
+    ],
+    "ja": [
+      "キャンディ",
+      "しましま",
+      "ストライプ",
+      "飴",
+      "kyandi",
+      "shimashima"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "potta-one"
+  },
+  "style": {
+    "face": {
+      "pattern": {
+        "kind": "stripes",
+        "color": "#ff2a4a",
+        "angle": 45,
+        "relief": 0.2
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#6a0010"
+          }
+        }
+      },
+      {},
+      {
+        "width": 2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "color": "#6a0010"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

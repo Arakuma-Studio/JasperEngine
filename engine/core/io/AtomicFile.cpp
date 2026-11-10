@@ -506,6 +506,155 @@ WriteResult publishFile(const fs::path& temp, const fs::path& target, const Atom
     return publishPrepared(temp, realTarget, options, false);
 }
 
+AtomicFileWriter::~AtomicFileWriter(){
+    discard();
+}
+
+void AtomicFileWriter::closeHandle(){
+    if (handle == -1)
+        return;
+#if defined(_WIN32)
+    ::CloseHandle(reinterpret_cast<HANDLE>(handle));
+#else
+    ::close((int)handle);
+#endif
+    handle = -1;
+}
+
+void AtomicFileWriter::discard(){
+    closeHandle();
+    if (!temp.empty())
+        removeQuietly(temp);
+    temp.clear();
+}
+
+bool AtomicFileWriter::open(const fs::path& target, const AtomicWriteOptions& options){
+    discard();
+    status = {};
+    writeOptions = options;
+    realTarget = resolveTarget(target);
+    if (targetExists(realTarget) && isReadOnly(realTarget)){
+        status = failure(WriteError::ReadOnlyTarget, std::make_error_code(std::errc::permission_denied), "replace", realTarget);
+        return false;
+    }
+    if (realTarget.has_parent_path()){
+        WriteResult prepared = prepareDirectory(realTarget.parent_path(), options);
+        if (!prepared.ok()){
+            status = prepared;
+            return false;
+        }
+    }
+    const fs::path path = makeTemporarySiblingPath(realTarget);
+    std::error_code ec = injectedFault("open", path);
+    if (ec){
+        status = failure(WriteError::OpenTemp, ec, "create", path);
+        return false;
+    }
+#if defined(_WIN32)
+    // FILE_SHARE_READ: a working file is read back while this handle writes it
+    HANDLE created = ::CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (created == INVALID_HANDLE_VALUE){
+        status = failure(WriteError::OpenTemp, lastError(), "create", path);
+        return false;
+    }
+    handle = reinterpret_cast<intptr_t>(created);
+#else
+    int flags = O_WRONLY | O_CREAT | O_EXCL;
+    #ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+    #endif
+    const int fd = ::open(path.c_str(), flags, 0666);
+    if (fd < 0){
+        status = failure(WriteError::OpenTemp, lastError(), "create", path);
+        return false;
+    }
+    handle = fd;
+#endif
+    temp = path;
+    return true;
+}
+
+bool AtomicFileWriter::write(const void* data, size_t size){
+    if (!status.ok() || handle == -1)
+        return false;
+    const char* bytes = static_cast<const char*>(data);
+    size_t written = 0;
+    while (written < size){
+        const size_t chunk = std::min(kWriteChunkSize, size - written);
+        std::error_code ec = injectedFault("write", temp);
+#if defined(_WIN32)
+        DWORD done = 0;
+        if (!ec && !::WriteFile(reinterpret_cast<HANDLE>(handle), bytes + written, (DWORD)chunk, &done, nullptr))
+            ec = lastError();
+        if (!ec && done == 0)
+            ec = std::make_error_code(std::errc::io_error);
+#else
+        ssize_t done = 0;
+        if (!ec){
+            do {
+                done = ::write((int)handle, bytes + written, chunk);
+            } while (done < 0 && errno == EINTR);
+            if (done < 0)
+                ec = lastError();
+            else if (done == 0)
+                ec = std::make_error_code(std::errc::io_error);
+        }
+#endif
+        if (ec){
+            status = failure(WriteError::WriteTemp, ec, "write", temp);
+            discard();
+            return false;
+        }
+        written += (size_t)done;
+    }
+    return true;
+}
+
+WriteResult AtomicFileWriter::commit(){
+    if (handle == -1){
+        if (status.ok())
+            status = failure(WriteError::OpenTemp, std::make_error_code(std::errc::bad_file_descriptor), "open", realTarget);
+        discard();
+        return status;
+    }
+    bool synced = false;
+    if (writeOptions.durability == Durability::Document){
+        std::error_code ec = injectedFault("sync", temp);
+#if defined(_WIN32)
+        if (!ec && !::FlushFileBuffers(reinterpret_cast<HANDLE>(handle)))
+            ec = lastError();
+#elif defined(__APPLE__)
+        if (!ec && ::fcntl((int)handle, F_FULLFSYNC) != 0 && ::fsync((int)handle) != 0)
+            ec = lastError();
+#elif !defined(__EMSCRIPTEN__)
+        if (!ec && ::fsync((int)handle) != 0)
+            ec = lastError();
+#endif
+        if (ec){
+            status = failure(WriteError::SyncTemp, ec, "sync", temp);
+            discard();
+            return status;
+        }
+        synced = true;
+    }
+#if defined(_WIN32)
+    const bool closed = ::CloseHandle(reinterpret_cast<HANDLE>(handle)) != 0;
+#else
+    const bool closed = ::close((int)handle) == 0;
+#endif
+    handle = -1;
+    if (!closed){
+        status = failure(WriteError::WriteTemp, lastError(), "write", temp);
+        discard();
+        return status;
+    }
+    // Published, or removed by publishPrepared when it fails
+    fs::path published;
+    published.swap(temp);
+    status = publishPrepared(published, realTarget, writeOptions, synced);
+    return status;
+}
+
 bool renameWithRetry(const fs::path& from, const fs::path& to, const AtomicWriteOptions& options, std::error_code& error){
     int attempts = 0;
     bool cancelled = false;

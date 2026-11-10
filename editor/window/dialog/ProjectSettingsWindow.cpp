@@ -59,6 +59,9 @@
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "titleart/TitleArtSettingsCmd.h"
+#include "titleart/localisation/TitleLanguageNames.h"
+#include "util/TitleArtLanguage.h"
 #include "model/ModelCookQueue.h"
 #include "model/ModelSettingsCmd.h"
 #include "pixelart/BuiltinPalettes.h"
@@ -224,6 +227,9 @@ enum class ProjectCategory {
     TwoD,   // "2D" (S45: Sprite Atlas)
     Animation,
     PixelArt,
+    Voxels,    // drawn from its settings rows (no page of its own here)
+    TitleArt,
+    Localization,
     Count
 };
 
@@ -1146,6 +1152,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_transitionRampBuffer, sizeof(m_transitionRampBuffer), "%s", m_transitions.ramp.c_str());
     m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
+    m_titleArt = project->getTitleArtSettings();
+    m_localization = project->getLocalizationSettings();
+    m_localizationInput[0] = '\0';
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
@@ -1275,6 +1284,8 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::TwoD: draw2DSettings(); break;
         case ProjectCategory::Animation: drawAnimationSettings(); break;
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
+        case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
+        case ProjectCategory::Localization: drawLocalizationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -3377,6 +3388,193 @@ void ProjectSettingsWindow::drawNavigationSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Agent types and areas: Window > AI > Navigation (Agents and Areas tabs).");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawTitleArtSettings() {
+    const TitleArtProjectSettings defaults;
+    if (beginSettingsPanel("##TitleArtSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("title_art.auto_bake")) {
+                if (projectBeginSettingsRow("Auto Bake", m_titleArt.autoBake != defaults.autoBake)) m_titleArt.autoBake = defaults.autoBake;
+                ImGui::Checkbox("##TitleArtAutoBake", &m_titleArt.autoBake);
+                endSettingsRow("A Title Art document whose outputs exist rebakes them 500 ms after its last edit (and after an outside "
+                               "edit or a change of a font or image it uses). Bakes are not undo steps.");
+            }
+            if (settingsui::beginRow("title_art.stale_bakes_on_export")) {
+                if (projectBeginSettingsRow("Stale Bakes On Export", m_titleArt.staleBakesOnExport != defaults.staleBakesOnExport)) {
+                    m_titleArt.staleBakesOnExport = defaults.staleBakesOnExport;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##TitleArtStaleBakes", titleStaleBakesPolicyLabel(m_titleArt.staleBakesOnExport))) {
+                    for (TitleStaleBakesPolicy policy : {TitleStaleBakesPolicy::Rebake, TitleStaleBakesPolicy::Warn, TitleStaleBakesPolicy::Fail}) {
+                        if (ImGui::Selectable(titleStaleBakesPolicyLabel(policy), policy == m_titleArt.staleBakesOnExport)) m_titleArt.staleBakesOnExport = policy;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("Outputs that are stale or were never baked when an export starts: Rebake bakes them first, Warn lists "
+                               "them in the Console, Fail stops the export naming them.");
+            }
+            // S81 R58: Realtime and Glyph Atlas titles, per S56 platform group
+            auto groupRow = [&](const char* key, const char* label, TitleArtGroupValues& values, const TitleArtGroupValues& defaultValues,
+                                float lo, float hi, const char* format, const char* help, double* editor, double editorDefault) {
+                if (!settingsui::beginRow(key)) return;
+                const bool changed = values != defaultValues || (editor && *editor != editorDefault);
+                if (projectBeginSettingsRow(label, changed)) {
+                    values = defaultValues;
+                    if (editor) *editor = editorDefault;
+                }
+                const int count = editor ? 4 : 3;
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / count - ImGui::GetStyle().ItemSpacing.x;
+                const char* names[4] = {"Desktop", "Mobile", "Web", "Edit Mode"};
+                double* fields[4] = {&values.desktop, &values.mobile, &values.web, editor};
+                for (int i = 0; i < count; i++) {
+                    if (i) ImGui::SameLine();
+                    float v = (float)*fields[i];
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::DragFloat((std::string("##") + key + names[i]).c_str(), &v, 0.05f, lo, hi, format)) *fields[i] = std::clamp((double)v, (double)lo, (double)hi);
+                    ImGui::SetItemTooltip("%s", names[i]);
+                }
+                endSettingsRow(help);
+            };
+            groupRow("title_art.frame_budget_ms", "Frame Budget", m_titleArt.frameBudgetMs, defaults.frameBudgetMs, 0.25f, 16.0f, "%.2f ms",
+                     "Estimated GPU and main-thread work a frame may spend on Realtime and Glyph Atlas titles: Desktop, Mobile and Web "
+                     "games, and the editor's Edit mode. A render spreads over frames within it; the old image stays meanwhile.",
+                     &m_titleArt.editorFrameBudgetMs, defaults.editorFrameBudgetMs);
+            groupRow("title_art.release_delay_s", "Release Delay", m_titleArt.releaseDelaySeconds, defaults.releaseDelaySeconds, 0.0f, 600.0f,
+                     "%.1f s", "Seconds without a render after which the titles' render targets are freed.", nullptr, 0.0);
+            groupRow("title_art.cache_budget_mib", "Cache Budget", m_titleArt.cacheBudgetMiB, defaults.cacheBudgetMiB, 1.0f, 4096.0f,
+                     "%.0f MiB", "Memory for images shown before (toggling back to a text renders nothing) and the render caches.", nullptr, 0.0);
+            if (settingsui::beginRow("title_art.animation.flipbook_budget_mib")) {
+                const bool budgetChanged = m_titleArt.flipbookBudgetMiB != defaults.flipbookBudgetMiB || m_titleArt.flipbookBudgetAndroidEtc2MiB != defaults.flipbookBudgetAndroidEtc2MiB;
+                if (projectBeginSettingsRow("Flipbook Budget", budgetChanged)) {
+                    m_titleArt.flipbookBudgetMiB = defaults.flipbookBudgetMiB;
+                    m_titleArt.flipbookBudgetAndroidEtc2MiB = defaults.flipbookBudgetAndroidEtc2MiB;
+                }
+                const char* const names[] = {"Desktop", "Mobile", "Android ETC2", "Web"};
+                double* values[] = {&m_titleArt.flipbookBudgetMiB.desktop, &m_titleArt.flipbookBudgetMiB.mobile, &m_titleArt.flipbookBudgetAndroidEtc2MiB,
+                                    &m_titleArt.flipbookBudgetMiB.web};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 4 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 4; i++) {
+                    if (i) ImGui::SameLine();
+                    float v = (float)*values[i];
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::DragFloat((std::string("##flipbudget") + names[i]).c_str(), &v, 0.5f, 1.0f, 4096.0f, "%.0f MiB")) *values[i] = v;
+                    ImGui::SetItemTooltip("%s", names[i]);
+                }
+                endSettingsRow("Baked flipbook pages against these budgets per family: a flipbook over one fails its check.");
+            }
+            if (settingsui::beginRow("title_art.animation.default_fps")) {
+                if (projectBeginSettingsRow("Default Fps", m_titleArt.animationDefaultFps != defaults.animationDefaultFps)) m_titleArt.animationDefaultFps = defaults.animationDefaultFps;
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - helpMarkerWidth());
+                ImGui::DragInt("##animfps", &m_titleArt.animationDefaultFps, 0.5f, 1, 120);
+                endSettingsRow("The animation fps of new documents.");
+            }
+            if (settingsui::beginRow("title_art.reference_height")) {
+                if (projectBeginSettingsRow("Reference Height", m_titleArt.referenceHeight != defaults.referenceHeight)) {
+                    m_titleArt.referenceHeight = defaults.referenceHeight;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt("##TitleArtReferenceHeight", &m_titleArt.referenceHeight);
+                m_titleArt.referenceHeight = m_titleArt.referenceHeight <= 0 ? 0 : std::clamp(m_titleArt.referenceHeight, 120, 8192);
+                endSettingsRow("The display height Realtime UI titles and their prebaked first images render for. 0: the canvas height.");
+            }
+            if (settingsui::beginRow("title_art.simulate_export_characters")) {
+                if (projectBeginSettingsRow("Simulate Export Characters in Play", m_titleArt.simulateExportCharacters != defaults.simulateExportCharacters)) {
+                    m_titleArt.simulateExportCharacters = defaults.simulateExportCharacters;
+                }
+                ImGui::Checkbox("##TitleArtSimulateCharacters", &m_titleArt.simulateExportCharacters);
+                endSettingsRow("In Play, characters outside a Realtime or Glyph Atlas title's Characters set draw as nothing, as in a build.");
+            }
+            // S86 R37: the tier of Realtime 3D titles whose Quality Tier is Auto, per platform
+            if (settingsui::beginRow("title_art.realtime_3d_quality")) {
+                if (projectBeginSettingsRow("Realtime 3D Quality", m_titleArt.realtime3DQuality != defaults.realtime3DQuality)) {
+                    m_titleArt.realtime3DQuality = defaults.realtime3DQuality;
+                }
+                static const char* const platforms[6] = {"windows", "linux", "macos", "ios", "android", "web"};
+                static const char* const labels[6] = {"Windows", "Linux", "macOS", "iOS", "Android", "HTML5"};
+                static const char* const tiers[3] = {"high", "medium", "low"};
+                static const char* const tierLabels[3] = {"High", "Medium", "Low"};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 6 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 6; i++) {
+                    if (i) ImGui::SameLine();
+                    std::string* tier = m_titleArt.realtime3DQuality.find(platforms[i]);
+                    int current = 0;
+                    for (int t = 0; t < 3; t++) if (*tier == tiers[t]) current = t;
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::BeginCombo((std::string("##TitleArt3DQuality") + platforms[i]).c_str(), tierLabels[current])) {
+                        for (int t = 0; t < 3; t++) {
+                            if (ImGui::Selectable(tierLabels[t], t == current)) *tier = tiers[t];
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SetItemTooltip("%s", labels[i]);
+                }
+                endSettingsRow("The quality tier of Realtime 3D titles whose Quality Tier is Auto, per platform (Windows, Linux, macOS, iOS, "
+                               "Android, HTML5). A device tier wins where one applies; GLES3 and WebGL2 draw High as Medium.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawLocalizationSettings() {
+    if (beginSettingsPanel("##LocalizationSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("localization.languages")) {
+                if (projectBeginSettingsRow("Languages", !m_localization.languages.empty())) m_localization.languages.clear();
+                int remove = -1, up = -1;
+                for (size_t i = 0; i < m_localization.languages.size(); i++) {
+                    ImGui::PushID((int)i);
+                    ImGui::TextUnformatted(titleLanguageLabel(m_localization.languages[i]).c_str());
+                    ImGui::SameLine();
+                    if (i > 0 && ImGui::SmallButton("Up")) up = (int)i;
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = (int)i;
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_localization.languages.erase(m_localization.languages.begin() + remove);
+                if (up > 0) std::swap(m_localization.languages[(size_t)up], m_localization.languages[(size_t)up - 1]);
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::InputTextWithHint("##LocalizationAdd", "de, pt-BR, zh-Hant", m_localizationInput, sizeof(m_localizationInput));
+                ImGui::SameLine();
+                std::string error;
+                const bool valid = TitleArtLanguage::isValid(m_localizationInput, &error);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::Button("Add")) {
+                    const std::string code = TitleArtLanguage::canonicalize(m_localizationInput);
+                    if (std::find(m_localization.languages.begin(), m_localization.languages.end(), code) == m_localization.languages.end()) {
+                        m_localization.languages.push_back(code);
+                    }
+                    m_localizationInput[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                if (!valid && m_localizationInput[0]) ImGui::TextDisabled("%s", error.c_str());
+                endSettingsRow("The languages the game ships, in order. Title Art bakes and fonts of other languages are left out of "
+                               "builds with a warning. Empty ships every language of every title.");
+            }
+            if (settingsui::beginRow("localization.default_language")) {
+                if (projectBeginSettingsRow("Default Language", !m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::string shown = m_localization.defaultLanguage.empty() ? "Auto (" + m_localization.effectiveDefault() + ")"
+                                                                                 : titleLanguageLabel(m_localization.defaultLanguage);
+                if (ImGui::BeginCombo("##LocalizationDefault", shown.c_str())) {
+                    if (ImGui::Selectable("Auto (the first language, else en)", m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                    for (const std::string& code : m_localization.languages) {
+                        if (ImGui::Selectable(titleLanguageLabel(code).c_str(), code == m_localization.defaultLanguage)) m_localization.defaultLanguage = code;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
+                               "TitleArt.setLanguage and the device's languages come first.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
+                        "language with the Game view's Device > Language.");
     }
     endSettingsPanel();
 }
@@ -5860,6 +6058,8 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setWindowIcon(m_windowIcon);
 
+    m_project->getLocalizationSettings() = m_localization;
+
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
     presentation.allowedOrientations = m_allowedOrientations ? m_allowedOrientations : PresentationSettings{}.allowedOrientations;
@@ -6079,6 +6279,13 @@ bool ProjectSettingsWindow::applySettings() {
     }
     if (m_navigation != m_project->getNavigationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new NavigationSettingsCmd(m_project, m_navigation));
+    }
+
+    // Title Art: one undoable step of the project history
+    if (m_titleArt != m_project->getTitleArtSettings()) {
+        auto* command = new TitleArtSettingsCmd(m_project, m_project->getTitleArtSettings(), m_titleArt);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
     }
 
     // Debug: one undoable step of the project history

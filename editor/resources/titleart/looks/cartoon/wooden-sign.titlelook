@@ -1,0 +1,100 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/wooden-sign",
+  "revision": 1,
+  "name": {
+    "en": "Wooden Sign",
+    "ja": "木の看板"
+  },
+  "description": {
+    "en": "Pale wood face with a brushed grain, a dark brown line, a grained wooden box plate with rounded corners and a dark base below.",
+    "ja": "ブラシの木目を持つ淡い木の面、焦げ茶の線、角の丸い木目の箱型プレート、下にずらした暗い台。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "wood",
+    "sign",
+    "plate",
+    "cartoon",
+    "rustic",
+    "brown"
+  ],
+  "synonyms": {
+    "en": [
+      "signboard",
+      "camp sign",
+      "plank",
+      "game ui"
+    ],
+    "ja": [
+      "看板",
+      "木",
+      "立て札",
+      "木目",
+      "kanban",
+      "tatefuda"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "lilita-one",
+    "ja": "potta-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#f0d090"
+      },
+      "texture": {
+        "kind": "brushed"
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#4a2a10"
+          }
+        }
+      },
+      {
+        "width": 5,
+        "plate": {
+          "kind": "box",
+          "corner": 3
+        },
+        "material": {
+          "fill": {
+            "color": "#8a5a2a"
+          },
+          "texture": {
+            "kind": "brushed"
+          }
+        }
+      },
+      {
+        "width": 2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "color": "#2a1406"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

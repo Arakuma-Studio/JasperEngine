@@ -78,7 +78,9 @@ const ToolModule TOOL_MODULES[] = {
     {registerVoxelTools, "Voxel Volumes", "voxels"},   // T6
     {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
+    {registerImageDiffTools, "Image comparison", "editor_tools"},   // S80
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
+    {registerTilesetTools, "Tilemaps: tilesets and map import", "tilemaps"},   // S50
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
     {registerPixelArtTools, "Pixel art: the validator", "pixel_art"},   // S42
     {registerPixelFxTools, "Pixel art: effect contact sheets and checks", "pixel_art"},   // S48
@@ -86,6 +88,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
+    {registerTitleArtTools, "Title Art", "title_art"},   // S80
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
 };

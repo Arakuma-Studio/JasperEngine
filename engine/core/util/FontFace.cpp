@@ -292,7 +292,7 @@ namespace {
 
 }
 
-std::shared_ptr<FontFace> FontFace::loadFile(const std::string& path, int faceIndex, std::string* error){
+std::shared_ptr<FontFace> FontFace::loadFile(const std::string& path, int faceIndex, std::string* error, FontFaceRasterizer rasterizer){
     Data data;
     if (path.empty() || data.open(path.c_str()) != FileErrors::FILEDATA_OK){
         if (error)
@@ -306,14 +306,15 @@ std::shared_ptr<FontFace> FontFace::loadFile(const std::string& path, int faceIn
     fontFace->bytes = fontFace->storage.data();
     fontFace->length = fontFace->storage.size();
 
-    if (!fontFace->init(faceIndex, error))
+    if (!fontFace->init(faceIndex, error, rasterizer))
         return nullptr;
 
     return fontFace;
 }
 
 std::shared_ptr<FontFace> FontFace::loadMemory(const unsigned char* data, size_t length, int faceIndex,
-                                               bool copy, const std::string& label, std::string* error){
+                                               bool copy, const std::string& label, std::string* error,
+                                               FontFaceRasterizer rasterizer){
     std::shared_ptr<FontFace> fontFace(new FontFace());
     fontFace->label = label;
     if (copy && data){
@@ -324,7 +325,7 @@ std::shared_ptr<FontFace> FontFace::loadMemory(const unsigned char* data, size_t
     }
     fontFace->length = data ? length : 0;
 
-    if (!fontFace->init(faceIndex, error))
+    if (!fontFace->init(faceIndex, error, rasterizer))
         return nullptr;
 
     return fontFace;
@@ -339,7 +340,7 @@ FontFace::~FontFace(){
         hb_blob_destroy(blob);
 }
 
-bool FontFace::init(int index, std::string* error){
+bool FontFace::init(int index, std::string* error, FontFaceRasterizer rasterizer){
     faceIndex = index;
 
     if (bytes && length >= 4 && (std::memcmp(bytes, "wOFF", 4) == 0 || std::memcmp(bytes, "wOF2", 4) == 0)){
@@ -361,7 +362,9 @@ bool FontFace::init(int index, std::string* error){
     }
 
     size_t offset = 0;
-    if (!findFontOffset(bytes, length, index, offset) || !stbtt_InitFont(&info, bytes, (int)offset)){
+    const bool found = findFontOffset(bytes, length, index, offset);
+    rasterizable = found && stbtt_InitFont(&info, bytes, (int)offset);
+    if (!found || (!rasterizable && rasterizer == FontFaceRasterizer::Required)){
         if (error)
             *error = "Failed to initialize font: " + label;
         return false;
@@ -371,7 +374,7 @@ bool FontFace::init(int index, std::string* error){
     face = hb_face_create(blob, (unsigned int)index);
     font = hb_font_create(face);
 
-    if (!font || face == hb_face_get_empty() || hb_face_get_upem(face) == 0){
+    if (!font || face == hb_face_get_empty() || hb_face_get_upem(face) == 0 || hb_face_get_glyph_count(face) == 0){
         if (error)
             *error = "Failed to create shaper for font: " + label;
         return false;
@@ -392,7 +395,20 @@ bool FontFace::init(int index, std::string* error){
 }
 
 void FontFace::readTables(){
-    stbtt_GetFontVMetrics(&info, &ascender, &descender, &lineGap);
+    if (rasterizable){
+        stbtt_GetFontVMetrics(&info, &ascender, &descender, &lineGap);
+    }else{
+        //the hhea values stb_truetype reads
+        hb_blob_t* hhea = hb_face_reference_table(face, HB_TAG('h', 'h', 'e', 'a'));
+        unsigned int hheaLength = 0;
+        const unsigned char* hheaData = (const unsigned char*)hb_blob_get_data(hhea, &hheaLength);
+        if (hheaData && hheaLength >= 10){
+            ascender = readS16(hheaData + 4);
+            descender = readS16(hheaData + 6);
+            lineGap = readS16(hheaData + 8);
+        }
+        hb_blob_destroy(hhea);
+    }
 
     bool hasOS2 = false;
     int fsSelection = 0;
@@ -439,8 +455,13 @@ void FontFace::readTables(){
         xHeight = os2XHeight;
     }else{
         int x0, y0, x1, y1;
-        if (stbtt_GetCodepointBox(&info, 'x', &x0, &y0, &x1, &y1) && y1 > 0){
+        hb_codepoint_t glyph = 0;
+        hb_glyph_extents_t extents = {};
+        if (rasterizable && stbtt_GetCodepointBox(&info, 'x', &x0, &y0, &x1, &y1) && y1 > 0){
             xHeight = y1;
+        }else if (!rasterizable && hb_font_get_nominal_glyph(font, 'x', &glyph) && hb_font_get_glyph_extents(font, glyph, &extents) &&
+                  extents.y_bearing > 0){
+            xHeight = extents.y_bearing;
         }else{
             xHeight = ascender / 2;
         }
@@ -504,20 +525,33 @@ bool FontFace::hasPostTable() const{
 }
 
 uint32_t FontFace::getGlyphIndex(uint32_t codepoint) const{
+    if (!rasterizable){
+        hb_codepoint_t glyph = 0;
+        return hb_font_get_nominal_glyph(font, codepoint, &glyph) ? (uint32_t)glyph : 0;
+    }
     return (uint32_t)stbtt_FindGlyphIndex(&info, (int)codepoint);
 }
 
 
 float FontFace::scaleForPixelHeight(float pixels) const{
+    if (!rasterizable)
+        return (ascender - descender) != 0 ? pixels / (float)(ascender - descender) : 0.0f;
     return stbtt_ScaleForPixelHeight(&info, pixels);
 }
 
 float FontFace::scaleForEmSize(float pixels) const{
+    if (!rasterizable)
+        return pixels / (float)unitsPerEm;
     return stbtt_ScaleForMappingEmToPixels(&info, pixels);
 }
 
 bool FontFace::rasterizeGlyph(uint32_t glyphIndex, float scale, std::vector<unsigned char>& pixels,
                               int& width, int& height, int& xoff, int& yoff) const{
+    if (!rasterizable){
+        width = height = xoff = yoff = 0;
+        pixels.clear();
+        return false;
+    }
     int x0, y0, x1, y1;
     stbtt_GetGlyphBitmapBox(&info, (int)glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
 
@@ -540,9 +574,15 @@ bool FontFace::rasterizeGlyph(uint32_t glyphIndex, float scale, std::vector<unsi
 }
 
 float FontFace::getGlyphAdvance(uint32_t glyphIndex, float scale) const{
+    if (!rasterizable)
+        return hb_font_get_glyph_h_advance(font, glyphIndex) * scale;
     int advance, leftSideBearing;
     stbtt_GetGlyphHMetrics(&info, (int)glyphIndex, &advance, &leftSideBearing);
     return advance * scale;
+}
+
+bool FontFace::canRasterize() const{
+    return rasterizable;
 }
 
 const stbtt_fontinfo& FontFace::getInfo() const{

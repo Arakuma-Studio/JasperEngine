@@ -1,0 +1,110 @@
+{
+  "presets": [
+    {
+      "id": "highlights",
+      "name": "Highlight Glints",
+      "aliases": [
+        "highlight glints",
+        "ハイライトのキラキラ"
+      ],
+      "source": "glints/highlights",
+      "params": {},
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "hero",
+      "name": "Hero Glint",
+      "aliases": [
+        "hero glint",
+        "ヒーローグリント"
+      ],
+      "source": "glints/hero",
+      "params": {
+        "placement": "hero",
+        "size": 52,
+        "color": "#fff6dc",
+        "intensity": 140
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "stars",
+      "name": "Star Glints",
+      "aliases": [
+        "star glints",
+        "flare stars"
+      ],
+      "source": "glints/stars",
+      "params": {
+        "placement": "peaks",
+        "stars": 4,
+        "threshold": 80,
+        "size": 90,
+        "size_variation": 50,
+        "rays": "eight",
+        "color": "#ffffff",
+        "intensity": 140
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "rainbow",
+      "name": "Rainbow Glints",
+      "aliases": [
+        "rainbow glints",
+        "spectral glints",
+        "虹のキラキラ"
+      ],
+      "source": "glints/rainbow",
+      "params": {
+        "large": 4,
+        "small": 6,
+        "size": 64,
+        "threshold": 40,
+        "spectral": true,
+        "color": "#ffffff",
+        "intensity": 140
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    },
+    {
+      "id": "scatter",
+      "name": "Scattered Sparkles",
+      "aliases": [
+        "scattered sparkles",
+        "sparkle scatter"
+      ],
+      "source": "glints/scatter",
+      "params": {
+        "placement": "scatter",
+        "count": 10,
+        "size": 26,
+        "spread": 10,
+        "color": "#e8fbff",
+        "intensity": 110,
+        "seed": 3
+      },
+      "layer": {
+        "blend": "add",
+        "place": "above",
+        "effects": []
+      }
+    }
+  ]
+}

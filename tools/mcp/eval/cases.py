@@ -1729,6 +1729,56 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "make_title_logo",
+        "kind": "guard",
+        "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
+                         "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
+                         "names the area and its tool.",
+        "text_at_issue": "Guide 'Other areas': 'titles (edit_title)' and the generated Tool groups list (title_art)",
+        "source": "guide index entry (S80 R60, AC40); no failure on record",
+        "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
+        "mocks": [
+            {"tool": "tool_groups", "result": ok("Enabled title_art.", {"enabled": ["title_art"]})},
+            {"tool": "edit_title", "result": ok("Created assets/titles/jackpot.titleart; applied 2 op(s).",
+                                                {"path": "assets/titles/jackpot.titleart", "rev": 2, "applied": 2})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/jackpot.titleart (rev 2) at 768 x 432.", {"rev": 2})},
+            {"tool": "export_title", "result": ok("Baked 1 output(s) of assets/titles/jackpot.titleart.",
+                                                  {"files": [{"output": "main", "path": "assets/titles/jackpot.titleart.png"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title"}],
+                   "must_not_call": ["create_texture", "write_file", "synthesize_texture"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "translate_title_de_ja",
+        "kind": "guard",
+        "what_happened": "A title is translated inside its .titleart (add_language, one set_translation per text layer, in one "
+                         "edit_title batch), then check_title {languages: all} is read and its fixes applied; an agent must not "
+                         "duplicate the layers per language or write a second document (S87 D1, D2).",
+        "text_at_issue": "jasper://docs/title-art 'Languages': the translation loop",
+        "source": "S87 R60, AC30; no failure on record",
+        "prompt": "Translate the title assets/titles/logo.titleart (it says BIG WIN) into German and Japanese, and make sure "
+                  "both versions fit.",
+        "groups_enabled": ["title_art"],
+        "mocks": [
+            {"tool": "get_title", "result": ok("assets/titles/logo.titleart rev 3: 1 layers, canvas 1024 x 512, 1 output(s), 0 not fresh, 0 problem(s).",
+                                               {"path": "assets/titles/logo.titleart", "rev": 3,
+                                                "layers": [{"path": "Title", "id": "0000000a", "type": "text", "text": "BIG WIN", "max_chars": 0}]})},
+            {"tool": "edit_title", "result": ok("Applied 4 op(s) to assets/titles/logo.titleart (Edit Title Art (12 changes)).",
+                                                {"path": "assets/titles/logo.titleart", "rev": 4, "applied": 4})},
+            {"tool": "check_title", "result": ok("PASS assets/titles/logo.titleart: 9 pass, 0 warn, 0 fail, 0 skipped.",
+                                                 {"verdict": "PASS", "checks": [{"id": "languages_complete", "status": "PASS", "language": "de"},
+                                                                                {"id": "languages_complete", "status": "PASS", "language": "ja"},
+                                                                                {"id": "text_overflow", "status": "PASS", "language": "de"}]})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/logo.titleart (rev 4) at 768 x 384.", {"rev": 4,
+                                                  "language_rows": ["en", "de \u00b7 fit 0.86", "ja"]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title", "args": {"ops": [{"op": "add_language"}]}},
+                             {"tool": "check_title"}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 16,
+    },
+    {
         "id": "guard_nav_carve_tiles_per_tick",
         "kind": "guard",
         "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "
@@ -4695,6 +4745,127 @@ CASES = [
         "checks": {"calls": [{"tool": "set_project_settings",
                               "args": {"values": {"tags_and_layers.sorting_layers": "re:(?s)3.*Foreground|Foreground.*3"}}}]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_tilemap_terrain_needs_tile_of_terrain",
+        "kind": "bad",
+        "what_happened": "Asked to paint a lake, agents filled the area with one water tile, so the shore had no transitions; "
+                         "the terrain op paints the terrain and chooses the edge tiles (S50 R23, R75).",
+        "text_at_issue": "edit_tilemap description: 'Ops: jasper://docs/tilemaps'; guide 'Other areas': "
+                         "'tilemaps (edit_tilemap)'; jasper://docs/tilemaps (terrain op)",
+        "source": "S50 R75 (new op vocabulary); paraphrased from the design review",
+        "prompt": "In the open scene, the Tilemap Layer 12 uses assets/Tilesets/overworld.tileset, which has a terrain named "
+                  "Water with its edge tiles set up. Paint a lake of Water from cell (2, 2) to (8, 6), with proper shores.",
+        "mocks": [
+            {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
+            {"tool": "edit_tilemap", "result": ok("Layer \"Tilemap\": 35 cells, 35 changed (one undo step).", {"changed_cells": 35, "warnings": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tilemap", "args": {"ops": [{"op": "terrain"}]}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tilemap_preview_before_large_edit",
+        "kind": "guard",
+        "what_happened": "preview: true on edit_tilemap runs the ops and returns the result and image without writing; "
+                         "an agent asked only to see the result must use it (S50 R75).",
+        "text_at_issue": "edit_tilemap description: 'preview writes nothing'",
+        "source": "S50 R75",
+        "prompt": "Show me what filling Tilemap Layer 12 from (0, 0) to (3, 3) with the tile grass would look like, without "
+                  "changing the scene.",
+        "mocks": [
+            {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
+            {"tool": "edit_tilemap", "result": ok("Preview only (nothing written). Layer \"Tilemap\": 16 cells, 16 changed.", {"preview": True, "changed_cells": 16})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tilemap", "args": {"preview": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tileset_check_before_painting",
+        "kind": "guard",
+        "what_happened": "edit_tileset check: true returns the terrain coverage report (the masks without a tile) and "
+                         "writes nothing; asked which masks a tileset lacks, agents should use it rather than read the "
+                         ".tileset JSON and work the masks out themselves, or take a preview's contact sheet (S50 R77). "
+                         "The prompt names neither checking nor leaving the file alone: the description is what "
+                         "tells the agent the call exists and is safe.",
+        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'",
+        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers)",
+        "prompt": "Which terrain masks of assets/Tilesets/overworld.tileset have no tile yet?",
+        "files": {"assets/Tilesets/overworld.tileset": '{\n  "version": 1,\n  "name": "Overworld",\n  "tile_size": [16, 16],\n'
+                  '  "sources": [{"id": 0, "kind": "texture", "texture": {"path": "Tilesets/overworld.png"}, "tile_size": [16, 16]}],\n'
+                  '  "terrain_sets": [{"name": "Ground", "mode": "blob", "terrains": [{"name": "Grass", "color": "#5fa04eff"}]}],\n'
+                  '  "tiles": [{"id": 0, "source": 0, "at": [0, 0], "terrain": {"set": 0, "center": 0}}],\n  "next_id": 1\n}\n'},
+        "mocks": [
+            {"tool": "edit_tileset", "args": {"check": True},
+             "result": ok("WARN: 1 tiles, 46 missing masks, 0 problems.",
+                          {"verdict": "WARN", "tiles": 1, "missing_masks": 46,
+                           "terrain_sets": [{"name": "Ground", "mode": "blob", "required": 47, "missing_count": 46}], "problems": []})},
+            {"tool": "edit_tileset",
+             "result": ok("Preview of assets/Tilesets/overworld.tileset: 1 tiles (WARN). output: true writes it.",
+                          {"path": "assets/Tilesets/overworld.tileset", "created": False, "tiles": 1,
+                           "report": {"verdict": "WARN", "missing_masks": 46},
+                           "next": "A preview: nothing was written. Pass output: true to write it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tileset", "args": {"check": True}}],
+                   "must_not_call": [{"tool": "edit_tileset", "args": {"output": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tileset_image_other_use_reported",
+        "kind": "guard",
+        "what_happened": "Making a texture a tileset's image switches its import to a pixel-art Sprite (no mips, point "
+                         "filtering, uncompressed; S50 R12, R53), also when a material uses the same image. Only edit_tileset's "
+                         "`next` says the material's texture changed; asked to report what changes for the material, the agent "
+                         "must pass it on instead of answering that nothing changed.",
+        "text_at_issue": "edit_tileset result next: '<image> now imports as a pixel-art Sprite (no mips, point filtering, "
+                         "uncompressed) for the tileset; it is also used by <use>, which now reads it as a Sprite too.'",
+        "source": "S50 review: a tileset image imported before its .tileset kept S14's default type (mips, seams in exports)",
+        "prompt": "Make a tileset from assets/art/bricks.png with 16x16 tiles. The Wall material uses the same image: tell me "
+                  "whether anything about it changes.",
+        "mocks": [
+            {"tool": "edit_tileset",
+             "result": ok("Wrote assets/art/bricks.tileset: 8 tiles (PASS, one undo step).",
+                          {"path": "assets/art/bricks.tileset", "created": True, "tiles": 8, "sources": 1,
+                           "written": "assets/art/bricks.tileset", "warnings": [],
+                           "next": "assets/art/bricks.png now imports as a pixel-art Sprite (no mips, point filtering, "
+                                   "uncompressed) for the tileset; it is also used by baseColorTexture of "
+                                   "assets/materials/Wall.material, which now reads it as a Sprite too."})},
+        ],
+        "checks": {"calls": ["edit_tileset"], "reply_must": [r"sprite|mip|point|filter|compress"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_import_tilemap_preview_first",
+        "kind": "guard",
+        "what_happened": "import_tilemap previews by default and writes only with output: true; asked what a map would bring "
+                         "in, agents should take the preview (grids, layers, tilesets, skipped items) instead of reading "
+                         "the map's JSON by hand, and must not import it (S50 R78). The prompt does not say the call is "
+                         "safe: only the description does.",
+        "text_at_issue": "import_tilemap description: 'a preview (grids, layers, tilesets, skipped, warnings) until output: true writes'",
+        "source": "S50 R78; S50 review (the earlier prompt said 'Don't import it yet', which made the must-not trivially pass)",
+        "prompt": "What would importing assets/maps/level.tmj bring into the open scene?",
+        "files": {"assets/maps/level.tmj": '{"type": "map", "orientation": "orthogonal", "width": 10, "height": 12, "tilewidth": 16, '
+                  '"tileheight": 16, "infinite": false, "layers": [{"type": "tilelayer", "name": "Ground", "width": 10, "height": 12, '
+                  '"data": [1, 1, 1]}, {"type": "objectgroup", "name": "Spawns", "objects": []}], '
+                  '"tilesets": [{"firstgid": 1, "source": "overworld.tsj"}]}\n'},
+        "mocks": [
+            {"tool": "import_tilemap", "result": ok("Preview of assets/maps/level.tmj: 1 grid(s), 2 layer(s), 1 tileset(s), 120 tiles. output: true imports it.",
+                                                     {"preview": True, "counts": {"grids": 1, "layers": 2, "tilesets": 1, "tiles": 120},
+                                                      "next": "A preview: nothing was written. Pass output: true to import it (one undo step)."})},
+        ],
+        "checks": {"must_not_call": [{"tool": "import_tilemap", "args": {"output": True}}],
+                   "calls": [{"tool": "import_tilemap"}]},
+        "max_turns": 6,
+    },
+    {
+        "id": "control_tilemap_trigger_word_is_not_edit",
+        "kind": "control",
+        "what_happened": "A question about what a tilemap is must not pull in the tilemap tools.",
+        "text_at_issue": "Guide 'Other areas': 'tilemaps (edit_tilemap)'",
+        "source": "S50 R82 (control for the Other areas entry)",
+        "prompt": "In one sentence, what is the difference between a Sprite and a Tilemap in a 2D game? Answer without using any tools.",
+        "mocks": [],
+        "checks": {"must_not_call": ["edit_tilemap", "get_tilemap"]},
+        "max_turns": 2,
     },
     {
         "id": "bad_sprite_batch_without_sprite",

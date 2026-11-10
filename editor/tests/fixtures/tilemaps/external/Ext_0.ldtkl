@@ -1,0 +1,16 @@
+{
+  "__header__": {"fileType": "LDtk Project JSON", "app": "LDtk", "appVersion": "1.5.3"},
+  "identifier": "Ext_0",
+  "worldX": 100,
+  "worldY": 50,
+  "pxWid": 32,
+  "pxHei": 16,
+  "layerInstances": [
+    {
+      "__identifier": "Tiles", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 1,
+      "layerDefUid": 12, "visible": true, "__opacity": 1, "__pxTotalOffsetX": 0, "__pxTotalOffsetY": 0,
+      "__tilesetDefUid": 1, "autoLayerTiles": [], "intGridCsv": [], "entityInstances": [],
+      "gridTiles": [{"px": [16, 0], "src": [16, 0], "f": 0}]
+    }
+  ]
+}

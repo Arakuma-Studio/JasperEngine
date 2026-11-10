@@ -1,0 +1,135 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/carved-wood",
+  "revision": 1,
+  "name": {
+    "en": "Carved Wood",
+    "ja": "木彫り"
+  },
+  "description": {
+    "en": "Oak gradient face with a brushed grain over a wood pattern and a chamfer, a dark brown line and a grained wooden border, over a drop shadow.",
+    "ja": "木目模様にブラシの木目を重ね面取りしたオーク色グラデーションの面、焦げ茶の線、木目の木の縁、ドロップシャドウ。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "wood",
+    "carved",
+    "brown",
+    "rustic",
+    "fantasy",
+    "chamfer"
+  ],
+  "synonyms": {
+    "en": [
+      "timber",
+      "oak",
+      "tavern sign",
+      "woodcut"
+    ],
+    "ja": [
+      "木",
+      "木彫り",
+      "木目",
+      "看板",
+      "ki",
+      "mokume"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "medievalsharp",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#c08850"
+            },
+            {
+              "pos": 1,
+              "color": "#7a4a20"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "chamfer",
+        "size": 2,
+        "depth": 4
+      },
+      "pattern": {
+        "kind": "wood",
+        "color": "#5a3010",
+        "color2": "#c89060",
+        "opacity": 0.2
+      },
+      "texture": {
+        "kind": "brushed",
+        "amount": 0.6
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#2a1606"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#8a5a2a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#5a3414"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "chamfer",
+            "size": 1
+          },
+          "texture": {
+            "kind": "brushed",
+            "amount": 0.5
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "opacity": 0.55
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

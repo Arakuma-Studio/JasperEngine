@@ -364,7 +364,8 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
     bodyLinesObj->clearLines();
     bodyLinesObj->setVisible(transform.visible && visible);
 
-    if (!transform.visible || !visible || body.colliders.empty()){
+    const bool hasGenerated = body.generated && !body.generated->chunks.empty();
+    if (!transform.visible || !visible || (body.colliders.empty() && !hasGenerated)){
         return;
     }
 
@@ -464,6 +465,21 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
         addArc(Vector2(x1 - r, y1 - r), r, 0.0f, 0.5f * M_PI, 8);
         addArc(Vector2(x0 + r, y1 - r), r, 0.5f * M_PI, M_PI, 8);
     };
+
+    if (hasGenerated){
+        for (const auto& [coord, chunk] : body.generated->chunks){
+            for (const Collider2D& shape : chunk.colliders){
+                const Vector4 color = shape.sensor ? sensorColor : solidColor;
+                const size_t count = shape.points.size();
+                const bool closed = shape.loop || shape.type == Collider2DType::POLYGON;
+                // an open chain's first and last edges are ghosts: its neighbouring chunk draws them
+                const size_t end = closed ? count : (count > 2 ? count - 2 : 0);
+                for (size_t j = closed ? 0 : 1; j < end; j++){
+                    bodyLinesObj->addLine(toWorld(scaledPoint(shape.points[j])), toWorld(scaledPoint(shape.points[(j + 1) % count])), color);
+                }
+            }
+        }
+    }
 
     for (size_t i = 0; i < body.colliders.size(); i++){
         const Collider2D& shape = body.colliders[i];

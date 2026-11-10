@@ -1,0 +1,85 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/fluffy-cloud",
+  "revision": 1,
+  "name": {
+    "en": "Fluffy Cloud",
+    "ja": "ふわふわ雲"
+  },
+  "description": {
+    "en": "White face with a wide softened bevel like a cloud, a round-joined pale blue border and a soft white glow.",
+    "ja": "雲のように広く柔らかいベベルの白い面、丸い角の淡い青の縁、柔らかい白いグロー。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "cloud",
+    "white",
+    "soft",
+    "cartoon",
+    "fluffy",
+    "sky"
+  ],
+  "synonyms": {
+    "en": [
+      "cotton",
+      "dreamy",
+      "puffy cloud",
+      "kids"
+    ],
+    "ja": [
+      "雲",
+      "ふわふわ",
+      "白",
+      "空",
+      "kumo",
+      "fuwafuwa"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "mochiy-pop-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style": {
+    "face": {
+      "bevel": {
+        "enabled": true,
+        "size": 8,
+        "soften": 2
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "join": "round",
+        "material": {
+          "fill": {
+            "color": "#9ccdf5"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ffffff",
+        "size": 16
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

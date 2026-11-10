@@ -944,6 +944,7 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
         if (EmitterRuntime* child = runtime.child(c))
             playSounds(*child, emitterPosition);
     }
+    // free voices live in the sound layer (S34's soundlayer module): a build without it drops the events
     const CompiledEffect* effect = runtime.effect();
     if (runtime.soundEvents().empty() || !effect)
         return;

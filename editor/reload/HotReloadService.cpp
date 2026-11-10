@@ -14,6 +14,7 @@
 #include "Project.h"
 #include "model/ModelCookQueue.h"
 #include "texture/TextureCookQueue.h"
+#include "tilemap/import/TilemapImportApply.h"
 #include "log/Logger.h"
 
 #include <algorithm>
@@ -70,6 +71,7 @@ namespace {
         else if (kind == "ui") noun = "UI file";
         else if (kind == "particles") noun = "particle effect";
         else if (kind == "palette") noun = "palette";
+        else if (kind == "tileset") noun = "tileset";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -167,6 +169,7 @@ void HotReloadService::detach() {
     externallyChangedScenes.clear();
     projectFileChanged = false;
     deferredScripts.clear();
+    deferredLinkedMaps.clear();
     assetRefreshAfterPlay = false;
     lateProblems.clear();
     lateUi.clear();
@@ -408,8 +411,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // and its load problems are the call's)
             // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
             // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "graph" ||
-                kind == "aseprite" || kind == "font")
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "tileset" || kind == "graph" ||
+                kind == "aseprite" || kind == "font" || kind == "titleart")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
@@ -480,15 +483,37 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         for (const FileChange& change : changes) paths.push_back(change.path);
         project->audioFilesChanged(paths);
     }
+    {
+        // S50 R47: linked tile maps, after this pass: they write .tileset files and edit the scene,
+        // which Play would throw away at Stop, so a change made in Play waits for it
+        std::vector<fs::path> paths;
+        for (const FileChange& change : changes) {
+            if (change.kind != FileChangeKind::Removed && !change.directory) paths.push_back(change.path);
+        }
+        if (playing) {
+            for (const fs::path& path : paths) {
+                if (std::find(deferredLinkedMaps.begin(), deferredLinkedMaps.end(), path) == deferredLinkedMaps.end()) deferredLinkedMaps.push_back(path);
+            }
+        } else {
+            reimportLinkedMaps(paths);
+        }
+    }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadVoxelVolumes(ctx, files(external, "voxel"));
     reload::reloadPalettes(ctx, both("palette"));
+    reload::reloadTilesets(ctx, both("tileset"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");
         graphDocuments.insert(graphDocuments.end(), graphsGone.begin(), graphsGone.end());
         reload::reloadGraphs(ctx, files(external, "graph"), graphDocuments);
     }
     reload::reloadFonts(ctx, files(external, "font"));
+    {
+        // Title Art: its documents, and those reading a changed font, image or SVG
+        std::vector<fs::path> titleAssets = files(external, "font");
+        for (const fs::path& path : textures) titleAssets.push_back(path);
+        reload::reloadTitleArt(ctx, both("titleart"), titleAssets);
+    }
     {
         std::vector<fs::path> bitmapFonts = both("font");
         for (const fs::path& path : both("texture")) bitmapFonts.push_back(path);
@@ -646,8 +671,21 @@ bool HotReloadService::update() {
             assetRefreshAfterPlay = false;
             project->refreshAssetDatabase(true);
         }
+        if (!deferredLinkedMaps.empty()) {
+            std::vector<fs::path> maps;
+            maps.swap(deferredLinkedMaps);
+            reimportLinkedMaps(maps);
+        }
     }
     return adopted;
+}
+
+void HotReloadService::reimportLinkedMaps(const std::vector<fs::path>& paths) {
+    if (paths.empty()) return;
+    Project* target = project;
+    getEditorHost().enqueueMainThreadTask([target, paths]() {
+        if (HotReloadService::get().getProject() == target) tilemapimport::linkedSourcesChanged(*target, paths);
+    });
 }
 
 void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning) {

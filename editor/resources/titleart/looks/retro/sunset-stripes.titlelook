@@ -1,0 +1,100 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/sunset-stripes",
+  "revision": 1,
+  "name": {
+    "en": "Sunset Stripes",
+    "ja": "サンセットストライプ"
+  },
+  "description": {
+    "en": "Yellow to orange to pink to purple sunset face per line, cut by dark horizontal stripes, in a thick dark violet outline.",
+    "ja": "行ごとの黄色からオレンジ、ピンク、紫への夕焼けの面を暗い水平の縞で切り、太い暗い紫の縁取り。"
+  },
+  "family": "retro",
+  "tags": [
+    "sunset",
+    "stripes",
+    "retro",
+    "80s",
+    "gradient",
+    "purple"
+  ],
+  "synonyms": {
+    "en": [
+      "retro sun",
+      "synth sunset",
+      "vaporwave",
+      "eighties stripes"
+    ],
+    "ja": [
+      "夕焼け",
+      "ストライプ",
+      "80年代",
+      "レトロ",
+      "yūyake",
+      "sutoraipu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "bungee",
+    "ja": "rampart-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffe040"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#ff6a2a"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#ff2a8a"
+            },
+            {
+              "pos": 1,
+              "color": "#6a1aa0"
+            }
+          ]
+        },
+        "span": "line"
+      },
+      "pattern": {
+        "kind": "stripes",
+        "color": "#1a0040",
+        "opacity": 0.85,
+        "scale": 6,
+        "angle": 90
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#1a0040"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

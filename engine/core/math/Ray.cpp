@@ -377,7 +377,7 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
 RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
     Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
-    if (shape >= bodycomp.colliders.size()){
+    if (!findCollider2D(bodycomp, (int)shape)){
         return NO_HIT;
     }
 

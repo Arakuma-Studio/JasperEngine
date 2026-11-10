@@ -489,11 +489,14 @@ bool editor::Exporter::runPrebuilt() {
     if (!checkHtmlUIReferences()) return false;
     checkSoundEventClips();
     if (cancelled()) return false;
+    if (!prepareTitleArt()) return false;
+    if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
     if (!cookModels()) return false;
     if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;

@@ -1,0 +1,142 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/dragon-fire",
+  "revision": 1,
+  "name": {
+    "en": "Dragon Fire",
+    "ja": "ドラゴンファイア"
+  },
+  "description": {
+    "en": "Fiery gold to ember gradient face through a bronze finish, a near-black keyline and a scorched brown frame, flames behind and an orange light glow.",
+    "ja": "ブロンズ仕上げを通した炎の金から残り火色へのグラデーションの面、黒に近い縁、焦げ茶の枠、背後の炎、オレンジのライトグロー。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "fire",
+    "dragon",
+    "orange",
+    "fantasy",
+    "flames",
+    "bronze"
+  ],
+  "synonyms": {
+    "en": [
+      "dragon breath",
+      "inferno",
+      "blaze",
+      "burning"
+    ],
+    "ja": [
+      "ドラゴン",
+      "炎",
+      "竜",
+      "灼熱",
+      "doragon",
+      "honoo"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "medievalsharp",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffe0a0"
+            },
+            {
+              "pos": 0.5,
+              "color": "#d06010"
+            },
+            {
+              "pos": 1,
+              "color": "#5a1a00"
+            }
+          ]
+        }
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#1a0a02"
+            },
+            {
+              "pos": 0.3,
+              "color": "#5a2c0c"
+            },
+            {
+              "pos": 0.6,
+              "color": "#b0682a"
+            },
+            {
+              "pos": 0.85,
+              "color": "#e8b070"
+            },
+            {
+              "pos": 1,
+              "color": "#fff0d0"
+            }
+          ]
+        },
+        "amount": 0.5
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#1a0600"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#5a2a08"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "light_glow",
+      "params": {
+        "tint_amount": 0.6,
+        "tint_outer": "#ff6a10"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "fire",
+      "preset": "behind",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

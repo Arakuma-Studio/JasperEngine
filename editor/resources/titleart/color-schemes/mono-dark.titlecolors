@@ -1,0 +1,148 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "mono-dark",
+  "revision": 1,
+  "name": {
+    "en": "Mono Dark",
+    "ja": "モノ（黒）"
+  },
+  "description": {
+    "en": "Flat black face with a white line: inverted monochrome.",
+    "ja": "平らな黒の面と白の線：反転したモノクロ。"
+  },
+  "family_hint": [
+    "minimal"
+  ],
+  "tags": [
+    "black",
+    "white",
+    "monochrome",
+    "flat",
+    "minimal"
+  ],
+  "synonyms": {
+    "en": [
+      "black and white",
+      "monochrome",
+      "black"
+    ],
+    "ja": [
+      "白黒",
+      "モノクロ",
+      "黒",
+      "kuro",
+      "monokuro"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "color": "#111111"
+      },
+      "ramp": {
+        "stops": [
+          {},
+          {
+            "pos": 0.5,
+            "color": "#111111"
+          },
+          {
+            "pos": 1,
+            "color": "#2e2e2e"
+          }
+        ]
+      },
+      "material_3d": {
+        "color": "#111111",
+        "roughness": 0.7
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#111111"
+      },
+      "material_3d": {
+        "color": "#111111",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.7
+        }
+      },
+      {
+        "fill": {
+          "color": "#111111"
+        },
+        "material_3d": {
+          "color": "#111111",
+          "roughness": 0.7
+        }
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#0c0c0c",
+      "roughness": 0.7
+    }
+  },
+  "face_glow": "#111111",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 1,
+        "color": "#111111"
+      }
+    ]
+  },
+  "glint": "#111111",
+  "light_ramp": [
+    "#111111",
+    "#4d4d4d",
+    "#888888",
+    "#c3c3c3"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#111111"
+        },
+        {
+          "pos": 0.55,
+          "color": "#111111"
+        },
+        {
+          "pos": 1,
+          "color": "#111111"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#111111",
+    "#111111",
+    "#111111"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

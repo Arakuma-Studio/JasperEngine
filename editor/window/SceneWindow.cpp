@@ -7,11 +7,14 @@
 #include "pixelart/BitmapFontPool.h"
 #include "pixelart/FontPixelReport.h"
 #include "SceneWindow.h"
+#include "scenetool/SceneTool.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "terrainworld/TerrainWorldOverlay.h"
 #endif
 #include "window/TerrainEditWindow.h"
 #include "audio/SoundDrop.h"
+#include "component/RectTransformComponent.h"
+#include "titleart/runtime/TitleArtCreate.h"
 #include "component/TextComponent.h"
 #include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
@@ -661,6 +664,22 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 }
                                 focusSceneWindow(*sceneProject);
                             }
+                        }
+                    }
+                } else if (Util::isTitleArtFile(droppedRelativePath)) {
+                    // a Title Art: an Image (in a UI scene or under a UI element) or a Sprite showing
+                    // it at its native size, one step (S81 R6)
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else if (payload->IsDelivery()) {
+                                const bool uiParent = selEntity != NULL_ENTITY && sceneProject->scene->findComponent<RectTransformComponent>(selEntity);
+                                std::string error;
+                                if (createTitleArtObject(project, sceneProject->id, receivedStrings[0], uiParent ? selEntity : NULL_ENTITY, &error) == NULL_ENTITY)
+                                    Out::error("%s", error.c_str());
+                            }
+                            if (payload->IsDelivery()) focusSceneWindow(*sceneProject);
                         }
                     }
                 } else if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {
@@ -1326,7 +1345,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // camera-orbit behavior, so the guard is gated on a hovered/active gizmo side.
     // Paint Dye (FluidEditorTools): the left button paints the fluid, no selection or gizmo
     bool fluidPainting = sceneProject->sceneRender->isFluidPainting();
-    bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting;
+    // the active Scene-view tool (S50 D9): selection and gizmos are suspended while it is up
+    SceneTool* sceneTool = SceneTools::active((uint32_t)sceneId);
+    if (sceneTool && !sceneTool->available(*sceneProject)) {
+        SceneTools::deactivate((uint32_t)sceneId);
+        sceneTool = nullptr;
+    }
+    if (sceneTool) SceneTools::setScene((uint32_t)sceneId, sceneProject->scene);
+    bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting && !sceneTool;
     // T1 R56: with Alt Alternates While Painting, Alt+LMB paints an armed terrain brush's alternate instead of orbiting
     TerrainEditWindow* terrainBrush = Backend::getApp().getTerrainEditWindow();
     const bool terrainBrushArmed = terrainBrush && terrainBrush->isEditingScene(sceneProject->scene);
@@ -1348,9 +1374,29 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         sceneProject->sceneRender->isTerrainEditing() ||
         sceneProject->sceneRender->isPoseDragging() ||
         fluidPainting ||
+        sceneTool != nullptr ||
         gizmoSideActive ||
         (physicsSnapArmed[sceneId] && mouseLeftDraggedInside) ||
         (sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space));
+
+    const auto sceneToolEvent = [&](float px, float py, int button) {
+        SceneToolEvent event;
+        event.x = px;
+        event.y = py;
+        event.ray = sceneProject->sceneRender->screenToRay(px, py);
+        event.shift = io.KeyShift;
+        event.ctrl = io.KeyCtrl || io.KeySuper;
+        event.alt = altHeld;
+        event.button = button;
+        return event;
+    };
+    // a captured stroke follows the pointer past the view's edges; its release comes below
+    if (sceneTool && sceneToolCapture[sceneId] && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        float x = mousePos.x - windowPos.x;
+        float y = mousePos.y - windowPos.y;
+        toEngineCanvas(sceneId, x, y);
+        sceneTool->drag(sceneToolEvent(x, y, 0));
+    }
 
     if (isMouseInWindow){
 
@@ -1375,6 +1421,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
         }
+
+        // the active Scene-view tool first (D9); Alt, the right and middle buttons and Space-pan
+        // keep the camera, so only an unmodified left press reaches it
+        if (sceneTool && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !handPanEnabled && !suppressLeftMouse &&
+                !(sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space))) {
+            if (sceneTool->press(sceneToolEvent(x, y, 0)) == SceneToolPress::Captured) {
+                sceneToolCapture[sceneId] = true;
+                // the press is the tool's: nothing below (spline, lattice, gizmo, picking) takes it
+                suppressLeftMouseUntilRelease[sceneId] = true;
+                suppressLeftMouse = true;
+                subSelectionClickConsumesRelease[sceneId] = true;
+                mouseLeftDown = false;
+                mouseLeftDraggedInside = false;
+            }
+        }
+        if (sceneTool && !sceneToolCapture[sceneId]) sceneTool->hover(sceneToolEvent(x, y, 0));
 
         // the spline tools take the press next: the Draw Spline tool, then the edited spline's
         // knots and handles (SplineSceneTools); a captured press is theirs until its release
@@ -1949,6 +2011,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             physics->endGesture((uint32_t)sceneId, PhysicsInput::Snap);
         }
 
+        // the tool's stroke ends with the button, wherever it goes up
+        if (sceneTool && sceneToolCapture[sceneId]) {
+            sceneTool->release(sceneToolEvent(x, y, 0));
+            sceneToolCapture[sceneId] = false;
+        }
+
         if (suppressLeftMouse){
             suppressLeftMouseUntilRelease[sceneId] = false;
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -2337,7 +2405,23 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // closes a menu or a popup: one open now or when the last frame ended took it.
     const bool popupOpen = popupOpenLastFrame || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     bool escapeTaken = false;
-    if (physics && sceneViewInput && !popupOpen && project->getSelectedSceneId() == sceneId && !io.WantTextInput &&
+    // the active tool's keys (D9): Esc even in the middle of a stroke (its press keeps an item
+    // active), never while a popup or a text field has the keyboard
+    if (sceneTool && sceneViewInput && !popupOpen && !io.WantTextInput) {
+        float keyX = mousePos.x - windowPos.x;
+        float keyY = mousePos.y - windowPos.y;
+        toEngineCanvas(sceneId, keyX, keyY);
+        const SceneToolEvent event = sceneToolEvent(keyX, keyY, 0);
+        for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_GamepadStart; key++) {
+            const ImGuiKey named = static_cast<ImGuiKey>(key);
+            if (ImGui::IsKeyPressed(named, false) && sceneTool->key(named, event) && named == ImGuiKey_Escape) escapeTaken = true;
+        }
+        // the stroke was cancelled, and the tool closed its capture
+        if (escapeTaken && sceneToolCapture[sceneId]) {
+            sceneToolCapture[sceneId] = false;
+        }
+    }
+    if (!escapeTaken && physics && sceneViewInput && !popupOpen && project->getSelectedSceneId() == sceneId && !io.WantTextInput &&
             ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
     }
@@ -2893,9 +2977,10 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
-        drawSettingRow(ICON_FA_WATER " Animate water", sceneProject.displaySettings.animateWater);
+        // (stored as animateWater: the key old settings files carry)
+        drawSettingRow(ICON_FA_ROTATE " Always Refresh", sceneProject.displaySettings.animateWater);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Water and shaders on the scene clock move while the scene is stopped (Play always animates them)");
+            ImGui::SetTooltip("Water, animated tiles and shaders on the scene clock move while the scene is stopped (Play always animates them)");
 
         ImGui::EndTable();
     }
@@ -3188,6 +3273,8 @@ void editor::SceneWindow::show() {
                 }
                 // S41 R21: Pixel Zoom (2D scenes drawn through a Pixel Perfect Camera)
                 drawPixelZoomToolbar(sceneProject);
+                // S50 R66: the active tool, with its exit button
+                drawSceneToolBadge(sceneProject);
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
@@ -3328,6 +3415,7 @@ void editor::SceneWindow::show() {
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
                     drawNavigationHud(sceneProject, canvasMin, canvasAvail);
                     drawDrawModeOverlays(sceneProject, canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y));
+                    drawSceneToolOverlay(sceneProject, canvasMin, canvasAvail);
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line
                     // lower would make them unreachable and give the canvas a scrollbar (which
@@ -3643,6 +3731,41 @@ void editor::SceneWindow::setPixelZoom(SceneProject& sceneProject, float scale){
     const float applied = sceneRender2D->getZoom();
     camera->setPosition(pixelart::snapToViewPixels(position.x, applied), pixelart::snapToViewPixels(position.y, applied), position.z);
     sceneProject.needUpdateRender = true;
+}
+
+// the active tool's overlay and status pill over the canvas (S50 D9, R65, R66)
+void editor::SceneWindow::drawSceneToolOverlay(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail) {
+    SceneTool* tool = SceneTools::active(sceneProject.id);
+    if (!tool || !sceneProject.sceneRender) return;
+    SceneTools::setCanvas(sceneProject.id, canvasMin, canvasEngineScale(sceneProject.id));
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    tool->drawOverlay(*sceneProject.sceneRender, *list);
+    const std::string status = tool->status();
+    if (!status.empty()) {
+        const ImVec2 textSize = ImGui::CalcTextSize(status.c_str());
+        const float padX = Theme::dpi(8.0f), padY = Theme::dpi(3.0f);
+        const ImVec2 min(canvasMin.x + Theme::dpi(8.0f), canvasMin.y + canvasAvail.y - textSize.y - padY * 2.0f - Theme::dpi(8.0f));
+        const ImVec2 max(min.x + textSize.x + padX * 2.0f, min.y + textSize.y + padY * 2.0f);
+        list->AddRectFilled(min, max, IM_COL32(20, 22, 26, 215), textSize.y);
+        list->AddText(ImVec2(min.x + padX, min.y + padY), IM_COL32(235, 235, 235, 255), status.c_str());
+    }
+    if (ImGui::IsWindowHovered()) ImGui::SetMouseCursor(tool->cursor());
+}
+
+// the toolbar's badge of the active tool, with its exit button (S50 R66)
+void editor::SceneWindow::drawSceneToolBadge(SceneProject& sceneProject) {
+    SceneTool* tool = SceneTools::active(sceneProject.id);
+    if (!tool) return;
+    ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(tool->label());
+    ImGui::SameLine();
+    const std::string exitLabel = std::string(ICON_FA_XMARK) + "##ExitSceneTool" + std::to_string(sceneProject.id);
+    if (ImGui::Button(exitLabel.c_str())) {
+        SceneTools::deactivate(sceneProject.id);
+        sceneProject.needUpdateRender = true;
+    }
+    ImGui::SetItemTooltip("Exit tile painting");
 }
 
 void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){

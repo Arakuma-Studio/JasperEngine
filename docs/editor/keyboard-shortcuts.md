@@ -91,6 +91,24 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 |---|---|---|
 | Documentation | F1 | Global |
 
+## Tile Palette
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Select Tool | S | Tile Palette |
+| Paint Tool | B | Tile Palette |
+| Box Tool | U | Tile Palette |
+| Line Tool | L | Tile Palette |
+| Flood Tool | G | Tile Palette |
+| Eraser Tool | D | Tile Palette |
+| Picker Tool | I | Tile Palette |
+| Rotate Brush Clockwise | ] | Tile Palette |
+| Rotate Brush Counter-Clockwise | [ | Tile Palette |
+| Flip Brush Horizontally | Shift+[ | Tile Palette |
+| Flip Brush Vertically | Shift+] | Tile Palette |
+| Copy Cells into the Brush | Ctrl+C | Tile Palette |
+| Delete Selected Cells | Delete / Backspace | Tile Palette |
+
 ## Tools
 
 | Command | Shortcut | Context |
@@ -305,6 +323,67 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Delete Assets | Delete / Backspace | Project |
 | Rename Asset | F2 | Project |
 | Resize Items | Ctrl+Mouse Wheel | Project |
+
+## Title Designer
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause Preview | Space | Title Animation |
+| Stop Preview | Shift+Space | Title Animation |
+| Add Key | K | Title Animation |
+| Key Modified Fields | Shift+K | Title Animation |
+| Previous Frame | , | Title Animation |
+| Next Frame | . | Title Animation |
+| Previous Key | Alt+, | Title Animation |
+| Next Key | Alt+. | Title Animation |
+| Delete Keys | Delete | Title Animation |
+| Copy Keys | Ctrl+C | Title Animation |
+| Paste Keys | Ctrl+V | Title Animation |
+| Duplicate Keys | Ctrl+D | Title Animation |
+| Frame Selected | F | Title Animation |
+| Frame All | A | Title Animation |
+| Record | R | Title Animation |
+| Dopesheet / Curves | Tab | Title Animation |
+| Hand Tool | Q | Title Designer |
+| Move Tool | W | Title Designer |
+| Rotate Tool | E | Title Designer |
+| Scale Tool | R | Title Designer |
+| Rect Tool | T | Title Designer |
+| Toggle Pivot/Center | Z | Title Designer |
+| Frame Selected | F | Title Designer |
+| Fit Canvas | Home / Alt+F | Title Designer |
+| Actual Size | Shift+0 | Title Designer |
+| Zoom In | Ctrl+= | Title Designer |
+| Zoom Out | Ctrl+- | Title Designer |
+| Edit Text | Enter | Title Designer |
+| Find Setting | Ctrl+F | Title Designer |
+| Add... | Ctrl+Shift+N | Title Designer |
+| Duplicate | Ctrl+D | Title Designer |
+| Delete | Delete / Backspace | Title Designer |
+| Rename | F2 | Title Designer |
+| Select All Layers | Ctrl+A | Title Designer |
+| Copy Layers | Ctrl+C | Title Designer |
+| Cut Layers | Ctrl+X | Title Designer |
+| Paste Layers | Ctrl+V | Title Designer |
+| Group | Ctrl+G | Title Designer |
+| Ungroup | Ctrl+Shift+G | Title Designer |
+| Clipping Mask | Ctrl+Alt+G | Title Designer |
+| Bring Forward | Ctrl+] | Title Designer |
+| Send Backward | Ctrl+[ | Title Designer |
+| Bring to Front | Ctrl+Shift+] | Title Designer |
+| Send to Back | Ctrl+Shift+[ | Title Designer |
+| Hide Layers | H | Title Designer |
+| Lock Layers | L | Title Designer |
+| Nudge Left | Left | Title Designer |
+| Nudge Right | Right | Title Designer |
+| Nudge Up | Up | Title Designer |
+| Nudge Down | Down | Title Designer |
+| Nudge Left x10 | Shift+Left | Title Designer |
+| Nudge Right x10 | Shift+Right | Title Designer |
+| Nudge Up x10 | Shift+Up | Title Designer |
+| Nudge Down x10 | Shift+Down | Title Designer |
+| Select Parent | Escape | Title Designer |
+| Bake Now | Ctrl+B | Title Designer |
 
 ## Sound Browser
 

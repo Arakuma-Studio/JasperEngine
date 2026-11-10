@@ -128,7 +128,8 @@ namespace jasperengine::editor{
         Asset,      // an asset file reference (AssetRef): path, drop target, missing state
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
         Curve,      // an animation curve: the Curve field (S27, widget/CurveField.h)
-        Gradient    // a colour gradient: the Gradient field (S27, widget/GradientField.h)
+        Gradient,   // a colour gradient: the Gradient field (S27, widget/GradientField.h)
+        StringSet   // a list of strings picked from RowSettings::stringChoices (checkboxes in a dropdown)
     };
 
     struct EnumEntry {
@@ -187,6 +188,8 @@ namespace jasperengine::editor{
         // String rows: a dropdown of these values beside the field (free text still allowed),
         // e.g. the project's Input actions
         const std::vector<std::string>* stringSuggestions = nullptr;
+        // String: a dropdown of these (value, label) instead of free text; StringSet: its items
+        const std::vector<std::pair<std::string, std::string>>* stringChoices = nullptr;
         const char* suggestionsEmpty = nullptr;   // shown in the dropdown when there are none
         // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
         NumericUnit unit = NumericUnit::None;
@@ -467,6 +470,11 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // the inspected .titleart (InspectorWindowTitleArt.cpp)
+        void drawTitleArtAsset(const std::filesystem::path& asset);
+        // an inspected font file: what Title Art reads of it and its embedding acknowledgement
+        // (InspectorWindowTitleArtFont.cpp, S81 R56)
+        void drawFontAsset(const std::filesystem::path& asset);
         // InspectorWindowCamera.cpp (camera shake spec 9)
         void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -959,6 +967,8 @@ namespace jasperengine::editor{
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Title Art Renderer (InspectorTitleArtRenderer.cpp, S81 R60-R62, §6.4)
+        void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
@@ -995,6 +1005,10 @@ namespace jasperengine::editor{
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // grid tilemaps (S50), at the end of InspectorWindow.cpp: a unit of their own would include the Mesh component once more
+        void drawGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapLayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapConvertSection(SceneProject* sceneProject, Entity entity);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // T6 R65 (InspectorVoxels.cpp)
         void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

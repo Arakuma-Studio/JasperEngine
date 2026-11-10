@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/archivoblack/OFL.txt",
+    "sha256": "3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff",
+    "bytes": 4492
+  },
+  "path": "ofl/archivoblack/ArchivoBlack-Regular.ttf",
+  "sha256": "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180",
+  "bytes": 90988
+}

@@ -433,6 +433,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // S52: a batchable sprite's FX slots, frame rect and snap pivot
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) defs.push_back({"HAS_SPRITE_FX", "1"});         // 'Sfx'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
+    if (prop & ShaderPool::getTileClampProperty()) defs.push_back({"TILE_CLAMP_FRAME", "1"}); // 'Tcl'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv'
 }
 
@@ -587,6 +588,42 @@ void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(1))  defs.push_back({"FLUID_MANUAL_FILTERING", "1"});   // 'Mfl'
 }
 
+// titleart.frag: the program number in bits 0-6, the RGBA8 encodings after it
+void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    defs.push_back({"TA_PROGRAM", std::to_string(prop & 0x7Fu)});
+    if (prop & shaderPropertyBit(7))  defs.push_back({"TA_SEEDS_FIXED", "1"});           // 'Sfx'
+    if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"TFX_LIVE", "1"});                 // 'Liv'
+    if (prop & shaderPropertyBit(11)) defs.push_back({"TA_GEN", "1"});                   // 'Gen' (S83's generators)
+    // the ELEMENT program's variants (titleart/render/TitleElementVariant.h): bits 16-20 the
+    // pattern kind, 21 its relief, 22-25 the texture kind, then glass, reflection, satin, spans
+    // and the whole program
+    const uint64_t pattern = (prop >> 16) & 0x1Fu, texture = (prop >> 22) & 0xFu;
+    if (pattern) defs.push_back({"TA_EL_PATTERN", std::to_string(pattern)});           // 'Ek0'..'Ek4'
+    if (prop & shaderPropertyBit(21)) defs.push_back({"TA_EL_RELIEF", "1"});             // 'Erl'
+    if (texture) defs.push_back({"TA_EL_TEXTURE", std::to_string(texture)});           // 'Et0'..'Et3'
+    if (prop & shaderPropertyBit(26)) defs.push_back({"TA_EL_GLASS", "1"});              // 'Egl'
+    if (prop & shaderPropertyBit(27)) defs.push_back({"TA_EL_REFLECTION", "1"});         // 'Erf'
+    if (prop & shaderPropertyBit(28)) defs.push_back({"TA_EL_SATIN", "1"});              // 'Esa'
+    if (prop & shaderPropertyBit(29)) defs.push_back({"TA_EL_SPAN", "1"});               // 'Esp'
+    if (prop & shaderPropertyBit(30)) defs.push_back({"TA_EL_WHOLE", "1"});              // 'Ewh'
+}
+
+// the TL_* bits of TitleTierFeatures.h (titleart/title_lit.frag)
+void addTitleLitPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    static const char* const FLAGS[25] = {"TL_RAMP", "TL_CLEARCOAT", "TL_IRIDESCENCE", "TL_GEM", "TL_GEM_BEHIND", "TL_DISPERSION",
+                                          "TL_GLASS_DEPTH", "TL_FLAKES", "TL_PATTERN", nullptr, nullptr, "TL_ENV_LOCK",
+                                          "TL_BASE_TEXTURE", "TL_WRAP_UV", "TL_EMISSIVE", "TL_TRANSPARENT", "TL_RIGS", "TL_LIGHTS",
+                                          "TL_HDR_COMPRESS", nullptr, nullptr, "TL_MATCAP", "TL_SPECULAR_AA", "TL_SURFACE_LITE",
+                                          "TL_FACE_IMAGE"};
+    for (int bit = 0; bit < 25; bit++) {
+        if (FLAGS[bit] && (prop & shaderPropertyBit(bit))) defs.push_back({FLAGS[bit], "1"});
+    }
+    const uint64_t surface = (prop >> 9) & 3u;
+    if (surface) defs.push_back({"TL_SURFACE_KIND", std::to_string(surface)});
+    defs.push_back({"TL_OUTPUT", std::to_string((prop >> 19) & 3u)});
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -705,6 +742,29 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "fluid.vert";
         args.frag_file = "fluid.frag";
         addFluidPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_ART){
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart.frag";
+        addTitleArtPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_LIT){
+        args.vert_file = "titleart/title_lit.vert";
+        args.frag_file = "titleart/title_lit.frag";
+        addTitleLitPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_3D_POST){
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart/title3d_post.frag";
+        args.defines.push_back({"TP_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_ENV){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "titleart/title_env.frag";
+        args.defines.push_back({"TE_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_GLINT){
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart/glint3d.frag";
+        args.defines.push_back({"TG_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_GLINT_SPRITE){
+        args.vert_file = "titleart/glint_sprite.vert";
+        args.frag_file = "titleart/glint_sprite.frag";
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_depth.frag";
@@ -792,6 +852,19 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }
     if (shaderType == ShaderType::SSR_BLUR){
         args.defines.push_back({"SSR_BLUR_TAPS", "6"});
+    }
+    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(9))){
+        // S83's effect programs (titleart/effects/TfxPrograms.h): their own numbers under 'Efx'
+        args.frag_file = "titleart_fx.frag";
+    }else if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
+        // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
+        args.frag_file = "titleart_render.frag";
+    }
+    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(11))){
+        // S83's generator programs (generators/TitleGen.h): a number space of their own, some
+        // pulling instanced quads from a data texture in the vertex stage
+        args.vert_file = "titleart_gen.vert";
+        args.frag_file = "titleart_gen.frag";
     }
 
     return true;

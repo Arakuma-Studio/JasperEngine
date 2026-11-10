@@ -17,6 +17,7 @@
 #include "sprite/SpriteSheetIO.h"
 #include "sprite/SpriteSheetPool.h"
 #include "texture/Texture.h"
+#include "tilemap/TilesetPool.h"
 #include "util/Sha256.h"
 
 #include <algorithm>
@@ -66,7 +67,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             nlohmann::json pages = nlohmann::json::array();
             for (const auto& [w, h] : r.pages) pages.push_back({w, h});
             return {{"format", kRecordFormat}, {"version", kRecordVersion}, {"key", r.key}, {"source", r.assetPath}, {"frames", r.frames},
-                    {"pages", pages}, {"clips", clips}, {"sub_assets", outputs}, {"tags", r.tags}, {"slices", r.slices},
+                    {"pages", pages}, {"tileset_files", r.tilesetFiles}, {"clips", clips}, {"sub_assets", outputs}, {"tags", r.tags}, {"slices", r.slices},
                     {"warnings", warnings}, {"summary", r.summary}, {"settings", r.settings}, {"ms", r.ms}};
         }
 
@@ -76,6 +77,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             for (const auto& p : j.value("pages", nlohmann::json::array())) {
                 if (p.is_array() && p.size() == 2) r.pages.emplace_back(p[0].get<int>(), p[1].get<int>());
             }
+            r.tilesetFiles = j.value("tileset_files", std::vector<std::string>());
             for (const auto& c : j.value("clips", nlohmann::json::array())) {
                 r.clips.push_back({c.value("key", std::string()), c.value("name", std::string()), c.value("file", std::string()),
                                    c.value("length", 0.0f), c.value("wrap", std::string())});
@@ -293,6 +295,13 @@ namespace jasperengine::editor::pixelart::aseprite {
             if (!import.pages[p].savePng(record->pageFile(p))) throw std::runtime_error("cannot write " + record->pageFile(p).string());
             record->pages.emplace_back(import.pages[p].width(), import.pages[p].height());
         }
+        // the tilesets' strips: a .tileset's aseprite source draws them through "#tileset#<n>"
+        for (size_t t = 0; t < import.tilesets().size(); t++) {
+            const PixelImage& strip = import.tilesets()[t].tiles;
+            record->tilesetFiles.push_back(!strip.empty() ? "tileset-" + std::to_string(t) + ".png" : std::string());
+            if (record->tilesetFiles[t].empty()) continue;
+            if (!strip.savePng(record->tilesetFile(t))) throw std::runtime_error("cannot write " + record->tilesetFile(t).string());
+        }
         for (size_t c = 0; c < import.clips.size(); c++) {
             const ClipOutput& clip = import.clips[c];
             const std::string file = "clip-" + std::to_string(c) + ".anim";
@@ -416,6 +425,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             records[r.assetPath] = swap.record;
         }
         SpriteSheetPool::invalidate(r.assetPath);
+        TilesetPool::asepriteSourceChanged(r.assetPath);
         AnimationClipPool::invalidateModel(r.assetPath);
         // an idle Scene view updates its systems only when flagged: the sprites showing the file
         // pick the new sheet up on the next frame (R22)
@@ -558,6 +568,9 @@ namespace jasperengine::editor::pixelart::aseprite {
             out.push_back({"image#" + std::to_string(p), pageFile(p), base + "page" + std::to_string(p) + ".png"});
         }
         for (const Clip& c : clips) out.push_back({c.key, dir / c.file, base + c.file});
+        for (size_t t = 0; t < tilesetFiles.size(); t++) {
+            if (!tilesetFiles[t].empty()) out.push_back({"tileset#" + std::to_string(t), tilesetFile(t), base + tilesetFiles[t]});
+        }
         return out;
     }
 
@@ -574,6 +587,14 @@ namespace jasperengine::editor::pixelart::aseprite {
             const auto parsed = std::from_chars(index.data(), index.data() + index.size(), page);
             if (index.empty() || parsed.ec != std::errc() || parsed.ptr != index.data() + index.size() || page >= pages.size()) return false;
             file = pageFile(page);
+            return true;
+        }
+        if (key.rfind("tileset#", 0) == 0) {
+            const std::string index = key.substr(8);
+            size_t tileset = 0;
+            const auto parsed = std::from_chars(index.data(), index.data() + index.size(), tileset);
+            if (index.empty() || parsed.ec != std::errc() || parsed.ptr != index.data() + index.size() || tileset >= tilesetFiles.size() || tilesetFiles[tileset].empty()) return false;
+            file = tilesetFile(tileset);
             return true;
         }
         if (key.rfind("animation", 0) == 0) {

@@ -2490,6 +2490,44 @@ OVERRIDES.update({
         'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
 })
 
+# grid tilemaps (S50, TilemapClassesLua.cpp): multiple results and name-or-index terrains
+_TERRAIN = 'string|integer'
+OVERRIDES.update({
+    ('Grid', 'worldToCell'): {
+        'doc': ['The cell holding a world point (y up, the shared edge belongs to the cell above or to the right).'],
+        'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('Tileset', 'getProperty'): {
+        'doc': ["A tile's property, or the schema's default; nil when the tileset declares no such property."],
+        'overloads': [([('tile', 'integer'), ('name', 'string')], 'boolean|integer|number|string|Vector4|nil')]},
+    ('TilemapLayer', 'getCell'): {
+        'doc': ["The cell's tile id (-1: empty) and its flag bits (TileFlip)."],
+        'overloads': [([('x', 'integer'), ('y', 'integer')], 'integer, integer')]},
+    ('TilemapLayer', 'setCell'): {
+        'doc': ['Writes a cell: a tile id (-1 erases) and TileFlip bits; the touched chunk rebuilds once this frame.'],
+        'overloads': [([('x', 'integer'), ('y', 'integer'), ('tile', 'integer'), ('flags?', 'integer')], '')]},
+    ('TilemapLayer', 'fill'): {
+        'doc': ['Fills the inclusive rectangle of cells with one tile (-1 erases), at most 1,000,000 cells.'],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer'), ('tile', 'integer'), ('flags?', 'integer')], '')]},
+    ('TilemapLayer', 'worldToCell'): {
+        'doc': ['The cell holding a world point (a dual-grid layer: its logical cell).'],
+        'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('TilemapLayer', 'cellToWorld'): {
+        'doc': ["A cell's anchor in world space."],
+        'overloads': [([('x', 'integer'), ('y', 'integer')], 'Vector3')]},
+    ('TilemapLayer', 'getCellAt'): {
+        'doc': ['The tile shown at a world point (-1: none) and its cell.'],
+        'overloads': [([('point', 'Vector3')], 'integer, integer, integer')]},
+    ('TilemapLayer', 'setTerrain'): {
+        'doc': ["Paints a cell's terrain (name or index; -1 erases) and re-chooses the tiles around it."],
+        'overloads': [([('x', 'integer'), ('y', 'integer'), ('terrain', _TERRAIN)], '')]},
+    ('TilemapLayer', 'fillTerrain'): {
+        'doc': ["Paints a rectangle's terrain (name or index; -1 erases) and re-chooses the tiles around it."],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer'), ('terrain', _TERRAIN)], '')]},
+    ('TilemapLayer', 'refreshAutotile'): {
+        'doc': ['Re-chooses every terrain tile of the inclusive rectangle.'],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer')], '')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua
@@ -2717,6 +2755,50 @@ OVERRIDES.update({
         'overloads': [([('code', 'NativeErrorCode|string'), ('message?', 'string')], 'boolean')]},
 })
 
+# Title Art (S81 §6.6, TitleArtClassesLua.cpp): the calls that can raise (one sentence naming the
+# title, what failed, why and the fix) are lua_CFunctions; a parameter value is a number, a
+# boolean, a string or a colour (Vector3/Vector4, linear)
+_TITLE_VALUE = 'number|boolean|string|Vector3|Vector4'
+OVERRIDES.update({
+    ('TitleArt', '__call'): {
+        'doc': ['The Title Art Renderer of a GameObject: `TitleArt(scene, entity)`. Raises when the GameObject has none',
+                '(`gameObject:getTitleArt()` gives nil instead).'],
+        'overloads': [([('scene', 'Scene'), ('entity', 'integer')], 'TitleArt')]},
+    ('TitleArt', 'setParameter'): {
+        'doc': ['Sets the Exposed parameter `name` (a number, a boolean, a string or a linear colour). Raises on a',
+                'Baked title, an unknown name (listing the Exposed ones) or a value of the wrong type.'],
+        'overloads': [([('name', 'string'), ('value', _TITLE_VALUE)], '')]},
+    ('TitleArt', 'getParameter'): {
+        'doc': ['The Exposed parameter\'s value now (the override, else the document\'s). Raises on an unknown name.'],
+        'overloads': [([('name', 'string')], _TITLE_VALUE)]},
+    ('TitleArt', 'resetParameter'): {
+        'doc': ['Drops the override of `name`: the document\'s value again. Raises on a Baked title or an unknown name.'],
+        'overloads': [([('name', 'string')], '')]},
+    ('TitleArt', 'setColorScheme'): {
+        'doc': ['Selects a color scheme of the document by id. Raises on a Baked title or an unknown id.'],
+        'overloads': [([('id', 'string')], '')]},
+    ('TitleArt', 'setNativeSize'): {
+        'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
+                'when the title has no image yet.'],
+        'overloads': [([], '')]},
+    ('TitleArt', 'getMeshStats'): {
+        'doc': ['The mesh the 3D layer at `layerPath` (names joined by "/", or its id) drew in the last render: triangles,',
+                'vertices, solids, buildMs, tier, overBudget and cooked (an export\'s mesh); nil before its first render. Raises',
+                'on a Baked title or a path that names no 3D layer (listing them).'],
+        'overloads': [([('layerPath', 'string')],
+                       '{triangles: integer, vertices: integer, solids: integer, buildMs: number, tier: string, overBudget: boolean, cooked: boolean}?')]},
+    ('TitleArt', 'setLanguage'): {
+        'doc': ['S87: the language of every Title Art Renderer whose Language is Auto ("" = back to the device\'s',
+                'languages). Raises on a tag that is not BCP 47 ("de", "pt-BR", "zh-Hant"); nothing changes then.'],
+        'overloads': [([('code', 'string')], '')]},
+    ('TitleArt', 'getLanguages'): {
+        'doc': ['The languages this title offers: its source first, then the languages it ships.'],
+        'overloads': [([], 'string[]')]},
+    ('TitleArt', 'play'): {
+        'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+})
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
@@ -2752,6 +2834,12 @@ PROPERTY_OVERRIDES = {
     ('HttpResponse', 'data'): ('JsonValue', False),
     ('HttpResponse', 'textureData'): ('TextureData|nil', True),
 
+    # Title Art (S81): name lists built as tables
+    ('TitleArt', 'colorSchemes'): ('string[]', True),
+    ('TitleArt', 'parameterNames'): ('string[]', True),
+    ('TitleArt', 'animations'): ('string[]', True),
+    # S87: the static language event
+    ('TitleArt', 'onLanguageChanged'): ('FunctionSubscribe', False),
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),

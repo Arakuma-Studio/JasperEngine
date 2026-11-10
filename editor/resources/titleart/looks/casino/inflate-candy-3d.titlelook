@@ -1,0 +1,259 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/inflate-candy-3d",
+  "revision": 1,
+  "name": {
+    "en": "Inflate Candy 3D",
+    "ja": "ぷっくりキャンディ 3D"
+  },
+  "description": {
+    "en": "A 3D inflated title with a candy face, two bands (gloss white, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "キャンディの面のぷっくり膨らんだ3D文字、2本の帯（白の光沢、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "3d",
+    "candy",
+    "inflate",
+    "white",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "three-dimensional",
+      "extruded",
+      "glossy",
+      "sweet",
+      "puffy",
+      "balloon",
+      "snow",
+      "pearl white",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "キャンディ",
+      "飴",
+      "あめ",
+      "kyandi",
+      "ame",
+      "ぷっくり",
+      "膨らみ",
+      "pukkuri",
+      "白",
+      "ホワイト",
+      "しろ",
+      "shiro",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "curve_segments": 12,
+    "inflate": {
+      "height": 24,
+      "profile": {
+        "points": [
+          {},
+          {
+            "x": 0.25,
+            "y": 0.72
+          },
+          {
+            "x": 1,
+            "y": 1
+          }
+        ]
+      }
+    },
+    "face": {
+      "preset": "candy",
+      "color": "#e0102a",
+      "metallic": 0.85,
+      "roughness": 0.25,
+      "env_multiplier": 1.4,
+      "specular_multiplier": 1.5,
+      "clearcoat": 1,
+      "flakes": 0.3,
+      "flake_scale": 0.8
+    },
+    "side": {
+      "color": "#4a0010",
+      "metallic": 1,
+      "roughness": 0.35,
+      "env_multiplier": 0.7
+    },
+    "bands": [
+      {
+        "depth": 5,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.4
+        },
+        "material": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 4.6,
+        "depth": 4,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#1a0008",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 1.4,
+      "intensity": 0.5,
+      "radius": 5,
+      "length": 32,
+      "angle": 15,
+      "tint": "#ffe8f0"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff3a6a",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#ff3a6a"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 30,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1696,
+    "item": "f-3d-inflate",
+    "license_note": "used with the author's permission"
+  }
+}

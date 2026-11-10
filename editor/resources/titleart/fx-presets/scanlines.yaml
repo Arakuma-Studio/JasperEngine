@@ -1,0 +1,18 @@
+# Scanlines presets (docs/specs/S83-title-effects-generators.md §6.8); crt is the CRT recipe's.
+presets:
+  - id: scanlines
+    name: Scanlines
+    aliases: [tv lines]
+    params: {}
+  - id: crt
+    name: CRT
+    aliases: [crt, arcade monitor, ブラウン管]
+    params: {style: crt, mask_strength: 0.6}
+  - id: lcd
+    name: LCD
+    aliases: [lcd, subpixels]
+    params: {style: lcd, spacing: 3}
+  - id: interlace
+    name: Interlace
+    aliases: [interlaced, video fields]
+    params: {style: interlace}

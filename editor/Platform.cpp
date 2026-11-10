@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Platform.h"
+#include "util/TitleArtLanguage.h"
 #include "Out.h"
 #include "Backend.h"
 #include "EditorHost.h"
@@ -172,6 +173,8 @@ void editor::Platform::setSimulatedOrientation(ScreenOrientation orientation){
 
 void editor::Platform::setSimulatedLanguage(const std::string& language){
     simulation.language = LocaleRules::normalize(language);
+    // S87: Title Art Renderers whose Language is Auto resolve again
+    TitleArtLanguage::localesChanged();
 }
 
 void editor::Platform::setSimulatedDpi(float dpi){

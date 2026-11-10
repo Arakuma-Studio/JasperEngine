@@ -1,0 +1,154 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "ink",
+  "revision": 1,
+  "name": {
+    "en": "Ink",
+    "ja": "墨"
+  },
+  "description": {
+    "en": "Matte sumi black on a paper-white line with a vermilion seal-red frame.",
+    "ja": "つや消しの墨の黒、和紙の白の線、朱の枠。"
+  },
+  "family_hint": [
+    "wa",
+    "anime",
+    "fantasy"
+  ],
+  "tags": [
+    "black",
+    "japanese",
+    "brush",
+    "red",
+    "matte"
+  ],
+  "synonyms": {
+    "en": [
+      "sumi",
+      "calligraphy",
+      "brush ink"
+    ],
+    "ja": [
+      "墨",
+      "すみ",
+      "書道",
+      "sumi",
+      "shodou"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#1a1612",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#1a1612"
+            },
+            {
+              "pos": 1
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#100d0b",
+        "roughness": 0.7
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#f4eee0"
+        },
+        "material_3d": {
+          "color": "#f4eee0",
+          "roughness": 0.7
+        }
+      },
+      {
+        "fill": {
+          "color": "#c01a10"
+        },
+        "material_3d": {
+          "color": "#c01a10",
+          "roughness": 0.7
+        }
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#000000",
+      "roughness": 0.7
+    }
+  },
+  "face_glow": "#1a1612",
+  "glow": "#f4eee0",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#f4eee0"
+      },
+      {
+        "pos": 1,
+        "color": "#0d0b09"
+      }
+    ]
+  },
+  "glint": "#1a1612",
+  "light_ramp": [
+    "#1a1612",
+    "#514c46",
+    "#878279",
+    "#f4eee0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#171410"
+        },
+        {
+          "pos": 0.55,
+          "color": "#0c0a08"
+        },
+        {
+          "pos": 1,
+          "color": "#010101"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#1a1612",
+    "#000000",
+    "#000000",
+    "#c01a10"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

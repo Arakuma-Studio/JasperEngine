@@ -1,0 +1,6 @@
+# Lens Blur presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: bokeh_highlights
+    name: Bokeh Highlights
+    aliases: [bokeh, defocus highlights]
+    params: {radius: 40, brightness: 60, threshold: 200}

@@ -1,0 +1,215 @@
+{
+  "presets": [
+    {
+      "id": "white",
+      "name": "Shockwave White",
+      "aliases": [
+        "shockwave (white)",
+        "白い衝撃波"
+      ],
+      "source": "shockwave/white",
+      "params": {
+        "rings": 2,
+        "spacing": 46,
+        "width": 14,
+        "profile": "soft",
+        "soft_in": 50,
+        "soft_out": 2,
+        "breakup": 6,
+        "smear": 0,
+        "split": 4,
+        "flash": 0,
+        "inner": "#ffffff",
+        "outer": "#d8ecff"
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 24,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "red",
+      "name": "Red Shockwave",
+      "aliases": [
+        "red shockwave",
+        "赤い衝撃波"
+      ],
+      "source": "shockwave/red",
+      "params": {
+        "rings": 1,
+        "width": 50,
+        "profile": "fibrous",
+        "soft_in": 40,
+        "soft_out": 14,
+        "breakup": 20,
+        "breakup_scale": 50,
+        "smear": 60,
+        "split": 0,
+        "flash": 80,
+        "inner": "#fff4f0",
+        "outer": "#ff1830"
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 30,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon Rings",
+      "aliases": [
+        "neon rings",
+        "ネオンリング"
+      ],
+      "source": "shockwave/neon",
+      "params": {
+        "radius": 420,
+        "rings": 5,
+        "spacing": 55,
+        "width": 7,
+        "profile": "hard",
+        "soft_in": 10,
+        "soft_out": 10,
+        "breakup": 0,
+        "smear": 0,
+        "split": 0,
+        "flash": 0,
+        "inner": "#ff6ec8",
+        "outer": "#ff1e5a"
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 28,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "halo",
+      "name": "Ring of Light",
+      "aliases": [
+        "ring of light",
+        "halo",
+        "光の輪"
+      ],
+      "source": "shockwave/halo",
+      "params": {
+        "radius": 300,
+        "rings": 1,
+        "width": 14,
+        "profile": "soft",
+        "soft_in": 14,
+        "soft_out": 14,
+        "breakup": 0,
+        "smear": 0,
+        "split": 0,
+        "flash": 0,
+        "inner": "#fff3c4",
+        "outer": "#ffc640"
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 40,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ground",
+      "name": "Ground Shockwave",
+      "aliases": [
+        "ground shockwave",
+        "地面の衝撃波"
+      ],
+      "source": "shockwave/ground",
+      "params": {
+        "radius": 520,
+        "rings": 2,
+        "spacing": 90,
+        "width": 36,
+        "profile": "fibrous",
+        "soft_in": 50,
+        "soft_out": 10,
+        "squash": 28,
+        "tilt": 6,
+        "breakup": 25,
+        "breakup_scale": 40,
+        "smear": 50,
+        "split": 0,
+        "flash": 15,
+        "inner": "#fff2d0",
+        "outer": "#ff8a30"
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 24,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

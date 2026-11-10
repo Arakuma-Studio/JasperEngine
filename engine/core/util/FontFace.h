@@ -20,6 +20,11 @@ struct hb_font_t;
 
 namespace jasperengine {
 
+    // Whether a face needs stb_truetype (the text atlases rasterize with it). Optional also opens
+    // fonts stb_truetype cannot (CFF2 variable OpenType) for shaping and HarfBuzz outlines only
+    // (Title Art's glyph outlines, S80 R21): their rasterizeGlyph draws nothing.
+    enum class FontFaceRasterizer : uint8_t { Required, Optional };
+
     // One font file (or collection member), shared by every size and user: STBText chains
     // and the HTML UI font engine hold it by shared_ptr. Immutable after loading, except for
     // HarfBuzz's lazily loaded tables (HarfBuzz is built without thread safety, HB_NO_MT:
@@ -31,10 +36,12 @@ namespace jasperengine {
         // data://, resource packs). On failure returns nullptr and, when `error` is given,
         // writes why ("Font file not found: <path>", "Failed to initialize font: <path>");
         // nothing is logged here, callers log with their own prefix.
-        static std::shared_ptr<FontFace> loadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr);
+        static std::shared_ptr<FontFace> loadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr,
+                                                  FontFaceRasterizer rasterizer = FontFaceRasterizer::Required);
         // copy = false keeps a pointer to `data`, which must outlive the face (built-in fonts)
         static std::shared_ptr<FontFace> loadMemory(const unsigned char* data, size_t length, int faceIndex,
-                                                    bool copy, const std::string& label, std::string* error = nullptr);
+                                                    bool copy, const std::string& label, std::string* error = nullptr,
+                                                    FontFaceRasterizer rasterizer = FontFaceRasterizer::Required);
         ~FontFace();
 
         FontFace(const FontFace&) = delete;
@@ -69,13 +76,16 @@ namespace jasperengine {
                             int& width, int& height, int& xoff, int& yoff) const;
         float getGlyphAdvance(uint32_t glyphIndex, float scale) const;
 
+        // false for a face opened with FontFaceRasterizer::Optional that stb_truetype cannot read:
+        // metrics, coverage and advances come from HarfBuzz, rasterizeGlyph draws nothing
+        bool canRasterize() const;
         const stbtt_fontinfo& getInfo() const;
         hb_font_t* getHbFont() const;   // scale (upem, upem): positions in font units
 
     private:
         FontFace() = default;
 
-        bool init(int faceIndex, std::string* error);
+        bool init(int faceIndex, std::string* error, FontFaceRasterizer rasterizer);
         void readTables();
 
         std::vector<unsigned char> storage;     // owned bytes (files, copies)
@@ -83,6 +93,7 @@ namespace jasperengine {
         size_t length = 0;
 
         stbtt_fontinfo info = {};
+        bool rasterizable = true;   // stb_truetype read the face
         hb_blob_t* blob = nullptr;
         hb_face_t* face = nullptr;
         hb_font_t* font = nullptr;

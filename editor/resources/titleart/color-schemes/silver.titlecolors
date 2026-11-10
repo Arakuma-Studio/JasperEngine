@@ -1,0 +1,366 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "silver",
+  "revision": 1,
+  "name": {
+    "en": "Silver",
+    "ja": "銀"
+  },
+  "description": {
+    "en": "Chrome silver with a white line and a blue metal frame.",
+    "ja": "クロームの銀、白の線と青の金属の枠。"
+  },
+  "family_hint": [
+    "metal",
+    "scifi",
+    "casino"
+  ],
+  "tags": [
+    "silver",
+    "chrome",
+    "metal",
+    "cool"
+  ],
+  "synonyms": {
+    "en": [
+      "chrome",
+      "steel",
+      "platinum"
+    ],
+    "ja": [
+      "ぎん",
+      "gin",
+      "シルバー",
+      "銀色"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.45,
+              "color": "#c9ced8"
+            },
+            {
+              "pos": 0.5,
+              "color": "#6b7280"
+            },
+            {
+              "pos": 0.75,
+              "color": "#e6e9ef"
+            },
+            {
+              "pos": 1,
+              "color": "#9aa1ad"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#14161c"
+          },
+          {
+            "pos": 0.35,
+            "color": "#5d6474"
+          },
+          {
+            "pos": 0.7,
+            "color": "#c9cfdb"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "material_3d": {
+        "preset": "chrome",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.22,
+              "color": "#e8eef5"
+            },
+            {
+              "pos": 0.45,
+              "color": "#8a94a3"
+            },
+            {
+              "pos": 0.52,
+              "color": "#2e343d"
+            },
+            {
+              "pos": 0.6,
+              "color": "#7d8794"
+            },
+            {
+              "pos": 0.8,
+              "color": "#dde4ee"
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff"
+            }
+          ]
+        },
+        "metallic": 1,
+        "roughness": 0.04
+      },
+      "shade": "#1a2234"
+    },
+    "dark": {
+      "fill": {
+        "color": "#0a0c12",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#0a0c12"
+            },
+            {
+              "pos": 1,
+              "color": "#0a0c12"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#0a0c12",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          }
+        },
+        "material_3d": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#5a6478"
+      },
+      {
+        "fill": {
+          "kind": "linear",
+          "color": "#a8c4ff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#a8c4ff"
+              },
+              {
+                "pos": 0.5,
+                "color": "#2c4a9a"
+              },
+              {
+                "pos": 1,
+                "color": "#0c1840"
+              }
+            ]
+          }
+        },
+        "ramp": {
+          "stops": [
+            {
+              "color": "#14161c"
+            },
+            {
+              "pos": 0.35,
+              "color": "#5d6474"
+            },
+            {
+              "pos": 0.7,
+              "color": "#c9cfdb"
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff"
+            }
+          ]
+        },
+        "material_3d": {
+          "color": "#2c4a9a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8cc4ff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#3d8bff"
+              },
+              {
+                "pos": 0.45,
+                "color": "#1048d0"
+              },
+              {
+                "pos": 0.52,
+                "color": "#03154f"
+              },
+              {
+                "pos": 0.6,
+                "color": "#0e3fb8"
+              },
+              {
+                "pos": 0.8,
+                "color": "#3a85ff"
+              },
+              {
+                "pos": 1,
+                "color": "#86beff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#0c1840"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#04060c",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#04060c"
+            },
+            {
+              "pos": 1,
+              "color": "#04060c"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#04060c",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "preset": "silver",
+      "color": "#d8dde6",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.22,
+            "color": "#e3e7ee"
+          },
+          {
+            "pos": 0.45,
+            "color": "#a3abb8"
+          },
+          {
+            "pos": 0.52,
+            "color": "#555c68"
+          },
+          {
+            "pos": 0.6,
+            "color": "#9aa2af"
+          },
+          {
+            "pos": 0.8,
+            "color": "#dfe4eb"
+          },
+          {
+            "pos": 1,
+            "color": "#f7f9fc"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.14,
+      "clearcoat": 0.3
+    }
+  },
+  "face_glow": "#f0f6ff",
+  "glow": "#cfe4ff",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 0.35,
+        "color": "#bcd8ff"
+      },
+      {
+        "pos": 1,
+        "color": "#3a5aa0"
+      }
+    ]
+  },
+  "shadow": "#101830",
+  "glint": "#f0f6ff",
+  "light_ramp": [
+    "#101622",
+    "#3a4660",
+    "#7a8aa8",
+    "#b8c8e0",
+    "#cfe4ff",
+    "#f0f6ff"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffffff"
+        },
+        {
+          "pos": 0.55,
+          "color": "#c3cad6"
+        },
+        {
+          "pos": 1,
+          "color": "#3a4252"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#c9ced8",
+    "#6b7280",
+    "#e6e9ef",
+    "#9aa1ad",
+    "#0a0c12",
+    "#2c4a9a"
+  ],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/colourways.ts",
+    "line": 300
+  }
+}

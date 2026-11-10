@@ -152,6 +152,27 @@ public:
         return exeDir / "sound-library";
     }
 
+    // The Title Art library's staged pack (fonts/, thumbnails/, S86's hdri/; editor/resources/titleart),
+    // next to the editor binary (macOS: Contents/Resources/titleart); JASPERENGINE_TITLEART_LIBRARY_DIR
+    // overrides. Documents never store it: a pack file used by a document is copied into the project.
+    static std::filesystem::path getTitleArtLibraryDir() {
+        namespace fs = std::filesystem;
+
+        const char* overridden = std::getenv("JASPERENGINE_TITLEART_LIBRARY_DIR");
+        if (overridden && *overridden) {
+            return fs::path(overridden);
+        }
+        const fs::path exeDir = getExecutableDir();
+#if defined(__APPLE__)
+        std::error_code ec;
+        const fs::path bundled = exeDir.parent_path() / "Resources" / "titleart";
+        if (fs::exists(bundled, ec)) {
+            return bundled;
+        }
+#endif
+        return exeDir / "titleart";
+    }
+
     // An AppImage mounts at a fresh path every launch, so anything written into
     // a file the project keeps must omit it or that file churns on every start.
     static bool isEngineDirEphemeral() {

@@ -1,0 +1,113 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/bloodstone-3d",
+  "revision": 1,
+  "name": {
+    "en": "Bloodstone 3D",
+    "ja": "血石 3D"
+  },
+  "description": {
+    "en": "Extruded dark ruby glass, half clear, ringed by a black gloss band, in the dark, with soft glints.",
+    "ja": "半ば透ける暗いルビーガラスの押し出し、黒い光沢の帯で囲み、暗闇の光、控えめなグリント。"
+  },
+  "family": "horror",
+  "tags": [
+    "bloodstone",
+    "ruby",
+    "dark",
+    "gem",
+    "horror",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "blood gem",
+      "cursed jewel",
+      "garnet",
+      "dark crystal"
+    ],
+    "ja": [
+      "血石",
+      "ルビー",
+      "呪い",
+      "宝石",
+      "kesseki",
+      "noroi"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "light",
+  "font": {
+    "latin": "creepster",
+    "ja": "zen-old-mincho-black"
+  },
+  "style_3d": {
+    "depth": 10,
+    "face": {
+      "preset": "ruby",
+      "color": "#5a0008",
+      "roughness": 0.03,
+      "env_multiplier": 1.5,
+      "specular_multiplier": 2,
+      "transmission": 0.3,
+      "ior": 1.77,
+      "dispersion": 0.3
+    },
+    "bands": [
+      {
+        "grow": 2,
+        "depth": 8.4,
+        "offset": -10,
+        "material": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "intensity": 0.5
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_dark",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

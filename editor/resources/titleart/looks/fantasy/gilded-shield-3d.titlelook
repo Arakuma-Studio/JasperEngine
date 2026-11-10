@@ -1,0 +1,264 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/gilded-shield-3d",
+  "revision": 1,
+  "name": {
+    "en": "Gilded Shield 3D",
+    "ja": "金縁の盾 3D"
+  },
+  "description": {
+    "en": "Polished gold extrusion on a blue metal enamel box plate, edged by a gold band, lit by a harbour sunset.",
+    "ja": "青いメタルのエナメルの箱型プレートに載せた磨いた金の押し出し、金の帯で縁取り、港の夕日の光。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "gold",
+    "blue",
+    "shield",
+    "enamel",
+    "fantasy",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "heraldry",
+      "knight",
+      "emblem",
+      "badge"
+    ],
+    "ja": [
+      "盾",
+      "金",
+      "紋章",
+      "騎士",
+      "tate",
+      "kishi"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style_3d": {
+    "depth": 10,
+    "face": {
+      "preset": "gold",
+      "color": "#ffc23a",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#fff8d8"
+          },
+          {
+            "pos": 0.06,
+            "color": "#ffe890"
+          },
+          {
+            "pos": 0.16,
+            "color": "#ffc838"
+          },
+          {
+            "pos": 0.3,
+            "color": "#f0a018"
+          },
+          {
+            "pos": 0.4,
+            "color": "#c06a06"
+          },
+          {
+            "pos": 0.47,
+            "color": "#5a2602"
+          },
+          {
+            "pos": 0.51,
+            "color": "#1a0800"
+          },
+          {
+            "pos": 0.55,
+            "color": "#120500"
+          },
+          {
+            "pos": 0.6,
+            "color": "#5a2804"
+          },
+          {
+            "pos": 0.72,
+            "color": "#c87810"
+          },
+          {
+            "pos": 0.84,
+            "color": "#f8b830"
+          },
+          {
+            "pos": 0.94,
+            "color": "#ffe080"
+          },
+          {
+            "pos": 1,
+            "color": "#fff4c8"
+          }
+        ]
+      },
+      "gradient_span": "line",
+      "gradient_bend": 0.6,
+      "metallic": 1,
+      "roughness": 0.06
+    },
+    "bands": [
+      {
+        "grow": 6,
+        "plate": {
+          "kind": "box"
+        },
+        "depth": 8.4,
+        "offset": -10,
+        "material": {
+          "preset": "blue_metal",
+          "color": "#2a6bff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8cc4ff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#3d8bff"
+              },
+              {
+                "pos": 0.45,
+                "color": "#1048d0"
+              },
+              {
+                "pos": 0.52,
+                "color": "#03154f"
+              },
+              {
+                "pos": 0.6,
+                "color": "#0e3fb8"
+              },
+              {
+                "pos": 0.8,
+                "color": "#3a85ff"
+              },
+              {
+                "pos": 1,
+                "color": "#86beff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1.5,
+        "depth": 6.8,
+        "offset": -8.4,
+        "material": {
+          "preset": "gold",
+          "color": "#ffc23a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff8d8"
+              },
+              {
+                "pos": 0.06,
+                "color": "#ffe890"
+              },
+              {
+                "pos": 0.16,
+                "color": "#ffc838"
+              },
+              {
+                "pos": 0.3,
+                "color": "#f0a018"
+              },
+              {
+                "pos": 0.4,
+                "color": "#c06a06"
+              },
+              {
+                "pos": 0.47,
+                "color": "#5a2602"
+              },
+              {
+                "pos": 0.51,
+                "color": "#1a0800"
+              },
+              {
+                "pos": 0.55,
+                "color": "#120500"
+              },
+              {
+                "pos": 0.6,
+                "color": "#5a2804"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c87810"
+              },
+              {
+                "pos": 0.84,
+                "color": "#f8b830"
+              },
+              {
+                "pos": 0.94,
+                "color": "#ffe080"
+              },
+              {
+                "pos": 1,
+                "color": "#fff4c8"
+              }
+            ]
+          },
+          "gradient_span": "line",
+          "gradient_bend": 0.6,
+          "metallic": 1,
+          "roughness": 0.06
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "sunset_harbour",
+      "intensity": 1,
+      "rotation": 25,
+      "contrast": 1.2
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

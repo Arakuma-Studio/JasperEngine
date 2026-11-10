@@ -1,0 +1,32 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "fade_out",
+  "name": "Fade Out",
+  "group": "out",
+  "role": "outro",
+  "duration": 0.3,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Fades out.",
+  "params": [],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "opacity",
+      "keys": [
+        [
+          0,
+          1,
+          "sine_in"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

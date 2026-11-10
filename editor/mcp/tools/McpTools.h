@@ -15,6 +15,10 @@ namespace jasperengine::editor {
     class Project;
 }
 
+namespace jasperengine::editor::texsynth {
+    struct Image;
+}
+
 namespace jasperengine::editor::mcp {
 
     class McpRegistry;
@@ -25,6 +29,13 @@ namespace jasperengine::editor::mcp {
     // (a group it has not enabled): adds "editor_tools" [{tool, group, enable}] and "next" to data,
     // and the next step to text (DocsTools.cpp). The searches agents look in call it.
     void addUnlistedTools(const std::shared_ptr<McpCall>& call, const std::string& query, std::string& text, Json& data);
+
+    // Grid tilemaps in edit_tilemap and get_tilemap (S50, TilemapGridTools.cpp): true when the call
+    // was a Grid, a Tilemap Layer or a new grid tilemap and has been answered
+    namespace tilemapgridtools {
+        bool editTilemapGrid(const std::shared_ptr<McpCall>& call);
+        bool getTilemapGrid(const std::shared_ptr<McpCall>& call);
+    }
 
     // Every tool, resource and prompt of the editor, in tools/list order (McpTools.cpp).
     // Side-effect free: needs no App and does no I/O, so the CLI builds the same registry
@@ -116,6 +127,9 @@ namespace jasperengine::editor::mcp {
     void registerAnimatorTools(McpRegistry& registry);
     // S27: the editor tools (group editor_tools) and the Project Hub's core tools
     void registerEditorToolsTools(McpRegistry& registry);
+    // S80: diff_images (editor_tools) and the title_art group
+    void registerImageDiffTools(McpRegistry& registry);
+    void registerTitleArtTools(McpRegistry& registry);
     void registerHubTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);
@@ -125,6 +139,14 @@ namespace jasperengine::editor::mcp {
     // sockets, stats, recipe, warnings, staleness, stale, rebake?, users}; `text` gets a summary.
     // False (data.error, data.fix) when it doesn't parse.
     bool vatAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+    // a .titleart's part of get_asset_info (canvas, layer counts, fonts with missing ones, outputs
+    // with freshness, problems) and what view_asset shows of it (its fresh main output, else a
+    // render); false with `error`
+    bool titleArtAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+    // a baked PNG's Title Art recipe: {source, guid, output, status, frame, scale}; null when it has none
+    Json titleArtBakedPngInfo(Project* project, const std::filesystem::path& file);
+    bool titleArtViewImage(Project* project, const std::filesystem::path& file, int maxSize, texsynth::Image& out, std::string& label,
+                           std::string& error);
     // the Vertex Animators of the open scenes and prefab stages using a .vat: [{scene, entity}]
     Json vatUsers(Project* project, const std::string& vatRelative);
     // write_file of a .vat: false + error when it doesn't parse, VatDocument::normalize refuses it,
@@ -156,6 +178,7 @@ namespace jasperengine::editor::mcp {
     void registerOrganisationTools(McpRegistry& registry);
     void registerNavigationTools(McpRegistry& registry);
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
+    void registerTilesetTools(McpRegistry& registry);   // S50 (TilesetTools.cpp): edit_tileset, import_tilemap
     void registerPaletteTools(McpRegistry& registry);   // S43 (PaletteTools.cpp): edit_palette, apply_palette
     void registerPixelArtTools(McpRegistry& registry);   // S42 (PixelArtTools.cpp): check_pixel_art
     void registerPixelFxTools(McpRegistry& registry);   // S48 (PixelFxTools.cpp): capture_contact_sheet

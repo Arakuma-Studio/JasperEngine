@@ -1,0 +1,199 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "synthwave",
+  "revision": 1,
+  "name": {
+    "en": "Synthwave",
+    "ja": "シンセウェーブ"
+  },
+  "description": {
+    "en": "Metal sunset of pink, magenta and violet over deep indigo, cyan and pink rings.",
+    "ja": "ピンク、マゼンタ、紫から藍への金属の夕焼け、シアンとピンクの縁。"
+  },
+  "family_hint": [
+    "retro",
+    "neon"
+  ],
+  "tags": [
+    "purple",
+    "pink",
+    "retro",
+    "80s",
+    "metal",
+    "gradient"
+  ],
+  "synonyms": {
+    "en": [
+      "outrun",
+      "retrowave",
+      "vaporwave",
+      "eighties"
+    ],
+    "ja": [
+      "シンセウェーブ",
+      "レトロ",
+      "八十年代",
+      "shinsewēbu",
+      "retoro"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#fff0ff",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff0ff"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#ff5ad0"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#7a2aff"
+            },
+            {
+              "pos": 1,
+              "color": "#1a0a5a"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#0a0020"
+          },
+          {
+            "pos": 0.25,
+            "color": "#1a0a5a"
+          },
+          {
+            "pos": 0.5,
+            "color": "#bd42e8"
+          },
+          {
+            "pos": 0.75,
+            "color": "#fff0ff"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "material_3d": {
+        "color": "#e450d9",
+        "metallic": 1,
+        "roughness": 0.25
+      },
+      "shade": "#1a0030"
+    },
+    "dark": {
+      "fill": {
+        "color": "#0a0020"
+      },
+      "material_3d": {
+        "color": "#0a0020",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#5ae0ff"
+        },
+        "material_3d": {
+          "color": "#5ae0ff",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#1a0030"
+      },
+      {
+        "fill": {
+          "color": "#ff3ad0"
+        },
+        "material_3d": {
+          "color": "#ff3ad0",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#1a0030"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#12002a"
+      },
+      "material_3d": {
+        "color": "#12002a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#12073f",
+      "metallic": 1,
+      "roughness": 0.25
+    }
+  },
+  "face_glow": "#fff0ff",
+  "glow": "#ff3ad0",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff3ad0"
+      },
+      {
+        "pos": 1,
+        "color": "#bd42e8"
+      }
+    ]
+  },
+  "shadow": "#1a0030",
+  "glint": "#fff0ff",
+  "light_ramp": [
+    "#1a0030",
+    "#1a0a5a",
+    "#7a2aff",
+    "#ff3ad0",
+    "#ff5ad0",
+    "#fff0ff"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffc3f1"
+        },
+        {
+          "pos": 0.55,
+          "color": "#a93bef"
+        },
+        {
+          "pos": 1,
+          "color": "#280f73"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#fff0ff",
+    "#ff5ad0",
+    "#7a2aff",
+    "#1a0a5a",
+    "#0a0020",
+    "#ff3ad0"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

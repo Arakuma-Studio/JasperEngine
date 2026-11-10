@@ -1,0 +1,116 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/visor-chrome-3d",
+  "revision": 1,
+  "name": {
+    "en": "Visor Chrome 3D",
+    "ja": "バイザークローム 3D"
+  },
+  "description": {
+    "en": "Round-bevelled chrome extrusion banded white to blue to near-black like a visor, with gunmetal sides, reflecting a night city, with glints.",
+    "ja": "バイザーのように白から青、黒に近い色へ帯状に変わる丸ベベルのクローム押し出し、ガンメタルの側面、夜の街を映し、グリント付き。"
+  },
+  "family": "scifi",
+  "tags": [
+    "chrome",
+    "visor",
+    "blue",
+    "metal",
+    "night",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "helmet visor",
+      "mirror chrome",
+      "space chrome",
+      "reflective"
+    ],
+    "ja": [
+      "クローム",
+      "バイザー",
+      "鏡面",
+      "青",
+      "kurōmu",
+      "kyōmen"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "audiowide",
+    "ja": "train-one"
+  },
+  "style_3d": {
+    "depth": 12,
+    "bevel": {
+      "width": 1.5,
+      "depth": 1.5
+    },
+    "face": {
+      "preset": "chrome",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.55,
+            "color": "#2060ff"
+          },
+          {
+            "pos": 1,
+            "color": "#000820"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.04
+    },
+    "side": {
+      "color": "#3a3e46",
+      "metallic": 1,
+      "roughness": 0.35
+    },
+    "glint": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_city",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

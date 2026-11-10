@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="2" height="1" tilewidth="16" tileheight="16">
+ <tileset firstgid="1" source="tilesets/ext_tiles.tsx"/>
+ <layer id="1" name="T" width="2" height="1">
+  <data encoding="csv">1,2</data>
+ </layer>
+</map>

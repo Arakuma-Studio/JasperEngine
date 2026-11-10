@@ -1,0 +1,519 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/rainbow-glass-gold-3d",
+  "revision": 1,
+  "name": {
+    "en": "Rainbow Glass + Gold Rim 3D",
+    "ja": "虹ガラス + 金縁 3D"
+  },
+  "description": {
+    "en": "A 3D inflated title with a rainbow face, extruded at an angle, four bands (silver, gold metal, gloss black, gold metal) and an outer glow.",
+    "ja": "虹色の面のぷっくり膨らんだ3D文字、斜めの押し出し、4本の帯（銀、金のメタル、黒の光沢、金のメタル）、外側の光彩。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "3d",
+    "rainbow",
+    "inflate",
+    "pop-out",
+    "silver",
+    "metal",
+    "gold",
+    "black",
+    "bands",
+    "outline",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "three-dimensional",
+      "extruded",
+      "spectrum",
+      "multicolour",
+      "iridescent",
+      "puffy",
+      "balloon",
+      "oblique extrusion",
+      "slanted",
+      "silvery",
+      "platinum",
+      "metallic",
+      "metal finish",
+      "golden",
+      "gilded",
+      "yellow gold",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "虹",
+      "レインボー",
+      "にじ",
+      "niji",
+      "reinbo",
+      "ぷっくり",
+      "膨らみ",
+      "pukkuri",
+      "飛び出し",
+      "とびだし",
+      "tobidashi",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "金",
+      "ゴールド",
+      "きん",
+      "kin",
+      "gorudo",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 0.4813,
+    "skew": [0.15, -0.27],
+    "inflate": {
+      "height": 1.2,
+      "profile": {
+        "points": [
+          {},
+          {
+            "x": 0.045,
+            "y": 0.11,
+            "corner": true
+          },
+          {
+            "x": 0.105,
+            "y": 0.11,
+            "corner": true
+          },
+          {
+            "x": 0.143,
+            "y": 0.2,
+            "corner": true
+          },
+          {
+            "x": 0.6,
+            "y": 0.74
+          },
+          {
+            "x": 0.85,
+            "y": 0.94
+          },
+          {
+            "x": 1,
+            "y": 1
+          }
+        ]
+      },
+      "smoothness": 10
+    },
+    "face": {
+      "gradient": {
+        "stops": [
+          {
+            "color": "#e00008"
+          },
+          {
+            "pos": 0.08,
+            "color": "#f80420"
+          },
+          {
+            "pos": 0.12,
+            "color": "#f7058d"
+          },
+          {
+            "pos": 0.19,
+            "color": "#ce129b"
+          },
+          {
+            "pos": 0.26,
+            "color": "#ac27bc"
+          },
+          {
+            "pos": 0.32,
+            "color": "#8424d7"
+          },
+          {
+            "pos": 0.37,
+            "color": "#3030e0"
+          },
+          {
+            "pos": 0.42,
+            "color": "#0a58e8"
+          },
+          {
+            "pos": 0.47,
+            "color": "#0aa0f2"
+          },
+          {
+            "pos": 0.53,
+            "color": "#09dcf8"
+          },
+          {
+            "pos": 0.6,
+            "color": "#05fbf6"
+          },
+          {
+            "pos": 0.7,
+            "color": "#08fac8"
+          },
+          {
+            "pos": 0.76,
+            "color": "#0ef76e"
+          },
+          {
+            "pos": 0.79,
+            "color": "#30ef19"
+          },
+          {
+            "pos": 0.82,
+            "color": "#d5fa31"
+          },
+          {
+            "pos": 0.86,
+            "color": "#f4ff20"
+          },
+          {
+            "pos": 0.92,
+            "color": "#ffff50"
+          },
+          {
+            "pos": 1,
+            "color": "#fff070"
+          }
+        ]
+      },
+      "gradient_bend": 0.35,
+      "roughness": 0.15,
+      "clearcoat": 1,
+      "glass_depth": 1,
+      "surface": {
+        "kind": "liquid",
+        "scale": 5.775
+      },
+      "environment": {
+        "preset": "softbox",
+        "intensity": 2.8,
+        "rotation": 30,
+        "tint": "#ffffff",
+        "contrast": 1.6,
+        "saturation": 1
+      }
+    },
+    "bands": [
+      {
+        "grow": 0.6,
+        "join": "round",
+        "depth": 0.4813,
+        "bevel": {
+          "width": 0.77,
+          "depth": 0.385,
+          "profile": "tube",
+          "segments": 16
+        },
+        "material": {
+          "preset": "silver",
+          "color": "#d8dde6",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e3e7ee"
+              },
+              {
+                "pos": 0.45,
+                "color": "#a3abb8"
+              },
+              {
+                "pos": 0.52,
+                "color": "#555c68"
+              },
+              {
+                "pos": 0.6,
+                "color": "#9aa2af"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dfe4eb"
+              },
+              {
+                "pos": 1,
+                "color": "#f7f9fc"
+              }
+            ]
+          },
+          "metallic": 0.96,
+          "roughness": 0.14,
+          "clearcoat": 0.3
+        },
+        "side": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      },
+      {
+        "grow": 0.783,
+        "join": "round",
+        "depth": 0.4813,
+        "bevel": {
+          "width": 0.25,
+          "depth": 0.77,
+          "profile": "tube",
+          "segments": 16
+        },
+        "material": {
+          "color": "#ffd35c",
+          "metallic": 0.98,
+          "roughness": 0.15,
+          "env_multiplier": 4,
+          "surface": {
+            "kind": "liquid",
+            "amount": 0,
+            "scale": 12.03,
+            "seed": 3
+          },
+          "link": "gold"
+        }
+      },
+      {
+        "grow": 1.1745,
+        "join": "round",
+        "depth": 0.4813,
+        "bevel": {
+          "width": 2.2,
+          "depth": 0.6401,
+          "segments": 16
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 0.17
+        },
+        "side": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.6711,
+        "join": "round",
+        "depth": 2.3,
+        "bevel": {
+          "width": 0.2,
+          "depth": 0.4,
+          "segments": 16
+        },
+        "material": {
+          "color": "#ffd35c",
+          "metallic": 0.98,
+          "roughness": 0.15,
+          "env_multiplier": 4,
+          "surface": {
+            "kind": "liquid",
+            "amount": 0,
+            "scale": 12.03,
+            "seed": 3
+          },
+          "link": "gold"
+        },
+        "side": {
+          "color": "#ffd35c",
+          "metallic": 0.98,
+          "roughness": 0.15,
+          "env_multiplier": 4,
+          "surface": {
+            "kind": "liquid",
+            "amount": 0.17,
+            "scale": 12.03,
+            "seed": 3
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "fill": "gradient",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff20e0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.45,
+              "color": "#ff30c0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.6,
+              "color": "#4090ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#00e8ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "intensity": 1,
+        "size": 6.738,
+        "spread": 0.2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "highway",
+      "intensity": 3.4,
+      "rotation": -46,
+      "tint": "#ffffff",
+      "contrast": 2.2,
+      "saturation": 0,
+      "blur": 0.22,
+      "repeat_x": 8,
+      "repeat_y": 8
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 1.5,
+        "position": [-1000, -35, 155]
+      },
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 10,
+        "position": [571, -487, 956]
+      }
+    ]
+  },
+  "links": {
+    "gold": {
+      "name": "Gold"
+    }
+  },
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1826,
+    "item": "f-3d-rainbow-glass-gold",
+    "license_note": "used with the author's permission"
+  }
+}

@@ -18,6 +18,7 @@
 #include "component/RectTransformComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/TextComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "pixelart/BitmapFont.h"
@@ -362,6 +363,8 @@ namespace {
     // ---------------------------------------------------------------- UI renderer and polygon (their own codecs)
 
     YAML::Node encodeUI(const void* comp, const EncodeContext& ctx) {
+        // a Title Art Renderer's Live Effects drive the shader: the Image's own one is saved (S81 R2)
+        TitleArtCompanionScope companion(ctx.registry, ctx.entity);
         const bool isText = ctx.registry && ctx.signature.test(ctx.registry->getComponentId<TextComponent>());
         const bool isGenerated = ctx.registry && Stream::isGeneratedUI(ctx.registry, ctx.signature);
         return Stream::encodeUIComponent(*static_cast<const UIComponent*>(comp), !isGenerated, !isText, isText);

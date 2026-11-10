@@ -120,8 +120,8 @@
             "reason": "grandfathered by S31: 2571 chars when the limits were set, +5%"
         },
         "edit_tilemap": {
-            "limit": 2523,
-            "reason": "grandfathered by S31: 2403 chars when the limits were set, +5%"
+            "limit": 2173,
+            "reason": "S31's grandfathered limit lowered by S50: 2070 chars when its ops moved to jasper://docs/tilemaps, +5%"
         },
         "assert_ui": {
             "limit": 2170,

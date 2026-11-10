@@ -1,0 +1,82 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/long-shadow",
+  "revision": 1,
+  "name": {
+    "en": "Long Shadow",
+    "ja": "ロングシャドウ"
+  },
+  "description": {
+    "en": "Flat white face casting a long, fading, translucent black shadow down and to the right.",
+    "ja": "右下へ長く伸びて薄れる半透明の黒い影を落とす平らな白い面。"
+  },
+  "family": "minimal",
+  "tags": [
+    "long-shadow",
+    "flat",
+    "minimal",
+    "white",
+    "shadow",
+    "modern"
+  ],
+  "synonyms": {
+    "en": [
+      "flat design",
+      "diagonal shadow",
+      "material",
+      "icon style"
+    ],
+    "ja": [
+      "ロングシャドウ",
+      "フラットデザイン",
+      "影",
+      "斜め",
+      "rongu shadō",
+      "kage"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "archivo-black",
+    "ja": "mplus1p-black"
+  },
+  "style": {},
+  "effects": [
+    {
+      "type": "extrude",
+      "params": {
+        "angle": 45,
+        "length": 60,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#000000"
+            },
+            {
+              "pos": 1,
+              "color": "#000000"
+            }
+          ]
+        },
+        "shading": 0,
+        "edge": 0,
+        "fade": 1,
+        "opacity": 0.25
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

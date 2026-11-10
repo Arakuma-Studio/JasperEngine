@@ -1,0 +1,121 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/kira-sparkle",
+  "revision": 1,
+  "name": {
+    "en": "Kira Sparkle",
+    "ja": "キラキラスパークル"
+  },
+  "description": {
+    "en": "Glossy pink gradient face, a wide white border and a berry outline, with many star glints and a small star shower.",
+    "ja": "光沢のあるピンクのグラデーションの面、太い白ふち、ベリー色の外縁、たくさんの星のキラキラと小さな星の雨。"
+  },
+  "family": "anime",
+  "tags": [
+    "sparkle",
+    "pink",
+    "cute",
+    "anime",
+    "stars",
+    "glossy"
+  ],
+  "synonyms": {
+    "en": [
+      "kawaii",
+      "twinkle",
+      "magical girl",
+      "shiny"
+    ],
+    "ja": [
+      "キラキラ",
+      "かわいい",
+      "ピンク",
+      "星",
+      "kirakira",
+      "kawaii"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "mochiy-pop-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff0f8"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff8ac8"
+            },
+            {
+              "pos": 1,
+              "color": "#d02a8a"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 3.4
+      },
+      {
+        "width": 1.8,
+        "material": {
+          "fill": {
+            "color": "#8a1a5a"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "stars",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "stars": 8
+      },
+      "effects": []
+    },
+    {
+      "type": "particles",
+      "preset": "star_shower",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "count": 160,
+        "size": 12
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

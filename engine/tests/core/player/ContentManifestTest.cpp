@@ -199,10 +199,12 @@ TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
 
 // the newest last: T6's Voxel Volumes, T4's Terrain World, then T1's runtime terrain edits
 TEST(PlayerModules, KnowsVoxelTerrainWorldAndTerrainEdits) {
-    ASSERT_GE(allModules().size(), 3u);
-    EXPECT_EQ(allModules()[allModules().size() - 3], "voxel");
-    EXPECT_EQ(allModules()[allModules().size() - 2], "terrainworld");
-    EXPECT_EQ(allModules().back(), "terrainedit");
+    // the terrain programme's three, then Title Art's (S81 R51), which merged after them
+    ASSERT_GE(allModules().size(), 4u);
+    EXPECT_EQ(allModules()[allModules().size() - 4], "voxel");
+    EXPECT_EQ(allModules()[allModules().size() - 3], "terrainworld");
+    EXPECT_EQ(allModules()[allModules().size() - 2], "terrainedit");
+    EXPECT_EQ(allModules().back(), "titleart");
     EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
     EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
     EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");

@@ -168,6 +168,7 @@ io::AtomicWriteOptions existing;
 existing.createDirectories = false;                                   // a missing folder fails (MissingDirectory) instead of being created
 io::writeFileAtomic(folderTheUserPicked / name, bytes, existing);
 io::publishFile(io::makeTemporarySiblingPath(path), path, options);   // for writers that stream to a file
+io::AtomicFileWriter writer;                                          // output too large to hold in memory: open, write in pieces, commit
 io::renameWithRetry(from, to, ec);                                    // moves and renames
 if (!result.ok()) Out::error(DocumentFiles::saveFailureMessage(path, result));
 ```

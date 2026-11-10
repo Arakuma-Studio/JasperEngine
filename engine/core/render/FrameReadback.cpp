@@ -5,6 +5,7 @@
 
 #include "System.h"
 #include "texture/Framebuffer.h"
+#include "texture/TexturePrepare.h"
 
 #include <cstring>
 
@@ -38,6 +39,31 @@
     #else
         #include <GLES3/gl3.h>
     #endif
+#endif
+
+
+#if defined(SOKOL_GLCORE)
+    // GL_HALF_FLOAT is GL 3.0: older headers (Windows' GL/gl.h) do not name it
+    #ifdef GL_HALF_FLOAT
+        #define READBACK_GL_HALF_FLOAT GL_HALF_FLOAT
+    #else
+        #define READBACK_GL_HALF_FLOAT 0x140B
+    #endif
+#endif
+
+#if defined(SOKOL_GLES3)
+namespace {
+    // float colour buffers are readable on ES 3.0 / WebGL2 only with EXT_color_buffer_float
+    bool hasColorBufferFloat() {
+        GLint count = 0;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+        for (GLint i = 0; i < count; i++) {
+            const char* name = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(i)));
+            if (name && (std::strcmp(name, "GL_EXT_color_buffer_float") == 0 || std::strcmp(name, "EXT_color_buffer_float") == 0)) return true;
+        }
+        return false;
+    }
+}
 #endif
 
 using namespace jasperengine;
@@ -244,10 +270,39 @@ bool FrameReadback::finishGpu() {
 #endif
 }
 
+#if (defined(SOKOL_GLCORE) && !defined(_WIN32)) || defined(SOKOL_GLES3)
+namespace {
+    GLsync gpuFence = nullptr;
+}
+
+void FrameReadback::fenceGpu() {
+    if (gpuFence) glDeleteSync(gpuFence);
+    gpuFence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFlush();
+}
+
+bool FrameReadback::gpuFencePassed() {
+    if (!gpuFence) return true;
+    const GLenum state = glClientWaitSync(gpuFence, 0, 0);
+    if (state == GL_TIMEOUT_EXPIRED) return false;
+    // signalled, or failed (a lost context): no fence to wait for
+    glDeleteSync(gpuFence);
+    gpuFence = nullptr;
+    return true;
+}
+#else
+void FrameReadback::fenceGpu() {
+}
+
+bool FrameReadback::gpuFencePassed() {
+    return true;
+}
+#endif
+
 bool FrameReadback::readTexture(TextureRender& texture, int width, int height, int bytesPerPixel,
                                 std::vector<uint8_t>& pixels, std::string* error) {
     pixels.clear();
-    if (width <= 0 || height <= 0 || (bytesPerPixel != 4 && bytesPerPixel != 1)) {
+    if (width <= 0 || height <= 0 || (bytesPerPixel != 4 && bytesPerPixel != 1 && bytesPerPixel != 8 && bytesPerPixel != 16)) {
         setError(error, "bad readback size");
         return false;
     }
@@ -272,8 +327,11 @@ bool FrameReadback::readTexture(TextureRender& texture, int width, int height, i
     pixels.resize(static_cast<size_t>(width) * height * bytesPerPixel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
 #if defined(SOKOL_GLCORE)
+    // 8 bytes: RGBA16F as IEEE halves; 16 bytes: RGBA32F
+    const GLenum format = bytesPerPixel == 1 ? GL_RED : GL_RGBA;
+    const GLenum type = bytesPerPixel == 8 ? READBACK_GL_HALF_FLOAT : bytesPerPixel == 16 ? GL_FLOAT : GL_UNSIGNED_BYTE;
     glBindTexture(GL_TEXTURE_2D, handle);
-    glGetTexImage(GL_TEXTURE_2D, 0, (bytesPerPixel == 4) ? GL_RGBA : GL_RED, GL_UNSIGNED_BYTE, pixels.data());
+    glGetTexImage(GL_TEXTURE_2D, 0, format, type, pixels.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 #else
     // OpenGL ES and WebGL2 have no glGetTexImage: a framebuffer of the texture, read with
@@ -284,9 +342,29 @@ bool FrameReadback::readTexture(TextureRender& texture, int width, int height, i
     glGenFramebuffers(1, &readFramebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, readFramebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, handle, 0);
+    const bool floatRead = bytesPerPixel == 8 || bytesPerPixel == 16;
+    if (floatRead && !hasColorBufferFloat()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+        glDeleteFramebuffers(1, &readFramebuffer);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        sg_reset_state_cache();
+        pixels.clear();
+        setError(error, "float readback needs EXT_color_buffer_float");
+        return false;
+    }
     const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
     if (complete) {
-        if (bytesPerPixel == 4) {
+        if (floatRead) {
+            // ES reads float colour buffers as RGBA / FLOAT only: 16 bytes, halved on the CPU
+            std::vector<float> rgba(static_cast<size_t>(width) * height * 4);
+            glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, rgba.data());
+            if (bytesPerPixel == 16) {
+                std::memcpy(pixels.data(), rgba.data(), pixels.size());
+            } else {
+                uint16_t* halves = reinterpret_cast<uint16_t*>(pixels.data());
+                for (size_t i = 0; i < rgba.size(); i++) halves[i] = floatToHalf(rgba[i]);
+            }
+        } else if (bytesPerPixel == 4) {
             glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
         } else {
             std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);

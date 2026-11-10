@@ -41,9 +41,11 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
+        {"tilemaps", "Tilesets (tiles, collision, terrains, animation, properties) and Tiled/LDtk map import (jasper://docs/tilemaps)."},
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
         // the pixel-art family's group: S42's check, S43's palettes, S51's font previews, S48's effect contact sheets, S46's cleanup and lints (pages named in pixel-art.md)
         {"pixel_art", "Pixel art: checks, lints, cleanup, palettes, fonts, effect contact sheets (jasper://docs/pixel-art)."},
+        {"title_art", "Title Art documents (.titleart): library, edit, render, check, export."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

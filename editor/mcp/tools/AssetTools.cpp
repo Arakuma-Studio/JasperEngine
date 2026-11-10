@@ -71,6 +71,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "texsynth/SynthImage.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "model/ModelAudit.h"
@@ -952,6 +953,13 @@ void getAssetInfoTool(const CallPtr& call) {
                 text += "." + synthesisAssetText(synthesis);
                 text.pop_back();
             }
+            // a Title Art bake: the document and output that made it, and whether it is fresh
+            const Json bake = titleArtBakedPngInfo(project, file);
+            if (!bake.is_null()) {
+                data["title_art_bake"] = bake;
+                text += ". Baked from " + bake.value("source", std::string()) + " output " + bake.value("output", std::string()) + " (" +
+                        bake.value("status", std::string()) + ")";
+            }
         }
         if (extensionOf(file) != ".svg") {
             // a sprite normal map: its recipe, whether its source changed, the regenerate arguments;
@@ -1099,6 +1107,9 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "vertex_animation") {
         // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
         vatAssetInfo(project, file, data, text);
+    } else if (kind == "title_art") {
+        // a .titleart: canvas, layers, fonts (missing marked), outputs with freshness, problems
+        titleArtAssetInfo(project, file, data, text);
     } else if (kind == "shake") {
         // a .shake: its values and the peaks of its graph (the Inspector's: 60 Hz, seed 0)
         std::string source;
@@ -1190,6 +1201,25 @@ void viewAssetTool(const CallPtr& call) {
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
+        return;
+    }
+    if (Util::isTitleArtFile(rel)) {
+        // its fresh main output, else a render (S80 R59)
+        texsynth::Image image;
+        std::string label, error;
+        if (!titleArtViewImage(project, file, maxSize, image, label, error)) {
+            call->fail(rel + ": " + error);
+            return;
+        }
+        std::vector<uint8_t> png;
+        if (!texsynth::encodePng(image, png)) {
+            call->fail("Can't encode the preview of " + rel + ".");
+            return;
+        }
+        ToolResult result = ToolResult::success(rel + ": " + label + " (" + std::to_string(image.width) + "x" + std::to_string(image.height) + ").",
+                                                Json{{"preview_width", image.width}, {"preview_height", image.height}, {"shows", label}});
+        result.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+        call->reply(std::move(result));
         return;
     }
     if (SpriteSheetPool::isAsepritePath(rel)) {

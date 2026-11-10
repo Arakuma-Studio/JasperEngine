@@ -1,0 +1,19 @@
+{
+  "name": "jasperengine-pachislop-port",
+  "private": true,
+  "description": "Stage 1 of the Pachislop port converter (S84 R19): evaluates Pachislop's presets (by SafEight, used with the author's permission) into pachislop-dump.json. Host only: run on purpose, never in CI or Docker.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "self-test": "node dump.mjs --self-test"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "opentype.js": "2.0.0",
+    "three": "0.186.1",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

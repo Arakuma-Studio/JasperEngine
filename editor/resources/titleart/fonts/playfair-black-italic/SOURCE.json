@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/playfair/OFL.txt",
+    "sha256": "7d16bbb17375beefaa4d1d25c41f860cb161c9e614b44af790983a9fd7102627",
+    "bytes": 4482
+  },
+  "path": "ofl/playfair/Playfair-Italic[opsz,wdth,wght].ttf",
+  "sha256": "ae0d7a72a93804925040c277b4cd7e0607f48bb68dbbce70e3da6b5949f911ca",
+  "bytes": 1783732
+}

@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/mplus1p/OFL.txt",
+    "sha256": "da15da6b1496d4de18f97e2ad1b722ef8a1c121149c2c93b2cf7eac6ac27b35c",
+    "bytes": 4389
+  },
+  "path": "ofl/mplus1p/MPLUS1p-Black.ttf",
+  "sha256": "815821a62ce085e453af318ca004768e336329d5a7d6f7bed272e97e7862d43e",
+  "bytes": 1774332
+}

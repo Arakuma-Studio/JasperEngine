@@ -1,0 +1,198 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "bronze",
+  "revision": 1,
+  "name": {
+    "en": "Bronze",
+    "ja": "ブロンズ"
+  },
+  "description": {
+    "en": "Bronze metal from pale gold to dark brown, a brown keyline and a pale bronze frame.",
+    "ja": "淡い金から焦茶へのブロンズ金属、茶の線と淡いブロンズの枠。"
+  },
+  "family_hint": [
+    "metal",
+    "fantasy",
+    "sports"
+  ],
+  "tags": [
+    "bronze",
+    "brown",
+    "metal",
+    "warm",
+    "medal"
+  ],
+  "synonyms": {
+    "en": [
+      "copper",
+      "brass",
+      "third place"
+    ],
+    "ja": [
+      "ブロンズ",
+      "銅",
+      "青銅",
+      "buronzu",
+      "dou"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#fff0d0",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff0d0"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#e0a050"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#9a5a20"
+            },
+            {
+              "pos": 1,
+              "color": "#3a1a06"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#140800"
+          },
+          {
+            "pos": 0.25,
+            "color": "#3a1a06"
+          },
+          {
+            "pos": 0.5,
+            "color": "#bd7d38"
+          },
+          {
+            "pos": 0.75,
+            "color": "#fff0d0"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "material_3d": {
+        "color": "#d29246",
+        "metallic": 1,
+        "roughness": 0.25
+      },
+      "shade": "#2a1406"
+    },
+    "dark": {
+      "fill": {
+        "color": "#140800"
+      },
+      "material_3d": {
+        "color": "#140800",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#5a3010"
+        },
+        "material_3d": {
+          "color": "#5a3010",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#2a1406"
+      },
+      {
+        "fill": {
+          "color": "#e0b070"
+        },
+        "material_3d": {
+          "color": "#e0b070",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#2a1406"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#1a0c02"
+      },
+      "material_3d": {
+        "color": "#1a0c02",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#291204",
+      "metallic": 1,
+      "roughness": 0.25
+    }
+  },
+  "face_glow": "#fff0d0",
+  "glow": "#ffb060",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffb060"
+      },
+      {
+        "pos": 1,
+        "color": "#bd7d38"
+      }
+    ]
+  },
+  "shadow": "#2a1406",
+  "glint": "#fff0d0",
+  "light_ramp": [
+    "#2a1406",
+    "#3a1a06",
+    "#9a5a20",
+    "#e0a050",
+    "#ffb060",
+    "#fff0d0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#f6d8aa"
+        },
+        {
+          "pos": 0.55,
+          "color": "#b37331"
+        },
+        {
+          "pos": 1,
+          "color": "#48240a"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#fff0d0",
+    "#e0a050",
+    "#9a5a20",
+    "#3a1a06",
+    "#140800",
+    "#e0b070"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

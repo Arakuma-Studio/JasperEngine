@@ -1557,12 +1557,23 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
-    // a bitmap font, a BMFont file or a TTF/OTF: the Bitmap Font Inspector (S51 R23)
+    // a .titleart: its summary (InspectorWindowTitleArt.cpp)
+    if (Util::isTitleArtFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawTitleArtAsset(asset);
+        return true;
+    }
+    // a bitmap font or a BMFont file: the Bitmap Font Inspector (S51 R23); a TTF/OTF/TTC: its
+    // names, licence and embedding permission (InspectorWindowTitleArtFont.cpp), then S51 R24's
+    // pixel-font offer
     if (Util::isFontFile(file)){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
+        const bool vectorFont = Util::isVectorFontFile(file);
+        if (vectorFont) drawFontAsset(asset);
         if (!bitmapFontInspector) bitmapFontInspector = std::make_shared<BitmapFontInspector>(project);
-        bitmapFontInspector->draw(asset);
+        bitmapFontInspector->draw(asset, !vectorFont);
         return true;
     }
     // a .shake: its own view (InspectorWindowCamera.cpp)

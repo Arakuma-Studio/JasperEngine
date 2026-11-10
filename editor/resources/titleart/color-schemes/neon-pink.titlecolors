@@ -1,0 +1,165 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "neon-pink",
+  "revision": 1,
+  "name": {
+    "en": "Neon Pink",
+    "ja": "ネオンピンク"
+  },
+  "description": {
+    "en": "Glossy hot pink with a white line and a pink outer glow ring.",
+    "ja": "光沢のあるホットピンク、白の線、ピンクの外枠。"
+  },
+  "family_hint": [
+    "neon",
+    "retro",
+    "anime"
+  ],
+  "tags": [
+    "pink",
+    "neon",
+    "glow",
+    "gloss",
+    "bright"
+  ],
+  "synonyms": {
+    "en": [
+      "hot pink",
+      "magenta",
+      "fuchsia"
+    ],
+    "ja": [
+      "ピンク",
+      "ネオン",
+      "桃色",
+      "pinku",
+      "neon"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#ffe6f6",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffe6f6"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff4ab8"
+            },
+            {
+              "pos": 1,
+              "color": "#c0007a"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#ff69c4",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#3a0020"
+    },
+    "dark": {
+      "fill": {
+        "color": "#1a0010"
+      },
+      "material_3d": {
+        "color": "#1a0010",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#3a0020"
+      },
+      {
+        "fill": {
+          "color": "#ff2a9a"
+        },
+        "material_3d": {
+          "color": "#ff2a9a",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#3a0020"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#2a0018"
+      },
+      "material_3d": {
+        "color": "#2a0018",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#860055",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#ffe6f6",
+  "glow": "#ff2a9a",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff2a9a"
+      },
+      {
+        "pos": 1,
+        "color": "#ff4ab8"
+      }
+    ]
+  },
+  "shadow": "#3a0020",
+  "glint": "#ffe6f6",
+  "light_ramp": [
+    "#3a0020",
+    "#c0007a",
+    "#ff2a9a",
+    "#ff4ab8",
+    "#ffe6f6"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffc7ea"
+        },
+        {
+          "pos": 0.55,
+          "color": "#f943b2"
+        },
+        {
+          "pos": 1,
+          "color": "#c60780"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffe6f6",
+    "#ff4ab8",
+    "#c0007a",
+    "#1a0010",
+    "#ff2a9a"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

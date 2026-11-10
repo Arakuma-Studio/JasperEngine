@@ -87,13 +87,13 @@ std::vector<ContactTracker::Pair> ContactTracker::removeEntity(Entity entity) {
     return removed;
 }
 
-void ContactTracker::removeCollider(Entity entity, int index) {
+void ContactTracker::removeCollider(Entity entity, int index, bool renumber) {
     std::map<ColliderPairKey, Pair> next;
-    auto renumber = [&](ColliderKey key) {
+    auto renumbered = [&](ColliderKey key) {
         if (key.entity == entity && key.collider >= 0) {
             if (key.collider == index) {
                 key.collider = -1;
-            } else if (key.collider > index) {
+            } else if (renumber && key.collider > index) {
                 key.collider--;
             }
         }
@@ -101,8 +101,8 @@ void ContactTracker::removeCollider(Entity entity, int index) {
     };
     for (auto& [key, pair] : pairs) {
         Pair moved = pair;
-        moved.a = renumber(pair.a);
-        moved.b = renumber(pair.b);
+        moved.a = renumbered(pair.a);
+        moved.b = renumbered(pair.b);
         const ColliderPairKey movedKey = ColliderPairKey::make(moved.a, moved.b);
         moved.a = movedKey.a;
         moved.b = movedKey.b;

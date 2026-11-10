@@ -31,6 +31,10 @@ image of docker/runtime.Dockerfile:
   missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
   variant's build and the full player's run headless to the same frame, pixel for pixel (not
   atmosphere: its clouds differ between two runs of one player).
+- titleart-off (S80 AC32, R40; needs cmake: run it in the linux image, tools/build.sh exec linux): the
+  engine library configured with -DJASPERENGINE_TITLE_ART=OFF (--titleart-off-build, built when
+  absent) holds no engine/core/titleart object and no jasperengine::titleart symbol, builds no
+  Clipper2, builds ThorVG only for the HTML UI, and its HarfBuzz keeps HB_NO_DRAW (no hb_draw code).
 - model-capacity (S65 AC1, AC2): a script in the prebuilt players loads a model of many nodes and an OBJ of
   more materials than a mesh held, once as it is and once under Engine.startAsyncThread (all a Lua
   script has of a loading thread): every node and material in the Linux players, each frame as the
@@ -408,6 +412,47 @@ def check_fallback(args, players: Path, out: Path) -> None:
     print("ok: C++ scripts compile (and say why); --method prebuilt refuses them")
 
 
+def check_titleart_off(args, players: Path, out: Path) -> None:
+    build_dir = args.titleart_off_build.resolve()
+    library = build_dir / "libjasperengine.a"
+    if not library.is_file():
+        if shutil.which("cmake") is None:
+            raise Failure("titleart-off configures the engine: run it in the linux image (tools/build.sh exec linux ...)")
+        run(["cmake", "-S", REPO / "engine", "-B", build_dir, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", "-DJASPERENGINE_TITLE_ART=OFF",
+             "-DCMAKE_C_COMPILER_LAUNCHER=ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"], timeout=900)
+        run(["cmake", "--build", build_dir, "--target", "jasperengine", "-j", os.environ.get("JOBS", "4")], timeout=7200)
+    cache = (build_dir / "CMakeCache.txt").read_text()
+    if "JASPERENGINE_TITLE_ART:BOOL=OFF" not in cache:
+        raise Failure(f"{build_dir} is not configured with JASPERENGINE_TITLE_ART=OFF")
+    htmlui = "JASPERENGINE_HTMLUI:BOOL=ON" in cache
+    objects = [m for m in run(["ar", "t", library]).stdout.split() if "titleart" in m.lower()]
+    if objects:
+        raise Failure(f"the OFF library holds Title Art objects: {objects[:10]}")
+    symbols = run(["nm", "-C", "--defined-only", library], timeout=600).stdout.splitlines()
+    titleart = [line for line in symbols if "jasperengine::titleart::" in line]
+    if titleart:
+        raise Failure(f"the OFF library defines {len(titleart)} Title Art symbols, e.g. {titleart[:5]}")
+    if (build_dir / "libs" / "clipper2").exists():
+        raise Failure("the OFF build configures Clipper2 (only Title Art uses it)")
+    if (build_dir / "libs" / "thorvg").exists() != htmlui:
+        raise Failure(f"ThorVG is built {'without' if htmlui else 'with'} the HTML UI {'on' if htmlui else 'off'}: only the HTML UI needs it here")
+    harfbuzz = next(build_dir.glob("libs/harfbuzz/**/libharfbuzz*.a"), None)
+    if harfbuzz is None:
+        raise Failure(f"no HarfBuzz library under {build_dir / 'libs/harfbuzz'}")
+    # HB_NO_DRAW compiles hb-draw.cc out (hb_font_draw_glyph stays, a no-op without it)
+    def draw_functions(archive: Path) -> list[str]:
+        return [line for line in run(["nm", "--defined-only", archive]).stdout.splitlines() if " T hb_draw_" in line]
+    drawing = draw_functions(harfbuzz)
+    if drawing:
+        raise Failure(f"HarfBuzz lost HB_NO_DRAW in the OFF build: {drawing[:5]}")
+    # the measure is not empty: the ON engine's HarfBuzz (the linux build's) has them
+    on = next((REPO / "build/linux/engine/libs/harfbuzz").glob("**/libharfbuzz*.a"), None)
+    if on is not None and not draw_functions(on):
+        raise Failure(f"{on} (Title Art on) has no hb_draw_ functions: the HB_NO_DRAW check measures nothing")
+    print(f"ok: titleart off ({library}): no Title Art objects or symbols, no Clipper2, ThorVG {'for the HTML UI' if htmlui else 'not built'}, "
+          "HarfBuzz without hb_draw")
+
+
 MODEL_PLATES = 40
 OBJ_PLATES = 24
 MODEL_CAPACITY_SCRIPT = """local UnifiedLighting = { properties = {} }
@@ -585,13 +630,15 @@ def main() -> int:
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
     parser.add_argument("--only", default="linux,audio,components,variants,web,model-capacity,fallback")
     parser.add_argument("--write-goldens", action="store_true")
+    parser.add_argument("--titleart-off-build", type=Path, default=REPO / "build/linux/engine-titleart-off",
+                        help="the engine configured with JASPERENGINE_TITLE_ART=OFF (titleart-off; built when absent)")
     args = parser.parse_args()
-    if not args.editor.is_file():
+    if not args.editor.is_file() and args.only != "titleart-off":
         print(f"no editor at {args.editor}: run tools/build.sh linux", file=sys.stderr)
         return 1
     args.out.mkdir(parents=True, exist_ok=True)
     checks = {"linux": check_linux, "audio": check_audio, "components": check_components, "variants": check_variants, "web": check_web,
-              "model-capacity": check_model_capacity, "fallback": check_fallback}
+              "model-capacity": check_model_capacity, "fallback": check_fallback, "titleart-off": check_titleart_off}
     try:
         for name in args.only.split(","):
             if name not in checks:

@@ -408,6 +408,10 @@ void diag::heartbeat() {
     s.beats.store(s.beats.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
 }
 
+uint64_t diag::heartbeats() {
+    return shared().beats.load(std::memory_order_relaxed);
+}
+
 void diag::watchdog::start(const WatchdogConfig& input) {
     Shared& s = shared();
     std::unique_lock<std::mutex> lock(s.mutex);

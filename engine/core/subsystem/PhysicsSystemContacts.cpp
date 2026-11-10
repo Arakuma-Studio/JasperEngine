@@ -167,8 +167,7 @@ namespace {
     const Collider2D* collider2DOf(Scene* scene, const ColliderKey& key){
         if (!scene->isEntityCreated(key.entity)) return nullptr;
         const Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(key.entity);
-        if (!body || key.collider < 0 || (size_t)key.collider >= body->colliders.size()) return nullptr;
-        return &body->colliders[(size_t)key.collider];
+        return body ? findCollider2D(*body, key.collider) : nullptr;
     }
 
     uint16_t listenerMask2D(Scene* scene, Entity entity){
@@ -242,7 +241,7 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
     }
 
     bool changed = false;
-    for (const Collider2D& collider : body.colliders){
+    auto refreshFlags = [&](const Collider2D& collider){
         for (const b2ShapeId& shape : collider.shapes){
             changed |= applyShapeEventFlags2D(collider, body.listenerMask, shape);
         }
@@ -252,6 +251,16 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
             const int returned = count > 0 ? b2Chain_GetSegments(collider.chain, segments.data(), count) : 0;
             for (int i = 0; i < returned; i++){
                 changed |= applyShapeEventFlags2D(collider, body.listenerMask, segments[(size_t)i]);
+            }
+        }
+    };
+    for (const Collider2D& collider : body.colliders){
+        refreshFlags(collider);
+    }
+    if (body.generated){
+        for (const auto& [coord, chunk] : body.generated->chunks){
+            for (const Collider2D& collider : chunk.colliders){
+                refreshFlags(collider);
             }
         }
     }
@@ -616,6 +625,17 @@ void PhysicsSystem::contactColliderRemoved2D(Entity entity, size_t index){
     contactTracker2D.removeCollider(entity, removed);
 }
 
+void PhysicsSystem::contactGeneratedRemoved2D(Entity entity, int key){
+    if (contacts2D){
+        for (auto it = contacts2D->shapes.begin(); it != contacts2D->shapes.end();){
+            const bool gone = (it->second.keyA.entity == entity && it->second.keyA.collider == key) ||
+                              (it->second.keyB.entity == entity && it->second.keyB.collider == key);
+            it = gone ? contacts2D->shapes.erase(it) : std::next(it);
+        }
+    }
+    contactTracker2D.removeCollider(entity, key, false);
+}
+
 bool PhysicsSystem::setIgnoreCollision2D(Entity a, Entity b, bool ignore){
     if (a == b || !scene->findComponent<Rigidbody2DComponent>(a) || !scene->findComponent<Rigidbody2DComponent>(b)){
         return false;
@@ -682,7 +702,7 @@ std::vector<ContactSummary> PhysicsSystem::getContactSummary2D(Entity entity){
         }
     }
     // overlaps of its sensors, and the sensors it is in that Box2D told about
-    for (const Collider2D& collider : body->colliders){
+    auto addSensorOverlaps = [&](const Collider2D& collider){
         for (const b2ShapeId& shape : collider.shapes){
             if (!b2Shape_IsValid(shape) || !b2Shape_IsSensor(shape)) continue;
             const int sensorCapacity = b2Shape_GetSensorCapacity(shape);
@@ -693,6 +713,16 @@ std::vector<ContactSummary> PhysicsSystem::getContactSummary2D(Entity entity){
                 if (!b2Shape_IsValid(overlaps[(size_t)i])) continue;
                 const ColliderKey self = shapeColliderKey(shape), other = shapeColliderKey(overlaps[(size_t)i]);
                 addOnce({other.entity, self.collider, other.collider, true, false, 0, asleep});
+            }
+        }
+    };
+    for (const Collider2D& collider : body->colliders){
+        addSensorOverlaps(collider);
+    }
+    if (body->generated){
+        for (const auto& [coord, chunk] : body->generated->chunks){
+            for (const Collider2D& collider : chunk.colliders){
+                addSensorOverlaps(collider);
             }
         }
     }

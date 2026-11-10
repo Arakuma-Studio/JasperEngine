@@ -4,6 +4,9 @@
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
 #include "component/Transform.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
@@ -21,6 +24,8 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "titleart/runtime/TitleArtOverrides.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -1208,6 +1213,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             model->needUpdateModel = true;
         }
     }
+    if (updateFlags & UpdateFlags_TileLayer){
+        if (GridComponent* grid = registry->findComponent<GridComponent>(entity)){
+            grid->revision++;
+        }
+        if (TilemapLayerComponent* layer = registry->findComponent<TilemapLayerComponent>(entity)){
+            layer->needUpdate = true;
+        }
+        if (TilemapCollider2DComponent* collider = registry->findComponent<TilemapCollider2DComponent>(entity)){
+            collider->needUpdate = true;
+        }
+    }
     if (updateFlags & UpdateFlags_Tilemap){
         if (TilemapComponent* tilemap = registry->findComponent<TilemapComponent>(entity)){
             tilemap->needUpdateTilemap = true;
@@ -1427,6 +1443,16 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
 
+    // one Exposed parameter's entry of a Title Art Renderer, by name (made or removed to match:
+    // a prefab variant may override an entry its base does not have, S81 R4)
+    std::string overrideName;
+    if (compType == ComponentType::TitleArtRendererComponent && splitTitleArtOverrideProperty(property, overrideName)) {
+        const TitleArtRendererComponent* source = sourceRegistry->findComponent<TitleArtRendererComponent>(sourceEntity);
+        TitleArtRendererComponent* target = targetRegistry->findComponent<TitleArtRendererComponent>(targetEntity);
+        if (source && target) copyTitleArtOverride(*source, *target, overrideName);
+        return;
+    }
+
     // Get the property data to determine the type: the enumerated names, else the lookup (names
     // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
@@ -1575,7 +1601,11 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
         case PropertyType::Custom:
             // upstream's collider lists: their authored data, no live shape (copyCollider2D / 3D)
-            if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
+            if (compType == ComponentType::TitleArtRendererComponent && property == "runtimeEnvironments") {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
                 auto* source = Catalog::getPropertyRef<std::vector<Collider3D>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Collider3D>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) copyColliders3D(*source, *target);

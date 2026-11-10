@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/russoone/OFL.txt",
+    "sha256": "3ac1301549523d9861fedca12871f24e575fbd26d520632fc00ba849b471d275",
+    "bytes": 4390
+  },
+  "path": "ofl/russoone/RussoOne-Regular.ttf",
+  "sha256": "bc0abcc660bd8b7ad3000ecb2898a27c58a29a50f7ec81652fa12e75148d09df",
+  "bytes": 39124
+}

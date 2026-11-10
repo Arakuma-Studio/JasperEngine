@@ -1,0 +1,74 @@
+{
+  "grids": [{
+    "layout": "rectangle", "cell": [16, 16], "origin": [0, 0],
+    "layers": [
+      {
+        "name": "Group/Inner", "tileset": 0, "visible": false, "opacity": 0.5, "offset": [8, -4], "chunks": 0,
+        "cells": [[0, 0, 1, ""], [1, 0, 2, ""], [2, 0, 3, ""], [0, 1, 0, ""]]
+      },
+      {
+        "name": "Flat", "tileset": 0, "visible": true, "opacity": 0.75, "offset": [2, 6], "chunks": 0,
+        "cells": [[1, 1, 0, ""]]
+      },
+      {
+        "name": "Flat (extra)", "tileset": 1, "visible": true, "opacity": 0.75, "offset": [2, 6], "chunks": 0,
+        "cells": [[0, 1, 0, ""]]
+      }
+    ]
+  }],
+  "tilesets": [
+    {
+      "name": "props", "tile_size": [16, 16], "shape": "square", "external": "",
+      "images": [{"source": 0, "path": "images/props.png", "size": [36, 36]}],
+      "sources": [{"id": 0, "kind": "texture", "path": "images/props.png", "tile_size": [16, 16], "margin": 1, "spacing": 2, "skip_empty": false}],
+      "tile_total": 4, "next_id": 4,
+      "schema": [
+        {"name": "damage", "type": "int", "default": 0},
+        {"name": "glow", "type": "color", "default": [1, 1, 1, 1]},
+        {"name": "heat", "type": "float", "default": 0},
+        {"name": "hot", "type": "bool", "default": false},
+        {"name": "label", "type": "string", "default": ""}
+      ],
+      "terrain_sets": [],
+      "tiles": [
+        {
+          "id": 0, "at": [0, 0], "offset": [3, -4], "probability": 0.5,
+          "collision": {"mode": "custom", "polygons": [[[0, 0], [16, 0], [16, 8], [0, 8]]]},
+          "animation": [[0, 100], [1, 200]],
+          "properties": {
+            "damage": 3, "glow": [0.0627451, 0.1254902, 0.1882353, 1], "heat": 0.25, "hot": true, "label": "lava"
+          }
+        },
+        {
+          "id": 1, "at": [1, 0], "offset": [3, -4],
+          "collision": {"mode": "custom", "polygons": [[[8, 0], [16, 16], [0, 16]]]}
+        },
+        {
+          "id": 2, "at": [0, 1], "offset": [3, -4],
+          "collision": {"mode": "custom", "polygons": [[[15, 11], [14, 14], [11, 15], [8, 16], [5, 15], [2, 14], [1, 11], [0, 8], [1, 5], [2, 2], [5, 1], [8, 0], [11, 1], [14, 2], [15, 5], [16, 8]]]}
+        },
+        {"id": 3, "at": [1, 1], "offset": [3, -4]}
+      ]
+    },
+    {
+      "name": "extra", "tile_size": [16, 16], "shape": "square", "external": "",
+      "images": [{"source": 0, "path": "images/extra.png", "size": [16, 16]}],
+      "sources": [{"id": 0, "kind": "texture", "path": "images/extra.png", "tile_size": [16, 16], "margin": 0, "spacing": 0, "skip_empty": false}],
+      "tile_total": 1, "next_id": 1, "schema": [], "terrain_sets": [], "tiles": []
+    }
+  ],
+  "warnings": [
+    "Tileset 'props': tile 2's collision points were rounded to the pixel grid",
+    "Layer 'Flat' uses several tilesets; the cells of 'extra' form the layer 'Flat (extra)'"
+  ],
+  "skipped": [
+    {"kind": "collision", "name": "props tile 3: polyline", "count": 1},
+    {"kind": "collision", "name": "props tile 3: point", "count": 1},
+    {"kind": "image_layer", "name": "Backdrop", "count": 1},
+    {"kind": "hex_rotation", "name": "Group/Inner", "count": 1},
+    {"kind": "object_layer", "name": "Spawns", "count": 1},
+    {"kind": "parallax", "name": "Flat", "count": 1},
+    {"kind": "tint", "name": "Flat", "count": 1}
+  ],
+  "counts": {"grids": 1, "layers": 3, "tilesets": 2, "images": 2, "tiles": 6, "terrain_cells": 0, "skipped": 7, "warnings": 2}
+}

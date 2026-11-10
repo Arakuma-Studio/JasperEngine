@@ -39,6 +39,8 @@ namespace jasperengine::editor {
         // snaps the selection along the surfaces under the cursor instead of box selecting.
         // Begun (or refused) once per press.
         std::map<uint32_t, bool> physicsSnapArmed;
+        // the active Scene-view tool holds this press (S50 D9)
+        std::map<uint32_t, bool> sceneToolCapture;
         std::map<uint32_t, bool> physicsSnapBegun;
         // a menu or popup was open when the last frame's Scene views were drawn (its Esc is not
         // the Physics tool's)
@@ -148,6 +150,9 @@ namespace jasperengine::editor {
         ImVec2 canvasEngineScale(uint32_t sceneId) const;
         float canvasDpi(uint32_t sceneId) const;
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
+        // S50 R66: the active tool's overlay and status pill over the canvas, its badge on the toolbar
+        void drawSceneToolOverlay(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail);
+        void drawSceneToolBadge(SceneProject& sceneProject);
 
 
     public:

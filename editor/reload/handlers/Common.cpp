@@ -21,6 +21,7 @@ std::string reload::kindOf(const fs::path& path) {
     const std::string text = watch::pathToUtf8(path);
     const std::string ext = watch::lowerExtension(path);
     if (path.filename() == "project.yaml") return "project";
+    if (Util::isTitleArtFile(text)) return "titleart";
     // a .cube LUT is a texture of the post-processing (S13: the renderer caches it by path)
     if (Util::isImageFile(text) || Util::isColorLutFile(text)) return "texture";
     if (Util::isModelFile(text) || ext == ".fbx") return "model";
@@ -35,6 +36,7 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isParticleEffectFile(text)) return "particles";
     if (ext == ".voxelvolume") return "voxel";
     if (Util::isPaletteFile(text)) return "palette";
+    if (Util::isTilesetFile(text)) return "tileset";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";

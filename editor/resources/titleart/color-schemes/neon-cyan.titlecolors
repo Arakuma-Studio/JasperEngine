@@ -1,0 +1,164 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "neon-cyan",
+  "revision": 1,
+  "name": {
+    "en": "Neon Cyan",
+    "ja": "ネオンシアン"
+  },
+  "description": {
+    "en": "Glossy electric cyan with a white line and a cyan outer ring.",
+    "ja": "光沢のある電光シアン、白の線、シアンの外枠。"
+  },
+  "family_hint": [
+    "neon",
+    "scifi"
+  ],
+  "tags": [
+    "cyan",
+    "neon",
+    "glow",
+    "gloss",
+    "cool"
+  ],
+  "synonyms": {
+    "en": [
+      "aqua",
+      "electric blue",
+      "turquoise"
+    ],
+    "ja": [
+      "シアン",
+      "水色",
+      "ネオン",
+      "shian",
+      "mizuiro"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#e6fbff",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e6fbff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#3ae0ff"
+            },
+            {
+              "pos": 1,
+              "color": "#0090c0"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#5ce5ff",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#002a3a"
+    },
+    "dark": {
+      "fill": {
+        "color": "#001a24"
+      },
+      "material_3d": {
+        "color": "#001a24",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#002a3a"
+      },
+      {
+        "fill": {
+          "color": "#00c8ff"
+        },
+        "material_3d": {
+          "color": "#00c8ff",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#002a3a"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#002030"
+      },
+      "material_3d": {
+        "color": "#002030",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#006586",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#e6fbff",
+  "glow": "#00e0ff",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#00e0ff"
+      },
+      {
+        "pos": 1,
+        "color": "#3ae0ff"
+      }
+    ]
+  },
+  "shadow": "#002a3a",
+  "glint": "#e6fbff",
+  "light_ramp": [
+    "#002a3a",
+    "#0090c0",
+    "#00e0ff",
+    "#3ae0ff",
+    "#e6fbff"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#c4f6ff"
+        },
+        {
+          "pos": 0.55,
+          "color": "#34d8f9"
+        },
+        {
+          "pos": 1,
+          "color": "#0698c6"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#e6fbff",
+    "#3ae0ff",
+    "#0090c0",
+    "#001a24",
+    "#00c8ff"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

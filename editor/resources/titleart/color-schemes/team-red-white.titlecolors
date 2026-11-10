@@ -1,0 +1,158 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "team-red-white",
+  "revision": 1,
+  "name": {
+    "en": "Red & White",
+    "ja": "紅白"
+  },
+  "description": {
+    "en": "Glossy red, a white line and a navy frame: team colours.",
+    "ja": "光沢のある赤、白の線と紺の枠：チームカラー。"
+  },
+  "family_hint": [
+    "sports",
+    "casino"
+  ],
+  "tags": [
+    "red",
+    "white",
+    "team",
+    "sports",
+    "festive"
+  ],
+  "synonyms": {
+    "en": [
+      "red and white",
+      "festive",
+      "celebration"
+    ],
+    "ja": [
+      "紅白",
+      "こうはく",
+      "赤と白",
+      "kouhaku",
+      "medetai"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#ff3a3a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff3a3a"
+            },
+            {
+              "pos": 1,
+              "color": "#c8102e"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#e92935",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#2a0008"
+    },
+    "dark": {
+      "fill": {
+        "color": "#2a0006"
+      },
+      "material_3d": {
+        "color": "#2a0006",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#2a0008"
+      },
+      {
+        "fill": {
+          "color": "#0a1f44"
+        },
+        "material_3d": {
+          "color": "#0a1f44",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#2a0008"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#1a0004"
+      },
+      "material_3d": {
+        "color": "#1a0004",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#8c0b20",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#ff3a3a",
+  "glow": "#ff6a6a",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff6a6a"
+      },
+      {
+        "pos": 1,
+        "color": "#e32534"
+      }
+    ]
+  },
+  "shadow": "#2a0008",
+  "glint": "#ff3a3a",
+  "light_ramp": [
+    "#2a0008",
+    "#c8102e",
+    "#ff3a3a",
+    "#ff6a6a"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#fa3639"
+        },
+        {
+          "pos": 0.55,
+          "color": "#e12333"
+        },
+        {
+          "pos": 1,
+          "color": "#cb122f"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ff3a3a",
+    "#c8102e",
+    "#2a0006",
+    "#0a1f44"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

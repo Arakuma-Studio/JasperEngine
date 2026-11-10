@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/rocknrollone/OFL.txt",
+    "sha256": "b2f42a005a6a48ead81e369021e300184f0cbecb48aee6f831e46c7897f6055b",
+    "bytes": 4488
+  },
+  "path": "ofl/rocknrollone/RocknRollOne-Regular.ttf",
+  "sha256": "dc0f5ff975851827f63f2c6bfed128ffbca14b6399a10fb5e1711215c0108526",
+  "bytes": 2682824
+}

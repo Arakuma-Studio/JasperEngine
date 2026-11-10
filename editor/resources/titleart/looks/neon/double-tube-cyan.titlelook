@@ -1,0 +1,107 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/double-tube-cyan",
+  "revision": 1,
+  "name": {
+    "en": "Double Tube Cyan",
+    "ja": "ダブルチューブシアン"
+  },
+  "description": {
+    "en": "Hollow letters traced by two cyan neon tubes with white cores, a dark gap between them, and an added cyan glow.",
+    "ja": "中抜きの文字を白い芯の二本のシアンのネオン管でなぞり、間に暗いすき間、加算のシアンのグロー。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "cyan",
+    "tube",
+    "hollow",
+    "double",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "double neon",
+      "twin tube",
+      "blue neon",
+      "ice neon"
+    ],
+    "ja": [
+      "ネオン",
+      "二重線",
+      "シアン",
+      "水色",
+      "neon",
+      "daburu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "monoton",
+    "ja": "rocknroll-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#000000"
+      },
+      "opacity": 0
+    },
+    "rims": [
+      {
+        "width": 0.8
+      },
+      {
+        "width": 1.6,
+        "material": {
+          "fill": {
+            "color": "#00c8ff"
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "material": {
+          "fill": {
+            "color": "#02121a"
+          }
+        }
+      },
+      {
+        "width": 0.8
+      },
+      {
+        "width": 1.6,
+        "material": {
+          "fill": {
+            "color": "#00c8ff"
+          }
+        }
+      }
+    ],
+    "knockout": true
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#00e0ff",
+        "size": 32,
+        "mode": "add"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

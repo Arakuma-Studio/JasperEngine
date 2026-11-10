@@ -2738,6 +2738,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         snprintf(mask, sizeof(mask), "0x%02X", (unsigned int)playerSettings.allowedOrientations);
         mainContent += "    Engine::setVSyncCount(" + std::string(vsyncEnabled ? "1" : "0") + ");\n";
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
+        // Project Settings > Localization > Default Language (S87 R12 step 4)
+        mainContent += "    TitleArtLanguage::setProjectDefault(" + Factory::formatString(playerSettings.defaultLanguage) + ");\n";
         // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
         if (!playerSettings.dynamicBatching)
             mainContent += "    Engine::setDynamicBatchingDefault(false);\n";

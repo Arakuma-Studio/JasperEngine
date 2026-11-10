@@ -1,0 +1,199 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "ember",
+  "revision": 1,
+  "name": {
+    "en": "Ember",
+    "ja": "残り火"
+  },
+  "description": {
+    "en": "Molten metal from pale yellow through orange to deep red, a gold line and a dark red frame.",
+    "ja": "淡い黄から橙、深紅へ溶ける金属、金の線と暗赤の枠。"
+  },
+  "family_hint": [
+    "elements",
+    "fantasy",
+    "sports"
+  ],
+  "tags": [
+    "orange",
+    "fire",
+    "warm",
+    "metal",
+    "hot"
+  ],
+  "synonyms": {
+    "en": [
+      "fire",
+      "flame",
+      "molten",
+      "lava"
+    ],
+    "ja": [
+      "炎",
+      "火",
+      "溶岩",
+      "nokoribi",
+      "honoo"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#fff4c0",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff4c0"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#ffb020"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#ff4a00"
+            },
+            {
+              "pos": 1,
+              "color": "#5a0a00"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#1a0400"
+          },
+          {
+            "pos": 0.25,
+            "color": "#5a0a00"
+          },
+          {
+            "pos": 0.5,
+            "color": "#ff7d10"
+          },
+          {
+            "pos": 0.75,
+            "color": "#fff4c0"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "material_3d": {
+        "color": "#ff9c1a",
+        "metallic": 1,
+        "roughness": 0.25
+      },
+      "shade": "#3a0a00"
+    },
+    "dark": {
+      "fill": {
+        "color": "#1a0400"
+      },
+      "material_3d": {
+        "color": "#1a0400",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#ffd040"
+        },
+        "material_3d": {
+          "color": "#ffd040",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#3a0a00"
+      },
+      {
+        "fill": {
+          "color": "#8a1a00"
+        },
+        "material_3d": {
+          "color": "#8a1a00",
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#3a0a00"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#2a0800"
+      },
+      "material_3d": {
+        "color": "#2a0800",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#3f0700",
+      "metallic": 1,
+      "roughness": 0.25
+    }
+  },
+  "face_glow": "#fff4c0",
+  "glow": "#ff6a00",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff6a00"
+      },
+      {
+        "pos": 1,
+        "color": "#ff7d10"
+      }
+    ]
+  },
+  "shadow": "#3a0a00",
+  "glint": "#fff4c0",
+  "light_ramp": [
+    "#3a0a00",
+    "#5a0a00",
+    "#ff4a00",
+    "#ff6a00",
+    "#ffb020",
+    "#fff4c0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffe090"
+        },
+        {
+          "pos": 0.55,
+          "color": "#ff6e0b"
+        },
+        {
+          "pos": 1,
+          "color": "#731400"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#fff4c0",
+    "#ffb020",
+    "#ff4a00",
+    "#5a0a00",
+    "#1a0400",
+    "#8a1a00"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

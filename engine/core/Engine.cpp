@@ -40,6 +40,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
 #endif
@@ -1814,6 +1815,7 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     // scripts registered goes while the code behind the callbacks is still loaded
     forEachComponentEvent(*scene, [](auto& event) { event.clear(); });
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
+    scene->getSystem<TitleArtSystem>()->clearSubscriptions();
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -2299,6 +2301,11 @@ bool Engine::areScenesLoaded(bool textures){
             const auto documents = scenes[i]->getSystem<UIDocumentSystem>();
             ready = !documents || documents->isAllLoaded();
         }
+        // and its Realtime titles showing their images (S81, S86)
+        if (ready){
+            const auto titles = scenes[i]->getSystem<TitleArtSystem>();
+            ready = !titles || titles->areTitlesReady();
+        }
     }
     return ready;
 }
@@ -2325,6 +2332,9 @@ std::string Engine::describeNotLoaded(){
         }
         const auto documents = scene->getSystem<UIDocumentSystem>();
         if (documents && !documents->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+        const auto titles = scene->getSystem<TitleArtSystem>();
+        std::string title;
+        if (titles && !titles->areTitlesReady(&title)) add(title);
     }
     return out.empty() ? std::string("nothing (the ready line is 10 loaded frames away)") : out;
 }

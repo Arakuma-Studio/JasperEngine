@@ -1,0 +1,6 @@
+# Floor Reflection presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: glossy_floor
+    name: Glossy Floor
+    aliases: [mirror floor, shiny floor]
+    params: {opacity: 0.6, blur: 6}

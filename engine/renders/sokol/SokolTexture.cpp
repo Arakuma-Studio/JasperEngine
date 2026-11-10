@@ -1111,6 +1111,20 @@ const void* SokolTexture::getVulkanImageHandler() const{
     return nullptr;
 }
 
+uint32_t SokolTexture::getSamplingKey() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    const int width = sg_query_image_width(image), height = sg_query_image_height(image);
+    const auto power = [](int side){ return side > 0 && (side & (side - 1)) == 0; };
+    uint32_t key = (uint32_t)sg_query_image_pixelformat(image) | ((uint32_t)sg_query_image_type(image) << 8);
+    key |= (power(width) ? 1u : 0u) << 12 | (power(height) ? 1u : 0u) << 13 | (sg_query_image_num_mipmaps(image) > 1 ? 1u : 0u) << 14;
+    if (sampler.id != SG_INVALID_ID){
+        const sg_sampler_desc s = sg_query_sampler_desc(sampler);
+        key |= (uint32_t)s.min_filter << 16 | (uint32_t)s.mag_filter << 19 | (uint32_t)s.wrap_u << 22 | (uint32_t)s.wrap_v << 26;
+    }
+    return key;
+}
+
 int SokolTexture::getWidth() const{
     if (image.id == SG_INVALID_ID || !sg_isvalid())
         return 0;

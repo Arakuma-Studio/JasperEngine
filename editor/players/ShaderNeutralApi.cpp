@@ -121,6 +121,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},
         {"SplineAnimate", 0x00658326u},
+        // S81 R67: a script changes a title's values, never its asset, its Render Mode or which
+        // Live Effects it has (the export collects title_fx for the titles of shipped content)
+        {"TitleArt", 0xb946fadau},
     };
     return classes;
 }
@@ -179,7 +182,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "removeRigidbody2D", "getCharacterController2D", "removeCharacterController2D", "getRigidbody",
             "removeRigidbody", "getCharacterController", "removeCharacterController", "getBuoyancy",
             "getWaterVolume", "getSplineAnimate", "getRay", "getAnimationPlayer", "hasAnimationPlayer",
-            "hasVertexAnimator", "getAnimator", "hasAnimator", "position", "rotation", "scale", "visible",
+            "hasVertexAnimator", "getAnimator", "hasAnimator", "getTitleArt", "position", "rotation", "scale", "visible",
             "localMatrix", "modelMatrix", "normalMatrix"}},
         // its projection, transform and culling (not its render target, sorting or depth test)
         {"Camera", {

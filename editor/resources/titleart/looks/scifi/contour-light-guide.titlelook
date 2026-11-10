@@ -1,0 +1,103 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/contour-light-guide",
+  "revision": 1,
+  "name": {
+    "en": "Contour Light Guide",
+    "ja": "輪郭ライトガイド"
+  },
+  "description": {
+    "en": "Dark navy face traced inside by four glowing cyan contour lines, within a deep blue band and a cyan outer line.",
+    "ja": "内側を四本の光るシアンの輪郭線でなぞった濃紺の面、深い青の帯、外側のシアンの線。"
+  },
+  "family": "scifi",
+  "tags": [
+    "contour",
+    "lines",
+    "cyan",
+    "tech",
+    "glow",
+    "dark"
+  ],
+  "synonyms": {
+    "en": [
+      "light guide",
+      "circuit lines",
+      "inline glow",
+      "grid lines"
+    ],
+    "ja": [
+      "輪郭線",
+      "ライン",
+      "発光",
+      "近未来",
+      "rinkakusen",
+      "hakkō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "orbitron",
+    "ja": "train-one",
+    "variations": {
+      "wght": 700
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#0b1a2a"
+      }
+    },
+    "rims": [
+      {
+        "width": 4.4,
+        "material": {
+          "fill": {
+            "color": "#123a5a"
+          }
+        }
+      },
+      {
+        "width": 0.8,
+        "material": {
+          "fill": {
+            "color": "#2ad8ff"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "contour_lines",
+      "params": {
+        "count": 4,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#bff8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#2ad8ff"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

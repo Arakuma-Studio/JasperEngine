@@ -17,7 +17,9 @@ namespace jasperengine::editor::publish {
     struct NoticeLibrary {
         std::string name;
         std::string dir;      // repository-relative ("engine/libs/sokol")
-        std::string when;     // always, physics2d, physics3d, navigation, runtimeshaders, tracy, editor
+        // always, editor, or the player features that link it (htmlui, physics2d, titleart...):
+        // notices.json's `when`, one condition or a list of them (ThorVG ships with either feature)
+        std::vector<std::string> when;
     };
 
     bool loadNoticeLibraries(const std::filesystem::path& noticesJson, std::vector<NoticeLibrary>& out, std::string& error);

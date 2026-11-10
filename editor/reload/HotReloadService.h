@@ -201,6 +201,9 @@ namespace jasperengine::editor {
     private:
         HotReloadService() = default;
 
+        // the linked tile maps among `paths` re-import after the frame (S50 R47)
+        void reimportLinkedMaps(const std::vector<std::filesystem::path>& paths);
+
         struct Job {
             uint64_t batch = 0;
             std::string kind;
@@ -250,6 +253,7 @@ namespace jasperengine::editor {
         std::set<uint32_t> externallyChangedScenes;
         bool projectFileChanged = false;
         std::vector<std::filesystem::path> deferredScripts;   // Lua changed during Play
+        std::vector<std::filesystem::path> deferredLinkedMaps;   // files changed during Play (linked tile maps)
         bool assetRefreshAfterPlay = false;
 
         std::function<bool(const std::filesystem::path&)> scriptChangedHook;
