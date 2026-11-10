@@ -18,6 +18,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/SplineSystem.h"
@@ -172,7 +173,8 @@ namespace {
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (!mesh || !mesh->enabled || mesh->numSubmeshes == 0) return nullptr;
         if (scene->findComponent<TerrainComponent>(entity) || scene->findComponent<SpriteComponent>(entity) ||
-            scene->findComponent<TilemapComponent>(entity) || scene->findComponent<MeshPolygonComponent>(entity)) {
+            scene->findComponent<TilemapComponent>(entity) || scene->findComponent<TilemapLayerComponent>(entity) ||
+            scene->findComponent<MeshPolygonComponent>(entity)) {
             return nullptr;
         }
         for (size_t i = 0; i < mesh->numSubmeshes; i++) {

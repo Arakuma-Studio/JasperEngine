@@ -3,6 +3,8 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -535,6 +537,18 @@ bool editor::CreateEntityCmd::execute(){
         sprite.height = 100;
         if (type == EntityCreationType::SPRITE_BATCH)
             scene->addComponent<SpriteBatchComponent>(entity, {});
+
+    }else if (type == EntityCreationType::TILEMAP_GRID){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<GridComponent>(entity, {});
+
+    }else if (type == EntityCreationType::TILEMAP_LAYER){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<TilemapLayerComponent>(entity, {});
+        scene->getComponent<MeshComponent>(entity).numSubmeshes = 1;
 
     }else if (type == EntityCreationType::TILEMAP){
 

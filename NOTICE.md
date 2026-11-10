@@ -24,6 +24,7 @@ Libraries of the engine, the editor and the tools:
 | [Transvoxel](https://github.com/EricLengyel/Transvoxel) | `51a494f03c5b` | `engine/libs/transvoxel/` (`LICENSE`; `Transvoxel.cpp` verbatim, included by `engine/core/voxel/TransvoxelTables.cpp`) | MIT | the regular and transition cell tables of the Voxel Volume mesher (left out of a player without the `voxel` module) |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
+| [Clipper2](https://github.com/AngusJohnson/Clipper2) | 2.0.1 | `engine/libs/clipper2/` (`LICENSE`) | BSL-1.0 | polygon union of the tilemap colliders |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
@@ -422,6 +423,16 @@ Ported, each file keeping the original notice next to ours:
 | The pixel fixer (`editor/pixelart/cleanup/Cleanup{Grid,Sample,Palette,Specks,Outline,Reduce,Lost,Background,Edits,Pipeline,Sheet,Animation,SheetOutput,Recipe,Report,Synthetic}.*`) and its ported tests (`editor/tests/pixelart/Cleanup*Test.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `103c46b11218`, `packages/tools/src/pixel/core/` and `packages/tools/test/` | MIT, Copyright (c) 2026 Sandro Maglione |
 | The outline repair and stroke-preserving shrink within that port (`CleanupOutline.*`, `CleanupReduce.*`) | ritmo's `outline.ts` and `reduce.ts`, which follow [ToPixel](https://github.com/daisuqe/ToPixel) | MIT, Copyright (c) 2026 Sandro Maglione; ToPixel as its authors publish it |
 | The craft and rule lints (`editor/pixelart/lint/CraftLints.*`) | ritmo `packages/tools/src/pixel/core/lint.ts`, `packages/tools/src/fx/core/craft.ts`, `check.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
+## Grid tilemaps (S50)
+
+Ported or copied, each file keeping the original notice next to ours:
+
+| Code or data | Taken from | Licence |
+|---|---|---|
+| The best-match scoring and the blob corner filter (`engine/core/tilemap/TerrainSolver.cpp`) | [Pixelorama](https://github.com/Orama-Interactive/Pixelorama) `src/Classes/Cels/CelTileMap.gd` (`autotile_find_best_tile`, `autotile_score_tile`, `autotile_filter_corners`) | MIT, Copyright (c) 2019-present Orama Interactive and contributors |
+| The `dual_grid_4x4` template: `frameByMask`, the mask bit order, frame 12 as the second surface (`engine/core/tilemap/TerrainTemplates.cpp`) | [SpriteCook skills](https://github.com/spritecook/skills) `skills/spritecook-use-dual-grid-tilesets/SKILL.md` | MIT, Copyright (c) 2025 SpriteCook |
+
+The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 packing, found by Caeles at OpenGameArt.org), and `blob_47_godot` follows the layout of Godot's "3x3 minimal" autotile template; both are layouts of index numbers, no code or image from them ships here. `tileset::cellHash` uses the block step and finaliser of MurmurHash3 (Austin Appleby, public domain).
 
 ## Ideas re-implemented, no code copied
 

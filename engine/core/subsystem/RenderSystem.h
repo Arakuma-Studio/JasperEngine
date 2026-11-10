@@ -648,6 +648,7 @@ namespace jasperengine{
 		// a Voxel Volume's chunk: the tier (MeshComponent::voxelTier), 0 for anything else
 		uint8_t voxelTier = 0;
 		bool instanced = false;
+		bool tileClamp = false;          // a Tilemap Layer's variant (S50 'Tcl')
 		bool instanceFade = false;
 		// a foliage prototype (T5): 'Cin', 'Wnd', 'Dth'
 		bool compactInstance = false;
@@ -3701,6 +3702,8 @@ namespace jasperengine{
 		struct SortedDraw{
 			uint32_t index = 0;
 			uint64_t bucket = 0;
+			// a chunk list's piece drawn alone (Individual mode); -1: the whole GameObject
+			int32_t part = -1;
 		};
 		// the bucket of the UI subtrees (they keep their place: not sort items)
 		static constexpr uint64_t UI_SORT_BUCKET = UINT64_MAX - 1;
@@ -3735,11 +3738,16 @@ namespace jasperengine{
 		// Batch or an Instanced Mesh. The producer keeps the batch alive until it detaches it.
 		void attachInstanceBatch(Entity entity, SpriteInstanceBatch* batch);
 		void detachInstanceBatch(Entity entity);
-		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0; }
+		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0 || attachedInstanceChunks.count(entity) != 0; }
+		// S50: several batches drawn as that GameObject's instances (SpriteInstanceChunkList), each
+		// culled, built and uploaded on its own (a Tilemap Layer's chunks)
+		void attachInstanceChunks(Entity entity, SpriteInstanceChunkList* list);
+		void detachInstanceChunks(Entity entity);
 
 	private:
 		std::unordered_map<Entity, SpriteInstanceBatch*> attachedInstanceBatches;
 		std::unordered_map<Entity, uint64_t> attachedBoundsRevision;
+		std::unordered_map<Entity, SpriteInstanceChunkList*> attachedInstanceChunks;
 		void updateAttachedInstanceBatches();
 		// 2D sorting state (RenderSystemSorting.cpp)
 		struct SortItem{
@@ -3747,6 +3755,7 @@ namespace jasperengine{
 			uint32_t index = 0;
 			uint32_t last = 0;       // a Sorting Group: its subtree's last transform index
 			bool group = false;
+			int32_t part = -1;       // a chunk list's piece sorted on its own
 		};
 		bool sortingActive = false;
 		uint64_t sortFrame = 0;          // bumped by update(): the order is gathered once per frame
@@ -3761,6 +3770,8 @@ namespace jasperengine{
 		std::vector<uint32_t> sortGroupSequence;
 		// the bucket of the draw the 2D loop submits now (BatchItem::sortKey)
 		uint64_t passSortBucket = 0;
+		// the piece of a chunk list the 2D loop draws now (-1: the whole list, its usual draw)
+		int32_t passSpritePart = -1;
 		// layer value, order and axis point of an entity's renderer (or Sorting Group); false
 		// when it has no renderer
 		bool rendererSortFields(Entity entity, Signature signature, uint16_t& layerValue, int32_t& order, Vector3& point);
@@ -3784,7 +3795,14 @@ namespace jasperengine{
 		                     SpriteComponent& sprite, MeshComponent& mesh, Transform& transform);
 		// the instanced draws of its page runs (baseColorSlotType: the TextureShaderType a page binds
 		// to, -1 none); false when it has nothing to draw
-		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType);
+		// (bound: the batch whose buffers the render was loaded with, when another one's are drawn)
+		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType,
+		                         SpriteInstanceBatch* bound = nullptr, uint32_t rangeFirst = 0, uint32_t rangeCount = UINT32_MAX);
+		// the chunk list of the GameObject (null: none), and its pieces' draws, culled against
+		// the pass's frustum
+		SpriteInstanceChunkList* spriteInstanceChunksOf(Entity entity);
+		bool drawSpriteChunks(ObjectRender& render, Submesh& submesh, SpriteInstanceChunkList& list, ShaderRender* shader, int baseColorSlotType,
+		                      const Transform& transform, float cameraFar, const Plane frustumPlanes[6]);
 		// the custom fragment block with the instance= members 0 (a run or a Sprite Batch carries
 		// the amounts per vertex or per instance, S52 R21)
 		void applyInstanceSlotsZeroed(ObjectRender& render, Submesh& submesh);

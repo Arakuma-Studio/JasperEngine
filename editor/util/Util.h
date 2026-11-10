@@ -239,6 +239,15 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".palette";
         }
 
+        // Tilesets (S50), and the map files the Tile import reads (.tmj/.tmx Tiled, .ldtk LDtk)
+        inline static bool isTilesetFile(const std::string& path) {
+            return fileExtension(path) == ".tileset";
+        }
+        inline static bool isTilemapImportFile(const std::string& path) {
+            const std::string extension = fileExtension(path);
+            return extension == ".tmj" || extension == ".tmx" || extension == ".ldtk";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||

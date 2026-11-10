@@ -81,6 +81,9 @@ namespace jasperengine{
     struct ShadowCaster2DComponent;
     struct SortingGroupComponent;
     struct SpriteBatchComponent;
+    struct GridComponent;
+    struct TilemapLayerComponent;
+    struct TilemapCollider2DComponent;
     struct SkyboxComponent;
     struct SplineAnimateComponent;
     struct SplineComponent;

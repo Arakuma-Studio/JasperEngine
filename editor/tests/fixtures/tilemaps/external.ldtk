@@ -1,0 +1,10 @@
+{
+  "__header__": {"fileType": "LDtk Project JSON", "app": "LDtk", "appVersion": "1.5.3"},
+  "defaultGridSize": 16,
+  "externalLevels": true,
+  "defs": {
+    "layers": [{"uid": 12, "identifier": "Tiles", "type": "Tiles", "intGridValues": [], "parallaxFactorX": 0, "parallaxFactorY": 0}],
+    "tilesets": [{"uid": 1, "identifier": "Terrain", "relPath": "art/terrain.png", "pxWid": 32, "pxHei": 16, "tileGridSize": 16, "spacing": 0, "padding": 0, "enumTags": [], "customData": []}]
+  },
+  "levels": [{"identifier": "Ext_0", "worldX": 100, "worldY": 50, "pxWid": 32, "pxHei": 16, "externalRelPath": "external/Ext_0.ldtkl", "layerInstances": null}]
+}

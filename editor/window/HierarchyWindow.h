@@ -7,6 +7,7 @@
 #include "SceneWindow.h"
 #include "command/type/CreateEntityCmd.h"
 #include "imgui.h"
+#include "tilemap/import/TilemapImportApply.h"
 #include "util/EntityPayload.h"
 #include <list>
 #include <string>
@@ -191,6 +192,21 @@ namespace jasperengine::editor{
         // a Vertex Animation (.vat) a GameObject playing it (Model = its .vat.glb + Vertex Animator)
         bool acceptsModelDrop(const std::string& filePath) const;
         void handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent = NULL_ENTITY);
+        // GameObject > 2D Object > Tilemap (S50 R63)
+        void createTilemapGrid(const CreateMenuEntry& entry, Entity parent, bool addToPrefab);
+        // a Tiled or LDtk map dropped in the Hierarchy: its import report, then Import (R46)
+        struct TilemapImportPreview {
+            std::string file;
+            Entity parent = NULL_ENTITY;
+            bool opening = false;
+            bool loaded = false;
+            std::string error;
+            tilemapimport::ImportPlan plan;
+            tilemapimport::ImportReport report;
+        };
+        TilemapImportPreview tilemapImport;
+        void openTilemapImportPreview(const std::string& mapFile, Entity parent);
+        void showTilemapImportPreview();
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
 

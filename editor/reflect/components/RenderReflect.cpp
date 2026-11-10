@@ -798,7 +798,7 @@ namespace {
 }
 
 const ComponentDesc kTilemapDesc{
-    .type = ComponentType::TilemapComponent, .cppName = "TilemapComponent", .key = "tilemap", .displayName = "Tilemap", .icon = ICON_FA_BORDER_ALL,
+    .type = ComponentType::TilemapComponent, .cppName = "TilemapComponent", .key = "tilemap", .displayName = "Free Tilemap (Legacy)", .icon = ICON_FA_BORDER_ALL,
     .body = JE_STRUCT_DESC(TilemapComponent, "TilemapComponent", kTilemapFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TilemapComponent),
     .codec = &kTilemapCodec,

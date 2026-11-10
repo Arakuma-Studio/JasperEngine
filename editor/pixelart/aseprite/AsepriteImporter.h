@@ -9,6 +9,7 @@
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/sheet.json      the jasperengine.spritesheet record
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/page<n>.png     its pages (RGBA8, lossless)
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/clip-<n>.anim   the tag clips (canonical .anim)
+//   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/tileset-<n>.png the tilesets' tile strips ("<file>#tileset#<n>", S50 R12)
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/import.json     warnings, timings, sub-assets (written last)
 //
 // k = SHA-256 of (the file's content hash, its asset path and GUID, the resolved settings, the
@@ -75,6 +76,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::vector<PixelProblem> warnings;
         int frames = 0;
         std::vector<std::pair<int, int>> pages;   // sizes
+        std::vector<std::string> tilesetFiles;    // by tilesets() index: "tileset-<n>.png", "" for a tileset with no pixels (external)
         std::vector<Clip> clips;
         std::vector<Output> outputs;
         std::vector<std::string> tags, slices;
@@ -86,6 +88,7 @@ namespace jasperengine::editor::pixelart::aseprite {
 
         std::filesystem::path sheetFile() const { return dir / "sheet.json"; }
         std::filesystem::path pageFile(size_t page) const { return dir / ("page" + std::to_string(page) + ".png"); }
+        std::filesystem::path tilesetFile(size_t tileset) const { return dir / tilesetFiles[tileset]; }
         // {sheet, pages, clips: [{name, key, reference, guid, length, wrap}], slices, sub_assets, warnings, cache}
         nlohmann::json toJson() const;
         const Clip* findClip(const std::string& keyOrName) const;
@@ -99,8 +102,8 @@ namespace jasperengine::editor::pixelart::aseprite {
             std::string exportPath;
         };
         std::vector<ExportedFile> exportedFiles() const;
-        // the cache file of a key (the provider's answer): "sheet", "image#<n>", "animation:<tag>"
-        // or a clip's name; false when the import has none
+        // the cache file of a key (the provider's answer): "sheet", "image#<n>", "tileset#<n>",
+        // "animation:<tag>" or a clip's name; false when the import has none
         bool resolveKey(const std::string& key, std::filesystem::path& file) const;
     };
 

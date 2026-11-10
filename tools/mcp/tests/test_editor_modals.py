@@ -95,6 +95,8 @@ SITES = {
     ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
     ("window/dialog/SpriteConversionDialog.cpp", "title"): "test_sprite_conversion_dialog",
     ("window/PixelArtCheckWindow.cpp", "kPreviewName"): "not driven here: it needs findings; test_pixel_art_check_window.py's test_fix_all_preview_counts_the_plan opens and answers it",
+    ("tilemap/TilesetEditorWindow.cpp", "Apply Terrain Template###TilesetTemplate"): "not driven here: test_tile_palette_editor.py's test_tileset_editor_peering_and_template opens and answers it",
+    ("window/HierarchyWindow.cpp", "Import Tile Map###HierarchyTilemapImport"): "not driven: a .tmj/.tmx/.ldtk dropped in the Hierarchy opens it; import_tilemap gives the same report for agents",
     ("window/dialog/PixelArtPresetDialog.cpp", "POPUP_NAME"): "not driven here: a button of Project Settings > Pixel Art opens it; test_pixel_art_check_window.py's test_preset_dialog answers it",
     ("window/dialog/CreateTerrainDialog.cpp", "Create Terrain##CreateTerrainModal"): "not driven: from the Hierarchy's create menu and the Terrain window's empty state; create_entity type terrain, then edit_terrain create, does the same for agents (TerrainGenerateSeamTest drives its presets)",
     ("terrainworld/TerrainWorldPanel.cpp", "Create Terrain World##CreateTerrainWorldModal"): "not driven: from the Hierarchy's create menu and the Terrain World panel; edit_terrain_world create does the same for agents (test_terrain_world)",
@@ -193,8 +195,8 @@ async def test_sites_table_is_complete(ed: Editor):
     # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
     # S42's Fix All and Apply Pixel Art Preset: 78; T1's Create Terrain and its three Terrain Settings
     # dialogs, T4's three Terrain World dialogs, T5's Remove Tree Prototype and Mass Place Trees, T6's
-    # Create Voxel Volume: 88
-    ed.check_eq(sum(found.values()), 88, "the 88 sites")
+    # Create Voxel Volume: 88; S50's Apply Terrain Template and the Hierarchy's map import preview: 90
+    ed.check_eq(sum(found.values()), 90, "the 90 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

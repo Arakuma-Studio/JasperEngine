@@ -15,6 +15,7 @@
 #include "component/NavGridComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/ScriptComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "manager/PrefabAsset.h"
 #include "math/Curve.h"
 #include "particles/ParticleEffectCodec.h"
@@ -47,6 +48,37 @@ namespace jasperengine::cook {
     struct TextureVisit<OutOfLineValue<T>> {
         static void visit(OutOfLineValue<T>& v, const TextureVisitor& f) {
             if (T* set = v.editIfSet()) TextureVisit<T>::visit(*set, f);
+        }
+    };
+
+    // a Tilemap Layer's cells (S50 R87): the chunks' raw bytes, in the save order
+    template<>
+    struct Codec<TileCellsRef> {
+        static void write(Writer& w, const TileCellsRef& ref) {
+            const TileCells& cells = ref.read();
+            const std::vector<ChunkCoord> chunks = cells.sortedChunks();
+            w.varint(chunks.size());
+            for (const ChunkCoord& coord : chunks) {
+                w.varint((uint64_t)(uint32_t)coord.x);
+                w.varint((uint64_t)(uint32_t)coord.y);
+                const std::string bytes = cells.encodeChunkBytes(coord);
+                w.blob(bytes.data(), bytes.size());
+            }
+        }
+        static void read(Reader& r, TileCellsRef& ref) {
+            ref = TileCellsRef();
+            const uint64_t count = r.varint();
+            for (uint64_t i = 0; i < count && !r.failed(); i++) {
+                ChunkCoord coord;
+                coord.x = (int32_t)(uint32_t)r.varint();
+                coord.y = (int32_t)(uint32_t)r.varint();
+                const std::span<const uint8_t> bytes = r.blob();
+                std::string error;
+                if (!r.failed() && !ref.edit().decodeChunkBytes(coord, std::string_view((const char*)bytes.data(), bytes.size()), error)) {
+                    r.fail("tilemap chunk: " + error);
+                    return;
+                }
+            }
         }
     };
 

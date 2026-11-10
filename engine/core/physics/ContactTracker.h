@@ -111,8 +111,9 @@ namespace jasperengine {
         // the immediate Exit to the other sides (spec D6)
         std::vector<Pair> removeEntity(Entity entity);
         // A collider of the entity was removed: its pairs get index -1 (they end at the next
-        // update), the later ones shift down
-        void removeCollider(Entity entity, int index);
+        // update), the later ones shift down, unless `renumber` is off (a generated 2D collider's
+        // key is not a position in a list, so nothing follows it)
+        void removeCollider(Entity entity, int index, bool renumber = true);
 
         const std::map<ColliderPairKey, Pair>& getPairs() const { return pairs; }
         std::vector<Pair> getPairsOf(Entity entity) const;

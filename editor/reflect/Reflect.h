@@ -52,7 +52,8 @@ namespace jasperengine::editor::reflect {
         ModelOrPrefab,  // by the path's extension (a spline pool's entry)
         Palette,        // a .palette (S43)
         TreeData,       // a .jetrees file of a Terrain's trees (T5 R22)
-        TerrainWorld    // a Name.terrainworld folder (T4 R48)
+        TerrainWorld,   // a Name.terrainworld folder (T4 R48)
+        Tileset         // a .tileset (S50)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

@@ -13,8 +13,9 @@
 //   at its position, as its Sprite drawn alone does, not at its frame's offset.
 // - Producers: the Sprite Batch component (SpriteBatchComponent, scripts' bulk streams) and S50's
 //   tilemap chunks. A producer writes instances() / fx() after setCount, sets the page runs, and
-//   calls markChanged; the renderer uploads when the revision moved past the one it uploaded
-//   (Retained), or every frame it draws (PerFrame), never when the batch is culled or empty.
+//   calls markChanged (or markInstancesChanged); the renderer uploads when the revision moved past
+//   the one it uploaded (Retained), or every frame it draws (PerFrame), never when the batch is
+//   culled or empty.
 // - Draws: one instanced draw per page run ([first, first + count) on one texture page), in order.
 // - Not thread-safe: the main thread.
 
@@ -23,10 +24,12 @@
 #include "component/InstancedMeshComponent.h"
 #include "math/AABB.h"
 #include "math/Vector2.h"
+#include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "texture/Texture.h"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -74,6 +77,10 @@ namespace jasperengine{
         // bumps the revision and refreshes the bounds from the instances' matrices (unit quad
         // corners: (x0, y0) .. (x1, y1) of the mesh the instances draw)
         void markChanged(float x0, float y0, float x1, float y1);
+        // bumps the revision only, the bounds left as they are: the matrices did not move (an
+        // animated tile's next frame), or nobody reads them (a chunk list's piece is culled by its
+        // own bounds, SpriteInstanceChunk::bounds)
+        void markInstancesChanged();
         uint64_t getRevision() const { return revision; }
         const AABB& localBounds() const { return bounds; }
 
@@ -125,6 +132,38 @@ namespace jasperengine{
         bool gpuPivots = false;
         uint64_t uploadedRevision = 0;
         uint64_t uploadFrame = 0;
+    };
+
+    // One piece of a chunked producer's instances (S50's tilemap chunks): its own batch and GPU
+    // buffers, culled on its own. `batch` is not touched until the piece is in view: while
+    // needsBuild the list's build() fills it first (the renderer calls it from a visible draw)
+    struct SpriteInstanceChunk{
+        SpriteInstanceBatch* batch = nullptr;
+        AABB bounds;                     // in the GameObject's space, overhang included
+        uint64_t lastDrawn = 0;          // the frame (SokolSystem commit) it was last drawn
+        bool needsBuild = false;
+        // the part of the batch this piece draws (a chunk list in Individual mode shares a chunk's
+        // batch between its rows); the whole batch by default
+        uint32_t rangeFirst = 0;
+        uint32_t rangeCount = UINT32_MAX;
+        // its own sort item in the 2D passes: the sort point in the GameObject's space (R32)
+        bool sortItem = false;
+        Vector3 sortPoint = Vector3(0.0f, 0.0f, 0.0f);
+    };
+
+    // Several batches drawn as the instances of one GameObject: one sort item, each piece culled,
+    // built and uploaded on its own. `lead` holds the bindings the mesh loads with (count 1, never
+    // drawn), every piece's buffers are swapped in for its draw, so pieces come and go, grow and
+    // release their GPU buffers without reloading the mesh. Drawn in `chunks` order.
+    struct JASPERENGINE_API SpriteInstanceChunkList{
+        SpriteInstanceChunkList(){ lead.reserve(1); lead.setCount(1); }
+
+        SpriteInstanceBatch lead;
+        std::vector<SpriteInstanceChunk> chunks;
+        // the union of the pieces' bounds; bump `revision` with a change of it
+        AABB bounds;
+        uint64_t revision = 1;
+        std::function<void(SpriteInstanceChunk&)> build;
     };
 
 }

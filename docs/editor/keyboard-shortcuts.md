@@ -91,6 +91,24 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 |---|---|---|
 | Documentation | F1 | Global |
 
+## Tile Palette
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Select Tool | S | Tile Palette |
+| Paint Tool | B | Tile Palette |
+| Box Tool | U | Tile Palette |
+| Line Tool | L | Tile Palette |
+| Flood Tool | G | Tile Palette |
+| Eraser Tool | D | Tile Palette |
+| Picker Tool | I | Tile Palette |
+| Rotate Brush Clockwise | ] | Tile Palette |
+| Rotate Brush Counter-Clockwise | [ | Tile Palette |
+| Flip Brush Horizontally | Shift+[ | Tile Palette |
+| Flip Brush Vertically | Shift+] | Tile Palette |
+| Copy Cells into the Brush | Ctrl+C | Tile Palette |
+| Delete Selected Cells | Delete / Backspace | Tile Palette |
+
 ## Tools
 
 | Command | Shortcut | Context |

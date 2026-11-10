@@ -78,6 +78,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
+    {registerTilesetTools, "Tilemaps: tilesets and map import", "tilemaps"},   // S50
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
     {registerPixelArtTools, "Pixel art: the validator", "pixel_art"},   // S42
     {registerPixelFxTools, "Pixel art: effect contact sheets and checks", "pixel_art"},   // S48

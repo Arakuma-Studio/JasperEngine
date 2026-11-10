@@ -115,6 +115,8 @@ namespace jasperengine {
         static void registerTransitionClasses(lua_State *L);
         // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
         static void registerPixelFxClasses(lua_State *L);
+        // S50: Grid, TilemapLayer, Tileset, TileFlip (TilemapClassesLua.cpp)
+        static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

@@ -500,7 +500,9 @@ async def test_tilemap_source(ed: Editor):
     # a 32x16 tileset of two 16 px tiles on a Tilemap: frames {tile_size}, edges extend, apply
     rows = [b"".join(bytes((80 + 100 * (x // 16), 140, 60 + (x * y) % 50, 255)) for x in range(32)) for y in range(16)]
     (ed.project / SPR / "ground.png").write_bytes(png_rgba(32, 16, rows))
-    await ed.call("edit_tilemap", create={"name": "Ground"}, texture=f"{SPR}/ground.png", tileset={"tile_size": [16, 16]},
+    # rects on a create make a Free Tilemap (S50 R75): this checks a Mesh tilemap's tileset map
+    await ed.call("edit_tilemap", create={"name": "Ground"}, texture=f"{SPR}/ground.png",
+                  rects=[{"name": "t0", "rect": [0, 0, 16, 16]}, {"name": "t1", "rect": [16, 0, 16, 16]}], cell_size=[16, 16],
                   ops=[{"op": "fill", "tile": 0, "from": [0, 0], "to": [3, 1]}, {"op": "set", "cells": [[1, 1, 1]]}])
     await ed.call("wait", frames=2)
     r = await gen(ed, source="Ground", frames={"tile_size": 16}, params={"edges": "extend"}, output=True, apply=True)

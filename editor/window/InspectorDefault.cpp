@@ -398,6 +398,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::ImageComponent: return &InspectorWindow::drawImageComponent;
         case ComponentType::SpriteComponent: return &InspectorWindow::drawSpriteComponent;
         case ComponentType::TilemapComponent: return &InspectorWindow::drawTilemapComponent;
+        case ComponentType::GridComponent: return &InspectorWindow::drawGridComponent;
+        case ComponentType::TilemapLayerComponent: return &InspectorWindow::drawTilemapLayerComponent;
         case ComponentType::TerrainComponent: return &InspectorWindow::drawTerrainComponent;
         case ComponentType::LightComponent: return &InspectorWindow::drawLightComponent;
         case ComponentType::ShadowCaster2DComponent: return &InspectorWindow::drawShadowCaster2DComponent;

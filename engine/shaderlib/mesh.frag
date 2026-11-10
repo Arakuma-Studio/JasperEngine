@@ -59,6 +59,15 @@
 
 out vec4 g_finalColor;
 
+// a Tilemap Layer's tile (S50 R35): every read of the first UV set stays half a texel inside the
+// tile's frame, so filtering at its edge cannot reach the next tile of the atlas
+#if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+    flat in vec4 v_tileFrame;
+    vec2 tileClampedUV;
+    vec2 tileRawUV() { return v_uv1; }
+    #define v_uv1 tileClampedUV
+#endif
+
 #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
     uniform texture2D u_baseColorTexture;
     uniform sampler u_baseColor_smp;
@@ -334,6 +343,11 @@ void main() {
         ivec2 holeTexel = clamp(ivec2(floor(v_terrainHoleUV * vec2(holeSize))), ivec2(0), holeSize - ivec2(1));
         terrainHoleClass = texelFetch(sampler2D(u_terrainHoles, u_terrainHoles_smp), holeTexel, 0).r;
         TERRAIN_COUNT_FETCHES(1.0);
+    #endif
+    #if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+        vec2 tileTexel = 0.5 / vec2(textureSize(sampler2D(u_baseColorTexture, u_baseColor_smp), 0));
+        tileClampedUV = clamp(tileRawUV(), min(v_tileFrame.xy, v_tileFrame.xy + v_tileFrame.zw) + tileTexel,
+                              max(v_tileFrame.xy, v_tileFrame.xy + v_tileFrame.zw) - tileTexel);
     #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();

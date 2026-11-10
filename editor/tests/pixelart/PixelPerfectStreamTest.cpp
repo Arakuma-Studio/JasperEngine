@@ -255,8 +255,16 @@ TEST(PixelParticleShaders, ShaderCacheVersionCoversThePixelParticles){
 }
 
 // S48's Pixel FX sources (library:sprite's new features, the uber pass's 'Gli' bit, the screen
-// transition) are cached under v64 (after S49 took v60, S52 v61 and the terrain programme v63): an older cache holds sprite
-// and uber programs without them
+// transition) are cached under v64 or later (after S49 took v60, S52 v61 and the terrain programme v63): an older cache
+// holds sprite and uber programs without them
 TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v64");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 64) << name;
+}
+
+// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
+// S48's v64: an older cache holds tilemap programs that sample past their frames
+TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
 }

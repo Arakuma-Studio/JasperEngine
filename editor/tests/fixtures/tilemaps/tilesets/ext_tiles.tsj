@@ -1,0 +1,3 @@
+{"type": "tileset", "name": "ext", "tilewidth": 16, "tileheight": 16, "tilecount": 2, "columns": 2,
+ "image": "../images/ext.png", "imagewidth": 32, "imageheight": 16,
+ "tiles": [{"id": 1, "properties": [{"name": "kind", "type": "string", "value": "gate"}]}]}

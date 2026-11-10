@@ -995,6 +995,10 @@ namespace jasperengine::editor{
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // grid tilemaps (S50), at the end of InspectorWindow.cpp: a unit of their own would include the Mesh component once more
+        void drawGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapLayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapConvertSection(SceneProject* sceneProject, Entity entity);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // T6 R65 (InspectorVoxels.cpp)
         void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
