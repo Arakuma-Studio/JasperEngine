@@ -125,7 +125,8 @@ TEST_F(LuaSpriteBatch, SmallEdits){
 TEST_F(LuaSpriteBatch, RawComponentGetterReturnsUserdata){
     EXPECT_EQ(runBatchLua(L,
         "local component = batch:getSpriteBatchComponent()\n"
-        "assert(type(component) == 'userdata')\n"), "");
+        "assert(type(component) == 'userdata')\n"
+        "assert(getmetatable(component) ~= nil)\n"), "");
 }
 
 TEST_F(LuaSpriteBatch, TypedErrorsChangeNothing){
