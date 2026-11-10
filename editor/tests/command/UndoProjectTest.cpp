@@ -6,6 +6,7 @@
 // Changes review (R26-R29, AC13).
 
 #include "UndoFakeCommand.h"
+#include "component/MeshComponent.h"
 #include "component/Transform.h"
 
 #include "Project.h"

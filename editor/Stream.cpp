@@ -6166,6 +6166,7 @@ namespace {
             const YAML::Node saved = componentNode[field.yamlKey];
             if (!saved || !saved.IsScalar()) continue;
             const void* value = field.peek ? field.peek(existing) : field.ref(existing);
+            if (!value) continue;
             if (field.ops->skip && field.ops->skip(field, value)) continue;
             if (field.ops->scalar(field, value) != saved.Scalar()) return false;
         }
