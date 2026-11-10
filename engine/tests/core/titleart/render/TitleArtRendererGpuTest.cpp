@@ -6,7 +6,7 @@
 // a one-shot render, determinism across fresh ids, the cache cascade's pass counts with every
 // cached result equal to a fresh one, regions of interest and peak target memory, device loss,
 // render variants (overrides, kept splits, glyph cells), an idle renderer holding nothing, what
-// may move a cached node and a following generator's layer.
+// may move a cached node, a following generator's layer and an isolated layer's group.
 // The layers' text and geometry come from the tests' analytic provider (TitleRenderTestSupport.h).
 
 #include "TitleRenderTestEffects.h"

@@ -1874,24 +1874,36 @@ rest of S82 lands in 6B.
     gives Minimal one (`minimal/matte-3d`) and §6.6 fixes its count at 10. The catalogue stands; `test_content`
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
-    `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
+    `lint_allow`.** Status (ta/lib-last-looks, 2026-11-10): the whole gate before the merge of feature/title-art
+    (863cb9c78), 6 shards over both build boxes: 301 items, 829 sample renders (looks 584, schemes 99, templates 146),
+    5 failures in 4 items (counter_survival at 8 delta E; the feature line's threshold is 4, Deviation 29): `3d_tier_budget` on `neon/tube-3d` and `scifi/reactor-core-3d` (Medium) and
+    `gems/treasure-banner` en and ja (Low), and `counter_survival` on the scheme `mono-dark`; the briefed
+    `casino/premium-black-gloss`, `casino/red-hot-rim-glow` and `gems/diamond-3d` passed. Those four are fixed on the
+    feature line (S86 Deviation 35's mesher, Deviation 29's mono-dark ramp); after the merge the gate over the twelve
+    items it touches (those, the three briefed, `minimal/soft-shadow`, `elements/electric-blue`, `elements/storm-counter`,
+    `casino/confirm-giraffe-3d`, `sports/goal-banner`; 30 renders) has no failure. The whole gate on the merged tree
+    is the integrator's run. Earlier states:
     - fallback_parity: none since Deviation 32 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
       `elements/storm-counter` pass since S83 Deviation 43 (Light Glow read Lightning's light clipped at 1 on the RGBA8
       path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
-    - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
-      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low; **fixed in the mesher** (S86 Deviation 35:
-      it coarsens to each tier's budget, and the solid limit drops the thinnest band), so 6 items fail; the gate over
-      every 3D item (70 looks, 21 templates, 252 renders) finds only diamond-3d and confirm-giraffe-3d below;
-    - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
-      `casino/red-hot-rim-glow` passes alone and fails only late in an 860-render batch (render state carried between
-      documents, cause not found).
+    - 3d_tier_budget: the inflate mesher's floor at Medium and the extruder's at Low, **fixed in the mesher** (S86
+      Deviation 35: it coarsens to each tier's budget, and the solid limit drops the thinnest band);
+    - counter_survival: `casino/red-hot-rim-glow` ja "passed alone and failed late in a batch" was a renderer bug, not
+      carried state between documents: a group's cached node was keyed by every child of the document, so a check's
+      isolated render of the echo layer after a render of the canvas (`render_title`, or the checks' own base render)
+      read the whole group; checked alone (`checks: ["counter_survival"]`) it rendered fresh. The group's key now holds
+      the children the draw tree draws (e125488d3 on the feature line, the same fix as 21f9545b5 here;
+      `TitleArtRendererGpu.IsolationKeysTheGroupNode`, red before). 69d584ba6 was the same class (a node-cache key
+      without what the pixels depend on: a generator's params), not this cause. `casino/premium-black-gloss` and
+      `gems/diamond-3d` are tuned on the feature line (Deviation 29); this branch's alternatives (tracking 0 with a
+      graphite rim; a silver Outline) also passed and were dropped in the merge for the versions closer to the design.
     What was fixed, by cause: the tier budget measured islands instead of the stack, and the mesher now builds at most the
     tier's stack (bands past it are reported per tier as `3d_tier_budget.<tier>.bands_dropped`, a warning); fallback parity
     uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning and Backlight, as
     S83's own test does, and following Glints, measured in S83 Deviation 44); counter_survival is visible contrast (below); legibility is judged on
     the item's declared background (46 looks, 11 templates). About 45 items were tuned as data, each with a targeted change, and reviewed on
     before-and-after sheets of every family in both samples: no look lost its identity; the colour scheme mono-dark did, and
-    is restored (it fails counter_survival again); two template sample texts were shortened to fit ("NEW IN", "BREAK").
+    is restored (it failed counter_survival again until Deviation 29's ramp); two template sample texts were shortened to fit ("NEW IN", "BREAK").
 24. **counter_survival is visible contrast** (owner's decision): a counter survives when it is open or its fill is at least
     delta E 8 from the letter around it, on the item's background; a rim of the face's colour and a counter flooded by an
     outline of it are the red controls (6.5 at most). Latin keeps its design; a look's `cjk` member thins rims and bands
