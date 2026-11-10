@@ -239,8 +239,12 @@ TEST_F(PachislopPortTest, ReviewRecords) {
                 }
             }
         }
-        if (verdict == "tuned") EXPECT_TRUE(overridden) << key.first << " " << key.second << ": `tuned` needs an overrides.json entry";
-        if (visual) EXPECT_EQ(verdict, "tuned") << key.first << " " << key.second << ": a visual overrides.json entry is a `tuned` record";
+        if (verdict == "tuned") {
+            EXPECT_TRUE(overridden) << key.first << " " << key.second << ": `tuned` needs an overrides.json entry";
+        }
+        if (visual) {
+            EXPECT_EQ(verdict, "tuned") << key.first << " " << key.second << ": a visual overrides.json entry is a `tuned` record";
+        }
     }
 }
 
