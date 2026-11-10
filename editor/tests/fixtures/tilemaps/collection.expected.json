@@ -1,0 +1,22 @@
+{
+  "grids": [{
+    "layout": "rectangle", "cell": [16, 16], "origin": [0, 0],
+    "layers": [{"name": "T", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0, "cells": [[0, 0, 2, ""], [1, 0, 5, ""]]}]
+  }],
+  "tilesets": [{
+    "name": "pics", "tile_size": [16, 32], "shape": "square", "external": "",
+    "images": [{"source": 0, "path": "images/a.png", "size": [16, 32]}, {"source": 1, "path": "images/b.png", "size": [16, 16]}],
+    "sources": [
+      {"id": 0, "kind": "texture", "path": "images/a.png", "tile_size": [16, 32], "margin": 0, "spacing": 0, "skip_empty": false},
+      {"id": 1, "kind": "texture", "path": "images/b.png", "tile_size": [16, 16], "margin": 0, "spacing": 0, "skip_empty": false}
+    ],
+    "tile_total": 2, "next_id": 6, "schema": [], "terrain_sets": [],
+    "tiles": [
+      {"id": 2, "at": [0, 0], "source": 0, "collision": {"mode": "custom", "polygons": [[[0, 28], [8, 28], [8, 32], [0, 32]]]}},
+      {"id": 5, "at": [0, 0], "source": 1}
+    ]
+  }],
+  "warnings": ["Tileset 'pics' is an image collection: it makes 2 sources, one per image"],
+  "skipped": [],
+  "counts": {"grids": 1, "layers": 1, "tilesets": 1, "images": 2, "tiles": 2, "terrain_cells": 0, "skipped": 0, "warnings": 1}
+}

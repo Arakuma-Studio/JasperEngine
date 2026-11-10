@@ -838,4 +838,78 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **R31, R59 (instance stream).** S52 landed `SpriteInstanceBatch` with `InstanceRenderData` (96 bytes: matrix, colour,
+  texture rect; plus 8 bytes of snap pivot in a snapping scene), not the old 40-byte stream, so a GPU-resident tile costs
+  96-104 bytes. Flips are a negative texture rect, transpose swaps the quad's axes in the instance matrix (exact zeros,
+  so S41's every-vertex snap applies).
+- **R31-R33 (chunks through S52).** S52's attach takes one batch per GameObject; S50 adds `SpriteInstanceChunkList`
+  (`RenderSystem::attachInstanceChunks`): a lead batch the mesh loads with, and one `SpriteInstanceBatch` per chunk whose
+  buffers are swapped in for its draw, each culled, built on first view and uploaded on its own.
+- **R35 `CLAMP_FRAME`.** A MESH variant bit, `Tcl` (54, `TILE_CLAMP_FRAME`), set for a Tilemap Layer's instanced
+  variant: the fragment stage clamps the first UV set half a texel inside the instance's frame (mesh.frag and
+  library:sprite). Shader cache v65 (after the terrain programme's v63 and S48's v64).
+- **R2, §6.3 (sorting and material).** Sorting Layer, Order in Layer and the material live on the layer's MeshComponent,
+  as for Sprites (S52's renderer fields), not on `TilemapLayerComponent`; the Inspector shows them in the layer section.
+- **D4, R86, R87 (encoding).** Each chunk starts with a header byte (log2 of the chunk size, a terrain-plane bit), so a
+  chunk string decodes on its own. Cooked scenes store the raw chunk bytes through the `chunks` field's `Codec`
+  (`CustomCodecs.h`) instead of a `ComponentHooks` hook; Compile builds emit one `decodeChunk` statement per chunk with
+  the string split under 16,000 characters. A prefab instance overrides the `chunks` field whole, not per chunk.
+- **§6.2 (references, ids).** A source's asset is written `{"path": ..., "guid": ...}` (a path or `"guid:<hex>"`
+  string is read too), and `"next_id"` keeps deleted ids from being handed out again (R13).
+- **D5 (hexagons).** `localToCell` on hexagons uses an exact band and zigzag test of the layout's rows instead of cube
+  rounding, so a non-regular `hexSideLength` is exact too; the half-open rule is the documented one.
+- **R32 (Individual mode).** A layer in Individual mode gives each anchor row of a chunk its own sort item (the tiles of a
+  row share their sort distance along the Y axis), not each tile.
+- **§6.4 (enums).** The layout and collider enums are int-sized, not `: uint8_t`: the editor's enum fields read and write
+  4 bytes.
+- **R38 (surface).** `TilemapCollider2DComponent` lists the Collider2D surface fields it shares (friction, restitution,
+  material, category, mask, group, events) instead of holding a `Collider2D`; category and mask are 32-bit fields
+  narrowed to Box2D's 16 bits. The Inspector and MCP refuse wider values; one set from Lua or C++ is clamped (category
+  and mask to 65535, group to -32768..32767) with one warning per change of the fields.
+- **Units.** A Grid's Cell Size is in world units; a tile's image is its pixels over the project's Pixels Per Unit.
+  Colliders are built in texels and scaled back.
+- **R12 (aseprite source).** The Aseprite importer (version 2) writes each tileset's strip and resolves
+  `"<file>#tileset#<index>"`, so the runtime and exports read the tiles without the `.aseprite` file.
+- **R12, R53 (sprite import).** A texture becomes a pixel-art Sprite (Sprite, no mips, Point filtering, quality none:
+  uncompressed) when `edit_tileset`, the Tileset Editor, Create Tileset, `edit_tilemap`'s tileset slice or the Tiled/LDtk
+  import makes it a tileset's image: the user's choice, not S14's inference, so an image imported before its `.tileset`
+  (S14 had written its default type down) no longer cooks with mips and BC1 and shows seams in exports. It is one
+  `SetAssetMetaCmd` per image in the tileset write's undo step; only images the file did not name before switch, so a
+  later choice of the user stays; other uses of the image are named in `next` and the Console. An Aseprite source's
+  pages follow its file's own import (S44, lossless by default); the legacy Tilemap conversion keeps its texture's
+  settings (the legacy Tilemap already infers Sprite).
+- **AC5, AC15 (measurement).** No `je-bench-tilemap` binary: the R56-R61 timings are measured in the unit tests through
+  `perfSlack()`, and the mobile (Pixel 6a, iPhone 12) and web numbers are not measured (no devices on this host). Web,
+  Android, Vulkan and the smoke export run at the batch landing (owner decision of 2026-11-08). The GPU placement tests
+  compare against pictures computed in the test from R7/R8, not PNG goldens.
+- **R73 (Always Refresh).** "Always Refresh" is the Scene view's former "Animate water" toggle (Rendering section; the
+  stored key stays `animateWater`, MCP `animate_water`): water, tile animations and the shaders on the scene clock run
+  in Edit mode while it is on, and always in Play.
+- **R69 (Compress Bounds).** The cell store drops empty chunks as it goes, so the button reports the used rect and
+  chunk count and changes nothing.
+- **R67 (Navigation Area).** The Tileset Editor edits a tile's `nav_area` as an integer area index, not a named list.
+- **R49, R88 (legacy positions).** The legacy Tilemap's mesh build clamped negative tile positions to 0 by writing
+  the clamp back into the component, so a map that was drawn once saved, and converted, with moved tiles. It now draws
+  them at 0 as before and leaves the stored positions as authored (the picture is unchanged; a re-save keeps what was
+  loaded), so R50's conversion reads the authored cells.
+- **R82, §6.1 (MCP guide).** No `## Pixel art` line: per the ledger's upstream rule change the area is one "Other
+  areas" entry (`tilemaps (edit_tilemap)`, `jasper://docs/tilemaps`). The guide's room came from moving the Unity-names
+  sentence on Build Settings and Scenes in Build to `docs/unity-glossary.md` (already there) and the Code section.
+- **R2, R8 (tileAnchor).** `tileAnchor` (ax, ay) moves every tile by ax cell pitches along the plane's u and ay along v, on
+  every layout (not along the isometric cell axes). One rule (`tilegrid::tileShift` in `TileGridLayout.h`: tileAnchor plus the
+  R27 dual-grid shift) places the drawn instances, the colliders, the culling bounds, picking (R10), `getCellAt`, the NavGrid
+  source (R51) and the editor's previews.
+- **§6.4 (`Grid(scene, entity)`).** It adds a Grid to a GameObject that has none, as the other component wrappers do
+  (SortingGroup, CanvasGroup, Animator, PixelPerfectCamera); `TilemapLayer(scene, entity)` adds nothing, and its calls on a
+  GameObject without a Tilemap Layer raise a Lua error.
+- **R89 (load report).** A layer whose tileset does not load gets an Info `fallback` issue on `tileset` ("tileset_missing: ...
+  keeps its N cells and draws nothing"); chunks that do not read are refused whole as an invalid value (their text kept).
+- **R75 `create`.** `create` makes a Grid + Tilemap Layer, except with `rects`, `replace_rects` or `origin`, which keep
+  making a Free Tilemap (arbitrary pixel rects have no `.tileset` source). `create_entity` `tilemap` is a Grid + layer;
+  the Free Tilemap is `free_tilemap`. The result's `grid` holds the Grid's GameObject fields and the ASCII view together.
+  The result's `kind` (`grid`, `free_tilemap`) says which it made, a Free Tilemap create's `next` says why, and those
+  fields on a Grid are refused (`invalid_value`).
+- **§6.3 (the layer's tileset).** A layer stores its tileset as the `tileset` path and a sibling `tilesetGuid` key, the
+  shape every other asset field of a scene has, not a `{guid, path}` map. A `.tileset`'s sources resolve by GUID, then by
+  their path hint, in the editor; an export writes each `.tileset` with its sources' current paths and no GUIDs, so a game
+  loads them by path. A `.tileset`'s texture imports as a sprite sheet does (no mips; point filtering in Pixel Art Mode).

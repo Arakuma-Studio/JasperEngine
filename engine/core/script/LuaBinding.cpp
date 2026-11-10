@@ -49,6 +49,8 @@
 #include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "object/Tilemap.h"
+#include "object/tilemap/Grid.h"
+#include "object/tilemap/TilemapLayer.h"
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/ShadowCaster2D.h"
@@ -984,6 +986,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set
     registerPixelFxClasses(L);
+    registerTilemapClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
@@ -1191,6 +1194,8 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Mirror, "mirror");
     DISPATCH_TYPE(Terrain, "terrain");
     DISPATCH_TYPE(Tilemap, "tilemap");
+    DISPATCH_TYPE(TilemapLayer, "tilemaplayer");
+    DISPATCH_TYPE(Grid, "grid");
     DISPATCH_TYPE(Model, "model");
     DISPATCH_TYPE(Spline, "spline");
 #if JASPERENGINE_VOXEL

@@ -42,6 +42,11 @@ def doc_files(root):
     voxels = os.path.join(root, 'docs', 'voxels.md')
     if os.path.exists(voxels):
         files.append(voxels)
+    # a feature's user page with a Lua walkthrough (S50 AC12)
+    for name in ('tilemaps.md',):
+        path = os.path.join(root, 'docs', name)
+        if os.path.exists(path) and path not in files:
+            files.append(path)
     return files
 
 

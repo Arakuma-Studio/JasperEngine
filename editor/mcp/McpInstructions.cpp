@@ -94,7 +94,7 @@ GameObject = entity (script class GameObject); Create Empty = type empty. Prefab
 Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
 Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an
 entry of the body's colliders list, not a component. Legacy Animation = AnimationPlayerComponent.
-Others: Unity's name + "Component". Build Settings = export; Scenes in Build = project.yaml's list.
+Others: Unity's name + "Component".
 
 ## C++ scripts
 Read jasper://docs/cpp-scripting first: a ScriptBase subclass with a (jasperengine::Scene*,
@@ -129,7 +129,7 @@ check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navig
 (analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), pixel-fx
 (capture_contact_sheet), title-art, data safety (allow_data_loss), meshes (inspect_models,
 check_render_budgets), device tiers (set_device_simulation, then play), sprites (set_sprite_frames
-sheet): jasper://docs/<area>.
+sheet), tilemaps (edit_tilemap): jasper://docs/<area>.
 )JE";
 }
 

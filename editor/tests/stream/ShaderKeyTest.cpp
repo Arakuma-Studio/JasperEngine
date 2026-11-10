@@ -68,8 +68,9 @@ namespace {
     // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), bit 44,
     // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), bits 46-48,
     // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv'), bits 49-51, T5's foliage ('Cin', 'Wnd',
-    // 'Dth'), bit 52, T3's terrain holes ('Thl'), and bit 53, T4's Terrain World ('Twd')
-    const uint64_t meshValidMask = 0x3FFFFFFFFFFFFFULL;
+    // 'Dth'), bit 52, T3's terrain holes ('Thl'), bit 53, T4's Terrain World ('Twd'), and bit 54, S50's
+    // tile frame clamp ('Tcl')
+    const uint64_t meshValidMask = 0x7FFFFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -199,11 +200,11 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 53 (T4's 'Twd') goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 54 (S50's 'Tcl') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
-    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(54) | 0x41)),
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(55) | 0x41)),
               ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
     // the high shadow filters ('Shq', S10) only with shadows ('Shw', bit 4)
     const uint64_t shq = ShaderPool::getShadowsHQProperty();
@@ -412,7 +413,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(54) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(55) | shaderPropertyBit(63), "mesh_UltNor"},
         // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
         {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
         {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
@@ -443,7 +444,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwd"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwdTcl"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},

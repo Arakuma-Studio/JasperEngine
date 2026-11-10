@@ -694,7 +694,7 @@ height is the top of the mesh's world bounds, its extent their XZ, its heights t
 on the same clock: the scene clock (`Water.getTime(scene)`, the engine-written `sceneTime` of
 the shader), the seconds the scene has run scaled by the time scale. It holds while the game or
 Play is paused and at `Time.timeScale = 0`, starts at 0 when the scene starts, and in a stopped
-scene follows the Scene view's Animate water (on; `set_scene_camera display {animate_water}`).
+scene follows the Scene view's Always Refresh (on; `set_scene_camera display {animate_water}`).
 `sample_water` returns it as `water_time`. Any shader can run on it by declaring a `sceneTime`
 member in its custom block. A
 dynamic Rigidbody with a `buoyancy` above 0 floats in it (physics guide, "Floating in water");

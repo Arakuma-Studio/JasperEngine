@@ -1,8 +1,10 @@
 # Clipper2 2.0.1 - https://github.com/AngusJohnson/Clipper2 (tag Clipper2_2.0.1), Boost Software
-# License 1.0. Polygon offsetting and boolean operations of Title Art's outlines (face weight,
-# plate closing, stroke outlines: engine/core/titleart/geometry/Offset.cpp). Only the C++ library
+# License 1.0. The polygon union and clipping of the tilemap collider builder (S50 D8), and the
+# polygon offsetting and boolean operations of Title Art's outlines (face weight, plate closing,
+# stroke outlines: engine/core/titleart/geometry/Offset.cpp). Only the C++ library
 # (CPP/Clipper2Lib) is vendored, unchanged; upstream's CMakeLists.txt, which also builds its
-# utilities, examples and tests, is replaced by this file. Built only with JASPERENGINE_TITLE_ART.
+# utilities, examples and tests, is replaced by this file. Built with JASPERENGINE_PHYSICS_2D or
+# JASPERENGINE_TITLE_ART (one target, added by whichever comes first).
 
 add_library(
 

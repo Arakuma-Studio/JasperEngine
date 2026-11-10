@@ -121,6 +121,7 @@ namespace {
             case K::Palette: return AssetType::Palette;
             case K::TreeData: return AssetType::TreeData;
             case K::TerrainWorld: return AssetType::TerrainWorld;
+            case K::Tileset: return AssetType::Tileset;
             case K::TitleArt: return AssetType::TitleArt;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
         }

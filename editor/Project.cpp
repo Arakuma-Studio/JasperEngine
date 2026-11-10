@@ -20,6 +20,7 @@
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/TitleArtSystem.h"
+#include "subsystem/TilemapSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
@@ -6656,7 +6657,7 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // the scene clock (the water's waves) holds with the bodies; a stopped scene's moves by the
-    // Scene view's Animate water (updateSceneRender)
+    // Scene view's Always Refresh (updateSceneRender)
     scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
@@ -6691,6 +6692,9 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
     // the wakes hold with the game (a hull dragged in edit mode leaves none)
     if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
+    // only the tile animation clock (S50 R73): the layers keep drawing; a stopped scene's moves
+    // while the Scene view's Always Refresh is on (updateSceneRender)
+    if (auto tilemaps = scene->findSystem<TilemapSystem>()) tilemaps->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {
@@ -9198,13 +9202,17 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
 
     syncSceneRenderEditLayer(sceneId);
     // a stopped scene's clock (its paused one: Engine::runFrame leaves it) moves with the editor's
-    // frames while Animate water is on, once a frame, with its inline child scenes
+    // frames while Always Refresh is on, once a frame, with its inline child scenes
     {
         const auto now = std::chrono::steady_clock::now();
         const double delta = sceneProject->editClockValid
             ? std::clamp(std::chrono::duration<double>(now - sceneProject->editClockLast).count(), 0.0, 0.25) : 0.0;
         sceneProject->editClockLast = now;
         sceneProject->editClockValid = true;
+        // tile animations follow the same switch (R73): the scene clock is the option, not water alone
+        if (sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            if (auto tilemaps = sceneProject->scene->findSystem<TilemapSystem>()) tilemaps->setPaused(!sceneProject->displaySettings.animateWater);
+        }
         if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->displaySettings.animateWater && delta > 0.0){
             if (sceneProject->scene)
                 sceneProject->scene->advanceSceneTime(delta, true);

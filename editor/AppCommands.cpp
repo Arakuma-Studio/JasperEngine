@@ -29,6 +29,8 @@
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
 #include "window/PixelArtCleanupWindow.h"
+#include "tilemap/TilePaletteWindow.h"
+#include "tilemap/TilemapSceneTools.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -726,6 +728,9 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
     if (pixelArtCleanupWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCleanup);
+    // the Tile Palette, or a Scene view with a tile tool up under the pointer or focused (R64)
+    if (tilePaletteWindow->takesKeys() || (tilemap::TilemapTools::get().isToolActive() && (sceneWindow->isFocused() || sceneWindow->isHovered())))
+        state.panels.push_back(ShortcutContext::TilePalette);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;

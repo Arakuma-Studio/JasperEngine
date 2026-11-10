@@ -174,6 +174,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "A new palette (black and white): edit it in Window > 2D > Palette";
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
         "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
+    b.menu("assets.createTileset", "Create Tileset", AppMenuCommand::AssetsCreateTileset).description =
+        "A new .tileset (edit it in the Tileset Editor)";
     // S45
     b.menu("assets.createSpriteAtlas", "Create Sprite Atlas", AppMenuCommand::AssetsCreateSpriteAtlas);
     b.menu("assets.createSpriteAtlasFromSelection", "Create Sprite Atlas from Selection", AppMenuCommand::AssetsCreateSpriteAtlasFromSelection);
@@ -270,6 +272,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
         "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
+    b.menu("window.tilePalette", "Tile Palette", AppMenuCommand::ToggleTilePalette).description =
+        "The tile brushes: tools, terrains, random brushes and stamps of the active Tilemap Layer";
+    b.menu("window.tilesetEditor", "Tileset Editor", AppMenuCommand::ToggleTilesetEditor).description =
+        "Edit a .tileset: collision, animation, terrains and properties of its tiles";
     b.menu("window.pixelArtCheck", "Pixel Art Check", AppMenuCommand::TogglePixelArtCheck).description =
         "The pixel-art rules on the project: findings, measured values and one-click fixes";
     b.menu("window.pixelArtCleanup", "Pixel Art Cleanup", AppMenuCommand::TogglePixelArtCleanup).description =
@@ -313,6 +319,23 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("help.documentation", "Documentation", AppMenuCommand::Documentation, C::Global, "F1");
     b.menu("help.keyboardShortcuts", "Keyboard Shortcuts", AppMenuCommand::KeyboardShortcuts);
     b.menu("help.reportIssue", "Report an Issue...", AppMenuCommand::ReportIssue);
+
+    // The Tile Palette (S50 R64): the window, or a Scene view with a tile tool up (these keys win
+    // over the Scene view's L, [, ], Delete and the gizmo keys then: first in the catalog)
+    b.group = "Tile Palette";
+    b.add("tilePalette.select", "Select Tool", C::TilePalette, "S").description = "Draw a selection of cells: move, copy into the brush, delete";
+    b.add("tilePalette.paint", "Paint Tool", C::TilePalette, "B").description = "Paint the chosen tiles in the Scene view (Shift erases, Ctrl picks)";
+    b.add("tilePalette.box", "Box Tool", C::TilePalette, "U").description = "Fill a rectangle of cells";
+    b.add("tilePalette.line", "Line Tool", C::TilePalette, "L").description = "Paint a line of cells";
+    b.add("tilePalette.flood", "Flood Tool", C::TilePalette, "G").description = "Flood fill contiguous equal cells";
+    b.add("tilePalette.eraser", "Eraser Tool", C::TilePalette, "D").description = "Erase cells";
+    b.add("tilePalette.picker", "Picker Tool", C::TilePalette, "I").description = "Take a cell's tile as the brush";
+    b.add("tilePalette.rotateCW", "Rotate Brush Clockwise", C::TilePalette, "]").repeat = true;
+    b.add("tilePalette.rotateCCW", "Rotate Brush Counter-Clockwise", C::TilePalette, "[").repeat = true;
+    b.add("tilePalette.flipX", "Flip Brush Horizontally", C::TilePalette, "Shift+[").repeat = true;
+    b.add("tilePalette.flipY", "Flip Brush Vertically", C::TilePalette, "Shift+]").repeat = true;
+    b.add("tilePalette.copySelection", "Copy Cells into the Brush", C::TilePalette, "Ctrl+C");
+    b.add("tilePalette.deleteSelection", "Delete Selected Cells", C::TilePalette, "Delete", "Backspace");
 
     b.group = "Tools";
     b.add("tools.hand", "Hand Tool", C::Editor, "Q").description = "Pan the Scene view";

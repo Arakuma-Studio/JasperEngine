@@ -1,0 +1,17 @@
+{
+  "grids": [{
+    "layout": "isometric", "cell": [32, 16], "origin": [0, 0],
+    "layers": [{"name": "T", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0, "cells": [[0, 0, 0, ""]]}]
+  }],
+  "tilesets": [{
+    "name": "iso", "tile_size": [32, 16], "shape": "isometric", "external": "",
+    "images": [{"source": 0, "path": "images/iso.png", "size": [32, 16]}],
+    "sources": [{"id": 0, "kind": "texture", "path": "images/iso.png", "tile_size": [32, 16], "margin": 0, "spacing": 0, "skip_empty": false}],
+    "tile_total": 1, "next_id": 1, "schema": [],
+    "terrain_sets": [{"name": "Edges", "mode": "sides", "terrains": [["Road", "#404040"]]}],
+    "tiles": [{"id": 0, "at": [0, 0], "terrain": {"set": 0, "center": 0, "peering": {"n": "none", "e": 0, "s": "none", "w": "none"}}}]
+  }],
+  "warnings": [],
+  "skipped": [],
+  "counts": {"grids": 1, "layers": 1, "tilesets": 1, "images": 1, "tiles": 1, "terrain_cells": 0, "skipped": 0, "warnings": 0}
+}

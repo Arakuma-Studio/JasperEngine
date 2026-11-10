@@ -35,6 +35,7 @@ namespace {
         {AssetCreateKind::Palette, "Palette", ICON_FA_PALETTE, "assets.createPalette", false, false},
         // the Project window shows it as a submenu: Blank, then the presets (T2 R62)
         {AssetCreateKind::NoiseGraph, "Noise Graph", ICON_FA_MOUNTAIN_SUN, "assets.createNoiseGraph", true, false},
+        {AssetCreateKind::Tileset, "Tileset", ICON_FA_TABLE_CELLS_LARGE, "assets.createTileset", false, false},
     }};
 
 }

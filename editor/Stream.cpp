@@ -14,6 +14,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "registry/SortingLayers.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
@@ -6102,6 +6103,7 @@ bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry
 bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature signature) {
     return signature.test(registry->getComponentId<SpriteComponent>()) ||
            signature.test(registry->getComponentId<TilemapComponent>()) ||
+           signature.test(registry->getComponentId<TilemapLayerComponent>()) ||
            signature.test(registry->getComponentId<MeshPolygonComponent>()) ||
            signature.test(registry->getComponentId<TerrainComponent>()) ||
            // the Spline Extrude's Mesh is its chunks' template: material and flags, no geometry

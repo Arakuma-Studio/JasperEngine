@@ -409,7 +409,7 @@ LAYOUT_CASES: list[tuple[str, str, str, list[dict]]] = [
     ("scale_tracks", "3D", "scale_tracks", [{}]),
     ("morph_tracks", "3D", "morph_tracks", [{}]),
     ("sprite", "2D", "sprite", [{}]),
-    ("tilemap", "2D", "tilemap", [{}]),
+    ("tilemap", "2D", "free_tilemap", [{}]),
     ("mesh_polygon", "2D", "mesh_polygon", [{}]),
     ("light_2d", "2D", "light_2d", [{}]),
     ("shadow_caster_2d", "2D", "shadow_caster_2d", [{}, {"ShadowCaster2D": {"shape": "polygon"}}]),

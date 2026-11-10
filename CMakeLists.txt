@@ -891,6 +891,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -1017,6 +1018,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
     ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TilemapGridTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TilesetTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -1619,6 +1622,9 @@ include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
 # the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
+# grid tilemaps (S50): tileset editing, brushes, importers, the Tile Palette and Tileset Editor
+include(${EDITOR_DIR}/tilemap/TilemapEditorSources.cmake)
 
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)

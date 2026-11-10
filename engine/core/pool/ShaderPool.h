@@ -172,6 +172,8 @@ namespace jasperengine{
         // DEPTH too); 0 for a type without it
         enum class SpriteBatchInput { FX, FRAME_RECT, SNAP_PIVOT };
         static uint64_t getSpriteBatchProperty(ShaderType shaderType, SpriteBatchInput input);
+        // 'Tcl': a Tilemap Layer's tiles clamp their UVs half a texel inside their frame (S50 R35)
+        static uint64_t getTileClampProperty();
         // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
         // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
         // variant that receives shadows when the shadow tier is High or above (MESH bit 33)

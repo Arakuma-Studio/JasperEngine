@@ -87,6 +87,10 @@ namespace jasperengine::editor{
     class PaletteWindow;
     class PixelArtCheckWindow;
     class PixelArtCleanupWindow;
+    namespace tilemap {
+        class TilePaletteWindow;
+        class TilesetEditorWindow;
+    }
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -276,6 +280,8 @@ namespace jasperengine::editor{
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
         PixelArtCleanupWindow* pixelArtCleanupWindow = nullptr;
+        tilemap::TilePaletteWindow* tilePaletteWindow = nullptr;
+        tilemap::TilesetEditorWindow* tilesetEditorWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -762,6 +768,8 @@ namespace jasperengine::editor{
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
         PixelArtCleanupWindow* getPixelArtCleanupWindow() const { return pixelArtCleanupWindow; }
+        tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }
+        tilemap::TilesetEditorWindow* getTilesetEditorWindow() const { return tilesetEditorWindow; }
         ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

@@ -29,8 +29,9 @@
 
 namespace jasperengine::editor::pixelart::aseprite {
 
-    // bumped whenever the same file and settings import to different outputs (part of the cache key)
-    inline constexpr int kAsepriteImporterVersion = 1;
+    // bumped whenever the same file and settings import to different outputs (part of the cache key;
+    // 2: the tilesets' strips, S50 R12)
+    inline constexpr int kAsepriteImporterVersion = 2;
 
     enum class ImportMode { SpriteSheet, LayersAsSprites };     // "sprite_sheet" (Unity's Merge Frames), "layers_as_sprites" (Individual Layers)
     enum class PivotSource { Preset, Custom, Slice };

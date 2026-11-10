@@ -171,6 +171,10 @@ namespace jasperengine::editor {
         // S42: Window > 2D > Pixel Art Check
         TogglePixelArtCheck,
         TogglePixelArtCleanup,
+        // S50: Window > 2D > Tile Palette, Tileset Editor, Assets > Create > 2D > Tileset
+        ToggleTilePalette,
+        ToggleTilesetEditor,
+        AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
     };

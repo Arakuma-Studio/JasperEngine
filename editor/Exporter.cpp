@@ -54,6 +54,7 @@
 #include "util/FbxImporter.h"
 #include "util/CubeLut.h"
 #include "pixelart/BitmapFont.h"
+#include "tilemap/Tileset.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -3834,6 +3835,10 @@ bool editor::Exporter::copyAssets() {
         // loads in its place; one that does not load ships as it is (the game logs its error)
         if (Util::isBitmapFontFile(entry.path().string()) && cookBitmapFont(relPath, destPath)) return TreeStep::Skip;
 
+        // A .tileset ships with its images' current paths (S50): their GUIDs follow a move in the
+        // editor, a game loads by path
+        if (relPath.extension() == ".tileset" && writeResolvedTileset(entry.path(), destPath)) return TreeStep::Skip;
+
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
@@ -3920,6 +3925,35 @@ bool editor::Exporter::cookBitmapFont(const fs::path& relPath, const fs::path& d
     }
     std::error_code ec;
     fs::remove(destination, ec);
+    return true;
+}
+
+bool editor::Exporter::writeResolvedTileset(const fs::path& source, const fs::path& destination) {
+    std::string text;
+    if (!assetio::readFile(source, text)) return false;
+    TilesetData data;
+    std::vector<TilesetProblem> problems;
+    if (!tileset::parse(text, data, problems)) return false;
+    for (TilesetSource& tilesetSource : data.sources) {
+        if (tilesetSource.asset.guid.isNull()) continue;
+        const std::string hint = project->assetHintToProjectPath(tilesetSource.asset.path, AssetPathBase::Assets);
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(tilesetSource.asset.guid, hint, AssetType::Unknown, true);
+        if (found.found()) {
+            tilesetSource.asset.path = project->projectPathToAssetHint(found.path, AssetPathBase::Assets);
+        } else {
+            Out::warning("%s: source %d (%s) resolves to no asset; it ships with its path", FileUtils::pathToGenericUtf8(source).c_str(), tilesetSource.id,
+                         tilesetSource.asset.path.c_str());
+        }
+        tilesetSource.asset.guid = Guid();
+    }
+    const std::string bytes = tileset::write(data);
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(destination, std::string_view(bytes), options);
+    if (!written.ok()) {
+        Out::warning("%s ships as it is: %s", FileUtils::pathToGenericUtf8(source).c_str(), written.message.c_str());
+        return false;
+    }
     return true;
 }
 

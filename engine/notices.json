@@ -15,7 +15,7 @@
         "bc7enc_rdo": {"dir": "engine/libs/bc7enc_rdo", "when": "editor"},
         "bcdec": {"dir": "engine/libs/bcdec", "when": "always"},
         "box2d": {"dir": "engine/libs/box2d", "when": "physics2d"},
-        "clipper2": {"dir": "engine/libs/clipper2", "when": "titleart"},
+        "clipper2": {"dir": "engine/libs/clipper2", "when": ["physics2d", "titleart"]},
         "dav1d": {"dir": "engine/libs/dav1d", "when": "video"},
         "earcut": {"dir": "engine/libs/earcut", "when": "titleart"},
         "ffmpeg-headers": {"dir": "engine/libs/ffmpeg-headers", "when": "video"},

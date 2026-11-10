@@ -3069,10 +3069,86 @@ entities:
         includeChildren: false
   - type: Entity
     entity: 1101
-    name: TitleArtRendererComponent
+    name: GridComponent
     components:
       transform:
         position: [100, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      grid:
+        layout: hexagon
+        cellSize: [8, 12]
+        cellGap: [1, 2]
+        plane: xz
+        staggerAxis: x
+        staggerIndex: even
+        hexSideLength: 5
+        linked: true
+  - type: Entity
+    entity: 1102
+    name: TilemapLayerComponent
+    components:
+      transform:
+        position: [101, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      tilemaplayer:
+        version: 1
+        enabled: false
+        tint: [0.5, 0.6, 0.7, 0.8]
+        mode: individual
+        chunkSize: 32
+        tileAnchor: [0.5, 0.25]
+        animationSpeed: 2.5
+        dualGrid: true
+        seed: 9
+        gpuResidency: always
+        chunks:
+          "-1,2": "BYAIAQAAAA=="
+  - type: Entity
+    entity: 1103
+    name: TilemapCollider2DComponent
+    components:
+      transform:
+        position: [102, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      tilemapcollider2d:
+        enabled: false
+        source: terrain
+        solidTerrains: [Water, Lava]
+        geometry: polygons
+        merge: false
+        offset: [1.5, 2.5]
+        friction: 0.25
+        restitution: 0.5
+        categoryBits: 2
+        maskBits: 4
+        groupIndex: -3
+        contactEvents: false
+        sensorEvents: true
+        enableHitEvents: true
+  - type: Entity
+    entity: 1104
+    name: TitleArtRendererComponent
+    components:
+      transform:
+        position: [103, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true

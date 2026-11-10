@@ -5,6 +5,7 @@
 #include "TerrainRenderInfo.h"
 #include "subsystem/TerrainWorldRender.h"
 #include "FoliageSystem.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/CameraComponent.h"
 #if JASPERENGINE_VOXEL
@@ -3499,7 +3500,8 @@ bool RenderSystem::isPixelArtDrawable(Entity entity) const{
     if (!pixelSnapVariants)
         return false;
     const Signature signature = scene->getSignature(entity);
-    return signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>());
+    return signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>()) ||
+           signature.test(scene->getComponentId<TilemapLayerComponent>());
 }
 
 const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
@@ -4035,6 +4037,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     }
     // a Sprite Batch draws its Sprite with the instanced variant (S52 R13)
     inputs.instanced = instmesh != nullptr || mesh.spriteInstanced;
+    inputs.tileClamp = mesh.tileLayer;
     inputs.instancedMesh = instmesh != nullptr;
     inputs.batchAttributes = mesh.batchAttributes;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
@@ -4375,6 +4378,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT);
     if (p_snapPivot)
         variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT);
+    if (inputs.tileClamp && inputs.instanced)
+        variant.properties |= ShaderPool::getTileClampProperty();
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -10923,6 +10928,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (batch){
                 drawBatchGeometry(render, mesh.buffer, *batch);
+            }else if (SpriteInstanceChunkList* chunkList = spriteInstances ? spriteInstanceChunksOf(entity) : nullptr){
+                drawSpriteChunks(render, mesh.submeshes[i], *chunkList, mesh.submeshes[i].shader.get(), (int)TextureShaderType::BASECOLOR, transform, camera.farClip, camera.frustumPlanes);
             }else if (spriteInstances){
                 drawSpriteInstances(render, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].shader.get(), (int)TextureShaderType::BASECOLOR);
             }else if (tilemap && !tilemapDrawRanges.empty()){
@@ -11144,6 +11151,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                                       mesh.submeshes[i].slotVSDepthTerrain);
             }else if (batch){
                 drawBatchGeometry(depthRender, mesh.buffer, *batch);
+            }else if (SpriteInstanceChunkList* chunkList = spriteInstances ? spriteInstanceChunksOf(entity) : nullptr){
+                drawSpriteChunks(depthRender, mesh.submeshes[i], *chunkList, mesh.submeshes[i].depthShader.get(), (int)TextureShaderType::DEPTHTEXTURE, transform, cameraFar, frustumPlanes);
             }else if (spriteInstances){
                 drawSpriteInstances(depthRender, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].depthShader.get(), (int)TextureShaderType::DEPTHTEXTURE);
             }else if (tilemap && !tilemapDrawRanges.empty()){
@@ -16900,6 +16909,7 @@ bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
            !isComponentDisabled<SpriteComponent>(scene, entity, signature) &&
            !isComponentDisabled<ModelComponent>(scene, entity, signature) &&
            !isComponentDisabled<TilemapComponent>(scene, entity, signature) &&
+           !isComponentDisabled<TilemapLayerComponent>(scene, entity, signature) &&
            !isComponentDisabled<TerrainComponent>(scene, entity, signature) &&
            !isComponentDisabled<InstancedMeshComponent>(scene, entity, signature) &&
            !isComponentDisabled<PointsComponent>(scene, entity, signature) &&
@@ -19838,11 +19848,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // 2D sorting (S52 R3): a pass without distance sort draws in this frame's gathered order (UI
     // subtrees in place), each draw with its batcher bucket; with defaults, the hierarchy's
     const std::vector<SortedDraw>* sortedDraws = (!distanceSort && sortingActive) ? &getSorted2DOrder() : nullptr;
-    const bool sorted2D = sortedDraws && sortedDraws->size() == (size_t)transforms->size();
-    const int hierarchyCount = (int)transforms->size();
+    // (a chunk list in Individual mode adds an item per row: at least one item per transform)
+    const bool sorted2D = sortedDraws && sortedDraws->size() >= (size_t)transforms->size();
+    const int hierarchyCount = sorted2D ? (int)sortedDraws->size() : (int)transforms->size();
     for (int k = 0; k < hierarchyCount; k++){
         const int i = sorted2D ? (int)(*sortedDraws)[(size_t)k].index : k;
         passSortBucket = sorted2D ? (*sortedDraws)[(size_t)k].bucket : 0;
+        passSpritePart = sorted2D ? (*sortedDraws)[(size_t)k].part : -1;
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -20039,6 +20051,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
     passSortBucket = 0;
+    passSpritePart = -1;
 
     //---------Draw transparent renderers----------
     // layered around the pass's waters (WaterLayering.h): nothing to do without one

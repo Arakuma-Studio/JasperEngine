@@ -42,6 +42,7 @@
 #include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -653,6 +654,12 @@ namespace {
                                 spriteAttributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
                             snapPivotKeys = pixelSnapKeys && !instancedMesh;
                         }
+                        tileLayerKeys = registry->findComponent<TilemapLayerComponent>(entity) != nullptr;
+                        if (tileLayerKeys){
+                            spriteInstancedKeys = true;
+                            spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
+                            snapPivotKeys = pixelSnapKeys;
+                        }
                         collectMesh(registry, entity, *mesh);
                         // and with a Live Effect, its title_fx_sprite variant (S81 R33)
                         if (title && registry->findComponent<SpriteComponent>(entity) && mesh->numSubmeshes > 0){
@@ -668,6 +675,7 @@ namespace {
                             live.customShader = savedShader;
                             live.submeshes[0].material.shaderFeatures = savedFeatures;
                         }
+                        tileLayerKeys = false;
                         pixelSnapKeys = false;
                         snapPivotKeys = false;
                         spriteInstancedKeys = false;
@@ -742,6 +750,8 @@ namespace {
         bool snapPivotKeys = false;
         // a Sprite's S52 inputs: its Sprite Batch draws it instanced; what its shader reads per vertex
         bool spriteInstancedKeys = false;
+        // a Tilemap Layer: its instanced variant with the frame clamp (S50)
+        bool tileLayerKeys = false;
         uint8_t spriteAttributes = 0;
 
         static bool scenePixelSnaps(EntityRegistry* registry){
@@ -821,6 +831,7 @@ namespace {
                 }
             }
             inputs.instanced = instmesh || spriteInstancedKeys;
+            inputs.tileClamp = tileLayerKeys;
             inputs.batchAttributes = spriteAttributes;
 
             const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);

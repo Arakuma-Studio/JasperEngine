@@ -59,6 +59,8 @@
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIDocumentComponent.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -274,6 +276,8 @@ namespace {
             {"Sprite", hasComponent<SpriteComponent>()},
             {"Terrain", hasComponent<TerrainComponent>()},
             {"Tilemap", hasComponent<TilemapComponent>()},
+            {"TilemapLayer", hasComponent<TilemapLayerComponent>()},
+            {"Grid", hasComponent<GridComponent>()},
             {"Lattice", hasComponent<LatticeComponent>()},
             {"Mirror", hasComponent<MirrorComponent>()},
             {"MeshPolygon", hasComponent<MeshPolygonComponent>()},

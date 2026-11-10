@@ -1004,7 +1004,8 @@ include_directories(SYSTEM libs/tinyxml2)
 # Built after the standalone block, so it sees the physics switches the Exporter injects there
 set(JASPERENGINE_PHYSICS_LIBS "")
 if(JASPERENGINE_PHYSICS_2D)
-    list(APPEND JASPERENGINE_PHYSICS_LIBS box2d)
+    # clipper2: the union of the tilemap collider builder, which only 2D physics needs
+    list(APPEND JASPERENGINE_PHYSICS_LIBS box2d clipper2)
     include_directories(SYSTEM libs/box2d/include)
 endif()
 if(JASPERENGINE_PHYSICS_3D)
@@ -1246,7 +1247,10 @@ if(JASPERENGINE_HTMLUI OR JASPERENGINE_TITLE_ART)
 endif()
 set(JASPERENGINE_TITLE_ART_LIBS "")
 if(JASPERENGINE_TITLE_ART)
-    add_subdirectory(libs/clipper2)
+    # 2D physics' tilemap colliders may have added it already (JASPERENGINE_PHYSICS_LIBS)
+    if(NOT TARGET clipper2)
+        add_subdirectory(libs/clipper2)
+    endif()
     set(JASPERENGINE_TITLE_ART_LIBS clipper2)
     if(NOT JASPERENGINE_HTMLUI)
         list(APPEND JASPERENGINE_TITLE_ART_LIBS thorvg)
@@ -1679,6 +1683,8 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
+    core/object/tilemap/Grid.cpp
+    core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
     core/object/HitStopExempt.cpp
     core/object/Light2D.cpp
@@ -1840,6 +1846,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/TransitionClassesLua.cpp
     # S48 PixelFX player
     core/script/binding/PixelFxClassesLua.cpp
+    core/script/binding/TilemapClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -2122,6 +2129,9 @@ list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
 # Pixel art (S43): colour maths and palettes (no contraction, bit-identical output)
 include(core/pixelart/PixelArtSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PIXELART_SRCS})
+# Grid tilemaps (S50): cells, layouts, tilesets, terrains
+include(core/tilemap/TilemapSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TILEMAP_SRCS})
 if(JASPERENGINE_HTMLUI)
     include(libs/lucide/lucide.cmake)
 endif()
@@ -2134,6 +2144,7 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Manifold2D.cpp
         core/object/physics/CharacterController2D.cpp
         core/subsystem/CharacterController2DSystem.cpp
+        core/tilemap/TileColliderBuilder.cpp
     )
 endif()
 
@@ -2535,7 +2546,7 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
         # the vector libraries (hidden visibility too): LunaSVG/plutovg for SVG, ThorVG for Lottie
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
-        # Title Art's outline offsets (hidden visibility too: Clipper2Lib::)
+        # Clipper2 (tilemap colliders, Title Art's outline offsets; hidden visibility too: Clipper2Lib::)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libclipper2.a")
         # the HTML parser of the compat layer (hidden visibility too; C, so lxb_*/lexbor_* symbols)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")

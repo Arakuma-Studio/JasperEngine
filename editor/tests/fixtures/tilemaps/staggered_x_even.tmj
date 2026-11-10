@@ -1,0 +1,46 @@
+{
+ "type": "map",
+ "orientation": "staggered",
+ "width": 3,
+ "height": 4,
+ "tilewidth": 32,
+ "tileheight": 16,
+ "infinite": false,
+ "tilesets": [
+  {
+   "firstgid": 1,
+   "name": "cells",
+   "tilewidth": 32,
+   "tileheight": 16,
+   "tilecount": 12,
+   "columns": 3,
+   "image": "images/cells.png",
+   "imagewidth": 96,
+   "imageheight": 64
+  }
+ ],
+ "layers": [
+  {
+   "type": "tilelayer",
+   "name": "Cells",
+   "width": 3,
+   "height": 4,
+   "data": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ]
+  }
+ ],
+ "staggeraxis": "x",
+ "staggerindex": "even"
+}

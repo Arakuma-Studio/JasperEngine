@@ -771,6 +771,11 @@ uint64_t ShaderPool::getTerrainExtendedProperty(){
     return shaderPropertyBit(25);
 }
 
+// S50: MESH 54, after T4's 'Twd' 53: a Tilemap Layer's tiles clamp their UVs inside their frame
+uint64_t ShaderPool::getTileClampProperty(){
+    return shaderPropertyBit(54);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -786,7 +791,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 54;
+        case ShaderType::MESH:   return 55;
         case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -921,6 +926,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 52: return shortName ? "Thl" : "Terrain Holes";
             // T4 R58: a Terrain World's pages and overview (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl)
             case 53: return shortName ? "Twd" : "Terrain World";
+            // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
+            case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {

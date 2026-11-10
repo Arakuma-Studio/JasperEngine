@@ -2490,6 +2490,44 @@ OVERRIDES.update({
         'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
 })
 
+# grid tilemaps (S50, TilemapClassesLua.cpp): multiple results and name-or-index terrains
+_TERRAIN = 'string|integer'
+OVERRIDES.update({
+    ('Grid', 'worldToCell'): {
+        'doc': ['The cell holding a world point (y up, the shared edge belongs to the cell above or to the right).'],
+        'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('Tileset', 'getProperty'): {
+        'doc': ["A tile's property, or the schema's default; nil when the tileset declares no such property."],
+        'overloads': [([('tile', 'integer'), ('name', 'string')], 'boolean|integer|number|string|Vector4|nil')]},
+    ('TilemapLayer', 'getCell'): {
+        'doc': ["The cell's tile id (-1: empty) and its flag bits (TileFlip)."],
+        'overloads': [([('x', 'integer'), ('y', 'integer')], 'integer, integer')]},
+    ('TilemapLayer', 'setCell'): {
+        'doc': ['Writes a cell: a tile id (-1 erases) and TileFlip bits; the touched chunk rebuilds once this frame.'],
+        'overloads': [([('x', 'integer'), ('y', 'integer'), ('tile', 'integer'), ('flags?', 'integer')], '')]},
+    ('TilemapLayer', 'fill'): {
+        'doc': ['Fills the inclusive rectangle of cells with one tile (-1 erases), at most 1,000,000 cells.'],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer'), ('tile', 'integer'), ('flags?', 'integer')], '')]},
+    ('TilemapLayer', 'worldToCell'): {
+        'doc': ['The cell holding a world point (a dual-grid layer: its logical cell).'],
+        'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('TilemapLayer', 'cellToWorld'): {
+        'doc': ["A cell's anchor in world space."],
+        'overloads': [([('x', 'integer'), ('y', 'integer')], 'Vector3')]},
+    ('TilemapLayer', 'getCellAt'): {
+        'doc': ['The tile shown at a world point (-1: none) and its cell.'],
+        'overloads': [([('point', 'Vector3')], 'integer, integer, integer')]},
+    ('TilemapLayer', 'setTerrain'): {
+        'doc': ["Paints a cell's terrain (name or index; -1 erases) and re-chooses the tiles around it."],
+        'overloads': [([('x', 'integer'), ('y', 'integer'), ('terrain', _TERRAIN)], '')]},
+    ('TilemapLayer', 'fillTerrain'): {
+        'doc': ["Paints a rectangle's terrain (name or index; -1 erases) and re-chooses the tiles around it."],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer'), ('terrain', _TERRAIN)], '')]},
+    ('TilemapLayer', 'refreshAutotile'): {
+        'doc': ['Re-chooses every terrain tile of the inclusive rectangle.'],
+        'overloads': [([('x0', 'integer'), ('y0', 'integer'), ('x1', 'integer'), ('y1', 'integer')], '')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua

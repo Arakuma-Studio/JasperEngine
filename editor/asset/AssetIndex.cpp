@@ -16,6 +16,7 @@
 #include "titleart/TitleArtRefs.h"
 #include "audio/SoundEventIO.h"
 #include "util/Util.h"
+#include "tilemap/Tileset.h"
 #include "voxel/VoxelFile.h"
 #include "voxel/VoxelGenerator.h"
 
@@ -175,6 +176,8 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::SoundEvent:
         // its audio cues' sounds (S40 R3)
         case AssetType::AnimationClip:
+        // its source textures, sheets and Aseprite files (S50), so exports keep them
+        case AssetType::Tileset:
         case AssetType::VoxelVolume:
             return true;
         case AssetType::Script:
@@ -318,6 +321,32 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     }
                     if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
                 });
+                break;
+            }
+            case AssetType::Tileset: {
+                // its sources, by the GUIDs its JSON holds (S50 R12); a tile's own assets are none
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                TilesetData document;
+                std::vector<TilesetProblem> problems;
+                tileset::parse(text, document, problems);
+                for (const TilesetSource& source : document.sources) {
+                    if (source.asset.path.empty()) continue;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = "sources[" + std::to_string(source.id) + "]";
+                    edge.expected = source.kind == TilesetSourceKind::Aseprite ? AssetType::AsepriteSprite
+                                  : source.kind == TilesetSourceKind::Sheet ? (indexExtension(source.asset.path) == ".spriteatlas" ? AssetType::SpriteAtlas : AssetType::Texture)
+                                  : AssetType::Texture;
+                    edge.target = source.asset.guid;
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, source.asset.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
                 break;
             }
             case AssetType::VoxelVolume: {

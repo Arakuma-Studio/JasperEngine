@@ -1,0 +1,49 @@
+{
+  "grids": [{
+    "layout": "rectangle", "cell": [16, 16], "origin": [0, -32],
+    "layers": [
+      {
+        "name": "Collision", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0,
+        "cells": [[1, 0, -1, "", 1], [0, 1, -1, "", 1], [2, 1, -1, "", 2]]
+      },
+      {
+        "name": "Auto", "tileset": 1, "visible": false, "opacity": 1, "offset": [0, 0], "chunks": 0,
+        "cells": [[0, 1, 0, ""], [1, 1, 2, ""]]
+      },
+      {
+        "name": "Auto (2)", "tileset": 1, "visible": false, "opacity": 1, "offset": [0, 0], "chunks": 0,
+        "cells": [[0, 1, 1, ""]]
+      },
+      {
+        "name": "Tiles", "tileset": 1, "visible": true, "opacity": 0.5, "offset": [4, -8], "chunks": 0,
+        "cells": [[1, 0, 3, "y"], [0, 1, 1, "x"], [2, 1, 5, "xy"]]
+      }
+    ]
+  }],
+  "tilesets": [
+    {
+      "name": "IntGrid Collision", "tile_size": [16, 16], "shape": "square", "external": "",
+      "images": [], "sources": [], "tile_total": 0, "next_id": 0, "schema": [],
+      "terrain_sets": [{"name": "IntGrid Collision", "mode": "blob", "terrains": [["Wall", "#ff0000"], ["Value 2", "#00ff00"]]}],
+      "tiles": []
+    },
+    {
+      "name": "Terrain", "tile_size": [16, 16], "shape": "square", "external": "",
+      "images": [{"source": 0, "path": "art/terrain.png", "size": [48, 32]}],
+      "sources": [{"id": 0, "kind": "texture", "path": "art/terrain.png", "tile_size": [16, 16], "margin": 0, "spacing": 0, "skip_empty": false}],
+      "tile_total": 6, "next_id": 6,
+      "schema": [{"name": "Water", "type": "bool", "default": false}, {"name": "data", "type": "string", "default": ""}],
+      "terrain_sets": [],
+      "tiles": [
+        {"id": 2, "at": [2, 0], "properties": {"Water": true}},
+        {"id": 3, "at": [0, 1], "properties": {"data": "hello"}}
+      ]
+    }
+  ],
+  "warnings": ["Layer 'Level_0/Auto' stacks tiles: it makes 2 layers"],
+  "skipped": [
+    {"kind": "parallax", "name": "Level_0/Auto", "count": 1},
+    {"kind": "entities", "name": "Level_0/Things", "count": 2}
+  ],
+  "counts": {"grids": 1, "layers": 4, "tilesets": 2, "images": 1, "tiles": 6, "terrain_cells": 3, "skipped": 2, "warnings": 1}
+}

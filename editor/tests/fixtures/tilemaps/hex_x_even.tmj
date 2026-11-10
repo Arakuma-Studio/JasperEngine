@@ -1,0 +1,47 @@
+{
+ "type": "map",
+ "orientation": "hexagonal",
+ "width": 3,
+ "height": 4,
+ "tilewidth": 28,
+ "tileheight": 32,
+ "infinite": false,
+ "tilesets": [
+  {
+   "firstgid": 1,
+   "name": "cells",
+   "tilewidth": 28,
+   "tileheight": 32,
+   "tilecount": 12,
+   "columns": 3,
+   "image": "images/cells.png",
+   "imagewidth": 84,
+   "imageheight": 128
+  }
+ ],
+ "layers": [
+  {
+   "type": "tilelayer",
+   "name": "Cells",
+   "width": 3,
+   "height": 4,
+   "data": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ]
+  }
+ ],
+ "staggeraxis": "x",
+ "staggerindex": "even",
+ "hexsidelength": 14
+}

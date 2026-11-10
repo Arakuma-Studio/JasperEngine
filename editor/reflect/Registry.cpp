@@ -118,6 +118,9 @@ namespace {
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
         &kHitStopExemptDesc,
+        &kGridDesc,
+        &kTilemapLayerDesc,
+        &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -225,6 +228,9 @@ namespace {
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
         &kHitStopExemptDesc,
+        &kGridDesc,
+        &kTilemapLayerDesc,
+        &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
     };
 
@@ -330,6 +336,9 @@ namespace {
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
         &kHitStopExemptDesc,
+        &kGridDesc,
+        &kTilemapLayerDesc,
+        &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
     };
 

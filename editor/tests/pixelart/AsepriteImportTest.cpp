@@ -412,6 +412,41 @@ TEST(AsepriteImportTest, CacheKnowsTheFile) {
 // AC20 (the editor's side of ImportedAssetsTest): the provider and an export's index.json come from
 // one table of the import, so every key an export ships resolves in the editor to the very file
 // the export copies, and the sheet record names its pages by their exported paths
+// S50 R12: an aseprite-source tileset draws the strip the import writes and the provider answers
+TEST(AsepriteImportTest, TilesetStripsAreCachedAndResolved) {
+    const fs::path root = fs::temp_directory_path() / ("je-aseprite-tileset-" + std::to_string(reinterpret_cast<uintptr_t>(&root) & 0xffff));
+    fs::remove_all(root);
+    fs::create_directories(root / "assets");
+    fs::copy_file(importFixture("asefile", "tileset.aseprite"), root / "assets/tiles.aseprite");
+    const Document document = loadDocument(root / "assets/tiles.aseprite");
+    ImportRequest request;
+    request.file = root / "assets/tiles.aseprite";
+    request.assetPath = "tiles.aseprite";
+    request.cacheRoot = root / "cache";
+    std::shared_ptr<ImportRecord> record = AsepriteImporter::runImport(request);
+    ASSERT_TRUE(record->ok) << record->error.message;
+    ASSERT_EQ(record->tilesetFiles.size(), document.tilesets.size());
+    const std::string base = "je-imported/" + record->key.substr(0, 2) + "/" + record->key + "/";
+    const std::vector<ImportRecord::ExportedFile> files = record->exportedFiles();
+    for (size_t t = 0; t < document.tilesets.size(); t++) {
+        SCOPED_TRACE(t);
+        fs::path resolved;
+        ASSERT_TRUE(record->resolveKey("tileset#" + std::to_string(t), resolved));
+        EXPECT_TRUE(samePicture(loadPng(resolved), document.tilesets[t].tiles));
+        const auto exported = std::find_if(files.begin(), files.end(), [&](const ImportRecord::ExportedFile& f) { return f.key == "tileset#" + std::to_string(t); });
+        ASSERT_NE(exported, files.end());
+        EXPECT_EQ(exported->cacheFile, resolved);
+        EXPECT_EQ(exported->exportPath, base + resolved.filename().string());
+    }
+    fs::path none;
+    EXPECT_FALSE(record->resolveKey("tileset#99999999999999999999999", none));
+    // a cache hit knows the strips too: import.json lists them
+    std::shared_ptr<ImportRecord> cached = AsepriteImporter::runImport(request);
+    EXPECT_TRUE(cached->cacheHit);
+    EXPECT_EQ(cached->tilesetFiles, record->tilesetFiles);
+    fs::remove_all(root);
+}
+
 TEST(AsepriteImportTest, ProviderAndExportAgree) {
     const fs::path root = fs::temp_directory_path() / ("je-aseprite-export-" + std::to_string(reinterpret_cast<uintptr_t>(&root) & 0xffff));
     fs::remove_all(root);
