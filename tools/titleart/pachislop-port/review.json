@@ -421,8 +421,8 @@
       "id": "gems/diamond-3d",
       "kind": "look",
       "verdict": "tuned",
-      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
-      "reviewer": "s84-agent",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter; the outline effect 2.5 -> 1.5 so it no longer closes the gaps the digits' bands enclose (1234)",
+      "reviewer": "s84-lib-looks",
       "date": "2026-11-09"
     },
     {

@@ -339,9 +339,7 @@
   "effects": [
     {
       "type": "outline",
-      "params": {
-        "width": 2.5
-      }
+      "params": {}
     },
     {
       "type": "outer_glow",
