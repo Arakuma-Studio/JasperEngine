@@ -278,7 +278,7 @@ TEST_F(TitleArtDocumentTest, FilesAStepImportsAreInTheAssetDatabaseWhenItReturns
     ASSERT_FALSE(project()->getAssetDatabase().lookupPath(rel).found());
     std::vector<TitleOpFile> files = {{font, std::string("font bytes"), true, false}};
     std::string error;
-    std::shared_ptr<TitleArtDocument> document = TitleArtDocument::create(project(), dir + "/logo.titleart", nullptr, "Create Title Art", &error, &files);
+    std::shared_ptr<TitleArtDocument> document = TitleArtDocument::create(project(), dir + "/logo.titleart", nullptr, "Create Title Art", &error, files);
     ASSERT_TRUE(document) << error;
     ASSERT_TRUE(fs::exists(font));
     EXPECT_TRUE(project()->getAssetDatabase().lookupPath(rel).found()) << "the imported font resolves as soon as the step returns";
