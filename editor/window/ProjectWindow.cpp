@@ -84,6 +84,9 @@
 #include "util/PhysicsMaterialAssets.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
+#include "tilemap/TilesetEdit.h"
+#include "tilemap/TilesetEditorWindow.h"
+#include "tilemap/TilesetPool.h"
 #include "pixelart/Palette.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
@@ -279,6 +282,19 @@ static void makePaletteFileIcon(int size, std::vector<uint8_t>& rgba) {
     rgba = image.getPixels();
 }
 
+// The .tileset icon (until its contact sheet is made): a grid of tiles
+static void makeTilesetFileIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    image.fillRect(px(4), px(8), px(56), px(48), editor::PoseColor::hex(0x2B2F36));
+    const uint32_t cells[] = {0x4A7C59, 0x6AA36F, 0x8A6A3F, 0x4A7C59, 0x6AA36F, 0x3A6FD8, 0x8A6A3F, 0x4A7C59, 0x6AA36F, 0x3A6FD8, 0x3A6FD8, 0x8A6A3F};
+    for (int i = 0; i < 12; i++) {
+        image.fillRect(px(8 + (i % 4) * 12.5f), px(12 + (i / 4) * 14.0f), px(11.5f), px(13), editor::PoseColor::hex(cells[i]));
+    }
+    rgba = image.getPixels();
+}
+
 // "+N" over a palette thumbnail of more than 64 colours: a 3 x 5 pixel font, no text renderer
 // on the thumbnail worker
 static void drawPaletteThumbnailCount(std::vector<uint8_t>& rgba, int width, int height, int hidden) {
@@ -353,6 +369,35 @@ static bool writePaletteSwatchThumbnail(const fs::path& sourcePath, const fs::pa
     std::error_code ec;
     fs::create_directories(thumbnailPath.parent_path(), ec);
     return editor::writePng(thumbnailPath, width, height, 4, rgba.data(), width * 4, io::Durability::Cache);
+}
+
+// a .tileset's contact sheet thumbnail (S50 R71): the tiles, nearest-scaled to the thumbnail
+static bool writeTilesetContactThumbnail(editor::Project* project, const fs::path& sourcePath, const fs::path& thumbnailPath) {
+    std::ifstream in(sourcePath, std::ios::binary);
+    if (!in) return false;
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    TilesetData data;
+    std::vector<TilesetProblem> problems;
+    if (!tileset::parse(text, data, problems) || data.tiles.empty()) return false;
+    const std::string assetPath = project->normalizeToAssetsRelative(sourcePath).generic_string();
+    const std::shared_ptr<const TilesetRuntime> runtime = TilesetPool::resolve(assetPath, std::make_shared<TilesetData>(data));
+    if (!runtime) return false;
+    int columns = 1;
+    while (columns * columns < (int)data.tiles.size()) columns++;
+    editor::tilemap::ContactSheetOptions options;
+    options.columns = std::min(columns, 16);
+    options.scale = 1;
+    options.drawIds = false;
+    editor::tilemap::TilesetPagePixels pages;
+    editor::pixelart::PixelImage sheet = editor::tilemap::contactSheet(*runtime, pages, options);
+    if (sheet.empty()) return false;
+    // integer-scaled to about the thumbnail size, nearest (R71: it is pixel art)
+    const int zoom = std::max(1, THUMBNAIL_SIZE / std::max(sheet.width(), sheet.height()));
+    const editor::pixelart::PixelImage shown = editor::tilemap::scaleNearest(sheet, zoom);
+    std::error_code ec;
+    fs::create_directories(thumbnailPath.parent_path(), ec);
+    const auto pixels = shown.pixels();
+    return editor::writePng(thumbnailPath, shown.width(), shown.height(), 4, pixels.data(), shown.width() * 4, io::Durability::Cache);
 }
 
 // what Apply Palette reads and writes (S43 R23)
@@ -519,6 +564,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::PaletteWindow::isPaletteFile(filePath)) {
         return editor::FileType::PALETTE;
+    }
+    if (editor::Util::isTilesetFile(extension)) {
+        return editor::FileType::TILESET;
     }
     if (editor::Util::isAudioFile(extension)) {
         return editor::FileType::AUDIO;
@@ -1235,6 +1283,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
         case FileType::PALETTE:
             return ImGui::GetColorU32(ImVec4(0.94f, 0.49f, 0.34f, 1.0f));
+        case FileType::TILESET:
+            return ImGui::GetColorU32(ImVec4(0.42f, 0.73f, 0.44f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -2336,6 +2386,17 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         assetsCreateSpriteAtlasFromSelection();
                     }
                 }
+                if (!file.isDirectory && project->isInsideAssetsPath(currentPath / file.name) && (SpriteSheetSources::isTexturePath(file.name) || SpriteSheetPool::isAsepritePath(file.name) ||
+                                               SpriteSheetSources::isAtlasPath(file.name))) {
+                    const bool createTileset = ImGui::MenuItem(ICON_FA_TABLE_CELLS_LARGE " Create Tileset");
+                    uiBuilding.contextMenu.push_back({"Create Tileset", lastItemRect()});
+                    if (createTileset) {
+                        if (tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow()) {
+                            const fs::path created = editorWindow->createFromSource(currentPath / file.name);
+                            if (!created.empty()) selectCreated(currentPath, created.filename().string(), true);
+                        }
+                    }
+                }
                 if (!file.isDirectory && Util::isAudioFile(file.name) && hasAudioSelection()) {
                     if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event from Clips")) {
                         assetsCreateSoundEventFromClips();
@@ -3134,6 +3195,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (PaletteWindow::isPaletteFile(path)){
             fileEntry.type = FileType::PALETTE;
             fileEntry.icon = paletteIcon.getRender();
+        }else if (Util::isTilesetFile(fileEntry.extension)){
+            fileEntry.type = FileType::TILESET;
+            fileEntry.icon = tilesetIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -3176,7 +3240,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
             fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO ||
-            fileEntry.type == FileType::PALETTE) {
+            fileEntry.type == FileType::PALETTE || fileEntry.type == FileType::TILESET) {
             queueThumbnailGeneration(path, fileEntry.type);
         }
         // its asset labels (S25)
@@ -3846,6 +3910,16 @@ void editor::ProjectWindow::thumbnailStep() {
         } else if (thumbFile.type == FileType::PALETTE) {
             // the swatches, drawn on this worker as an image's thumbnail is
             if (writePaletteSwatchThumbnail(thumbFile.path, project->getThumbnailPath(thumbFile.path))) {
+                std::lock_guard<std::mutex> lock(completedThumbnailMutex);
+                completedThumbnailQueue.push(thumbFile);
+            }
+            {
+                std::lock_guard<std::mutex> lock(thumbnailMutex);
+                pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
+            }
+        } else if (thumbFile.type == FileType::TILESET) {
+            // the contact sheet, on this worker as an image's thumbnail is (R71)
+            if (writeTilesetContactThumbnail(project, thumbFile.path, project->getThumbnailPath(thumbFile.path))) {
                 std::lock_guard<std::mutex> lock(completedThumbnailMutex);
                 completedThumbnailQueue.push(thumbFile);
             }
@@ -4663,6 +4737,7 @@ void editor::ProjectWindow::show() {
                         physicsMaterialIconPixels.data()));
         physicsMaterialIcon.load();
         proceduralIcon(paletteIcon, paletteIconPixels, "editor:resources:palette_icon", makePaletteFileIcon);
+        proceduralIcon(tilesetIcon, tilesetIconPixels, "editor:resources:tileset_icon", makeTilesetFileIcon);
 
         scanDirectory(project->getProjectPath().string());
 
@@ -5077,6 +5152,22 @@ void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D, const fs:
                                                            preset2D ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D(), error);
     if (created.empty()) {
         Backend::getApp().registerAlert(preset2D ? "Create Physics Material 2D" : "Create Physics Material", error);
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
+}
+
+void editor::ProjectWindow::assetsCreateTileset(const fs::path& directory) {
+    tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow();
+    if (!editorWindow) return;
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path created = editorWindow->createEmpty(directory);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create Tileset", "The tileset could not be written (see the Console).");
         return;
     }
     selectCreated(directory, created.filename().string(), true);
@@ -5532,6 +5623,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         editor::getEditorHost().openAudioMixerWindow(filePath);
     } else if (file.type == FileType::PALETTE) {
         if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
+    } else if (file.type == FileType::TILESET) {
+        if (tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow()) editorWindow->open(filePath);
     } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
         // a graph kind's file: the window of its kind (S90 R26)
     } else {
@@ -5659,6 +5752,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;
         case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
         case AssetCreateKind::NoiseGraph: assetsCreateNoiseGraph(std::string(), directory); break;
+        case AssetCreateKind::Tileset: assetsCreateTileset(directory); break;
         default: break;
     }
 }

@@ -29,6 +29,9 @@ namespace jasperengine::editor{
         IMAGE,
         SPRITE,
         TILEMAP,
+        // grid tilemaps (S50): a Grid, and a Tilemap Layer (with the Mesh it draws as)
+        TILEMAP_GRID,
+        TILEMAP_LAYER,
         TEXT,
         BUTTON,
         SCROLLBAR,

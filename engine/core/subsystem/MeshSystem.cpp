@@ -783,6 +783,32 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
         mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
+void MeshSystem::prepareTileLayerMesh(MeshComponent& mesh){
+    prepareSpriteMesh(mesh);
+    Attribute* positions = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* uvs = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* normals = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* tangents = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* colors = mesh.buffer.getAttribute(AttributeType::COLOR);
+    const float qx[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+    const float qy[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    for (int i = 0; i < 4; i++){
+        mesh.buffer.addVector3(positions, Vector3(qx[i], qy[i], 0.0f));
+        mesh.buffer.addVector2(uvs, Vector2(qx[i], 1.0f - qy[i]));
+        mesh.buffer.addVector3(normals, Vector3(0.0f, 0.0f, 1.0f));
+        mesh.buffer.addVector4(tangents, Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(true)));
+        mesh.buffer.addVector4(colors, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+    static const uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&indices[0], sizeof(uint16_t));
+    mesh.submeshes[0].vertexCount = 6;
+    mesh.submeshes[0].hasTextureRect = false;
+    const AABB unitQuad(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 1.0f, 0.0f));
+    mesh.verticesAABB = unitQuad;
+    mesh.aabb = unitQuad;
+}
+
 void MeshSystem::fillSpriteBatchAttributes(MeshComponent& mesh){
     const Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
     if (!position || mesh.batchAttributes == 0)
@@ -1378,24 +1404,24 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
 
         numTiles++;
 
-        // Clamp tile position to non-negative — negative local coords are not supported
-        if (tilemap.tiles[i].position.x < 0) tilemap.tiles[i].position.x = 0;
-        if (tilemap.tiles[i].position.y < 0) tilemap.tiles[i].position.y = 0;
+        // a negative local position draws at 0 (negative coords are not supported), but the stored
+        // position stays as authored: a draw must not change the data (a save, a conversion read it)
+        const Vector2 tilePosition(std::max(tilemap.tiles[i].position.x, 0.0f), std::max(tilemap.tiles[i].position.y, 0.0f));
 
         Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
-        const float tileX0 = tileEdge(tilemap.tiles[i].position.x);
-        const float tileX1 = tileEdge(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
-        const float tileY0 = tileEdge(tilemap.tiles[i].position.y);
-        const float tileY1 = tileEdge(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        const float tileX0 = tileEdge(tilePosition.x);
+        const float tileX1 = tileEdge(tilePosition.x + tilemap.tiles[i].width);
+        const float tileY0 = tileEdge(tilePosition.y);
+        const float tileY1 = tileEdge(tilePosition.y + tilemap.tiles[i].height);
         mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY0, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY0, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY1, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY1, 0));
 
-        if (tilemap.width < tilemap.tiles[i].position.x + tilemap.tiles[i].width)
-            tilemap.width = static_cast<unsigned int>(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
-        if (tilemap.height < tilemap.tiles[i].position.y + tilemap.tiles[i].height)
-            tilemap.height = static_cast<unsigned int>(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        if (tilemap.width < tilePosition.x + tilemap.tiles[i].width)
+            tilemap.width = static_cast<unsigned int>(tilePosition.x + tilemap.tiles[i].width);
+        if (tilemap.height < tilePosition.y + tilemap.tiles[i].height)
+            tilemap.height = static_cast<unsigned int>(tilePosition.y + tilemap.tiles[i].height);
 
         TileRectData& rectData = tilemap.tilesRect[tilemap.tiles[i].rectId];
         int submeshId = (rectData.submeshId >= 0 && (unsigned int)rectData.submeshId < mesh.numSubmeshes) ? rectData.submeshId : 0;

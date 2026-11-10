@@ -68,6 +68,9 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -229,6 +232,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
     // S48 Pixel FX
     registerComponent<HitStopExemptComponent>(ComponentOrder::Insertion, "HitStopExemptComponent");
+    registerComponent<GridComponent>(ComponentOrder::Insertion, "GridComponent");
+    registerComponent<TilemapLayerComponent>(ComponentOrder::Insertion, "TilemapLayerComponent");
+    registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

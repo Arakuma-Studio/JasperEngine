@@ -61,6 +61,8 @@ namespace {
             {{AssetType::AsepriteSprite, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".aseprite", ".ase"}},
             // Sprite Atlases (S45): their GUID in their JSON, as clips; pages have derived GUIDs, no sub-assets
             {{AssetType::SpriteAtlas, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".spriteatlas"}},
+            // Tilesets (S50): the file holds no GUID, its .meta does
+            {{AssetType::Tileset, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".tileset"}},
             // Sound Events (S37): the file holds no GUID, its .meta does
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
             // a Procedural Material's node graph (S90): the GUID in its JSON, baked in the editor, never shipped

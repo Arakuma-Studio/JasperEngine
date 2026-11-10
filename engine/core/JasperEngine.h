@@ -150,6 +150,9 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -189,6 +192,8 @@
 #include "object/CameraFollow.h"
 #include "object/PixelPerfectCamera.h"
 #include "object/SortingGroup.h"
+#include "object/tilemap/Grid.h"
+#include "object/tilemap/TilemapLayer.h"
 #include "object/SpriteBatch.h"
 #include "object/HitStopExempt.h"
 #include "object/CameraShaker.h"

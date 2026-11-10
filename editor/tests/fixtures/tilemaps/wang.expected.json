@@ -1,0 +1,25 @@
+{
+  "grids": [{
+    "layout": "rectangle", "cell": [16, 16], "origin": [0, 0],
+    "layers": [{"name": "T", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0, "cells": [[0, 0, 0, ""]]}]
+  }],
+  "tilesets": [{
+    "name": "terrain", "tile_size": [16, 16], "shape": "square", "external": "",
+    "images": [{"source": 0, "path": "images/terrain.png", "size": [48, 16]}],
+    "sources": [{"id": 0, "kind": "texture", "path": "images/terrain.png", "tile_size": [16, 16], "margin": 0, "spacing": 0, "skip_empty": false}],
+    "tile_total": 3, "next_id": 3, "schema": [],
+    "terrain_sets": [
+      {"name": "Path", "mode": "sides", "terrains": [["Dirt", "#a06030"]]},
+      {"name": "Ground", "mode": "blob", "terrains": [["Grass", "#60a040"], ["Sand", "#e3c27a"]]},
+      {"name": "Corners", "mode": "blob", "terrains": [["Stone", "#808080"]]}
+    ],
+    "tiles": [
+      {"id": 0, "at": [0, 0], "terrain": {"set": 0, "center": 0, "peering": {"n": 0, "e": 0, "s": "none", "w": "none"}}},
+      {"id": 1, "at": [1, 0], "terrain": {"set": 1, "center": 0, "peering": {"n": 0, "ne": 1, "e": 0, "se": 1, "s": 0, "sw": 1, "w": 0, "nw": 1}}},
+      {"id": 2, "at": [2, 0], "terrain": {"set": 2, "center": 0, "peering": {"ne": 0, "se": 0, "sw": "none", "nw": 0}}}
+    ]
+  }],
+  "warnings": ["Terrain set 'Corners' of tileset 'terrain' comes from a corner wang set: imported as blob with sides any"],
+  "skipped": [],
+  "counts": {"grids": 1, "layers": 1, "tilesets": 1, "images": 1, "tiles": 1, "terrain_cells": 0, "skipped": 0, "warnings": 1}
+}

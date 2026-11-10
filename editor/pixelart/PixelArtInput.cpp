@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "pixelart/PaletteAssets.h"
+#include "tilemap/TilemapPixelArt.h"
 #include "pixelart/PaletteSwapChecks.h"
 #include "pixelart/aseprite/AsepriteImport.h"
 #include "shader/ShaderVariantCollector.h"
@@ -630,6 +631,8 @@ std::vector<uint32_t> jasperengine::editor::pixelart::scopeScenes(Project& proje
 }
 
 PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
+    // S50: a Tilemap Layer is drawn: it joins the drawables (R74a)
+    tilemap::registerTilemapPixelArtDrawables();
     PixelArtCheckInput input;
     reads() = InputReads();
     InputCache& cache = inputCache();

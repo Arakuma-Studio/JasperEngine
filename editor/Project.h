@@ -235,7 +235,7 @@ namespace jasperengine::editor{
         std::vector<Entity> selectedEntities;
         fs::path filepath;
         bool needUpdateRender = true;
-        // when the editor last moved its clock while stopped (Animate water, updateSceneRender)
+        // when the editor last moved its clock while stopped (Always Refresh, updateSceneRender)
         std::chrono::steady_clock::time_point editClockLast;
         bool editClockValid = false;
         // Extra frames to keep drawing after a change so late async uploads still show.

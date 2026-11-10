@@ -22,6 +22,8 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -666,6 +668,8 @@ namespace {
         rows.push_back(enabledRow<SortingGroupComponent>("sortinggroup"));
         rows.push_back(enabledRow<SpriteBatchComponent>("spritebatch"));
         rows.push_back(enabledRow<HitStopExemptComponent>("hitstopexempt"));
+        rows.push_back(enabledRow<TilemapLayerComponent>("tilemaplayer"));
+        rows.push_back(enabledRow<TilemapCollider2DComponent>("tilemapcollider2d"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));

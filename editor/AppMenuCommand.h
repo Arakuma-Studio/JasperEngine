@@ -169,7 +169,11 @@ namespace jasperengine::editor {
         AssetsConvertInlineSpriteFrames,
         // S42: Window > 2D > Pixel Art Check
         TogglePixelArtCheck,
-        TogglePixelArtCleanup
+        TogglePixelArtCleanup,
+        // S50: Window > 2D > Tile Palette, Tileset Editor, Assets > Create > 2D > Tileset
+        ToggleTilePalette,
+        ToggleTilesetEditor,
+        AssetsCreateTileset
     };
 
 }

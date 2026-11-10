@@ -37,6 +37,8 @@
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
 #include "window/PixelArtCleanupWindow.h"
+#include "tilemap/TilePaletteWindow.h"
+#include "tilemap/TilesetEditorWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
@@ -281,6 +283,8 @@ editor::App::App(){
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
     pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
+    tilePaletteWindow = new tilemap::TilePaletteWindow(&project);
+    tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project, projectWindow);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
     pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
     pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
@@ -724,14 +728,15 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         // Animation Clip: once the clip asset task set its hook
         if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
         // Sprite Atlas and Palette: in Create > 2D below
-        if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette) continue;
+        if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette || item.kind == AssetCreateKind::Tileset) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
                                                    catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection"),
-                                                   catalogItem("assets.createPalette", "Palette")}));
+                                                   catalogItem("assets.createPalette", "Palette"),
+                                                   catalogItem("assets.createTileset", "Tileset")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
     assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
@@ -848,7 +853,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME)),
-            catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME))
+            catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME)),
+            catalogItem("window.tilePalette", windowMenuLabel(tilemap::TilePaletteWindow::WINDOW_NAME)),
+            catalogItem("window.tilesetEditor", windowMenuLabel(tilemap::TilesetEditorWindow::WINDOW_NAME))
         }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -1162,6 +1169,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 openPixelArtCleanup(FileUtils::pathFromUtf8(command.payload));
             }
             break;
+        case AppMenuCommand::ToggleTilePalette:
+            tilePaletteWindow->setOpen(true);
+            break;
+        case AppMenuCommand::ToggleTilesetEditor:
+            // the payload: a .tileset to open (Assets > Open and run_command pass one)
+            if (!command.payload.empty()) tilesetEditorWindow->open(FileUtils::pathFromUtf8(command.payload));
+            else tilesetEditorWindow->setOpen(true);
+            break;
         case AppMenuCommand::ToggleParticleEffect:
             showEditorWindow(particleEffectWindow);
             break;
@@ -1354,6 +1369,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateTileset:
+            projectWindow->createAsset(AssetCreateKind::Tileset, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreatePalette:
             projectWindow->createAsset(AssetCreateKind::Palette, projectWindow->createTargetDirectory());
@@ -2643,6 +2661,7 @@ void editor::App::setup() {
     paletteWindow->bindCommands(CommandCatalog::editor());
     pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
     pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
+    tilePaletteWindow->bindCommands(CommandCatalog::editor());
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -3137,6 +3156,8 @@ void editor::App::show(){
     paletteWindow->show();
     pixelArtCheckWindow->show();
     pixelArtCleanupWindow->show();
+    tilePaletteWindow->show();
+    tilesetEditorWindow->show();
     applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
@@ -4430,6 +4451,7 @@ void editor::App::engineRender(){
             renderedSceneThisFrame = true;
             sceneProject.needUpdateRender = false;
             sceneViewDrawn = true;
+            UIProbe::count("scene.renders");
         }
 
         if (gameViewPassDue) {
@@ -5472,6 +5494,8 @@ void editor::App::prepareForProjectSwitch() {
     paletteWindow->resetForProjectSwitch();
     pixelArtCheckWindow->resetForProjectSwitch();
     pixelArtCleanupWindow->resetForProjectSwitch();
+    tilePaletteWindow->resetForProjectSwitch();
+    tilesetEditorWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
@@ -6029,7 +6053,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v64: S48's Pixel FX (after the terrain programme's v63): library:sprite's DITHER_FADE, DISSOLVE, RAMP_RECOLOR,
     //      DROP_SHADOW and OUTLINE_STYLE (includes/pixel_fx.glsl, u_fxRampTexture), the uber pass's Glitch
     //      (BLIT 'Gli' 20) and the screen transition program.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v64";
+    // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
+    //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
 }
 
 void editor::App::pushTabNotificationStyle(){

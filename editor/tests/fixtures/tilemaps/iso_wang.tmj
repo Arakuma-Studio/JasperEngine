@@ -1,0 +1,24 @@
+{
+  "type": "map",
+  "orientation": "isometric",
+  "width": 1,
+  "height": 1,
+  "tilewidth": 32,
+  "tileheight": 16,
+  "infinite": false,
+  "tilesets": [{
+    "firstgid": 1,
+    "name": "iso",
+    "tilewidth": 32,
+    "tileheight": 16,
+    "tilecount": 1,
+    "columns": 1,
+    "image": "images/iso.png",
+    "imagewidth": 32,
+    "imageheight": 16,
+    "wangsets": [
+      {"name": "Edges", "type": "edge", "colors": [{"name": "Road", "color": "#404040"}], "wangtiles": [{"tileid": 0, "wangid": [1, 0, 0, 0, 0, 0, 0, 0]}]}
+    ]
+  }],
+  "layers": [{"type": "tilelayer", "name": "T", "width": 1, "height": 1, "data": [1]}]
+}

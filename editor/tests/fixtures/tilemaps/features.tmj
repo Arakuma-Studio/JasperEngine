@@ -1,0 +1,106 @@
+{
+  "type": "map",
+  "orientation": "orthogonal",
+  "width": 3,
+  "height": 2,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "infinite": false,
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "props",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 4,
+      "columns": 2,
+      "margin": 1,
+      "spacing": 2,
+      "image": "images/props.png",
+      "imagewidth": 36,
+      "imageheight": 36,
+      "tileoffset": {"x": 3, "y": 4},
+      "tiles": [
+        {
+          "id": 0,
+          "probability": 0.5,
+          "properties": [
+            {"name": "damage", "type": "int", "value": 3},
+            {"name": "label", "type": "string", "value": "lava"},
+            {"name": "hot", "type": "bool", "value": true},
+            {"name": "heat", "type": "float", "value": 0.25},
+            {"name": "glow", "type": "color", "value": "#ff102030"}
+          ],
+          "animation": [{"tileid": 0, "duration": 100}, {"tileid": 1, "duration": 200}],
+          "objectgroup": {
+            "objects": [{"x": 0, "y": 8, "width": 16, "height": 8}]
+          }
+        },
+        {
+          "id": 1,
+          "objectgroup": {
+            "objects": [{"x": 0, "y": 0, "polygon": [{"x": 0, "y": 0}, {"x": 16, "y": 0}, {"x": 8, "y": 16}]}]
+          }
+        },
+        {
+          "id": 2,
+          "objectgroup": {
+            "objects": [{"x": 0, "y": 0, "width": 16, "height": 16, "ellipse": true}]
+          }
+        },
+        {
+          "id": 3,
+          "objectgroup": {
+            "objects": [{"x": 0, "y": 0, "polyline": [{"x": 0, "y": 0}, {"x": 16, "y": 16}]}, {"x": 4, "y": 4, "point": true}]
+          }
+        }
+      ]
+    },
+    {
+      "firstgid": 5,
+      "name": "extra",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 1,
+      "columns": 1,
+      "image": "images/extra.png",
+      "imagewidth": 16,
+      "imageheight": 16
+    }
+  ],
+  "layers": [
+    {"type": "imagelayer", "name": "Backdrop", "image": "images/bg.png"},
+    {
+      "type": "group",
+      "name": "Group",
+      "offsetx": 8,
+      "offsety": 4,
+      "opacity": 0.5,
+      "layers": [
+        {
+          "type": "tilelayer",
+          "name": "Inner",
+          "width": 3,
+          "height": 2,
+          "visible": false,
+          "data": [1, 0, 0,
+                   2, 3, 268435460]
+        }
+      ]
+    },
+    {"type": "objectgroup", "name": "Spawns", "objects": []},
+    {
+      "type": "tilelayer",
+      "name": "Flat",
+      "width": 3,
+      "height": 2,
+      "opacity": 0.75,
+      "offsetx": 2,
+      "offsety": -6,
+      "parallaxx": 0.5,
+      "tintcolor": "#ff0000",
+      "data": [5, 1, 0,
+               0, 0, 0]
+    }
+  ]
+}

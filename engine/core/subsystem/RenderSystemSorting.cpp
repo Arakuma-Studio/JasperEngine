@@ -145,7 +145,7 @@ void RenderSystem::gatherSortRange(size_t first, size_t end, size_t depth, uint3
                 const uint32_t sequence = outerSequence ? outerSequence : ++sortGroupCounter;
                 gatherSortRange(item.index, (size_t)item.last + 1, depth + 1, sequence, outerSequence ? outerKey : item.key, (int32_t)item.index);
             }else{
-                sortedOrder.push_back({item.index, bucketOf(item.key)});
+                sortedOrder.push_back({item.index, bucketOf(item.key), item.part});
             }
         }
         sortItemStack[depth].clear();
@@ -160,7 +160,7 @@ void RenderSystem::gatherSortRange(size_t first, size_t end, size_t depth, uint3
             flush();
             const size_t last = std::min(scene->findBranchLastIndex(entity), end - 1);
             for (size_t k = i; k <= last; k++)
-                sortedOrder.push_back({(uint32_t)k, UI_SORT_BUCKET});
+                sortedOrder.push_back({(uint32_t)k, UI_SORT_BUCKET, -1});
             i = last + 1;
             continue;
         }
@@ -178,6 +178,24 @@ void RenderSystem::gatherSortRange(size_t first, size_t end, size_t depth, uint3
                 i = (size_t)item.last + 1;
                 continue;
             }
+        }
+        // S50 R32: a Tilemap Layer in Individual mode sorts each row with the scene's other items
+        if (SpriteInstanceChunkList* chunks = spriteInstanceChunksOf(entity); chunks && !chunks->chunks.empty() && chunks->chunks[0].sortItem){
+            const Transform& transform = scene->getComponent<Transform>(entity);
+            uint16_t layerValue = 0;
+            int32_t order = 0;
+            Vector3 point = transform.worldPosition;
+            rendererSortFields(entity, signature, layerValue, order, point);
+            for (size_t part = 0; part < chunks->chunks.size(); part++){
+                const float distance = axis ? SortingLayers::getTransparencySortAxis().dotProduct(transform.modelMatrix * chunks->chunks[part].sortPoint) : 0.0f;
+                SortItem item;
+                item.key = makeSortKey(layerValue, order, axis, distance);
+                item.index = (uint32_t)i;
+                item.part = (int32_t)part;
+                sortItemStack[depth].push_back(item);
+            }
+            i++;
+            continue;
         }
         SortItem item;
         item.key = entitySortKey(entity, signature, axis);

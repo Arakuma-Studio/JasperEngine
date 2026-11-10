@@ -18,6 +18,9 @@
 #include "component/TerrainComponent.h"
 #include "navigation/NavHash.h"
 #include "component/TilemapComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "subsystem/TilemapSystem.h"
+#include "tilemap/TilesetPool.h"
 #include "component/Transform.h"
 #include "io/Data.h"
 #include "jobs/JobSystem.h"
@@ -2338,6 +2341,14 @@ namespace {
                 }
                 for (unsigned int r = 0; r < tilemap->numTilesRect; r++)
                     hasher.string(tilemap->tilesRect[r].name);
+            } else if (const TilemapLayerComponent* layer = scene->findComponent<TilemapLayerComponent>(source)) {
+                hasher.string(layer->tileset.path);
+                hasher.u64(layer->cells.read().getRevision());
+                for (const ChunkCoord& coord : layer->cells.read().sortedChunks()) {
+                    hasher.i32(coord.x);
+                    hasher.i32(coord.y);
+                    hasher.u64(layer->cells.read().chunk(coord)->revision);
+                }
             }
         } else if (component.source == NavGridSource::TERRAIN) {
             if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(source)) {
@@ -2390,14 +2401,45 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
     };
     if (component->source == NavGridSource::TILEMAP) {
         const TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(source);
+        const TilemapLayerComponent* tileLayer = scene->findComponent<TilemapLayerComponent>(source);
         const Transform* tilemapTransform = scene->findComponent<Transform>(source);
-        if (!tilemap || !tilemapTransform) {
+        if ((!tilemap && !tileLayer) || !tilemapTransform) {
             error = "the grid's source has no Tilemap";
             return false;
         }
         std::map<std::string, uint8_t> areas;
         for (const NavGridTileArea& row : component->tileAreas)
             areas[row.rect] = (uint8_t)std::clamp(row.area, 0, AREA_COUNT - 1);
+        if (tileLayer) {
+            // a Tilemap Layer (S50 R51): a tile's nav_area wins, else the name table, else walkable
+            std::shared_ptr<const TilesetRuntime> tileset = tileLayer->tileset.empty() ? nullptr : TilesetPool::get(tileLayer->tileset.path);
+            const TileGridSpec spec = scene->getSystem<TilemapSystem>()->layerSpec(source, *tileLayer);
+            const TileCells& cells = tileLayer->cells.read();
+            const Matrix4 inverse = tilemapTransform->modelMatrix.inverse();
+            // the tile drawn over the cell centre (the layer's tileAnchor and dual grid shift)
+            const TilePoint shift = tilegrid::tileShift(spec, tileLayer->tileAnchor.x, tileLayer->tileAnchor.y, tileLayer->dualGrid);
+            for (int y = 0; y < map->getHeight(); y++) {
+                for (int x = 0; x < map->getWidth(); x++) {
+                    const GridCell cell{x, y};
+                    const Vector3 local = inverse * gridWorld(frame, map->cellCenter(cell), 0.0f, 0.0f);
+                    const float xyz[3] = {local.x, local.y, local.z};
+                    const int32_t tile = cells.getTile(tilegrid::shownCellAt(spec, tilegrid::localToPlane(spec, xyz), shift));
+                    uint8_t area = (uint8_t)std::clamp(component->emptyCellArea, 0, AREA_COUNT - 1);
+                    if (tile != NO_TILE) {
+                        area = AREA_WALKABLE;
+                        const TileDef* def = tileset ? tileset->data->findTile(tile) : nullptr;
+                        if (def && def->navArea >= 0) {
+                            area = (uint8_t)std::clamp(def->navArea, 0, AREA_COUNT - 1);
+                        } else if (def) {
+                            auto mapped = areas.find(tileset->data->tileName(*def));
+                            if (mapped != areas.end())
+                                area = mapped->second;
+                        }
+                    }
+                    assign(cell, area);
+                }
+            }
+        } else
         for (int y = 0; y < map->getHeight(); y++) {
             for (int x = 0; x < map->getWidth(); x++) {
                 const GridCell cell{x, y};

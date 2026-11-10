@@ -1,0 +1,38 @@
+{
+  "type": "map",
+  "orientation": "orthogonal",
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "infinite": false,
+  "tilesets": [{
+    "firstgid": 1,
+    "name": "terrain",
+    "tilewidth": 16,
+    "tileheight": 16,
+    "tilecount": 3,
+    "columns": 3,
+    "image": "images/terrain.png",
+    "imagewidth": 48,
+    "imageheight": 16,
+    "wangsets": [
+      {
+        "name": "Path", "type": "edge",
+        "colors": [{"name": "Dirt", "color": "#a06030"}],
+        "wangtiles": [{"tileid": 0, "wangid": [1, 0, 1, 0, 0, 0, 0, 0]}]
+      },
+      {
+        "name": "Ground", "type": "mixed",
+        "colors": [{"name": "Grass", "color": "#ff60a040"}, {"name": "Sand", "color": "#e3c27a"}],
+        "wangtiles": [{"tileid": 1, "wangid": [1, 2, 1, 2, 1, 2, 1, 2]}]
+      },
+      {
+        "name": "Corners", "type": "corner",
+        "colors": [{"name": "Stone", "color": "#808080"}],
+        "wangtiles": [{"tileid": 2, "wangid": [0, 1, 0, 1, 0, 0, 0, 1]}]
+      }
+    ]
+  }],
+  "layers": [{"type": "tilelayer", "name": "T", "width": 1, "height": 1, "data": [1]}]
+}

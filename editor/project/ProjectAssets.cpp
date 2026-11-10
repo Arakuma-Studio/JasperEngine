@@ -8,6 +8,7 @@
 #include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtMode.h"
 #include "texture/TextureCookQueue.h"
+#include "tilemap/TilesetPool.h"
 #include "Project.h"
 #include "component/MeshComponent.h"
 
@@ -461,6 +462,9 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
         // references follow their assets' GUIDs: moved ones get the new hints, a file put
         // back resolves again
         refreshAssetHints();
+        // tilesets resolve their sources by GUID when loaded (S50): one whose image moved,
+        // went or came back resolves again on its layers' next update
+        TilesetPool::clear();
     }
     // Pixel Art Mode (S42 R1): an added image is pixel art from its import, drawn or not yet
     if (pixelArtSettings.enabled) {

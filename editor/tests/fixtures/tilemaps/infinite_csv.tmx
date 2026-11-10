@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="4" height="3" tilewidth="16" tileheight="16" infinite="1">
+ <tileset firstgid="1" name="tiles" tilewidth="16" tileheight="16" tilecount="9" columns="3">
+  <image source="images/tiles.png" width="48" height="48"/>
+ </tileset>
+ <layer id="1" name="Ground" width="4" height="2">
+  <data encoding="csv">
+   <chunk x="-4" y="-2" width="4" height="2">
+0,1,0,2,
+3,0,2147483652,0
+</chunk>
+   <chunk x="8" y="3" width="2" height="2">
+5,0,
+0,6
+</chunk>
+  </data>
+ </layer>
+</map>

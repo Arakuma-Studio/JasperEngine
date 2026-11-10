@@ -1,0 +1,52 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 16,
+ "height": 16,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "infinite": true,
+ "tilesets": [
+  {
+   "firstgid": 1,
+   "name": "tiles",
+   "tilewidth": 16,
+   "tileheight": 16,
+   "tilecount": 9,
+   "columns": 3,
+   "image": "images/tiles.png",
+   "imagewidth": 48,
+   "imageheight": 48
+  }
+ ],
+ "layers": [
+  {
+   "type": "tilelayer",
+   "name": "Ground",
+   "width": 4,
+   "height": 2,
+   "startx": -4,
+   "starty": -2,
+   "x": 0,
+   "y": 0,
+   "encoding": "base64",
+   "compression": "zlib",
+   "chunks": [
+    {
+     "x": -4,
+     "y": -2,
+     "width": 4,
+     "height": 2,
+     "data": "eJxjYGBgYGSAACYgZoayWRgYGkA0AAM0AIs="
+    },
+    {
+     "x": 8,
+     "y": 3,
+     "width": 2,
+     "height": 2,
+     "data": "eJxjZUAANiAGAAB4AAw="
+    }
+   ]
+  }
+ ]
+}

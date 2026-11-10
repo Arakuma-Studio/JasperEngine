@@ -11,7 +11,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr std::array<AssetCreateItem, 21> ITEMS = {{
+    constexpr std::array<AssetCreateItem, 22> ITEMS = {{
         {AssetCreateKind::Folder, "Folder", ICON_FA_FOLDER_PLUS, "assets.createFolder", false, true},
         {AssetCreateKind::LuaScript, "Lua Script", ICON_FA_FILE_CODE, "assets.createLuaScript", true, true},
         {AssetCreateKind::CppScript, "C++ Script", ICON_FA_FILE_CODE, "assets.createCppScript", false, true},
@@ -34,6 +34,7 @@ namespace {
         {AssetCreateKind::Palette, "Palette", ICON_FA_PALETTE, "assets.createPalette", false, false},
         // the Project window shows it as a submenu: Blank, then the presets (T2 R62)
         {AssetCreateKind::NoiseGraph, "Noise Graph", ICON_FA_MOUNTAIN_SUN, "assets.createNoiseGraph", true, false},
+        {AssetCreateKind::Tileset, "Tileset", ICON_FA_TABLE_CELLS_LARGE, "assets.createTileset", false, false},
     }};
 
 }

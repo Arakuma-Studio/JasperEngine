@@ -86,6 +86,11 @@
 #include "util/BidiText.h"
 #include "command/PlayChangeReview.h"
 #include "command/CommandHandle.h"
+#include "command/type/ReflectedValueCmd.h"
+#include "component/GridComponent.h"
+#include "reflect/Reflect.h"
+#include "tilemap/import/TilemapImportApply.h"
+#include "window/EditorModal.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "component/Rigidbody2DComponent.h"
 #include "command/type/AddChildSceneCmd.h"
@@ -593,7 +598,12 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
         {"2D Object", "Sprite Batch", ICON_FA_TABLE_CELLS_LARGE, T::SPRITE_BATCH, "Sprite Batch", CREATE_IN_WORLD},
-        {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
+        // S50 R63: a Grid with a child Tilemap Layer, per layout (createTilemapGrid, by its label)
+        {"2D Object/Tilemap", "Rectangular", ICON_FA_BORDER_ALL, T::TILEMAP_GRID, "Grid", CREATE_IN_WORLD},
+        {"2D Object/Tilemap", "Isometric", ICON_FA_BORDER_ALL, T::TILEMAP_GRID, "Grid", CREATE_IN_WORLD},
+        {"2D Object/Tilemap", "Isometric Staggered", ICON_FA_BORDER_ALL, T::TILEMAP_GRID, "Grid", CREATE_IN_WORLD},
+        {"2D Object/Tilemap", "Hexagonal (Pointy Top)", ICON_FA_BORDER_ALL, T::TILEMAP_GRID, "Grid", CREATE_IN_WORLD},
+        {"2D Object/Tilemap", "Hexagonal (Flat Top)", ICON_FA_BORDER_ALL, T::TILEMAP_GRID, "Grid", CREATE_IN_WORLD},
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
         {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
@@ -763,6 +773,10 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     }
     if (entry.type == EntityCreationType::PIXEL_PARTICLE_SYSTEM) {
         createPixelParticles(entry, parent, addToPrefab);
+        return;
+    }
+    if (entry.type == EntityCreationType::TILEMAP_GRID) {
+        createTilemapGrid(entry, parent, addToPrefab);
         return;
     }
     CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
@@ -1474,9 +1488,136 @@ bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) cons
         sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
 
+// GameObject > 2D Object > Tilemap > <layout> (S50 R63): "Grid" with a child "Tilemap", one undo step
+void editor::HierarchyWindow::createTilemapGrid(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    TileGridLayout layout = TileGridLayout::Rectangle;
+    StaggerAxis axis = StaggerAxis::Y;
+    Vector2 cellSize(16.0f, 16.0f);
+    const std::string label = entry.label;
+    if (label == "Isometric" || label == "Isometric Staggered") {
+        layout = label == "Isometric" ? TileGridLayout::Isometric : TileGridLayout::IsometricStaggered;
+        cellSize = Vector2(32.0f, 16.0f);
+    } else if (label == "Hexagonal (Pointy Top)" || label == "Hexagonal (Flat Top)") {
+        layout = TileGridLayout::Hexagon;
+        axis = label == "Hexagonal (Pointy Top)" ? StaggerAxis::Y : StaggerAxis::X;
+        cellSize = axis == StaggerAxis::Y ? Vector2(16.0f, 14.0f) : Vector2(14.0f, 16.0f);
+    }
+    CommandHistory* history = CommandHandle::get(sceneProject->id);
+    const size_t mark = history->mark();
+    auto* createGrid = new CreateEntityCmd(project, sceneProject->id, "Grid", EntityCreationType::TILEMAP_GRID, parent, addToPrefab);
+    history->addCommandNoMerge(createGrid);
+    const Entity grid = createGrid->getEntity();
+    if (layout != TileGridLayout::Rectangle) {
+        // through the reflection table, as the Grid Inspector's rows write these fields (one undoable value each)
+        const reflect::ComponentDesc* desc = reflect::find(ComponentType::GridComponent);
+        void* component = desc->find(sceneProject->scene, grid);
+        const auto setField = [&](const char* path, const void* value) {
+            const reflect::FieldRef field = reflect::resolve(*desc, component, path);
+            history->addCommandNoMerge(new ReflectedValueCmd(project, sceneProject->id, {grid}, ComponentType::GridComponent, path, reflect::Value(field.ops, value)));
+        };
+        setField("layout", &layout);
+        setField("cellSize", &cellSize);
+        if (axis != StaggerAxis::Y) setField("staggerAxis", &axis);
+    }
+    auto* createLayer = new CreateEntityCmd(project, sceneProject->id, "Tilemap", EntityCreationType::TILEMAP_LAYER, grid, addToPrefab);
+    history->addCommandNoMerge(createLayer);
+    history->groupSince(mark, "Create Tilemap");
+    project->setSelectedEntity(sceneProject->id, createLayer->getEntity());
+    openParent = parent;
+    revealEntity(sceneProject->id, createLayer->getEntity());
+}
+
+// a Tiled or LDtk map dropped here (R46, R63): the plan's report, Import makes it one undo step
+void editor::HierarchyWindow::openTilemapImportPreview(const std::string& mapFile, Entity parent) {
+    tilemapImport = TilemapImportPreview();
+    tilemapImport.file = mapFile;
+    tilemapImport.parent = parent;
+    tilemapImport.opening = true;
+    std::vector<tilemapimport::ImportProblem> problems;
+    tilemapImport.loaded = tilemapimport::loadPlan(project, std::filesystem::path(mapFile), tilemapImport.plan, problems);
+    if (!tilemapImport.loaded) {
+        tilemapImport.error = problems.empty() ? std::string("The map could not be read") : problems.front().message;
+    } else {
+        tilemapimport::ImportTarget target;
+        target.project = project;
+        target.sceneId = project->getSelectedSceneId();
+        target.parent = parent;
+        target.mapFile = std::filesystem::path(mapFile);
+        tilemapImport.report = tilemapimport::previewReport(tilemapImport.plan, target);
+    }
+}
+
+void editor::HierarchyWindow::showTilemapImportPreview() {
+    if (tilemapImport.opening) {
+        ImGui::OpenPopup("Import Tile Map###HierarchyTilemapImport");
+        tilemapImport.opening = false;
+    }
+    if (!EditorModal::begin("Import Tile Map###HierarchyTilemapImport", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    const std::string title = "Import " + std::filesystem::path(tilemapImport.file).filename().string();
+    ImGui::TextUnformatted(title.c_str());
+    ImGui::Separator();
+    bool canImport = false;
+    if (!tilemapImport.loaded) {
+        EditorModal::error(tilemapImport.error);
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", tilemapImport.error.c_str());
+    } else {
+        const tilemapimport::ImportReport& report = tilemapImport.report;
+        const tilemapimport::ImportCounts& counts = report.counts;
+        const std::string summary = std::to_string(counts.grids) + " Grid(s), " + std::to_string(counts.layers) + " layer(s), " +
+            std::to_string(counts.tilesets) + " tileset(s), " + std::to_string(counts.tiles) + " tile(s)";
+        EditorModal::message(summary);
+        ImGui::TextUnformatted(summary.c_str());
+        for (const tilemapimport::ImportReport::Grid& grid : report.grids) {
+            ImGui::BulletText("Grid %s: %d layer(s)", grid.name.c_str(), (int)grid.layers.size());
+        }
+        for (const tilemapimport::ImportReport::Tileset& tileset : report.tilesets) {
+            ImGui::BulletText("Tileset %s (%s)", tileset.name.c_str(), tileset.file.c_str());
+        }
+        for (const tilemapimport::ImportSkipped& skipped : report.skipped) {
+            ImGui::TextDisabled("Skipped: %s (%s) x%d", skipped.kind.c_str(), skipped.name.c_str(), skipped.count);
+        }
+        for (const std::string& warning : report.warnings) ImGui::TextColored(Theme::Colors::WarningText, "%s", warning.c_str());
+        canImport = true;
+    }
+    ImGui::Separator();
+    ImGui::BeginDisabled(!canImport);
+    if (EditorModal::button("Import", "ok")) {
+        tilemapimport::ImportTarget target;
+        target.project = project;
+        target.sceneId = project->getSelectedSceneId();
+        target.parent = tilemapImport.parent;
+        target.mapFile = std::filesystem::path(tilemapImport.file);
+        const tilemapimport::ImportResult result = tilemapimport::apply(tilemapImport.plan, target);
+        if (!result.ok) {
+            Out::error("Import %s: %s", tilemapImport.file.c_str(), result.problem.message.c_str());
+        } else if (!result.grids.empty()) {
+            project->setSelectedEntity(target.sceneId, result.grids.front());
+        }
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
+
+        // a Tiled or LDtk map opens its import preview (S50 R46, R63)
+        if (Util::isTilemapImportFile(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+            } else {
+                openTilemapImportPreview(filePath, parent);
+            }
+            continue;
+        }
 
         // a Vertex Animation: Model = its .vat.glb + Vertex Animator, one step (vertex animation spec 3.3)
         if (Util::isVertexAnimationFile(filePath) && acceptsModelDrop(filePath)) {
@@ -3529,7 +3670,7 @@ void editor::HierarchyWindow::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path) || Util::isTilemapImportFile(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
@@ -3569,6 +3710,7 @@ void editor::HierarchyWindow::show(){
 
     showReplacePrefabPopup();
     showRestructurePopup();
+    showTilemapImportPreview();
 
     ImGui::End();
 

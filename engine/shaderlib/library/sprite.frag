@@ -231,6 +231,9 @@ out vec4 g_finalColor;
 #include "includes/output.glsl"
 #include "includes/color_fx.glsl"
 #include "includes/base_color_fs.glsl"
+#if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+    flat in vec4 v_tileFrame;
+#endif
 #include "includes/palette.glsl"
 #include "includes/sprite_fx.glsl"
 #ifdef USE_LIGHT2D
@@ -412,6 +415,12 @@ vec4 spriteTexel(vec2 uv){
 
 void main() {
     vec2 uv = v_uv1;
+    #if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+        // a Tilemap Layer's tile: filtering at its edge would read the next tile of the atlas
+        vec2 tileTexel = 0.5 / baseColorTextureSize();
+        uv = clamp(uv, min(v_tileFrame.xy, v_tileFrame.xy + v_tileFrame.zw) + tileTexel,
+                   max(v_tileFrame.xy, v_tileFrame.xy + v_tileFrame.zw) - tileTexel);
+    #endif
     #ifdef SPRITE_FRAME_RECT
         // filtering at the frame's edge would blend in the neighbouring atlas frame
         vec2 texelSize = 1.0 / baseColorTextureSize();
