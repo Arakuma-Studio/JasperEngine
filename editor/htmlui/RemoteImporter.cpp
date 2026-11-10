@@ -535,13 +535,9 @@ ImportedResource RemoteImporter::import(const std::string& url, const std::strin
             return StylesheetImporter(*this).run(url, finalUrl, body, at);
         case Type::TrueType:
         case Type::OpenType:
-            return importFontFile(*this, url, body, sniffed, at);
         case Type::Woff:
         case Type::Woff2:
-            result.error = std::string("the font is only available as ") + (sniffed.type == Type::Woff ? "WOFF" : "WOFF2");
-            report(compat::codes::WoffOnly, at, url, "'" + url + "' is a " + sniffed.name() + ", which the engine cannot read; nothing imported",
-                   "use a .ttf/.otf version of the font (convert it, or pick the TrueType source of its @font-face)");
-            return result;
+            return importFontFile(*this, url, body, sniffed, at);
         case Type::Zip:
             return LottieImporter(*this).runDotLottie(url, finalUrl, body, at);
         case Type::Json:

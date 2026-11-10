@@ -100,7 +100,7 @@ namespace {
             const size_t compressed = fontReadU32(entry + 8);
             const size_t original = fontReadU32(entry + 12);
             if ((i && tag <= previousTag) || at % 4 || at < directoryEnd || at > length ||
-                compressed > length - at || compressed > original ||
+                compressed > length - at || compressed > original || original > maxWebFontBytes ||
                 fontPaddedSize(original) > maxWebFontBytes - computedSize)
                 return false;
             previousTag = tag;

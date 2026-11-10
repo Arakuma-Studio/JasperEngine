@@ -588,16 +588,21 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
     for (const CssFontFace& face : faces){
         const CssFontSource* source = nullptr;
         for (const CssFontSource& candidate : face.sources){
-            if (candidate.usable() || (!candidate.url.empty() && !candidate.woff() && !source))
+            if (candidate.usable() && (!source || (source->woff() && !candidate.woff())))
                 source = &candidate;
-            if (candidate.usable())
-                break;
+        }
+        if (!source){
+            for (const CssFontSource& candidate : face.sources){
+                if (!candidate.url.empty()){
+                    source = &candidate;
+                    break;
+                }
+            }
         }
         if (!source || !face.hasSrc){
-            const bool woff = std::any_of(face.sources.begin(), face.sources.end(), [](const CssFontSource& s){ return s.woff(); });
-            result.error = woff ? "Google Fonts sent WOFF/WOFF2 files" : "a Google Fonts @font-face has no font file";
-            importer.report(woff ? codes::WoffOnly : codes::UnsupportedContent, at, url,
-                            "@font-face '" + face.family + "' of '" + url + "' has no TrueType source" + (woff ? " (WOFF/WOFF2 only)" : ""));
+            result.error = "a Google Fonts @font-face has no font file";
+            importer.report(codes::UnsupportedContent, at, url,
+                            "@font-face '" + face.family + "' of '" + url + "' has no supported font source");
             return result;
         }
 
@@ -610,11 +615,10 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
         }
         const SniffedContent sniffed = sniffContent(font, fontResponse.contentType, fontUrl);
         if (!sniffed.isFont()){
-            result.error = std::string("Google Fonts sent a ") + sniffed.name() + " instead of a TrueType font";
-            importer.report(sniffed.type == SniffedContent::Type::Woff || sniffed.type == SniffedContent::Type::Woff2 ? codes::WoffOnly
-                                                                                                                       : codes::UnsupportedContent,
+            result.error = std::string("Google Fonts sent a ") + sniffed.name() + " instead of a font";
+            importer.report(codes::UnsupportedContent,
                             at, fontUrl, "'" + fontUrl + "' (" + face.family + " " + std::to_string(face.weight) + ") is a " + sniffed.name() +
-                            ", not a TrueType font; nothing imported");
+                            ", not a supported font; nothing imported");
             return result;
         }
 
@@ -629,7 +633,9 @@ ImportedResource GoogleFontsImporter::run(const std::string& url, const ImportLo
         staging.add(local, std::move(font));
         fontFiles.push_back(local);
         edits.push_back(CssEdit{face.srcOffset, face.srcLength, cssUrl(fileName) + " format(\"" +
-                                (sniffed.type == SniffedContent::Type::OpenType ? "opentype" : "truetype") + "\")"});
+                                (sniffed.type == SniffedContent::Type::OpenType ? "opentype" :
+                                 sniffed.type == SniffedContent::Type::Woff ? "woff" :
+                                 sniffed.type == SniffedContent::Type::Woff2 ? "woff2" : "truetype") + "\")"});
         if (std::find(families.begin(), families.end(), face.family) == families.end())
             families.push_back(face.family);
     }

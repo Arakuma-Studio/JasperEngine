@@ -27,4 +27,3 @@ void StoreBase128(size_t len, size_t* offset, uint8_t* dst);
 } // namespace woff2
 
 #endif  // WOFF2_VARIABLE_LENGTH_H_
-

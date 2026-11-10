@@ -11,7 +11,11 @@ passing SFNT bytes to the existing font validation, rasterizer and shaper.
 
 ## Patches
 
-`src/woff2_dec.cc`: reject an intermediate transformed-table buffer larger than
-the upstream output limit (`kDefaultMaxSize`, 128 MiB) before allocating it.
-The output writer's size limit otherwise does not bound this separate buffer.
+`src/woff2_dec.cc`: reject intermediate transformed-table or reconstructed-header
+buffers larger than the upstream output limit (`kDefaultMaxSize`, 128 MiB)
+before allocating them. The output writer's size limit otherwise does not bound
+these separate buffers (the header can be large for a collection).
 No format transformations or reconstruction algorithms are changed.
+
+`src/variable_length.{cc,h}`: remove the extra blank line at end of file, so the
+vendored subset passes the repository's whitespace check.

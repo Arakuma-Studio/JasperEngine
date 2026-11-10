@@ -229,7 +229,7 @@ and `attach_script {"entity": "Menu", "path": "scripts/MenuUI.lua"}`.
   stylesheet. A leading `/` (`/ui/logo.png`) or `asset://ui/logo.png` starts at the assets
   directory.
 - Formats: PNG, JPG and the other image formats the engine loads (not WebP or AVIF), SVG,
-  Lottie `.json` / `.lottie`, fonts TTF / OTF (not WOFF / WOFF2).
+  Lottie `.json` / `.lottie`, fonts TTF / OTF / WOFF / WOFF2.
 - **No remote URLs at run time.** An `http(s)://` font, stylesheet, image or animation is
   imported into the project by the editor ("Images, SVG, Lottie, fonts, icons"); until then
   it is an `HTMLUI-IMP-0001` error.
@@ -479,8 +479,6 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **SVG filters** (`filter: url(#f)`: `HTMLUI-CSS-0004`): the CSS filter functions.
 - **`border-collapse: collapse`** (`HTMLUI-CSS-0006`): removes the spacing but keeps each
   cell's borders: put borders on one side of each cell.
-- **Fonts other than TTF/OTF** (WOFF/WOFF2-only `@font-face`: `HTMLUI-CSS-0022`): convert to
-  TTF; remote fonts are imported as TTF.
 - **`cursor: url()`** (info): the fallback keyword is used.
 - **`direction: rtl`** mirrors the text only: flex rows, grid columns, `start`/`end` and
   sticky/fixed insets stay left to right (info).
@@ -591,7 +589,7 @@ cheap for titles and dialog lines.
   are the built-in **Roboto** (Latin, Cyrillic, Greek) with **Noto Sans Arabic**. A family
   that is not loaded is skipped (info `HTMLUI-CSS-0023`) and the next one in the list is
   used.
-- Your own fonts: `@font-face` with the project's TTF/OTF files ("Images, SVG, Lottie, fonts,
+- Your own fonts: `@font-face` with the project's TTF/OTF/WOFF/WOFF2 files ("Images, SVG, Lottie, fonts,
   icons"), or a **Google Fonts `<link>`** kept as written and imported by the editor
   (`import_files {"fonts": ["Inter:400,700"]}` or `{"from_document": ...}`).
 - Icons: `<i data-lucide="play"></i>` is a built-in **Lucide** icon, colored by `color`
@@ -1540,8 +1538,14 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
+WOFF and WOFF2 decode to SFNT in memory when loaded, on every export target. Keep the
+original font files in the project and use them directly in `@font-face`; no converter
+or network access is needed in the player. Decoded fonts are limited to 64 MiB. Invalid
+compressed data reports the font path and format in the Console. The remote importer
+prefers a TTF/OTF source when one is supplied and imports WOFF/WOFF2 sources otherwise.
+
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
-- Project fonts: `@font-face` with TTF/OTF files, relative to the stylesheet; `font-weight` and
+- Project fonts: `@font-face` with TTF/OTF/WOFF/WOFF2 files, relative to the stylesheet; `font-weight` and
   `font-style` pick the face. A weight or style without a face is synthesized (bold strokes
   `max(1, size / 24)` px wider, italic slanted 12 degrees); load the real face when the design
   depends on it.
@@ -2043,7 +2047,6 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | Tailwind Play CDN | run the Tailwind CLI and `<link>` its CSS output | `HTMLUI-HTML-0007` |
 | Google Fonts `<link>` | keep it; the editor imports it (`import_files {"from_document": ...}` or `{"fonts": [...]}`) | `HTMLUI-IMP-0001` until imported |
 | remote `<img src="https://...">`, CDN CSS | keep it and import it, or put the file in `assets/ui/<name>_assets/` | `HTMLUI-IMP-0001` until imported |
-| WOFF/WOFF2 `@font-face` | TTF or OTF | `HTMLUI-CSS-0022` |
 | `@container`, `container-type` | `@media` on the canvas size, or classes set from Lua | `HTMLUI-AT-0001`, `HTMLUI-CSS-0002` |
 | `mix-blend-mode`, `background-blend-mode` | `opacity`, or a pre-blended image | `HTMLUI-CSS-0002` |
 | `writing-mode: vertical-rl` | `transform: rotate(90deg)` | `HTMLUI-CSS-0002` |

@@ -19,7 +19,7 @@ namespace jasperengine::editor::htmlui {
 
         bool isImage() const;          // png jpeg gif bmp tga webp avif svg
         bool isDecodableImage() const; // what the engine draws: png jpeg gif bmp tga svg
-        bool isFont() const;           // truetype opentype (woff/woff2 are not usable)
+        bool isFont() const;           // TrueType, OpenType, WOFF and WOFF2
         bool isVideo() const;          // webm mp4 quicktime ogg
         std::string extension() const; // "png", "jpg", "svg", "ttf", "otf", "woff2", "json", "lottie", "css", "webm", "mp4", ...
         const char* name() const;      // "PNG", "WebP", "WOFF2", ...

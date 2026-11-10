@@ -14,7 +14,6 @@ add_library(brotlidec STATIC
     c/dec/static_init.c
 )
 target_include_directories(brotlidec SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/c/include")
-target_compile_definitions(brotlidec PRIVATE BROTLI_BUILD_PORTABLE)
 set_target_properties(brotlidec PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
 if(NOT MSVC)
     target_compile_options(brotlidec PRIVATE -fvisibility=hidden)

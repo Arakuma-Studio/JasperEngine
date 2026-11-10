@@ -37,6 +37,8 @@ def main():
     out.joinpath("CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.20)
 project(text-shaper-perf LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
+add_subdirectory("{root}/engine/libs/brotli" brotli)
+add_subdirectory("{root}/engine/libs/woff2" woff2)
 add_subdirectory("{root}/engine/libs/harfbuzz" harfbuzz)
 add_subdirectory("{root}/engine/libs/sheenbidi" sheenbidi)
 add_executable(text-shaper
@@ -45,19 +47,20 @@ add_executable(text-shaper
     "{out.as_posix()}/BaselineTextShaper.cpp"
     "{root}/engine/core/util/FontFace.cpp"
     "{root}/engine/core/util/StringUtils.cpp"
-    "{root}/engine/libs/stb/stb_truetype.c")
+    "{root}/engine/libs/stb/stb_truetype.c"
+    "{root}/engine/libs/stb/stb_image.c")
 target_include_directories(text-shaper PRIVATE "{out.as_posix()}"
     "{root}/engine/core" "{root}/engine/core/util" "{root}/engine/libs/stb")
 target_compile_options(text-shaper PRIVATE -ffunction-sections -fdata-sections)
 target_link_options(text-shaper PRIVATE -Wl,--gc-sections)
-target_link_libraries(text-shaper PRIVATE harfbuzz sheenbidi)
+target_link_libraries(text-shaper PRIVATE harfbuzz sheenbidi woff2)
 if(TEXT_SHAPER_SANITIZE)
     target_compile_definitions(text-shaper PRIVATE TEXT_SHAPER_CHECK_ONLY)
     # The unused loadFile method is discarded. Its UBSan vptr metadata would
     # otherwise retain Data's RTTI even though this fixture loads fonts in memory.
     set_source_files_properties("{root}/engine/core/util/FontFace.cpp"
         PROPERTIES COMPILE_OPTIONS "-fno-sanitize=vptr")
-    foreach(target text-shaper harfbuzz sheenbidi)
+    foreach(target text-shaper harfbuzz sheenbidi woff2 brotlidec)
         target_compile_options(${{target}} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(${{target}} PRIVATE -fsanitize=address,undefined)
     endforeach()

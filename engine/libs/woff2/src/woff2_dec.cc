@@ -1361,8 +1361,9 @@ bool ConvertWOFF2ToTTF(const uint8_t* data, size_t length,
     return FONT_COMPRESSION_FAILURE();
   }
 
-  // The output writer bounds its own buffer, not the transformed-table allocation.
-  if (hdr.uncompressed_size > kDefaultMaxSize) {
+  // The output writer does not bound the intermediate table and header buffers.
+  if (hdr.uncompressed_size > kDefaultMaxSize ||
+      ComputeOffsetToFirstTable(hdr) > kDefaultMaxSize) {
     return FONT_COMPRESSION_FAILURE();
   }
 

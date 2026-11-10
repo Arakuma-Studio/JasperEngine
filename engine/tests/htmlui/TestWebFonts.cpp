@@ -3,6 +3,9 @@
 
 #include "util/FontFace.h"
 
+// The fixtures are a fontTools 4.61.1 subset of fonts/Roboto-Regular-subset-post.ttf,
+// packaged as TTF, WOFF and WOFF2 (Brotli 1.2.0); their font licence is beside them.
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -130,4 +133,28 @@ TEST(WebFonts, RejectsInvalidWoffDirectoryAndCorruptTables){
         break;
     }
     EXPECT_TRUE(compressedTable);
+}
+
+TEST(WebFonts, RejectsWoffLengthsThatOverflow32BitPadding){
+    const auto original = webFontFixture("woff");
+    ASSERT_GT(original.size(), 84u);
+    const size_t tables = (size_t(original[12]) << 8) | original[13];
+    bool checked = false;
+    for (size_t i = 0; i < tables; i++){
+        const size_t entry = 44 + i * 20;
+        const uint32_t length = webFontU32(original.data() + entry + 12);
+        if (webFontU32(original.data() + entry + 8) >= length)
+            continue;
+        // On wasm32/ARM32, UINT32_MAX + 3 wraps to 2 and its padded size becomes 0.
+        // Keep the advertised SFNT size consistent with that wrapped calculation.
+        for (uint32_t oversized : {0xFFFFFFFDu, 0xFFFFFFFEu, 0xFFFFFFFFu}){
+            auto bytes = original;
+            webFontPut32(bytes, entry + 12, oversized);
+            webFontPut32(bytes, 16, webFontU32(original.data() + 16) - ((length + 3) & ~uint32_t(3)));
+            EXPECT_EQ(webFontLoad(bytes), nullptr);
+        }
+        checked = true;
+        break;
+    }
+    EXPECT_TRUE(checked);
 }

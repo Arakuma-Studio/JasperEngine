@@ -21,7 +21,7 @@ namespace {
     const AtRuleSupport atRules[] = {
         {"@media", R, FF::None, R, "@media", "normalized (3.9.4); nested blocks combined", ""},
         {"@import", R, FF::None, R, "", "inlined with its media, layer and supports conditions", ""},
-        {"@font-face", R, FF::None, R, "@font-face", "TTF/OTF source selection and descriptors", ""},
+        {"@font-face", R, FF::None, R, "@font-face", "TTF/OTF/WOFF/WOFF2 source selection and descriptors", ""},
         {"@keyframes", N, FF::None, N, "@keyframes", "names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands", ""},
         {"@-webkit-keyframes", R, FF::None, R, "@keyframes", "prefix removed; names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands", ""},
         {"@-moz-keyframes", R, FF::None, R, "@keyframes", "prefix removed; names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands", ""},

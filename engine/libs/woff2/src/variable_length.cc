@@ -126,4 +126,3 @@ void StoreBase128(size_t len, size_t* offset, uint8_t* dst) {
 }
 
 } // namespace woff2
-

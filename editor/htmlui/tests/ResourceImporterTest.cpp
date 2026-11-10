@@ -13,6 +13,7 @@
 #include "htmlui/StylesheetImporter.h"
 
 #include "htmlui/compat/UrlResolver.h"
+#include "util/FontFace.h"
 
 #include "json.hpp"
 
@@ -72,6 +73,7 @@ TEST(CssUrls, FindsEveryUrlWithItsRange){
     ASSERT_EQ(faces[0].sources.size(), 3u);
     EXPECT_TRUE(faces[0].sources[0].url.empty());
     EXPECT_TRUE(faces[0].sources[1].woff());
+    EXPECT_TRUE(faces[0].sources[1].usable());
     EXPECT_TRUE(faces[0].sources[2].usable());
     EXPECT_EQ(css.substr(faces[0].srcOffset, faces[0].srcLength),
               "local(F), url(g.woff2) format('woff2'), url(\"g.ttf\") format(\"truetype\")");
@@ -127,22 +129,29 @@ TEST(Stylesheets, FontAwesomeKeepsTheTrueTypeSources){
     EXPECT_EQ(entry->files.size(), 4u);
 }
 
-TEST(Stylesheets, WoffOnlyFontsAreReported){
+TEST(Stylesheets, WoffOnlyFontsAreImported){
     TempProject project;
     std::vector<compat::Diagnostic> diagnostics;
     const ImportedResource result = importOne(project, "https://cdnjs.cloudflare.com/woff2only.css", &diagnostics);
-    ASSERT_TRUE(result.ok) << result.error;   // the sheet itself imports
-    const auto woff = withCode(diagnostics, "HTMLUI-IMP-0007");
-    ASSERT_EQ(woff.size(), 1u) << dump(diagnostics);
-    EXPECT_EQ(woff[0].severity, compat::Severity::Warning);
-    EXPECT_NE(woff[0].message.find("Woff Only"), std::string::npos);
-    EXPECT_FALSE(fs::exists(project.assets() / "htmlui-imports/css/cdnjs.cloudflare.com/fonts"));
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_TRUE(withCode(diagnostics, "HTMLUI-IMP-0007").empty()) << dump(diagnostics);
+    EXPECT_TRUE(project.exists("assets/htmlui-imports/css/cdnjs.cloudflare.com/fonts/woffonly.woff2"));
+    EXPECT_TRUE(project.exists("assets/htmlui-imports/css/cdnjs.cloudflare.com/fonts/woffonly.woff"));
+    ASSERT_NE(result.entry(), nullptr);
+    expectLocalUrls(project, result.entry()->path);
 
     // a WOFF2 file imported on its own
     std::vector<compat::Diagnostic> direct;
     const ImportedResource font = importOne(project, "https://cdnjs.cloudflare.com/fonts/x.woff2", &direct);
-    EXPECT_FALSE(font.ok);
-    EXPECT_EQ(withCode(direct, "HTMLUI-IMP-0007").size(), 1u) << dump(direct);
+    ASSERT_TRUE(font.ok) << font.error;
+    ASSERT_NE(font.entry(), nullptr);
+    EXPECT_EQ(font.entry()->kind, "font");
+    EXPECT_TRUE(project.exists("assets/" + font.entry()->path));
+    EXPECT_TRUE(withCode(direct, "HTMLUI-IMP-0007").empty()) << dump(direct);
+    const std::string bytes = project.read("assets/" + font.entry()->path);
+    std::string error;
+    EXPECT_NE(jasperengine::FontFace::loadMemory((const unsigned char*)bytes.data(), bytes.size(), 0, true,
+                                                font.entry()->path, &error), nullptr) << error;
 }
 
 TEST(Stylesheets, ImportChainsCyclesAndGoogleFonts){

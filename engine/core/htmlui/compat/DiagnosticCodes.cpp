@@ -204,8 +204,8 @@ namespace {
          "Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the "
          "backwards fill mode not applied during the delay, ..."},
         {codes::FontSource, W, true, "font-source", "Font source",
-         "An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font "
-         "(.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by "
+         "An @font-face source was skipped (SVG/EOT, local(): Info), or the rule has no supported vector or bitmap font "
+         "(.bitmapfont, .fnt) source and was dropped (Warning). Provide TTF, OTF, WOFF, WOFF2 or a bitmap font; remote fonts are imported by "
          "the editor."},
         {codes::UnknownFontFamily, I, false, "unknown-font-family", "Unknown font family",
          "No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the "
@@ -300,7 +300,7 @@ namespace {
         {codes::FontVariantUnavailable, W, false, "font-variant-unavailable", "Font variant unavailable",
          "The font provider does not offer a requested weight or style; the text falls back to the nearest available one."},
         {codes::WoffOnly, W, false, "woff-only", "WOFF only",
-         "The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version."},
+         "Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are decoded at runtime."},
         {codes::LicenseNote, I, false, "license-note", "License note",
          "The license of an imported resource was recorded, or it is unknown and must be verified before shipping."},
         {codes::ManifestFileMissing, W, false, "manifest-file-missing", "Manifest file missing",

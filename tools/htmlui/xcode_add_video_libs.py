@@ -170,7 +170,7 @@ def libraries():
         {
             "name": "brotlidec", "dir": "brotli", "c": "gnu99", "cxx": False,
             "sources": cmake_sources(os.path.join(LIBS, "brotli", "CMakeLists.txt")),
-            "defines": ["BROTLI_BUILD_PORTABLE"],
+            "defines": [],
             "includes": [inc("brotli/c/include")],
             "public_include": inc("brotli/c/include"), "public_define": None,
         },
