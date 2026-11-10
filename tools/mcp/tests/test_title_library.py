@@ -101,6 +101,7 @@ async def test_gate(ed: Editor):
     counts = {"looks": [0, 0], "color_schemes": [0, 0], "templates": [0, 0]}   # checked, unavailable
     reasons: dict = {}
     dropped: dict = {}
+    failures: list = []
     work = []
     for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
         for r in await rows(ed, kind):
@@ -141,12 +142,16 @@ async def test_gate(ed: Editor):
                 dropped[kind] = dropped.get(kind, 0) + 1
             if check["status"] not in ("FAIL",):
                 continue
-            ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
+            failures.append(f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         a = await render_once(ed, path)
         b = await render_once(ed, path)
         ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
         counts[kind][0] += 1
     print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}; tier band drops reported: {dropped}")
+    # every failure at once, so one run is the whole gate's answer
+    for line in failures:
+        print(f"[gate] FAIL {line}")
+    ed.check(not failures, f"{len(failures)} check failures over {sum(c[0] for c in counts.values())} renders (listed above)")
 
 
 RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "title-library-red"
