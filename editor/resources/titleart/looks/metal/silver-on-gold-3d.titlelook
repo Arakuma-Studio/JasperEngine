@@ -245,7 +245,7 @@
           "profile": "chamfer"
         },
         "material": {
-          "color": "#3a1800",
+          "color": "#9a6d56",
           "gradient": {
             "stops": [
               {
@@ -261,11 +261,11 @@
               },
               {
                 "pos": 0.52,
-                "color": "#3a1800"
+                "color": "#9a6d56"
               },
               {
                 "pos": 0.6,
-                "color": "#a86200"
+                "color": "#ad6606"
               },
               {
                 "pos": 0.82,

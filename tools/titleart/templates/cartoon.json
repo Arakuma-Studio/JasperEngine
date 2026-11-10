@@ -120,6 +120,13 @@
           "generator": "particles",
           "name": "Confetti",
           "preset": "confetti"
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "style.rims[0].material.fill.color": "#dbecf7"
+          }
         }
       ]
     },

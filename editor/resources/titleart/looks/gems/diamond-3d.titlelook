@@ -273,7 +273,7 @@
         },
         "material": {
           "preset": "silver",
-          "color": "#d8dde6",
+          "color": "#f4faff",
           "gradient": {
             "stops": [
               {
@@ -281,27 +281,27 @@
               },
               {
                 "pos": 0.22,
-                "color": "#e3e7ee"
+                "color": "#fbffff"
               },
               {
                 "pos": 0.45,
-                "color": "#a3abb8"
+                "color": "#bec6d4"
               },
               {
                 "pos": 0.52,
-                "color": "#555c68"
+                "color": "#6d7581"
               },
               {
                 "pos": 0.6,
-                "color": "#9aa2af"
+                "color": "#b5bdca"
               },
               {
                 "pos": 0.8,
-                "color": "#dfe4eb"
+                "color": "#faffff"
               },
               {
                 "pos": 1,
-                "color": "#f7f9fc"
+                "color": "#fdffff"
               }
             ]
           },

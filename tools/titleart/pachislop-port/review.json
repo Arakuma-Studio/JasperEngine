@@ -20,16 +20,16 @@
     {
       "id": "casino/giraffe",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/gold-on-red-stack-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -156,8 +156,8 @@
     {
       "id": "casino/outline-giraffe",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -396,8 +396,8 @@
     {
       "id": "elements/toxic-acid-glow-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -420,8 +420,8 @@
     {
       "id": "gems/diamond-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -484,8 +484,8 @@
     {
       "id": "metal/black-chrome-red-line-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -500,16 +500,16 @@
     {
       "id": "metal/black-silver",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "metal/candy-apple-red-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -684,8 +684,8 @@
     {
       "id": "metal/silver-on-gold-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -700,8 +700,8 @@
     {
       "id": "metal/silver-premium-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -716,8 +716,8 @@
     {
       "id": "neon/matte-black-glowing-rim-3d",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -780,8 +780,8 @@
     {
       "id": "wa/ink-brush",
       "kind": "look",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -852,8 +852,8 @@
     {
       "id": "casino/big-bonus-3d",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },

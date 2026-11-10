@@ -139,6 +139,13 @@
               "field": "text"
             }
           ]
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "style_3d.bands[5].material.color": "#4a4a4a"
+          }
         }
       ]
     },

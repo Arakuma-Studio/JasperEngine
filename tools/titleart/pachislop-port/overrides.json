@@ -30,6 +30,2040 @@
     },
     "casino/orb-metal-silver-3d": {
       "background": "dark"
+    },
+    "casino/giraffe": {
+      "style": {
+        "rims": [
+          {
+            "width": 1.1,
+            "material": {
+              "fill": {
+                "color": "#2a1000",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#2a1000"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#2a1000"
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "width": 1.5,
+            "material": {
+              "fill": {
+                "color": "#fff2d0",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#fff2d0"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff2d0"
+                    }
+                  ]
+                }
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 1.2,
+                "depth": 2,
+                "gloss": "linear",
+                "highlight_opacity": 0.6,
+                "shadow_opacity": 0.35
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "material": {
+              "fill": {
+                "kind": "linear",
+                "color": "#eacc95",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#eacc95"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#d27802"
+                    },
+                    {
+                      "pos": 0.6,
+                      "color": "#762900"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#eaad5e"
+                    }
+                  ]
+                },
+                "angle": 270
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 1.8,
+                "depth": 4,
+                "shadow_color": "#4a1a00"
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "enabled": true,
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#2a0d00"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#a3461a"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffad7a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff3ea"
+                    }
+                  ]
+                },
+                "amount": 0.85
+              }
+            }
+          },
+          {
+            "width": 1.6,
+            "offset": [
+              0,
+              -2.6
+            ],
+            "material": {
+              "fill": {
+                "color": "#140800",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#140800"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#140800"
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "casino/outline-giraffe": {
+      "style": {
+        "rims": [
+          {
+            "width": 1.3,
+            "material": {
+              "fill": {
+                "color": "#2a1000",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#2a1000"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#2a1000"
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "width": 1.9,
+            "material": {
+              "fill": {
+                "color": "#fff2d0",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#fff2d0"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff2d0"
+                    }
+                  ]
+                }
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 1.2,
+                "depth": 2,
+                "gloss": "linear",
+                "highlight_opacity": 0.6,
+                "shadow_color": "#7a4a10",
+                "shadow_opacity": 0.35
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "width": 3.6,
+            "material": {
+              "fill": {
+                "kind": "linear",
+                "color": "#bfa46e",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#bfa46e"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#a45200"
+                    },
+                    {
+                      "pos": 0.6,
+                      "color": "#4f0100"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#bd8538"
+                    }
+                  ]
+                },
+                "angle": 270
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 2.2,
+                "depth": 3.5,
+                "shadow_color": "#4a1a00"
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "enabled": true,
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#2a0d00"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#a3461a"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffad7a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff3ea"
+                    }
+                  ]
+                },
+                "amount": 0.85
+              }
+            }
+          },
+          {
+            "width": 2.4,
+            "offset": [
+              0,
+              -3.2
+            ],
+            "material": {
+              "fill": {
+                "color": "#140800",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#140800"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#140800"
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "casino/gold-on-red-stack-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 1.6,
+            "depth": 10.6,
+            "offset": -12.2,
+            "bevel": {
+              "width": 1.6,
+              "depth": 1.6,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "gold",
+              "color": "#ffc23a",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#fff2b8"
+                  },
+                  {
+                    "pos": 0.42,
+                    "color": "#ffc848"
+                  },
+                  {
+                    "pos": 0.5,
+                    "color": "#a85a06"
+                  },
+                  {
+                    "pos": 0.56,
+                    "color": "#5a2a02"
+                  },
+                  {
+                    "pos": 0.66,
+                    "color": "#e8a028"
+                  },
+                  {
+                    "pos": 0.84,
+                    "color": "#ffe490"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffffff"
+                  }
+                ]
+              },
+              "gradient_span": "line",
+              "gradient_bend": 1,
+              "metallic": 1,
+              "roughness": 0.06,
+              "env_multiplier": 0.9
+            }
+          },
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#3a1000",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#2a0e00",
+              "metallic": 1,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 2.2,
+            "depth": 8,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#050505",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.25,
+              "clearcoat": 1
+            }
+          },
+          {
+            "bevel": {
+              "width": 1.6,
+              "depth": 1.6,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "red_metal",
+              "color": "#ff2f35",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ff6a50"
+                  },
+                  {
+                    "pos": 0.25,
+                    "color": "#ff4031"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#e7614c"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#a98284"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#e95f4c"
+                  },
+                  {
+                    "pos": 0.82,
+                    "color": "#ff3d34"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ff6048"
+                  }
+                ]
+              },
+              "gradient_bend": 0.6,
+              "metallic": 1,
+              "roughness": 0.12,
+              "clearcoat": 0.3
+            }
+          },
+          {
+            "grow": 0.9,
+            "depth": 5,
+            "bevel": {
+              "width": 0.8,
+              "depth": 0.8
+            },
+            "material": {
+              "preset": "gold",
+              "color": "#ffc23a",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff8d8"
+                  },
+                  {
+                    "pos": 0.06,
+                    "color": "#ffe890"
+                  },
+                  {
+                    "pos": 0.16,
+                    "color": "#ffc838"
+                  },
+                  {
+                    "pos": 0.3,
+                    "color": "#f0a018"
+                  },
+                  {
+                    "pos": 0.4,
+                    "color": "#c06a06"
+                  },
+                  {
+                    "pos": 0.47,
+                    "color": "#5a2602"
+                  },
+                  {
+                    "pos": 0.51,
+                    "color": "#1a0800"
+                  },
+                  {
+                    "pos": 0.55,
+                    "color": "#120500"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#5a2804"
+                  },
+                  {
+                    "pos": 0.72,
+                    "color": "#c87810"
+                  },
+                  {
+                    "pos": 0.84,
+                    "color": "#f8b830"
+                  },
+                  {
+                    "pos": 0.94,
+                    "color": "#ffe080"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#fff4c8"
+                  }
+                ]
+              },
+              "gradient_span": "line",
+              "gradient_bend": 0.6,
+              "metallic": 1,
+              "roughness": 0.06,
+              "env_multiplier": 0.9
+            }
+          },
+          {
+            "grow": 1.6,
+            "depth": 5,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#0a0000",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.25,
+              "clearcoat": 1
+            }
+          }
+        ]
+      },
+      "cjk": {
+        "band_scale": 0.7
+      }
+    },
+    "elements/toxic-acid-glow-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 0.4,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.4,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#000000",
+              "metallic": 1,
+              "roughness": 0.4,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#041000",
+              "metallic": 1,
+              "roughness": 0.4,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "bevel": {
+              "width": 1,
+              "depth": 1,
+              "profile": "chamfer"
+            },
+            "material": {
+              "color": "#0a0c08",
+              "metallic": 0.3,
+              "clearcoat": 0.8,
+              "pattern": {
+                "kind": "hazard",
+                "color": "#0a0c08",
+                "color2": "#8aff00",
+                "scale": 4
+              }
+            }
+          },
+          {
+            "grow": 0.8,
+            "join": "round",
+            "depth": 1,
+            "bevel": {
+              "width": 0.8,
+              "depth": 0.4,
+              "profile": "tube",
+              "segments": 12
+            },
+            "material": {
+              "color": "#60ff00",
+              "roughness": 0.2,
+              "clearcoat": 1,
+              "emission": "#60ff00",
+              "emission_intensity": 5
+            }
+          },
+          {
+            "grow": 1.4,
+            "depth": 4,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#000000",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      },
+      "cjk": {
+        "band_scale": 0.8
+      }
+    },
+    "gems/diamond-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 0,
+            "depth": 1,
+            "offset": -11.3,
+            "bevel": {},
+            "material": {
+              "preset": "silver",
+              "color": "#d8dde6",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#e3e7ee"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#a3abb8"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#555c68"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#9aa2af"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#dfe4eb"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#f7f9fc"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.14,
+              "clearcoat": 0.3
+            }
+          },
+          {
+            "grow": 0.25,
+            "depth": 10.9,
+            "offset": -11.3,
+            "bevel": {
+              "width": 0.25,
+              "depth": 0.4,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#3a1000",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 1.3,
+            "depth": 9.6,
+            "offset": -10.9,
+            "bevel": {
+              "width": 1.3,
+              "depth": 1.3,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "punchy_gold",
+              "color": "#ffc000",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff4b0"
+                  },
+                  {
+                    "pos": 0.18,
+                    "color": "#ffd400"
+                  },
+                  {
+                    "pos": 0.42,
+                    "color": "#ff9800"
+                  },
+                  {
+                    "pos": 0.5,
+                    "color": "#b83000"
+                  },
+                  {
+                    "pos": 0.58,
+                    "color": "#ff7c00"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#ffb800"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffe070"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.2,
+              "env_multiplier": 2,
+              "specular_multiplier": 2
+            }
+          },
+          {
+            "grow": 0.3,
+            "depth": 9,
+            "offset": -9.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#3a1000",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#4a1a00",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 1.2,
+            "depth": 3,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "silver",
+              "color": "#f4faff",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#fbffff"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#bec6d4"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#6d7581"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#b5bdca"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#faffff"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#fdffff"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.14,
+              "clearcoat": 0.3
+            }
+          },
+          {
+            "depth": 7,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#050505",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      }
+    },
+    "metal/black-chrome-red-line-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 1.4,
+            "depth": 10.6,
+            "offset": -12,
+            "bevel": {
+              "width": 1.4,
+              "depth": 1.4,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "chrome",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#e8eef5"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#8a94a3"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#2e343d"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#7d8794"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#dde4ee"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffffff"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.04
+            }
+          },
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#05060a",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#14161c",
+              "metallic": 1,
+              "roughness": 0.2,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 1.6,
+            "join": "round",
+            "depth": 5,
+            "bevel": {
+              "width": 1.6,
+              "depth": 0.8,
+              "profile": "tube",
+              "segments": 12
+            },
+            "material": {
+              "preset": "red_metal",
+              "color": "#ff1d2d",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ff8a8a"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#ff3b3b"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#d0101c"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#5a0008"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#b80c18"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#ff3030"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ff9a9a"
+                  }
+                ]
+              },
+              "metallic": 0.9,
+              "roughness": 0.15,
+              "env_multiplier": 0.9,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 2.4,
+            "depth": 7,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#1d1d1d",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 0.8,
+            "depth": 4,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "chrome",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#e8eef5"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#8a94a3"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#2e343d"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#7d8794"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#dde4ee"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffffff"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.04
+            }
+          },
+          {
+            "grow": 1,
+            "depth": 4,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#050505",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      }
+    },
+    "metal/black-silver": {
+      "style": {
+        "rims": [
+          {
+            "width": 1.4,
+            "material": {
+              "fill": {
+                "kind": "linear",
+                "color": "#5d6474",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#5d6474"
+                    },
+                    {
+                      "pos": 0.2,
+                      "color": "#ffffff"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#9aa1ad"
+                    },
+                    {
+                      "pos": 0.6,
+                      "color": "#eef1f6"
+                    },
+                    {
+                      "pos": 0.8,
+                      "color": "#7d8592"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#f4f6fa"
+                    }
+                  ]
+                },
+                "angle": 270
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 1,
+                "depth": 4
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "enabled": true,
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#14161c"
+                    },
+                    {
+                      "pos": 0.35,
+                      "color": "#5d6474"
+                    },
+                    {
+                      "pos": 0.7,
+                      "color": "#c9cfdb"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#ffffff"
+                    }
+                  ]
+                },
+                "amount": 0.8
+              }
+            }
+          },
+          {
+            "width": 1.6,
+            "material": {
+              "fill": {
+                "color": "#050505",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#050505"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#050505"
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "width": 0.8,
+            "material": {
+              "fill": {
+                "kind": "linear",
+                "color": "#282f3d",
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#282f3d"
+                    },
+                    {
+                      "pos": 0.2,
+                      "color": "#bebebe"
+                    },
+                    {
+                      "pos": 0.4,
+                      "color": "#5f6671"
+                    },
+                    {
+                      "pos": 0.6,
+                      "color": "#aeb1b6"
+                    },
+                    {
+                      "pos": 0.8,
+                      "color": "#454d58"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#b4b6b9"
+                    }
+                  ]
+                }
+              },
+              "bevel": {
+                "enabled": true,
+                "size": 0.6
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "enabled": true,
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#14161c"
+                    },
+                    {
+                      "pos": 0.35,
+                      "color": "#5d6474"
+                    },
+                    {
+                      "pos": 0.7,
+                      "color": "#c9cfdb"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#ffffff"
+                    }
+                  ]
+                },
+                "amount": 0.8
+              }
+            }
+          },
+          {
+            "width": 1.2,
+            "offset": [
+              0,
+              -2
+            ],
+            "material": {
+              "fill": {
+                "color": "#000000",
+                "gradient": {
+                  "stops": [
+                    {},
+                    {
+                      "pos": 1
+                    }
+                  ]
+                }
+              },
+              "reflection": {
+                "map": {
+                  "path": "TitleArt/Environments/autumn_road_2k.hdr",
+                  "guid": ""
+                }
+              },
+              "finish": {
+                "gradient": {
+                  "stops": [
+                    {
+                      "color": "#3a0c00"
+                    },
+                    {
+                      "pos": 0.25,
+                      "color": "#a83800"
+                    },
+                    {
+                      "pos": 0.5,
+                      "color": "#f08c00"
+                    },
+                    {
+                      "pos": 0.75,
+                      "color": "#ffd23a"
+                    },
+                    {
+                      "pos": 1,
+                      "color": "#fff8d6"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "metal/candy-apple-red-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 1.3,
+            "depth": 12,
+            "offset": -13.3,
+            "bevel": {
+              "width": 1.3,
+              "depth": 1.3,
+              "profile": "chamfer"
+            },
+            "material": {
+              "color": "#ff4060",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff0f4"
+                  },
+                  {
+                    "pos": 0.3,
+                    "color": "#ff5a78"
+                  },
+                  {
+                    "pos": 0.5,
+                    "color": "#a00020"
+                  },
+                  {
+                    "pos": 0.7,
+                    "color": "#ff4a6a"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffe0e8"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.03,
+              "env_multiplier": 1.2,
+              "specular_multiplier": 2,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 0.25,
+            "depth": 11.6,
+            "offset": -12,
+            "bevel": {
+              "width": 0.25,
+              "depth": 0.4,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#1a0006",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 1,
+            "depth": 10.6,
+            "offset": -11.6,
+            "bevel": {
+              "width": 1,
+              "depth": 1,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "chrome",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#e8eef5"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#8a94a3"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#2e343d"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#7d8794"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#dde4ee"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffffff"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.04,
+              "env_multiplier": 0.9
+            }
+          },
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#14000a",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#2a0008",
+              "metallic": 1,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 2.4,
+            "depth": 7,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#272324",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 1.1,
+            "depth": 4,
+            "bevel": {
+              "width": 0.9,
+              "depth": 0.9
+            },
+            "material": {
+              "preset": "red_metal",
+              "color": "#a00018",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ff8a8a"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#ff3b3b"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#d0101c"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#5a0008"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#b80c18"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#ff3030"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ff9a9a"
+                  }
+                ]
+              },
+              "metallic": 0.9,
+              "roughness": 0.15,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 1,
+            "depth": 4,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#050505",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      }
+    },
+    "metal/silver-on-gold-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#14100a",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#2a1800",
+              "metallic": 1,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 2.6,
+            "join": "round",
+            "bevel": {
+              "width": 2.6,
+              "depth": 1.8,
+              "segments": 10
+            },
+            "material": {
+              "color": "#3a1800",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff6c8"
+                  },
+                  {
+                    "pos": 0.2,
+                    "color": "#ffd23a"
+                  },
+                  {
+                    "pos": 0.42,
+                    "color": "#c07800"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#3a1800"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#a86200"
+                  },
+                  {
+                    "pos": 0.82,
+                    "color": "#ffc828"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#fff0b0"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.12,
+              "env_multiplier": 0.9,
+              "clearcoat": 0.6
+            }
+          },
+          {
+            "grow": 0.8,
+            "depth": 5,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#0a0600",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 2.2,
+            "bevel": {
+              "width": 1.4,
+              "depth": 1.4,
+              "profile": "chamfer"
+            },
+            "material": {
+              "color": "#9a6d56",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#fff6c8"
+                  },
+                  {
+                    "pos": 0.2,
+                    "color": "#ffd23a"
+                  },
+                  {
+                    "pos": 0.42,
+                    "color": "#c07800"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#9a6d56"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#ad6606"
+                  },
+                  {
+                    "pos": 0.82,
+                    "color": "#ffc828"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#fff0b0"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.16,
+              "env_multiplier": 0.85,
+              "clearcoat": 0.6
+            }
+          },
+          {
+            "grow": 1.2,
+            "depth": 4,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#060300",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      }
+    },
+    "metal/silver-premium-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 1.6,
+            "depth": 10.6,
+            "offset": -12.2,
+            "bevel": {
+              "width": 1.6,
+              "depth": 1.6,
+              "profile": "chamfer"
+            },
+            "material": {
+              "preset": "chrome",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#ffffff"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#e8eef5"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#8a94a3"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#2e343d"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#7d8794"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#dde4ee"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#ffffff"
+                  }
+                ]
+              },
+              "metallic": 1,
+              "roughness": 0.04,
+              "env_multiplier": 0.85
+            }
+          },
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.6,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.6,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#14182a",
+              "metallic": 1,
+              "roughness": 0.35,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#262b36",
+              "metallic": 1,
+              "roughness": 0.25,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 4.8,
+            "depth": 8,
+            "bevel": {
+              "width": 0.6,
+              "depth": 0.6
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#222222",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          },
+          {
+            "grow": 2.2,
+            "bevel": {
+              "width": 1.2,
+              "depth": 1.2
+            },
+            "material": {
+              "preset": "blue_metal",
+              "color": "#004ad6",
+              "gradient": {
+                "stops": [
+                  {
+                    "color": "#649ed7"
+                  },
+                  {
+                    "pos": 0.22,
+                    "color": "#0068d6"
+                  },
+                  {
+                    "pos": 0.45,
+                    "color": "#002aa9"
+                  },
+                  {
+                    "pos": 0.52,
+                    "color": "#000038"
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#002192"
+                  },
+                  {
+                    "pos": 0.8,
+                    "color": "#0063d6"
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#5d98d7"
+                  }
+                ]
+              },
+              "metallic": 0.9,
+              "roughness": 0.15,
+              "clearcoat": 1
+            }
+          }
+        ]
+      },
+      "cjk": {
+        "band_scale": 0.75
+      }
+    },
+    "neon/matte-black-glowing-rim-3d": {
+      "style_3d": {
+        "bands": [
+          {
+            "grow": 0.3,
+            "depth": 10,
+            "offset": -10.5,
+            "bevel": {
+              "width": 0.3,
+              "depth": 0.5,
+              "profile": "step"
+            },
+            "material": {
+              "color": "#000000",
+              "metallic": 1,
+              "roughness": 0.5,
+              "env_multiplier": 0.7
+            },
+            "side": {
+              "color": "#0a0c10",
+              "metallic": 1,
+              "roughness": 0.5,
+              "env_multiplier": 0.7
+            }
+          },
+          {
+            "grow": 1.3,
+            "join": "round",
+            "depth": 1,
+            "bevel": {
+              "width": 1.3,
+              "depth": 0.65,
+              "profile": "tube",
+              "segments": 12
+            },
+            "material": {
+              "color": "#10e8ff",
+              "roughness": 0.2,
+              "clearcoat": 1,
+              "emission": "#10e8ff",
+              "emission_intensity": 2.8
+            }
+          },
+          {
+            "grow": 2.2,
+            "bevel": {
+              "width": 0.9,
+              "depth": 0.9,
+              "profile": "chamfer"
+            },
+            "material": {
+              "color": "#101418",
+              "metallic": 0.4,
+              "roughness": 0.5,
+              "env_multiplier": 0.6
+            }
+          },
+          {
+            "grow": 0.7,
+            "join": "round",
+            "depth": 1,
+            "bevel": {
+              "width": 0.7,
+              "depth": 0.35,
+              "profile": "tube",
+              "segments": 12
+            },
+            "material": {
+              "color": "#10a0ff",
+              "roughness": 0.2,
+              "clearcoat": 1,
+              "emission": "#10a0ff",
+              "emission_intensity": 0.9
+            }
+          },
+          {
+            "grow": 1,
+            "depth": 4,
+            "bevel": {
+              "width": 0.5,
+              "depth": 0.5
+            },
+            "material": {
+              "preset": "black_gloss",
+              "color": "#050505",
+              "metallic": 0.2,
+              "roughness": 0.08,
+              "env_multiplier": 0.35,
+              "clearcoat": 1
+            }
+          }
+        ]
+      },
+      "cjk": {
+        "band_scale": 1.25
+      }
+    },
+    "wa/ink-brush": {
+      "effects": [
+        {
+          "type": "drop_shadow",
+          "params": {
+            "opacity": 0.45,
+            "size": 16
+          }
+        }
+      ]
     }
   },
   "templates": {
@@ -149,6 +2183,1742 @@
         "width": 1080,
         "height": 2400
       }
+    },
+    "casino/big-bonus-3d": {
+      "layers": [
+        {
+          "id": "3fa0a513",
+          "type": "generator",
+          "name": "Background",
+          "visible": true,
+          "locked": false,
+          "guide": true,
+          "blend": "normal",
+          "opacity": 1,
+          "clip": false,
+          "transform": {
+            "position": [
+              0,
+              0
+            ],
+            "rotation": 0,
+            "scale": 1,
+            "flip_x": false,
+            "flip_y": false,
+            "z": 0,
+            "rotation_x": 0,
+            "rotation_y": 0
+          },
+          "masks": [],
+          "effects": [],
+          "look": {
+            "id": "",
+            "color_scheme": "",
+            "owner": ""
+          },
+          "generator": {
+            "type": "fill",
+            "params": {
+              "angle": 90,
+              "color": "#000000",
+              "gradient": {
+                "stops": [
+                  {
+                    "pos": 0,
+                    "color": "#10306a",
+                    "alpha": 1,
+                    "mid": 0.5
+                  },
+                  {
+                    "pos": 0.6,
+                    "color": "#040c22",
+                    "alpha": 1,
+                    "mid": 0.5
+                  },
+                  {
+                    "pos": 1,
+                    "color": "#000000",
+                    "alpha": 1,
+                    "mid": 0.5
+                  }
+                ],
+                "interp": "rgb"
+              },
+              "kind": "radial",
+              "offset": 0,
+              "scale": 1
+            }
+          },
+          "follow": ""
+        },
+        {
+          "id": "83a34eb6",
+          "type": "group",
+          "name": "BIG",
+          "visible": true,
+          "locked": false,
+          "guide": false,
+          "blend": "normal",
+          "opacity": 1,
+          "clip": false,
+          "transform": {
+            "position": [
+              0,
+              0
+            ],
+            "rotation": 0,
+            "scale": 1,
+            "flip_x": false,
+            "flip_y": false,
+            "z": 0,
+            "rotation_x": 0,
+            "rotation_y": 0
+          },
+          "masks": [],
+          "effects": [],
+          "look": {
+            "id": "",
+            "color_scheme": "",
+            "owner": "dbec17a3"
+          },
+          "children": [
+            {
+              "id": "dbec17a3",
+              "type": "text",
+              "name": "BIG",
+              "visible": true,
+              "locked": false,
+              "guide": false,
+              "blend": "normal",
+              "opacity": 1,
+              "clip": false,
+              "transform": {
+                "position": [
+                  0,
+                  0
+                ],
+                "rotation": 0,
+                "scale": 1,
+                "flip_x": false,
+                "flip_y": false,
+                "z": 0,
+                "rotation_x": 6,
+                "rotation_y": -8
+              },
+              "masks": [],
+              "effects": [
+                {
+                  "id": "96dc6e65",
+                  "type": "outline",
+                  "enabled": true,
+                  "params": {
+                    "color": "#0a0604",
+                    "follow": "layer",
+                    "opacity": 1,
+                    "softness": 0,
+                    "threshold": 0.5,
+                    "width": 3.25
+                  },
+                  "from_look": false
+                },
+                {
+                  "id": "87c164fa",
+                  "type": "outer_glow",
+                  "enabled": true,
+                  "params": {
+                    "angle": 90,
+                    "color": "#ff3a10",
+                    "fill": "solid",
+                    "gradient": {
+                      "stops": [
+                        {
+                          "pos": 0,
+                          "color": "#ff4ad8",
+                          "alpha": 1,
+                          "mid": 0.5
+                        },
+                        {
+                          "pos": 1,
+                          "color": "#30e0ff",
+                          "alpha": 1,
+                          "mid": 0.5
+                        }
+                      ],
+                      "interp": "rgb"
+                    },
+                    "intensity": 1.4,
+                    "mode": "behind",
+                    "on_face": 0.15,
+                    "opacity": 0.85,
+                    "size": 15.6,
+                    "spread": 0.3,
+                    "technique": "softer"
+                  },
+                  "from_look": false
+                },
+                {
+                  "id": "eeb394bf",
+                  "type": "light_glow",
+                  "enabled": true,
+                  "params": {
+                    "chroma": 0,
+                    "color": "#ffffff",
+                    "color_mode": "layer",
+                    "core_white": 20,
+                    "exposure": 0.5,
+                    "falloff": 35,
+                    "highlight_shift": 60,
+                    "intensity": 1.2,
+                    "knee": 0.3,
+                    "on_face": 0,
+                    "radius": 208,
+                    "threshold": 0.5,
+                    "tint_amount": 0.7,
+                    "tint_inner": "#ffffff",
+                    "tint_outer": "#ffc850"
+                  },
+                  "from_look": false
+                }
+              ],
+              "look": {
+                "id": "",
+                "color_scheme": "",
+                "owner": ""
+              },
+              "text": "BIG\nBONUS",
+              "font": {
+                "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+                "guid": ""
+              },
+              "face_index": 0,
+              "fallback_fonts": [],
+              "variations": {},
+              "features": {},
+              "language": "",
+              "size": 260,
+              "tracking": 40,
+              "line_height": 1.02,
+              "kerning": true,
+              "align": "center",
+              "vertical": false,
+              "tate_chu_yoko": true,
+              "tate_chu_yoko_max": 3,
+              "proportional": 0,
+              "h_scale": 1,
+              "v_scale": 1,
+              "shear": 0,
+              "chars": {},
+              "lines": {},
+              "warp": {
+                "style": "none",
+                "bend": 0,
+                "horizontal": 0,
+                "vertical": 0
+              },
+              "distort": {
+                "mode": "none",
+                "corners": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "mesh": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0
+                  ]
+                ]
+              },
+              "weight": 0,
+              "dimension": "3d",
+              "style": {
+                "face": {
+                  "fill": {
+                    "kind": "solid",
+                    "color": "#ffffff",
+                    "gradient": {
+                      "stops": [
+                        {
+                          "pos": 0,
+                          "color": "#000000",
+                          "alpha": 1,
+                          "mid": 0.5
+                        },
+                        {
+                          "pos": 1,
+                          "color": "#ffffff",
+                          "alpha": 1,
+                          "mid": 0.5
+                        }
+                      ],
+                      "interp": "rgb"
+                    },
+                    "angle": 90,
+                    "scale": 1,
+                    "offset": 0,
+                    "span": "layer",
+                    "image": {
+                      "image": null,
+                      "scale": 1,
+                      "offset": [
+                        0,
+                        0
+                      ],
+                      "rotation": 0,
+                      "tile": false
+                    }
+                  },
+                  "opacity": 1,
+                  "bevel": {
+                    "enabled": false,
+                    "profile": "smooth",
+                    "profile_curve": {
+                      "points": [
+                        {
+                          "x": 0,
+                          "y": 0,
+                          "corner": false
+                        },
+                        {
+                          "x": 0.5,
+                          "y": 0.75,
+                          "corner": false
+                        },
+                        {
+                          "x": 1,
+                          "y": 1,
+                          "corner": false
+                        }
+                      ]
+                    },
+                    "size": 3,
+                    "size_mode": "fixed",
+                    "fit": 70,
+                    "depth": 3,
+                    "direction": "up",
+                    "soften": 0,
+                    "light_angle": 120,
+                    "light_altitude": 30,
+                    "use_global_light": true,
+                    "gloss": "ring",
+                    "gloss_curve": {
+                      "points": [
+                        {
+                          "x": 0,
+                          "y": 0,
+                          "corner": false
+                        },
+                        {
+                          "x": 1,
+                          "y": 1,
+                          "corner": false
+                        }
+                      ]
+                    },
+                    "highlight_color": "#ffffff",
+                    "highlight_opacity": 0.85,
+                    "shadow_color": "#000000",
+                    "shadow_opacity": 0.6
+                  },
+                  "reflection": {
+                    "enabled": false,
+                    "map": null,
+                    "amount": 1,
+                    "blur": 75,
+                    "rotation": 0,
+                    "colorize": 0
+                  },
+                  "finish": {
+                    "enabled": false,
+                    "gradient": {
+                      "stops": [
+                        {
+                          "pos": 0,
+                          "color": "#000000",
+                          "alpha": 1,
+                          "mid": 0.5
+                        },
+                        {
+                          "pos": 1,
+                          "color": "#ffffff",
+                          "alpha": 1,
+                          "mid": 0.5
+                        }
+                      ],
+                      "interp": "rgb"
+                    },
+                    "amount": 1
+                  },
+                  "pattern": {
+                    "kind": "none",
+                    "color": "#000000",
+                    "color2": "#ffffff",
+                    "opacity": 1,
+                    "scale": 12,
+                    "angle": 0,
+                    "seed": 1,
+                    "image": null,
+                    "shade": 0.6,
+                    "relief": 0
+                  },
+                  "satin": {
+                    "enabled": false,
+                    "color": "#000000",
+                    "blend": "multiply",
+                    "opacity": 0.5,
+                    "angle": 19,
+                    "use_global_light": false,
+                    "distance": 5,
+                    "size": 7,
+                    "contour": {
+                      "points": [
+                        {
+                          "x": 0,
+                          "y": 0,
+                          "corner": false
+                        },
+                        {
+                          "x": 0.5,
+                          "y": 1,
+                          "corner": false
+                        },
+                        {
+                          "x": 1,
+                          "y": 0,
+                          "corner": false
+                        }
+                      ]
+                    },
+                    "invert": true
+                  },
+                  "texture": {
+                    "kind": "none",
+                    "amount": 0.3,
+                    "scale": 4,
+                    "blend": "overlay",
+                    "seed": 1,
+                    "target": "color",
+                    "angle": 0
+                  },
+                  "inner_glow": {
+                    "enabled": false,
+                    "color": "#ffffff",
+                    "size": 2,
+                    "opacity": 0.6,
+                    "noise": 0
+                  },
+                  "gloss": {
+                    "enabled": false,
+                    "opacity": 0.55,
+                    "position": 0.45,
+                    "softness": 0.15,
+                    "curve": 0.25,
+                    "angle": 0
+                  },
+                  "refraction": 0,
+                  "glass": {
+                    "enabled": false,
+                    "color": "#3cc8ff",
+                    "tint": 1,
+                    "opacity": 0.7,
+                    "edge": 0.7,
+                    "caustic": 0.7
+                  },
+                  "sheen": {
+                    "enabled": false,
+                    "color": "#ffffff",
+                    "amount": 0.7,
+                    "position": -0.25,
+                    "width": 0.35
+                  },
+                  "link": ""
+                },
+                "rims": [],
+                "knockout": false,
+                "erode": {
+                  "enabled": false,
+                  "amount": 0.5,
+                  "edge": 6,
+                  "scale": 12,
+                  "angle": 0,
+                  "seed": 1
+                }
+              },
+              "part_effects": {},
+              "style_3d": {
+                "mode": "extrude",
+                "depth": 12.2,
+                "curve_segments": 10,
+                "bevel": {
+                  "width": 0,
+                  "depth": 0,
+                  "profile": "round",
+                  "segments": 6,
+                  "curve": 0,
+                  "custom": {
+                    "points": [
+                      {
+                        "x": 0,
+                        "y": 0,
+                        "corner": false
+                      },
+                      {
+                        "x": 1,
+                        "y": 1,
+                        "corner": false
+                      }
+                    ]
+                  }
+                },
+                "bevel_position": "outside",
+                "skew": [
+                  0,
+                  0
+                ],
+                "inflate": {
+                  "height": 12,
+                  "profile": {
+                    "points": [
+                      {
+                        "x": 0,
+                        "y": 0,
+                        "corner": false
+                      },
+                      {
+                        "x": 0.35,
+                        "y": 0.8,
+                        "corner": false
+                      },
+                      {
+                        "x": 1,
+                        "y": 1,
+                        "corner": false
+                      }
+                    ]
+                  },
+                  "smoothness": 0,
+                  "detail": 1
+                },
+                "face_image": 1,
+                "edge_image": 0,
+                "face": {
+                  "preset": "gold",
+                  "color": "#ffc23a",
+                  "gradient": {
+                    "stops": [
+                      {
+                        "pos": 0,
+                        "color": "#fff8d8",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.06,
+                        "color": "#ffe890",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.16,
+                        "color": "#ffc838",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.3,
+                        "color": "#f0a018",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.4,
+                        "color": "#c06a06",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.47,
+                        "color": "#5a2602",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.51,
+                        "color": "#1a0800",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.55,
+                        "color": "#120500",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.6,
+                        "color": "#5a2804",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.72,
+                        "color": "#c87810",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.84,
+                        "color": "#f8b830",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 0.94,
+                        "color": "#ffe080",
+                        "alpha": 1,
+                        "mid": 0.5
+                      },
+                      {
+                        "pos": 1,
+                        "color": "#fff4c8",
+                        "alpha": 1,
+                        "mid": 0.5
+                      }
+                    ],
+                    "interp": "rgb"
+                  },
+                  "gradient_kind": "linear",
+                  "gradient_angle": 90,
+                  "gradient_span": "line",
+                  "gradient_scale": 1,
+                  "gradient_offset": 0,
+                  "gradient_axis": "xy",
+                  "gradient_bend": 0.6,
+                  "metallic": 1,
+                  "roughness": 0.06,
+                  "env_multiplier": 0.85,
+                  "specular_multiplier": 1,
+                  "clearcoat": 0,
+                  "clearcoat_roughness": 0.04,
+                  "iridescence": 0,
+                  "iridescence_ior": 1.6,
+                  "iridescence_thickness_nm": [
+                    180,
+                    520
+                  ],
+                  "transmission": 0,
+                  "ior": 1.5,
+                  "dispersion": 0,
+                  "glass_depth": 0,
+                  "flakes": 0,
+                  "flake_scale": 0.6,
+                  "pattern": {
+                    "kind": "none",
+                    "color": "#000000",
+                    "color2": "#ffffff",
+                    "opacity": 1,
+                    "scale": 12,
+                    "angle": 0,
+                    "seed": 1,
+                    "image": null,
+                    "shade": 0.6,
+                    "relief": 0
+                  },
+                  "surface": {
+                    "kind": "none",
+                    "amount": 0.5,
+                    "scale": 20,
+                    "seed": 1
+                  },
+                  "base_texture": {
+                    "texture": null,
+                    "tiling": [
+                      1,
+                      1
+                    ],
+                    "offset": [
+                      0,
+                      0
+                    ],
+                    "projection": "front"
+                  },
+                  "emission": "#000000",
+                  "emission_intensity": 0,
+                  "opacity": 1,
+                  "environment": {},
+                  "link": ""
+                },
+                "bevel_material": null,
+                "side": null,
+                "bands": [
+                  {
+                    "id": "54c7454f",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 1.6,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 10.6,
+                    "offset": -12.2,
+                    "bevel": {
+                      "width": 1.6,
+                      "depth": 1.6,
+                      "profile": "chamfer",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "gold",
+                      "color": "#ffc23a",
+                      "gradient": {
+                        "stops": [
+                          {
+                            "pos": 0,
+                            "color": "#ffffff",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.22,
+                            "color": "#fff2b8",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.42,
+                            "color": "#ffc848",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.5,
+                            "color": "#a85a06",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.56,
+                            "color": "#5a2a02",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.66,
+                            "color": "#e8a028",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.84,
+                            "color": "#ffe490",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 1,
+                            "color": "#ffffff",
+                            "alpha": 1,
+                            "mid": 0.5
+                          }
+                        ],
+                        "interp": "rgb"
+                      },
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "line",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 1,
+                      "metallic": 1,
+                      "roughness": 0.06,
+                      "env_multiplier": 0.9,
+                      "specular_multiplier": 1,
+                      "clearcoat": 0,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": null
+                  },
+                  {
+                    "id": "533cf05c",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 0.3,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 10,
+                    "offset": -10.6,
+                    "bevel": {
+                      "width": 0.3,
+                      "depth": 0.6,
+                      "profile": "step",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "custom",
+                      "color": "#3a1000",
+                      "gradient": null,
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "layer",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0,
+                      "metallic": 1,
+                      "roughness": 0.35,
+                      "env_multiplier": 0.7,
+                      "specular_multiplier": 1,
+                      "clearcoat": 0,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": {
+                      "preset": "custom",
+                      "color": "#2a0e00",
+                      "gradient": null,
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "layer",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0,
+                      "metallic": 1,
+                      "roughness": 0.3,
+                      "env_multiplier": 0.7,
+                      "specular_multiplier": 1,
+                      "clearcoat": 0,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    }
+                  },
+                  {
+                    "id": "15e2a8b5",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 2.2,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 8,
+                    "offset": 0,
+                    "bevel": {
+                      "width": 0.6,
+                      "depth": 0.6,
+                      "profile": "round",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "black_gloss",
+                      "color": "#262626",
+                      "gradient": null,
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "layer",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0,
+                      "metallic": 0.2,
+                      "roughness": 0.08,
+                      "env_multiplier": 0.25,
+                      "specular_multiplier": 1,
+                      "clearcoat": 1,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": null
+                  },
+                  {
+                    "id": "b04f19ca",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 3,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 6,
+                    "offset": 0,
+                    "bevel": {
+                      "width": 1.6,
+                      "depth": 1.6,
+                      "profile": "chamfer",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "red_metal",
+                      "color": "#ff1d2d",
+                      "gradient": {
+                        "stops": [
+                          {
+                            "pos": 0,
+                            "color": "#ff6a50",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.25,
+                            "color": "#e01018",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.45,
+                            "color": "#c14030",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.52,
+                            "color": "#896366",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.6,
+                            "color": "#c33d30",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.82,
+                            "color": "#e81820",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 1,
+                            "color": "#ff6048",
+                            "alpha": 1,
+                            "mid": 0.5
+                          }
+                        ],
+                        "interp": "rgb"
+                      },
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "layer",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0.6,
+                      "metallic": 1,
+                      "roughness": 0.12,
+                      "env_multiplier": 1,
+                      "specular_multiplier": 1,
+                      "clearcoat": 0.3,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": null
+                  },
+                  {
+                    "id": "708a78ab",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 0.9,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 5,
+                    "offset": 0,
+                    "bevel": {
+                      "width": 0.8,
+                      "depth": 0.8,
+                      "profile": "round",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "gold",
+                      "color": "#ffc23a",
+                      "gradient": {
+                        "stops": [
+                          {
+                            "pos": 0,
+                            "color": "#fff8d8",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.06,
+                            "color": "#ffe890",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.16,
+                            "color": "#ffc838",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.3,
+                            "color": "#f0a018",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.4,
+                            "color": "#c06a06",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.47,
+                            "color": "#5a2602",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.51,
+                            "color": "#1a0800",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.55,
+                            "color": "#120500",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.6,
+                            "color": "#5a2804",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.72,
+                            "color": "#c87810",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.84,
+                            "color": "#f8b830",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 0.94,
+                            "color": "#ffe080",
+                            "alpha": 1,
+                            "mid": 0.5
+                          },
+                          {
+                            "pos": 1,
+                            "color": "#fff4c8",
+                            "alpha": 1,
+                            "mid": 0.5
+                          }
+                        ],
+                        "interp": "rgb"
+                      },
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "line",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0.6,
+                      "metallic": 1,
+                      "roughness": 0.06,
+                      "env_multiplier": 0.9,
+                      "specular_multiplier": 1,
+                      "clearcoat": 0,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": null
+                  },
+                  {
+                    "id": "95a98198",
+                    "name": "",
+                    "enabled": true,
+                    "grow": 1.6,
+                    "join": "miter",
+                    "fill_counters": false,
+                    "plate": {
+                      "kind": "contour",
+                      "close": 0,
+                      "corner": 4,
+                      "slant": 0
+                    },
+                    "depth": 5,
+                    "offset": 0,
+                    "bevel": {
+                      "width": 0.6,
+                      "depth": 0.6,
+                      "profile": "round",
+                      "segments": 6,
+                      "curve": 0,
+                      "custom": {
+                        "points": [
+                          {
+                            "x": 0,
+                            "y": 0,
+                            "corner": false
+                          },
+                          {
+                            "x": 1,
+                            "y": 1,
+                            "corner": false
+                          }
+                        ]
+                      }
+                    },
+                    "material": {
+                      "preset": "black_gloss",
+                      "color": "#484242",
+                      "gradient": null,
+                      "gradient_kind": "linear",
+                      "gradient_angle": 90,
+                      "gradient_span": "layer",
+                      "gradient_scale": 1,
+                      "gradient_offset": 0,
+                      "gradient_axis": "xy",
+                      "gradient_bend": 0,
+                      "metallic": 0.2,
+                      "roughness": 0.08,
+                      "env_multiplier": 0.25,
+                      "specular_multiplier": 1,
+                      "clearcoat": 1,
+                      "clearcoat_roughness": 0.04,
+                      "iridescence": 0,
+                      "iridescence_ior": 1.6,
+                      "iridescence_thickness_nm": [
+                        180,
+                        520
+                      ],
+                      "transmission": 0,
+                      "ior": 1.5,
+                      "dispersion": 0,
+                      "glass_depth": 0,
+                      "flakes": 0,
+                      "flake_scale": 0.6,
+                      "pattern": {
+                        "kind": "none",
+                        "color": "#000000",
+                        "color2": "#ffffff",
+                        "opacity": 1,
+                        "scale": 12,
+                        "angle": 0,
+                        "seed": 1,
+                        "image": null,
+                        "shade": 0.6,
+                        "relief": 0
+                      },
+                      "surface": {
+                        "kind": "none",
+                        "amount": 0.5,
+                        "scale": 20,
+                        "seed": 1
+                      },
+                      "base_texture": {
+                        "texture": null,
+                        "tiling": [
+                          1,
+                          1
+                        ],
+                        "offset": [
+                          0,
+                          0
+                        ],
+                        "projection": "front"
+                      },
+                      "emission": "#000000",
+                      "emission_intensity": 0,
+                      "opacity": 1,
+                      "environment": {},
+                      "link": ""
+                    },
+                    "side": null
+                  }
+                ],
+                "glint": {
+                  "enabled": false,
+                  "threshold": 1,
+                  "intensity": 1,
+                  "radius": 6,
+                  "streaks": 4,
+                  "length": 40,
+                  "angle": 0,
+                  "tint": "#fff4dc"
+                },
+                "ao": {
+                  "enabled": false,
+                  "radius": 4,
+                  "intensity": 1
+                },
+                "env_lock": false,
+                "lighting": {
+                  "environment": {
+                    "preset": "softbox",
+                    "intensity": 1,
+                    "rotation": 25,
+                    "tint": "#ffffff",
+                    "contrast": 1.4,
+                    "saturation": 1,
+                    "blur": 0,
+                    "repeat_x": 1,
+                    "repeat_y": 1
+                  },
+                  "tone_mapping": "punch",
+                  "exposure": 1,
+                  "lights": [
+                    {
+                      "id": "bdc3d424",
+                      "type": "directional",
+                      "color": "#ffffff",
+                      "intensity": 2,
+                      "position": [
+                        -600,
+                        800,
+                        1000
+                      ]
+                    },
+                    {
+                      "id": "35ca81b7",
+                      "type": "ambient",
+                      "color": "#ffffff",
+                      "intensity": 0.3,
+                      "position": [
+                        0,
+                        0,
+                        0
+                      ]
+                    }
+                  ]
+                },
+                "camera": null
+              }
+            },
+            {
+              "id": "dfee5c86",
+              "type": "generator",
+              "name": "Glints",
+              "visible": true,
+              "locked": false,
+              "guide": false,
+              "blend": "add",
+              "opacity": 1,
+              "clip": false,
+              "transform": {
+                "position": [
+                  0,
+                  0
+                ],
+                "rotation": 0,
+                "scale": 1,
+                "flip_x": false,
+                "flip_y": false,
+                "z": 0,
+                "rotation_x": 0,
+                "rotation_y": 0
+              },
+              "masks": [],
+              "effects": [],
+              "look": {
+                "id": "",
+                "color_scheme": "",
+                "owner": "dbec17a3"
+              },
+              "generator": {
+                "type": "glints",
+                "params": {
+                  "brightness_variation": 50,
+                  "color": "#fff6dc",
+                  "count": 40,
+                  "face_bias": 70,
+                  "hero_angle": 8,
+                  "hero_cross": 22,
+                  "hero_stars": 2,
+                  "hero_thickness": 100,
+                  "hero_width": 80,
+                  "inside": true,
+                  "intensity": 140,
+                  "jitter": 50,
+                  "large": 5,
+                  "placement": "hero",
+                  "position": [
+                    0,
+                    0
+                  ],
+                  "rays": "four",
+                  "rotation": 0,
+                  "seed": 1,
+                  "size": 52,
+                  "size_variation": 60,
+                  "small": 6,
+                  "spacing": 80,
+                  "spectral": false,
+                  "spread": 60,
+                  "stars": 5,
+                  "thickness": 100,
+                  "threshold": 30,
+                  "twinkle": 0,
+                  "twinkle_phase": 0,
+                  "twinkle_rotate": 0
+                }
+              },
+              "follow": "dbec17a3"
+            }
+          ],
+          "collapsed": false
+        }
+      ]
     }
   },
   "color_schemes": {}

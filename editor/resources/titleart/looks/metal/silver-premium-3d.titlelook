@@ -104,6 +104,9 @@
     "latin": "dela-gothic-one",
     "ja": "dela-gothic-one"
   },
+  "cjk": {
+    "band_scale": 0.75
+  },
   "style_3d": {
     "depth": 12.2,
     "curve_segments": 10,
@@ -225,7 +228,7 @@
         },
         "material": {
           "preset": "black_gloss",
-          "color": "#050505",
+          "color": "#222222",
           "metallic": 0.2,
           "roughness": 0.08,
           "env_multiplier": 0.35,
@@ -240,35 +243,35 @@
         },
         "material": {
           "preset": "blue_metal",
-          "color": "#2a6bff",
+          "color": "#004ad6",
           "gradient": {
             "stops": [
               {
-                "color": "#8cc4ff"
+                "color": "#649ed7"
               },
               {
                 "pos": 0.22,
-                "color": "#3d8bff"
+                "color": "#0068d6"
               },
               {
                 "pos": 0.45,
-                "color": "#1048d0"
+                "color": "#002aa9"
               },
               {
                 "pos": 0.52,
-                "color": "#03154f"
+                "color": "#000038"
               },
               {
                 "pos": 0.6,
-                "color": "#0e3fb8"
+                "color": "#002192"
               },
               {
                 "pos": 0.8,
-                "color": "#3a85ff"
+                "color": "#0063d6"
               },
               {
                 "pos": 1,
-                "color": "#86beff"
+                "color": "#5d98d7"
               }
             ]
           },

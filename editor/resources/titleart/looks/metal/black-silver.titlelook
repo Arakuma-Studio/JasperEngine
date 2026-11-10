@@ -296,31 +296,31 @@
         "material": {
           "fill": {
             "kind": "linear",
-            "color": "#5d6474",
+            "color": "#282f3d",
             "gradient": {
               "stops": [
                 {
-                  "color": "#5d6474"
+                  "color": "#282f3d"
                 },
                 {
                   "pos": 0.2,
-                  "color": "#ffffff"
+                  "color": "#bebebe"
                 },
                 {
                   "pos": 0.4,
-                  "color": "#9aa1ad"
+                  "color": "#5f6671"
                 },
                 {
                   "pos": 0.6,
-                  "color": "#eef1f6"
+                  "color": "#aeb1b6"
                 },
                 {
                   "pos": 0.8,
-                  "color": "#7d8592"
+                  "color": "#454d58"
                 },
                 {
                   "pos": 1,
-                  "color": "#f4f6fa"
+                  "color": "#b4b6b9"
                 }
               ]
             }
