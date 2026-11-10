@@ -160,7 +160,7 @@ namespace luabridge
     template<> struct Stack<TextureType> : EnumWrapper<TextureType>{};
     template<> struct Stack<ColorFormat> : EnumWrapper<ColorFormat>{};
     template<> struct Stack<PrimitiveType> : EnumWrapper<PrimitiveType>{};
-    template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
+    template<> struct Stack<jasperengine::CullingMode> : EnumWrapper<jasperengine::CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
     template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
