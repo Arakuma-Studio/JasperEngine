@@ -172,7 +172,7 @@ never build or run them.
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | in review |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
@@ -263,6 +263,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S46 passed its lighter gate at `df94fc993` on box A (`WERROR` build; editor 341/341;
+  MCP 143 passed and 3 skipped; tool budget core 98,997 of 99,000; performance budgets met; red runs
+  for every behaviour) and its independent review started. S46 changed `PixelLint`/`CraftLints`
+  after S47 landed its copies, so S46's versions replace them at landing. S48 takes the `lintFlicker`
+  alpha-0 fix. `check_fanout` has `MeshComponent.h` at 150 of 150.
 
 - 2026-11-10: box B destroyed, idle once S47 landed and S48's runtime fixes finished. D takes S48's
   final gate and batch checks and goes after S48 lands; A (S46) and C (S50) stay to the end.
