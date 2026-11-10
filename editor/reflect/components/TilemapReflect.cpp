@@ -200,6 +200,15 @@ namespace {
         }
     }
 
+    // the solid terrains' names: a list of strings the field tables do not export
+    void tilemapColliderCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
+        const TilemapCollider2DComponent& collider = *static_cast<const TilemapCollider2DComponent*>(comp);
+        if (collider.solidTerrains.empty()) return;
+        std::string list;
+        for (const std::string& name : collider.solidTerrains) list += (list.empty() ? "" : ", ") + Factory::formatString(name);
+        out += Factory::indentation(ctx.indentSpaces) + ctx.variable + ".solidTerrains = {" + list + "};\n";
+    }
+
     constexpr const char* kTilemapLayerCodegenOrder[] = {"tileset", "tint", "mode", "chunkSize", "tileAnchor", "animationSpeed", "dualGrid", "seed", "gpuResidency", "enabled"};
 
 }
@@ -225,7 +234,7 @@ const ComponentDesc kTilemapCollider2DDesc{
     .displayName = "Tilemap Collider 2D", .icon = ICON_FA_BORDER_ALL,
     .body = JE_STRUCT_DESC(TilemapCollider2DComponent, "TilemapCollider2DComponent", kTilemapColliderFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TilemapCollider2DComponent),
-    .codegenVar = "tilemapCollider2D",
+    .codegenVar = "tilemapCollider2D", .codegenExtra = &tilemapColliderCodegen,
 };
 
 }

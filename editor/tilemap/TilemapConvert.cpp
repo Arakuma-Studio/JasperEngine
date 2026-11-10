@@ -17,6 +17,7 @@
 #include "io/FileData.h"
 #include "sprite/SpriteSheetSources.h"
 #include "tilemap/TilemapCellsCmd.h"
+#include "tilemap/TilemapMeshAccess.h"
 #include "tilemap/TilesetEdit.h"
 #include "tilemap/TilesetPool.h"
 #include "util/ProjectFileWrites.h"
@@ -46,11 +47,11 @@ namespace jasperengine::editor::tilemap {
             return std::fabs(value - (float)out) < kConvertEpsilon;
         }
 
-        std::string convertRectTexture(const TileRectData& rect, const MeshComponent& mesh) {
-            if (mesh.numSubmeshes == 0) return {};
-            const unsigned int submesh = rect.submeshId >= 0 && (unsigned int)rect.submeshId < mesh.numSubmeshes ? (unsigned int)rect.submeshId : 0u;
-            const std::string own = mesh.submeshes[submesh].material.baseColorTexture.getPath();
-            return own.empty() ? mesh.submeshes[0].material.baseColorTexture.getPath() : own;
+        std::string convertRectTexture(const TileRectData& rect, const std::vector<std::string>& textures) {
+            if (textures.empty()) return {};
+            const size_t submesh = rect.submeshId >= 0 && (size_t)rect.submeshId < textures.size() ? (size_t)rect.submeshId : 0u;
+            const std::string& own = textures[submesh];
+            return own.empty() ? textures[0] : own;
         }
 
         struct ConvertRectPixels {
@@ -60,9 +61,9 @@ namespace jasperengine::editor::tilemap {
             int x = 0, y = 0, w = 0, h = 0;
         };
 
-        ConvertRectPixels convertRectPixels(const TileRectData& rect, const MeshComponent& mesh) {
+        ConvertRectPixels convertRectPixels(const TileRectData& rect, const std::vector<std::string>& textures) {
             ConvertRectPixels out;
-            out.texture = convertRectTexture(rect, mesh);
+            out.texture = convertRectTexture(rect, textures);
             if (out.texture.empty()) {
                 out.reason = "its rect has no texture";
                 return out;
@@ -151,29 +152,13 @@ namespace jasperengine::editor::tilemap {
             ConvertMeshCmd(Project* project, uint32_t sceneId, Entity entity): project(project), sceneId(sceneId), entity(entity) {}
 
             bool execute() override {
-                MeshComponent* mesh = meshNow();
-                if (!mesh) return false;
-                oldNumSubmeshes = mesh->numSubmeshes;
-                oldTileLayer = mesh->tileLayer;
-                oldTexture = mesh->numSubmeshes > 0 ? mesh->submeshes[0].material.baseColorTexture.getPath() : std::string();
-                mesh->buffer.clear();
-                mesh->indices.clear();
-                mesh->numSubmeshes = 1;
-                if (mesh->loaded) mesh->needReload = true;
+                if (!tilemapmesh::clearForTileLayer(sceneNow(), entity, before)) return false;
                 touchScene();
                 return true;
             }
 
             void undo() override {
-                MeshComponent* mesh = meshNow();
-                if (!mesh) return;
-                mesh->numSubmeshes = oldNumSubmeshes;
-                mesh->tileLayer = oldTileLayer;
-                if (oldNumSubmeshes > 0 && mesh->submeshes[0].material.baseColorTexture.getPath() != oldTexture) {
-                    mesh->submeshes[0].material.baseColorTexture.setPath(oldTexture);
-                    mesh->submeshes[0].needUpdateTexture = true;
-                }
-                if (mesh->loaded) mesh->needReload = true;
+                tilemapmesh::restore(sceneNow(), entity, before);
                 touchScene();
             }
 
@@ -185,13 +170,11 @@ namespace jasperengine::editor::tilemap {
             Project* project;
             uint32_t sceneId;
             Entity entity;
-            unsigned int oldNumSubmeshes = 0;
-            bool oldTileLayer = false;
-            std::string oldTexture;
+            tilemapmesh::MeshState before;
 
-            MeshComponent* meshNow() const {
+            Scene* sceneNow() const {
                 SceneProject* sceneProject = project->getScene(sceneId);
-                return sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<MeshComponent>(entity) : nullptr;
+                return sceneProject ? sceneProject->scene : nullptr;
             }
             void touchScene() const {
                 if (SceneProject* sceneProject = project->getScene(sceneId)) sceneProject->needUpdateRender = true;
@@ -200,7 +183,7 @@ namespace jasperengine::editor::tilemap {
 
     }
 
-    ConvertCheck check(const TilemapComponent& tilemap, const MeshComponent& mesh) {
+    ConvertCheck check(const TilemapComponent& tilemap, const std::vector<std::string>& submeshTextures) {
         ConvertCheck result;
         const auto addOffender = [&](int index, const TileData& tile, std::string reason) {
             result.offenderCount++;
@@ -219,7 +202,7 @@ namespace jasperengine::editor::tilemap {
 
         // ---- the rects as pixels, and the tile size from the first tile that has one
         std::vector<ConvertRectPixels> pixels(tilemap.numTilesRect);
-        for (unsigned int i = 0; i < tilemap.numTilesRect; i++) pixels[i] = convertRectPixels(tilemap.tilesRect[i], mesh);
+        for (unsigned int i = 0; i < tilemap.numTilesRect; i++) pixels[i] = convertRectPixels(tilemap.tilesRect[i], submeshTextures);
         int tileW = 0, tileH = 0;
         bool haveSize = false;
         for (unsigned int i = 0; i < tilemap.numTiles && !haveSize; i++) {
@@ -367,14 +350,13 @@ namespace jasperengine::editor::tilemap {
         }
         Scene* scene = sceneProject->scene;
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!tilemap || !mesh) {
+        if (!tilemap || !tilemapmesh::hasMesh(scene, entity)) {
             result.problem.kind = "unknown_layer";
             result.problem.message = "the GameObject has no Free Tilemap";
             result.problem.fix = "select a GameObject with a Free Tilemap (Legacy) component";
             return result;
         }
-        result.check = check(*tilemap, *mesh);
+        result.check = check(*tilemap, tilemapmesh::submeshTextures(scene, entity));
         if (!result.check.ok) {
             result.problem = result.check.problem;
             return result;
@@ -464,7 +446,7 @@ namespace jasperengine::editor::tilemap {
         }
         const float ppu = (float)Engine::getPixelsPerUnit();
         const Vector2 cellSize((float)result.check.tileWidth / ppu, (float)result.check.tileHeight / ppu);
-        const Vector4 tint = mesh->numSubmeshes > 0 ? mesh->submeshes[0].material.baseColorFactor : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        const Vector4 tint = tilemapmesh::baseColor(scene, entity);
 
         CommandHistory* history = CommandHandle::get(sceneId);
         const size_t mark = history->mark();

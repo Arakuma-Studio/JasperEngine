@@ -3,6 +3,7 @@
 
 set(JASPERENGINE_TILEMAP_SRCS
     core/tilemap/TilemapChunkBuilder.cpp
+    core/tilemap/TilemapMeshAccess.cpp
     core/subsystem/TilemapSystem.cpp
     core/tilemap/TerrainSolver.cpp
     core/tilemap/TerrainTemplates.cpp

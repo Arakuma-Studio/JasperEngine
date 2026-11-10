@@ -13,7 +13,6 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/tilemap/TilePaletteWindow.cpp
     ${EDITOR_DIR}/tilemap/TilesetEditorWindow.cpp
     ${EDITOR_DIR}/tilemap/TilemapSceneTools.cpp
-    ${EDITOR_DIR}/window/InspectorTilemap.cpp
     ${EDITOR_DIR}/reload/handlers/Tilesets.cpp
     ${EDITOR_DIR}/tilemap/TilemapBrush.cpp
     ${EDITOR_DIR}/tilemap/TilemapCellsCmd.cpp

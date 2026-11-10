@@ -13,7 +13,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "component/GridComponent.h"
-#include "component/MeshComponent.h"
+#include "tilemap/TilemapMeshAccess.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/Transform.h"
 #include "Engine.h"
@@ -467,11 +467,10 @@ namespace jasperengine::editor::tilemapimport {
                 layerEntity = existing->second;
                 result.layers.push_back(layerEntity);
                 const TilemapLayerComponent& current = scene->getComponent<TilemapLayerComponent>(layerEntity);
-                const MeshComponent* mesh = scene->findComponent<MeshComponent>(layerEntity);
                 const Transform* transform = scene->findComponent<Transform>(layerEntity);
                 const Vector3 position(static_cast<float>(worldUnits(layer.offsetX)), static_cast<float>(worldUnits(layer.offsetY)), 0.0f);
                 const Vector4 tint(1.0f, 1.0f, 1.0f, layer.opacity);
-                if (current.tileset.path != tilesetFile || current.enabled != layer.visible || current.tint != tint || (mesh && mesh->sortingOrder != static_cast<int>(order)) || (transform && transform->position != position)) {
+                if (current.tileset.path != tilesetFile || current.enabled != layer.visible || current.tint != tint || (tilemapmesh::hasMesh(scene, layerEntity) && tilemapmesh::sortingOrder(scene, layerEntity) != static_cast<int>(order)) || (transform && transform->position != position)) {
                     auto fields = std::make_unique<MultiPropertyCmd>();
                     addLayerFields(*fields, project, sceneId, layerEntity, layer, tilesetFile, static_cast<int>(order));
                     if (!step.add(fields.release())) return fail("update a layer");

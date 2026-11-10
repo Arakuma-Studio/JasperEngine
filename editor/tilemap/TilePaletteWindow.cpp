@@ -1,6 +1,7 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
+#include "tilemap/TilemapMeshAccess.h"
 #include "tilemap/TilePaletteWindow.h"
 
 #include "Out.h"
@@ -11,9 +12,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/GridComponent.h"
-#include "component/MeshComponent.h"
 #include "component/TilemapLayerComponent.h"
-#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "shortcuts/CommandCatalog.h"
 #include "subsystem/TilemapSystem.h"
@@ -60,9 +59,9 @@ namespace jasperengine::editor::tilepalette {
         int order = 0;
         bool any = false;
         for (Entity layer : layers) {
-            const MeshComponent* mesh = scene->findComponent<MeshComponent>(layer);
-            if (!mesh) continue;
-            order = any ? std::max(order, (int)mesh->sortingOrder) : (int)mesh->sortingOrder;
+            if (!tilemapmesh::hasMesh(scene, layer)) continue;
+            const int own = (int)tilemapmesh::sortingOrder(scene, layer);
+            order = any ? std::max(order, own) : own;
             any = true;
         }
         return any ? order + 1 : 0;

@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include "component/MeshComponent.h"
 #include "component/TilemapComponent.h"
 #include "ecs/Entity.h"
 #include "pixelart/PixelProblem.h"
@@ -74,8 +73,9 @@ namespace jasperengine::editor::tilemap {
         std::vector<ConvertCell> cells;
     };
 
-    // Reads only. `mesh` is the component's Mesh (its submeshes' materials hold the textures)
-    ConvertCheck check(const TilemapComponent& tilemap, const MeshComponent& mesh);
+    // Reads only. `submeshTextures`: the base colour texture of each submesh of the component's
+    // Mesh (tilemapmesh::submeshTextures), where its rects' textures are
+    ConvertCheck check(const TilemapComponent& tilemap, const std::vector<std::string>& submeshTextures);
 
     struct ConvertResult {
         bool ok = false;

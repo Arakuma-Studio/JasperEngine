@@ -105,7 +105,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1095);
     scene->recreateEntity(1096);
     scene->recreateEntity(1097);
-    scene->setLastEntity(1097);
+    scene->recreateEntity(1098);
+    scene->recreateEntity(1099);
+    scene->recreateEntity(1100);
+    scene->setLastEntity(1100);
 
     {
         // Entity 1001 (Transform)
@@ -3255,6 +3258,106 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         spriteBatch.sortInstances = true;
         spriteBatch.enabled = false;
         scene->addComponent<SpriteBatchComponent>(1097, spriteBatch);
+    }
+
+    {
+        // Entity 1098 (GridComponent)
+        scene->setEntityName(1098, "GridComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(97.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1098, transform);
+
+        GridComponent grid;
+        grid.layout = TileGridLayout::Hexagon;
+        grid.cellSize = Vector2(8.000000f, 12.000000f);
+        grid.cellGap = Vector2(1.000000f, 2.000000f);
+        grid.plane = TileGridPlane::XZ;
+        grid.staggerAxis = StaggerAxis::X;
+        grid.staggerIndex = StaggerIndex::Even;
+        grid.hexSideLength = 5.000000f;
+        grid.linked = true;
+        scene->addComponent<GridComponent>(1098, grid);
+    }
+
+    {
+        // Entity 1099 (TilemapLayerComponent)
+        scene->setEntityName(1099, "TilemapLayerComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(98.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1099, transform);
+
+        TilemapLayerComponent tilemapLayer;
+        tilemapLayer.tileset = "";
+        tilemapLayer.tint = Vector4(0.500000f, 0.600000f, 0.700000f, 0.800000f);
+        tilemapLayer.mode = TilemapRenderMode::Individual;
+        tilemapLayer.chunkSize = 32;
+        tilemapLayer.tileAnchor = Vector2(0.500000f, 0.250000f);
+        tilemapLayer.animationSpeed = 2.500000f;
+        tilemapLayer.dualGrid = true;
+        tilemapLayer.seed = 9;
+        tilemapLayer.gpuResidency = TilemapGpuResidency::Always;
+        tilemapLayer.enabled = false;
+        {
+            std::string chunkError;
+            tilemapLayer.cells.edit().decodeChunk(ChunkCoord{-1, 2}, 
+                "BYAIAQAAAA==", chunkError);
+        }
+        scene->addComponent<TilemapLayerComponent>(1099, tilemapLayer);
+    }
+
+    {
+        // Entity 1100 (TilemapCollider2DComponent)
+        scene->setEntityName(1100, "TilemapCollider2DComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(99.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1100, transform);
+
+        TilemapCollider2DComponent tilemapCollider2D;
+        tilemapCollider2D.enabled = false;
+        tilemapCollider2D.source = TileColliderSource::Terrain;
+        tilemapCollider2D.geometry = TileColliderGeometry::Polygons;
+        tilemapCollider2D.merge = false;
+        tilemapCollider2D.offset = Vector2(1.500000f, 2.500000f);
+        tilemapCollider2D.friction = 0.250000f;
+        tilemapCollider2D.restitution = 0.500000f;
+        tilemapCollider2D.categoryBits = 2;
+        tilemapCollider2D.maskBits = 4;
+        tilemapCollider2D.groupIndex = -3;
+        tilemapCollider2D.contactEvents = false;
+        tilemapCollider2D.sensorEvents = true;
+        tilemapCollider2D.enableHitEvents = true;
+        tilemapCollider2D.solidTerrains = {"Water", "Lava"};
+        scene->addComponent<TilemapCollider2DComponent>(1100, tilemapCollider2D);
     }
 
     // Default Camera 1

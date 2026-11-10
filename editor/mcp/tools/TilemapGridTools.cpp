@@ -23,11 +23,11 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "component/GridComponent.h"
-#include "component/MeshComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/Transform.h"
 #include "io/FileData.h"
+#include "tilemap/TilemapMeshAccess.h"
 #include "tilemap/TilemapBrush.h"
 #include "tilemap/TilemapCellsCmd.h"
 #include "tilemap/TilemapComposite.h"
@@ -1130,7 +1130,7 @@ bool commitEdit(GridEdit& e, const TilesetArg& tilesetArg, Problem& error) {
     // layers the call adds, then the tilesets assigned, then the cells in one command
     int nextOrder = 0;
     for (const LayerSlot& slot : e.slots) {
-        if (slot.entity != NULL_ENTITY) nextOrder = std::max(nextOrder, e.scene->getComponent<MeshComponent>(slot.entity).sortingOrder + 1);
+        if (slot.entity != NULL_ENTITY) nextOrder = std::max(nextOrder, (int)tilemapmesh::sortingOrder(e.scene, slot.entity) + 1);
     }
     std::vector<tm::TilemapCellsCmd::LayerChanges> changes;
     for (LayerSlot& slot : e.slots) {
@@ -1384,8 +1384,7 @@ bool editTilemapGrid(const CallPtr& call) {
     if (hasArg(args, "entity") && convertFirst && !scene->findComponent<GridComponent>(entity) && !scene->findComponent<TilemapLayerComponent>(entity)) {
         if (e.preview) {
             const TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
-            const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-            const tm::ConvertCheck check = tm::check(tilemap, mesh);
+            const tm::ConvertCheck check = tm::check(tilemap, tilemapmesh::submeshTextures(scene, entity));
             if (!check.ok) {
                 failTyped(call, check.problem);
                 return true;
@@ -1626,15 +1625,14 @@ bool getTilemapGrid(const CallPtr& call) {
     for (size_t i = 0; i < e.slots.size(); i++) {
         LayerSlot& layer = e.slots[i];
         const TilemapLayerComponent& component = scene->getComponent<TilemapLayerComponent>(layer.entity);
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(layer.entity);
         const TileCells& cells = component.cells.read();
         const CellRect used = cells.usedRect();
         Json usedRect = used.isEmpty() ? Json(nullptr) : Json::array({used.minX, used.minY, used.maxX, used.maxY});
         layers.push_back({{"entity", McpRefs::entityJson(sceneProject, layer.entity)},
                           {"name", layer.name},
                           {"tileset", component.tileset.path.empty() ? std::string() : McpValues::assetPathToJson(project, component.tileset.path)},
-                          {"sorting_layer", mesh ? mesh->sortingLayer : 0},
-                          {"order_in_layer", mesh ? mesh->sortingOrder : 0},
+                          {"sorting_layer", tilemapmesh::sortingLayer(scene, layer.entity)},
+                          {"order_in_layer", tilemapmesh::sortingOrder(scene, layer.entity)},
                           {"cells", cells.cellCount()},
                           {"used_rect", usedRect},
                           {"dual_grid", component.dualGrid}});
