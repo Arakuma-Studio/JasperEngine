@@ -15,8 +15,9 @@ The eval is not part of CI (it costs subscription quota); CI runs `test_grade.py
 
    ```sh
    tools/build.sh linux
-   tools/build.sh exec linux uv run --no-project --with-requirements tools/mcp/requirements.txt \
+   tools/build.sh exec linux dbus-run-session -- uv run --no-project --with-requirements tools/mcp/requirements.txt \
        python tools/mcp/eval/dump_surface.py --out build/eval-surface
+   # dbus-run-session, as the MCP tests run: without a session bus the editor exits at start (NFD_Init failed)
    mv build/eval-surface ~/je-eval/surface-<name>       # keep evidence outside the repository
    python3 tools/mcp/eval/measure.py ~/je-eval/surface-<name>/surface.json   # model-visible bytes
    ```
