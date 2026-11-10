@@ -172,7 +172,7 @@ never build or run them.
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | in review |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | merged and pushed |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | merged and pushed |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
@@ -263,6 +263,17 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S46 Pixel Art Cleanup merged (`713418ed7`), with the goldens S48's `pixel-fx-game`
+  fixture was missing, so `main` is green again on the shared-data suites. Gate on the merged tree,
+  box A: `WERROR` build; S46 suites plus the shared-data filter 364/365 before the goldens, then
+  shared-data 125/125 and shared MCP 87 passed, 0 failed, 3 skipped (`test_golden_resave_prefab_*`,
+  no TappyPlane) after them; S46 MCP files green on rerun (21/21 for the two fixed ones); tool budget
+  and `check_fanout` (`MeshComponent.h` 149 of 150) pass. Goldens were generated twice with matching
+  checksums; only the new files were committed. Every review item has a red run, except the window
+  close-path UI test, which can't go red, so a unit test covers it. `PixelLint`, `CraftLints` and
+  `EffectLints` on `main` are now S46's (with S48's `EffectLints`). Nothing under `engine/`, so web and
+  android don't apply. Eval cases at the end.
 
 - 2026-11-10: `main` is red: S48 landed `tools/fixtures/pixel-fx-game` without its world and
   re-save goldens (its gate ran before the AC26 fixture joined the branch), so
