@@ -14,7 +14,6 @@
 #include "titleart/fx/PachislopFxMap.h"
 #include "titleart/library/TitleLibrary.h"
 #include "titleart/library/TitleLibraryApply.h"
-#include "titleart/library/TitleLibraryImports.h"
 #include "titleart/three_d/Title3DConvert.h"
 
 #include <algorithm>
@@ -289,47 +288,6 @@ TEST_F(TitleLibraryBuiltins, Budgets) {
     EXPECT_LE(median(look), 3.0 * 3);
     EXPECT_LE(median(scheme), 2.0 * 3);
     EXPECT_LE(median(scheme64), 25.0 * 3);
-}
-
-// R40's apply_look budget, counted instead of timed: a look naming a pack HDRI and a font reads
-// those files once (to hash and copy them) and never again, in a project or without one
-TEST_F(TitleLibraryBuiltins, ApplyLookReadsPackFilesOnce) {
-    const Json op = Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/classic-gold"}, {"apply_font", true}};
-    const TitleArtDoc doc = textDoc();
-    ASSERT_TRUE(fs::is_regular_file(TitleLibrary::packDir() / "hdri" / "autumn_road_2k.hdr")) << "the staged pack at " << TitleLibrary::packDir().string();
-    // without a project (previews, the benches): the pack files resolve in place
-    applyOps(doc, op);
-    uint64_t reads = importFileReads();
-    for (int i = 0; i < 3; i++) ASSERT_TRUE(applyOps(doc, op).ok);
-    EXPECT_EQ(importFileReads() - reads, 0u) << "applies without a project read no pack file";
-    // in a project: the first apply plans the copies, the next finds them (hashes kept by size and time)
-    const fs::path project = fs::temp_directory_path() / ("titlelibrary-reads-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()));
-    std::error_code ec;
-    fs::remove_all(project, ec);
-    fs::create_directories(project / "assets", ec);
-    TitleLibrary::get().setProject(project, project / "assets");
-    const TitleOpsResult first = applyOps(doc, op);
-    ASSERT_TRUE(first.ok);
-    size_t imported = 0;
-    for (const TitleOpFile& f : first.files) {
-        fs::create_directories(f.path.parent_path(), ec);
-        std::ofstream(f.path, std::ios::binary) << f.content;
-        imported += f.path.extension() == ".hdr" || f.path.extension() == ".ttf" || f.path.extension() == ".otf";
-    }
-    EXPECT_GE(imported, 2u) << "the HDRI and the font are imported";
-    reads = importFileReads();
-    for (int i = 0; i < 3; i++) {
-        const TitleOpsResult again = applyOps(doc, op);
-        ASSERT_TRUE(again.ok);
-        EXPECT_TRUE(again.files.empty()) << "nothing to import a second time";
-    }
-    // the project copies are hashed once (their write time is new), then never
-    EXPECT_LE(importFileReads() - reads, imported) << "applies in a project hash each copy once at most";
-    const uint64_t settled = importFileReads();
-    ASSERT_TRUE(applyOps(doc, op).ok);
-    EXPECT_EQ(importFileReads() - settled, 0u) << "a settled apply reads no file";
-    TitleLibrary::get().setProject({});
-    fs::remove_all(project, ec);
 }
 
 TEST_F(TitleLibraryBuiltins, MatchesPachislop) {

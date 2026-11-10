@@ -13,14 +13,12 @@
 //   `environment_unavailable` and the layer keeps what it had.
 // - Previews (R11) never import: `preview` plans resolve the pack file in place (the caller's
 //   TransientAssetResolver maps the future asset path to it).
-// - Hashes of the files it compares are cached by (path, size, write time), process-wide.
-// - Thread-safety: main thread (the hash cache locks).
+// - Thread-safety: main thread.
 
 #pragma once
 
 #include "titleart/TitleArtOps.h"
 
-#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -76,11 +74,6 @@ namespace jasperengine::editor::titlelibrary {
                              const std::vector<std::filesystem::path>& extras, const std::string& provenanceYaml,
                              const std::string& importYaml, const char* conflictCode);
     };
-
-    // whole files the planner has read since the editor started (pack fonts and HDRIs, their project
-    // copies): a file's hash is kept by (path, size, write time), so applying a look again reads
-    // nothing (R40's apply_look budget; TitleLibraryBuiltins.ApplyLookReadsPackFilesOnce)
-    uint64_t importFileReads();
 
     // the asset folder of the pack's fonts and environments in a project
     constexpr const char* TITLE_FONTS_ASSET_DIR = "TitleArt/Fonts";
