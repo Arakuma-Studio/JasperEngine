@@ -163,6 +163,9 @@ namespace jasperengine::editor::pixelart::cleanup {
     // cancelled, needs_person (R30), no_grid, output_exists, output_edited, output_is_source,
     // output_outside_assets. Any thread (it reads the disk: existing outputs, .meta files).
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, PixelProblem& problem);
+    // The extension a role's file must end in (R31): png ".png", aseprite ".aseprite"/".ase", json
+    // ".json"; nothing else (a .meta is never an output)
+    bool outputExtensionFits(const std::string& role, const std::string& path);
 
     // One step of the project history, "Pixel Art Cleanup (<file>)"; every file (.aseprite and its
     // .meta included) in that step; AsepriteImporter::reimport on write, undo and redo (R31). Main thread.

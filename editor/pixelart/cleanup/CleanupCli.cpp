@@ -89,7 +89,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             return true;
         }
 
-        std::string lowerExtension(const std::string& path) {
+        std::string cliExtension(const std::string& path) {
             const size_t dot = path.find_last_of('.');
             if (dot == std::string::npos) return {};
             std::string extension = path.substr(dot);
@@ -212,14 +212,13 @@ namespace jasperengine::editor::pixelart::cleanup {
         if (!dryRun) {
             spec.output.write = true;
             if (!outPath.empty()) {
-                const std::string extension = lowerExtension(outPath);
+                const std::string extension = cliExtension(outPath);
                 const std::string path = projectRelativeArg(spec.projectDir, outPath);
                 if (extension == ".png") spec.output.png = path;
                 else if (extension == ".aseprite" || extension == ".ase") spec.output.aseprite = path;
                 else return failUsage(out, err, asText, "--out must end in .png or .aseprite", "e.g. --out hero_clean.png");
             }
         }
-        spec.overwrite = spec.overwrite || spec.rerun;
 
         std::vector<PixelProblem> problems;
         std::optional<Prepared> prepared = prepare(nullptr, spec, problems);

@@ -63,14 +63,14 @@ namespace jasperengine::editor::pixelart::cleanup {
             return id == "off_palette" || id == "partial_alpha" || id == "transparent_background" || id == "colors";
         }
 
-        std::string lowerExtension(const fs::path& path) {
+        std::string sessionExtension(const fs::path& path) {
             std::string extension = FileUtils::pathToUtf8(path.extension());
             std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
             return extension;
         }
 
         bool isAsepritePath(const fs::path& path) {
-            const std::string extension = lowerExtension(path);
+            const std::string extension = sessionExtension(path);
             return extension == ".aseprite" || extension == ".ase";
         }
 
@@ -453,6 +453,18 @@ namespace jasperengine::editor::pixelart::cleanup {
         }
 
         // ---- outputs (R31)
+
+        // A sheet's JSON written by a cleanup: it carries meta.jasperengine.recipe (R31)
+        bool atlasCarriesRecipe(const fs::path& file) {
+            std::string text;
+            if (!readWholeFile(file, text)) return false;
+            try {
+                const nlohmann::json json = nlohmann::json::parse(text);
+                return json.contains("meta") && json["meta"].contains("jasperengine") && json["meta"]["jasperengine"].contains("recipe");
+            } catch (const nlohmann::json::exception&) {
+                return false;
+            }
+        }
 
         struct PlannedPath {
             std::string role;       // "png", "aseprite", "json", "meta"
@@ -869,6 +881,28 @@ namespace jasperengine::editor::pixelart::cleanup {
             }
             recipe = std::move(*stored);
             out.recordedSha256 = recipe.source.sha256;
+            // R31/R32: a re-run takes a new palette or sheet choice on top of the stored recipe
+            if (!spec.palette.is_null()) {
+                Recipe given;
+                std::vector<PixelProblem> paletteProblems;
+                if (!decodeRecipe(nlohmann::json{{"palette", spec.palette}}, given, paletteProblems)) {
+                    problems = std::move(paletteProblems);
+                    return std::nullopt;
+                }
+                if (!resolveRecipePalette(view, given, problem)) {
+                    problems.push_back(problem);
+                    return std::nullopt;
+                }
+                recipe.paletteMode = given.paletteMode;
+                recipe.palette = given.palette;
+                recipe.autoPalette = given.autoPalette;
+            }
+            if (spec.sheet == SheetArg::Off) {
+                recipe.sheetMode = SheetMode::Off;
+                recipe.sheet.reset();
+            } else if (spec.sheet == SheetArg::On && recipe.sheetMode == SheetMode::Off) {
+                recipe.sheetMode = SheetMode::Auto;
+            }
             out.spec.frame = recipe.source.frame;
             out.spec.layer = recipe.source.layer;
             if (recipe.source.path.empty()) {
@@ -1169,6 +1203,14 @@ namespace jasperengine::editor::pixelart::cleanup {
 
     // ---- writing
 
+    bool outputExtensionFits(const std::string& role, const std::string& path) {
+        const std::string extension = sessionExtension(fs::u8path(path));
+        if (role == "png") return extension == ".png";
+        if (role == "aseprite") return extension == ".aseprite" || extension == ".ase";
+        if (role == "json") return extension == ".json";
+        return false;
+    }
+
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, PixelProblem& problem) {
         files.clear();
         const std::string shown = prepared.sourcePath.empty() ? prepared.spec.source : prepared.sourcePath;
@@ -1196,6 +1238,11 @@ namespace jasperengine::editor::pixelart::cleanup {
         const std::vector<PlannedPath> planned = planPaths(prepared, result.format, sheet);
         for (const PlannedPath& path : planned) {
             if (path.role == "meta") continue;
+            if (!outputExtensionFits(path.role, path.path)) {
+                problem = {"invalid_value", "output." + path.role, path.path + " is not a ." + (path.role == "aseprite" ? std::string("aseprite") : path.role) + " path; nothing was written",
+                           "give output." + path.role + " a path ending in ." + (path.role == "aseprite" ? std::string("aseprite") : path.role) + " (never a .meta)"};
+                return false;
+            }
             if (samePath(path.absolute, prepared.sourceAbsolute)) {
                 problem = {"output_is_source", "output." + path.role, path.path + " is the source: the source is never replaced", "write to a new path: omit output's paths for " + result.defaultOutput};
                 return false;
@@ -1206,9 +1253,9 @@ namespace jasperengine::editor::pixelart::cleanup {
             }
             std::error_code ec;
             const bool rerunTarget = !prepared.rerunOutput.empty() && samePath(path.absolute, prepared.rerunOutputAbsolute);
-            // a re-run replaces its own files (the sheet's JSON beside its PNG too) unless a new path was given
-            const OutputSpec& given = prepared.spec.output;
-            const bool rerunOwn = !prepared.rerunOutput.empty() && given.png.empty() && given.aseprite.empty() && given.json.empty();
+            // a re-run replaces only its own outputs: the file it re-runs, and the sheet's JSON beside it
+            // when that JSON is the one this cleanup wrote (it carries the recipe); anything else needs overwrite
+            const bool rerunOwn = rerunTarget || (!prepared.rerunOutput.empty() && path.role == "json" && atlasCarriesRecipe(path.absolute));
             if (fs::exists(path.absolute, ec)) {
                 if (!prepared.spec.overwrite && !rerunOwn) {
                     problem = {"output_exists", "output." + path.role, path.path + " exists; nothing was written", "pass overwrite: true (one undo step puts it back), or another output path"};
@@ -1288,7 +1335,9 @@ namespace jasperengine::editor::pixelart::cleanup {
             std::error_code ec;
             if (!(fs::exists(metaPath->absolute, ec) && readWholeFile(metaPath->absolute, existing) && AssetMeta::parse(existing, meta))) {
                 meta = AssetMeta();
-                meta.guid = Guid::parse(AssetDatabase::generateGuid());
+                // derived from the path, not random: the same run writes the same bytes (R40, R41)
+                const fs::path relative = prepared.assetsDir.empty() ? ase->absolute.filename() : ase->absolute.lexically_relative(prepared.assetsDir);
+                meta.guid = Guid::parse(AssetDatabase::legacyGuid(relative));
             }
             meta.setSection("pixelCleanup", "{recipe: " + json(text).dump() + "}");
             files.push_back({"meta", metaPath->path, metaPath->absolute, meta.serialize()});
@@ -1701,7 +1750,7 @@ namespace jasperengine::editor::pixelart::cleanup {
                     continue;
                 }
                 if (!it->is_regular_file(ec)) continue;
-                const std::string extension = lowerExtension(file);
+                const std::string extension = sessionExtension(file);
                 if (extension == ".png" || extension == ".aseprite" || extension == ".ase") files.push_back(file);
             }
             std::sort(files.begin(), files.end());
@@ -1729,6 +1778,8 @@ namespace jasperengine::editor::pixelart::cleanup {
             while (!fs::is_regular_file(projectRoot / "project.yaml", ec) && projectRoot.has_relative_path() && projectRoot != projectRoot.parent_path()) projectRoot = projectRoot.parent_path();
             for (const fs::path& file : files) {
                 const std::string rel = FileUtils::pathToGenericUtf8(file.lexically_relative(input.assetsRoot));
+                // fix_pixel_art takes project-relative paths
+                const std::string projectRel = FileUtils::pathToGenericUtf8(file.lexically_relative(projectRoot));
                 const fs::path metaPath = AssetTypes::metaPathFor(file);
                 bool hasRecipe = false;
                 std::string importRecipe;
@@ -1763,7 +1814,7 @@ namespace jasperengine::editor::pixelart::cleanup {
                     if (staleness.state == Staleness::State::Changed || staleness.state == Staleness::State::Missing) {
                         addFinding(rel, "stale", RuleStatus::Warn, {{"source_changed", staleness.state == Staleness::State::Changed}}, {{"source_changed", false}},
                                    rel + ": " + staleness.message + ".",
-                                   "re-run it: fix_pixel_art {source: \"" + rel + "\", rerun: true, output: true}");
+                                   "re-run it: fix_pixel_art {source: \"" + projectRel + "\", rerun: true}, then the same with output: true");
                     }
                     if (staleness.forced) {
                         addFinding(rel, "forced", RuleStatus::Warn, {{"forced", true}}, {{"forced", false}},

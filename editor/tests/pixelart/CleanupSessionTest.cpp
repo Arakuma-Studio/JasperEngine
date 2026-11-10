@@ -91,12 +91,10 @@ namespace {
             return std::move(*prepared);
         }
 
-        // A Result no guard passes: writes refuse it without force
-        Result runAsNeedsPerson(const Prepared& prepared) {
-            Result result = run(prepared);
-            result.report.verdict = Verdict::NeedsPerson;
-            result.report.guards.push_back({"low_fit", 0.1, 0.9});
-            return result;
+        // Black and white lose the mushroom's colours: R29's lost_share guard trips, so the run is
+        // needs_person for real, with pixels to write
+        nlohmann::json losingPaletteRecipe() const {
+            return {{"palette", {"#000000", "#ffffff"}}};
         }
     };
 
@@ -186,14 +184,18 @@ TEST_F(CleanupSessionFiles, ReRunIsByteIdenticalAndStaleAfterSourceEdit) {
 }
 
 // R30: a needs_person result is refused and nothing is written without force; force writes it and
-// records forced: true
+// run records forced: true; a person (the window) writes it with nothing recorded
 TEST_F(CleanupSessionFiles, NeedsPersonIsRefusedWithoutForce) {
     const std::string source = aiSprite();
     Spec spec = specOf(source);
+    spec.recipe = losingPaletteRecipe();
     spec.output.write = true;
     Prepared prepared = preparedOf(spec);
     const size_t before = fileCount();
-    Result result = runAsNeedsPerson(prepared);
+    const Result result = run(prepared);
+    ASSERT_EQ(result.report.verdict, Verdict::NeedsPerson) << result.report.summary;
+    ASSERT_FALSE(result.frames.empty());
+    EXPECT_FALSE(result.resolved.forced);
 
     std::vector<OutputFile> files;
     PixelProblem problem;
@@ -203,12 +205,10 @@ TEST_F(CleanupSessionFiles, NeedsPersonIsRefusedWithoutForce) {
     EXPECT_TRUE(files.empty());
     EXPECT_EQ(fileCount(), before);
 
-    // with force the output is written and the recipe says so
     spec.force = true;
     Prepared forcedPrepared = preparedOf(spec);
-    Result forced = run(forcedPrepared);
-    forced.report.verdict = Verdict::NeedsPerson;
-    forced.resolved.forced = true;     // run records it when the verdict is needs_person (forced runs below)
+    const Result forced = run(forcedPrepared);
+    EXPECT_TRUE(forced.resolved.forced);
     ASSERT_TRUE(encodeOutputs(forcedPrepared, forced, files, problem)) << problem.message;
     ASSERT_TRUE(writeDirect(forcedPrepared, files, problem)) << problem.message;
     PixelProblem recipeProblem;
@@ -216,17 +216,16 @@ TEST_F(CleanupSessionFiles, NeedsPersonIsRefusedWithoutForce) {
     ASSERT_TRUE(stored.has_value());
     EXPECT_TRUE(stored->forced);
 
-    // a person in the window can always write, and it is not recorded as forced
     Spec person = specOf(source);
+    person.recipe = losingPaletteRecipe();
     person.person = true;
     person.output.write = true;
     person.output.png = path("person.png");
     Prepared personPrepared = preparedOf(person);
-    Result personResult = runAsNeedsPerson(personPrepared);
-    personResult.resolved.forced = false;
+    const Result personResult = run(personPrepared);
+    EXPECT_FALSE(personResult.resolved.forced);
     std::vector<OutputFile> personFiles;
     EXPECT_TRUE(encodeOutputs(personPrepared, personResult, personFiles, problem)) << problem.message;
-    EXPECT_FALSE(personResult.resolved.forced);
 }
 
 // R32: a re-run over an output edited since refuses, and force gets through
@@ -449,30 +448,66 @@ TEST_F(CleanupSessionFiles, ImportStepRunsThePureRecipe) {
     EXPECT_FALSE(guard.empty());
 }
 
-// R40: the results do not depend on how detection's loops were spread
+// R40: the output files, the JSON result and the preview images are byte-identical whatever the
+// thread count (detection's loops serial, then over 8 threads) and from run to run, for a single
+// picture and a sheet
 TEST_F(CleanupSessionFiles, ThreadCountDoesNotChangeResults) {
-    const std::string source = aiSprite();
-    Spec spec = specOf(source);
-    spec.recipe = sweetieRecipe();
-    Prepared prepared = preparedOf(spec);
+    const std::vector<Rgba8> sweetie = sweetie16();
+    const std::vector<Rgba8> fire = {sweetie[2], sweetie[3], sweetie[4], sweetie[1]};
+    const PixelArt sprite = makeSprite(10, 12, fire, 3, true);
+    std::vector<PixelArt> sheetFrames;
+    for (int f = 0; f < 5; f++) sheetFrames.push_back(place(sprite, 12, 16, 1, 2 + (f % 2)));
+    const std::string sheetSource = writePng("r40_sheet.png", fakeSheet(sheetFrames, 6).image);
 
-    setParallelFor(ParallelFor{});
-    const Result serial = run(prepared);
-    setParallelFor([](int count, const std::function<void(int)>& body) {
-        std::vector<std::thread> threads;
-        std::atomic<int> next{0};
-        for (int t = 0; t < 8; t++) {
-            threads.emplace_back([&]() {
-                for (int i = next++; i < count; i = next++) body(i);
-            });
+    struct Bytes {
+        std::vector<std::string> files;
+        std::string json;
+        std::vector<std::string> previews;
+    };
+    const auto everything = [&](const Spec& spec) {
+        Prepared prepared = preparedOf(spec);
+        const Result result = run(prepared);
+        Bytes out;
+        std::vector<OutputFile> files;
+        PixelProblem problem;
+        EXPECT_TRUE(encodeOutputs(prepared, result, files, problem)) << problem.message;
+        for (const OutputFile& file : files) out.files.push_back(file.bytes);
+        out.json = toJson(prepared, result).dump();
+        for (PreviewKind kind : {PreviewKind::Compare, PreviewKind::Result, PreviewKind::Grid, PreviewKind::Lost, PreviewKind::Lints}) {
+            out.previews.push_back(renderPreview(prepared, result, kind).encodePng());
         }
-        for (std::thread& thread : threads) thread.join();
-    });
-    const Result parallel = run(prepared);
-    setParallelFor(ParallelFor{});
+        return out;
+    };
+    Spec single = specOf(aiSprite());
+    single.recipe = sweetieRecipe();
+    single.output.write = true;
+    Spec sheet = specOf(sheetSource);
+    sheet.recipe = {{"remove_background", true}, {"grid", {{"kind", "cells"}, {"cell_width", 6}}}};
+    sheet.output.write = true;
 
-    EXPECT_TRUE(serial.frames.front() == parallel.frames.front());
-    EXPECT_EQ(toJson(prepared, serial).dump(), toJson(prepared, parallel).dump());
+    for (const Spec& spec : {single, sheet}) {
+        setParallelFor(ParallelFor{});
+        const Bytes serial = everything(spec);
+        const Bytes again = everything(spec);
+        setParallelFor([](int count, const std::function<void(int)>& body) {
+            std::vector<std::thread> threads;
+            std::atomic<int> next{0};
+            for (int t = 0; t < 8; t++) {
+                threads.emplace_back([&]() {
+                    for (int i = next++; i < count; i = next++) body(i);
+                });
+            }
+            for (std::thread& thread : threads) thread.join();
+        });
+        const Bytes parallel = everything(spec);
+        setParallelFor(ParallelFor{});
+        ASSERT_FALSE(serial.files.empty()) << spec.source;
+        EXPECT_EQ(serial.files, parallel.files) << spec.source;
+        EXPECT_EQ(serial.files, again.files) << spec.source;
+        EXPECT_EQ(serial.json, parallel.json) << spec.source;
+        EXPECT_EQ(serial.previews, parallel.previews) << spec.source;
+        EXPECT_EQ(serial.previews, again.previews) << spec.source;
+    }
 }
 
 TEST_F(CleanupSessionFiles, PreviewKindsAreDeterministicAndFitTheWidth) {
@@ -529,13 +564,12 @@ TEST_F(CleanupSessionFiles, LintsAPlainFile) {
 // R30: an output written with force reports `forced` when linted
 TEST_F(CleanupSessionFiles, LintReportsForcedOutputs) {
     Spec spec = specOf(aiSprite());
-    spec.recipe = sweetieRecipe();
+    spec.recipe = losingPaletteRecipe();
     spec.output.write = true;
     spec.force = true;
     Prepared prepared = preparedOf(spec);
-    Result result = run(prepared);
-    result.report.verdict = Verdict::NeedsPerson;
-    result.resolved.forced = true;
+    const Result result = run(prepared);
+    ASSERT_EQ(result.report.verdict, Verdict::NeedsPerson);
     std::vector<OutputFile> files;
     PixelProblem problem;
     ASSERT_TRUE(encodeOutputs(prepared, result, files, problem)) << problem.message;
@@ -548,4 +582,105 @@ TEST_F(CleanupSessionFiles, LintReportsForcedOutputs) {
     ASSERT_TRUE(lintPrepared.has_value());
     EXPECT_TRUE(runLint(*lintPrepared).forced);
     EXPECT_TRUE(toJson(*lintPrepared, runLint(*lintPrepared)).value("forced", false));
+}
+
+// R31: a re-run replaces only its own recorded output; another planned file (an .aseprite when the
+// format changes) still needs overwrite
+TEST_F(CleanupSessionFiles, ReRunReplacesOnlyItsOwnOutput) {
+    Spec spec = specOf(aiSprite());
+    spec.recipe = sweetieRecipe();
+    spec.output.write = true;
+    Prepared prepared = preparedOf(spec);
+    const Result result = run(prepared);
+    std::vector<OutputFile> files;
+    PixelProblem problem;
+    ASSERT_TRUE(encodeOutputs(prepared, result, files, problem)) << problem.message;
+    ASSERT_TRUE(writeDirect(prepared, files, problem)) << problem.message;
+    {
+        std::ofstream other(root / "hero_clean_clean.aseprite", std::ios::binary);
+        other << "someone's file";
+    }
+    {
+        std::ofstream other(root / "hero_clean.aseprite", std::ios::binary);
+        other << "someone's file";
+    }
+
+    Spec rerun = specOf(path("hero_clean.png"));
+    rerun.rerun = true;
+    rerun.output.write = true;
+    rerun.format = OutputFormat::Aseprite;
+    Prepared again = preparedOf(rerun);
+    const Result second = run(again);
+    std::vector<OutputFile> rerunFiles;
+    EXPECT_FALSE(encodeOutputs(again, second, rerunFiles, problem));
+    EXPECT_EQ(problem.kind, "output_exists") << problem.message;
+}
+
+// R32: a re-run takes a new palette and sheet choice; with neither it is the stored recipe
+TEST_F(CleanupSessionFiles, ReRunHonoursPaletteAndSheet) {
+    Spec spec = specOf(aiSprite());
+    spec.output.write = true;
+    Prepared prepared = preparedOf(spec);
+    const Result result = run(prepared);
+    ASSERT_TRUE(result.resolved.palette.has_value());
+    EXPECT_NE(result.resolved.palette->name, "Sweetie 16");
+    std::vector<OutputFile> files;
+    PixelProblem problem;
+    ASSERT_TRUE(encodeOutputs(prepared, result, files, problem)) << problem.message;
+    ASSERT_TRUE(writeDirect(prepared, files, problem)) << problem.message;
+
+    Spec rerun = specOf(path("hero_clean.png"));
+    rerun.rerun = true;
+    rerun.palette = "sweetie-16";
+    Prepared again = preparedOf(rerun);
+    const Result second = run(again);
+    ASSERT_TRUE(second.resolved.palette.has_value());
+    EXPECT_EQ(second.resolved.palette->name, "Sweetie 16");
+
+    // a sheet output re-run with sheet off fixes one picture
+    const std::vector<Rgba8> sweetie = sweetie16();
+    const std::vector<Rgba8> fire = {sweetie[2], sweetie[3], sweetie[4], sweetie[1]};
+    const PixelArt sprite = makeSprite(10, 12, fire, 3, true);
+    std::vector<PixelArt> frames;
+    for (int f = 0; f < 5; f++) frames.push_back(place(sprite, 12, 16, 1, 2 + (f % 2)));
+    Spec sheet = specOf(writePng("walk.png", fakeSheet(frames, 6).image));
+    sheet.recipe = {{"remove_background", true}, {"grid", {{"kind", "cells"}, {"cell_width", 6}}}};
+    sheet.output.write = true;
+    sheet.force = true;
+    Prepared sheetPrepared = preparedOf(sheet);
+    const Result sheetResult = run(sheetPrepared);
+    ASSERT_TRUE(sheetResult.animation.has_value());
+    ASSERT_TRUE(encodeOutputs(sheetPrepared, sheetResult, files, problem)) << problem.message;
+    ASSERT_TRUE(writeDirect(sheetPrepared, files, problem)) << problem.message;
+    Spec off = specOf(files.front().path);
+    off.rerun = true;
+    off.sheet = SheetArg::Off;
+    Prepared offPrepared = preparedOf(off);
+    EXPECT_FALSE(run(offPrepared).animation.has_value());
+}
+
+// R31: an output path must carry its role's extension, and never names a .meta
+TEST_F(CleanupSessionFiles, OutputPathsCarryTheirRolesExtension) {
+    Spec spec = specOf(aiSprite());
+    spec.recipe = sweetieRecipe();
+    spec.output.write = true;
+    for (const std::string& bad : {path("x.png.meta"), path("x.txt"), path("x.aseprite")}) {
+        spec.output.png = bad;
+        Prepared prepared = preparedOf(spec);
+        const Result result = run(prepared);
+        std::vector<OutputFile> files;
+        PixelProblem problem;
+        EXPECT_FALSE(encodeOutputs(prepared, result, files, problem)) << bad;
+        EXPECT_EQ(problem.kind, "invalid_value") << bad << ": " << problem.message;
+        EXPECT_FALSE(fs::exists(bad)) << bad;
+    }
+    spec.output.png.clear();
+    spec.format = OutputFormat::Aseprite;
+    spec.output.aseprite = path("x.png");
+    Prepared prepared = preparedOf(spec);
+    const Result result = run(prepared);
+    std::vector<OutputFile> files;
+    PixelProblem problem;
+    EXPECT_FALSE(encodeOutputs(prepared, result, files, problem));
+    EXPECT_EQ(problem.kind, "invalid_value");
 }
