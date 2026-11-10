@@ -101,3 +101,29 @@ async def test_linked_reimport_keeps_a_user_component(ed: Editor):
     kept = await ed.call("get_entity", scene=sid, entity=layer, detail="summary")
     ed.check("tilemapcollider2d" in [c.lower() for c in kept["components"]] or "tilemap_collider_2d" in [c.lower() for c in kept["components"]],
              f"the user's component stays: {kept['components']}")
+
+
+async def test_linked_map_changed_in_play_reimports_after_stop(ed: Editor):
+    """R47: a linked map changed during Play is re-imported once Play stops (Stop would throw away a
+    re-import made in Play; it was dropped)"""
+    file = "assets/maps/played.tmj"
+    folder = ed.project / "assets/maps"
+    (folder / "played.tmj").write_text(json.dumps(tiled_map([1, 1, 1, 1])))
+    sid = await scene(ed, "Played")
+    made = await ed.call("import_tilemap", file=file, scene=sid, output=True, linked=True)
+    grid = made["grids"][0]["id"]
+    ed.check_eq((await ed.call("get_tilemap", scene=sid, entity=grid))["tiles"], 4, "imported")
+    await ed.call("play", action="start", scene=sid)
+    try:
+        (folder / "played.tmj").write_text(json.dumps(tiled_map([2, 2, 0, 0])))
+        await ed.call("sync_files", paths=[file])
+        await ed.call("wait", frames=10)
+    finally:
+        await ed.call("play", action="stop")
+    read = await ed.call("get_tilemap", scene=sid, entity=grid)
+    for _ in range(60):
+        if read["tiles"] == 2:
+            break
+        await ed.call("wait", frames=5)
+        read = await ed.call("get_tilemap", scene=sid, entity=grid)
+    ed.check_eq(read["tiles"], 2, "the change made in Play re-imported after Stop")

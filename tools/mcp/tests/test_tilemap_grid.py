@@ -89,6 +89,20 @@ async def test_create_entity_tilemap_is_one_undo_step(ed: Editor):
     ed.check_eq((await ed.call("find_entities", scene=sid, name="Level"))["count"], 0, "undo removes the Grid and the layer")
 
 
+async def test_legacy_tilemap_is_not_offered_but_still_edits(ed: Editor):
+    """R49: the legacy Free Tilemap leaves Add Component; one made otherwise still edits"""
+    listed = await ed.call("list_component_types", component="tilemap")
+    ed.check_eq(listed["addable"], False, "Add Component does not offer the legacy Tilemap")
+    sid = await scene(ed, "Legacy")
+    made = await ed.call("create_entity", scene=sid, type="free_tilemap", name="Old")
+    entity = made["entity"]["id"]
+    await ed.check_error("add_component", scene=sid, entity=(await ed.call("create_entity", scene=sid, type="empty", name="Bare"))["entity"]["id"],
+                         component="tilemap", contains="cannot be added")
+    await ed.call("set_properties", scene=sid, entity=entity, values={"tilemap": {"pixelsPerUnit": 2.0}})
+    got = await ed.call("get_entity", scene=sid, entity=entity, components=["tilemap"])
+    ed.check_eq(got["components"]["tilemap"]["pixelsPerUnit"], 2.0, "an existing legacy Tilemap still edits")
+
+
 async def test_paint_and_flips_and_region(ed: Editor):
     sid = await scene(ed, "Paint")
     made = await ed.call("edit_tilemap", scene=sid, create={"name": "Map"}, tileset=TILESET,

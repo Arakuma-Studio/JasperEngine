@@ -9,10 +9,12 @@ directory) for docs/specs/evidence/s50/.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
 
+import harness
 import pngdiff
 import ui_input
 from harness import Editor, skip
@@ -120,6 +122,51 @@ async def tool(ed: Editor, name: str) -> None:
     await click_item(ed, f"###tool_{name}")
 
 
+async def rest_frames(ed: Editor, seconds: float = 3.0) -> int:
+    """The frames the editor ran in `seconds` with no input: at rest it idles (EditorFrame), a scene
+    redrawn every frame keeps it at full rate"""
+    await ed.call("editor_status")   # starts the frame window
+    await asyncio.sleep(seconds)
+    return (await ed.call("editor_status"))["frame_ms"]["frames"]
+
+
+async def project_steps(ed: Editor, name: str) -> int:
+    """The project history's steps named `name` (the Tileset Editor's writes)"""
+    got = await ed.call("get_undo_history", scope="project", limit=500)
+    return sum(1 for entry in got["entries"] if entry["name"].startswith(name))
+
+
+def tile_doc(ed: Editor, tile: int) -> dict:
+    doc = json.loads((ed.project / TILESET).read_text())
+    return next((t for t in doc["tiles"] if t["id"] == tile), {})
+
+
+async def probe(ed: Editor, name: str, frames: int = 60) -> list:
+    """The UI probe rect [x0, y0, x1, y1] of `name` once the editor draws it whole"""
+    for _ in range(frames // 2):
+        rect = ed.ui_items().get(name)
+        if rect:
+            return rect
+        await ui_input.frames(ed, 2)
+    ed.fail(f"the UI probe never listed {name!r}: {sorted(ed.ui_items())[:40]}")
+
+
+def overlay_cells(ed: Editor) -> int | None:
+    """How many cells the Scene tool's grid overlay outlined in the last frame (its probe name)"""
+    for name in ed.ui_items():
+        if name.startswith("tilemap.overlay.cells."):
+            return int(name.rsplit(".", 1)[1])
+    return None
+
+
+async def layer_alpha(ed: Editor, layer: int) -> float:
+    """The alpha the layer draws with: its tint times Focus On's dim (TilemapSystem)"""
+    got = await ed.call("get_entity", scene=STATE["scene"], entity=layer, components=["mesh"])
+    color = harness.find_key(got, "baseColorFactor", "submeshes[0].material.baseColorFactor")
+    ed.check(isinstance(color, list) and len(color) == 4, f"the layer's colour: {json.dumps(got)[:600]}")
+    return float(color[3])
+
+
 async def test_create_grid_and_palette(ed: Editor):
     if not ed._xvfb or not ed._xvfb.display:
         skip("needs the harness Xvfb")
@@ -151,6 +198,8 @@ async def test_create_grid_and_palette(ed: Editor):
     ui(ed).focus()
     await ui_input.frames(ed, 6)
     await shot(ed, "palette-window")
+    # what the editor draws at rest with no tile tool up (test_scene_view_rests_with_a_tool_up)
+    STATE["rest_frames"] = await rest_frames(ed)
 
 
 async def test_paint_erase_pick(ed: Editor):
@@ -233,8 +282,10 @@ async def test_terrain_painting(ed: Editor):
     await click_item(ed, "Terrains")
     await click_item(ed, "Water")
     await ui(ed).click(cell_point(ed, rect, 10, 2))
-    got = await ed.call("get_tilemap", scene=STATE["scene"], entity=STATE["layer"], include_terrain=True, include_tiles=True, limit=4000)
-    ed.check("terrain" in got or any("Water" in str(v) for v in got.values()), f"the terrain plane was written: {list(got)}")
+    got = await ed.call("get_tilemap", scene=STATE["scene"], entity=STATE["layer"], include_terrain=True, region=[10, 2, 10, 2])
+    terrain = got.get("terrain", {})
+    ed.check_eq(terrain.get("lines"), ["W"], f"the clicked cell's terrain plane holds Water: {terrain}")
+    ed.check_eq(terrain.get("legend"), {"W": "Water"}, "W is Water")
     ed.check_eq((await undo_names(ed))[-1], "Paint Terrain", "Paint Terrain's step")
     await click_item(ed, "None")
     await shot(ed, "scene-terrain")
@@ -315,3 +366,185 @@ async def test_tileset_editor_peering_and_template(ed: Editor):
     finally:
         # the window floats over the Scene view: a later test's screenshots must not show it
         await close_tileset_editor(ed)
+
+
+async def close_window(ed: Editor, window: str) -> None:
+    """A floating window's title-bar close button, when it is open"""
+    items = [i for i in (await ed.call("find_ui_item", label="#CLOSE", window=window)).get("items", []) if i.get("visible", True)]
+    if items:
+        await ui(ed).click(ui(ed).centre(items[0]["rect"]))
+        await ui_input.frames(ed, 4)
+
+
+async def test_tileset_editor_fields_commit_once(ed: Editor):
+    """R67, R70: the fields read the document every frame; one held across frames (a drag, a
+    slider, typing) shows its edited value until it is let go, then writes the file once: one undo
+    step (a drag never wrote, a slider or a keystroke wrote every frame)"""
+    path = ed.project / TILESET
+    doc = json.loads(path.read_text())
+    doc["property_schema"] = [{"name": "speed", "type": "float"}, {"name": "tint", "type": "color", "default": "#808080ff"}]
+    path.write_text(json.dumps(doc, indent=2))
+    await ed.call("sync_files", paths=[TILESET])
+    try:
+        await ed.call("run_command", id="window.tilesetEditor", payload=TILESET)
+        await ui_input.frames(ed, 6)
+        tiles = (await ui(ed).reveal("##tiles", EDITOR_WINDOW))["rect"]
+        step = CELL * 2 + 1
+        await ui(ed).click(ui(ed).at(tiles, (step * 2.5, step * 0.5)))   # tile 2
+        await ui_input.frames(ed, 4)
+        # each field's outcome, checked together at the end: one field failing does not hide the next
+        wrong: list[str] = []
+
+        def expect(ok: bool, what: str) -> None:
+            if not ok:
+                wrong.append(what)
+
+        # Probability: a drag
+        before = await project_steps(ed, "Set Probability")
+        item = (await ui(ed).reveal("Probability##probability", EDITOR_WINDOW))["rect"]
+        start = ui(ed).at(item, (item["width"] * 0.3, item["height"] / 2))
+        await ui(ed).drag(start, (start[0] + 60, start[1]), steps=12)
+        await ui_input.frames(ed, 4)
+        expect(tile_doc(ed, 2).get("probability", 1.0) > 1.2, f"the drag wrote the probability: {tile_doc(ed, 2)}")
+        expect((n := await project_steps(ed, "Set Probability") - before) == 1, f"one undo step for the drag: {n}")
+
+        # Offset and Navigation Area: typed (each keystroke wrote)
+        for label, text, name, key, want in (("Offset##offset", "12", "Set Tile Offset", "offset", [12, 0]),
+                                             ("Navigation Area##navArea", "34", "Set Navigation Area", "nav_area", 34)):
+            before = await project_steps(ed, name)
+            x0, y0, x1, y1 = await probe(ed, f"tilesetEditor.{label}")
+            await ui(ed).click(ui(ed).at([x0 + (x1 - x0) * 0.1, (y0 + y1) / 2]))
+            await ui(ed).key("ctrl+a")
+            await ui(ed).type(text)
+            await ui(ed).key("Return")
+            await ui_input.frames(ed, 4)
+            expect(tile_doc(ed, 2).get(key) == want, f"{label} typed: {tile_doc(ed, 2).get(key)}")
+            expect((n := await project_steps(ed, name) - before) == 1, f"one undo step for typing {label}: {n}")
+
+        # Alpha Threshold: a slider dragged
+        before = await project_steps(ed, "Set Alpha Threshold")
+        item = (await ui(ed).reveal("Alpha Threshold##threshold", EDITOR_WINDOW))["rect"]
+        y = item["height"] / 2
+        await ui(ed).drag(ui(ed).at(item, (item["width"] * 0.1, y)), ui(ed).at(item, (item["width"] * 0.4, y)), steps=12)
+        await ui_input.frames(ed, 4)
+        threshold = tile_doc(ed, 2).get("collision", {}).get("threshold", 128)
+        expect(threshold != 128, f"the slider wrote the threshold: {tile_doc(ed, 2)}")
+        expect((n := await project_steps(ed, "Set Alpha Threshold") - before) == 1, f"one undo step for the slider: {n}")
+
+        # a Float property dragged, a Color property's red dragged
+        before = await project_steps(ed, "Set Tile Property")
+        item = (await ui(ed).reveal("speed##prop", EDITOR_WINDOW))["rect"]
+        start = ui(ed).at(item, (item["width"] * 0.3, item["height"] / 2))
+        await ui(ed).drag(start, (start[0] + 60, start[1]), steps=12)
+        await ui_input.frames(ed, 4)
+        speed = tile_doc(ed, 2).get("properties", {}).get("speed", 0.0)
+        expect(speed > 10.0, f"the drag wrote the float property: {tile_doc(ed, 2)}")
+        expect((n := await project_steps(ed, "Set Tile Property") - before) == 1, f"one undo step for the float drag: {n}")
+        x0, y0, x1, y1 = await probe(ed, "tilesetEditor.tint##prop")
+        start = ui(ed).at([x0 + (x1 - x0) * 0.04, (y0 + y1) / 2])
+        await ui(ed).drag(start, (start[0] + 40, start[1]), steps=10)
+        await ui_input.frames(ed, 4)
+        tint = tile_doc(ed, 2).get("properties", {}).get("tint", "#808080ff")
+        expect(tint.lower() != "#808080ff", f"the drag wrote the colour: {tile_doc(ed, 2)}")
+        expect((n := await project_steps(ed, "Set Tile Property") - before) == 2, f"one undo step for the colour drag: {n}")
+        await shot(ed, "tileset-editor-fields")
+        ed.check(not wrong, f"fields that did not commit once: {wrong}; tile 2: {tile_doc(ed, 2)}")
+    finally:
+        await ui(ed).release_all()
+        await close_tileset_editor(ed)
+
+
+async def test_scene_view_rests_with_a_tool_up(ed: Editor):
+    """R66: the tool's overlay is ImGui's, drawn every frame anyway: with a tile tool up and nothing
+    changing, the scene is not redrawn every frame, so the editor idles as it does without a tool"""
+    rest = STATE.get("rest_frames")
+    ed.check(rest is not None, "the first test measured the editor at rest")
+    await ed.call("select_scene", scene=STATE["scene"])
+    await tool(ed, "Paint")
+    # the pointer at rest off the Scene view
+    focus = await ui(ed).find("##FocusOn", PALETTE)
+    await ui(ed).move(ui(ed).centre(focus["rect"]))
+    await ui_input.frames(ed, 6)
+    up = await rest_frames(ed)
+    print(f"     [frames] 3 s at rest: {rest} without a tool, {up} with the Paint tool up")
+    ed.check(up <= rest * 2 + 15, f"with a tool up the editor rests too: {up} frames in 3 s, {rest} without one")
+
+
+async def test_overlay_is_capped_off_the_view(ed: Editor):
+    """R65: on a far zoom the diamond and hex overlay outlines a capped block of cells (81 x 81),
+    also while the pointer has not been over the view (it outlined every cell the view covers)"""
+    sid = STATE["scene"]
+    try:
+        # the active layer is the last layout's (hexagonal, flat top)
+        await ed.call("set_scene_camera", scene=sid, center=[64, 64], zoom=4)
+        focus = await ui(ed).find("##FocusOn", PALETTE)
+        await ui(ed).move(ui(ed).centre(focus["rect"]))
+        # a new tool, which has not seen the pointer
+        await ed.call("run_command", id="tilePalette.paint")
+        await ui_input.frames(ed, 8)
+        count = overlay_cells(ed)
+        print(f"     [overlay] {count} cells outlined at zoom 4 with the pointer off the view")
+        ed.check(count is not None and 0 < count <= 81 * 81, f"the overlay is capped: {count} cells")
+        await shot(ed, "overlay-far-zoom")
+    finally:
+        await ed.call("set_scene_camera", scene=sid, center=list(STATE["center"]), zoom=ZOOM)
+
+
+async def test_focus_on_dims_the_others_and_clears(ed: Editor):
+    """R65, R70: Focus On Layer dims the scene's other layers; once the focused layer is deleted no
+    layer stays dimmed. The Palette's Create Layer... is one step named as the Inspector's Add Layer"""
+    sid = STATE["scene"]
+    first = STATE["layer"]
+    try:
+        await ed.call("select_entities", scene=sid, entities=[STATE["grid"]])
+        await ui_input.frames(ed, 4)
+        await click_item(ed, "##ActiveTilemap")
+        await ui(ed).click_item("Create Layer...")
+        await ui_input.frames(ed, 4)
+        created = (await undo_names(ed))[-1]
+        second = (await ed.call("get_selection", scene=sid))["entities"][0]["id"]
+        ed.check(second != first, f"a new layer is selected: {second}")
+        await ed.call("edit_tilemap", scene=sid, entity=second, ops=[{"op": "set", "cells": [[20, 20, 1]]}])
+        await tool(ed, "Paint")
+        await click_item(ed, "##FocusOn")
+        await ui(ed).click_item("Layer", "##Combo")
+        await ui_input.frames(ed, 6)
+        ed.check(abs(await layer_alpha(ed, first) - 0.35) < 0.01, "Focus On Layer dims the other layer")
+        ed.check(abs(await layer_alpha(ed, second) - 1.0) < 0.01, "and not the focused one")
+        await shot(ed, "focus-on-layer")
+        await ed.call("delete_entities", scene=sid, entities=[second])
+        await ui_input.frames(ed, 6)
+        ed.check(abs(await layer_alpha(ed, first) - 1.0) < 0.01, "the focused layer deleted, the other one is undimmed")
+        ed.check_eq(created, "Add Tilemap Layer", "the Palette's Create Layer... step")
+    finally:
+        await click_item(ed, "##FocusOn")
+        await ui(ed).click_item("None", "##Combo")
+        await ui_input.frames(ed, 4)
+
+
+async def test_a_stroke_never_lands_in_another_scene(ed: Editor):
+    """R66, R70: a tool in another scene's view refuses the Active Tilemap of this one: its stroke
+    edited this scene's layer and went to the other scene's undo history"""
+    sid = STATE["scene"]
+    await ed.call("select_scene", scene=sid)
+    await ed.call("select_entities", scene=sid, entities=[STATE["layer"]])
+    await ui_input.frames(ed, 4)
+    await click_item(ed, "Tiles")
+    await choose_tile(ed, 1, 0)
+    before = await cells(ed)
+    # the Palette follows the selected scene's Grid: closed, the Active Tilemap stays this scene's
+    await close_window(ed, PALETTE)
+    other = (await ed.call("create_scene", name="Other", type="2d"))["scene"]["id"]
+    try:
+        await ed.call("select_scene", scene=other)
+        await ui_input.frames(ed, 6)
+        await ed.call("run_command", id="tilePalette.paint")
+        view = (await ed.call_raw("screenshot", {"view": "scene", "scene": other, "max_width": 0})).structured["view_rect_in_window"]
+        await ui(ed).click(ui(ed).at(view, (view["width"] / 2, view["height"] / 2)))
+        await ui_input.frames(ed, 4)
+        ed.check_eq(sorted(await cells(ed)), sorted(before), "the first scene's layer is untouched")
+        steps = (await ed.call("get_undo_history", scene=other, scope="scene", limit=50))["entries"]
+        ed.check(not any(entry["name"] == "Paint Tiles" for entry in steps), f"no stroke in the other scene's history: {steps}")
+    finally:
+        await ed.call("select_scene", scene=sid)
+        await ed.call("run_command", id="window.tilePalette")
