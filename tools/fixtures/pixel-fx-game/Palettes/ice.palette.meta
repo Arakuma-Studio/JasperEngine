@@ -1,0 +1,4 @@
+metaVersion: 1
+guid: 64cf22c575c97401c8872f2ce3bcfec6
+subAssets:
+  - {key: "ramp:ice", guid: d68dafc19da740d2802a11f8b9f087ce, name: ice}

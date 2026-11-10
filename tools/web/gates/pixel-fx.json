@@ -1,0 +1,38 @@
+{
+  "description": "tools/test-projects/pixel-fx (WEB_PROJECT=pixel-fx tools/build.sh web): S48's runtime Pixel FX in WebAssembly without pthreads, on WebGL2 (SwiftShader in the web image's headless shell), AC26. library:sprite sprites with the PIXEL4 outline and Dissolve, Dither Fade, Ramp Recolour, Drop Shadow and Hit flash under Glitch at intensity 0; a PixelFX dissolve, a Hit-Stop and a glitch burst run, then an iris Transition covers and reveals; the frame then holds with the flash's magenta at the centre.",
+  "rgb": [
+    255,
+    0,
+    255
+  ],
+  "tolerance": 2,
+  "isolated": true,
+  "seconds": 10,
+  "console": [
+    {
+      "text": "[gate] pixel_fx dissolve true",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pixel_fx hit_stop true",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pixel_fx glitch burst 0.8",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pixel_fx dissolve finished",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pixel_fx covered true",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pixel_fx revealed",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}
