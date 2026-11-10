@@ -85,9 +85,10 @@ namespace jasperengine::editor::tilemap {
 
         TileFocusMode focus() const { return focusMode; }
         void setFocus(TileFocusMode mode);
-        // writes the Focus On dim into every layer of `scene` (1: undimmed)
-        void applyFocusDim(Scene* scene) const;
-        void clearFocusDim(Scene* scene) const;
+        // writes the Focus On dim into every layer of `scene` (1: undimmed; all of them when the
+        // focused layer is not in it); true when a layer's dim changed (the scene must redraw)
+        bool applyFocusDim(Scene* scene) const;
+        bool clearFocusDim(Scene* scene) const;
 
         // ---- the brush edits of the Palette's and the Scene tools' keys (R64)
         void rotateBrush(int direction);     // +1: clockwise, -1: counter-clockwise

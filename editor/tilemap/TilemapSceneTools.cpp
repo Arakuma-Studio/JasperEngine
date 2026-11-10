@@ -16,6 +16,7 @@
 #include "subsystem/TilemapSystem.h"
 #include "tilemap/TilePageTextures.h"
 #include "tilemap/TilemapCellsCmd.h"
+#include "util/UIProbe.h"
 
 #include <algorithm>
 #include <cmath>
@@ -227,31 +228,44 @@ void TilemapTools::setFocus(TileFocusMode mode) {
     if (!projectPtr) return;
     if (SceneProject* sceneProject = projectPtr->getScene(layerScene)) {
         if (sceneProject->scene) {
-            if (mode == TileFocusMode::None) clearFocusDim(sceneProject->scene);
+            // with a tool up its overlay dims again next frame; without one nothing stays dimmed
+            if (mode == TileFocusMode::None || !activeTool) clearFocusDim(sceneProject->scene);
             sceneProject->needUpdateRender = true;
         }
     }
 }
 
-void TilemapTools::applyFocusDim(Scene* scene) const {
-    if (!scene || focusMode == TileFocusMode::None || layerEntity == NULL_ENTITY) return;
+bool TilemapTools::applyFocusDim(Scene* scene) const {
+    if (!scene) return false;
     const TileLayerContext context = resolve();
-    if (!context.layer || context.scene != scene) return;
+    // no focused layer here (Focus On None, or the active layer deleted or in another scene): no
+    // layer of this scene stays dimmed
+    if (focusMode == TileFocusMode::None || !context.layer || context.scene != scene) return clearFocusDim(scene);
     auto system = scene->getSystem<TilemapSystem>();
     auto layers = scene->getComponentArray<TilemapLayerComponent>();
+    bool changed = false;
     for (size_t i = 0; i < layers->size(); i++) {
         TilemapLayerComponent& other = layers->getComponentFromIndex(i);
         const Entity entity = layers->getEntity(i);
         bool focused = entity == context.entity;
         if (focusMode == TileFocusMode::Grid && context.grid != NULL_ENTITY && system) focused = system->findGrid(entity) == context.grid;
-        other.focusDim = focused ? 1.0f : 0.35f;
+        const float dim = focused ? 1.0f : 0.35f;
+        changed = changed || other.focusDim != dim;
+        other.focusDim = dim;
     }
+    return changed;
 }
 
-void TilemapTools::clearFocusDim(Scene* scene) const {
-    if (!scene) return;
+bool TilemapTools::clearFocusDim(Scene* scene) const {
+    if (!scene) return false;
     auto layers = scene->getComponentArray<TilemapLayerComponent>();
-    for (size_t i = 0; i < layers->size(); i++) layers->getComponentFromIndex(i).focusDim = 1.0f;
+    bool changed = false;
+    for (size_t i = 0; i < layers->size(); i++) {
+        TilemapLayerComponent& layer = layers->getComponentFromIndex(i);
+        changed = changed || layer.focusDim != 1.0f;
+        layer.focusDim = 1.0f;
+    }
+    return changed;
 }
 
 void TilemapTools::rotateBrush(int direction) {
@@ -383,6 +397,11 @@ bool TilemapSceneTool::targetFor(TileLayerContext& context, bool refuseLinked) {
     context = TilemapTools::get().resolve();
     if (!context.layer) {
         statusText = "Choose an Active Tilemap in the Tile Palette";
+        return false;
+    }
+    // a stroke goes to this view's undo history: a layer of another scene would be edited there
+    if (context.sceneProject->id != sceneId) {
+        statusText = "The Active Tilemap is in another scene: choose one of this scene in the Tile Palette";
         return false;
     }
     if (refuseLinked && context.linked) {
@@ -730,7 +749,13 @@ void TilemapSceneTool::cancel() {
     }
     stroke = StrokeShape::None;
     edit = BrushEdit();
-    if (context.scene) tools.clearFocusDim(context.scene);
+    // the dim is the tool's while it is up (drawOverlay): leaving it undims this view's scene, also
+    // when the active layer is gone or in another scene
+    if (Project* project = tools.project()) {
+        if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->scene && tools.clearFocusDim(sceneProject->scene)) {
+            sceneProject->needUpdateRender = true;
+        }
+    }
 }
 
 // ---- overlay (R65)
@@ -800,15 +825,29 @@ void TilemapSceneTool::drawGrid(const TileLayerContext& context, SceneRender& re
         }
         return;
     }
-    // diamonds and hexes: each cell's outline; capped around the pointer on a far zoom
-    if (rect.area() > 6000 && hoverValid) {
-        rect.minX = hoverCell.x - 40; rect.maxX = hoverCell.x + 40;
-        rect.minY = hoverCell.y - 40; rect.maxY = hoverCell.y + 40;
+    // diamonds and hexes: each cell's outline; capped on a far zoom, around the pointer, else around
+    // the view's centre (a pointer off the view must not draw every cell it covers)
+    if (rect.area() > 6000) {
+        CellCoord around = hoverCell;
+        if (!hoverValid) {
+            TilePoint point;
+            if (rayToPlane(render.screenToRay((float)viewWidth * 0.5f, (float)viewHeight * 0.5f), context, point)) around = tilegrid::localToCell(context.spec, point);
+            else around = CellCoord{(int32_t)((rect.minX + rect.maxX) / 2), (int32_t)((rect.minY + rect.maxY) / 2)};
+        }
+        rect.minX = around.x - 40; rect.maxX = around.x + 40;
+        rect.minY = around.y - 40; rect.maxY = around.y + 40;
     }
+    int64_t outlines = 0;
     for (int64_t y = rect.minY; y <= rect.maxY; y++) {
         for (int64_t x = rect.minX; x <= rect.maxX; x++) {
             drawCellOutline(context, render, list, CellCoord{(int32_t)x, (int32_t)y}, lineColor, 1.0f, false);
+            outlines++;
         }
+    }
+    if (UIProbe::enabled()) {
+        // the UI tests read how many cells the overlay outlined (a name, as the probe holds rects)
+        const ImVec2 corner = list.GetClipRectMin();
+        UIProbe::rect("tilemap.overlay.cells." + std::to_string(outlines), corner.x + 1.0f, corner.y + 1.0f, corner.x + 2.0f, corner.y + 2.0f);
     }
 }
 
@@ -884,10 +923,17 @@ void TilemapSceneTool::drawGhost(const TileLayerContext& context, SceneRender& r
 }
 
 void TilemapSceneTool::drawOverlay(SceneRender& render, ImDrawList& list) {
-    TileLayerContext context = TilemapTools::get().resolve();
-    if (!context.layer || context.sceneProject->id != sceneId) return;
     TilemapTools& tools = TilemapTools::get();
-    tools.applyFocusDim(context.scene);
+    TileLayerContext context = tools.resolve();
+    if (!context.layer || context.sceneProject->id != sceneId) {
+        // the active layer deleted or in another scene: what it dimmed here is undimmed
+        Project* project = tools.project();
+        SceneProject* view = project ? project->getScene(sceneId) : nullptr;
+        if (view && view->scene && tools.clearFocusDim(view->scene)) view->needUpdateRender = true;
+        return;
+    }
+    // the overlay is ImGui's, drawn every frame: the scene redraws only when the dim changes
+    if (tools.applyFocusDim(context.scene)) context.sceneProject->needUpdateRender = true;
     drawGrid(context, render, list);
 
     const TileBrushState& brush = tools.brush();
@@ -927,5 +973,4 @@ void TilemapSceneTool::drawOverlay(SceneRender& render, ImDrawList& list) {
     if (hoverValid) {
         drawCellOutline(context, render, list, display ? hoverDisplay : hoverCell, accent, 2.0f, display);
     }
-    context.sceneProject->needUpdateRender = true;
 }
