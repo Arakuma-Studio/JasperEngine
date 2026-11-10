@@ -357,7 +357,8 @@ async def test_clean_fixture(ed: Editor):
 
 async def test_determinism_in_play(ed: Editor):
     # a 2D scene's camera works in points: a 128 px sprite at 16 per unit is 8 points wide, and the scripts
-    # move it by up to 24 points
+    # move it by up to 24 points. RandomStart never starts two loads in a row at the same x (it draws again
+    # on a repeat, its RNG and globals living through the reload), so the FAIL below cannot pass by chance.
     red = await sprite(ed, "Random", HERO_PNG, 128, at=(0.0, -3.0))
     await ed.call("create_script", kind="lua", name="RandomStart", content=(FIXTURE / "scripts" / "RandomStart.lua").read_text(), entity=red)
     await ed.call("save_scene", scene=S["scene"], path="assets/scenes/Sheets")
