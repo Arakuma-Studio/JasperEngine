@@ -95,3 +95,24 @@ TEST(AnimeClock, AligningSourcesPreservesProgressAndDiscardsLoadingTime){
     EXPECT_NEAR(gameTarget->getNumber("v"), 200, 1e-8);
     engine.reset();
 }
+
+TEST(AnimeClock, PreviewCollectsPausedRootsAndZeroDurationWithoutChildren){
+    AnimEngine& engine = AnimEngine::instance();
+    engine.reset();
+    std::vector<std::shared_ptr<AnimTimer>> captured;
+    std::shared_ptr<AnimTimeline> timeline;
+    std::shared_ptr<AnimAnimation> instant;
+    auto target = std::make_shared<AnimObjectTarget>(std::initializer_list<std::pair<const std::string, AnimRawValue>>{{"v", AnimRawValue(0.0)}});
+    {
+        AnimEngine::ScopedTickPause pause(&captured);
+        timeline = Anime::createTimeline(AnimParam::object({{"autoplay", false}}));
+        timeline->add({target}, AnimParam::object({{"v", 100}, {"duration", 1000}}));
+        instant = Anime::animate({target}, AnimParam::object({{"v", 200}, {"duration", 0}}));
+    }
+    ASSERT_EQ(captured.size(), 2u);
+    EXPECT_EQ(captured[0], timeline);
+    EXPECT_EQ(captured[1], instant);
+    EXPECT_TRUE(timeline->isPaused());
+    for (const auto& timer : captured) EXPECT_EQ(timer->getParent(), nullptr);
+    engine.reset();
+}

@@ -124,7 +124,15 @@ void AnimEngine::add(AnimTimer& timer){
     timer.running = true;
     timer.engineRef = timer.shared_from_this();
     hasChildren = true;
-    if (timerCollector) timerCollector->push_back(timer.engineRef);
+    captureTimer(timer);
+}
+
+void AnimEngine::captureTimer(AnimTimer& timer){
+    if (!timerCollector || timer.parent) return;
+    for (const auto& captured : *timerCollector){
+        if (captured.get() == &timer) return;
+    }
+    timerCollector->push_back(timer.shared_from_this());
 }
 
 void AnimEngine::update(){
