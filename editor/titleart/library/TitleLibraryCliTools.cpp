@@ -671,8 +671,9 @@ int titlelibrary::runBakeThumbnailsCommand(const std::vector<std::string>& args,
         // a template fills its canvas (640 wide is plenty for a 240 px thumbnail, and the 3D ones
         // stay inside the renderer's target memory); a look is a word cropped out of the canvas
         const int width = p.item->kind == LibraryKind::Template ? 640 : 1280;
+        // no copy kept for `compare: rev:<n>`: keeping one costs a second render at 768 px wide
         s.calls.push_back(callLine("render_title", Json{{"path", "assets/" + p.doc}, {"save_path", p.png}, {"backgrounds", Json::array({"transparent"})},
-                                                       {"image", "none"}, {"max_width", width}}));
+                                                       {"image", "none"}, {"max_width", width}, {"options", Json{{"keep", false}}}}));
     }
     const auto start = std::chrono::steady_clock::now();
     std::vector<Json> results;
