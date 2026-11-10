@@ -3727,6 +3727,25 @@ std::vector<Setting> mcpSettingsTable() {
             s.preference = true;
             add(s);
         }
+        {
+            Setting s;
+            s.key = "preferences.pixel_art.agent_edit_highlight";
+            s.type = "bool";
+            s.preference = true;
+            s.description = "Pixel Art: outline the pixels an agent changed in the Sprite Preview, fading over 3 s.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                if (apply) {
+                    PixelArtPreferences settings = AppSettings::getPixelArtPreferences();
+                    settings.agentEditHighlight = b;
+                    AppSettings::setPixelArtPreferences(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
         auto stringPreference = [&add](const std::string& key, const std::string& description,
                                        std::function<std::string()> get, std::function<void(const std::string&)> set) {
             Setting s;
@@ -4689,6 +4708,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     const char* diagnostics = "Diagnostics";
+    addOrAbort(registry, uiRow("preferences.pixel_art.agent_edit_highlight", "Pixel Art", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels",
+        [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); },
+        "The Sprite Preview outlines the pixels an agent changed, fading over 3 s"));
     addOrAbort(registry, uiRow("preferences.diagnostics.hang_watchdog", diagnostics, "", "Hang Watchdog", "hang freeze not responding report",
         [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().hangWatchdog); },
         "Writes a hang report when the editor stops responding (set_hang_watchdog sets it)."));

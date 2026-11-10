@@ -357,6 +357,16 @@ holds only the copies a project makes of them) are colour data, credited here an
 | `resurrect-64` | Kerrie Lake | [Lospec: Resurrect 64](https://lospec.com/palette-list/resurrect-64) | free to use, credited |
 | `aap-64` | Adigun A. Polack | [Lospec: AAP-64](https://lospec.com/palette-list/aap-64) | free to use, credited |
 
+The agent sprite drawing tools (`editor/pixelart/draw/`, docs/specs/S47-agent-sprite-drawing.md) take their design from
+[tenten](https://github.com/debuffjp/tenten) by debuff (MIT) and port these algorithms, keeping the headers in the sources:
+[Pixelorama](https://github.com/Orama-Interactive/Pixelorama) (MIT, Copyright (c) 2019-present Orama Interactive and contributors): the
+pixel-perfect line (`src/Classes/Drawers.gd`), the scanline flood fill (`src/Classes/FloodFillObject.gd`, from Allegro 4.2.1's `flood.c` by
+Shawn Hargreaves), Zingl's ellipse and rounded rectangles (`src/Autoload/DrawingAlgos.gd`), the outline neighbourhoods
+(`src/Shaders/Effects/OutlineInline.gdshaderinc`), hue-shift shading (`src/Tools/DesignTools/Shading.gd`) and the rotxel and nearest
+rotations; [cleanEdge](https://torcado.com/cleanEdge/) by torcado (MIT, Copyright (c) 2022 torcado) and
+[OmniScale](https://github.com/libretro/glsl-shaders) by Lior Halphon (MIT, Copyright (c) 2015-2016 Lior Halphon, no-AA version by deakcor),
+ported to the CPU as the rotations of `edit_sprite`.
+
 Test data: the Endesga 32 files under `editor/tests/fixtures/palettes/` (`lospec-endesga-32.*`) and
 the recorded Lospec answers under `tools/mcp/tests/fixtures/lospec-mirror/` are Lospec's own
 downloads of the palettes above. The palette importers follow GIMP's `gimppalette-load.c` layout as

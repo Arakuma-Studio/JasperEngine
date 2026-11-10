@@ -172,8 +172,8 @@ never build or run them.
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
-| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | in review |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | in review |
+| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
@@ -208,7 +208,7 @@ deadline of 2026-11-11 19:0x UTC:
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
 | A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
-| B | 5.161.235.8 | 32dda2ca7cd1 | S47, batch landings (earlier S42) |
+| B | 5.161.235.8 | 32dda2ca7cd1 | destroyed 2026-11-10 (idle after S47 and S48 runtime fixes; logs in `/tmp/je-logs/boxB-archive/`) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
@@ -244,6 +244,10 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
+- S47 polish, within R41 as written: after an outside save the Sprite Preview's Undo stays enabled
+  although the step can't be undone. The click is refused safely, but the panel says only "The step
+  could not be undone" (the reason is in the status bar), and the "Edited by" line stays under the
+  warning.
 - `walkRefFields` (`editor/asset/AssetRefSchema.cpp:715`) dereferences a null `node.guid` when a
   reflected string field has `.asset` but no `<name>Guid` sibling, and nothing checks for the
   sibling when the table is built. S50 hit it and removed its own `.asset`; the next field declared
@@ -259,6 +263,23 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S46 passed its lighter gate at `df94fc993` on box A (`WERROR` build; editor 341/341;
+  MCP 143 passed and 3 skipped; tool budget core 98,997 of 99,000; performance budgets met; red runs
+  for every behaviour) and its independent review started. S46 changed `PixelLint`/`CraftLints`
+  after S47 landed its copies, so S46's versions replace them at landing. S48 takes the `lintFlicker`
+  alpha-0 fix. `check_fanout` has `MeshComponent.h` at 150 of 150.
+
+- 2026-11-10: box B destroyed, idle once S47 landed and S48's runtime fixes finished. D takes S48's
+  final gate and batch checks and goes after S48 lands; A (S46) and C (S50) stay to the end.
+
+- 2026-11-10: S47 Agent Sprite Drawing merged (`293a1ce45`), with `fix/main-neutral-hashes`
+  (terrain bound `Input.getPenPressure` and two `NavMeshSurface` fields without updating the reviewed
+  hashes, so `ShaderNeutralApi.NeutralClassesAreTheReviewedOnes` failed on `main`). Gate on the
+  merged tree, box D: `WERROR` build, MCP 168 passed and 3 skipped (`test_golden_resave_prefab_*`, no
+  TappyPlane), unit 248 run with only the hash test failing, then shared-data suites 125/125 with the
+  fix. Red runs on the old code: 13 MCP tests and 16 gtests. Nothing under `engine/`, so web and
+  android do not apply. The MCP eval is still to run, with the other pixel-art cases.
 
 - 2026-11-09: S47's review found 9 blockers (crashes on oversized renders and huge coordinates, two
   file corruptions, linked cels edited twice, a false external-save warning, tests that cannot

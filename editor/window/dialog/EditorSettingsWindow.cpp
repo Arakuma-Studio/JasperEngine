@@ -69,6 +69,7 @@ namespace {
         SceneView,
         ExternalTools,
         Logging,
+        PixelArt,
         Diagnostics,
         ShaderCache,
         VersionControl,
@@ -251,6 +252,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_undoReviewPlayChanges = AppSettings::getUndoReviewPlayChanges();
     m_logging = AppSettings::getLoggingSettings();
     m_diagnostics = AppSettings::getDiagnosticsSettings();
+    m_pixelArt = AppSettings::getPixelArtPreferences();
     m_versionControl = AppSettings::getVersionControlSettings();
     m_smartMergeStatus.clear();
     m_lattice = AppSettings::getLatticeViewSettings();
@@ -373,6 +375,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::SceneView: drawSceneViewSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
+        case PreferencesCategory::PixelArt: drawPixelArtSettings(); break;
         case PreferencesCategory::Diagnostics: drawDiagnosticsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         case PreferencesCategory::VersionControl: drawVersionControlSettings(); break;
@@ -1267,6 +1270,19 @@ void EditorSettingsWindow::drawLoggingSettings() {
     });
 }
 
+void EditorSettingsWindow::drawPixelArtSettings() {
+    prefsDrawSettingsPanel("##EditorPixelArtSettingsPanel", [this]() {
+        const PixelArtPreferences defaults;
+        if (settingsui::beginRow("preferences.pixel_art.agent_edit_highlight")) {
+            if (prefsBeginSettingsRow("Highlight Agent Edits", "The Sprite Preview outlines the pixels an agent changed, fading over 3 s.",
+                                 m_pixelArt.agentEditHighlight != defaults.agentEditHighlight)) {
+                m_pixelArt.agentEditHighlight = defaults.agentEditHighlight;
+            }
+            ImGui::Checkbox("##AgentEditHighlight", &m_pixelArt.agentEditHighlight);
+        }
+    });
+}
+
 void EditorSettingsWindow::drawDiagnosticsSettings() {
     prefsDrawSettingsPanel("##EditorDiagnosticsSettingsPanel", [this]() {
         const DiagnosticsSettings defaults;
@@ -1506,6 +1522,7 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setUndo(m_undoMaxSteps, m_undoMemoryLimitMB, m_undoRecordSelection, m_undoReviewPlayChanges);
     AppSettings::setLoggingSettings(m_logging);
     AppSettings::setDiagnosticsSettings(m_diagnostics);
+    AppSettings::setPixelArtPreferences(m_pixelArt);
     if (m_versionControl != AppSettings::getVersionControlSettings()) {
         AppSettings::setVersionControlSettings(m_versionControl);
         if (m_project) m_project->getVcs().applySettings(m_project->versionControlServiceSettings());
