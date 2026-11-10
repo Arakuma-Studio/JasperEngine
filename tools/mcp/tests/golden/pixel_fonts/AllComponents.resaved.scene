@@ -2836,3 +2836,19 @@ entities:
         collisionChunkQuads: 6
         autoAddTiles: false
         overviewCastsShadows: true
+  - type: Entity
+    entity: 1100
+    name: HitStopExemptComponent
+    components:
+      transform:
+        position: [99, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      hitstopexempt:
+        enabled: false
+        includeChildren: false
