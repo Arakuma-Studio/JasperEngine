@@ -176,7 +176,7 @@ never build or run them.
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
-| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
+| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | in review |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | merged and pushed |
 
@@ -263,6 +263,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S50 passed its lighter gate at `aee48ed46` on box C (`WERROR` build, core 264/264,
+  editor 303/303, MCP 233 passed, 1 failed, 3 skipped; `check_fanout` with `MeshComponent.h` at 150 of
+  150). The one failure is `test_lua_api_resource`: eight S52 `SpriteBatch` functions lack parser
+  signatures, also failing on the base, and S48 adds them. Real bugs found on the way: an AssetRef walk
+  segfault, a missing `Tcl` property count, one-byte enums read as four bytes, and Solid Terrains lost
+  in compiled builds. Independent review started. S48's merged tree: core 179/179, editor 219/219,
+  MCP 182 passed and 3 skipped, GPU 37/37 on Vulkan and on GLES3, twin difference at most 1/255 on
+  every backend; web, android and AC26 still running on box D.
 
 - 2026-11-10: S46's review found one blocker (the Cleanup window keeps keyboard focus after it closes,
   so it keeps taking Ctrl+Z and tool keys) and about a dozen should-fixes: the verdict lints the
