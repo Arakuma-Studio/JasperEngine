@@ -4335,6 +4335,7 @@ void editor::App::engineRender(){
             renderedSceneThisFrame = true;
             sceneProject.needUpdateRender = false;
             sceneViewDrawn = true;
+            UIProbe::count("scene.renders");
         }
 
         if (gameViewPassDue) {

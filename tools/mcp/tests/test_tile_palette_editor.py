@@ -9,7 +9,6 @@ directory) for docs/specs/evidence/s50/.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -122,12 +121,21 @@ async def tool(ed: Editor, name: str) -> None:
     await click_item(ed, f"###tool_{name}")
 
 
-async def rest_frames(ed: Editor, seconds: float = 3.0) -> int:
-    """The frames the editor ran in `seconds` with no input: at rest it idles (EditorFrame), a scene
-    redrawn every frame keeps it at full rate"""
-    await ed.call("editor_status")   # starts the frame window
-    await asyncio.sleep(seconds)
-    return (await ed.call("editor_status"))["frame_ms"]["frames"]
+REST_FRAMES = 40
+
+
+def scene_renders(ed: Editor) -> int:
+    """The selected Scene view's redraws so far (the UI probe's running count)"""
+    return int(ed.ui_probe_state().get("counts", {}).get("scene.renders", 0))
+
+
+async def rest_renders(ed: Editor) -> int:
+    """The Scene view's redraws over REST_FRAMES editor frames with no input, after the frames a
+    change keeps drawing (App's RENDER_SETTLE_FRAMES, 30)"""
+    await ui_input.frames(ed, 40)
+    before = scene_renders(ed)
+    await ui_input.frames(ed, REST_FRAMES)
+    return scene_renders(ed) - before
 
 
 async def project_steps(ed: Editor, name: str) -> int:
@@ -230,7 +238,7 @@ async def test_create_grid_and_palette(ed: Editor):
     await ui_input.frames(ed, 6)
     await shot(ed, "palette-window")
     # what the editor draws at rest with no tile tool up (test_scene_view_rests_with_a_tool_up)
-    STATE["rest_frames"] = await rest_frames(ed)
+    STATE["rest_renders"] = await rest_renders(ed)
 
 
 async def test_paint_erase_pick(ed: Editor):
@@ -491,18 +499,17 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
 
 async def test_scene_view_rests_with_a_tool_up(ed: Editor):
     """R66: the tool's overlay is ImGui's, drawn every frame anyway: with a tile tool up and nothing
-    changing, the scene is not redrawn every frame, so the editor idles as it does without a tool"""
-    rest = STATE.get("rest_frames")
-    ed.check(rest is not None, "the first test measured the editor at rest")
+    changing, the scene is not redrawn every frame, as without a tool"""
+    rest = STATE.get("rest_renders")
+    ed.check(rest is not None, "the first test counted the redraws at rest")
     await ed.call("select_scene", scene=STATE["scene"])
     await tool(ed, "Paint")
     # the pointer at rest off the Scene view
     focus = await ui(ed).find("##FocusOn", PALETTE)
     await ui(ed).move(ui(ed).centre(focus["rect"]))
-    await ui_input.frames(ed, 6)
-    up = await rest_frames(ed)
-    print(f"     [frames] 3 s at rest: {rest} without a tool, {up} with the Paint tool up")
-    ed.check(up <= rest * 1.4 + 5, f"with a tool up the editor rests too: {up} frames in 3 s, {rest} without one")
+    up = await rest_renders(ed)
+    print(f"     [renders] over {REST_FRAMES} frames at rest: {rest} without a tool, {up} with the Paint tool up")
+    ed.check(up <= rest + 2, f"with a tool up the scene rests too: {up} redraws in {REST_FRAMES} frames, {rest} without one")
 
 
 async def test_overlay_is_capped_off_the_view(ed: Editor):
