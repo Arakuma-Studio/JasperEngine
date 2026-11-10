@@ -74,6 +74,7 @@ ops are below (Languages; Import and export).
      cells, labelled in `cells`).
    - `compare: "rev:<n>"` (the last 16 renders of each document are kept) or a PNG path gives
      `diff {changed_pct, max, mean, bbox}`: a no-op is 0, a colour change is > 0.
+     `options: {keep: false}` keeps no copy (one render instead of two, for batches of renders).
    - `layer` renders one layer alone, `output` an output's frame and content, `crop` [x, y, w, h]
      canvas pixels, `fallback: "rgba8"` the RGBA8 path (`"compare"`: both, `pixel_paths_diff`),
      `image: "none"` metrics only, `save_path` writes the PNG with real alpha.

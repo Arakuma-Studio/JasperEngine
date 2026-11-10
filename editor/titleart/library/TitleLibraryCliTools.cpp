@@ -285,6 +285,11 @@ namespace {
 
     // runs the calls in a one-shot headless editor on the scratch project; the result envelopes
     bool runBatch(const char* executable, const Scratch& s, std::vector<Json>& results, std::string& error) {
+#if !defined(_WIN32)
+        // the editor (spawned by `batch`) inherits it: compiled shaders survive the run
+        const std::string mesaCache = mesaShaderCacheDir(std::getenv("MESA_SHADER_CACHE_DIR"), std::getenv("XDG_CACHE_HOME"), std::getenv("HOME"));
+        if (!mesaCache.empty()) setenv("MESA_SHADER_CACHE_DIR", mesaCache.c_str(), 0);
+#endif
         const fs::path calls = s.dir / "calls.ndjson", out = s.dir / "results.ndjson", err = s.dir / "editor-stderr.txt";
         std::string text;
         for (const std::string& c : s.calls) text += c + "\n";
@@ -412,6 +417,13 @@ namespace {
         return work;
     }
 
+}
+
+// ---- the headless editors' environment ----
+
+std::string titlelibrary::mesaShaderCacheDir(const char* mesaDir, const char* xdgCache, const char* home) {
+    if ((mesaDir && *mesaDir) || (xdgCache && *xdgCache) || !home || !*home) return {};
+    return (fs::path(home) / ".cache" / "mesa_shader_cache").string();
 }
 
 // ---- list, verify, lint, gen-docs ----
@@ -669,8 +681,9 @@ int titlelibrary::runBakeThumbnailsCommand(const std::vector<std::string>& args,
         // a template fills its canvas (640 wide is plenty for a 240 px thumbnail, and the 3D ones
         // stay inside the renderer's target memory); a look is a word cropped out of the canvas
         const int width = p.item->kind == LibraryKind::Template ? 640 : 1280;
+        // no copy kept for `compare: rev:<n>`: keeping one costs a second render at 768 px wide
         s.calls.push_back(callLine("render_title", Json{{"path", "assets/" + p.doc}, {"save_path", p.png}, {"backgrounds", Json::array({"transparent"})},
-                                                       {"image", "none"}, {"max_width", width}}));
+                                                       {"image", "none"}, {"max_width", width}, {"options", Json{{"keep", false}}}}));
     }
     const auto start = std::chrono::steady_clock::now();
     std::vector<Json> results;

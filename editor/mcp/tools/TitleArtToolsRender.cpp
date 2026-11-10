@@ -672,6 +672,13 @@ bool checkRenderOptions(const Json& options, std::string& error) {
             error = "bad_option: `options.languages` is \"all\" or a list of language codes.";
             return false;
         }
+        // S84's thumbnail baker: false keeps no copy for `compare: "rev:<n>"`, so the render is one
+        // pass instead of two (the kept copy is a second render at the canonical 768 px scale)
+        if (it.key() == "keep") {
+            if (it.value().is_boolean()) continue;
+            error = "bad_option: `options.keep` is true or false.";
+            return false;
+        }
         if (it.key() == "debug_view") {
             const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
             if (titleDebugView(view) >= 0) continue;
@@ -689,7 +696,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
                         "instead of `path`.";
                 return false;
             }
-            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost, quality, debug_view and languages.";
+            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost, quality, debug_view, languages and keep.";
             return false;
         }
         if (!known) {
@@ -697,7 +704,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
             for (const OptionKey& k : RENDER_OPTIONS) {
                 if (std::strcmp(k.owner, "S86") != 0 && std::strcmp(k.owner, "S87") != 0) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
             }
-            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost, quality, debug_view and languages; later features add: " + list + ".";
+            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost, quality, debug_view, languages and keep; later features add: " + list + ".";
             return false;
         }
     }
@@ -853,7 +860,8 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     }
     // the canonical render of the current state: kept as this rev's, and what rev compares use
     const bool plain = !whatIf && isolate.empty() && s->outputIndex < 0 && s->region.empty() && flags == 0;
-    s->keep = spec.current && !whatIf;
+    const bool keepOption = !(args.contains("options") && args["options"].is_object() && args["options"].value("keep", true) == false);
+    s->keep = spec.current && !whatIf && keepOption;
     const float canonicalScale = std::min(1.0f, 768.0f / static_cast<float>(std::max(1, cw)));
     const bool needCanonical = (s->keep || s->compare.rfind("rev:", 0) == 0) && !(plain && std::abs(scale - canonicalScale) < 1e-6f);
     if (needCanonical) {

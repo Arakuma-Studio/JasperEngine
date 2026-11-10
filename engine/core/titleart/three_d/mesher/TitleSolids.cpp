@@ -306,8 +306,11 @@ TitleSolids jasperengine::titleart::three_d::buildTitleSolids(const TitleShapes3
         Shapes all;
         for (const TitlePart3D& part : t.parts) all.insert(all.end(), part.shapes.begin(), part.shapes.end());
         // the output scale matters in powers of two only, so zooming the preview rarely rebuilds
-        const double step = inflateStep(all, inflateScale(options.outputScale), std::clamp(p.inflate.detail, 1, 4), options.inflateMaxNodes) *
-                            (options.draft ? 2 : 1) * options.inflateStepScale;
+        const double tierStep = inflateStep(all, inflateScale(options.outputScale), std::clamp(p.inflate.detail, 1, 4), options.inflateMaxNodes) *
+                                (options.draft ? 2 : 1) * options.inflateStepScale;
+        const double step = options.inflateBudgetScale > 1
+                                ? std::max(tierStep, std::min(tierStep * options.inflateBudgetScale, inflateInset(all) / INFLATE_MIN_NODES_PER_INSET))
+                                : tierStep;
         std::vector<std::vector<std::shared_ptr<const InflateField>>> partFields;
         double maxDist = 0;
         for (const TitlePart3D& part : t.parts) {
@@ -368,7 +371,7 @@ TitleSolids jasperengine::titleart::three_d::buildTitleSolids(const TitleShapes3
             // touching glyphs, so their rings merge instead of crossing
             std::vector<ProfileSpan> inner, outer;
             splitAtOutline(spans, inner, outer);
-            const double ringStep = (options.draft ? 2.0 : 1.0) / inflateScale(options.outputScale);
+            const double ringStep = (options.draft ? 2.0 : 1.0) * options.ringStepScale / inflateScale(options.outputScale);
             auto outward = [&](const Shapes& shapes, uint32_t base, int rig, std::function<uint16_t(const ShapeContours&)> span) {
                 mesh.part = parts.of(zTop, zBack, rig, 0);
                 OutwardSpec spec;

@@ -1679,11 +1679,6 @@ void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& 
     // link sync
     Json& links = after.root["material_links"];
     std::vector<MaterialAt> materials = materialsOf(after);
-    std::map<std::string, std::string> previous;     // (layer \n path) -> material text before
-    if (before) {
-        TitleArtDoc copy = *before;
-        for (const MaterialAt& m : materialsOf(copy)) previous[m.layer + "\n" + m.path] = m.value->dump();
-    }
     std::map<std::string, std::vector<MaterialAt*>> groups;
     for (MaterialAt& m : materials) {
         const std::string key = str(*m.value, "link");
@@ -1700,6 +1695,13 @@ void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& 
             continue;
         }
         groups[key].push_back(&m);
+    }
+    // the materials before the batch, only when a link has two members to keep equal
+    std::map<std::string, std::string> previous;     // (layer \n path) -> material text before
+    const bool linked = std::any_of(groups.begin(), groups.end(), [](const auto& g) { return g.second.size() >= 2; });
+    if (before && linked) {
+        TitleArtDoc copy = *before;
+        for (const MaterialAt& m : materialsOf(copy)) previous[m.layer + "\n" + m.path] = m.value->dump();
     }
     for (auto& [key, members] : groups) {
         if (members.size() < 2) continue;

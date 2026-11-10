@@ -8,6 +8,10 @@
 //   so the CLI and the MCP tools render the same way).
 // - A scratch project holds a base document and copies of the pack's fonts and environments at
 //   the paths a library apply names (assets/TitleArt/...), so every item renders with its own fonts.
+// - Mesa caches the shaders llvmpipe compiles under the passwd entry's home unless MESA_SHADER_CACHE_DIR
+//   or XDG_CACHE_HOME say otherwise, so in a container whose HOME is the build's (a build box's image)
+//   every run compiled every shader again: the headless editors get $HOME/.cache/mesa_shader_cache
+//   (Mesa's own default where HOME is the user's home; S84 Deviation 31).
 // - Exit codes: 0 ok, 1 findings (stale thumbnails, verify findings, a failed render, over budget),
 //   2 usage or I/O errors.
 // - Thread-safety: the CLI's main thread.
@@ -34,5 +38,10 @@ namespace jasperengine::editor::titlelibrary {
     int runBakeThumbnailsCommand(const std::vector<std::string>& args, const char* executable);
     int runReviewSheetCommand(const std::vector<std::string>& args, const char* executable);
     int runCalibrateCommand(const std::vector<std::string>& args, const char* executable);
+
+    // MESA_SHADER_CACHE_DIR for the headless editors the GPU subcommands run, from the caller's
+    // MESA_SHADER_CACHE_DIR, XDG_CACHE_HOME and HOME (null when unset): $HOME/.cache/mesa_shader_cache,
+    // or "" when Mesa follows the environment already (either of the first two set) or HOME is unset
+    std::string mesaShaderCacheDir(const char* mesaDir, const char* xdgCache, const char* home);
 
 }

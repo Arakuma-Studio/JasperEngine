@@ -451,6 +451,30 @@ async def test_render_title(ed: Editor):
     ed.check_in("pixel_paths_diff", metrics, "fallback compare measures both paths")
 
 
+async def test_render_title_keep_false(ed: Editor):
+    """S84 Deviation 31: options.keep false keeps no copy for compare rev:n (the baker's renders skip
+    the second, canonical render); the default keeps it; keep is a boolean."""
+    await setup(ed)
+    path = "assets/titles/keep.titleart"
+    await create(ed, path)
+    await need_renderer(ed, path)
+
+    async def recolour(color: str) -> None:
+        await ed.call("edit_title", path=path, ops=[{"op": "set", "layer": "Title", "values": {"face.fill.color": color}}])
+
+    await recolour("#20c060")
+    skipped = (await ed.call("render_title", path=path, image="none", max_width=1280, options={"keep": False}))["rev"]
+    await recolour("#c02060")
+    missing = await ed.call_raw("render_title", {"path": path, "image": "none", "compare": f"rev:{skipped}", "options": {"keep": False}})
+    ed.check(missing.is_error and "is kept" in missing.text, f"keep false kept nothing of rev {skipped}: {missing.text[:300]}")
+    kept = (await ed.call("render_title", path=path, image="none", max_width=1280))["rev"]
+    await recolour("#2060c0")
+    diff = await ed.call("render_title", path=path, image="none", compare=f"rev:{kept}")
+    ed.check(diff["diff"]["changed_pct"] > 0, f"the default keeps rev {kept}: {diff.get('diff')}")
+    bad = await ed.call_raw("render_title", {"path": path, "image": "none", "options": {"keep": "no"}})
+    ed.check(bad.is_error and "options.keep" in bad.text, f"keep is a boolean: {bad.text[:300]}")
+
+
 async def test_bake_stale(ed: Editor):
     """AC26, AC37: export_title writes the shared-frame PNG with round_to sizes and the sidecar; an
     edit makes it stale; dry_run writes nothing."""

@@ -50,6 +50,11 @@ namespace jasperengine::titleart::three_d {
     // the grid step of shapes inflated together: max(s / (12 detail), sqrt(area / maxNodes),
     // 0.75 / outputScale), s = the largest 1.5 area / perimeter
     JASPERENGINE_API double inflateStep(const Shapes& shapes, double outputScale, int detail, size_t maxNodes);
+    // s of inflateStep: the largest 1.5 area / perimeter of the shapes (0 when none has area)
+    JASPERENGINE_API double inflateInset(const Shapes& shapes);
+    // the coarsest grid a tier's triangle budget may take: this many nodes across the largest inset,
+    // so the dome keeps its rise and curvature
+    constexpr double INFLATE_MIN_NODES_PER_INSET = 3.0;
     // the field of one normalised shape at `step` (empty when every phase retry is degenerate)
     JASPERENGINE_API std::shared_ptr<const InflateField> buildInflateField(const ShapeContours& shape, double step);
 
