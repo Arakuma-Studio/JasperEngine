@@ -106,6 +106,14 @@ namespace jasperengine::editor::spritenormals {
             return true;
         }
 
+        bool gapsFromJson(const json& value, Gaps& gaps, std::string& error) {
+            if (!value.is_object()) {
+                error = wrongType("gaps", value, "an object {share}");
+                return false;
+            }
+            return readNumber(value, "share", "gaps.", gaps.share, error);
+        }
+
         bool regionFromJson(const json& value, const std::string& where, Region& region, std::string& error) {
             if (!value.is_object()) {
                 error = wrongType(where, value, "an object");
@@ -215,6 +223,8 @@ namespace jasperengine::editor::spritenormals {
                              {"flat_deg", number(s.quantize.flatDeg)},
                              {"rotation_deg", number(s.quantize.rotationDeg == 360.0f ? 0.0f : s.quantize.rotationDeg)}};
         }
+        // the same rule: recipes without gaps are unchanged, an override to off on stones is recorded
+        if (s.gaps.on() || presetSettings(s.preset).gaps.on()) j["gaps"] = {{"share", number(s.gaps.share)}};
         return j;
     }
 
@@ -266,6 +276,7 @@ namespace jasperengine::editor::spritenormals {
             }
         }
         if (j.contains("quantize") && !quantizeFromJson(j["quantize"], s.quantize, error)) return false;
+        if (j.contains("gaps") && !gapsFromJson(j["gaps"], s.gaps, error)) return false;
         out = s;
         return true;
     }
@@ -427,6 +438,7 @@ namespace jasperengine::editor::spritenormals {
                         if (ok && s["quantize"].contains(key)) ok = c.numberValue(s["quantize"][key], std::string("settings.quantize.") + key);
                     }
                 }
+                if (ok && s.contains("gaps") && s["gaps"].contains("share")) ok = c.numberValue(s["gaps"]["share"], "settings.gaps.share");
             }
         }
         if (ok && recipe.contains("radius_resolved")) {
