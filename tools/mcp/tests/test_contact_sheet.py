@@ -368,7 +368,8 @@ async def test_determinism_in_play(ed: Editor):
         value, _, width, height, rgba = await sheet(ed, "scene_play", target={"entity": "Random"}, mode="scene", frames=3,
                                                     duration=0.2, lint=["determinism"])
         hero = sum(1 for i in range(0, len(rgba), 4) if abs(rgba[i] - 200) <= 8 and abs(rgba[i + 1] - 40) <= 8 and abs(rgba[i + 2] - 40) <= 8)
-        ed.check(hero >= 3 * 8 * 8, f"the sprite is drawn whole in each frame, so the two loads compare it: {hero} red px")
+        # its 8x8 art drawn 8 points wide: a 28 px red border in each of the 3 frames
+        ed.check(hero >= 3 * 28, f"the sprite is drawn whole in each frame, so the two loads compare it: {hero} red px")
         row = check_of(ed, value, "determinism")
         ed.check_eq(row["status"], "FAIL", f"an unseeded random start differs between two fresh loads: {row}")
         ed.check_eq(value["verdict"], "needs_person")
