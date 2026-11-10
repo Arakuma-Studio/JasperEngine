@@ -4949,6 +4949,22 @@
 		4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
 		4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F4078D26169F423 /* AnimSvg.h */; };
 		4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABD65217C8875602 /* AnimSvgPath.h */; };
+		4A534E4724DB6FAADFE31AB5 /* Grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4757F326F5CAE7139E /* Grid.cpp */; };
+		4A534E475E61E9364CBB2793 /* Grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4757F326F5CAE7139E /* Grid.cpp */; };
+		4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47285E951A632E467F /* TilemapLayer.cpp */; };
+		4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47285E951A632E467F /* TilemapLayer.cpp */; };
+		4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47157896361DA814BE /* TilemapClassesLua.cpp */; };
+		4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47157896361DA814BE /* TilemapClassesLua.cpp */; };
+		4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */; };
+		4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */; };
+		4A534E47C5314B5D2773B31B /* GridComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE8A0A760A25A6C5 /* GridComponent.h */; };
+		4A534E476060A3C4AA0582DC /* TilemapCollider2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */; };
+		4A534E47A1C277E3D4CEED42 /* TilemapLayerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */; };
+		4A534E47B8E519C0B4F56667 /* Grid.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474640DABFD618DC98 /* Grid.h */; };
+		4A534E47CAEA749A48C679DA /* TilemapLayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471C3454E96067A2E7 /* TilemapLayer.h */; };
+		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
+		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
+		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9568,6 +9584,18 @@
 		4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvgPath.cpp; sourceTree = "<group>"; };
 		4A534E476F4078D26169F423 /* AnimSvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvg.h; sourceTree = "<group>"; };
 		4A534E47ABD65217C8875602 /* AnimSvgPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvgPath.h; sourceTree = "<group>"; };
+		4A534E4757F326F5CAE7139E /* Grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Grid.cpp; sourceTree = "<group>"; };
+		4A534E47285E951A632E467F /* TilemapLayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapLayer.cpp; sourceTree = "<group>"; };
+		4A534E47157896361DA814BE /* TilemapClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtLanguage.cpp; sourceTree = "<group>"; };
+		4A534E47BE8A0A760A25A6C5 /* GridComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GridComponent.h; sourceTree = "<group>"; };
+		4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapCollider2DComponent.h; sourceTree = "<group>"; };
+		4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapLayerComponent.h; sourceTree = "<group>"; };
+		4A534E474640DABFD618DC98 /* Grid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Grid.h; sourceTree = "<group>"; };
+		4A534E471C3454E96067A2E7 /* TilemapLayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapLayer.h; sourceTree = "<group>"; };
+		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
+		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
+		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10168,6 +10196,7 @@
 				4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */,
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
+				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11866,6 +11895,8 @@
 				4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */,
 				4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */,
 				4A534E474365841B0820D5A8 /* NearestName.h */,
+				4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */,
+				4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -12088,6 +12119,9 @@
 				54574C44F1831F2151D5808D /* TerrainWorldComponent.h */,
 				4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */,
 				4A534E473BB6B49B158BE980 /* HitStopExemptComponent.h */,
+				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
+				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
+				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12131,6 +12165,17 @@
 				4A534E47D02364B83FAFB4BA /* HashRandom.h */,
 			);
 			path = math;
+			sourceTree = "<group>";
+		};
+		4A534E47B2C3C858EC6764BC /* tilemap */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4757F326F5CAE7139E /* Grid.cpp */,
+				4A534E47285E951A632E467F /* TilemapLayer.cpp */,
+				4A534E474640DABFD618DC98 /* Grid.h */,
+				4A534E471C3454E96067A2E7 /* TilemapLayer.h */,
+			);
+			path = tilemap;
 			sourceTree = "<group>";
 		};
 		7162FC6225962A0E0075B97D /* object */ = {
@@ -12216,6 +12261,7 @@
 				54574C44826C51C1E67ABA3D /* TerrainWorld.h */,
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
+				4A534E47B2C3C858EC6764BC /* tilemap */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12424,6 +12470,8 @@
 				4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */,
 				4A534E479C6E796903EF07CE /* FoliageSystem.h */,
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
+				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
+				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -16995,6 +17043,14 @@
 				4A534E47A92F799C23F48FBD /* AnimText.h in Headers */,
 				4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */,
 				4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */,
+				4A534E47C5314B5D2773B31B /* GridComponent.h in Headers */,
+				4A534E476060A3C4AA0582DC /* TilemapCollider2DComponent.h in Headers */,
+				4A534E47A1C277E3D4CEED42 /* TilemapLayerComponent.h in Headers */,
+				4A534E47B8E519C0B4F56667 /* Grid.h in Headers */,
+				4A534E47CAEA749A48C679DA /* TilemapLayer.h in Headers */,
+				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
+				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
+				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19766,6 +19822,10 @@
 				4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */,
 				4A534E4717D598AC10F249DE /* AnimSvg.cpp in Sources */,
 				4A534E475C90B7A4D26BECDC /* AnimSvgPath.cpp in Sources */,
+				4A534E4724DB6FAADFE31AB5 /* Grid.cpp in Sources */,
+				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
+				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
+				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20724,6 +20784,10 @@
 				4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */,
 				4A534E47F53AC28DC55C1011 /* AnimSvg.cpp in Sources */,
 				4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */,
+				4A534E475E61E9364CBB2793 /* Grid.cpp in Sources */,
+				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
+				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
+				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
