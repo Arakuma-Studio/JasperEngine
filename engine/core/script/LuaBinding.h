@@ -286,6 +286,8 @@ namespace jasperengine {
         // The compiled chunk of a script path becomes the function at `index`: instances made
         // from now on run it
         static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // A private preview reads a saved script again without unloading unrelated modules.
+        static void invalidateScriptChunk(const std::string& path);
         // Pushes a script property's value as an instance field gets it at creation (an unset
         // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
         static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);

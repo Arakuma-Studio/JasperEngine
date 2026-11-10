@@ -1676,6 +1676,14 @@ void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index
     }
 }
 
+void LuaBinding::invalidateScriptChunk(const std::string& path) {
+    checkLuaThread();
+    auto chunk = scriptChunks.find(path);
+    if (chunk == scriptChunks.end()) return;
+    if (luastate) luaL_unref(luastate, LUA_REGISTRYINDEX, chunk->second);
+    scriptChunks.erase(chunk);
+}
+
 void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
     const ScriptPropertyValue& value = prop.value;
     if (prop.type == ScriptPropertyType::EntityReference) {

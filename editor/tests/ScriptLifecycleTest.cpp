@@ -149,6 +149,27 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewStartsLeaveOtherScenesQueued) {
     EXPECT_EQ(takeLog(), "startLive1") << "the normal frame still starts its pending scene";
 }
 
+TEST_F(ScriptLifecycleTest, PrivatePreviewInvalidatesOnlyItsSavedScriptChunk) {
+    writeScript("PreviewCache", "return {init = function() log[#log + 1] = 'preview-old' end}");
+    writeScript("OtherCache", "return {init = function() log[#log + 1] = 'other-old' end}");
+    Scene* first = newScene();
+    addScript(first, entity(first, "First"), "PreviewCache");
+    addScript(first, entity(first, "Other"), "OtherCache");
+    LuaBinding::initializeLuaScripts(first);
+    EXPECT_EQ(takeLog(), "preview-old other-old");
+    LuaBinding::cleanupLuaScripts(first);
+
+    writeScript("PreviewCache", "return {init = function() log[#log + 1] = 'preview-new' end}");
+    writeScript("OtherCache", "return {init = function() log[#log + 1] = 'other-new' end}");
+    LuaBinding::invalidateScriptChunk("PreviewCache.lua");
+    LuaBinding::invalidateScriptChunk("not-cached.lua");
+    Scene* second = newScene();
+    addScript(second, entity(second, "Second"), "PreviewCache");
+    addScript(second, entity(second, "Other"), "OtherCache");
+    LuaBinding::initializeLuaScripts(second);
+    EXPECT_EQ(takeLog(), "preview-new other-old") << "a preview refreshes only its own saved script";
+}
+
 // 2. a disabled script: init runs (Unity Awake), onEnable / start / onUpdate do not until enabled
 TEST_F(ScriptLifecycleTest, DisabledScriptInitsButWaitsForEnabled) {
     writeLogger("L1");
