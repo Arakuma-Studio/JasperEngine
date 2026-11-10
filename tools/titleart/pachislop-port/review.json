@@ -949,8 +949,8 @@
       "id": "casino/new-machine-flyer",
       "kind": "template",
       "verdict": "tuned",
-      "note": "tuned for not_clipped: the English sample was wider than the 1920 canvas at the template size; the shorter sample fits",
-      "reviewer": "s84-fix-parity",
+      "note": "tuned for not_clipped: the English sample NEW ARRIVAL was wider than the 1920 canvas on one line at the template size; it is set on two lines (NEW / ARRIVAL), which fit with the template unchanged",
+      "reviewer": "s84-lib-looks",
       "date": "2026-11-10"
     },
     {

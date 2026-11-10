@@ -15543,7 +15543,7 @@
             "name": "text",
             "role": "title",
             "sample": {
-              "en": "NEW IN",
+              "en": "NEW\nARRIVAL",
               "ja": "新台入替"
             },
             "max_chars": 15
