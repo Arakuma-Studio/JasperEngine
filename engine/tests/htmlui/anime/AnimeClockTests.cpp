@@ -129,5 +129,8 @@ TEST(AnimeClock, ManualPreviewSeekFlushesAdditiveValuesWithoutClockTicks){
     EXPECT_NEAR(target->getNumber("v"), 50, 1e-9);
     EXPECT_DOUBLE_EQ(engine.now(AnimClock::UI), 1000);
     EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
+    animation->seek(250);
+    engine.alignClockSources(1, 1);
+    EXPECT_NEAR(target->getNumber("v"), 25, 1e-9);
     engine.reset();
 }
