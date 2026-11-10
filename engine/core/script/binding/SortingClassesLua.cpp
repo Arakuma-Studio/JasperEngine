@@ -286,6 +286,13 @@ namespace {
 
 void LuaBinding::registerSortingClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
+    // The raw component getters return borrowed references that need registered metatables.
+    luabridge::getGlobalNamespace(L)
+        .beginClass<SortingGroupComponent>("SortingGroupComponent")
+        .endClass()
+        .beginClass<SpriteBatchComponent>("SpriteBatchComponent")
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<SortingLayers>("SortingLayer")
         .addStaticProperty("layers", &sortingLayersTable)
