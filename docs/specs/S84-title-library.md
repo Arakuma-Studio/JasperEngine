@@ -1907,3 +1907,11 @@ rest of S82 lands in 6B.
     at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
     the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
+29. **AC21's `apply_look` fixed: 5.0 -> 1.07 ms on 16 rims** (`TitleLibraryBuiltins.Budgets`, build box 2, RelWithDebInfo).
+    Profiled with scoped timers: 3.1 ms of the 5.3 were the import plan reading the look's pack HDRI
+    (`autumn_road_2k.hdr`) whole on every apply, even without a project, where it only maps the path; in a project it also
+    hashed the HDRI, its copy and, with `apply_font`, the font twice (megabytes each, per apply). `ImportPlan` now hashes a
+    file once per (path, size, write time) and reads its bytes only to copy it; `importFileReads()` counts the reads
+    (`TitleLibraryBuiltins.ApplyLookReadsPackFilesOnce`: none without a project, each project copy hashed once, a settled
+    apply reads nothing; red with the cache off: 3, 15 and 5 reads). The link sync of S80's commit invariants copied and
+    dumped the previous document's materials on every batch; it does so only when a link has two members (1.13 -> 0.24 ms).

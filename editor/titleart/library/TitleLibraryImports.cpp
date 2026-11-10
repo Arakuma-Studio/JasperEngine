@@ -10,7 +10,10 @@
 #include "util/Sha256.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <sstream>
 
@@ -21,12 +24,46 @@ namespace fs = std::filesystem;
 
 namespace {
 
+    std::atomic<uint64_t> fileReads{0};
+
     bool readBytes(const fs::path& path, std::string& out) {
+        fileReads++;
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         std::ostringstream ss;
         ss << in.rdbuf();
         out = ss.str();
+        return true;
+    }
+
+    // sha256 of a file, cached by (path, size, write time): an apply names the same pack fonts and
+    // HDRIs (megabytes each) over and over, and their project copies are compared on every apply
+    bool fileSha(const fs::path& path, std::string& sha) {
+        struct Entry {
+            uintmax_t size = 0;
+            fs::file_time_type time;
+            std::string sha;
+        };
+        static std::mutex lock;
+        static std::map<std::string, Entry> cache;
+        std::error_code ec;
+        const uintmax_t size = fs::file_size(path, ec);
+        if (ec) return false;
+        const fs::file_time_type time = fs::last_write_time(path, ec);
+        if (ec) return false;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto it = cache.find(path.string());
+            if (it != cache.end() && it->second.size == size && it->second.time == time) {
+                sha = it->second.sha;
+                return true;
+            }
+        }
+        std::string bytes;
+        if (!readBytes(path, bytes)) return false;
+        sha = sha256Hex(bytes);
+        std::lock_guard<std::mutex> guard(lock);
+        cache[path.string()] = Entry{size, time, sha};
         return true;
     }
 
@@ -97,6 +134,10 @@ namespace {
 
 }
 
+uint64_t titlelibrary::importFileReads() {
+    return fileReads.load();
+}
+
 bool PackFont::coversJapanese() const {
     return std::find(scripts.begin(), scripts.end(), "ja") != scripts.end();
 }
@@ -118,14 +159,15 @@ const PackEnvironment* titlelibrary::findPackEnvironment(const std::string& id) 
 std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& source, const std::string& name,
                                  const std::vector<fs::path>& extras, const std::string& provenanceYaml, const std::string& importYaml,
                                  const char* conflictCode) {
-    std::string bytes;
-    if (!readBytes(source, bytes)) return {};
+    std::error_code ec;
+    if (!fs::is_regular_file(source, ec)) return {};
     if (preview || projectDir.empty()) {
         const std::string assetPath = assetDir + "/" + name;
         transient[assetPath] = source.string();
         return assetPath;
     }
-    const std::string sha = sha256Hex(bytes);
+    std::string sha;
+    if (!fileSha(source, sha)) return {};
     // the canonical folder, then numbered ones after a conflict (<dir>-2, -3 ...)
     for (int n = 1; n < 100; n++) {
         const std::string dir = n == 1 ? assetDir : assetDir + "-" + std::to_string(n);
@@ -136,10 +178,9 @@ std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& so
             continue;
         }
         const fs::path target = assetsDir / fs::path(assetPath);
-        std::error_code ec;
         if (fs::exists(target, ec)) {
             std::string existing;
-            if (readBytes(target, existing) && sha256Hex(existing) == sha) {
+            if (fileSha(target, existing) && existing == sha) {
                 planned[assetPath] = sha;
                 return assetPath;      // already imported: nothing to copy
             }
@@ -149,6 +190,8 @@ std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& so
             }
             continue;
         }
+        std::string bytes;
+        if (!readBytes(source, bytes)) return {};
         planned[assetPath] = sha;
         files.push_back({target, bytes, true, false});
         files.push_back({fs::path(target.string() + ".meta"), newMeta(provenanceYaml, importYaml), true, false});
@@ -177,8 +220,7 @@ std::string ImportPlan::font(const std::string& packId, const std::string& file)
     if (!file.empty() && std::find(f->files.begin(), f->files.end(), file) != f->files.end()) name = file;
     const fs::path dir = TitleLibrary::packDir() / "fonts" / packId;
     std::string sha;
-    std::string bytes;
-    if (readBytes(dir / name, bytes)) sha = sha256Hex(bytes);
+    fileSha(dir / name, sha);
     const std::string provenance = "{version: 1, licence: OFL-1.1, source: titleart-pack, url: " + quoted(f->url) +
                                    ", builtin: {set: fonts, id: " + quoted(packId) + ", sha256: " + sha + "}}";
     const std::string path = copyInto(std::string(TITLE_FONTS_ASSET_DIR) + "/" + packId, dir / name, name, {dir / "OFL.txt"}, provenance, {}, "font_conflict");
