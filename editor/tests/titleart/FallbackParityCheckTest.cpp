@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // fallback_parity (S80 §6.3, S83 §6.5, S86 AC9) through a render function that hands back
-// synthetic float and RGBA8 renders (the editor unit tests have no GPU): the renders of one
-// check_title call are not those of the call before it.
+// synthetic float and RGBA8 renders (the editor unit tests have no GPU): a document with 3D
+// glints is held to AC9's mean with them on and to the 3D share and max with them off; and the
+// renders of one check_title call are not those of the call before it.
 
 #include <gtest/gtest.h>
 
@@ -29,6 +30,11 @@ namespace {
         return parsed.doc;
     }
 
+    bool glintOn(const TitleArtDoc& doc) {
+        const Json* layer = titleart::findLayer(doc.root, "00000001");
+        return layer && (*layer)["style_3d"]["glint"].value("enabled", false);
+    }
+
     // a flat grey render; `changed` of its pixels (a band at the top) 60 codes brighter in colour
     TitleCheckImage render(double changed) {
         TitleCheckImage image;
@@ -43,6 +49,44 @@ namespace {
         return image;
     }
 
+    // the RGBA8 path differs from the float path by `withGlints` of the pixels while the glints are
+    // on, by `withoutGlints` while they are off
+    TitleCheckResult parity(bool glint, double withGlints, double withoutGlints) {
+        registerBuiltinTitleChecks();
+        const TitleArtDoc doc = docOf(glint);
+        TitleCheckContext context{doc, "assets/title.titleart"};
+        context.render = [&](const titleart::RenderRequest& request, TitleCheckImage& out, std::string&) {
+            const bool forced = (request.testFlags & titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS) != 0;
+            out = render(forced ? (glintOn(*request.doc) ? withGlints : withoutGlints) : 0.0);
+            return true;
+        };
+        const TitleCheckReport report = TitleArtChecks::run({TitleArtChecks::find("fallback_parity")}, context);
+        EXPECT_EQ(report.checks.size(), 1u);
+        return report.checks.empty() ? TitleCheckResult{} : report.checks[0];
+    }
+
+}
+
+TEST(FallbackParityCheckTest, GlintStarsAreHeldToTheMeanAndTheRestPerPixel) {
+    // the stars moved: 2 % of the pixels differ (over AC9's 1 % share) at a mean of 0.9
+    const TitleCheckResult moved = parity(true, 0.02, 0.0);
+    EXPECT_EQ(moved.status, TitleCheckStatus::Pass) << moved.message << " " << moved.measured.dump();
+    EXPECT_NEAR(moved.measured["glints_off"]["fraction_over"].get<double>(), 0.0, 1e-9);
+
+    // red control: the fallback is broken outside the glints (5 % with them off): it fails
+    const TitleCheckResult broken = parity(true, 0.05, 0.05);
+    EXPECT_EQ(broken.status, TitleCheckStatus::Fail) << broken.measured.dump();
+    EXPECT_NE(broken.message.find("glints off"), std::string::npos) << broken.message;
+
+    // red control: the glint's own light differs past AC9's mean (10 % of pixels, mean 4.5): it fails
+    const TitleCheckResult bright = parity(true, 0.10, 0.0);
+    EXPECT_EQ(bright.status, TitleCheckStatus::Fail) << bright.measured.dump();
+    EXPECT_GT(bright.measured["mean"].get<double>(), 3.0);
+
+    // without glints the share stays per pixel: the same 2 % fails
+    const TitleCheckResult plain = parity(false, 0.02, 0.02);
+    EXPECT_EQ(plain.status, TitleCheckStatus::Fail) << plain.measured.dump();
+    EXPECT_FALSE(plain.measured.contains("glints_off"));
 }
 
 TEST(FallbackParityCheckTest, EachCallRendersAtItsOwnOptions) {

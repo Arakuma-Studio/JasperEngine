@@ -1873,7 +1873,7 @@ rest of S82 lands in 6B.
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
     `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
-    - fallback_parity: `casino/confirm-giraffe-3d` (en; the 3D glint's 8-bit input: Deviation 29). `elements/electric-blue` and
+    - fallback_parity: none since Deviation 29 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
       `elements/storm-counter` pass since S83 Deviation 37 (Light Glow read Lightning's light clipped at 1 on the RGBA8
       path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
@@ -1911,14 +1911,17 @@ rest of S82 lands in 6B.
     param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
     and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
-29. **Open: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
+29. **Resolved: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
     0.25 it measured 2.8 % of pixels over 24/255 (the check's limit 1 %), mean 2.0; with the glint off 0.35 %; `ja` passes, as
     every other 3D item does. The MSAA resolve averaged the encoding `C/(1 + C)`, not the light; S86 Deviation 31 makes the
     supersampled fallback hold linear light (resolves average light, `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`):
     giraffe en is now 2.0 %, mean 1.6, and the other 251 samples of the 91 3D items pass. What remains is the 8-bit precision
     of the glint's input (the same encoding in a float target: 0.0 %), which no 8-bit encoding of light up to 60 removes.
-    Note: S86 AC9 holds a glint-on render to the mean alone (3/255), which giraffe en passes; `fallback_parity` holds every 3D
-    document to the 1 % share as well. Whether the check follows AC9 there is the integrator's decision.
+    The integrator's decision: `fallback_parity` now checks a document with 3D glints on twice, as S86 AC9 reads: the same
+    document with its glints off to the 3D share and max (giraffe en 0.0 % over 24/255, max 24), the glint-on render to AC9's
+    mean alone (3/255; giraffe en 1.6), so the stars are judged by the spec's own criterion and everything else per pixel
+    (S86 Deviation 32). Red controls (`FallbackParityCheckTest`): a glint document broken outside its glints fails, and so
+    does a glint whose difference passes the mean; without glints the share stays.
 30. **Implementation: the pixel checks' renders live with their call.** `rendersOf` kept one static set of renders keyed by
     the context's address and the document's hash, so a later `check_title` call on the same document (its context in the
     same stack slot) with another `render_scale` read the earlier call's renders. They now live in the context

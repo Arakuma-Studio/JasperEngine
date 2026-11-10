@@ -1503,3 +1503,7 @@ rest of S82 lands in 6B.
     at 64 (dark precision); 64 with the dither 2.0 % with all others passing; no MSAA at k > 1 with the old encoding 3.1 %.
     The same linear encoding in a float target gives 0.0 %: what remains is the 8-bit precision of the glint's input,
     which its pinch and star budget (4th powers of ratios) turn into star flips. Test: `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`.
+32. **Implementation (AC9): how S84's `fallback_parity` reads AC9 for glints** (the integrator's decision). The glint places
+    discrete stars from the light it reads, and on the RGBA8 path that light has 8 bits (31): a star at a near-tie moves.
+    AC9 holds a glint-on render to the mean (3/255) and a glint-off one to the share as well; the check does the same with
+    one document: with its 3D glints off to the 3D share and max, with them on to the mean alone.
