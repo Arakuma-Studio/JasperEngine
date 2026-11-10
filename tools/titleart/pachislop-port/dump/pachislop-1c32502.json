@@ -541452,7 +541452,7 @@
     },
     {
       "category": "Material",
-      "description": "Eye Candy-style 2D extrusion: stacks the shape toward a direction (90° = down) with shaded, gradient sides behind the layer. With Shading and Edge Darkening at 0, a one-colour gradient and some Fade it is a flat long shadow.",
+      "description": "sha256:e8385c91aee2fb19cc8154af89c5ebc041a91444fd0cce2c49835831aafb2a56",
       "directions": [
         {
           "angle": "angle",
@@ -541588,7 +541588,7 @@
     },
     {
       "category": "Distort",
-      "description": "Eye Candy-style smeared trail of the shape behind the layer, fading and tapering toward its end (180° = trail to the left), or Echo (残像): separate fading copies stepped along the direction.",
+      "description": "sha256:f376713dccba9528a6e15e7ec1c543cfcb7e2d38140b7b9d31cd07a4d260c6f2",
       "directions": [
         {
           "angle": "angle",
@@ -542140,7 +542140,7 @@
     },
     {
       "category": "Shadow",
-      "description": "Eye Candy-style shadow cast onto a floor at the base of the layer: sheared, squashed, blurring and fading with distance. Direction up (−90°) casts behind the object, down (90°) in front; Length = distance from the base to the tip of the shadow.",
+      "description": "sha256:99c681f48792366deb0d246fdf0c3f000b7ef415953bff74b1a856038407542d",
       "directions": [
         {
           "angle": "angle",
@@ -550303,7 +550303,7 @@
     },
     {
       "category": "Light",
-      "description": "Eye Candy Backlight: god rays streaming out from behind the layer it follows, from its centre or a chosen point; put it below that layer.",
+      "description": "sha256:33f2fb4f9a55e13a53cc1f0f83d63ad9e5cd623170fee9d6721f77ef11613d92",
       "follow": "required",
       "functions": [
         "bounds",
@@ -550469,7 +550469,7 @@
     },
     {
       "category": "Energy",
-      "description": "Eye Candy Fire: flames rising from the edges of the layer it follows (direction 90° = up), behind it, or over the edges where they clear out inside the shape.",
+      "description": "sha256:0b4b32e4135a376cd97d0bc4a9335f86c01059aa045594bc6e1938ea31950f4c",
       "directions": [
         {
           "angle": "angle",
@@ -550843,7 +550843,7 @@
     },
     {
       "category": "Energy",
-      "description": "Eye Candy Corona: wispy, flowing energy tendrils radiating from the edges of the layer it follows, or an aura (オーラ, strong or weak) of flickering tongues hugging its silhouette. Below the layer it glows from behind; above it set to Add, it lights the layer too.",
+      "description": "sha256:7a111512850b7ee4b4eaba8c2e3437fbe398804168250a969f592c76adb6e90c",
       "follow": "required",
       "functions": [
         "bounds",
@@ -567757,12 +567757,12 @@
           },
           "message_en": "Rims total 4.6% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -580739,12 +580739,12 @@
           },
           "message_en": "Rims total 0.2% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -582600,12 +582600,12 @@
           },
           "message_en": "Rims total 4.9% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -585373,12 +585373,12 @@
           },
           "message_en": "Rims total 4.8% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -586389,12 +586389,12 @@
           },
           "message_en": "Rims total 4.8% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -587405,12 +587405,12 @@
           },
           "message_en": "Rims total 2.8% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -588230,12 +588230,12 @@
           },
           "message_en": "Rims total 2.6% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -596179,12 +596179,12 @@
           },
           "message_en": "Rims total 2.6% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -609820,7 +609820,7 @@
       }
     },
     {
-      "case": "f-plate-hokuto-box",
+      "case": "sha256:81f37015e7fe5ceac56110dd6b9d2c4437aa0cfa3718a72dc38f92b828a51176",
       "findings": [],
       "layer": {
         "blend": "normal",
@@ -653907,12 +653907,12 @@
           },
           "message_en": "Rims total 2.0% of the size: too thin to hold the title together.",
           "rule": {
-            "en": "Rims under ~{min}% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri).",
+            "en": "sha256:ed282e7879dc3789bd2f5cee9ea171e33b85f78ce8df1fc44e60ab93bc25b5e9",
             "vars": {
               "min": 5
             }
           },
-          "rule_en": "Rims under ~5% of the size vanish on busy machine backgrounds; production stacks total 7–10% (まぺろに / megabenri)."
+          "rule_en": "sha256:ae040f00cdaa17b98b71a4b097793837ff64a2e80153759756c728dd99b7bba8"
         }
       ],
       "layer": {
@@ -672814,7 +672814,7 @@
         "group": "Gold & Metal",
         "id": "f-gold-classic",
         "kind": "title2d",
-        "name": "Classic Gold (まぺろに)",
+        "name": "sha256:4c3bc85710ad86f8b8cb0c116f75a640e3b328e6c011d57d4fd8e3ee56190033",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -673901,7 +673901,7 @@
         "group": "Gold & Metal",
         "id": "f-gold-hiro",
         "kind": "title2d",
-        "name": "Hiro Gold (double stroke)",
+        "name": "sha256:8196e60ee587164c6076f7b9c9f47dd021acba911d0b2c588688b68832a95b6f",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -684278,7 +684278,7 @@
         "group": "Gold & Metal",
         "id": "f-chrome",
         "kind": "title2d",
-        "name": "Chrome (Eye Candy)",
+        "name": "sha256:31b44f23afea7e854e170cd815488041ee81c5094fe3c3b04ce6c35f214008fb",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -686602,7 +686602,7 @@
         "group": "Gold & Metal",
         "id": "f-chrome-liquid",
         "kind": "title2d",
-        "name": "液体クローム Liquid Chrome (Eye Candy)",
+        "name": "sha256:e8eae6fe18a5485790d2ed0c1a862f828309c8b50380d7fcdd1ad499fff9a809",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -688210,7 +688210,7 @@
         "group": "Rainbow & Special",
         "id": "f-rainbow-glass-gold",
         "kind": "title2d",
-        "name": "青ブタ虹 Rainbow Glass + Gold Rim",
+        "name": "sha256:db06101cb1becd2e462a14428eacad3b9a3345d0d52c80310642f45d45c34a80",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -712740,9 +712740,9 @@
           }
         ],
         "group": "Plates",
-        "id": "f-plate-hokuto-box",
+        "id": "sha256:81f37015e7fe5ceac56110dd6b9d2c4437aa0cfa3718a72dc38f92b828a51176",
         "kind": "title2d",
-        "name": "北斗 Slanted Box Plate",
+        "name": "sha256:4968e45a000fef6f1f8143d97a40d8d8eb9df1e95e8300b39162607bc0030a24",
         "partEffects": {},
         "refSize": 200,
         "style": {
@@ -715697,7 +715697,7 @@
         "group": "3D",
         "id": "f-3d-box-plate",
         "kind": "title3d",
-        "name": "北斗 Slanted Box Plates",
+        "name": "sha256:75fea76976b306b16e3ea3e6644b73c60cd0b370ded61d0e58ee8b6f905cadeb",
         "partEffects": {},
         "refSize": 200,
         "style3d": {
@@ -717103,7 +717103,7 @@
             "name": "Gold"
           }
         },
-        "name": "青ブタ虹 Rainbow Glass + Gold Tubes (3D)",
+        "name": "sha256:4ffca099e05cf648ec531b9c74fdf68786dbcffa38fd0350e4a20364533214cc",
         "partEffects": {},
         "refSize": 200,
         "style3d": {
@@ -791690,9 +791690,9 @@
       }
     },
     {
-      "id": "t-hokuto-box",
+      "id": "sha256:9f86d666fcb4d3c3e2f700a794ff5340e88d0f025663700143ed10f735c7c374",
       "line": 812,
-      "name": "北斗-style slanted box plate (2D)",
+      "name": "sha256:fe45a2e5b196d28eaf8d07da0df08da782bfed2ad0b88b33e1d6af14a65b4311",
       "project": {
         "comp": {
           "background": {
@@ -791911,7 +791911,7 @@
             "kind": "title2d",
             "locked": false,
             "masks": [],
-            "name": "覇王伝説",
+            "name": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
             "partEffects": {},
             "solo": false,
             "source": {
@@ -791925,7 +791925,7 @@
               "shear": 12,
               "size": 260,
               "tateChuYoko": true,
-              "text": "覇王伝説",
+              "text": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
               "tracking": -30,
               "tsume": 0,
               "vScale": 1,
@@ -792976,7 +792976,7 @@
             "weight": 0
           }
         ],
-        "name": "覇王伝説",
+        "name": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
         "version": 11
       }
     },
@@ -797274,7 +797274,7 @@
             "kind": "title3d",
             "locked": false,
             "masks": [],
-            "name": "元祖ツラヌキ",
+            "name": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
             "parentId": "000003fa",
             "partEffects": {},
             "solo": false,
@@ -797818,7 +797818,7 @@
               "shear": 12,
               "size": 260,
               "tateChuYoko": true,
-              "text": "元祖ツラヌキ",
+              "text": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
               "tracking": 10,
               "tsume": 1,
               "vScale": 1,
@@ -798347,7 +798347,7 @@
             "kind": "group",
             "locked": false,
             "masks": [],
-            "name": "元祖ツラヌキ",
+            "name": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
             "solo": false,
             "transform": {
               "flipX": false,

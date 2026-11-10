@@ -493,8 +493,8 @@ TitleSolids jasperengine::titleart::three_d::buildTitleSolids(const TitleShapes3
     };
 
     // the shared stack backs the unrigged glyphs (or the shape / orb); a hull / box base spans the
-    // whole title in the layer's block; a contour band i is one piece in the layer's block for the
-    // glyphs that don't override it, one piece per block for those that do
+    // whole title in the layer's block; a contour band i is one mesh in the layer's block for the
+    // glyphs that don't override it, one mesh per block for those that do
     std::vector<const TitlePart3D*> riggedParts;
     for (const TitlePart3D& part : t.parts) {
         if (part.rig >= 0) riggedParts.push_back(&part);

@@ -293,7 +293,9 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   lists (key, type, unit, default), the Material3D presets, and two oracle sets computed by
   Pachislop's own code: `colourway_cases` (`applyColourway` of 21 ported looks, the 11 outlines and
   ten others, in each of the 11 colourways) and `lint_cases` (`lintStyle` of every factory look and of
-  the eight red-control layers of §6.14.4). It never runs the clone's own
+  the eight red-control layers of §6.14.4), sanitised: every string holding a denied term (R38)
+  becomes `sha256:` and the hex SHA-256 of its UTF-8 (Deviation 34; `--sanitise <dump>` rewrites a
+  dump so). It never runs the clone's own
   scripts, `npm install` or tests. Host only, like `tools/htmlui` (never in CI or Docker).
 - **R20. Converter, stage 2 (map).** `jasperengine-editor title-library port-pachislop --dump <json>
   --out <dir>` (no GPU) maps the dump with `PachislopPort` (`editor/titleart/library/PachislopPort.{h,cpp}`),
@@ -888,7 +890,10 @@ with the committed files. `pachislop-map.json` holds: `ids` (Pachislop id → ne
 halves written out by hand), `fonts` (Pachislop `fontId` → pack pair; S87 uses the same table),
 `environments`, `fields` (exceptions to the camelCase → snake_case rule), `dropped` (`{path,
 reason}`), `template_texts` (the replaced sample texts of §6.7.3 and every template's `en` sample of
-§6.10.1).
+§6.10.1). A Pachislop id (an `ids` key) or template text (a `source`) that holds a denied term is
+written as `sha256:<64 hex digits>` of its UTF-8, the form the sanitised dump holds it in; the port
+matches a source as it reads it or by that hash, so a fresh dump of a clone maps the same
+(Deviation 34).
 
 Field mapping rules (in `PachislopPort`, §6.7.1): keys and enum values camelCase → snake_case (`doubleRing` → `double_ring`,
 `shapeBurst` → `shape_burst`) unless `fields` says otherwise; `kind: title2d | title3d` → `dimension`;
@@ -973,7 +978,8 @@ effect labels (`src/generators/`, `src/effects/`) at `1c32502`; the hits and the
 | comments | Sammy, カバネリ, Eye Candy, Element 3D, tutorial site names | not copied: the converter carries no comments; provenance points at file and line | — |
 
 The provenance of the renamed items records file, line and commit but `item: null` (their source ids
-contain denied terms). `denied_terms.txt` starts with: hokuto, 北斗, 青ブタ, aobuta, まぺろに,
+contain denied terms). The table's Pachislop column is the only place in the repository those ids and
+texts are written out: the map and the committed dump hold them hashed (Deviation 34). `denied_terms.txt` starts with: hokuto, 北斗, 青ブタ, aobuta, まぺろに,
 maperoni, ヒロデザ, "hiro gold", photoshopvip, "eye candy", "alien skin", "element 3d",
 "video copilot", カバネリ, kabaneri, sammy, サミー, 覇王伝説, ツラヌキ, and the pachinko and
 pachislot makers and major game and anime franchises (sankyo, daito, kyoraku, heiwa, newgin, sanyo,
@@ -2003,3 +2009,21 @@ rest of S82 lands in 6B.
     the context's address and the document's hash, so a later `check_title` call on the same document (its context in the
     same stack slot) with another `render_scale` read the earlier call's renders. They now live in the context
     (`TitleCheckContext::renders`), one set per call (`FallbackParityCheckTest.EachCallRendersAtItsOwnOptions`, red before).
+34. **Implementation (R38, the owner's rule): no denied term anywhere in the Title Art paths.** R38 and the gate held the
+    shipped library to the denied terms; the committed dump, the map and four comments still named them (the dump: 42
+    strings, the withheld ids, the two replaced template texts, names, effect and generator descriptions and a lint rule's
+    text; the map: the two withheld `ids` keys and two `template_texts` sources; comments: "eye candy" and "one piece").
+    Now: `dump.mjs` sanitises what it writes (every string or member name holding a term becomes `sha256:` and the hex
+    SHA-256 of its UTF-8; `--sanitise` rewrote the committed dump, byte-identical to the one-off rewrite of exactly those
+    42 strings, so every other byte and every test reading the dump are unchanged); the map keys those ids and texts the
+    same way and `PachislopPort` matches a map key against the source as read or its `pachislopSourceKey`, so a fresh dump
+    of a clone still maps `f-plate-…` and `t-…` to `casino/slanted-box-plate` (withheld) and the texts to ONE STRIKE and
+    THE ORIGINAL; a map key that names a term outright fails the port. The comments are rephrased. S87's Pachislop
+    project importer reads the map's fonts, fields and environments only, so it needs no change. Guard:
+    `TitleArtDeniedTermsScan.NoTitleArtPathHoldsADeniedTerm` scans `editor/resources/titleart`, `editor/titleart`,
+    `engine/core/titleart`, `engine/shader*/titleart`, `engine/shaderlib/titleart`, `tools/titleart`, `docs/titleart`,
+    `docs/mcp/guide/title-art*` and the Title Art tests with `DeniedTerms.h`'s matcher, leaving out the list, the
+    matcher's header and test lines marked `denied-term fixture` (the tests that feed the matcher a term on purpose);
+    red before this change (51 lines). `PachislopPortTest.HashedMapKeysMatchRawSources` (every map id and text keyed by
+    hash ports the committed dump to the same files) and `RawDeniedMapKeyFails` cover the port. Spec documents keep the
+    terms in §6.7.3's rename table and the denied-term list.

@@ -1,5 +1,5 @@
 {
-  "_about": "The Pachislop port's map (docs/specs/S84-title-library.md §6.7.1): Pachislop ids to library refs, families, bilingual names, font pairs, 2D reflection maps to S86 environments, field exceptions to the camelCase to snake_case rule (`<our schema kind>.<Pachislop key>`), members dropped with reasons (Pachislop path patterns: `[]` any index, `*` one segment, `**` any depth; `kind:<our kind>.<key>` for every place of a kind), template texts and the tag vocabulary the port derives synonyms from. Pachislop is by SafEight, used with the author's permission. S87's Pachislop importer reads the same file.",
+  "_about": "The Pachislop port's map (docs/specs/S84-title-library.md §6.7.1): Pachislop ids to library refs, families, bilingual names, font pairs, 2D reflection maps to S86 environments, field exceptions to the camelCase to snake_case rule (`<our schema kind>.<Pachislop key>`), members dropped with reasons (Pachislop path patterns: `[]` any index, `*` one segment, `**` any depth; `kind:<our kind>.<key>` for every place of a kind), template texts and the tag vocabulary the port derives synonyms from. A Pachislop id or text that holds a denied term (tools/titleart/denied_terms.txt) is written as `sha256:` and the hex SHA-256 of its UTF-8 (S84 Deviation 34): the port hashes what it reads, so a real dump and the committed one map alike. Pachislop is by SafEight, used with the author's permission. S87's Pachislop importer reads the same file.",
   "source": {
     "repository": "Pachislop",
     "author": "SafEight",
@@ -27,7 +27,7 @@
     "f-pat-checker": "casino/checker",
     "f-plate-red": "casino/red-plate-gold-rim",
     "f-plate-makura": "casino/pillow-plate-black-gold",
-    "f-plate-hokuto-box": {
+    "sha256:81f37015e7fe5ceac56110dd6b9d2c4437aa0cfa3718a72dc38f92b828a51176": {
       "ref": "casino/slanted-box-plate",
       "withheld": true
     },
@@ -139,7 +139,7 @@
     "t-popout-3d": "casino/rush-pop-out-3d",
     "t-cho-gekiatsu": "casino/super-red-hot",
     "t-satin-chrome": "metal/special-satin-chrome",
-    "t-hokuto-box": {
+    "sha256:9f86d666fcb4d3c3e2f700a794ff5340e88d0f025663700143ed10f735c7c374": {
       "ref": "casino/slanted-box-plate",
       "withheld": true
     },
@@ -1198,7 +1198,7 @@
     ],
     "casino/slanted-box-plate": [
       {
-        "source": "覇王伝説",
+        "source": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
         "name": "text",
         "en": "ONE STRIKE",
         "ja": "一撃必殺"
@@ -1228,7 +1228,7 @@
     ],
     "casino/original-depth-fade-3d": [
       {
-        "source": "元祖ツラヌキ",
+        "source": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
         "name": "text",
         "en": "THE ORIGINAL",
         "ja": "元祖カミナリ",

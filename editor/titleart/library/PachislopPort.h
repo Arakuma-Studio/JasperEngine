@@ -24,6 +24,10 @@
 //   was found; files are produced for the items that mapped. Every output string is checked
 //   against the denied terms (DeniedTerms.h); a hit is an error. Items whose source id holds a
 //   denied term are `withheld` in the map: their provenance records `item: null`.
+// - Hashed sources (Deviation 34): no denied term is written in the repository, so the map keys a
+//   Pachislop id or template text that holds one by pachislopSourceKey (`sha256:` and the hex
+//   SHA-256 of its UTF-8), and the committed dump holds such strings in that form. The port matches
+//   a source as it reads it or by that key, so a fresh dump of a clone maps as the committed one.
 // - Determinism: the same dump, map and overrides give the same bytes. Template ids (layers, rims,
 //   bands, masks, effects, lights) are re-minted as FNV-1a of the item id and the object's path in
 //   the document; the document guid is FNV-1a of the item id.
@@ -55,6 +59,11 @@ namespace jasperengine::editor::titlelibrary {
     PachislopFieldRule parsePachislopFieldRule(const Json& value);
     // the editor's embedded pachislop-map.json
     const Json& embeddedPachislopMap();
+    // a Pachislop id or text as the map and the committed dump write it when it holds a denied
+    // term: "sha256:" and the 64 lowercase hex digits of the SHA-256 of its UTF-8
+    std::string pachislopSourceKey(const std::string& source);
+    // true when the map's `key` names `source`: equal, or the source's pachislopSourceKey
+    bool pachislopSourceMatches(const std::string& key, const std::string& source);
     // the rule of `key` in schema kind `kind` (a variant kind falls back to its base), null when none
     const PachislopFieldRule* pachislopFieldRule(const std::string& kind, const std::string& key);
     // the pack font id of a Pachislop builtin font id (the map's `fonts`; `japanese`: the face for

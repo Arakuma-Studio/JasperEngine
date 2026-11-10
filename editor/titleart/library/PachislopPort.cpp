@@ -18,6 +18,7 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/fx/PachislopFxMap.h"
 #include "titleart/fx/PachislopGeneratorMap.h"
+#include "util/Sha256.h"
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
 #include "titleart/three_d/Title3DConvert.h"
 #endif
@@ -541,6 +542,10 @@ namespace {
                     result.errors.push_back("pachislop-map.json ids." + it.key() + ": no ref");
                     continue;
                 }
+                if (std::string term; containsDeniedTerm(it.key(), &term)) {
+                    result.errors.push_back("pachislop-map.json ids: a key holds the denied term `" + term + "`: write it as its pachislopSourceKey");
+                    continue;
+                }
                 ids[it.key()] = e;
             }
             for (auto it = map["fields"].begin(); it != map["fields"].end(); ++it) {
@@ -559,8 +564,11 @@ namespace {
             return result.errors.empty();
         }
 
+        // a source id as the dump holds it, or by its hashed key (a fresh dump of a clone holds the
+        // ids the map keys hashed)
         const IdEntry* idOf(const std::string& pachislopId) const {
             auto it = ids.find(pachislopId);
+            if (it == ids.end() && !pachislopId.empty()) it = ids.find(pachislopSourceKey(pachislopId));
             return it == ids.end() ? nullptr : &it->second;
         }
 
@@ -1697,7 +1705,7 @@ namespace {
             // a layer or group named after a replaced text takes the replacement (§6.7.3: no old text survives)
             if (currentTemplate) {
                 for (const TextEntry& e : currentTemplate->texts) {
-                    if (e.source == out["name"].get<std::string>()) out["name"] = currentTemplate->storeJa ? e.ja : e.en;
+                    if (pachislopSourceMatches(e.source, out["name"].get<std::string>())) out["name"] = currentTemplate->storeJa ? e.ja : e.en;
                 }
             }
             for (const char* key : {"visible", "locked", "guide", "clip"}) {
@@ -1886,7 +1894,7 @@ namespace {
             }
             TextEntry* entry = nullptr;
             for (TextEntry& e : t.texts) {
-                if (e.source == pachText) entry = &e;
+                if (pachislopSourceMatches(e.source, pachText)) entry = &e;
             }
             if (!entry) {
                 error(c.child("source").child("text"), "this text has no pachislop-map.json template_texts entry");
@@ -2465,6 +2473,14 @@ const Json& jasperengine::editor::titlelibrary::embeddedPachislopMap() {
         return parsed.is_object() ? parsed : Json::object();
     }();
     return map;
+}
+
+std::string jasperengine::editor::titlelibrary::pachislopSourceKey(const std::string& source) {
+    return "sha256:" + sha256Hex(source);
+}
+
+bool jasperengine::editor::titlelibrary::pachislopSourceMatches(const std::string& key, const std::string& source) {
+    return key == source || (key.rfind("sha256:", 0) == 0 && key == pachislopSourceKey(source));
 }
 
 const PachislopFieldRule* jasperengine::editor::titlelibrary::pachislopFieldRule(const std::string& kind, const std::string& key) {

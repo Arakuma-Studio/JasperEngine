@@ -13,6 +13,7 @@
 //   (cd /tmp/pachislop-port && npm ci --ignore-scripts)
 //   node dump.mjs --modules /tmp/pachislop-port/node_modules --pachislop <clone> --scratch <dir> [--check]
 //   node dump.mjs --self-test
+//   node dump.mjs --sanitise <dump.json>
 //
 // --modules is the node_modules directory (or the directory holding it); without it dump.mjs uses
 // a node_modules next to itself (`npm ci` here; .gitignore keeps it out of git). --check compares
@@ -41,12 +42,19 @@
 //   `crypto.getRandomValues` throws, so every id and random choice is reproducible;
 // - writes the dump: keys sorted (integer keys ascending, as JavaScript orders them), 2-space
 //   indent, a final newline; a function, symbol, non-finite number, cycle or non-plain object
-//   left in the data fails the run instead of being dropped.
+//   left in the data fails the run instead of being dropped;
+// - sanitises it (S84 Deviation 34: no denied term is written in the repository): every string
+//   value or member name holding a term of ../denied_terms.txt (matched as the library's
+//   DeniedTerms.h does) becomes "sha256:" and the hex SHA-256 of its UTF-8, the form
+//   pachislop-map.json keys such ids and texts by and the port recognises.
+//
+// --sanitise rewrites a dump in place with the sanitiser below (how the committed dump of 1c32502
+// was made from its earlier, unsanitised form; a fresh run sanitises by itself).
 //
 // --self-test needs no clone: it runs the refusals (scratch inside the repository, inside a
-// clone), an accepted scratch outside both, and the shims in a fresh Node (a touched `document`
+// clone), an accepted scratch outside both, the shims in a fresh Node (a touched `document`
 // throws; window.__THREE__ passes; navigator and fetch throw; the seeded counter repeats across
-// processes), printing PASS / FAIL lines; it exits 1 when any fails.
+// processes) and the sanitiser, printing PASS / FAIL lines; it exits 1 when any fails.
 
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -267,6 +275,55 @@ function canonical(v, at = '$', open = new Set()) {
 
 const serialise = (v) => `${JSON.stringify(canonical(v), null, 2)}\n`;
 
+// ---------- denied terms (S84 R38, Deviation 34) ----------
+
+/** The terms of a denied_terms.txt text, as DeniedTerms.h parses them: lowercase (ASCII), unique, in order. */
+function parseDeniedTerms(text) {
+  const terms = [];
+  for (const raw of text.split('\n')) {
+    const t = raw.split('#')[0].trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
+    if (t && !terms.includes(t)) terms.push(t);
+  }
+  return terms;
+}
+
+// DeniedTerms.h's matching: a term with Japanese script is a substring; any other matches whole
+// words over ASCII-folded text (every run of ASCII that is not a letter or digit is one space)
+const JAPANESE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/u;
+const foldWords = (s) => ` ${s.replace(/[A-Z]/g, (c) => c.toLowerCase()).replace(/[\x00-\x2f\x3a-\x40\x5b-\x60\x7b-\x7f]+/g, ' ').trim()} `;
+
+function deniedMatcher(terms) {
+  const compiled = terms.map((t) => (JAPANESE.test(t) ? { sub: t } : { word: foldWords(t) }));
+  return (s) => {
+    const lowered = s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    const folded = foldWords(s);
+    return compiled.some((t) => (t.sub ? lowered.includes(t.sub) : folded.includes(t.word)));
+  };
+}
+
+const sourceKey = (s) => `sha256:${crypto.createHash('sha256').update(s, 'utf8').digest('hex')}`;
+
+/** `v` with every string and member name that holds a denied term replaced by its sourceKey. */
+function sanitiseDump(v, denied) {
+  if (typeof v === 'string') return denied(v) ? sourceKey(v) : v;
+  if (Array.isArray(v)) return v.map((x) => sanitiseDump(x, denied));
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v)) out[denied(k) ? sourceKey(k) : k] = sanitiseDump(v[k], denied);
+    return out;
+  }
+  return v;
+}
+
+const deniedTermsFile = () => path.join(HERE, '..', 'denied_terms.txt');
+
+/** Rewrites the dump `file` sanitised, as a run writes it. */
+function sanitiseFile(file) {
+  const denied = deniedMatcher(parseDeniedTerms(fs.readFileSync(deniedTermsFile(), 'utf8')));
+  fs.writeFileSync(file, serialise(sanitiseDump(JSON.parse(fs.readFileSync(file, 'utf8')), denied)));
+  console.log(`${file}: sanitised`);
+}
+
 // ---------- run ----------
 
 function args(argv) {
@@ -274,7 +331,7 @@ function args(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--self-test' || a === '--check') out[a.slice(2)] = true;
-    else if (['--pachislop', '--scratch', '--modules', '--commit', '--run-bundle'].includes(a) && i + 1 < argv.length) out[a.slice(2)] = argv[++i];
+    else if (['--pachislop', '--scratch', '--modules', '--commit', '--run-bundle', '--sanitise'].includes(a) && i + 1 < argv.length) out[a.slice(2)] = argv[++i];
     else throw new Refusal(`unknown argument ${a}`);
   }
   return out;
@@ -364,6 +421,7 @@ async function dump(o) {
   if (child.status !== 0) throw new Error(`evaluating the bundle failed (exit ${child.status ?? child.signal})`);
 
   const out = path.join(scratch, DUMP);
+  sanitiseFile(out);
   const bytes = fs.readFileSync(out);
   const sha = crypto.createHash('sha256').update(bytes).digest('hex');
   const d = JSON.parse(bytes.toString('utf8'));
@@ -434,6 +492,21 @@ function selfTest() {
     report(a === b && / 00000001 00000002$/.test(a), `Math.random and crypto.randomUUID are a seeded counter, equal in two processes (${a})`);
     const rv = probe(touch('crypto.getRandomValues(new Uint8Array(4))'));
     report(rv.startsWith('THROW pachislop-port shim: crypto.getRandomValues'), `crypto.getRandomValues throws (${rv})`);
+
+    // The sanitiser: a denied id, string and member name become their source keys and allowed text
+    // stays; a Latin term matches in capitals with hyphens for spaces, and not run together.
+    const terms = parseDeniedTerms(fs.readFileSync(deniedTermsFile(), 'utf8'));
+    const denied = deniedMatcher(terms);
+    const latin = terms.find((t) => !JAPANESE.test(t) && t.includes(' '));
+    const japanese = terms.find((t) => JAPANESE.test(t));
+    const shouted = latin.toUpperCase().replace(/ /g, '-');
+    const sample = sanitiseDump({ id: `f-${shouted}-box`, keep: '確定 BIG BONUS', [`${japanese}x`]: [`a${japanese}b`, 'fine'] }, denied);
+    report(
+      sample.id === sourceKey(`f-${shouted}-box`) && sample.keep === '確定 BIG BONUS' &&
+        JSON.stringify(sample[sourceKey(`${japanese}x`)]) === JSON.stringify([sourceKey(`a${japanese}b`), 'fine']) &&
+        !denied(`${latin.replace(/ /g, '')}s`),
+      `denied strings become their sha256 source keys, the rest stays (${JSON.stringify(sample).slice(0, 120)})`,
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -446,6 +519,7 @@ function selfTest() {
 try {
   const o = args(process.argv.slice(2));
   if (o['run-bundle']) await runBundle(o['run-bundle'], o.scratch, o.commit);
+  else if (o.sanitise) sanitiseFile(o.sanitise);
   else process.exitCode = o['self-test'] ? selfTest() : await dump(o);
 } catch (e) {
   if (e instanceof Refusal) {

@@ -325,7 +325,7 @@ std::shared_ptr<TitleCacheEntry> TitlePlanner::assetTexture(const Json& refJson,
     if (!req.assets->loadImage(resolved, image, &why) || image.width <= 0 || image.height <= 0) return missing(why.empty() ? "unreadable" : why);
     std::vector<uint8_t> pixels = image.rgba;
     if (blur > 0) {
-        // the reflection panorama's blur (Eye Candy's 100 = sigma 4 % of the width), three box
+        // the reflection panorama's blur (a blur of 100 = sigma 4 % of the width), three box
         // passes each way, wrapping horizontally
         const int w = image.width, h = image.height;
         const double sigma = blur / 100.0 * 0.04 * w;

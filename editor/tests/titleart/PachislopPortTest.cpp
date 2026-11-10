@@ -6,7 +6,8 @@
 // provenance/pachislop.json byte for byte, after `normalize`. Red controls: one changed byte of a
 // committed look is named; a dump member with no mapping and no `dropped` entry fails the run
 // naming it (fixtures/pachislop-port-unmapped.json, whose twin without it maps cleanly); a denied
-// term in a mapped name fails the run. ReviewRecords holds review.json to the port's items;
+// term in a mapped name fails the run, and so does a map key naming one (Deviation 34: such ids
+// and texts are keyed by hash, which a raw source matches). ReviewRecords holds review.json to the port's items;
 // DeniedTerms checks the matcher with terms read from tools/titleart/denied_terms.txt.
 
 #include <gtest/gtest.h>
@@ -135,6 +136,49 @@ TEST_F(PachislopPortTest, CheckReproducesCommittedFiles) {
     EXPECT_TRUE(findings.empty()) << joined(lines);
     // the port's output is canonical already: normalize changes nothing
     for (const auto& [path, text] : result->files) EXPECT_EQ(text, normalized->at(path)) << path;
+}
+
+// Deviation 34: the map keys a source id or template text that holds a denied term by its
+// pachislopSourceKey and the committed dump holds it so; a fresh dump of a clone holds the raw
+// string. Every id and text of the map keyed by hash, the raw committed dump ports to the same
+// files (red: the port matched map keys by equality only)
+TEST_F(PachislopPortTest, HashedMapKeysMatchRawSources) {
+    ASSERT_TRUE(loadOk) << loadError;
+    ASSERT_TRUE(result->ok) << joined(result->errors);
+    PortOptions hashed = *options;
+    Json ids = Json::object();
+    for (auto it = options->map["ids"].begin(); it != options->map["ids"].end(); ++it) {
+        ids[it.key().rfind("sha256:", 0) == 0 ? it.key() : pachislopSourceKey(it.key())] = it.value();
+    }
+    hashed.map["ids"] = ids;
+    size_t texts = 0;
+    for (auto it = hashed.map["template_texts"].begin(); it != hashed.map["template_texts"].end(); ++it) {
+        for (Json& e : it.value()) {
+            const std::string source = e.value("source", std::string());
+            if (source.rfind("sha256:", 0) != 0) {
+                e["source"] = pachislopSourceKey(source);
+                texts++;
+            }
+        }
+    }
+    ASSERT_GT(texts, 30u);
+    const PortResult r = portDump(readJson(REPO / PACHISLOP_DUMP_PATH), hashed);
+    ASSERT_TRUE(r.ok) << joined(r.errors);
+    EXPECT_EQ(r.files, result->files);
+    EXPECT_EQ(pachislopSourceKey("abc"), "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    EXPECT_TRUE(pachislopSourceMatches(pachislopSourceKey("abc"), "abc"));
+    EXPECT_FALSE(pachislopSourceMatches(pachislopSourceKey("abc"), "abd"));
+}
+
+// a map key that names a denied term outright is refused: it is written as its source key
+TEST_F(PachislopPortTest, RawDeniedMapKeyFails) {
+    ASSERT_TRUE(loadOk) << loadError;
+    PortOptions tainted = *options;
+    const std::string term = deniedTerms().front();
+    tainted.map["ids"]["f-" + term + "-plate"] = "casino/slanted-box-plate";
+    const PortResult r = portDump(readJson(REPO / PACHISLOP_DUMP_PATH), tainted);
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(anyContains(r.errors, "pachislopSourceKey")) << joined(r.errors);
 }
 
 TEST_F(PachislopPortTest, ChangedByteInCommittedLookIsNamed) {

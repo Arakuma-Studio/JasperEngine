@@ -29,7 +29,7 @@ namespace {
         return gradientValue({{0.0, "#ff4ad8"}, {1.0, "#30e0ff"}});
     }
 
-    // the Eye Candy gradient glow: white at the edge to red
+    // the classic fire-gradient glow: white at the edge to red
     Json classicGlow() {
         return gradientValue({{0.0, "#ffffff"}, {0.22, "#fff36b"}, {0.55, "#ff8a00"}, {1.0, "#e01400"}});
     }

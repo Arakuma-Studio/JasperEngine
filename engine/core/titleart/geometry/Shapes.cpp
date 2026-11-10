@@ -24,7 +24,7 @@ namespace {
 
     using Pt = TitleVec2;
 
-    // one piece of a closed contour; each starts where the previous one ends
+    // one segment of a closed contour; each starts where the previous one ends
     struct Seg {
         bool cubic = false;
         Pt p0, c1, c2, p1;
