@@ -108,7 +108,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1098);
     scene->recreateEntity(1099);
     scene->recreateEntity(1100);
-    scene->setLastEntity(1100);
+    scene->recreateEntity(1101);
+    scene->setLastEntity(1101);
 
     {
         // Entity 1001 (Transform)
@@ -3345,6 +3346,72 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         hitStopExempt.includeChildren = false;
         hitStopExempt.enabled = false;
         scene->addComponent<HitStopExemptComponent>(1100, hitStopExempt);
+    }
+
+    {
+        // Entity 1101 (TitleArtRendererComponent)
+        scene->setEntityName(1101, "TitleArtRendererComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(100.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1101, transform);
+
+        TitleArtRendererComponent titleArt;
+        titleArt.enabled = true;
+        titleArt.title = "";
+        titleArt.renderMode = TitleArtRenderMode::BAKED;
+        titleArt.language = "";
+        titleArt.pivotFromTitle = true;
+        titleArt.uiScale = 1.000000f;
+        titleArt.pixelsPerUnit = 0.000000f;
+        titleArt.resolutionScale = 1.000000f;
+        titleArt.priority = 0;
+        titleArt.renderWhenHidden = false;
+        titleArt.prebakeInitialState = true;
+        titleArt.transition = TitleArtTransition::CUT;
+        titleArt.transitionDuration = 0.150000f;
+        titleArt.additionalCharacters = "";
+        titleArt.atlasPageSize = 1024;
+        titleArt.atlasMaxPages = 4;
+        titleArt.qualityTier = "auto";
+        titleArt.liveTime = 0.000000f;
+        titleArt.liveUnscaledTime = false;
+        titleArt.sweepEnabled = false;
+        titleArt.sweepPosition = 0.000000f;
+        titleArt.sweepWidth = 0.150000f;
+        titleArt.sweepAngle = 25.000000f;
+        titleArt.sweepSoftness = 0.600000f;
+        titleArt.sweepColor = Vector4(1.000000f, 1.000000f, 1.000000f, 0.800000f);
+        titleArt.sweepAuto = false;
+        titleArt.sweepSpeed = 1.500000f;
+        titleArt.sweepInterval = 2.500000f;
+        titleArt.glowEnabled = false;
+        titleArt.glowPulse = 0.000000f;
+        titleArt.glowColor = Vector4(1.000000f, 0.850000f, 0.400000f, 1.000000f);
+        titleArt.tintEnabled = false;
+        titleArt.tintColor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        titleArt.tintAmount = 0.000000f;
+        titleArt.glintsEnabled = false;
+        titleArt.glintAmount = 1.000000f;
+        titleArt.glintSize = 0.060000f;
+        titleArt.glintRate = 0.500000f;
+        titleArt.glintSeed = 0;
+        titleArt.glintColor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        titleArt.playAutomatically = true;
+        titleArt.defaultAnimation = "";
+        titleArt.animationSpeed = 1.000000f;
+        titleArt.animationUnscaledTime = false;
+        titleArt.driveAnimation = "";
+        scene->addComponent<TitleArtRendererComponent>(1101, titleArt);
     }
 
     // Default Camera 1
