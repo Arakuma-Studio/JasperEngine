@@ -4,6 +4,7 @@
 // W1: hierarchy and GameObjects: tree, find, create, delete, duplicate, rename, move,
 // active/tag/layer, selection, copy/cut/paste
 #include "McpTools.h"
+#include "component/Light2DComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/Transform.h"
 #include "LatticeShared.h"
@@ -760,6 +761,14 @@ void createEntityRun(const CallPtr& call, bool waited) {
             if (!notes.empty()) data["notes"] = notes;
             extra = " Bound to " + std::to_string(bound.size()) + " target(s); edit it with edit_lattice.";
             for (const Json& note : notes) extra += " " + note.get<std::string>();
+        }
+        // a Light 2D made under a bright 2D ambient barely shows (S78 R23)
+        if (current->scene->findComponent<Light2DComponent>(entity)) {
+            const std::string next = ambientLight2DNext(*current->scene);
+            if (!next.empty()) {
+                data["next"] = next;
+                extra += " " + next;
+            }
         }
         call->ok("Created " + std::string(kind->label) + " \"" + current->scene->getEntityName(entity) + "\" [" +
                  std::to_string(entity) + "] at " + data["entity"]["path"].get<std::string>() + " (one undo step)." + extra, data);

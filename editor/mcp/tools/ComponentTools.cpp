@@ -5,6 +5,7 @@
 // set_properties (every property type), set_transform, list_component_types
 #include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
+#include "component/Light2DComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
@@ -37,6 +38,7 @@
 #include "pixelart/PaletteSwapChecks.h"
 #include "registry/TagManager.h"
 #include "subsystem/MeshSystem.h"
+#include "util/Ambient2D.h"
 #include "util/EntityClipboard.h"
 #include "util/FileUtils.h"
 #include "util/Prefab.h"
@@ -556,6 +558,14 @@ void setPropertiesTool(const CallPtr& call) {
     if (!warnings.empty()) {
         data["warnings"] = warnings;
         for (const std::string& warning : warnings) warningText += " Warning: " + warning + ".";
+    }
+    // a Light 2D edited under a bright 2D ambient: it will not show however it is set (S78 R23)
+    if (std::any_of(changes.begin(), changes.end(), [](const McpValues::Change& c) { return c.component == ComponentType::Light2DComponent; })) {
+        const std::string next = ambientLight2DNext(*current->scene);
+        if (!next.empty()) {
+            data["next"] = next;
+            warningText += " " + next;
+        }
     }
     call->ok("Set " + std::to_string(changes.size()) + " propert" + (changes.size() == 1 ? "y" : "ies") + " on " +
              std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump() + warningText, data);
@@ -1141,6 +1151,16 @@ void listComponentTypesTool(const CallPtr& call) {
 }
 
 } // namespace
+
+std::string ambientLight2DNext(const Scene& scene) {
+    if (!isAmbientLight2DBright(scene)) return std::string();
+    char brightness[16];
+    std::snprintf(brightness, sizeof(brightness), "%.2g", ambientLight2DBrightness(scene));
+    char color[48];
+    std::snprintf(color, sizeof(color), "[%.2f, %.2f, %.2f]", kDarkAmbient2DColor[0], kDarkAmbient2DColor[1], kDarkAmbient2DColor[2]);
+    return std::string("The scene's Ambient Light 2D is bright (") + brightness + "), so Light 2Ds barely show: set_scene_settings {settings: "
+           "{ambient_light_2d_color: " + color + ", ambient_light_2d_intensity: 1}} darkens it.";
+}
 
 void registerComponentTools(McpRegistry& registry) {
 

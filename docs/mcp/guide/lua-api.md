@@ -2544,8 +2544,9 @@ lights with shadows): `contactShadows`, `contactShadowLength` (metres), `contact
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
 `setIntensity(i)`, `setRange(r)`, `setFalloff(f)`, `setHeight(h)`, `setShadows(b)`.
-`height`: the light's virtual height above the 2D plane for normal-mapped objects (editor
-default 64; `Light2D(scene)` keeps 0, which makes normal maps flat); unlit objects without a
+`height`: the light's virtual height above the 2D plane for normal-mapped objects (0 makes
+normal maps flat; `Light2D(scene)` starts at 64, as the editor's lights, while
+`Light2D(scene, entity)` and loaded lights keep theirs); unlit objects without a
 normal map (sprites by default) are lit the same at any height; Lit materials keep their N.L. 2D normal maps use the OpenGL convention (green up), like
 3D Lit, Unity and Godot: a map made for the engine's old 2D (DirectX) behaviour needs its green
 channel flipped.

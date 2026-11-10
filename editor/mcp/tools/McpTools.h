@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    class Scene;
+}
+
 namespace jasperengine::editor {
     class Project;
 }
@@ -25,6 +29,10 @@ namespace jasperengine::editor::mcp {
     // (a group it has not enabled): adds "editor_tools" [{tool, group, enable}] and "next" to data,
     // and the next step to text (DocsTools.cpp). The searches agents look in call it.
     void addUnlistedTools(const std::shared_ptr<McpCall>& call, const std::string& query, std::string& text, Json& data);
+
+    // The `next` of a Light 2D made (create_entity) or edited (set_properties) in a scene whose
+    // 2D ambient is bright (util/Ambient2D.h), naming the fix; "" otherwise (ComponentTools.cpp)
+    std::string ambientLight2DNext(const Scene& scene);
 
     // Every tool, resource and prompt of the editor, in tools/list order (McpTools.cpp).
     // Side-effect free: needs no App and does no I/O, so the CLI builds the same registry

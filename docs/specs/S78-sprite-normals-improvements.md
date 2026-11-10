@@ -223,3 +223,8 @@ article's *look* and its pitfalls caught early:
 - **R19, R21 (WP-B):** the window's Light Steps control is Off or 1..16 and `params.light_steps`
   defaults to 0; the "Scene" choice and the scene's value as the default come with the integration of
   WP-A's `SceneSettings::light2DSteps`.
+- **R14 (WP-C):** "rounded up" is to whole world units from 10 units, to 0.01 below: a sprite at
+  100 pixels per unit is a few units wide, where a whole unit would double the height. The sprite's
+  size is a Sprite's drawn size (its pixels over its Pixels Per Unit) times the world scale; without
+  one (no Sprite, or no size yet), the largest frame of the result over the entity's or the
+  project's Pixels Per Unit.

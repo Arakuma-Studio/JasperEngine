@@ -15,14 +15,18 @@
 #include "Catalog.h"
 #include "Theme.h"
 #include "component/FogComponent.h"
+#include "component/Light2DComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/ReflectedValueCmd.h"
+#include "command/type/ScenePropertyCmd.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "external/IconsFontAwesome6.h"
 #include "terrainworld/TerrainWorldPanel.h"
+#include "util/Ambient2D.h"
 
 #include "imgui.h"
 
@@ -360,7 +364,7 @@ void editor::InspectorWindow::drawDefaultArray(ComponentType cpType, SceneProjec
     }
 }
 
-void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>&) {
+void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities) {
     if (cpType == ComponentType::LocalVolumetricFogComponent) {
         // it shows through the scene's volumetric fog only
         FogComponent* fog = sceneProject->scene->findComponentFromIndex<FogComponent>(0);
@@ -372,6 +376,40 @@ void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, Sc
     }
     if (cpType == ComponentType::TerrainWorldComponent) {
         TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
+    }
+    if (cpType == ComponentType::Light2DComponent) {
+        // what keeps a Light 2D from showing on normal maps (S78 R20), each with its fix
+        std::vector<Entity> flat;
+        for (Entity entity : entities) {
+            const Light2DComponent* light = sceneProject->scene->findComponent<Light2DComponent>(entity);
+            if (light && light->height == 0.0f) flat.push_back(entity);
+        }
+        if (!flat.empty()) {
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("Height 0: normal maps are ignored.");
+            if (ImGui::Button("Set Height 64##light2d_height")) {
+                auto* multi = new MultiPropertyCmd();
+                for (Entity entity : flat) {
+                    multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "height", Light2DComponent::NEW_HEIGHT);
+                }
+                multi->setNoMerge();
+                CommandHandle::get(sceneProject->id)->addCommand(multi);
+            }
+        }
+        if (isAmbientLight2DBright(*sceneProject->scene)) {
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("The scene's Ambient Light 2D is bright: it washes out 2D lights and normal maps.");
+            if (ImGui::Button("Darken Ambient##light2d_ambient")) {
+                auto* multi = new MultiPropertyCmd();
+                multi->addCommand(std::make_unique<ScenePropertyCmd<Vector3>>(
+                    project, sceneProject->id, "ambient_light_2d_color", Vector3(kDarkAmbient2DColor[0], kDarkAmbient2DColor[1], kDarkAmbient2DColor[2])));
+                multi->addCommand(std::make_unique<ScenePropertyCmd<float>>(project, sceneProject->id, "ambient_light_2d_intensity", 1.0f));
+                multi->setNoMerge();
+                CommandHandle::get(sceneProject->id)->addCommand(multi);
+            }
+        }
     }
 }
 

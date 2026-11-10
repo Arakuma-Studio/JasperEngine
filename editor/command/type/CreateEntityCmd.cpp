@@ -593,7 +593,7 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 200.0f;
         light.intensity = 1.0f;
         // the virtual height normal maps respond to; sprites without one are not affected
-        light.height = 64.0f;
+        light.height = Light2DComponent::NEW_HEIGHT;
 
     }else if (type == EntityCreationType::SHADOW_CASTER_2D){
 
