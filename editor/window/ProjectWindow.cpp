@@ -2379,7 +2379,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 }
                 if (!file.isDirectory && project->isInsideAssetsPath(currentPath / file.name) && (SpriteSheetSources::isTexturePath(file.name) || SpriteSheetPool::isAsepritePath(file.name) ||
                                                SpriteSheetSources::isAtlasPath(file.name))) {
-                    if (ImGui::MenuItem(ICON_FA_TABLE_CELLS_LARGE " Create Tileset")) {
+                    const bool createTileset = ImGui::MenuItem(ICON_FA_TABLE_CELLS_LARGE " Create Tileset");
+                    uiBuilding.contextMenu.push_back({"Create Tileset", lastItemRect()});
+                    if (createTileset) {
                         if (tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow()) {
                             const fs::path created = editorWindow->createFromSource(currentPath / file.name);
                             if (!created.empty()) selectCreated(currentPath, created.filename().string(), true);
