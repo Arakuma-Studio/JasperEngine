@@ -210,16 +210,14 @@ namespace {
         std::vector<std::unique_ptr<TitleCheckImage>> freshImages;
     };
 
-    // one Renders per check run: the checks of one run() share it (keyed by the context)
+    // one Renders per check run: the checks of one context share it (TitleCheckContext::renders: a
+    // later call, whatever its options, starts with none)
     Renders& rendersOf(TitleCheckContext& context) {
-        static const TitleCheckContext* owner = nullptr;
-        static std::string ownerHash;
-        static std::unique_ptr<Renders> renders;
-        const std::string hash = titleArtSourceHash(context.doc);
-        if (!renders || owner != &context || ownerHash != hash) {
-            renders = std::make_unique<Renders>(context);
-            owner = &context;
-            ownerHash = hash;
+        auto* renders = static_cast<Renders*>(context.renders.get());
+        if (!renders) {
+            auto made = std::make_shared<Renders>(context);
+            renders = made.get();
+            context.renders = std::move(made);
         }
         return *renders;
     }

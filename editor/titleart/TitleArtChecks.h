@@ -22,6 +22,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -70,6 +71,8 @@ namespace jasperengine::editor {
         // renders a request through the caller's renderer and reads it back; null for checks run
         // without a GPU (their pixel checks report SKIP)
         std::function<bool(const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error)> render;
+        // the pixel checks' renders of this context, shared by its checks (TitleArtBuiltinChecks)
+        std::shared_ptr<void> renders;
     };
 
     struct TitleCheckResult {

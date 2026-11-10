@@ -1919,3 +1919,7 @@ rest of S82 lands in 6B.
     of the glint's input (the same encoding in a float target: 0.0 %), which no 8-bit encoding of light up to 60 removes.
     Note: S86 AC9 holds a glint-on render to the mean alone (3/255), which giraffe en passes; `fallback_parity` holds every 3D
     document to the 1 % share as well. Whether the check follows AC9 there is the integrator's decision.
+30. **Implementation: the pixel checks' renders live with their call.** `rendersOf` kept one static set of renders keyed by
+    the context's address and the document's hash, so a later `check_title` call on the same document (its context in the
+    same stack slot) with another `render_scale` read the earlier call's renders. They now live in the context
+    (`TitleCheckContext::renders`), one set per call (`FallbackParityCheckTest.EachCallRendersAtItsOwnOptions`, red before).
