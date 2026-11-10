@@ -25,6 +25,10 @@ namespace jasperengine::editor::pixelart::cleanup {
 
     namespace {
 
+        // R1: sources are at most 4,096 px a side, so a dragged line sits within that
+        constexpr double kMovedMax = 4096;
+
+
         std::string recipeNumberText(double value) {
             char text[32];
             std::snprintf(text, sizeof(text), "%g", value);
@@ -600,12 +604,17 @@ namespace jasperengine::editor::pixelart::cleanup {
                     const std::string field = "moved[" + std::to_string(i) + "]";
                     bool ok = entry.is_array() && entry.size() == 2 && entry[0].is_string() && entry[1].is_number();
                     if (ok) {
+                        // a line index of a grid on R1's largest source (at most 4 digits) and a position
+                        // in its pixels: anything else would become an index or a pixel unchecked
                         const std::string id = entry[0].get<std::string>();
-                        ok = id.size() > 2 && (id[0] == 'x' || id[0] == 'y') && id[1] == ':' &&
-                             std::all_of(id.begin() + 2, id.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+                        const double position = entry[1].get<double>();
+                        ok = id.size() > 2 && id.size() <= 6 && (id[0] == 'x' || id[0] == 'y') && id[1] == ':' &&
+                             std::all_of(id.begin() + 2, id.end(), [](unsigned char c) { return std::isdigit(c) != 0; }) &&
+                             std::isfinite(position) && position >= 0 && position <= kMovedMax;
                     }
                     if (!ok) {
-                        r.error(field, field + " is " + entry.dump(), "a moved line is [\"x:<index>\" or \"y:<index>\", position]");
+                        r.error(field, field + " is " + entry.dump(),
+                                "a moved line is [\"x:<index>\" or \"y:<index>\", position 0-" + std::to_string((int)kMovedMax) + " source pixels], index 0-9999");
                         continue;
                     }
                     out.moved.push_back({entry[0].get<std::string>(), entry[1].get<double>()});

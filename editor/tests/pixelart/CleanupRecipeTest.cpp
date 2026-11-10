@@ -247,3 +247,21 @@ TEST(CleanupRecipe, ASheetWithoutAnimationsIsOneAnimation) {
     ASSERT_EQ(recipe.sheet->animations.size(), 1u);
     EXPECT_EQ(recipe.sheet->animations[0], (SheetAnimation{"animation-1", {0, 1}, true, 12, Loop::PingPong}));
 }
+
+// moved positions are source pixels (0-4096, R1's limit) and line indices fit a grid of that size:
+// anything else is refused by name, never cast to an index or a pixel
+TEST(CleanupRecipe, MovedLinesStayInTheSourceRange) {
+    for (const nlohmann::json& bad : {nlohmann::json::array({"x:3", 1e300}), nlohmann::json::array({"x:3", -5.0}),
+                                      nlohmann::json::array({"y:2", 4097.0}), nlohmann::json::array({"x:99999999999999999999", 10.0})}) {
+        Recipe recipe;
+        std::vector<PixelProblem> problems;
+        EXPECT_FALSE(decodeRecipe(nlohmann::json{{"moved", nlohmann::json::array({bad})}}, recipe, problems)) << bad.dump();
+        ASSERT_FALSE(problems.empty()) << bad.dump();
+        EXPECT_EQ(problems.front().field, "moved[0]") << bad.dump();
+    }
+    Recipe recipe;
+    std::vector<PixelProblem> problems;
+    const nlohmann::json good = nlohmann::json::array({nlohmann::json::array({"x:3", 41.5}), nlohmann::json::array({"y:0", 0.0}), nlohmann::json::array({"x:1", 4096.0})});
+    EXPECT_TRUE(decodeRecipe(nlohmann::json{{"moved", good}}, recipe, problems)) << (problems.empty() ? "" : problems.front().message);
+    EXPECT_EQ(recipe.moved.size(), 3u);
+}
