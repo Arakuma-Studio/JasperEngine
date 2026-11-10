@@ -176,7 +176,7 @@ never build or run them.
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | merged and pushed |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
-| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | in review |
+| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | merged and pushed |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | merged and pushed |
 
@@ -263,6 +263,21 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S50 Grid Tilemap merged (`46021c04d`). All twelve specs S41–S52 are on `main`. Gate on
+  the merged tree, boxes C and D: `WERROR` build; core 341/341; editor 377/377 with the shared-data
+  suites; timing tests 5/5 with perf slack; GPU 83/83 on glcore, Vulkan and GLES3; MCP 228 passed, 4
+  skipped (`test_desktop_player_draws_the_layer` needs `JASPER_SLOW_BUILD`, 3 prefab goldens need
+  fixture-unity), with the one failure (`test_vector_text_unchanged`, S50's entities missing from
+  its golden) fixed and rerun 12/12; web, android and a compiled smoke export; tool budget (core
+  98,948 of 99,000), `check_fanout` (`MeshComponent.h` 149 of 150) and all lints. Every review item
+  has a red run. Registry: shader cache v65; MESH `Tcl` bit 54 (terrain took 49–53); components
+  Grid 100, Tilemap Layer 101, Tilemap Collider 2D 102; reflection-parity entities 1101–1103. Found
+  on the way: the legacy Tilemap's mesh build wrote its zero clamp back into stored tile positions
+  (on `main` before), so a drawn map lost negative positions on save or conversion. Also, a tileset
+  image imported before its `.tileset` cooked with mips and BC1, leaving seams. Setting a texture as
+  a tileset's image now switches it to an uncompressed, point-filtered Sprite in the same undo step
+  (red: BC1 with 6 levels).
 
 - 2026-11-10: the owner asked for the MCP eval now. It runs locally on this host (the accounts live
   here, so no `box_lend_accounts`) on branch `eval/pixel-art` from `main`, for every pixel-art case
