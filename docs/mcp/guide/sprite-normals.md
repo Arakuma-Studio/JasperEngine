@@ -13,8 +13,8 @@ may differ by 1 per channel).
 ## When it shows
 
 Lights need height > 0: only 2D lights read sprite normal maps, and a Light 2D lights a normal map only when its `height` is above 0
-(lights made by the editor get 64; older ones keep 0). Sprites without a normal map are lit the same at any
-height. Lower `ambient_light_2d_intensity` (0.2-0.4) to see the light at all. To give a light height:
+(new lights get 64; loaded ones keep theirs). Sprites without a normal map are lit the same at any
+height. Darken a bright 2D ambient (`ambient_high`) to see the light at all. To give a light height:
 
 ```json
 {"tool": "set_properties", "arguments": {"entity": "Light 2D", "values": {"light2d": {"height": 64}}}}
@@ -328,8 +328,8 @@ it names), `creased`, `streaky`, `leaning`, `soft_edges`, `frames_touch_edges` (
 past the cell), `outline_not_found`, `region_unmatched`, `gaps_unmatched`;
 from the paint `paint_empty_selection` (an op selected nothing), `paint_layout_changed` (other frames than when it was
 painted), `paint_hidden_pixels` (painted pixels now transparent), `paint_unreadable` (a damaged layer, dropped);
-from the scene `no_light`, `no_light_height`, `ambient_high`, `size_mismatch`, `filter_mismatch`,
-`material_linked` (save the material file), `too_many_frames`, `directx_in_engine`, `shader_ignores_normals`,
+from the scene `no_light`, `no_light_height`, `light_low` (raise the lights it names), `ambient_high`,
+`size_mismatch`, `filter_mismatch`, `material_linked` (save the material file), `too_many_frames`, `directx_in_engine`, `shader_ignores_normals`,
 `zero_delay`.
 
 ## Using it on a GameObject
