@@ -267,3 +267,22 @@ TEST_F(TitleArtDocumentTest, TheAssetDatabaseGivesADocumentItsGuidInTheFile) {
     EXPECT_EQ(database.typeOf(fs::path(dir) / "hand.titleart"), AssetType::TitleArt);
     EXPECT_FALSE(fs::exists(root() / dir / "hand.titleart.meta")) << "no sidecar";
 }
+
+TEST_F(TitleArtDocumentTest, FilesAStepImportsAreInTheAssetDatabaseWhenItReturns) {
+    // a library apply writes its fonts beside the document in the same step; the next render or
+    // check resolves them through the asset database, with no frame between: they must be there
+    // already, not after the file watcher's walk (a full gate run missed a font under load)
+    const std::string dir = folder("imports");
+    const fs::path font = root() / dir / "Fonts" / "Imported-Regular.ttf";
+    const std::string rel = dir + "/Fonts/Imported-Regular.ttf";
+    ASSERT_FALSE(project()->getAssetDatabase().lookupPath(rel).found());
+    std::vector<TitleOpFile> files = {{font, std::string("font bytes"), true, false}};
+    std::string error;
+    std::shared_ptr<TitleArtDocument> document = TitleArtDocument::create(project(), dir + "/logo.titleart", nullptr, "Create Title Art", &error, &files);
+    ASSERT_TRUE(document) << error;
+    ASSERT_TRUE(fs::exists(font));
+    EXPECT_TRUE(project()->getAssetDatabase().lookupPath(rel).found()) << "the imported font resolves as soon as the step returns";
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FALSE(fs::exists(font));
+    EXPECT_FALSE(project()->getAssetDatabase().lookupPath(rel).found()) << "and its undo takes it out again";
+}
