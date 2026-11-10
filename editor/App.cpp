@@ -3643,7 +3643,12 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.resetUiDocuments = [this]() {
-        for (SceneProject* source : project.getHtmlUIScenes()) {
+        SceneProject* main = project.getScene(project.getPlaySessionSceneId());
+        if (!main) main = project.getSelectedScene();
+        std::vector<uint32_t> sceneIds;
+        if (main) project.collectStartActiveScenesForExport(main->id, sceneIds);
+        for (uint32_t id : sceneIds) {
+            SceneProject* source = project.getScene(id);
             if (!source || !source->scene) continue;
             auto system = source->scene->getSystem<UIDocumentSystem>();
             auto documents = source->scene->getComponentArray<UIDocumentComponent>();
