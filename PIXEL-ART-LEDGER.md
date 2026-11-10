@@ -264,6 +264,14 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-10: S46's review found one blocker (the Cleanup window keeps keyboard focus after it closes,
+  so it keeps taking Ctrl+Z and tool keys) and about a dozen should-fixes: the verdict lints the
+  source instead of the output, re-runs overwrite files that aren't theirs, `.meta` paths accepted as
+  outputs, `.meta`-only edits not recooked, import memo waste. All went back to S46's implementer on
+  box A. S48's fix branches are merged with `main` and its final gate and batch checks are running on
+  box D; AC26's screenshot comparison stays in scope (smoke-test seconds, `parity.sh`, S51's export
+  comparison).
+
 - 2026-11-10: S46 passed its lighter gate at `df94fc993` on box A (`WERROR` build; editor 341/341;
   MCP 143 passed and 3 skipped; tool budget core 98,997 of 99,000; performance budgets met; red runs
   for every behaviour) and its independent review started. S46 changed `PixelLint`/`CraftLints`
