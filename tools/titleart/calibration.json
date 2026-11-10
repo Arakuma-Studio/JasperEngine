@@ -43,7 +43,7 @@
       "library": {
         "color_schemes": {
           "n": 99,
-          "min": 4.2,
+          "min": 8.8,
           "p5": 9.4,
           "median": 39.1,
           "p95": 100,
@@ -60,7 +60,7 @@
         "templates": {
           "n": 142,
           "min": 2.7,
-          "p5": 9.2,
+          "p5": 9.3,
           "median": 41.7,
           "p95": 100,
           "max": 100
@@ -103,7 +103,7 @@
           "min": 0,
           "p5": 0,
           "median": 0.0005709877,
-          "p95": 0.03942516,
+          "p95": 0.03065586,
           "max": 0.5252991
         }
       },
@@ -158,7 +158,7 @@
           "n": 99,
           "min": 38.4,
           "p5": 41.6,
-          "median": 53.7,
+          "median": 54.2,
           "p95": 64.6,
           "max": 69.3
         },
@@ -220,16 +220,16 @@
         }
       },
       "threshold": {
-        "l_range_min": 12
+        "l_range_min": 9
       },
       "metric": "l_range",
       "higher_is_better": true,
       "L": 12.74,
       "L_item": "casino/speech-frame-red",
       "R": 1.45,
-      "T": 12,
+      "T": 9,
       "separates": true,
-      "middle_half": false,
+      "middle_half": true,
       "suggested_T": 7.095
     },
     "not_clipped": {
