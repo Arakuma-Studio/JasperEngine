@@ -38,15 +38,14 @@ namespace jasperengine::htmlui::compat {
         // percentages (em, rem, vw ...) for the element. "" when the shape is invalid.
         std::string toSvg(float width, float height, Rml::Element* element = nullptr, std::string* error = nullptr) const;
 
-        // CSS Shapes interpolation, resolved against this frame's reference box. Different
+        // CSS Shapes interpolation keeps unit coefficients until the shape is drawn. Different
         // shape kinds, reference boxes, polygon fill rules or vertex counts are discrete.
-        bool interpolate(const BasicShape& to, float alpha, float width, float height, Rml::Element* element, BasicShape& result) const;
+        bool interpolate(const BasicShape& to, float alpha, BasicShape& result) const;
         Rml::Units unitDependencies() const;
 
     private:
-        struct Interpolation;
-        std::shared_ptr<const Interpolation> interpolation;
-        bool resolveInterpolation(float width, float height, Rml::Element* element, BasicShape& result) const;
+        struct AnimationComponents;
+        std::shared_ptr<const AnimationComponents> animationComponents;
     };
 
     // html-shape("<basic-shape>"): the shape rasterized (LunaSVG) at the reference box's size x

@@ -235,7 +235,21 @@ static bool InterpolateEffectProperties(PropertyDictionary& properties, const Ef
 			}
 			const Property& prop1 = it->second;
 
-			Property p = InterpolateProperties(prop0, prop1, alpha, element, prop0.definition);
+			Property p;
+			if (prop0 == prop1)
+				p = prop0;
+			else if (prop0.unit == Unit::STYLE_VALUE && prop1.unit == Unit::STYLE_VALUE &&
+				!PropertyParserColour::DependsOnCurrentColor(prop0) && !PropertyParserColour::DependsOnCurrentColor(prop1))
+			{
+				const StyleValuePtr value0 = prop0.Get<StyleValuePtr>(), value1 = prop1.Get<StyleValuePtr>();
+				const StyleValuePtr mixed = value0 && value1 ? value0->Interpolate(*value1, alpha, element) : nullptr;
+				// An incompatible typed argument makes the whole decorator pair discrete.
+				if (!mixed)
+					return false;
+				p = Property(mixed, Unit::STYLE_VALUE);
+			}
+			else
+				p = InterpolateProperties(prop0, prop1, alpha, element, prop0.definition);
 			p.definition = prop0.definition;
 			properties.SetProperty(id, p);
 		}

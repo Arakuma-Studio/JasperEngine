@@ -33,13 +33,17 @@ namespace {
     struct Resolver {
         Rml::Element* element;
         float width, height;
+        Rml::Unit coefficientUnit = Rml::Unit::UNKNOWN;
 
         // a length-percentage against `base`; false when not one
         bool length(const std::string& token, float base, float& out) const{
             Length length;
             if (!parseLength(token, length))
                 return false;
-            out = resolve(element, length, base);
+            if (coefficientUnit != Rml::Unit::UNKNOWN)
+                out = length.unit == coefficientUnit ? length.value * (length.isPercent() ? base / 100.0f : 1.0f) : 0.0f;
+            else
+                out = resolve(element, length, base);
             return true;
         }
     };
@@ -157,6 +161,8 @@ namespace {
         horizontal = expand(horizontal);
         vertical = expand(vertical);
         for (int i = 0; i < 4; i++){
+            // CSS Shapes resolves percentages against the reference box, before reducing
+            // overlapping corner curves to fit the inset rectangle.
             if (!r.length(horizontal[i], r.width, radii[i][0]) || !r.length(vertical[i], r.height, radii[i][1]))
                 return fail(error, "radius '" + horizontal[i] + "' is not a length or percentage");
             radii[i][0] = std::max(0.0f, radii[i][0]);
@@ -288,11 +294,10 @@ namespace {
             return shape.text == to.shape.text && shape.box == to.shape.box;
         }
 
-        Rml::SharedPtr<const Rml::StyleValue> Interpolate(const Rml::StyleValue& other, float alpha, Rml::Element& element) const override{
+        Rml::SharedPtr<const Rml::StyleValue> Interpolate(const Rml::StyleValue& other, float alpha, Rml::Element& /*element*/) const override{
             const auto& to = static_cast<const ShapeAnimationValue&>(other);
-            const Rml::Rectanglef box = boxRectangle(&element, shape.box);
             BasicShape mixed;
-            if (!shape.interpolate(to.shape, alpha, box.Width(), box.Height(), &element, mixed))
+            if (!shape.interpolate(to.shape, alpha, mixed))
                 return nullptr;
             return std::make_shared<ShapeAnimationValue>(std::move(mixed));
         }
@@ -322,21 +327,119 @@ namespace {
 
 // ---------------------------------------------------------------- BasicShape
 
-struct BasicShape::Interpolation {
-    BasicShape from, to;
-    float alpha;
+struct BasicShape::AnimationComponents {
+    using Component = std::vector<Length>;
+    std::string name, fillRule;
+    std::vector<Component> values;
+
+    static std::shared_ptr<const AnimationComponents> from(const BasicShape& shape){
+        if (shape.animationComponents) return shape.animationComponents;
+        ShapeAnimationParts parts;
+        if (!shapeAnimationParts(shape, parts)) return nullptr;
+        auto result = std::make_shared<AnimationComponents>();
+        result->name = parts.name;
+        result->fillRule = parts.fillRule;
+        for (const auto* list : {&parts.values, &parts.radii}){
+            for (const auto& token : *list){
+                Length length;
+                if (!parseLength(token, length)) return nullptr;
+                result->values.push_back({length});
+            }
+        }
+        if (parts.name == "circle" || parts.name == "ellipse"){
+            Component x, y;
+            std::vector<Rml::Unit> units{Rml::Unit::PERCENT};
+            for (const auto& token : parts.position){
+                Length length;
+                if (parseLength(token, length) && std::find(units.begin(), units.end(), length.unit) == units.end())
+                    units.push_back(length.unit);
+            }
+            // Evaluate the position grammar once per unit with a unit reference box. This
+            // keeps edge offsets and relative units as coefficients, without resolving layout.
+            for (Rml::Unit unit : units){
+                const float base = unit == Rml::Unit::PERCENT ? 1.0f : 0.0f;
+                const Resolver probe{nullptr, base, base, unit};
+                float cx, cy;
+                if (!parsePosition(parts.position, probe, cx, cy, nullptr)) return nullptr;
+                const float scale = unit == Rml::Unit::PERCENT ? 100.0f : 1.0f;
+                if (cx != 0.0f) x.push_back({cx * scale, unit});
+                if (cy != 0.0f) y.push_back({cy * scale, unit});
+            }
+            result->values.push_back(std::move(x));
+            result->values.push_back(std::move(y));
+        }
+        return result;
+    }
+
+    static Component mix(const Component& from, const Component& to, float alpha){
+        Component result;
+        const auto add = [&](const Component& source, float weight){
+            for (const Length& length : source){
+                auto found = std::find_if(result.begin(), result.end(), [&](const Length& item){ return item.unit == length.unit; });
+                if (found == result.end()) result.push_back({length.value * weight, length.unit});
+                else found->value += length.value * weight;
+            }
+        };
+        add(from, 1.0f - alpha);
+        add(to, alpha);
+        result.erase(std::remove_if(result.begin(), result.end(), [](const Length& length){ return length.value == 0.0f; }), result.end());
+        std::sort(result.begin(), result.end(), [](const Length& a, const Length& b){ return a.unit < b.unit; });
+        return result;
+    }
+
+    static std::string componentText(const Component& value){
+        if (value.empty()) return "0px";
+        if (value.size() == 1) return Rml::Property(value[0].value, value[0].unit).ToString();
+        std::string result = "calc(";
+        for (size_t i = 0; i < value.size(); i++){
+            const Length& length = value[i];
+            result += i == 0 ? (length.value < 0 ? "-" : "") : (length.value < 0 ? " - " : " + ");
+            result += Rml::Property(std::fabs(length.value), length.unit).ToString();
+        }
+        return result + ")";
+    }
+
+    std::string serialize(bool used, float width, float height, Rml::Element* element) const{
+        const auto value = [&](size_t index, float basis, bool radius = false){
+            if (!used) return componentText(values[index]);
+            float pixels = 0.0f;
+            for (const Length& length : values[index]) pixels += resolve(element, length, basis);
+            return num(radius ? std::max(0.0f, pixels) : pixels) + "px";
+        };
+        std::string result = name + "(";
+        if (name == "inset"){
+            for (size_t i = 0; i < 4; i++) result += (i ? " " : "") + value(i, i % 2 == 0 ? height : width);
+            result += " round";
+            for (size_t i = 0; i < 8; i++) result += (i == 4 ? " / " : " ") + value(i + 4, i < 4 ? width : height, true);
+        }else if (name == "circle" || name == "ellipse"){
+            const size_t radii = name == "circle" ? 1 : 2;
+            for (size_t i = 0; i < radii; i++){
+                const float basis = radii == 1 ? std::hypot(width, height) / std::sqrt(2.0f) : i == 0 ? width : height;
+                result += (i ? " " : "") + value(i, basis, true);
+            }
+            result += " at " + value(radii, width) + " " + value(radii + 1, height);
+        }else{
+            result += fillRule + ", ";
+            for (size_t i = 0; i < values.size(); i++) result += (i ? i % 2 == 0 ? ", " : " " : "") + value(i, i % 2 == 0 ? width : height);
+        }
+        return result + ")";
+    }
 };
 
 Rml::Units BasicShape::unitDependencies() const{
-    if (interpolation)
-        return interpolation->from.unitDependencies() | interpolation->to.unitDependencies();
-    ShapeAnimationParts parts;
-    if (!shapeAnimationParts(*this, parts)) return Rml::Unit::UNKNOWN;
+    const auto components = AnimationComponents::from(*this);
     Rml::Units units = Rml::Unit::UNKNOWN;
-    for (const auto* tokens : {&parts.values, &parts.position, &parts.radii}){
-        for (const auto& token : *tokens){
-            Length length;
-            if (parseLength(token, length)) units = units | length.unit;
+    if (components){
+        for (const auto& component : components->values)
+            for (const Length& length : component) units = units | length.unit;
+    }else{
+        ShapeAnimationParts parts;
+        if (!shapeAnimationParts(*this, parts)) return units;
+        for (const auto* list : {&parts.values, &parts.position, &parts.radii}){
+            for (const auto& token : *list){
+                Length length;
+                if (parseLength(token, length)) units = units | length.unit;
+            }
         }
     }
     return units;
@@ -368,81 +471,23 @@ bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string*
     return true;
 }
 
-bool BasicShape::interpolate(const BasicShape& to, float alpha, float width, float height, Rml::Element* element, BasicShape& result) const{
-    BasicShape fromResolved, toResolved;
-    if (!resolveInterpolation(width, height, element, fromResolved) || !to.resolveInterpolation(width, height, element, toResolved))
+bool BasicShape::interpolate(const BasicShape& to, float alpha, BasicShape& result) const{
+    const auto a = AnimationComponents::from(*this), b = AnimationComponents::from(to);
+    if (box != to.box || !a || !b || a->name != b->name || a->fillRule != b->fillRule || a->values.size() != b->values.size())
         return false;
-    ShapeAnimationParts a, b;
-    if (box != to.box || !shapeAnimationParts(fromResolved, a) || !shapeAnimationParts(toResolved, b) || a.name != b.name ||
-        a.fillRule != b.fillRule || a.values.size() != b.values.size())
-        return false;
-    const Resolver resolver{element, width, height};
-    const auto mix = [alpha](float from, float toValue){ return from + (toValue - from) * alpha; };
-    const auto length = [&](const std::string& from, const std::string& toValue, float basis, float& value){
-        float x, y;
-        if (!resolver.length(from, basis, x) || !resolver.length(toValue, basis, y)) return false;
-        value = mix(x, y);
-        return true;
-    };
+    auto mixed = std::make_shared<AnimationComponents>(*a);
+    for (size_t i = 0; i < mixed->values.size(); i++) mixed->values[i] = AnimationComponents::mix(a->values[i], b->values[i], alpha);
     result.box = box;
-    if (a.name == "inset"){
-        std::array<float, 4> offsets{};
-        result.text = "inset(";
-        for (size_t i = 0; i < 4; i++){
-            if (!length(a.values[i], b.values[i], i % 2 == 0 ? height : width, offsets[i])) return false;
-            result.text += (i ? " " : "") + num(offsets[i]) + "px";
-        }
-        result.text += " round";
-        for (size_t i = 0; i < 8; i++){
-            float radius;
-            if (!length(a.radii[i], b.radii[i], i < 4 ? width : height, radius)) return false;
-            result.text += (i == 4 ? " / " : " ") + num(std::max(0.0f, radius)) + "px";
-        }
-    }else if (a.name == "circle" || a.name == "ellipse"){
-        float ax, ay, bx, by;
-        if (!parsePosition(a.position, resolver, ax, ay, nullptr) || !parsePosition(b.position, resolver, bx, by, nullptr)) return false;
-        result.text = a.name + "(";
-        for (size_t i = 0; i < a.values.size(); i++){
-            float radius;
-            const float basis = a.name == "circle" ? std::hypot(width, height) / std::sqrt(2.0f) : i == 0 ? width : height;
-            if (length(a.values[i], b.values[i], basis, radius)){
-                result.text += (i ? " " : "") + num(std::max(0.0f, radius)) + "px";
-            }else{
-                return false;
-            }
-        }
-        result.text += " at " + num(mix(ax, bx)) + "px " + num(mix(ay, by)) + "px";
-    }else{
-        result.text = "polygon(" + a.fillRule + ", ";
-        for (size_t i = 0; i < a.values.size(); i++){
-            float coordinate;
-            if (!length(a.values[i], b.values[i], i % 2 == 0 ? width : height, coordinate)) return false;
-            result.text += (i ? i % 2 == 0 ? ", " : " " : "") + num(coordinate) + "px";
-        }
-    }
-    result.text += ")";
-    // Animation sampling precedes layout. Keep the component endpoints so GenerateElementData
-    // resolves percentages again against the final box, including a size animated in this frame.
-    result.interpolation = std::make_shared<Interpolation>(Interpolation{*this, to, alpha});
-    return true;
-}
-
-bool BasicShape::resolveInterpolation(float width, float height, Rml::Element* element, BasicShape& result) const{
-    if (!interpolation){
-        result = *this;
-        return true;
-    }
-    if (!interpolation->from.interpolate(interpolation->to, interpolation->alpha, width, height, element, result))
-        return false;
-    result.interpolation.reset();
+    result.text = mixed->serialize(false, 0, 0, nullptr);
+    result.animationComponents = std::move(mixed);
     return true;
 }
 
 std::string BasicShape::toSvg(float width, float height, Rml::Element* element, std::string* error) const{
-    if (interpolation){
+    if (animationComponents){
         BasicShape resolved;
-        if (!resolveInterpolation(width, height, element, resolved))
-            return std::string();
+        resolved.box = box;
+        resolved.text = animationComponents->serialize(true, width, height, element);
         return resolved.toSvg(width, height, element, error);
     }
     if (!(width > 0.0f) || !(height > 0.0f)){
