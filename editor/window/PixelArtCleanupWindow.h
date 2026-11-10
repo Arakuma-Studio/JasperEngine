@@ -166,8 +166,9 @@ namespace jasperengine::editor {
         void setFrame(int index);                      // the player's frame (and the shown source frame)
         int getFrame() const { return frame; }
         float getZoom() const { return zoom; }
-        // pans and zooms so a source position is centred; `flash`: the 1 s flash of a lint spot
-        void focusOn(double sourceX, double sourceY, bool flash);
+        // pans and zooms so a rect of the view (a cell, in source or result pixels) is centred and
+        // readable; `flash`: the 1 s flash of a lint spot, outlining that rect
+        void focusOn(double x0, double y0, double x1, double y1, bool flash);
         // Lints tab: the spot's row was clicked / the arrow keys
         void selectLintSpot(int lintIndex, int spotIndex);
         // Frames tab: Alt+Arrows

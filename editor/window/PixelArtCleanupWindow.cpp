@@ -1001,11 +1001,11 @@ bool PixelArtCleanupWindow::lintSpotRect(const pixelart::lint::LintSpot& spot, d
     return cellRect(-1, spot.x + shown->cropX, spot.y + shown->cropY, x0, y0, x1, y1);
 }
 
-void PixelArtCleanupWindow::focusOn(double x, double y, bool flash) {
+void PixelArtCleanupWindow::focusOn(double x0, double y0, double x1, double y1, bool flash) {
     const ImVec2 size = viewImageSize();
+    const double x = (x0 + x1) * 0.5, y = (y0 + y1) * 0.5;
     // a cell at least 16 screen pixels wide, never zooming out further than the fit
-    double cell = 1.0;
-    if (shown && !resultSpace() && shown->result.outcome && shown->result.outcome->spec.cellWidth > 0) cell = shown->result.outcome->spec.cellWidth;
+    const double cell = std::max(1.0, x1 - x0);
     float target = zoom;
     for (float step : CLEANUP_ZOOM_STEPS) {
         if (step * cell >= 16.0) {
@@ -1020,7 +1020,8 @@ void PixelArtCleanupWindow::focusOn(double x, double y, bool flash) {
     if (flash) {
         flashSourceX = x;
         flashSourceY = y;
-        flashCellW = flashCellH = cell;
+        flashCellW = std::max(1.0, x1 - x0);
+        flashCellH = std::max(1.0, y1 - y0);
         flashUntil = cleanupNow() + 1.0;
     }
 }
@@ -1036,7 +1037,7 @@ void PixelArtCleanupWindow::selectLintSpot(int lintIndex, int spotIndex) {
     spotSelected = spotIndex;
     double x0, y0, x1, y1;
     if (!lintSpotRect(at[static_cast<size_t>(spotIndex)], x0, y0, x1, y1)) return;
-    focusOn((x0 + x1) * 0.5, (y0 + y1) * 0.5, true);
+    focusOn(x0, y0, x1, y1, true);
 }
 
 void PixelArtCleanupWindow::nudgeCurrentFrame(int dx, int dy) {
@@ -1945,7 +1946,7 @@ void PixelArtCleanupWindow::drawLostColorsTab() {
         if (ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(avail - Theme::dpi(160.0f), size)) && !entry.at.empty()) {
             double x0, y0, x1, y1;
             if (cellRectInView(entry.frame < 0 ? -1 : entry.frame - 1, entry.at[0][0], entry.at[0][1], x0, y0, x1, y1)) {
-                focusOn((x0 + x1) * 0.5, (y0 + y1) * 0.5, true);
+                focusOn(x0, y0, x1, y1, true);
             }
         }
         if (ImGui::IsItemHovered()) hoverLost = i;

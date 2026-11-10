@@ -24,6 +24,8 @@ namespace jasperengine::editor {
         static const pixelart::PixelImage& compare(const PixelArtCleanupWindow& w) { return w.shown->compare; }
         static const pixelart::PixelImage& result(const PixelArtCleanupWindow& w) { return w.shown->image; }
         static void tick(PixelArtCleanupWindow& w) { w.tick(); }
+        static void focusAndFlash(PixelArtCleanupWindow& w, double x0, double y0, double x1, double y1) { w.focusOn(x0, y0, x1, y1, true); }
+        static double flashWidth(const PixelArtCleanupWindow& w) { return w.flashCellW; }
         static bool dirty(const PixelArtCleanupWindow& w) { return w.dirty; }
         static const void* shown(const PixelArtCleanupWindow& w) { return w.shown.get(); }
         static void predict(PixelArtCleanupWindow& w, double lastMs, double fullMs) {
@@ -302,6 +304,10 @@ TEST(CleanupWindow, ASheetLintSpotLandsOnItsCellOfTheSourceFrame) {
     EXPECT_DOUBLE_EQ(x0, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax)]);
     EXPECT_DOUBLE_EQ(y0, fixed.box.y + fixed.outcome.grid.ys[static_cast<size_t>(ay)]);
     EXPECT_DOUBLE_EQ(x1, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax) + 1]);
+    // R42: the flash outlines the whole cell, not one source pixel of it
+    Access::focusAndFlash(window, x0, y0, x1, y1);
+    EXPECT_DOUBLE_EQ(Access::flashWidth(window), x1 - x0);
+    EXPECT_GT(Access::flashWidth(window), 1.0);
 }
 
 TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
