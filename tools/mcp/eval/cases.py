@@ -4563,4 +4563,35 @@ CASES = [
                    "must_not_call": ["create_entity"]},
         "max_turns": 12,
     },
+    # S78 WP-A
+    {
+        "id": "guard_light_steps",
+        "kind": "guard",
+        "what_happened": "New setting (S78): the stepped, banded 2D lighting of pixel-art games is the scene's Light Steps "
+                         "(light_2d_steps), one value for every Light 2D; without it agents fork library:sprite to quantize "
+                         "the light in GLSL, which leaves the tiles and every other 2D-lit surface smooth.",
+        "text_at_issue": "set_scene_settings names (light_2d_steps: 'Light Steps: each Light 2D's light in this many hard bands, "
+                         "0-16 (0 off: smooth)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md R1-R4 (new setting text); no failure on record",
+        "prompt": "Our 2D pixel-art level is lit by Light 2Ds and the sprites have normal maps. Make the lighting look stepped, "
+                  "in about 6 hard bands like classic pixel-art lighting, on every sprite and tile.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nlight_2d_steps = 6",
+                {"scene_id": 1, "settings": {"light_2d_steps": 6}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [1, 1, 1] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [1, 1, 1], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["light_2d_steps"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"light_2d_steps": 6}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
+        "max_turns": 10,
+    },
 ]
