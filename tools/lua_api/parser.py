@@ -2496,6 +2496,8 @@ OVERRIDES.update({
     ('Grid', 'worldToCell'): {
         'doc': ['The cell holding a world point (y up, the shared edge belongs to the cell above or to the right).'],
         'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('Grid', 'getGridComponent'): {
+        'overloads': [([], 'any')]},
     ('Tileset', 'getProperty'): {
         'doc': ["A tile's property, or the schema's default; nil when the tileset declares no such property."],
         'overloads': [([('tile', 'integer'), ('name', 'string')], 'boolean|integer|number|string|Vector4|nil')]},
@@ -2797,6 +2799,10 @@ OVERRIDES.update({
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+    ('TitleArt', 'playOverlay'): {
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}')], 'boolean')]},
+    ('TitleArt', 'stop'): {
+        'overloads': [([], ''), ([('name', 'string')], 'boolean')]},
 })
 
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
@@ -2805,6 +2811,10 @@ PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # The tilemap Grid shares its C++ short name with internal grid types.
+    ('Grid', 'layout'): ('TileGridLayout', False),
+    ('Grid', 'cellSize'): ('Vector2', True),
+    ('Grid', 'cellGap'): ('Vector2', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
@@ -3882,6 +3892,13 @@ class Builder:
             return
         res = self.r.resolve(getter, m) if getter else None
         if res is None:
+            # An explicit property signature also covers ambiguous C++ getter owners.
+            if (c.name, m.name) in PROPERTY_OVERRIDES:
+                m.lua_type, m.copy = PROPERTY_OVERRIDES[(c.name, m.name)]
+                m.writable = setter is not None
+                m.assign_fn = None
+                m.doc = list(m.call.doc)
+                return
             self.unresolve(c, m, 'getter not resolved: ' + (join_tokens(getter)[:80] if getter else ''))
             m.lua_type = 'any'
             m.doc = list(m.call.doc)
