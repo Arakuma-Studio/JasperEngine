@@ -264,6 +264,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-10: the owner asked for the MCP eval now. It runs locally on this host (the accounts live
+  here, so no `box_lend_accounts`) on branch `eval/pixel-art` from `main`, for every pixel-art case
+  except S50's, on `therealeduard465` and `jasperthegoat`. Failures get triaged as eval bugs or text
+  fixes. S50: all three review-fix branches merged; the `main` merge (48 conflicts) was resolved
+  after an Orquester restart by a relaunched S50 lead, whose final gate is split across C and D.
+
 - 2026-11-10: S46 Pixel Art Cleanup merged (`713418ed7`), with the goldens S48's `pixel-fx-game`
   fixture was missing, so `main` is green again on the shared-data suites. Gate on the merged tree,
   box A: `WERROR` build; S46 suites plus the shared-data filter 364/365 before the goldens, then
