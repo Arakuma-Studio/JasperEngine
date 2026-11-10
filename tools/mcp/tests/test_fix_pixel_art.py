@@ -110,7 +110,53 @@ async def enable(ed: Editor) -> None:
     await ed.call("tool_groups", enable=["pixel_art"])
 
 
+def reset_art(ed: Editor) -> None:
+    """Each test starts from an empty art folder: the file shares one editor, and a test that stops
+    half-way must not leave an output the next one's write would find (output_exists)."""
+    shutil.rmtree(ed.project / ART, ignore_errors=True)
+    (ed.project / ART).mkdir(parents=True, exist_ok=True)
+
+
+async def finished(ed: Editor, reply: dict) -> dict:
+    """The job's result when the call handed back its job_id (past the 1 s it waits)."""
+    if reply.get("status") != "running":
+        return reply
+    for _ in range(1500):
+        job = await ed.call("get_job", job_id=reply["job_id"])
+        if job["status"] != "running":
+            ed.check_eq(job["status"], "succeeded", str(job)[:400])
+            return job["result"]
+        await asyncio.sleep(0.2)
+    ed.fail(f"job {reply['job_id']} still running")
+
+
+async def fix(ed: Editor, args: dict) -> dict:
+    return await finished(ed, await ed.call("fix_pixel_art", args))
+
+
+def big_png() -> bytes:
+    """4,000 px square of flat 3 px cells: bent grid lines on it run for seconds."""
+    width = height = 4000
+    pixel_rows = []
+    for k in range(7):
+        a = bytes(((k * 40) & 255, 255 - (k * 30) & 255, (k * 17) & 255, 255))
+        b = bytes(((k * 40 + 60) & 255, (k * 30) & 255, 255 - (k * 17) & 255, 255))
+        pixel_rows.append(b"\0" + (a * 3 + b * 3) * (width // 6) + a * (width % 6))
+    raw = b"".join(pixel_rows[(y // 3) % 7] for y in range(height))
+    data = zlib.compress(raw, 1)
+    png = b"\x89PNG\r\n\x1a\n"
+    for kind, body in ((b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)), (b"IDAT", data), (b"IEND", b"")):
+        png += struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xffffffff)
+    return png
+
+
+SLOW = {"grid": {"kind": "cells", "cell_width": 3}, "follow": "bend"}
+# a palette of black and white loses the sprite's colours: lost_share trips (needs_person), and there are pixels to write
+LOSING_PALETTE = {"palette": ["#000000", "#ffffff"]}
+
+
 async def test_preview_then_write_then_rerun(ed: Editor):
+    reset_art(ed)
     write_hero(ed)
     await enable(ed)
     before = files_in(ed.project)
@@ -127,7 +173,7 @@ async def test_preview_then_write_then_rerun(ed: Editor):
     ed.check_eq(v["output"]["width"], 16, f"output size {v['output']}")
     recipe = v["recipe"]
 
-    written = await ed.call("fix_pixel_art", {"source": HERO, "output": True})
+    written = await fix(ed, {"source": HERO, "output": True})
     ed.check_eq(written["default_output"], HERO_CLEAN)
     ed.check("undo" in written and written["undo"]["name"].endswith(f"Pixel Art Cleanup (hero_clean.png)"), f"undo: {written.get('undo')}")
     png = (ed.project / HERO_CLEAN).read_bytes()
@@ -141,13 +187,13 @@ async def test_preview_then_write_then_rerun(ed: Editor):
     ed.check(any("Pixel Art Cleanup (hero_clean.png)" in e["name"] for e in entries), f"undo history: {[e['name'] for e in entries][:5]}")
 
     # rerun: byte-identical (R41), and the output keeps its own path
-    rerun = await ed.call("fix_pixel_art", {"source": HERO_CLEAN, "rerun": True, "output": True})
+    rerun = await fix(ed, {"source": HERO_CLEAN, "rerun": True, "output": True})
     ed.check_eq((ed.project / HERO_CLEAN).read_bytes(), png, "rerun writes the same bytes")
     ed.check_eq(rerun["stale"]["source_changed"], False)
 
     # the source changed: the result says stale; a preview still runs (R32)
     (ed.project / HERO).write_bytes(ai_sprite(seed=99))
-    stale = await ed.call("fix_pixel_art", {"source": HERO_CLEAN, "rerun": True})
+    stale = await fix(ed, {"source": HERO_CLEAN, "rerun": True})
     ed.check_eq(stale["stale"]["source_changed"], True, "editing the source flips stale")
 
     # a re-run over an edited output fails, and writes nothing
@@ -169,6 +215,7 @@ async def test_preview_then_write_then_rerun(ed: Editor):
 
 
 async def test_bad_arguments_and_existing_output(ed: Editor):
+    reset_art(ed)
     write_hero(ed)
     await enable(ed)
     message = await ed.check_error("fix_pixel_art", {"source": HERO, "recipe": {"pallete": "sweetie-16"}}, contains="bad_recipe")
@@ -184,10 +231,11 @@ async def test_bad_arguments_and_existing_output(ed: Editor):
 
 
 async def test_needs_person_is_refused_then_forced(ed: Editor):
-    (ed.project / ART).mkdir(parents=True, exist_ok=True)
+    reset_art(ed)
     shutil.copy(PHOTO_FIXTURE, ed.project / PHOTO)
+    write_hero(ed)
     await enable(ed)
-    preview = await ed.call("fix_pixel_art", {"source": PHOTO})
+    preview = await fix(ed, {"source": PHOTO})
     ed.check_eq(preview["verdict"], "needs_person", preview["summary"])
     ids = {g["id"] for g in preview["guards"]}
     ed.check(ids & {"no_grid", "low_fit", "low_confidence"}, f"guards: {ids}")
@@ -197,38 +245,61 @@ async def test_needs_person_is_refused_then_forced(ed: Editor):
     ed.check("force" in message, f"the fix names force: {message[:300]}")
     ed.check_eq(files_in(ed.project), before, "a refused write leaves the directory as it was")
 
-    if preview.get("output", {}).get("width", 0) > 0:
-        forced = await ed.call("fix_pixel_art", {"source": PHOTO, "output": True, "force": True})
-        path = ed.project / forced["default_output"]
-        ed.check(path.exists(), "force writes it")
-        chunk = json.loads(chunk_text(path.read_bytes(), "jasper.pixelcleanup"))
-        ed.check_eq(chunk["forced"], True, "the recipe records forced")
-        lint = await ed.call("lint_pixel_art", {"source": forced["default_output"]})
-        ed.check_eq(lint.get("forced"), True, "lint_pixel_art reports forced on it")
+    # a needs_person result that has pixels: refused without force, written and recorded with it (AC11)
+    wrong = await fix(ed, {"source": HERO, "recipe": LOSING_PALETTE})
+    ed.check_eq(wrong["verdict"], "needs_person", wrong["summary"])
+    ed.check(wrong["output"]["width"] > 0, f"it has an output: {wrong['output']}")
+    await ed.check_error("fix_pixel_art", {"source": HERO, "recipe": LOSING_PALETTE, "output": True}, contains="needs_person")
+    ed.check_eq(files_in(ed.project), before, "nothing is written without force")
+    forced = await fix(ed, {"source": HERO, "recipe": LOSING_PALETTE, "output": True, "force": True})
+    path = ed.project / forced["default_output"]
+    ed.check(path.exists(), "force writes it")
+    chunk = json.loads(chunk_text(path.read_bytes(), "jasper.pixelcleanup"))
+    ed.check_eq(chunk["forced"], True, "the recipe records forced")
+    lint = await ed.call("lint_pixel_art", {"source": forced["default_output"]})
+    ed.check_eq(lint.get("forced"), True, "lint_pixel_art reports forced on it")
+
+
+async def test_output_paths_carry_their_roles_extension(ed: Editor):
+    """R31: an object-form output path must end in its role's extension; a .meta is never an output."""
+    reset_art(ed)
+    write_hero(ed)
+    await enable(ed)
+    before = files_in(ed.project)
+    for output in ({"png": f"{ART}/x.png.meta"}, {"png": "project.yaml"}, {"aseprite": f"{ART}/x.png"}, {"png": f"{ART}/x.png", "json": f"{ART}/x.txt"}):
+        await ed.check_error("fix_pixel_art", {"source": HERO, "output": output, "overwrite": True}, contains="invalid_value")
+    ed.check_eq(files_in(ed.project), before, "no refused output is written")
+    ed.check(b"PNG" not in (ed.project / "project.yaml").read_bytes()[:8], "project.yaml is untouched")
+
+
+async def test_timeout_seconds_ends_the_run(ed: Editor):
+    """R37: past 1 s the call hands back the job; timeout_seconds ends the run, and a timed-out run writes nothing."""
+    reset_art(ed)
+    big = f"{ART}/big.png"
+    (ed.project / big).write_bytes(big_png())
+    await enable(ed)
+    before = files_in(ed.project)
+    started = await ed.call("fix_pixel_art", {"source": big, "output": True, "timeout_seconds": 1, "recipe": SLOW})
+    ed.check_eq(started.get("status"), "running", f"past 1 s it is a job: {str(started)[:200]}")
+    for _ in range(1500):
+        job = await ed.call("get_job", job_id=started["job_id"])
+        if job["status"] != "running":
+            break
+        await asyncio.sleep(0.2)
+    ed.check(job["status"] in ("failed", "cancelled") and "timeout_seconds" in json.dumps(job), f"timed out: {str(job)[:400]}")
+    ed.check_eq(files_in(ed.project), before, "a timed-out run writes nothing")
 
 
 async def test_cancelled_job_writes_nothing(ed: Editor):
-    (ed.project / ART).mkdir(parents=True, exist_ok=True)
-    # big enough that bent grid lines run past the 1 s the call waits: flat cells of 3 px, 4,000 px square
-    width = height = 4000
-    pixel_rows = []
-    for k in range(7):
-        a = bytes(((k * 40) & 255, 255 - (k * 30) & 255, (k * 17) & 255, 255))
-        b = bytes(((k * 40 + 60) & 255, (k * 30) & 255, 255 - (k * 17) & 255, 255))
-        pixel_rows.append(b"\0" + (a * 3 + b * 3) * (width // 6) + a * (width % 6))
-    raw = b"".join(pixel_rows[(y // 3) % 7] for y in range(height))
-    data = zlib.compress(raw, 1)
-    png = b"\x89PNG\r\n\x1a\n"
-    for kind, body in ((b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)), (b"IDAT", data), (b"IEND", b"")):
-        png += struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xffffffff)
+    reset_art(ed)
     big = f"{ART}/big.png"
-    (ed.project / big).write_bytes(png)
+    (ed.project / big).write_bytes(big_png())
     await enable(ed)
     before = files_in(ed.project)
-    started = await ed.call("fix_pixel_art", {"source": big, "output": True, "timeout_seconds": 1, "recipe": {"grid": {"kind": "cells", "cell_width": 3}, "follow": "bend"}})
+    started = await ed.call("fix_pixel_art", {"source": big, "output": True, "recipe": SLOW})
     ed.check_eq(started.get("status"), "running", f"past 1 s it is a job: {str(started)[:200]}")
     await ed.call("cancel_job", job_id=started["job_id"])
-    for _ in range(600):
+    for _ in range(1500):
         job = await ed.call("get_job", job_id=started["job_id"])
         if job["status"] != "running":
             break
@@ -238,10 +309,11 @@ async def test_cancelled_job_writes_nothing(ed: Editor):
 
 
 async def test_apply_sets_the_sprite(ed: Editor):
+    reset_art(ed)
     write_hero(ed)
     await enable(ed)
     await ed.call("create_entity", name="HeroSprite", type="sprite")
-    r = await ed.call("fix_pixel_art", {"source": HERO, "output": {"png": f"{ART}/hero_applied.png"}, "apply": "HeroSprite"})
+    r = await fix(ed, {"source": HERO, "output": {"png": f"{ART}/hero_applied.png"}, "apply": "HeroSprite"})
     ed.check("applied" in r, f"applied: {str(r)[:300]}")
     props = await ed.call("get_entity", entity="HeroSprite", components=["mesh"])
     text = json.dumps(props)
@@ -252,6 +324,55 @@ async def test_apply_sets_the_sprite(ed: Editor):
     ed.check_eq(r["applied"]["undo"]["name"], names[0], "the result names the scene step")
     ed.check(any("Pixel Art Cleanup" in n for n in names), f"the file step: {names}")
     await ed.check_error("fix_pixel_art", {"source": HERO, "apply": "HeroSprite"}, contains="output")
+
+
+def sheet_png(copies: int = 3, gap: int = 32) -> bytes:
+    """Three copies of the AI sprite side by side on a transparent sheet: one frame each."""
+    w, h, one = pngdiff.decode(ai_sprite())
+    width = w * copies + gap * (copies - 1)
+    rgba = bytearray(width * h * 4)
+    for c in range(copies):
+        for y in range(h):
+            start = (y * width + c * (w + gap)) * 4
+            rgba[start:start + w * 4] = one[y * w * 4:(y + 1) * w * 4]
+    return pngdiff.encode(width, h, bytes(rgba))
+
+
+async def test_apply_an_aseprite_output(ed: Editor):
+    """R44: apply with an .aseprite output makes the Sprite show that sheet, as a scene step after the file step."""
+    reset_art(ed)
+    write_hero(ed)
+    await enable(ed)
+    await ed.call("create_entity", name="HeroAse", type="sprite")
+    r = await fix(ed, {"source": HERO, "format": "aseprite", "output": True, "apply": "HeroAse"})
+    ed.check("applied" in r, f"applied: {str(r)[:400]}")
+    ed.check((ed.project / f"{ART}/hero_clean.aseprite").exists(), "the .aseprite is written")
+    sprite = (await ed.call("get_entity", entity="HeroAse", components=["sprite"]))["components"]["sprite"]
+    ed.check("hero_clean.aseprite" in json.dumps(sprite), f"the Sprite shows the .aseprite: {json.dumps(sprite)[:400]}")
+    names = [e["name"] for e in (await ed.call("get_undo_history", scope="timeline", limit=5))["entries"]]
+    ed.check_eq(r["applied"]["undo"]["name"], names[0], "the result names the scene step")
+    ed.check(any("Pixel Art Cleanup (hero_clean.aseprite)" in n for n in names), f"the file step: {names}")
+
+
+async def test_apply_a_png_sheet(ed: Editor):
+    """R44: apply with a PNG sheet sets the texture, the Sprite's frames and one Sprite Animation per clip."""
+    reset_art(ed)
+    (ed.project / f"{ART}/walk.png").write_bytes(sheet_png())
+    await enable(ed)
+    await ed.call("create_entity", name="Walker", type="sprite")
+    r = await fix(ed, {"source": f"{ART}/walk.png", "sheet": "on", "format": "png", "output": True, "apply": "Walker", "force": True})
+    ed.check("applied" in r, f"applied: {str(r)[:400]}")
+    clips = r["animation"]["animations"]
+    frames = sum(len(c["frames"]) for c in clips if c["include"])
+    ed.check(frames >= 2, f"the sheet's frames: {clips}")
+    sprite = (await ed.call("get_entity", entity="Walker", components=["sprite"]))["components"]["sprite"]
+    ed.check_eq(sprite.get("numFramesRect"), frames, f"one Sprite frame per sheet frame: {json.dumps(sprite)[:400]}")
+    mesh = (await ed.call("get_entity", entity="Walker", components=["mesh"]))["components"]["mesh"]
+    ed.check("walk_clean.png" in json.dumps(mesh), f"the texture is the sheet: {json.dumps(mesh)[:300]}")
+    tree = json.dumps(await ed.call("get_scene_tree"))
+    for clip in clips:
+        if clip["include"]:
+            ed.check(clip["name"] in tree, f"a Sprite Animation for {clip['name']}: {tree[:600]}")
 
 
 async def test_import_step_through_the_tool(ed: Editor):

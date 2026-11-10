@@ -147,12 +147,20 @@ async def test_check_pixel_art_cleanup_outputs(ed: Editor):
     assert any(f["status"] == "WARN" and "stale" in f["key"] for f in findings), f"stale finding: {findings}"
     assert any("rerun" in f.get("needs_person", "") for f in findings), f"the fix names rerun: {findings}"
 
-    # the CLI gives the same finding and, after --rerun, none
+    # the CLI lists the same finding (R49: the validator through S42's registry), as a warning
     cli = subprocess.run(editor_cmd("check", "--project", str(ed.project), "--pixel-art", "--format", "json"), capture_output=True, text=True, timeout=240)
     assert cli.returncode in (0, 1), cli.stderr[-800:]
-    assert "cleanup_outputs" in cli.stdout, cli.stdout[-800:]
+    listed = [f for f in json.loads(cli.stdout)["pixel_art"]["findings"] if f.get("rule") == "cleanup_outputs"]
+    assert any(f["status"] == "WARN" and "stale" in f["key"] for f in listed), f"the CLI's stale warning: {listed}"
+    assert sorted(f["key"] for f in listed) == sorted(f["key"] for f in findings), f"the same findings: {listed} vs {findings}"
 
-    cli = subprocess.run(editor_cmd("fix-pixel-art", f"{ART}/ai_clean.png", "--rerun", "--project", str(ed.project), "--overwrite"), capture_output=True, text=True, timeout=240, cwd=ed.project)
+    # --rerun --out onto someone else's file needs --overwrite: a re-run replaces only its own output
+    (art / "someone.png").write_bytes(ai_png())
+    cli = subprocess.run(editor_cmd("fix-pixel-art", f"{ART}/ai_clean.png", "--rerun", "--out", f"{ART}/someone.png", "--project", str(ed.project)), capture_output=True, text=True, timeout=240, cwd=ed.project)
+    assert cli.returncode == 1 and "output_exists" in cli.stdout, cli.stdout[-800:] + cli.stderr[-800:]
+    assert (art / "someone.png").read_bytes() == ai_png(), "the other file is untouched"
+
+    cli = subprocess.run(editor_cmd("fix-pixel-art", f"{ART}/ai_clean.png", "--rerun", "--project", str(ed.project)), capture_output=True, text=True, timeout=240, cwd=ed.project)
     assert cli.returncode == 0, cli.stdout[-800:] + cli.stderr[-800:]
     cli = subprocess.run(editor_cmd("check", "--project", str(ed.project), "--pixel-art", "--format", "json"), capture_output=True, text=True, timeout=240)
     report = json.loads(cli.stdout)

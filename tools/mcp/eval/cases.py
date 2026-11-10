@@ -1349,8 +1349,7 @@ CASES = [
         "text_at_issue": "fix_pixel_art's `next`: 'needs_person: look at the guards and the image; set recipe.grid or palette and preview "
                          "again. output: true is refused without force: true.'; the refusal's Fix naming force as the last option",
         "source": "S46 R30 (new tool text); no failure on record",
-        "prompt": "Clean up assets/art/photo.jpg into pixel art with the Pixel Art Cleanup tools and write the result. If the tools say "
-                  "it needs a person, stop and tell me what they found.",
+        "prompt": "Turn assets/art/photo.jpg into pixel art and save the result next to it.",
         "mocks": [
             {"tool": "fix_pixel_art", "args": {"output": True}, "result": err(
                 "needs_person: assets/art/photo.jpg is needs_person (low_fit, low_confidence): Unsure of the grid: look at the preview, "
@@ -1367,6 +1366,35 @@ CASES = [
                    "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 2},
                    "reply_must": [r"(?i)needs? (a )?person|low.?(fit|confidence)|guard"]},
         "max_turns": 8,
+    },
+    {
+        "id": "guard_pixel_cleanup_timeout",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R37): fix_pixel_art answers with its job past 1 s, and timeout_seconds is how long the run "
+                         "may take. Without the parameter's text an agent asked to allow a long run leaves the 60 s default (the run "
+                         "is stopped and writes nothing) or re-calls the tool instead of polling the job.",
+        "text_at_issue": "fix_pixel_art's timeout_seconds: 'Seconds the run may take (default 60); past 1 s the call answers with the "
+                         "job.'; the guide's 'Past 1 s ...' line",
+        "source": "S46 R37 (new tool text); no failure on record",
+        "prompt": "assets/art/big.png is a 4096x4096 AI image that only looks like pixel art. Clean it into real pixel art and write "
+                  "the result next to it. It is big, so let the cleanup run for up to five minutes.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
+                "cancelled; cancel_job stops it.",
+                {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "default_output": "assets/art/big_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+            {"tool": "get_job", "result": ok(
+                "Pixel Art Cleanup: succeeded - fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Wrote assets/art/big_clean.png as one undo step.",
+                {"id": "j7", "status": "succeeded", "result": {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/big_clean.png"}]}})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"output": True, "timeout_seconds": 300}}, {"tool": "get_job"}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 3}},
+        "max_turns": 12,
     },
     {
         "id": "guard_pixel_lint_route",

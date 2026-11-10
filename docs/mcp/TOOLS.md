@@ -5159,7 +5159,7 @@ Cleans AI or loose pixel art: finds the grid, reads each cell, snaps to a palett
 | `rerun` | boolean |  | source is an output: re-run its stored recipe. |
 | `sheet` | `"auto"` \| `"off"` \| `"on"` |  |  |
 | `source` | string |  |  |
-| `timeout_seconds` | number (1..3600) |  | Seconds the call waits before it answers with the job. |
+| `timeout_seconds` | number (1..3600) |  | Seconds the run may take (default 60); past 1 s the call answers with the job. |
 
 
 ### `lint_pixel_art`

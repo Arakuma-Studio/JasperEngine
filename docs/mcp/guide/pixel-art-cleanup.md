@@ -14,6 +14,8 @@ Turn AI or loose art into real pixel art, or check art that already is, for agen
 5. Add `apply: <Sprite>` on the write to set its texture; for a sheet also its frames and one
    Sprite Animation per clip. That is a second, scene undo step.
 6. `lint_pixel_art {source, palette, rules}` checks the written file or any art.
+7. Past 1 s the call answers with `job_id`: poll get_job; cancel_job stops it and writes nothing.
+   `timeout_seconds` (default 60) is how long the run may take: give a big picture more.
 
 ## Verdict, then next step
 

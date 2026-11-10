@@ -5,9 +5,12 @@
 // agent side of the Pixel Art Cleanup, on the one session layer the window and the CLI share
 // (pixelart/cleanup/CleanupSession.h). A fix previews until output is given, and the write takes
 // exactly the previewed pixels: one project undo step, then (apply) a second, scene step. The run
-// is a job on a Background worker the call waits on (timeout_seconds); a cancelled run writes nothing.
+// is a job on a Background worker: past 1 s the call answers with the job (docs/mcp/conventions.md), and
+// timeout_seconds ends a run that takes longer; a cancelled or timed-out run writes nothing.
 
 #include "McpTools.h"
+
+#include "App.h"
 
 #include "Project.h"
 #include "Scene.h"
@@ -46,6 +49,9 @@
 #include <algorithm>
 #include <cctype>
 #include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <functional>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -61,8 +67,10 @@ namespace {
 using Problem = epx::PixelProblem;
 namespace fs = std::filesystem;
 
-// the call waits this long for a run (R37: timeout_seconds), then answers with the job
-constexpr double kDefaultWaitSeconds = 60.0;
+// R37: past this the call answers with the job (get_job, cancel_job), as every tool's long work does
+constexpr double kJobWaitSeconds = 1.0;
+// R37: a run past this many seconds (timeout_seconds) is ended and writes nothing
+constexpr double kDefaultTimeoutSeconds = 60.0;
 // a lint of more pixels than this runs as a job (R38's budgets are for sprites)
 constexpr size_t kLintInlinePixels = 2'000'000;
 
@@ -140,6 +148,10 @@ struct FixState {
     cleanup::PreviewKind image = cleanup::PreviewKind::Compare;
     int maxWidth = cleanup::kDefaultPreviewWidth;
     std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
+    std::atomic<bool> ran{false};       // the worker is done (the timeout watch stops)
+    std::atomic<bool> timedOut{false};  // timeout_seconds passed: the run was told to stop
+    double timeoutSeconds = kDefaultTimeoutSeconds;
+    std::shared_ptr<std::function<void()>> watch;   // the timeout watch, kept alive until the run is done
     fs::path root;                  // the project this run was prepared in
     // apply: a Sprite to set up from the written files
     bool apply = false;
@@ -203,6 +215,11 @@ bool parseFixArgs(const CallPtr& call, cleanup::Spec& spec, FixState& state, std
                 std::string* target = it.key() == "png" ? &spec.output.png : it.key() == "aseprite" ? &spec.output.aseprite : it.key() == "json" ? &spec.output.json : nullptr;
                 if (!target || !it.value().is_string()) {
                     problems.push_back({"output_outside_assets", "output." + it.key(), "output holds {png, aseprite, json} paths", "e.g. {\"png\": \"assets/hero_clean.png\"}"});
+                    continue;
+                }
+                if (!cleanup::outputExtensionFits(it.key(), it.value().get<std::string>())) {
+                    problems.push_back({"invalid_value", "output." + it.key(), "output." + it.key() + " must end in ." + (it.key() == "aseprite" ? std::string("aseprite") : it.key()) + " (got " + it.value().dump() + ")",
+                                        "e.g. {\"" + it.key() + "\": \"assets/art/hero_clean." + (it.key() == "aseprite" ? std::string("aseprite") : it.key()) + "\"}; never a .meta"});
                     continue;
                 }
                 *target = it.value().get<std::string>();
@@ -399,6 +416,14 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
         job->markCancelled("Cancelled: nothing was written.");
         return;
     }
+    if (state->timedOut.load()) {
+        char seconds[32];
+        std::snprintf(seconds, sizeof(seconds), "%g", state->timeoutSeconds);
+        job->fail(std::string("fix_pixel_art ran past timeout_seconds (") + seconds + " s): nothing was written.",
+                  Json{{"errors", Json::array({problemJson({"cancelled", "timeout_seconds", std::string("the run passed timeout_seconds (") + seconds + " s) and was stopped; nothing was written",
+                                                            "raise timeout_seconds (up to 3600), or give a smaller source or a simpler recipe (follow: off)"})})}});
+        return;
+    }
     if (!ranOk) {
         job->fail("fix_pixel_art failed.", Json{{"errors", Json::array({problemJson(state->result.problem)})}});
         return;
@@ -575,13 +600,12 @@ void fixPixelArtTool(const CallPtr& call) {
             return;
         }
     }
-    double wait = kDefaultWaitSeconds;
     if (args.contains("timeout_seconds")) {
         if (!args["timeout_seconds"].is_number() || args["timeout_seconds"].get<double>() < 1.0 || args["timeout_seconds"].get<double>() > 3600.0) {
             failCall(call, "fix_pixel_art did not run:", {{"invalid_value", "timeout_seconds", "timeout_seconds is 1...3600", "e.g. 60"}});
             return;
         }
-        wait = args["timeout_seconds"].get<double>();
+        state->timeoutSeconds = args["timeout_seconds"].get<double>();
     }
 
     std::optional<cleanup::Prepared> prepared = cleanup::prepare(project, spec, problems);
@@ -597,6 +621,21 @@ void fixPixelArtTool(const CallPtr& call) {
 
     McpContext* context = &ctx;
     const std::optional<UndoOrigin> origin = call->attributed() ? std::optional<UndoOrigin>(call->getUndoOrigin()) : std::nullopt;
+    // timeout_seconds: told to stop between steps once it passes (main thread, once a frame)
+    const auto started = std::chrono::steady_clock::now();
+    auto watch = std::make_shared<std::function<void()>>();
+    *watch = [state, context, started, weak = std::weak_ptr<std::function<void()>>(watch)]() {
+        if (state->ran.load() || state->job->finished()) return;
+        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() > state->timeoutSeconds) {
+            state->timedOut = true;
+            *state->cancel = true;
+            return;
+        }
+        context->app().requestRedraw();
+        if (auto next = weak.lock()) getEditorHost().enqueueMainThreadTask([next]() { (*next)(); });
+    };
+    state->watch = watch;
+    getEditorHost().enqueueMainThreadTask([watch]() { (*watch)(); });
     jobs::submit([state, context, origin]() {
         bool ok = true;
         try {
@@ -606,7 +645,9 @@ void fixPixelArtTool(const CallPtr& call) {
             state->result.problem = {"failed", "", e.what(), "call again"};
             ok = false;
         }
+        state->ran = true;
         getEditorHost().enqueueMainThreadTask([state, context, origin, ok]() {
+            state->watch.reset();
             try {
                 finishFix(state, *context, origin, ok);
             } catch (const std::exception& e) {
@@ -618,7 +659,7 @@ void fixPixelArtTool(const CallPtr& call) {
     }, {jobs::Lane::Background, jobs::GateClass::Default, "fix-pixel-art"});
 
     call->detach();
-    replyWhenJobDone(call, state->job, true, wait, [state](const McpJob& finished) {
+    replyWhenJobDone(call, state->job, true, kJobWaitSeconds, [state](const McpJob& finished) {
         Json result = finished.result();
         result["job_id"] = finished.id();
         result["status"] = jobStatusName(finished.status());
@@ -736,7 +777,7 @@ void lintPixelArtTool(const CallPtr& call) {
         }
     }, {jobs::Lane::Background, jobs::GateClass::Default, "lint-pixel-art"});
     call->detach();
-    replyWhenJobDone(call, job, true, kDefaultWaitSeconds, [state](const McpJob& finished) {
+    replyWhenJobDone(call, job, true, kJobWaitSeconds, [state](const McpJob& finished) {
         if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), Json{{"job_id", finished.id()}});
         ToolResult reply = lintReply(*state);
         reply.structured["job_id"] = finished.id();
@@ -771,7 +812,7 @@ void registerPixelArtCleanupTools(McpRegistry& registry) {
             {"apply", entityRef("On write: Sprite to give the result.")},
             {"image", stringEnum("", {"compare", "result", "grid", "lost", "lints", "none"})},
             {"max_width", integer("", cleanup::kMinPreviewWidth, cleanup::kMaxPreviewWidth)},
-            {"timeout_seconds", number("Seconds the call waits before it answers with the job.", 1.0, 3600.0)}
+            {"timeout_seconds", number("Seconds the run may take (default 60); past 1 s the call answers with the job.", 1.0, 3600.0)}
         });
         tool.annotations.readOnly = false;
         tool.annotations.destructive = false;
