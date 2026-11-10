@@ -61,6 +61,25 @@ namespace {
         return node;
     }
 
+    void animTextReadingText(Rml::Element* element, std::string& out, bool nested = false){
+        if (const auto* text = rmlui_dynamic_cast<Rml::ElementText*>(element)){
+            out += text->GetText();
+            return;
+        }
+        if (element->GetTagName() == "br"){
+            out += '\n';
+            return;
+        }
+        const auto display = element->GetComputedValues().display();
+        if (display == Rml::Style::Display::None || element->GetAttribute<std::string>("aria-hidden", "") == "true") return;
+        const bool block = nested && (display == Rml::Style::Display::Block || display == Rml::Style::Display::FlowRoot ||
+            display == Rml::Style::Display::Flex || display == Rml::Style::Display::Grid || display == Rml::Style::Display::Table ||
+            display == Rml::Style::Display::TableRow || display == Rml::Style::Display::TableCell);
+        if (block && !out.empty() && out.back() != '\n') out += '\n';
+        for (int i = 0; i < element->GetNumChildren(); ++i) animTextReadingText(element->GetChild(i), out, true);
+        if (block && !out.empty() && out.back() != '\n') out += '\n';
+    }
+
     struct AnimTextWrapper {
         Rml::ElementPtr outer;
         Rml::Element* unit = nullptr;
@@ -255,7 +274,8 @@ namespace {
 AnimText::AnimText(const UIElement& element, const AnimParam& options): target(element), params(options){
     if (auto* root = UIElementAccess::get(target)){
         original = root->GetInnerRML();
-        originalText = target.getTextContent();
+        animTextReadingText(root, originalText);
+        while (!originalText.empty() && originalText.back() == '\n') originalText.pop_back();
     }
 }
 

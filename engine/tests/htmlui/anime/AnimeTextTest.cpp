@@ -211,6 +211,15 @@ TEST_F(AnimeTextTest, AccessibilityCopyDoesNotDuplicateIdsOrKeyboardTargets){
     EXPECT_EQ(label.querySelectorAll("#split-link").size(), 1u);
 }
 
+TEST_F(AnimeTextTest, AccessibilityCopySeparatesExplicitAndBlockLines){
+    label.setInnerHTML("Hola<br/><span style='display:block'>niño</span>");
+    auto splitter = split(AnimParam::object({{"chars", true}}));
+    const auto copies = label.querySelectorAll("[data-anime-accessible]");
+    ASSERT_EQ(copies.size(), 1u);
+    EXPECT_EQ(copies[0].getTextContent(), "Hola\nniño");
+    EXPECT_EQ(splitter->getChars().size(), 8u);
+}
+
 TEST_F(AnimeTextTest, SplitCharactersUseAnimeStaggerAtExactTimes){
     // Same three targets and seek times as the upstream Anime.js 4.5.0 text reference.
     label.setTextContent("ñáe\xcc\x81");
