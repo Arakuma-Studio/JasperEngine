@@ -357,15 +357,18 @@ async def test_clean_fixture(ed: Editor):
 
 async def test_determinism_in_play(ed: Editor):
     # a 2D scene's camera works in points: a 128 px sprite at 16 per unit is 8 points wide, and the scripts
-    # move it by up to 24 points. RandomStart never starts two loads in a row at the same x (it draws again
-    # on a repeat, its RNG and globals living through the reload), so the FAIL below cannot pass by chance.
+    # put it at x 8..24, y 8, whole in the view (its bottom-left corner is (0, 0)). RandomStart never starts two loads
+    # in a row at the same x (it draws again on a repeat, its RNG and globals living through the reload), so the FAIL
+    # below cannot pass by chance: before, a draw of -24..24 left it off screen in both loads 1 run in 6 or so.
     red = await sprite(ed, "Random", HERO_PNG, 128, at=(0.0, -3.0))
     await ed.call("create_script", kind="lua", name="RandomStart", content=(FIXTURE / "scripts" / "RandomStart.lua").read_text(), entity=red)
     await ed.call("save_scene", scene=S["scene"], path="assets/scenes/Sheets")
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)
     try:
-        value = (await sheet(ed, "scene_play", target={"entity": "Random"}, mode="scene", frames=3, duration=0.2,
-                             lint=["determinism"]))[0]
+        value, _, width, height, rgba = await sheet(ed, "scene_play", target={"entity": "Random"}, mode="scene", frames=3,
+                                                    duration=0.2, lint=["determinism"])
+        hero = sum(1 for i in range(0, len(rgba), 4) if abs(rgba[i] - 200) <= 8 and abs(rgba[i + 1] - 40) <= 8 and abs(rgba[i + 2] - 40) <= 8)
+        ed.check(hero >= 3 * 8 * 8, f"the sprite is drawn whole in each frame, so the two loads compare it: {hero} red px")
         row = check_of(ed, value, "determinism")
         ed.check_eq(row["status"], "FAIL", f"an unseeded random start differs between two fresh loads: {row}")
         ed.check_eq(value["verdict"], "needs_person")

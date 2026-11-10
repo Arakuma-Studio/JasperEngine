@@ -711,7 +711,7 @@ namespace {
         options.alpha = false;
         options.linearStorage = false;   // the ink is sRGB as picked (TransitionOptions::ink)
         options.label = "Transition Preview Colour";
-        options.width = Theme::dpi(160.0f);
+        options.width = editor::Theme::dpi(160.0f);
         Vector4 value = colour;
         const editor::ui::EditPhase phase = editor::ui::colorField("##value", value, options);
         if (phase == editor::ui::EditPhase::Changing || phase == editor::ui::EditPhase::Cancelled || phase == editor::ui::EditPhase::Applied)
