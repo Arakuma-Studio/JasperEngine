@@ -230,6 +230,18 @@ async def test_bad_arguments_and_existing_output(ed: Editor):
     await ed.check_error("fix_pixel_art", {"source": HERO, "output": "../outside.png"}, contains="output_outside_assets")
 
 
+async def test_output_true_as_a_string(ed: Editor):
+    """output takes a path too, so a model sends output: true as "true" (the MCP eval's samples): it writes like true."""
+    reset_art(ed)
+    write_hero(ed)
+    await enable(ed)
+    preview = await fix(ed, {"source": HERO, "output": "false"})
+    ed.check(not (ed.project / HERO_CLEAN).exists(), f"output \"false\" previews: {preview.get('summary')}")
+    written = await fix(ed, {"source": HERO, "output": "true"})
+    ed.check((ed.project / HERO_CLEAN).is_file(), f"output \"true\" writes {HERO_CLEAN}: {written.get('summary')}")
+    ed.check(not (ed.project / ART / "true").exists() and not (ed.project / ART / "true.png").exists(), "no file named true")
+
+
 async def test_needs_person_is_refused_then_forced(ed: Editor):
     reset_art(ed)
     shutil.copy(PHOTO_FIXTURE, ed.project / PHOTO)
