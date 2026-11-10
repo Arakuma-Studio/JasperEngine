@@ -217,7 +217,8 @@ def size(frames, sizes):
 
 def near_duplicates(frames):
     used = _used(frames)
-    if len(used) < 2:
+    # more than 1,024 colours is not pixel art yet: the C++ SKIPs rather than pair a photo's colours
+    if len(used) < 2 or len(used) > 1024:
         return SKIP
     labs = _oklab(_unpacked(used))
     distances = np.linalg.norm(labs[:, None, :] - labs[None, :, :], axis=-1)

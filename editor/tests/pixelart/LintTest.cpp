@@ -491,3 +491,21 @@ TEST(PixelLint, FlickerIgnoresTheColourHiddenUnderClearPixels) {
     expectStatus(blink, LintStatus::Warn, "one lit frame");
     EXPECT_EQ(blink.count, 16);
 }
+
+// near_duplicates pairs every used colour: a picture with a photo's colours is not pixel art yet,
+// so it SKIPs instead of comparing millions of pairs (the colours themselves are counted in linear time)
+TEST(PixelLint, NearDuplicatesSkipsAPictureWithMoreColoursThanPixelArtHas) {
+    PixelImage noise(64, 64);
+    std::span<uint8_t> p = noise.editPixels();
+    uint32_t state = 7;
+    for (size_t i = 0; i < p.size(); i += 4) {
+        state = state * 1664525u + 1013904223u;
+        p[i] = uint8_t(state >> 24);
+        p[i + 1] = uint8_t(state >> 16);
+        p[i + 2] = uint8_t(state >> 8);
+        p[i + 3] = 255;
+    }
+    const LintResult r = lintOne(std::vector<PixelImage>{noise}, "near_duplicates");
+    expectStatus(r, LintStatus::Skip, "4,000 colours");
+    EXPECT_NE(r.message.find("not pixel art"), std::string::npos) << r.message;
+}
