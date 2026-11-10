@@ -802,10 +802,10 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     gameFramesAtStart = Engine::getGameFrames();
     gameFramesSeen = gameFramesAtStart;
     previousFixedUiTime = HtmlUIClock::getFixedTime();
-    previousUiTime = HtmlUIClock::now();
-    recordingUiStart = playing && !fromPlayStart ? previousUiTime : 0.0;
+    recordingUiStart = HtmlUIClock::now();
     // Documents may load before Play's first frame. Holding their origin throughout arming
-    // keeps CSS, anime and seeded UI effects independent of how long that load took.
+    // keeps CSS and anime independent of how long that load took, while the shared UI
+    // epoch stays continuous for documents outside the recorded scene stack.
     HtmlUIClock::setFixedTime(recordingUiStart);
     animationClocksAligned = false;
     startTime = Clock::now();

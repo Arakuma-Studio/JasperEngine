@@ -170,7 +170,6 @@ namespace jasperengine::editor::recorder {
         int audioTap = 0;
         double previousFixedDelta = 0.0;
         std::optional<double> previousFixedUiTime;
-        double previousUiTime = 0.0;
         double recordingUiStart = 0.0;
         bool animationClocksAligned = false;
         std::chrono::steady_clock::time_point startTime;
