@@ -209,6 +209,7 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewRestoresPackageLoadedAliasIndependentl
     {
         LuaBinding::ScopedModuleCache scope(cache);
         EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED"), "true");
+        EXPECT_EQ(lua("package = {loaded = {discard = true}}; return package.loaded.discard"), "true");
     }
     EXPECT_EQ(lua("return package.loaded.keep_alias and package.loaded ~= debug.getregistry()._LOADED"), "true");
     lua_getglobal(L(), "package");

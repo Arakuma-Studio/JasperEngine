@@ -393,7 +393,10 @@ LuaBinding::ScopedModuleCache::ScopedModuleCache(int moduleCacheRef){
     const int next = lua_gettop(L);
     lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
     previousRegistryRef = luaL_ref(L, LUA_REGISTRYINDEX);
-    lua_getglobal(L, "package");
+    lua_pushglobaltable(L);
+    lua_pushliteral(L, "package");
+    lua_rawget(L, -2);
+    lua_remove(L, -2);
     previousPackageLoadedRef = LUA_NOREF;
     if (lua_istable(L, -1)){
         lua_pushliteral(L, "loaded");
@@ -429,7 +432,11 @@ LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
         pushRef(previousPackageLoadedRef);
         lua_rawset(state, -3);
     }
-    lua_setglobal(state, "package");
+    lua_pushglobaltable(state);
+    lua_pushliteral(state, "package");
+    lua_pushvalue(state, -3);
+    lua_rawset(state, -3);
+    lua_pop(state, 2);
     luaL_unref(state, LUA_REGISTRYINDEX, previousRegistryRef);
     luaL_unref(state, LUA_REGISTRYINDEX, previousPackageRef);
     luaL_unref(state, LUA_REGISTRYINDEX, previousPackageLoadedRef);
