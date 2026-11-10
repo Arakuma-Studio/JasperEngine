@@ -1873,8 +1873,9 @@ rest of S82 lands in 6B.
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
     `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
-    - fallback_parity: `elements/electric-blue`, `elements/storm-counter` (bloom over Lightning clamps on the RGBA8 path),
-      `casino/confirm-giraffe-3d` (the 3D glint's picks);
+    - fallback_parity: `casino/confirm-giraffe-3d` (en; the 3D glint's picks: see below). `elements/electric-blue` and
+      `elements/storm-counter` pass since S83 Deviation 37 (Light Glow read Lightning's light clipped at 1 on the RGBA8
+      path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
       60.0k triangles whatever the look sets), `gems/treasure-banner` at Low;
     - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
@@ -1882,8 +1883,8 @@ rest of S82 lands in 6B.
       documents, cause not found).
     What was fixed, by cause: the tier budget measured islands instead of the stack, and the mesher now builds at most the
     tier's stack (bands past it are reported per tier as `3d_tier_budget.<tier>.bands_dropped`, a warning); fallback parity
-    uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning, Backlight, following
-    Glints, as S83's own test does for the first two); counter_survival is visible contrast (below); legibility is judged on
+    uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning and Backlight, as
+    S83's own test does, and following Glints, measured in S83 Deviation 38); counter_survival is visible contrast (below); legibility is judged on
     the item's declared background (46 looks, 11 templates). About 45 items were tuned as data, each with a targeted change, and reviewed on
     before-and-after sheets of every family in both samples: no look lost its identity; the colour scheme mono-dark did, and
     is restored (it fails counter_survival again); two template sample texts were shortened to fit ("NEW IN", "BREAK").
@@ -1910,3 +1911,12 @@ rest of S82 lands in 6B.
     param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
     and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
+29. **Open: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). Measured at the
+    gate's 0.25: 2.8 % of pixels over 24/255 (AC9's limit 1 %), mean 2.0; the same document with the glint off 0.35 %,
+    with its 2D effects off 1.9 %; `ja` passes (0.76 %), as every other 3D item does. The glint's bright pass already
+    decodes the compressed light; what differs is the light it decodes: at k > 1 the MSAA resolve averages the encoding
+    `s = C/(1 + C)`, not the light, so a sub-sample highlight comes out far dimmer than the float path's linear resolve
+    (and SRGB8A8 holds `s` near 1, where highlights live, in steps of about 25 % of `C` at radiance 40), and the pinch and
+    the star budget pick other stars. Rendering the compressed main pass without MSAA at k > 1 (every texel one sample,
+    decoded exactly) made it worse (en 3.1 %, ja 1.7 %), so it is not in. A fix needs S86's encoding or resolve (a
+    per-sample decode needs multisampled textures, which WebGL2 and GLES 3.0 lack): for its owner to decide.

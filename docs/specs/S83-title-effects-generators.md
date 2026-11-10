@@ -1815,3 +1815,12 @@ rest of S82 lands in 6B.
     path at 0.25 (fraction of pixels over 8/255): storm-counter 52 % -> 1.9 %, electric-blue 11 % -> 0.4 %; headrooms of
     8 and 32 left 13 % and 19 % (both measured with the dither below). §6.5's Bayer dither of the scatter's 8-bit writes,
     tried here, made the same renders worse (1.9 % -> 7.3 % at 16) and is not implemented.
+38. **Measured: Glints that follow a layer flip like Lightning and Backlight (34).** Their stars come from the followed
+    layer's 8-bit analysis grid (`HighlightFinder` over `readGrid`), which the RGBA8 path reads from its own render of
+    that layer, so a star at a near-tie moves. On S84's library at 0.25 (every item with following Glints, after the
+    light accumulator of 37) the max passes F2's 96/255 on seven items while the mean and the share stay within F2:
+    `metal/chrome-star-glints` 253 (mean 0.64, 2.2 %), `metal/special-satin-chrome` 249, `casino/lucky-clover` 247
+    (0.18, 0.6 %), `retro/arcade-title` 229 (0.63, 4.7 %), `casino/red-hot-plate-fx` 224 (1.18, 4.9 %),
+    `casino/vegas-title` 117; `casino/jackpot-rays-sparkles` (211) also has a Backlight. `TitleGenGpu.FallbackWithinClass`'s
+    Glints preset does not flip and keeps the max; `check_title`'s `fallback_parity` holds following Glints to the mean
+    and the share only, as it does Lightning and Backlight.

@@ -1141,6 +1141,7 @@ namespace {
                 const std::string type = str(layer["generator"], "type");
                 // Glints that follow a layer pick their stars from its 8-bit analysis grid the same way
                 // (HighlightFinder over readGrid): a star at a borderline cell moves between the paths
+                // (measured on the library, S83 Deviation 38: up to 253/255 on seven items, mean and share within class)
                 const bool follows = !str(layer, "follow").empty();
                 gridLayout = gridLayout || type == "lightning" || type == "backlight" || (type == "glints" && follows);
             }
