@@ -172,7 +172,7 @@ TEST_F(AnimeTextTest, CharacterOnlyRefreshKeepsTargetsAndRunningAnimations){
 
 TEST_F(AnimeTextTest, InitialCharacterSplitKeepsExistingInlineElements){
     label.setInnerHTML("Hola <em>niño</em>");
-    const auto emphasis = label.querySelector("em");
+    auto emphasis = label.querySelector("em");
     ASSERT_TRUE(emphasis.isValid());
     int events = 0;
     emphasis.addEventListener("click", [&events](UIEvent&){ ++events; });
@@ -213,7 +213,8 @@ TEST_F(AnimeTextTest, AccessibilityCopyDoesNotDuplicateIdsOrKeyboardTargets){
 
 TEST_F(AnimeTextTest, AccessibilityCopySeparatesExplicitAndBlockLines){
     label.setInnerHTML("Hola<br/><span style='display:block'>niño</span>");
-    auto splitter = split(AnimParam::object({{"chars", true}}));
+    // Lua can split immediately after changing markup, before the next document update.
+    auto splitter = Anime::splitText({AnimTargets::fromElement(label)}, AnimParam::object({{"chars", true}}));
     const auto copies = label.querySelectorAll("[data-anime-accessible]");
     ASSERT_EQ(copies.size(), 1u);
     EXPECT_EQ(copies[0].getTextContent(), "Hola\nniño");
