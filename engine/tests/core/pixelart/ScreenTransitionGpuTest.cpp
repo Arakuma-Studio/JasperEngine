@@ -17,6 +17,8 @@
 #include "GpuEnvironment.h"
 #include "Readback.h"
 
+#include "sokol_gfx.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -139,6 +141,35 @@ TEST_F(ScreenTransitionGpu, CoveredIsAllInkAndIdleDrawsNothing){
 }
 
 // R17: no program before the first transition; made on first use and kept
+// The transition's program reads no buffer, image or sampler: it must not apply an empty
+// sg_bindings (sokol's validation, on in Debug builds and the web Debug gate, rejects it and the
+// transition does not draw; S48 AC26 found it on WebGL2)
+TEST_F(ScreenTransitionGpu, AppliesNoEmptyBindings){
+    struct Count {
+        int empty = 0;
+        int applied = 0;
+    } count;
+    sg_trace_hooks hooks = {};
+    hooks.user_data = &count;
+    hooks.apply_bindings = [](const sg_bindings* bindings, void* data){
+        Count& c = *static_cast<Count*>(data);
+        c.applied++;
+        bool any = bindings->index_buffer.id != SG_INVALID_ID;
+        for (const sg_buffer& b : bindings->vertex_buffers) any = any || b.id != SG_INVALID_ID;
+        for (const sg_view& v : bindings->views) any = any || v.id != SG_INVALID_ID;
+        for (const sg_sampler& smp : bindings->samplers) any = any || smp.id != SG_INVALID_ID;
+        if (!any) c.empty++;
+    };
+    const sg_trace_hooks previous = sg_install_trace_hooks(&hooks);
+    TransitionOptions options;
+    ScreenTransition::setPreview(TransitionKind::IRIS, options, 0.5f, TransitionPhase::COVER);
+    int width = 0, height = 0;
+    const std::vector<uint8_t> rgba = drawn(width, height);
+    sg_install_trace_hooks(&previous);
+    EXPECT_FALSE(rgba.empty());
+    EXPECT_EQ(count.empty, 0) << count.applied << " sg_apply_bindings in all";
+}
+
 TEST_F(ScreenTransitionGpu, ProgramMadeOnFirstUse){
     ScreenTransition::releaseGpu();
     GpuEnvironment::drawFrames(3);
