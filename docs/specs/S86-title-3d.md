@@ -1524,7 +1524,33 @@ rest of S82 lands in 6B.
     `TitleTargetPoolStats::floatAcquires` counts the float targets a render takes.
     Test: `Title3DFallbackGpu.TheGlintRunsWithoutFloatTargetsOnEveryTier`. Each tier's forced render takes no float
     target, runs as many glint passes as the float render, shows its glint, and stays within AC9's mean 3/255. Red
-    control: the earlier glint took the float targets above. Still float under the flag, and dropped on a device
-    without float: AO (R31) and the gem behind copy (R21). The environment cubes are built in RGBA16F on every device.
+    control: the earlier glint took the float targets above. AO, the gem behind copy and the environments: 34.
     S84's `fallback_parity` keeps 32's glint-off share rule: the stars still come from 8-bit light, and Gold 3D "BIG"
-    shows up to 231/255 at a moved star.
+    shows up to 229/255 at a moved star.
+34. **Implementation (R21, R25, R26, R30, R31, AC9): no float render target without float.** Before this change,
+    `TITLE_ART_TEST_NO_FLOAT_TARGETS` left three render paths in float. AO took three RGBA16F pool targets. The gem
+    behind copy and the environment cubes were made as RGBA16F render targets. A device without float targets dropped
+    AO and the behind copy, and its cube builds rendered into targets it cannot render. Now no pass renders into a float
+    target where RGBA16F does not render (or filter, for AO and the copy), or under the flag:
+    - **AO prepass:** RGBA8. It holds the view normal octahedral in 8 bits a component and the title-relative depth in
+      16 bits over +-8 radii (`hd_packNormalDepth`; code 0 marks no surface). The round trip is within 1.5 degrees and
+      1/4000 radius (`TitleToneMapTest.PackedAoPrepassRoundTrips`). SAO and its blurs unpack it and write RGBA8.
+    - **Behind copy:** SRGB8A8 in the compressed-light encoding of R30. Its box levels average the decoded light and
+      encode it again. The gem decodes what it samples (`behind.z` 2); trilinear filtering mixes encoded texels.
+    - **Environments:** the cube is built on the builder's CPU twin (`buildTitleEnvironmentCpu`, 26) on a background
+      job, polled by `ready()`. It is uploaded as an RGBA16F KTX2 cube, as a cooked cube is, and cached apart from a
+      GPU-built one. The cube is only sampled: sampling and filtering RGBA16F textures is core in GLES3 and WebGL2,
+      and the code makes no cube render target on this path (`Title3DStats::floatRenderTargets` stays 0). The
+      panorama upload and the RGBA32F span table are sampled textures, not targets.
+    Cost on that path: no pass more. The prepass and AO targets take half their bytes and the copy half its bytes. A
+    cube costs a CPU build in place of the GPU one; players load cooked cubes (R26) and build none.
+    `Title3DStats::environmentCpuBuilds` and `floatRenderTargets` count the CPU builds and the float targets made
+    outside the pool.
+    Test: `Title3DFallbackGpu.AOAndGemsRenderWithoutFloatTargets` renders "BIG" with a sapphire face over gold bands
+    and AO, at every tier, float and forced on separate renderers. The forced render takes no float target, makes no
+    float render target, builds its cube on the CPU, runs the same AO and behind passes, and shows both: it differs
+    from the forced renders without the copy and without AO. The float-vs-forced mean at Bake, High, Medium, Low is
+    0.32, 0.32, 0.17, 0.06 /255, with 0 to 0.05 % of pixels over 24/255 (AC9's glint-off criteria: 2/255 and 1 %).
+    The glint test now also runs on separate renderers. Red control, the code before this change under the flag: 3
+    float pool targets (AO) and 4 float render targets (2 cubes, the copy and its scratch) at Bake and High, and 2
+    (the cubes) at Medium and Low.
