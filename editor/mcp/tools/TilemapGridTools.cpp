@@ -1085,6 +1085,7 @@ bool commitEdit(GridEdit& e, const TilesetArg& tilesetArg, Problem& error) {
     const uint32_t sceneId = e.sceneProject->id;
     const auto rollback = [&]() {
         while (history->position() > mark && history->canUndo() && history->undo()) {}
+        history->freeRedo();
     };
     const auto add = [&](Command* command, const char* what) {
         if (history->addCommandNoMerge(command)) return true;
@@ -1420,6 +1421,8 @@ bool editTilemapGrid(const CallPtr& call) {
         ~ConvertRollback() {
             if (!armed) return;
             while (history->position() > mark && history->canUndo() && history->undo()) {}
+            // a refused call leaves no step behind, not even one to redo
+            history->freeRedo();
         }
     } convertRollback;
     if (hasArg(args, "entity") && convertFirst && !scene->findComponent<GridComponent>(entity) && !scene->findComponent<TilemapLayerComponent>(entity)) {

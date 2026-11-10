@@ -75,9 +75,10 @@ async def test_setup_and_move_the_image(ed: Editor):
     await ed.call("save_project")
     await ed.call("edit_build_scenes", action="set_start", scene=sid)
 
+    await ed.call("create_folder", path=str(Path(MOVED).parent))
     moved = await ed.call("move_asset", path=TEXTURE, to=MOVED)
     ed.check(not (ed.project / TEXTURE).exists() and (ed.project / MOVED).exists(), f"the image moved: {moved}")
-    ed.check("art/tiles.png" in (ed.project / TILESET).read_text(), "the .tileset still has the old path hint")
+    ed.check(TEXTURE in (ed.project / TILESET).read_text(), "the .tileset still has the old path hint")
     image = await ed.call_raw("get_tilemap", {"scene": sid, "entity": layer, "image": True, "region": [0, 0, 1, 0]}, timeout=60)
     ed.check(not image.is_error and image.images, f"the layer still draws after the move: {image.text[:400]}")
     ed.check_eq(image.structured["image"].get("missing_cells", 0), 0, "every cell found its tile image by the image's GUID")
@@ -95,12 +96,13 @@ async def test_source_export_ships_the_image_and_a_resolved_tileset(ed: Editor):
     ed.check_eq(r["status"], "succeeded", f"{str(r)[:2000]}")
     project = out / "project"
     assets = project / "assets"
-    shipped = assets / "art" / "world.tileset"
+    # paths below are relative to the exported assets root, as the editor's references hold them
+    shipped = assets / TILESET
     ed.check(shipped.is_file(), f"the .tileset ships: {sorted(p.relative_to(assets).as_posix() for p in assets.rglob('*.tileset'))}")
     source = json.loads(shipped.read_text())["sources"][0]["texture"]
-    ed.check_eq(source, {"path": "moved/tiles.png"}, "the image at its current path, no GUID")
-    ed.check((assets / "moved" / "tiles.png").is_file() or cooked_at(assets, "moved/tiles.png"), "the image ships")
-    ed.check(not (assets / "art" / "tiles.png").exists(), "nothing at the old path")
+    ed.check_eq(source, {"path": MOVED}, "the image at its current path, no GUID")
+    ed.check((assets / MOVED).is_file() or cooked_at(assets, MOVED), "the image ships")
+    ed.check(not (assets / TEXTURE).exists() and not cooked_at(assets, TEXTURE), "nothing at the old path")
     referrers = [p for p in project.rglob("*") if p.is_file() and p != shipped and p.suffix not in (".png", ".ktx2")
                  and b"world.tileset" in p.read_bytes()]
     ed.check(referrers, "the exported scene's layer references the tileset")
