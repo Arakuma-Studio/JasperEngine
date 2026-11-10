@@ -12,6 +12,9 @@
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/PropertyParser.h>
+#include <RmlUi/Core/StyleSheetSpecification.h>
+#include <RmlUi/Core/StyleValue.h>
 
 #include <algorithm>
 #include <array>
@@ -217,6 +220,113 @@ namespace {
         return true;
     }
 
+    std::vector<std::string> expandShapeCorners(std::vector<std::string> values){
+        if (values.empty()) values = {"0"};
+        if (values.size() == 1) return {values[0], values[0], values[0], values[0]};
+        if (values.size() == 2) return {values[0], values[1], values[0], values[1]};
+        if (values.size() == 3) return {values[0], values[1], values[2], values[1]};
+        return values;
+    }
+
+    struct ShapeAnimationParts {
+        std::string name;
+        std::string fillRule = "nonzero";
+        std::vector<std::string> values;
+        std::vector<std::string> position;
+        std::vector<std::string> radii;
+    };
+
+    bool shapeAnimationParts(const BasicShape& shape, ShapeAnimationParts& out){
+        const size_t open = shape.text.find('(');
+        out.name = lower(shape.text.substr(0, open));
+        auto tokens = tokenize(shape.text.substr(open + 1, shape.text.size() - open - 2));
+        for (auto& token : tokens) token = lower(token);
+        if (out.name == "inset"){
+            std::vector<std::string> radiusTokens;
+            splitRound(tokens, out.values, radiusTokens);
+            out.values = expandShapeCorners(out.values);
+            auto slash = std::find(radiusTokens.begin(), radiusTokens.end(), "/");
+            std::vector<std::string> x(radiusTokens.begin(), slash);
+            std::vector<std::string> y = slash == radiusTokens.end() ? x : std::vector<std::string>(slash + 1, radiusTokens.end());
+            x = expandShapeCorners(x);
+            y = expandShapeCorners(y);
+            out.radii = x;
+            out.radii.insert(out.radii.end(), y.begin(), y.end());
+            return out.values.size() == 4 && out.radii.size() == 8;
+        }
+        if (out.name == "circle" || out.name == "ellipse"){
+            auto at = std::find(tokens.begin(), tokens.end(), "at");
+            out.values.assign(tokens.begin(), at);
+            if (at != tokens.end()) out.position.assign(at + 1, tokens.end());
+            if (out.values.empty()) out.values.assign(out.name == "circle" ? 1 : 2, "closest-side");
+            return out.values.size() == (out.name == "circle" ? 1u : 2u);
+        }
+        if (out.name == "polygon"){
+            size_t start = 0;
+            if (tokens.size() > 1 && (tokens[0] == "nonzero" || tokens[0] == "evenodd")){
+                out.fillRule = tokens[0];
+                start = 2;
+            }
+            for (size_t i = start; i < tokens.size(); i++)
+                if (tokens[i] != ",") out.values.push_back(tokens[i]);
+            return out.values.size() >= 6 && out.values.size() % 2 == 0;
+        }
+        return false;
+    }
+
+    class ShapeAnimationValue : public Rml::StyleValue {
+    public:
+        explicit ShapeAnimationValue(BasicShape shape): shape(std::move(shape)) {}
+
+        Rml::String ToString() const override{
+            const char* box = shape.box == Rml::BoxArea::Content ? " content-box" : shape.box == Rml::BoxArea::Padding ? " padding-box" : "";
+            return serializeString(shape.text + box);
+        }
+
+        bool Equals(const Rml::StyleValue& other) const override{
+            const auto& to = static_cast<const ShapeAnimationValue&>(other);
+            return shape.text == to.shape.text && shape.box == to.shape.box;
+        }
+
+        Rml::SharedPtr<const Rml::StyleValue> Interpolate(const Rml::StyleValue& other, float alpha, Rml::Element& element) const override{
+            const auto& to = static_cast<const ShapeAnimationValue&>(other);
+            const Rml::Rectanglef box = boxRectangle(&element, shape.box);
+            BasicShape mixed;
+            if (!shape.interpolate(to.shape, alpha, box.Width(), box.Height(), &element, mixed))
+                return nullptr;
+            return std::make_shared<ShapeAnimationValue>(std::move(mixed));
+        }
+
+        Rml::Units GetUnitDependencies() const override{
+            ShapeAnimationParts parts;
+            if (!shapeAnimationParts(shape, parts)) return Rml::Unit::UNKNOWN;
+            Rml::Units units = Rml::Unit::UNKNOWN;
+            for (const auto* tokens : {&parts.values, &parts.position, &parts.radii}){
+                for (const auto& token : *tokens){
+                    Length length;
+                    if (parseLength(token, length)) units = units | length.unit;
+                }
+            }
+            return units;
+        }
+
+        BasicShape shape;
+    };
+
+    class ShapeAnimationParser : public Rml::PropertyParser {
+    public:
+        bool ParseValue(Rml::Property& property, const Rml::String& value, const Rml::ParameterMap&) const override{
+            BasicShape shape;
+            std::string error;
+            if (!BasicShape::parse(value, shape, &error)){
+                Log::warn("[HTML UI] html-shape(): %s", error.c_str());
+                return false;
+            }
+            property = Rml::Property(Rml::StyleValuePtr(std::make_shared<ShapeAnimationValue>(std::move(shape))), Rml::Unit::STYLE_VALUE);
+            return true;
+        }
+    };
+
 }
 
 // ---------------------------------------------------------------- BasicShape
@@ -244,6 +354,61 @@ bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string*
     std::string check;
     if (shape.toSvg(100.0f, 100.0f, nullptr, &check).empty())
         return fail(error, check);
+    return true;
+}
+
+bool BasicShape::interpolate(const BasicShape& to, float alpha, float width, float height, Rml::Element* element, BasicShape& result) const{
+    ShapeAnimationParts a, b;
+    if (box != to.box || !shapeAnimationParts(*this, a) || !shapeAnimationParts(to, b) || a.name != b.name ||
+        a.fillRule != b.fillRule || a.values.size() != b.values.size())
+        return false;
+    const Resolver resolver{element, width, height};
+    const auto mix = [alpha](float from, float toValue){ return from + (toValue - from) * alpha; };
+    const auto length = [&](const std::string& from, const std::string& toValue, float basis, float& value){
+        float x, y;
+        if (!resolver.length(from, basis, x) || !resolver.length(toValue, basis, y)) return false;
+        value = mix(x, y);
+        return true;
+    };
+    result.box = box;
+    if (a.name == "inset"){
+        std::array<float, 4> offsets{};
+        result.text = "inset(";
+        for (size_t i = 0; i < 4; i++){
+            if (!length(a.values[i], b.values[i], i % 2 == 0 ? height : width, offsets[i])) return false;
+            result.text += (i ? " " : "") + num(offsets[i]) + "px";
+        }
+        const float shapeWidth = std::max(0.0f, width - offsets[1] - offsets[3]);
+        const float shapeHeight = std::max(0.0f, height - offsets[0] - offsets[2]);
+        result.text += " round";
+        for (size_t i = 0; i < 8; i++){
+            float radius;
+            if (!length(a.radii[i], b.radii[i], i < 4 ? shapeWidth : shapeHeight, radius)) return false;
+            result.text += (i == 4 ? " / " : " ") + num(std::max(0.0f, radius)) + "px";
+        }
+    }else if (a.name == "circle" || a.name == "ellipse"){
+        float ax, ay, bx, by;
+        if (!parsePosition(a.position, resolver, ax, ay, nullptr) || !parsePosition(b.position, resolver, bx, by, nullptr)) return false;
+        result.text = a.name + "(";
+        for (size_t i = 0; i < a.values.size(); i++){
+            float radius;
+            const float basis = a.name == "circle" ? std::hypot(width, height) / std::sqrt(2.0f) : i == 0 ? width : height;
+            if (length(a.values[i], b.values[i], basis, radius)){
+                result.text += (i ? " " : "") + num(std::max(0.0f, radius)) + "px";
+            }else{
+                return false;
+            }
+        }
+        result.text += " at " + num(mix(ax, bx)) + "px " + num(mix(ay, by)) + "px";
+    }else{
+        result.text = "polygon(" + a.fillRule + ", ";
+        for (size_t i = 0; i < a.values.size(); i++){
+            float coordinate;
+            if (!length(a.values[i], b.values[i], i % 2 == 0 ? width : height, coordinate)) return false;
+            result.text += (i ? i % 2 == 0 ? ", " : " " : "") + num(coordinate) + "px";
+        }
+    }
+    result.text += ")";
     return true;
 }
 
@@ -523,7 +688,9 @@ Rml::Vector2i HtmlShapeDecorator::pixelSizeOf(Rml::DecoratorDataHandle element_d
 // ---------------------------------------------------------------- instancer
 
 HtmlShapeDecoratorInstancer::HtmlShapeDecoratorInstancer(){
-    shapeId = RegisterProperty("shape", "").AddParser("string").GetId();
+    shapeParser = std::make_unique<ShapeAnimationParser>();
+    Rml::StyleSheetSpecification::RegisterParser("html-shape", shapeParser.get());
+    shapeId = RegisterProperty("shape", "\"inset(0)\"").AddParser("html-shape").GetId();
     RegisterShorthand("decorator", "shape", Rml::ShorthandType::FallThrough);
 }
 
@@ -531,11 +698,14 @@ HtmlShapeDecoratorInstancer::~HtmlShapeDecoratorInstancer() = default;
 
 Rml::SharedPtr<Rml::Decorator> HtmlShapeDecoratorInstancer::InstanceDecorator(const Rml::String& /*name*/, const Rml::PropertyDictionary& properties,
                                                                               const Rml::DecoratorInstancerInterface& /*instancer_interface*/){
-    BasicShape shape;
-    std::string error;
-    if (!BasicShape::parse(stringArgument(properties, shapeId), shape, &error)){
-        Log::warn("[HTML UI] html-shape(): %s", error.c_str());
+    const Rml::Property* property = properties.GetProperty(shapeId);
+    if (!property || property->unit != Rml::Unit::STYLE_VALUE)
         return nullptr;
-    }
-    return std::make_shared<HtmlShapeDecorator>(std::move(shape));
+    const Rml::StyleValuePtr value = property->Get<Rml::StyleValuePtr>();
+    if (!value) return nullptr;
+    return std::make_shared<HtmlShapeDecorator>(static_cast<const ShapeAnimationValue&>(*value).shape);
+}
+
+bool HtmlShapeDecoratorInstancer::InterpolatesAsImageLayer() const{
+    return true;
 }
