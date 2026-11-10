@@ -14,6 +14,7 @@
 #include "tilemap/TilemapBrush.h"
 #include "tilemap/TilesetEdit.h"
 #include "util/FileUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 #include "window/EditorModal.h"
 #include "window/ProjectWindow.h"
@@ -276,12 +277,42 @@ void TilesetEditorWindow::select(int32_t id, bool shift, bool ctrl) {
 }
 
 void TilesetEditorWindow::forSelected(const std::string& name, const std::function<void(TileDef&)>& change) {
-    const std::vector<int32_t> ids = selection;
+    forTiles(name, selection, change);
+}
+
+void TilesetEditorWindow::forTiles(const std::string& name, const std::vector<int32_t>& tiles, const std::function<void(TileDef&)>& change) {
+    const std::vector<int32_t> ids = tiles;
     edit(name, [&](TilesetData& data) {
         for (int32_t id : ids) {
             if (TileDef* tile = data.findTile(id)) change(*tile);
         }
     });
+}
+
+template <typename T>
+bool TilesetEditorWindow::heldField(const char* label, T* values, int count, const std::function<void()>& draw) {
+    const ImGuiID id = ImGui::GetID(label);
+    const int frame = ImGui::GetFrameCount();
+    // a hold the field was not drawn for (its section closed) is over: the document is what it shows
+    if (held.id == id && held.frame < frame - 1) held.id = 0;
+    if (held.id == id) {
+        for (int i = 0; i < count; i++) values[i] = static_cast<T>(held.values[i]);
+    }
+    draw();
+    // the UI tests find the composite fields here (InputInt2, ColorEdit4: no item carries the label)
+    if (UIProbe::enabled()) UIProbe::item(std::string("tilesetEditor.") + label);
+    if (ImGui::IsItemActive()) {
+        if (held.id != id) {
+            held.id = id;
+            held.tiles = selection;
+        }
+        held.frame = frame;
+        for (int i = 0; i < count; i++) held.values[i] = static_cast<double>(values[i]);
+        return false;
+    }
+    if (held.id != id) return false;
+    held.id = 0;
+    return ImGui::IsItemDeactivatedAfterEdit();
 }
 
 void TilesetEditorWindow::drawToolbar() {
@@ -295,7 +326,7 @@ void TilesetEditorWindow::drawToolbar() {
     ImGui::SameLine();
     int tileSize[2] = {document.tileWidth, document.tileHeight};
     ImGui::SetNextItemWidth(Theme::dpi(110.0f));
-    if (ImGui::InputInt2("Tile Size##TileSize", tileSize) && tileSize[0] > 0 && tileSize[1] > 0) {
+    if (heldField("Tile Size##TileSize", tileSize, 2, [&]() { ImGui::InputInt2("Tile Size##TileSize", tileSize); }) && tileSize[0] > 0 && tileSize[1] > 0) {
         const int w = tileSize[0], h = tileSize[1];
         edit("Set Tile Size", [&](TilesetData& data) { data.tileWidth = w; data.tileHeight = h; });
     }
@@ -488,8 +519,8 @@ void TilesetEditorWindow::drawCollision(TileDef& first) {
         }
     }
     int threshold = first.collision.threshold;
-    if (ImGui::SliderInt("Alpha Threshold##threshold", &threshold, 0, 255) ) {
-        forSelected("Set Alpha Threshold", [&](TileDef& tile) { tile.collision.threshold = threshold; });
+    if (heldField("Alpha Threshold##threshold", &threshold, 1, [&]() { ImGui::SliderInt("Alpha Threshold##threshold", &threshold, 0, 255); })) {
+        forTiles("Set Alpha Threshold", held.tiles, [&](TileDef& tile) { tile.collision.threshold = threshold; });
     }
     if (ImGui::Button("Auto from Alpha")) {
         // traces the outlines into the polygons, so the runtime never reads pixels (R15)
@@ -625,10 +656,10 @@ void TilesetEditorWindow::drawAnimation(TileDef& first) {
         ImGui::PushID((int)i);
         TileAnimationFrame frame = first.animation[i];
         ImGui::SetNextItemWidth(Theme::dpi(60.0f));
-        bool changed = ImGui::InputInt("Tile##frameTile", &frame.tile, 0);
+        bool changed = heldField("Tile##frameTile", &frame.tile, 1, [&]() { ImGui::InputInt("Tile##frameTile", &frame.tile, 0); });
         ImGui::SameLine();
         ImGui::SetNextItemWidth(Theme::dpi(80.0f));
-        changed = ImGui::InputInt("ms##frameMs", &frame.ms, 0) || changed;
+        changed = heldField("ms##frameMs", &frame.ms, 1, [&]() { ImGui::InputInt("ms##frameMs", &frame.ms, 0); }) || changed;
         if (runtime) {
             ImGui::SameLine();
             const ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -638,7 +669,7 @@ void TilesetEditorWindow::drawAnimation(TileDef& first) {
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_FA_XMARK "##removeFrame")) removeFrame = (int)i;
         if (changed && frame.ms > 0) {
-            forSelected("Edit Animation Frame", [&](TileDef& tile) {
+            forTiles("Edit Animation Frame", held.tiles, [&](TileDef& tile) {
                 if (i < tile.animation.size()) tile.animation[i] = frame;
             });
         }
@@ -821,35 +852,39 @@ void TilesetEditorWindow::drawProperties(TileDef& first) {
         auto found = first.properties.find(entry.name);
         const TilePropertyValue value = found == first.properties.end() ? entry.defaultValue : found->second;
         const std::string label = entry.name + "##prop";
-        const auto set = [&](const TilePropertyValue& next) {
+        const auto set = [&](const TilePropertyValue& next, const std::vector<int32_t>& tiles) {
             const std::string name = entry.name;
-            forSelected("Set Tile Property", [&](TileDef& tile) { tile.properties[name] = next; });
+            forTiles("Set Tile Property", tiles, [&](TileDef& tile) { tile.properties[name] = next; });
         };
         switch (entry.type) {
             case TilePropertyType::Bool: {
                 bool v = value.b;
-                if (ImGui::Checkbox(label.c_str(), &v)) { TilePropertyValue next = value; next.b = v; set(next); }
+                if (ImGui::Checkbox(label.c_str(), &v)) { TilePropertyValue next = value; next.b = v; set(next, selection); }
                 break;
             }
             case TilePropertyType::Int: {
                 int v = (int)value.i;
-                if (ImGui::InputInt(label.c_str(), &v) && ImGui::IsItemDeactivatedAfterEdit()) { TilePropertyValue next = value; next.i = v; set(next); }
+                if (heldField(label.c_str(), &v, 1, [&]() { ImGui::InputInt(label.c_str(), &v); })) { TilePropertyValue next = value; next.i = v; set(next, held.tiles); }
                 break;
             }
             case TilePropertyType::Float: {
                 float v = (float)value.f;
-                if (ImGui::DragFloat(label.c_str(), &v) && ImGui::IsItemDeactivatedAfterEdit()) { TilePropertyValue next = value; next.f = v; set(next); }
+                if (heldField(label.c_str(), &v, 1, [&]() { ImGui::DragFloat(label.c_str(), &v); })) { TilePropertyValue next = value; next.f = v; set(next, held.tiles); }
                 break;
             }
             case TilePropertyType::String: {
                 char buffer[256];
                 std::snprintf(buffer, sizeof(buffer), "%s", value.s.c_str());
-                if (ImGui::InputText(label.c_str(), buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue)) { TilePropertyValue next = value; next.s = buffer; set(next); }
+                if (ImGui::InputText(label.c_str(), buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue)) { TilePropertyValue next = value; next.s = buffer; set(next, selection); }
                 break;
             }
             case TilePropertyType::Color: {
                 float v[4] = {value.color.x, value.color.y, value.color.z, value.color.w};
-                if (ImGui::ColorEdit4(label.c_str(), v)) { TilePropertyValue next = value; next.color = Vector4(v[0], v[1], v[2], v[3]); set(next); }
+                if (heldField(label.c_str(), v, 4, [&]() { ImGui::ColorEdit4(label.c_str(), v); })) {
+                    TilePropertyValue next = value;
+                    next.color = Vector4(v[0], v[1], v[2], v[3]);
+                    set(next, held.tiles);
+                }
                 break;
             }
         }
@@ -875,18 +910,18 @@ void TilesetEditorWindow::drawSelectedInspector() {
     ImGui::EndDisabled();
 
     float probability = first->probability;
-    if (ImGui::DragFloat("Probability##probability", &probability, 0.01f, 0.0f, 100.0f) && ImGui::IsItemDeactivatedAfterEdit()) {
-        forSelected("Set Probability", [&](TileDef& tile) { tile.probability = probability; });
+    if (heldField("Probability##probability", &probability, 1, [&]() { ImGui::DragFloat("Probability##probability", &probability, 0.01f, 0.0f, 100.0f); })) {
+        forTiles("Set Probability", held.tiles, [&](TileDef& tile) { tile.probability = probability; });
     }
     int offset[2] = {first->offsetX, first->offsetY};
-    if (ImGui::InputInt2("Offset##offset", offset)) {
+    if (heldField("Offset##offset", offset, 2, [&]() { ImGui::InputInt2("Offset##offset", offset); })) {
         const int x = offset[0], y = offset[1];
-        forSelected("Set Tile Offset", [&](TileDef& tile) { tile.offsetX = x; tile.offsetY = y; });
+        forTiles("Set Tile Offset", held.tiles, [&](TileDef& tile) { tile.offsetX = x; tile.offsetY = y; });
     }
     int navArea = first->navArea;
-    if (ImGui::InputInt("Navigation Area##navArea", &navArea)) {
+    if (heldField("Navigation Area##navArea", &navArea, 1, [&]() { ImGui::InputInt("Navigation Area##navArea", &navArea); })) {
         const int area = std::max(navArea, -1);
-        forSelected("Set Navigation Area", [&](TileDef& tile) { tile.navArea = area; });
+        forTiles("Set Navigation Area", held.tiles, [&](TileDef& tile) { tile.navArea = area; });
     }
     ImGui::SetItemTooltip("The NavGrid area this tile gives its cell (-1: none, S19's tile-name table decides)");
 
@@ -965,7 +1000,7 @@ void TilesetEditorWindow::drawTerrainSets() {
             color[1] = (float)g / 255.0f;
             color[2] = (float)b / 255.0f;
             ImGui::Indent();
-            if (ImGui::ColorEdit3("##terrainColor", color, ImGuiColorEditFlags_NoInputs) && ImGui::IsItemDeactivatedAfterEdit()) {
+            if (heldField("##terrainColor", color, 3, [&]() { ImGui::ColorEdit3("##terrainColor", color, ImGuiColorEditFlags_NoInputs); })) {
                 const std::string hex = hexOf(color);
                 edit("Set Terrain Color", [&](TilesetData& data) { data.terrainSets[setIndex].terrains[t].color = hex; });
             }
