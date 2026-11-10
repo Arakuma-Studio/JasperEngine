@@ -27,6 +27,8 @@ namespace luabridge {
     template<> struct Stack<TileGridLayout> : Enum<TileGridLayout, TileGridLayout::Rectangle, TileGridLayout::Isometric, TileGridLayout::IsometricStaggered, TileGridLayout::Hexagon> {};
 }
 
+static_assert(TILE_FLIP_X == 16777216u && TILE_FLIP_Y == 33554432u && TILE_TRANSPOSE == 67108864u, "TileFlip's literals");
+
 #ifndef DISABLE_LUA_BINDINGS
 namespace {
 
@@ -166,15 +168,6 @@ namespace {
         return 0;
     }
 
-    int layerUsedRect(lua_State* L) {
-        TilemapLayer* layer = layerOf(L);
-        if (!layer) return 0;
-        const CellRect r = layer->getUsedRect();
-        const Rect rect((float)r.minX, (float)r.minY, (float)r.width(), (float)r.height());
-        if (!luabridge::push(L, rect)) lua_pushnil(L);
-        return 1;
-    }
-
     int gridWorldToCell(lua_State* L) {
         Grid* grid = luabridge::detail::Userdata::get<Grid>(L, 1, false);
         if (!grid) return 0;
@@ -214,10 +207,11 @@ namespace {
 void LuaBinding::registerTilemapClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     luabridge::getGlobalNamespace(L)
+        // (literals: the Lua API extractor reads the values; the static_asserts keep them D3's bits)
         .beginNamespace("TileFlip")
-        .addVariable("X", TILE_FLIP_X)
-        .addVariable("Y", TILE_FLIP_Y)
-        .addVariable("TRANSPOSE", TILE_TRANSPOSE)
+        .addVariable("X", 16777216u)
+        .addVariable("Y", 33554432u)
+        .addVariable("TRANSPOSE", 67108864u)
         .endNamespace()
         .beginNamespace("TileGridLayout")
         .addVariable("RECTANGLE", TileGridLayout::Rectangle)
@@ -256,7 +250,7 @@ void LuaBinding::registerTilemapClasses(lua_State *L){
         .addProperty("tileset", &TilemapLayer::getTileset)
         .addProperty("cellCount", &TilemapLayer::getCellCount)
         .addProperty("chunkCount", &TilemapLayer::getChunkCount)
-        .addProperty("usedRect", &layerUsedRect)
+        .addProperty("usedRect", &TilemapLayer::getUsedRectArea)
         .addFunction("getCell", &layerGetCell)
         .addFunction("setCell", &layerSetCell)
         .addFunction("eraseCell", &TilemapLayer::eraseCell)

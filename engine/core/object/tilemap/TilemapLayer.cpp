@@ -138,6 +138,11 @@ CellRect TilemapLayer::getUsedRect() const{
     return readCells().usedRect();
 }
 
+Rect TilemapLayer::getUsedRectArea() const{
+    const CellRect r = getUsedRect();
+    return Rect((float)r.minX, (float)r.minY, (float)r.width(), (float)r.height());
+}
+
 int TilemapLayer::getCellCount() const{
     return (int)readCells().cellCount();
 }

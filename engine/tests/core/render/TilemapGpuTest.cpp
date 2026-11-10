@@ -49,7 +49,8 @@ namespace {
 
     // the page: a row of solid tiles (index 0-3), then tile 4: a two-colour shape no flip or
     // transpose leaves alone (the top-left quarter white, the top row's right half orange, the
-    // rest dark), and tile 5: the solid magenta frame next to a tile, for the bleeding tests
+    // rest dark), tile 5: the solid magenta frame next to a tile, for the bleeding tests, and tile 6:
+    // an opaque centre on a transparent border (OUTLINE)
     std::array<uint8_t, 4> atlasPixel(int x, int y) {
         const int tile = x / TILE, tx = x % TILE, ty = y % TILE;
         if (tile < 4) {
@@ -61,11 +62,13 @@ namespace {
             if (ty < 4) return {255, 140, 0, 255};
             return {30, 30, 30, 255};
         }
-        return {255, 0, 255, 255};
+        if (tile == 5) return {255, 0, 255, 255};
+        if (tx >= 4 && tx < 12 && ty >= 4 && ty < 12) return {200, 40, 40, 255};
+        return {0, 0, 0, 0};
     }
 
     std::string writeAtlas(const std::filesystem::path& dir) {
-        const int w = TILE * 6, h = TILE;
+        const int w = TILE * 7, h = TILE;
         std::vector<uint8_t> pixels((size_t)w * h * 4);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -88,7 +91,7 @@ namespace {
         source.kind = TilesetSourceKind::Texture;
         source.asset = AssetRef(atlas);
         data->sources.push_back(source);
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 7; i++)
             data->addTile(0, i, 0);
         return data;
     }
@@ -470,6 +473,32 @@ TEST_F(TilemapGpu, ThousandEditsRebuildEachChunkOnce) {
     EXPECT_EQ(system.getRebuiltChunks(component), 2u);
     image(1);
     EXPECT_EQ(system.getRebuiltChunks(component), 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R37: the layer's tint is the material colour, and library:sprite features apply to tiles (OUTLINE
+// draws inside the tile's own frame, around its opaque texels)
+TEST_F(TilemapGpu, TintAndLibrarySpriteOutline) {
+    JASPER_REQUIRE_GPU();
+    layer->setPosition(64.0f, 64.0f, 0.0f);
+    layer->getComponent<TilemapLayerComponent>().tint = Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+    layer->editCells().setTile(CellCoord{0, 0}, 1);
+    layer->editCells().setTile(CellCoord{2, 0}, 6);
+    Material& material = layer->getComponent<MeshComponent>().submeshes[0].material;
+    material.shader = "library:sprite";
+    material.shaderFeatures = {"OUTLINE"};
+    layer->getComponent<MeshComponent>().needReload = true;
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> shot = image();
+    // tint 0.5 (linear) halves the linear colour of the green tile
+    const Colour tinted = at(shot, 64 + 8, 64 + 8);
+    EXPECT_LT(tinted[1], kColours[1][1] - 40) << "the tint darkens the tile";
+    EXPECT_GT(tinted[1], 40);
+    // the outline: the transparent texel next to the opaque centre is drawn (white x tint), the
+    // tile's far corner stays background
+    const Colour outline = at(shot, 64 + 2 * TILE + 3, 64 + 8);
+    EXPECT_GT((int)outline[0] + outline[1] + outline[2], 200) << "OUTLINE draws beside the opaque texels";
+    EXPECT_TRUE(near(at(shot, 64 + 2 * TILE, 64 + TILE - 1), Colour{0, 0, 0})) << "nothing beyond the outline";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

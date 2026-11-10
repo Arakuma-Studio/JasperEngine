@@ -61,6 +61,8 @@ namespace jasperengine{
         void clear();
 
         CellRect getUsedRect() const;
+        // the used rect as a Rect in cells (x, y of its bottom-left cell, width, height)
+        Rect getUsedRectArea() const;
         int getCellCount() const;
         int getChunkCount() const;
 

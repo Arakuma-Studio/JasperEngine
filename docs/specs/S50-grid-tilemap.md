@@ -838,6 +838,41 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 
 ## Deviations
 
+- **R31, R59 (instance stream).** S52 landed `SpriteInstanceBatch` with `InstanceRenderData` (96 bytes: matrix, colour,
+  texture rect; plus 8 bytes of snap pivot in a snapping scene), not the old 40-byte stream, so a GPU-resident tile costs
+  96-104 bytes. Flips are a negative texture rect, transpose swaps the quad's axes in the instance matrix (exact zeros,
+  so S41's every-vertex snap applies).
+- **R31-R33 (chunks through S52).** S52's attach takes one batch per GameObject; S50 adds `SpriteInstanceChunkList`
+  (`RenderSystem::attachInstanceChunks`): a lead batch the mesh loads with, and one `SpriteInstanceBatch` per chunk whose
+  buffers are swapped in for its draw, each culled, built on first view and uploaded on its own.
+- **R35 `CLAMP_FRAME`.** A MESH variant bit, `Tcl` (49, `TILE_CLAMP_FRAME`), set for a Tilemap Layer's instanced
+  variant: the fragment stage clamps the first UV set half a texel inside the instance's frame (mesh.frag and
+  library:sprite). Shader cache v62 here; it takes the next free bit and version at the batch merge (S48 holds v62).
+- **R2, §6.3 (sorting and material).** Sorting Layer, Order in Layer and the material live on the layer's MeshComponent,
+  as for Sprites (S52's renderer fields), not on `TilemapLayerComponent`; the Inspector shows them in the layer section.
+- **D4, R86, R87 (encoding).** Each chunk starts with a header byte (log2 of the chunk size, a terrain-plane bit), so a
+  chunk string decodes on its own. Cooked scenes store the raw chunk bytes through the `chunks` field's `Codec`
+  (`CustomCodecs.h`) instead of a `ComponentHooks` hook; Compile builds emit one `decodeChunk` statement per chunk with
+  the string split under 16,000 characters. A prefab instance overrides the `chunks` field whole, not per chunk.
+- **§6.2 (references, ids).** A source's asset is written `{"path": ..., "guid": ...}` (a path or `"guid:<hex>"`
+  string is read too), and `"next_id"` keeps deleted ids from being handed out again (R13).
+- **D5 (hexagons).** `localToCell` on hexagons uses an exact band and zigzag test of the layout's rows instead of cube
+  rounding, so a non-regular `hexSideLength` is exact too; the half-open rule is the documented one.
+- **R32 (Individual mode).** A layer in Individual mode gives each anchor row of a chunk its own sort item (the tiles of a
+  row share their sort distance along the Y axis), not each tile.
+- **§6.4 (enums).** The layout and collider enums are int-sized, not `: uint8_t`: the editor's enum fields read and write
+  4 bytes.
+- **R38 (surface).** `TilemapCollider2DComponent` lists the Collider2D surface fields it shares (friction, restitution,
+  material, category, mask, group, events) instead of holding a `Collider2D`; category and mask are 32-bit fields
+  narrowed to Box2D's 16 bits.
+- **Units.** A Grid's Cell Size is in world units; a tile's image is its pixels over the project's Pixels Per Unit.
+  Colliders are built in texels and scaled back.
+- **R12 (aseprite source).** The Aseprite importer (version 2) writes each tileset's strip and resolves
+  `"<file>#tileset#<index>"`, so the runtime and exports read the tiles without the `.aseprite` file.
+- **AC5, AC15 (measurement).** No `je-bench-tilemap` binary: the R56-R61 timings are measured in the unit tests through
+  `perfSlack()`, and the mobile (Pixel 6a, iPhone 12) and web numbers are not measured (no devices on this host). Web,
+  Android, Vulkan and the smoke export run at the batch landing (owner decision of 2026-11-08). The GPU placement tests
+  compare against pictures computed in the test from R7/R8, not PNG goldens.
 - **R82, §6.1 (MCP guide).** No `## Pixel art` line: per the ledger's upstream rule change the area is one "Other
   areas" entry (`tilemaps (edit_tilemap)`, `jasper://docs/tilemaps`). The guide's room came from moving the Unity-names
   sentence on Build Settings and Scenes in Build to `docs/unity-glossary.md` (already there) and the Code section.
