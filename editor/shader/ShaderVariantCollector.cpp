@@ -42,6 +42,8 @@
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/VoxelVolumeComponent.h"
+#include "voxel/TransvoxelMesher.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
@@ -283,7 +285,9 @@ namespace {
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
-            (e.directionalLightsOnly ? (1ull << 32) : 0ull);
+            (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
+            // T3 R34: the tier a build may force
+            (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -325,7 +329,7 @@ namespace {
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
                                                              bool allLightCapacities, const std::vector<bool>& postColor,
                                                              const std::vector<bool>& shadowHQ, bool allLitQualities,
-                                                             PbrTier mobilePbrTier){
+                                                             PbrTier mobilePbrTier, uint32_t terrainTiers){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -411,7 +415,20 @@ namespace {
                 }
             }
         }
-        return environments;
+        // T3 R34: every tier the build ships. Only a terrain's keys differ by it, and the set of keys
+        // takes each other key once.
+        std::vector<MeshShaderEnvironment> tiered;
+        for (const MeshShaderEnvironment& environment : environments){
+            for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++){
+                if (terrainTiers & (1u << tier)){
+                    MeshShaderEnvironment withTier = environment;
+                    withTier.terrainForced = true;
+                    withTier.terrainForcedTier = static_cast<terraincore::TerrainQuality>(tier);
+                    tiered.push_back(withTier);
+                }
+            }
+        }
+        return tiered;
     }
 
     // A texture standing for one a model file gives a material: only whether there is one
@@ -641,6 +658,9 @@ namespace {
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)){
                     collectFoliage(*terrain);
                 }
+                if (const VoxelVolumeComponent* voxels = registry->findComponent<VoxelVolumeComponent>(entity)){
+                    collectVoxelVolume(*voxels);
+                }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
                     pixelSnapKeys = scenePixelSnap;
                     collectUI(*ui, registry->findComponent<TextComponent>(entity),
@@ -760,6 +780,16 @@ namespace {
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            // T3 R34, T6 R40: a terrain with an attached Automatic volume ships its holed variant, so a
+            // first in-game dig finds it in the build
+            if (terrain && !inputs.terrainHoles){
+                auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+                for (size_t i = 0; i < volumes->size() && !inputs.terrainHoles; i++){
+                    const VoxelVolumeComponent& volume = volumes->getComponentFromIndex(i);
+                    inputs.terrainHoles = volume.terrainCut == VoxelTerrainCut::Automatic && volume.terrain != NULL_ENTITY
+                        && scene->findComponent<TerrainComponent>(volume.terrain) == terrain;
+                }
+            }
             inputs.instanced = instmesh || spriteInstancedKeys;
             inputs.batchAttributes = spriteAttributes;
 
@@ -830,6 +860,31 @@ namespace {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
                     }
                 }
+            }
+        }
+
+        // T6 R49: a volume's chunks are never in a saved scene, so a build without a runtime compiler
+        // reaches their variants only from here. A chunk as VoxelSystem::writeChunk makes it, in each
+        // tier the volume can take: its Quality's, or for Auto whichever the target and an attached
+        // terrain choose (R51), which are not known here.
+        void collectVoxelVolume(const VoxelVolumeComponent& volume){
+            auto chunk = std::make_unique<MeshComponent>();
+            chunk->numSubmeshes = 1;
+            chunk->castShadows = volume.castShadows;
+            chunk->submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+            chunk->buffer.Buffer::addAttribute(AttributeType::POSITION, AttributeDataType::FLOAT, 3, offsetof(voxel::MeshVertex, position));
+            chunk->buffer.Buffer::addAttribute(AttributeType::NORMAL, AttributeDataType::FLOAT, 3, offsetof(voxel::MeshVertex, normal));
+            chunk->buffer.Buffer::addAttribute(AttributeType::VOXELSLOTS, AttributeDataType::UNSIGNED_SHORT, 2, offsetof(voxel::MeshVertex, slots));
+            chunk->buffer.Buffer::addAttribute(AttributeType::VOXELWEIGHTS, AttributeDataType::UNSIGNED_BYTE, 4, offsetof(voxel::MeshVertex, weights));
+            const std::vector<const Buffer*> buffers{&chunk->buffer};
+            const VoxelQuality all[] = {VoxelQuality::High, VoxelQuality::Medium, VoxelQuality::Low};
+            for (VoxelQuality quality : all){
+                if (volume.quality != VoxelQuality::Auto && volume.quality != quality){
+                    continue;
+                }
+                // (MeshComponent::voxelTier: High 1, Medium 2, Low 3, the order of the quality enum)
+                chunk->voxelTier = static_cast<uint8_t>(quality);
+                collectSubmesh(*chunk, chunk->submeshes[0], &buffers, nullptr, nullptr, false);
             }
         }
 
@@ -1367,7 +1422,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
                                                   const std::vector<std::string>& scriptPostProcessingFields,
                                                   bool scriptsSetShadowQuality, bool scriptsSetLitQuality,
-                                                  PbrTier mobilePbrTier){
+                                                  PbrTier mobilePbrTier, uint32_t terrainTiers){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -1388,7 +1443,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         if (!resolved.insert(signature).second)
             return;
         collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
-                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier);
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers);
     };
     QualityResolver::setTier(std::nullopt);
     QualityResolver::forceThermalResponse(ThermalState::Nominal);
@@ -1416,7 +1471,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                            bool scriptsSetPostProcessing,
                                                            const std::vector<std::string>& scriptPostProcessingFields,
                                                            bool allLightCapacities, bool scriptsSetShadowQuality,
-                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier){
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
@@ -1435,7 +1490,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
 
     const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
                                                                                   shadowHQStates(scene, scriptsSetShadowQuality),
-                                                                                  scriptsSetLitQuality, mobilePbrTier);
+                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers);
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);

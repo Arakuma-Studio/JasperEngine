@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "terrain/TerrainQuality.h"
 #include "Scene.h"
 #include "shader/ShaderBuildTypes.h"
 #include "texture/MaterialPbr.h"
@@ -98,7 +99,7 @@ namespace jasperengine::editor {
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
                                  bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
-                                 PbrTier mobilePbrTier = PbrTier::FULL);
+                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,
@@ -131,7 +132,8 @@ namespace jasperengine::editor {
                                           const std::vector<ShaderVariantContent>& prefabContents, std::set<ShaderKey>& keys,
                                           const std::filesystem::path& projectRoot, bool scriptsSetPostProcessing,
                                           const std::vector<std::string>& scriptPostProcessingFields, bool allLightCapacities,
-                                          bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier);
+                                          bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier,
+                                          uint32_t terrainTiers);
     };
 
 }

@@ -237,3 +237,57 @@ set_source_files_properties(
     ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
     ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
+
+# S47 (Agent Sprite Drawing): the document session and its revisions, the grid codec, the ops
+# (paint, fill, colour, transform, structure), the rotation and scaler ports, the sheet renderer,
+# the diff, the edit events, SpriteEditCmd and the drawing tools of the sprites group
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/draw/SpriteDoc.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteDocCache.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpritePatch.cpp
+    ${EDITOR_DIR}/pixelart/draw/GridCodec.cpp
+    ${EDITOR_DIR}/pixelart/draw/DrawPrimitives.cpp
+    ${EDITOR_DIR}/pixelart/draw/ShadeColor.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteRotate.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEdit.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditStructure.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteImportFrames.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteRender.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteDiff.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditEvents.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteDrawLint.cpp
+    ${EDITOR_DIR}/command/type/SpriteEditCmd.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteDrawTools.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S47's drawing modules: file-local op helpers (clipRect, setPixel, problem builders) shared in name across its sources"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/draw/SpriteDoc.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteDocCache.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpritePatch.cpp
+        ${EDITOR_DIR}/pixelart/draw/GridCodec.cpp
+        ${EDITOR_DIR}/pixelart/draw/DrawPrimitives.cpp
+        ${EDITOR_DIR}/pixelart/draw/ShadeColor.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteRotate.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteEdit.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteEditStructure.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteImportFrames.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteRender.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteDiff.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteEditEvents.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteDrawLint.cpp
+        ${EDITOR_DIR}/command/type/SpriteEditCmd.cpp
+        ${EDITOR_DIR}/mcp/tools/SpriteDrawTools.cpp
+)
+# rotation and shading decide colours with doubles: the same bits on every platform (R4)
+set_source_files_properties(
+    ${EDITOR_DIR}/pixelart/draw/SpriteRotate.cpp
+    ${EDITOR_DIR}/pixelart/draw/ShadeColor.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
+

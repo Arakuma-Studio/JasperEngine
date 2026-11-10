@@ -17,6 +17,7 @@ from htmlui_pixels import decode_png
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pixel-fonts"}
 CI = False
+CI_EXCLUDED = "needs a SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/pixel-fonts run first"
 TIMEOUT = 600
 OUT = REPO / "build" / "test-results" / "pixel-fonts-export"
 

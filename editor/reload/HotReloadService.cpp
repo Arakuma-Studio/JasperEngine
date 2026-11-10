@@ -481,6 +481,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadVoxelVolumes(ctx, files(external, "voxel"));
     reload::reloadPalettes(ctx, both("palette"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");

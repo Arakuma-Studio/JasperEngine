@@ -193,6 +193,15 @@ constexpr int getJasperEngineModifiers(int32_t mods) {
     return modifiers;
 }
 
+// a pointer's pen pressure (Input::setPenPressure): a stylus's or an eraser's, -1 for a finger or
+// a mouse
+float stylusPressureOf(const GameActivityPointerAxes& pointer) {
+    const int32_t tool = GameActivityPointerAxes_getToolType(&pointer);
+    if (tool != AMOTION_EVENT_TOOL_TYPE_STYLUS && tool != AMOTION_EVENT_TOOL_TYPE_ERASER)
+        return -1.0f;
+    return std::clamp(GameActivityPointerAxes_getPressure(&pointer), 0.0f, 1.0f);
+}
+
 constexpr int getJasperEngineGamepadButton(int32_t key) {
     if (key == AKEYCODE_BUTTON_A)
         return D_GAMEPAD_BUTTON_A;
@@ -527,6 +536,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
     // only X and Y are copied into motion events unless an axis is enabled
     GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_VSCROLL);
     GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_HSCROLL);
+    // a stylus's pressure (Input::getPenPressure)
+    GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_PRESSURE);
 
     // Flags to control how the IME behaves.
     // https://developer.android.com/reference/android/text/InputType
@@ -1585,6 +1596,14 @@ void NativeEngine::handleGameActivityInput(){
                         jasperengine::Engine::systemMouseScroll(-hscroll, vscroll, getJasperEngineModifiers(motionEvent->metaState));
                 }
                 continue;
+            }
+
+            // the pointer that went down or up, else the first (MOVE, HOVER_*), before the
+            // engine hears of the event
+            if (motionEvent->pointerCount > 0) {
+                const int actionIndex = (motionEvent->action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+                const int penIndex = actionIndex < (int)motionEvent->pointerCount ? actionIndex : 0;
+                jasperengine::Input::setPenPressure(stylusPressureOf(motionEvent->pointers[penIndex]));
             }
 
             // a mouse moving with no button down. Pressed buttons arrive as DOWN/MOVE/UP and

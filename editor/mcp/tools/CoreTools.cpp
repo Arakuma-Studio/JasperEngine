@@ -356,7 +356,7 @@ void undoRedo(const CallPtr& call, bool undo) {
             CommandHistory* stepHistory = done[i].project ? project->getProjectCommandHistory() : CommandHandle::get(done[i].sceneId);
             if (stepHistory && !stepHistory->lastUndoProblem().empty()) report.problems.push_back(stepHistory->lastUndoProblem());
         }
-        if (!moved && why.empty() && next && next.history && !next.history->lastRefusal().empty()) {
+        if (!moved && next && next.history && !next.history->lastRefusal().empty()) {
             report.refusedWhy = next.history->lastRefusal();
         }
         return moved;
@@ -381,6 +381,11 @@ void undoRedo(const CallPtr& call, bool undo) {
             }
         } else {
             stopped = !UndoTimeline::jumpTo(sceneId, target, &why, &done);
+            if (stopped) {
+                // the step that refused is the next one, its history kept why
+                UndoTimeline::EntryView next = undo ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+                if (next && next.history && !next.history->lastRefusal().empty()) report.refusedWhy = next.history->lastRefusal();
+            }
         }
     } else {
         for (int i = 0; i < steps; i++) {
@@ -432,7 +437,12 @@ void undoRedo(const CallPtr& call, bool undo) {
         data["can_redo"] = UndoTimeline::canRedo(sceneId);
     }
     if (done.empty()) {
-        call->fail(busy ? why : refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        std::string empty = std::string("Nothing to ") + verb + " in the " + scope + " history.";
+        // An asset step (a graph file, an import) is newer than the scene's: Ctrl+Z would take it
+        if (scope == "scene" && (undo ? UndoTimeline::canUndo(sceneId) : UndoTimeline::canRedo(sceneId))) {
+            empty += std::string(" The last step is an asset edit: ") + verb + " scope timeline takes it, as Ctrl+Z does.";
+        }
+        call->fail(busy ? why : refused ? refusal : empty, data);
         return;
     }
     std::string names;

@@ -16,6 +16,7 @@
 #include "animation/VertexAnimatorRuntime.h"
 
 #include "component/ModelComponent.h"
+#include "component/TerrainComponent.h"
 
 #include <algorithm>
 #include <cfloat>

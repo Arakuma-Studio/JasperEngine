@@ -119,6 +119,7 @@
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
 #include "render/AtmosphereQuality.h"
+#include "render/FoliageQuality.h"
 #include "pixelart/PixelPerfectLayout.h"
 #include "math/Vector2.h"
 #include <atomic>
@@ -285,6 +286,8 @@ namespace jasperengine {
         static int defaultUniformBytes();
         static int defaultStreamStagingBytes();
         static int defaultDescriptorBytes();
+        // T1 DC9: what a frame's terrain map uploads may take, 2 MB mobile/web, 8 MB desktop
+        static int defaultTerrainUploadBytes();
 
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
@@ -454,6 +457,10 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static FoliageQuality foliageQualityDefaults[3];
+        static bool foliageQualityUncapped;
+        static bool foliageQualityOverridden;
+        static FoliageQuality foliageQualityOverride;
         static float foliageDistanceScaleDefaults[3];
         static bool foliageDistanceScaleOverridden;
         static float foliageDistanceScaleOverride;
@@ -706,8 +713,19 @@ namespace jasperengine {
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
 
+        // Foliage Quality (T5 R21): scales and caps, never writes a Terrain. uncapped: a project from
+        // before the field, High everywhere with no instance or draw cap, so it looks the same (F12).
+        static void setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped = false);
+        static FoliageQuality getFoliageQualityDefault(Platform platform);
+        static void setFoliageQuality(FoliageQuality quality);
+        static FoliageQuality getFoliageQuality();
+        static void resetFoliageQuality();
+        // the tier in effect has no caps: no game override, and a project that never said
+        static bool isFoliageQualityUncapped();
+
         // Foliage Distance (Unity's QualitySettings.terrainDetailDistanceFactor): multiplies every
-        // terrain foliage layer's Draw Distance and Min Draw Distance. The project's scale per
+        // terrain foliage layer's Draw and Min Draw Distance, and (T5 R66) Tree Distance and Billboard
+        // Start: the one global distance knob. The project's scale per
         // platform group (Project Settings > Quality, 1 by default), which a game may override at
         // runtime (0 draws no foliage; clamped to [0, 10], non-finite values ignored).
         // getFoliageDistanceScale is the scale in effect: the override, else this platform's default.

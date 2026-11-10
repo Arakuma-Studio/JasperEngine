@@ -1,0 +1,6 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the voxels project logs on Android
+I/JasperEngine: [gate] voxels golden 659ad177d96702d6
+I/JasperEngine: [gate] voxels first set active
+I/JasperEngine: [gate] voxels ground collision holds
+I/JasperEngine: [gate] voxels dig ok 1
+I/JasperEngine: [gate] voxels dig to collision within budget

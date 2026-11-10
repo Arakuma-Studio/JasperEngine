@@ -63,6 +63,11 @@ namespace jasperengine {
         // MAX_HEIGHTFIELD_SAMPLES (a larger heightmap is resampled through sampleTerrainSurface)
         static constexpr unsigned int MAX_HEIGHTFIELD_SAMPLES = 1025;
         static unsigned int defaultHeightFieldSamples(const TerrainComponent& terrain);
+        // The terrain-local heights a heightfield of samplesSize x samplesSize holds at samples
+        // [x0, x0 + w) x [y0, y0 + h), row by row: the one per-sample function of a build and of a
+        // refresh after an edit (T1 R79), so the two agree. A negative scale mirrors as the build does.
+        static void sampleHeightField(Scene* scene, TerrainComponent& terrain, const Vector3& scale, unsigned int samplesSize,
+                                      unsigned int x0, unsigned int y0, unsigned int w, unsigned int h, float* out);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Jolt's global allocator/factory/type registration is process-wide; run once.

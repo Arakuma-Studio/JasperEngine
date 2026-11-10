@@ -19,6 +19,9 @@
 # A bus never reads ahead (src/core/soloud.cpp mixBus_internal: a voice at step 1 with autostop off, the
 # engine's buses, reads only the frames the call still needs; a voice started into a bus was mixed at the
 # bus's next 512-frame block, up to 511 frames late, and seen ended up to a block early).
+# A mix flushes denormals only while it runs (src/core/soloud.cpp mix_internal: flush-to-zero and
+# denormals-are-zero were turned on once per process in the first thread that mixed and never restored,
+# so a main thread that mixed, on the null or deterministic driver, flushed denormals from then on).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

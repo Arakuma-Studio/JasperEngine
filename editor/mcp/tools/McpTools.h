@@ -78,6 +78,7 @@ namespace jasperengine::editor::mcp {
     // SpriteTools.cpp: the sprites group (S44's Aseprite import; S45 atlases, S47 drawing)
     void registerSpriteTools(McpRegistry& registry);
     void registerSpriteAtlasTools(McpRegistry& registry);
+    void registerSpriteDrawTools(McpRegistry& registry);   // S47
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
@@ -101,9 +102,14 @@ namespace jasperengine::editor::mcp {
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerTerrainGenerationTools(McpRegistry& registry);
     void registerProceduralMaterialTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
+    void registerVoxelTools(McpRegistry& registry);
+    void registerTerrainTools(McpRegistry& registry);
+    // T4: edit_terrain_world, registered by registerTerrainTools (its module and group)
+    void registerTerrainWorldTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerAnimatorTools(McpRegistry& registry);
     // S27: the editor tools (group editor_tools) and the Project Hub's core tools

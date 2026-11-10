@@ -30,6 +30,10 @@
 #include <string>
 #include <vector>
 
+#if defined(__SSE2__) || defined(_M_X64)
+#include <xmmintrin.h>
+#endif
+
 namespace {
 
     namespace fs = std::filesystem;
@@ -306,6 +310,26 @@ TEST(SoloudMix, AVoicePlaysItsLastBlockToTheEnd) {
         EXPECT_EQ(heard, 1000) << "every frame of the clip";
         EXPECT_FALSE(mixer.soloud.isValidVoiceHandle(voice)) << "and then it ends";
     }
+}
+
+// ---- a mix flushes denormals only while it runs -------------------------------------------------
+
+// A thread that mixed (the main thread, on the null and deterministic drivers) computes denormals
+// afterwards, as the noise kernels' determinism needs (T2 N2); a caller that flushes keeps flushing.
+// Red before the patch: the first mix of the process left flush-to-zero on in its thread for good.
+TEST(SoloudMix, LeavesTheCallersDenormalModes) {
+    NullSoloud mixer;
+    mixer.mix(2048);
+    volatile float tiny = 1e-40f;
+    volatile float half = 0.5f;
+    EXPECT_NE(tiny * half, 0.0f) << "denormals are flushed in the thread that mixed";
+#if defined(__SSE2__) || defined(_M_X64)
+    const unsigned int modes = _mm_getcsr();
+    _mm_setcsr(modes | 0x8040u);
+    mixer.mix(2048);
+    EXPECT_EQ(_mm_getcsr() & 0x8040u, 0x8040u) << "the caller's own flush-to-zero and denormals-are-zero";
+    _mm_setcsr(modes);
+#endif
 }
 
 // ---- S-6: a bus never reads ahead of its voices -------------------------------------------------

@@ -42,3 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libx11-6 libxcursor1 libxi6 libxrandr2 libxext6 libxkbcommon0 libwayland-client0 libwayland-cursor0 \
         libwayland-egl1 libgl1 libegl1 libgl1-mesa-dri libvulkan1 libdbus-1-3 dbus xvfb xauth python3 \
     && rm -rf /var/lib/apt/lists/* && dbus-uuidgen > /etc/machine-id
+
+# qemu-user: runs the noise golden tool's ARM builds without KVM (tools/noise/cross_check.sh, T2 R41),
+# so the arm64-v8a and armeabi-v7a rows can be checked on an x86-64 host. A layer of its own, last.
+RUN apt-get update && apt-get install -y --no-install-recommends qemu-user-static gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+        gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+    && rm -rf /var/lib/apt/lists/*

@@ -148,6 +148,7 @@ ImVec2 GraphCanvas::nodeSize(const Node& node){
     const float rows = (float)std::max(node.inputs.size(), node.outputs.size());
     float height = HEADER_HEIGHT + rows * PORT_ROW + PADDING;
     if (node.thumbnail) height += THUMBNAIL_SLOT + PADDING;
+    height += FOOTER_LINE * (float)node.footer.size();
     return ImVec2(std::max(MIN_WIDTH, node.size.x), height);
 }
 
@@ -184,7 +185,16 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
 
 GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, std::vector<Link>& links, const std::vector<Group>& groups){
     Result result;
-    for (Node& node : nodes) if (isDataflow(node)) node.size = nodeSize(node);
+    for (Node& node : nodes){
+        if (!isDataflow(node)) continue;
+        node.size = nodeSize(node);
+        if (!node.errorText.empty()){
+            // its lines at zoom 1, and one more: a smaller zoom's glyph sizes round differently (T2 R58)
+            const float textSize = ImGui::GetFontSize() * 0.85f;
+            const float wrapped = ImGui::GetFont()->CalcTextSizeA(textSize, 1e9f, node.size.x - 2 * PADDING, node.errorText.c_str()).y;
+            node.size.y += wrapped + textSize + PADDING;
+        }
+    }
     origin = ImGui::GetCursorScreenPos();
     regionSize = ImGui::GetContentRegionAvail();
     regionSize.x = std::max(regionSize.x, 50.0f);
@@ -639,11 +649,13 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                         const float radius = 5.0f * std::max(0.7f, zoom);
                         if (port.connected) list->AddCircleFilled(p, radius, withAlpha(port.color, portAlpha));
                         else list->AddCircle(p, radius, withAlpha(port.color, portAlpha), 0, 2.0f);
+                        if (port.error) list->AddCircle(p, radius + 2.5f * zoom, withAlpha(IM_COL32(235, 70, 70, 255), alpha), 0, 2.0f);
                         if (fontSize >= 5.0f && !port.label.empty()){
                             const float labelSize = fontSize * 0.9f;
                             const ImVec2 text = font->CalcTextSizeA(labelSize, 1e9f, 0.0f, port.label.c_str());
                             const float x = side ? p.x - radius - 4.0f * zoom - text.x : p.x + radius + 4.0f * zoom;
-                            list->AddText(font, labelSize, ImVec2(x, p.y - text.y * 0.5f), withAlpha(IM_COL32(200, 200, 200, 255), portAlpha), port.label.c_str());
+                            const ImU32 labelColor = port.error ? IM_COL32(255, 120, 120, 255) : IM_COL32(200, 200, 200, 255);
+                            list->AddText(font, labelSize, ImVec2(x, p.y - text.y * 0.5f), withAlpha(labelColor, portAlpha), port.label.c_str());
                         }
                     }
                 }
@@ -654,6 +666,19 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 const ImVec2 sa = toScreen(lo), sb = toScreen(hi);
                 list->AddRectFilled(sa, sb, IM_COL32(25, 25, 28, 255));
                 if (drawThumbnail) drawThumbnail(list, node.id, sa, sb);
+            }
+            if (fontSize >= 5.0f && (!node.footer.empty() || !node.errorText.empty())){
+                const float rows = (float)std::max(node.inputs.size(), node.outputs.size());
+                float y = node.position.y + HEADER_HEIGHT + rows * PORT_ROW + PADDING + (node.thumbnail ? THUMBNAIL_SLOT + PADDING : 0.0f);
+                const float smallSize = fontSize * 0.85f;
+                for (const std::string& line : node.footer){
+                    list->AddText(font, smallSize, toScreen(ImVec2(node.position.x + PADDING, y)), IM_COL32(170, 170, 170, 255), line.c_str());
+                    y += FOOTER_LINE;
+                }
+                if (!node.errorText.empty()){
+                    list->AddText(font, smallSize, toScreen(ImVec2(node.position.x + PADDING, y)), IM_COL32(255, 120, 120, 255), node.errorText.c_str(),
+                                  nullptr, (node.size.x - 2 * PADDING) * zoom);
+                }
             }
             continue;
         }

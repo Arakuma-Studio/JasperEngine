@@ -62,8 +62,13 @@ namespace {
                         continue;
                     const uint64_t id = entity["entity"].as<uint64_t>(0);
                     if (const YAML::Node components = entity["components"]){
-                        for (const auto& component : components)
+                        for (const auto& component : components){
                             out[id].insert(component.first.as<std::string>());
+                            // T1 R77: a terrain a game edits keeps its blend maps readable
+                            const YAML::Node allow = component.second.IsMap() ? component.second["allowRuntimeEdits"] : YAML::Node();
+                            if (allow && allow.IsScalar() && allow.as<bool>(false))
+                                out[id].insert(TextureTypeInference::TERRAIN_RUNTIME_EDITS_MARK);
+                        }
                     }
                     visit(entity["children"]);
                     visit(entity["entities"]);
@@ -190,12 +195,15 @@ std::vector<TextureSlot> TextureTypeInference::classify(const DepEdge& edge, con
         slots.push_back(TextureSlot::UI);
     }else if (parts.component == "PointsComponent"){
         slots.push_back(TextureSlot::Sprite);
-    }else if (parts.component == "TerrainComponent" && (parts.field == "heightMap" || endsWith(parts.field, "densityMap"))){
+    }else if (parts.component == "TerrainComponent" && (parts.field == "heightMap" || parts.field == "holeMap" || endsWith(parts.field, "densityMap"))){
         slots.push_back(TextureSlot::LinearData);
         slots.push_back(TextureSlot::CpuReadable);
     }else if (parts.component == "TerrainComponent" && parts.field.rfind("blendMap", 0) == 0){
-        // splat weights: data, filtered per channel
+        // splat weights: data, filtered per channel; a terrain a game paints reads them on the CPU
+        // (T1 R77, R85)
         slots.push_back(TextureSlot::LinearData);
+        if (parts.hasEntity && context.componentsOf && context.componentsOf(edge.referrer, parts.entity).count(TextureTypeInference::TERRAIN_RUNTIME_EDITS_MARK))
+            slots.push_back(TextureSlot::CpuReadable);
     }else if (parts.component == "LightComponent" && parts.field == "spotMask"){
         slots.push_back(TextureSlot::CpuReadable);
     }else if (field == "postProcessing.lutTexture" || endsWith(field, "lutTexture")){

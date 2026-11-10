@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "window/TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
@@ -980,8 +982,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+        m_foliageQuality[i] = (int)project->getFoliageQuality()[i];
+    }
     for (int i = 0; i < 3; i++)
         m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
@@ -992,6 +996,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
     }
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        m_terrainTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
+    }
+    m_shipAllTerrainTiers = project->isShipAllTerrainTiers();
+    m_compressTerrainLayers = project->isCompressTerrainLayers();
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -2149,6 +2158,7 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         }
 
         drawShaderCreationSettings();
+        drawTerrainQualitySettings();
 
         if (settingsui::beginRow("graphics.dynamic_batching")) {
             if (projectBeginSettingsRow("Dynamic Batching", m_dynamicBatching != Project::defaultDynamicBatching)) {
@@ -2298,13 +2308,23 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // what foliage scales and caps (docs/mcp/guide/terrain.md); never written to a Terrain
+        static const char* const foliageNames[] = {"Low", "Medium", "High"};
+        static const char* const qualityRows[3] = {"Foliage Quality (Desktop)", "Foliage Quality (Mobile)", "Foliage Quality (Web)"};
+        static const char* const qualityIds[3] = {"##FoliageDesktop", "##FoliageMobile", "##FoliageWeb"};
+        static const char* const qualityKeys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+        const char* const qualityTooltip = "Detail density and fade scales, caps on visible details, trees and draws, detail shadows and impostor blending, per platform group.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(qualityKeys[i])) continue;
+            drawComboSetting(qualityRows[i], qualityIds[i], foliageNames, 3, m_foliageQuality[i], (int)Project::defaultFoliageQuality[i], qualityTooltip);
+        }
         // the scale of every terrain foliage layer's draw distances (Unity's
         // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
         static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
         static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
         static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
         static const char* const foliageTooltip =
-            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer, and Tree Distance and Billboard Start, on this platform group; "
             "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(foliageKeys[i])) continue;
@@ -5740,6 +5760,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    // Apply says what the project wants: an old project stops being uncapped only if a row changed
+    const std::array<FoliageQuality, 3> foliageChosen = {(FoliageQuality)m_foliageQuality[0], (FoliageQuality)m_foliageQuality[1], (FoliageQuality)m_foliageQuality[2]};
+    m_project->setFoliageQuality(foliageChosen, m_project->isFoliageQualityDeclared() || foliageChosen != m_project->getFoliageQuality());
     m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
@@ -5748,6 +5771,16 @@ bool ProjectSettingsWindow::applySettings() {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
     }
+    // an old project writes no key until a tier moves from High (T3 R51)
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        const terraincore::TerrainQuality tier = static_cast<terraincore::TerrainQuality>(m_terrainTiers[platform]);
+        if (tier != m_project->getTerrainQualityTier(platform)) {
+            m_project->setTerrainQualityTier(platform, tier);
+            m_project->setTerrainQualityWritten(true);
+        }
+    }
+    m_project->setShipAllTerrainTiers(m_shipAllTerrainTiers);
+    m_project->setCompressTerrainLayers(m_compressTerrainLayers);
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);
@@ -6398,6 +6431,54 @@ void ProjectSettingsWindow::drawShaderGlobals() {
                         "u_vs_globals / u_fs_globals members (and texture uniforms) too.");
     }
     if (edited) m_globalsEdit.preview();
+}
+
+
+// T3 R40, R51: Graphics > Terrain: Quality per platform, what an export ships, and the cost of the open scene's terrains
+void ProjectSettingsWindow::drawTerrainQualitySettings() {
+    if (!settingsFoldout("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
+    static const char* const tierNames[] = {"High", "Medium", "Low"};
+    static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
+    static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
+    for (int platform : platformOrder) {
+        const std::string key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+        if (!settingsui::beginRow(key.c_str())) continue;
+        const std::string label = std::string(platformLabels[platform]) + " Terrain Quality";
+        const std::string id = std::string("##TerrainQuality") + platformLabels[platform];
+        drawComboSetting(label.c_str(), id.c_str(), tierNames, 3, m_terrainTiers[platform], 0,
+            "The terrain material's tier on this platform for terrains whose Quality is Auto: how many layers a pixel keeps, and what each reads.");
+    }
+    if (m_project && !m_project->isTerrainQualityWritten()) {
+        ImGui::TextDisabled("Recommended for new projects: Desktop High, Web Medium, Android and iOS Low.");
+    }
+    if (settingsui::beginRow("graphics.ship_all_terrain_tiers")) {
+        if (projectBeginSettingsRow("Ship All Terrain Tiers", m_shipAllTerrainTiers)) {
+            m_shipAllTerrainTiers = false;
+        }
+        ImGui::Checkbox("##ShipAllTerrainTiers", &m_shipAllTerrainTiers);
+        endSettingsRow("Export the variants of all three tiers, for a game that changes them at runtime.");
+    }
+    if (settingsui::beginRow("graphics.compress_terrain_layers")) {
+        if (projectBeginSettingsRow("Compress Terrain Layers", m_compressTerrainLayers)) {
+            m_compressTerrainLayers = false;
+        }
+        ImGui::Checkbox("##CompressTerrainLayers", &m_compressTerrainLayers);
+        endSettingsRow("Exports cook each terrain layer map as a compressed array slice; the sources no longer ship. Hint: a raw array of a big terrain takes the heap on the web.");
+    }
+    if (m_project) {
+        if (SceneProject* sceneProject = m_project->getSelectedScene(); sceneProject && sceneProject->scene) {
+            auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+            for (size_t i = 0; i < terrains->size(); i++) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TextUnformatted(sceneProject->scene->getEntityName(terrains->getEntity(i)).c_str());
+                int shown = -1;
+                drawTerrainCostStrip(terrains->getComponentFromIndex(i), shown);
+                ImGui::PopID();
+            }
+        }
+    }
 }
 
 } // namespace jasperengine::editor

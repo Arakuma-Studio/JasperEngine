@@ -61,9 +61,11 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -628,6 +630,8 @@ namespace {
         rows.push_back(enabledRow<ModelComponent>("model"));
         rows.push_back(enabledRow<TilemapComponent>("tilemap"));
         rows.push_back(enabledRow<TerrainComponent>("terrain"));
+        rows.push_back(enabledRow<VoxelVolumeComponent>("voxelvolume"));
+        rows.push_back(enabledRow<TerrainWorldComponent>("terrainworld"));
         rows.push_back(enabledRow<PointsComponent>("points"));
         rows.push_back(enabledRow<LineRendererComponent>("linerenderer"));
         rows.push_back(enabledRow<TrailRendererComponent>("trailrenderer"));

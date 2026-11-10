@@ -105,7 +105,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1095);
     scene->recreateEntity(1096);
     scene->recreateEntity(1097);
-    scene->setLastEntity(1097);
+    scene->recreateEntity(1098);
+    scene->recreateEntity(1099);
+    scene->setLastEntity(1099);
 
     {
         // Entity 1001 (Transform)
@@ -3255,6 +3257,70 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         spriteBatch.sortInstances = true;
         spriteBatch.enabled = false;
         scene->addComponent<SpriteBatchComponent>(1097, spriteBatch);
+    }
+
+    {
+        // Entity 1098 (VoxelVolumeComponent)
+        scene->setEntityName(1098, "VoxelVolumeComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(97.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1098, transform);
+
+        VoxelVolumeComponent voxelVolume;
+        voxelVolume.enabled = false;
+        voxelVolume.quality = VoxelQuality::Low;
+        voxelVolume.lodLevels = 4;
+        voxelVolume.lodRadius = 6;
+        voxelVolume.maxDrawDistance = 4.400000f;
+        voxelVolume.castShadows = false;
+        voxelVolume.collision = false;
+        voxelVolume.collisionRadius = 7;
+        voxelVolume.rescueBodies = false;
+        voxelVolume.terrainCut = VoxelTerrainCut::Automatic;
+        voxelVolume.overlapDepth = 2.000000f;
+        voxelVolume.cutTolerance = 1.000000f;
+        voxelVolume.runtimeGeneration = true;
+        scene->addComponent<VoxelVolumeComponent>(1098, voxelVolume);
+    }
+
+    {
+        // Entity 1099 (TerrainWorldComponent)
+        scene->setEntityName(1099, "TerrainWorldComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(98.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1099, transform);
+
+        TerrainWorldComponent terrainWorld;
+        terrainWorld.enabled = false;
+        terrainWorld.useCameraFocus = false;
+        terrainWorld.poolSize = 4;
+        terrainWorld.lodDistance = 6.900000f;
+        terrainWorld.uploadBudget = 8.600000f;
+        terrainWorld.collisionRadius = 7.500000f;
+        terrainWorld.collisionChunkQuads = 6;
+        terrainWorld.autoAddTiles = false;
+        terrainWorld.overviewCastsShadows = true;
+        scene->addComponent<TerrainWorldComponent>(1099, terrainWorld);
     }
 
     // Default Camera 1

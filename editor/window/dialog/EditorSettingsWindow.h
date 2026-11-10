@@ -70,6 +70,7 @@ namespace jasperengine::editor {
         bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
         DiagnosticsSettings m_diagnostics;
+        PixelArtPreferences m_pixelArt;
         VersionControlSettings m_versionControl;
         std::string m_smartMergeStatus;
         LatticeViewSettings m_lattice;
@@ -103,6 +104,7 @@ namespace jasperengine::editor {
         void refreshPlayerRuntimes();
         void drawLoggingSettings();
         void drawDiagnosticsSettings();
+        void drawPixelArtSettings();
         void drawVersionControlSettings();
         void drawAdvancedSettings();
         bool applySettings();

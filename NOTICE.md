@@ -21,6 +21,7 @@ Libraries of the engine, the editor and the tools:
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
 | [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [Transvoxel](https://github.com/EricLengyel/Transvoxel) | `51a494f03c5b` | `engine/libs/transvoxel/` (`LICENSE`; `Transvoxel.cpp` verbatim, included by `engine/core/voxel/TransvoxelTables.cpp`) | MIT | the regular and transition cell tables of the Voxel Volume mesher (left out of a player without the `voxel` module) |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
@@ -139,6 +140,7 @@ Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)):
 | Source | License | What was taken | Where |
 |---|---|---|---|
 | [SideFX Labs](https://github.com/sideeffects/SideFXLabs): the Houdini Vertex Animation Textures ROP 3.0 and its Unity Shader Graphs (`VAT_SoftBodyDeformation`, `VAT_RigidBodyDynamics`, `VAT_DynamicRemeshing`) | BSD | the VAT 3 format and its decoding: the flags in the bounds' digits, texel addressing, LDR remaps, Two Position Textures, smallest-three rigid quaternions, the precomputed-angle slerp, smooth trajectories, compressed spheremap normals, the fluid lookup table; also the quaternion tangent frame | the Houdini importer (`editor/vat/import/HoudiniVat3.cpp`, decoded on the CPU at import) |
+| [Terrain3D](https://github.com/TokisanGames/Terrain3D) (Copyright (c) 2023-2026 Cory Petkovsek, Roope Palmroos, and Contributors) | MIT | the height blend formula | `engine/shaderlib/includes/terrain_height_blend.glsl` |
 | G4ND44/Godot_VAT3 (GitHub) | MIT | a second reference for the VAT 3 decoding | `editor/vat/import/HoudiniVat3.cpp` |
 | OpenVAT's engine decoders (OpenVAT-Engine_Tools) | MIT | the OpenVAT file layout (per-channel remap, packed normals, `remap_info.json` animations); the A/B crossfade computed on the GPU from one clock | `editor/vat/import/OpenVat.cpp`, `engine/shaderlib/includes/vat.glsl`. The OpenVAT Blender add-on (GPL) is not used |
 | keijiro/HdrpVatExample (GitHub) | Unlicense | integer-addressed `texelFetch` decoding; the shrinking of rigid pieces that lerped matrices cause, which Bones mode avoids (quaternion nlerp) | `engine/shaderlib/includes/vat.glsl` |
@@ -354,6 +356,16 @@ holds only the copies a project makes of them) are colour data, credited here an
 | `endesga-32` | ENDESGA | [Lospec: Endesga 32](https://lospec.com/palette-list/endesga-32) | free to use, credited |
 | `resurrect-64` | Kerrie Lake | [Lospec: Resurrect 64](https://lospec.com/palette-list/resurrect-64) | free to use, credited |
 | `aap-64` | Adigun A. Polack | [Lospec: AAP-64](https://lospec.com/palette-list/aap-64) | free to use, credited |
+
+The agent sprite drawing tools (`editor/pixelart/draw/`, docs/specs/S47-agent-sprite-drawing.md) take their design from
+[tenten](https://github.com/debuffjp/tenten) by debuff (MIT) and port these algorithms, keeping the headers in the sources:
+[Pixelorama](https://github.com/Orama-Interactive/Pixelorama) (MIT, Copyright (c) 2019-present Orama Interactive and contributors): the
+pixel-perfect line (`src/Classes/Drawers.gd`), the scanline flood fill (`src/Classes/FloodFillObject.gd`, from Allegro 4.2.1's `flood.c` by
+Shawn Hargreaves), Zingl's ellipse and rounded rectangles (`src/Autoload/DrawingAlgos.gd`), the outline neighbourhoods
+(`src/Shaders/Effects/OutlineInline.gdshaderinc`), hue-shift shading (`src/Tools/DesignTools/Shading.gd`) and the rotxel and nearest
+rotations; [cleanEdge](https://torcado.com/cleanEdge/) by torcado (MIT, Copyright (c) 2022 torcado) and
+[OmniScale](https://github.com/libretro/glsl-shaders) by Lior Halphon (MIT, Copyright (c) 2015-2016 Lior Halphon, no-AA version by deakcor),
+ported to the CPU as the rotations of `edit_sprite`.
 
 Test data: the Endesga 32 files under `editor/tests/fixtures/palettes/` (`lospec-endesga-32.*`) and
 the recorded Lospec answers under `tools/mcp/tests/fixtures/lospec-mirror/` are Lospec's own

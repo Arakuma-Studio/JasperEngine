@@ -7,10 +7,12 @@
 #include "EditorFrame.h"
 #include "GamepadWin.h"
 #include "WindowWin.h"
+#include "WinPen.h"
 #include "WglWorkerContext.h"
 #include "renderer/Renderer.h"
 
 #include "Engine.h"
+#include "Input.h"
 
 #include "imgui_impl_win32.h"
 
@@ -61,6 +63,15 @@ constexpr UINT WM_JASPERENGINE_WAKE = WM_APP + 1;
 constexpr UINT FIRST_MENU_COMMAND = 0x1000;
 constexpr UINT_PTR LIVE_RESIZE_TIMER_ID = 0xD04A;
 constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
+
+// Backend::penPressure: outside WinBackendData, which exists only between init and shutdown
+float nativePenPressure = -1.0f;
+
+void setNativePenPressure(float pressure) {
+    nativePenPressure = pressure;
+    // a game in Play reads it too
+    Input::setPenPressure(pressure);
+}
 #if defined(SOKOL_VULKAN)
 constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW;
 #else
@@ -445,10 +456,13 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                              RDW_FRAME | RDW_INVALIDATE);
                 backend->redrawRequested = true;
                 break;
+            case WM_POINTERDOWN:
+            case WM_POINTERUPDATE:
+            case WM_POINTERUP:
+                // DefWindowProc still makes the mouse messages ImGui reads
+                setNativePenPressure(winPenPressure(GET_POINTERID_WPARAM(wParam)));
+                break;
             case WM_MOUSEMOVE:
-            case WM_NCMOUSEMOVE:
-            case WM_MOUSEWHEEL:
-            case WM_MOUSEHWHEEL:
             case WM_LBUTTONDOWN:
             case WM_LBUTTONUP:
             case WM_RBUTTONDOWN:
@@ -457,6 +471,13 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             case WM_MBUTTONUP:
             case WM_XBUTTONDOWN:
             case WM_XBUTTONUP:
+                if (!winIsPointerMouseMessage())
+                    setNativePenPressure(-1.0f);
+                backend->redrawRequested = true;
+                break;
+            case WM_NCMOUSEMOVE:
+            case WM_MOUSEWHEEL:
+            case WM_MOUSEHWHEEL:
             case WM_KEYDOWN:
             case WM_KEYUP:
             case WM_SYSKEYDOWN:
@@ -1069,6 +1090,10 @@ void editor::Backend::closeWindow() {
     if (!backend) return;
     backend->shouldClose = true;
     if (backend->window) PostMessageW(backend->window, WM_JASPERENGINE_WAKE, 0, 0);
+}
+
+float editor::Backend::penPressure() {
+    return nativePenPressure;
 }
 
 bool editor::Backend::isRunningOnWayland() {

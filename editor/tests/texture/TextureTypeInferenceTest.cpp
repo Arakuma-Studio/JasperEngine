@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
+#include "component/TerrainComponent.h"
 #include "texture/TextureTypeInference.h"
 
 using namespace jasperengine;
@@ -81,6 +82,19 @@ TEST(TextureTypeInference, SpritesFromTheirEntity){
     EXPECT_FALSE(inferenceHas(inferenceSlots("entity:8/MeshComponent.submeshes[0].material.baseColorTexture", context), TextureSlot::Sprite));
 }
 
+// T1 R77, R85 (AC61): a terrain a game paints keeps its blend maps readable in the cook; others
+// cook them as data the GPU alone reads
+TEST(TextureTypeInference, RuntimeEditedTerrainBlendMapsStayReadable){
+    TextureTypeInference::EdgeContext context;
+    context.componentsOf = [](const Guid&, uint64_t entity){
+        return entity == 3 ? std::set<std::string>{"TerrainComponent", TextureTypeInference::TERRAIN_RUNTIME_EDITS_MARK}
+                           : std::set<std::string>{"TerrainComponent"};
+    };
+    EXPECT_TRUE(inferenceHas(inferenceSlots("entity:3/TerrainComponent.blendMaps[0]", context), TextureSlot::CpuReadable));
+    EXPECT_FALSE(inferenceHas(inferenceSlots("entity:4/TerrainComponent.blendMaps[0]", context), TextureSlot::CpuReadable));
+    EXPECT_TRUE(inferenceHas(inferenceSlots("entity:4/TerrainComponent.heightMap", context), TextureSlot::CpuReadable));
+}
+
 TEST(TextureTypeInference, ShaderManifestTextures){
     TextureTypeInference::EdgeContext context;
     context.shaderTextureKind = [](const DepEdge&, const std::string& uniform, bool& cube){
@@ -142,4 +156,11 @@ TEST(TextureTypeInference, ConflictsAreWarnings){
     EXPECT_NE(conflicts[0].find("normal slot"), std::string::npos);
     EXPECT_TRUE(TextureTypeInference::conflicts(TextureImportType::Default,
                                                 TextureTypeInference::fromUses({U{TextureSlot::Color, "a"}}, "a.png")).empty());
+}
+
+// T3 R52, AC44: a hole map is CPU readable and linear: never block compressed, like the height map
+TEST(TextureTypeInference, HoleMapStaysReadable){
+    const std::vector<TextureSlot> hole = inferenceSlots("entity:2/TerrainComponent.holeMap");
+    EXPECT_TRUE(inferenceHas(hole, TextureSlot::CpuReadable));
+    EXPECT_TRUE(inferenceHas(hole, TextureSlot::LinearData));
 }

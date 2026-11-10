@@ -17,7 +17,8 @@
 //     there), anywhere else it does nothing. Zoomed out below 0.6 the ports, their labels and the
 //     cost fade (gone at 0.35, where ports take no press); labels and thumbnails stay. Groups are
 //     drawn behind the nodes, around their members; a press on a group's title selects them and
-//     drags them.
+//     drags them. Under the thumbnail, a node may have dim footer lines (the Noise Graph's range and
+//     time, T2 R56) and its error's message, wrapped (R58); a port an issue names has a red ring.
 //   Esc while the mouse is down cancels a node drag, a box select or a wire drag: positions and
 //   selection as they were before the press, nothing reported but `cancelled` (docs/undo.md,
 //   Drags). Links outside the view are not drawn.
@@ -44,6 +45,7 @@ namespace jasperengine::editor{
             std::string label;
             ImU32 color = IM_COL32(200, 200, 200, 255);   // its type's
             bool connected = false;                       // drawn filled
+            bool error = false;                           // an issue names this port: a red ring (T2 R58)
         };
         struct Node{
             uint64_t id = 0;
@@ -64,6 +66,8 @@ namespace jasperengine::editor{
             std::string cost;           // the header's right corner ("1.2 ms")
             ImU32 header = 0;           // the header bar (a category's colour); 0: the fill, lighter
             bool error = false;         // a red outline (the node has an error)
+            std::vector<std::string> footer;    // dim lines under the thumbnail slot (T2 R56)
+            std::string errorText;      // the error's message, wrapped at the bottom; draw() grows the box to hold it
         };
         struct Link{
             uint64_t id = 0;
@@ -128,6 +132,7 @@ namespace jasperengine::editor{
         static constexpr float PADDING = 6.0f;
         static constexpr float THUMBNAIL_SLOT = 112.0f;
         static constexpr float MIN_WIDTH = 170.0f;
+        static constexpr float FOOTER_LINE = 15.0f;
         // zoom below which the controls fade, and at which they are gone
         static constexpr float FADE_START = 0.6f;
         static constexpr float FADE_END = 0.35f;
@@ -158,7 +163,8 @@ namespace jasperengine::editor{
         static float controlsAlpha(float zoom);
 
         static bool isDataflow(const Node& node) { return !node.inputs.empty() || !node.outputs.empty(); }
-        // a dataflow node's size from its ports and slot; a state machine's box keeps its own
+        // a dataflow node's size from its ports, slot and footer (its error's lines are draw()'s, which
+        // knows the font); a state machine's box keeps its own
         static ImVec2 nodeSize(const Node& node);
         // a port's centre in canvas units (on the node's left edge for an input, right for an
         // output); the middle of that edge when it has no such port

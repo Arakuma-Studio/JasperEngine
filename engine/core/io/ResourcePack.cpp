@@ -333,6 +333,12 @@ bool ResourcePack::size(const std::string& path, uint64_t& outSize) {
     return true;
 }
 
+bool ResourcePack::view(const std::string& path, std::span<const uint8_t>& out) {
+    std::string key;
+    const JPak* pack = contentEntryPack(path, key);
+    return pack && pack->view(key, out, nullptr);
+}
+
 bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& outData) {
     std::string key;
     if (const JPak* pack = contentEntryPack(path, key)) {

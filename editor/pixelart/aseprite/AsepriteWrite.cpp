@@ -656,6 +656,10 @@ namespace jasperengine::editor::pixelart::aseprite {
                         }
                     }
                 }
+                // the frame that held a slice was removed since: it goes in the first one (as Aseprite)
+                for (int& frame : sliceFrame) {
+                    if (frame >= doc.frameCount()) frame = 0;
+                }
             }
 
             bool run(std::vector<uint8_t>& out);

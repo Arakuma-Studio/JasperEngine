@@ -53,6 +53,8 @@ public:
 
     // Number of writes currently in the failed state (for user-facing messages).
     size_t failedCount();
+    // Their files, for the map_write_failed issue (T1 R31)
+    std::vector<std::string> failedPaths();
 
     ~TerrainMapFileWriter();
 

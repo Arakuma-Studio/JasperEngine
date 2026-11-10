@@ -178,6 +178,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames...", AppMenuCommand::AssetsConvertInlineSpriteFrames);
     b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
     b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
+    b.menu("assets.createNoiseGraph", "Create Noise Graph", AppMenuCommand::AssetsCreateNoiseGraph).description =
+        "A Blank Noise Graph in the current folder; the Project window's Create menu offers the presets too";
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
@@ -254,6 +256,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
+    b.menu("window.voxelVolume", "Voxel Volume", AppMenuCommand::ToggleVoxelVolume).description = "Brushes, materials, overlays and stats of a Voxel Volume";
+    b.menu("window.voxelSlice", "Voxel Slice", AppMenuCommand::ToggleVoxelSlice).description = "One plane of a Voxel Volume, drawn on the CPU";
+    b.menu("window.noiseGraph", "Noise Graph", AppMenuCommand::ToggleNoiseGraph).description = "Edit a Noise Graph: the node graphs that generate Terrains";
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("window.particleEffect", "Particle Effect", AppMenuCommand::ToggleParticleEffect).description =
         "An effect as a whole: outline, timing, a preview stage and its modules";
@@ -382,11 +387,49 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("lattice.shrink", "Shrink Point Selection", C::SceneView, "Ctrl+-", "Ctrl+NumpadSubtract");
     b.add("lattice.toggleFalloff", "Toggle Falloff", C::SceneView, "O").description = "Proportional editing of the lattice points";
 
+    // T6 R60: a Voxel Volume's brush, while it is armed and the pointer is over the Scene view
+    b.group = "Voxel Brush";
+    b.add("voxel.tool.dig", "Dig", C::VoxelBrush, "D").description = "Removes solid; Ctrl adds instead, Shift smooths";
+    b.add("voxel.tool.add", "Add", C::VoxelBrush, "A").description = "Adds solid; Ctrl digs instead, Shift smooths";
+    b.add("voxel.tool.smooth", "Smooth", C::VoxelBrush, "S");
+    b.add("voxel.tool.paint", "Paint", C::VoxelBrush, "P");
+    b.add("voxel.tool.pick", "Pick", C::VoxelBrush, "K").description = "The next click takes the material under the cursor";
+    b.add("voxel.brushSmaller", "Brush Smaller", C::VoxelBrush, "[").repeat = true;
+    b.add("voxel.brushLarger", "Brush Larger", C::VoxelBrush, "]").repeat = true;
+    b.add("voxel.disarm", "Put the Brush Down", C::VoxelBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
+    b.gesture("voxel.altClick", "Pick Material", C::VoxelBrush, "Alt+Left Click", "Takes the material under the cursor, with no stroke");
+    b.gesture("voxel.altDrag", "Orbit", C::VoxelBrush, "Alt+Left Drag", "Orbits the Scene view, as with every tool");
+
     b.group = "Terrain";
     b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;   // also Paint Dye's radius
     b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
-    b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
-    b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;
+    b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[", "-").repeat = true;
+    b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]", "=").repeat = true;
+
+    // T1 R57, Table 5: a terrain brush's keys, while it is armed and the pointer is over the Scene view
+    b.group = "Terrain Brush";
+    b.add("terrain.tool.raise", "Raise", C::TerrainBrush, "R").description = "Ctrl lowers, Shift smooths";
+    b.add("terrain.tool.setHeight", "Set Height", C::TerrainBrush, "H");
+    b.add("terrain.tool.smooth", "Smooth", C::TerrainBrush, "S");
+    b.add("terrain.tool.ramp", "Ramp", C::TerrainBrush, "A");
+    b.add("terrain.tool.noise", "Noise", C::TerrainBrush, "N");
+    b.add("terrain.tool.terrace", "Terrace", C::TerrainBrush, "T");
+    b.add("terrain.tool.erode", "Erode", C::TerrainBrush, "E");
+    b.add("terrain.tool.stamp", "Stamp", C::TerrainBrush, "K");
+    b.add("terrain.tool.paintTexture", "Paint Texture", C::TerrainBrush, "B");
+    b.add("terrain.tool.paintDetails", "Paint Details", C::TerrainBrush, "D");
+    b.add("terrain.tool.placeObjects", "Paint Trees", C::TerrainBrush, "P");
+    b.add("terrain.tool.cutHoles", "Cut Holes", C::TerrainBrush, "X").description = "Ctrl fills";
+    b.add("terrain.pick", "Pick Height", C::TerrainBrush, "I").description = "The next click takes Set Height's value from the terrain";
+    b.add("terrain.invertSlopeFilter", "Invert Slope Filter", C::TerrainBrush, "Y");
+    b.add("terrain.alternate", "Alternate", C::TerrainBrush, "C").description =
+        "The armed tool's alternate on or off: Lift Floors (Ctrl: Flatten Peaks) for Raise, Pick and Flatten for Set Height";
+    b.add("terrain.overlay.height", "Height Overlay", C::TerrainBrush, "1");
+    b.add("terrain.overlay.slope", "Slope Overlay", C::TerrainBrush, "2");
+    b.add("terrain.overlay.contours", "Contours Overlay", C::TerrainBrush, "3");
+    b.add("terrain.overlay.layerWeights", "Layer Weights Overlay", C::TerrainBrush, "4");
+    b.add("terrain.overlay.off", "Overlay Off", C::TerrainBrush, "0");
+    b.add("terrain.disarm", "Put the Brush Down", C::TerrainBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
 
     // The Animation window editing a clip (docs/animation-clips.md): while it has focus
     b.group = "Animation";

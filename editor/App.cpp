@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/ImpostorBaker.h"
+#include "terrain/TerrainMapPersistence.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldEditor.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#endif
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -39,6 +45,8 @@
 #include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
+#include "window/NoiseGraphWindow.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -98,6 +106,10 @@
 #include "window/vcs/VcsUi.h"
 #include "window/InputActionsWindow.h"
 #include "navigation/NavigationWindow.h"
+#include "voxel/VoxelBrushTool.h"
+#include "window/VoxelCreateDialog.h"
+#include "window/VoxelEditWindow.h"
+#include "window/VoxelSliceView.h"
 #include "command/PlayChangeReview.h"
 #include "pose/PoseEditSession.h"
 #include "widget/ColorPickerWindow.h"
@@ -255,6 +267,7 @@ editor::App::App(){
     animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
     avatarWindow = new AvatarWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    noiseGraphWindow = new NoiseGraphWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
     particleEffectWindow = new ParticleEffectWindow(&project);
@@ -291,6 +304,8 @@ editor::App::App(){
     StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
     inputActionsWindow = new InputActionsWindow(&project);
     navigationWindow = new NavigationWindow(&project);
+    voxelEditWindow = new VoxelEditWindow(&project);
+    voxelSliceView = new VoxelSliceView(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -800,7 +815,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("Visual Effects", {
             catalogItem("window.particleEffect", windowMenuLabel(ParticleEffectWindow::WINDOW_NAME))
         }),
-        catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Terrain", {
+            catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+            catalogItem("window.noiseGraph", windowMenuLabel(NoiseGraphWindow::WINDOW_NAME)),
+            catalogItem("window.voxelVolume", windowMenuLabel(VoxelEditWindow::WINDOW_NAME)),
+            catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME))
+        }),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
             catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
@@ -1062,6 +1082,18 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
+            break;
+        case AppMenuCommand::ToggleNoiseGraph:
+            showEditorWindow(noiseGraphWindow);
+            break;
+        case AppMenuCommand::AssetsCreateNoiseGraph:
+            projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::ToggleVoxelVolume:
+            showEditorWindow(voxelEditWindow);
+            break;
+        case AppMenuCommand::ToggleVoxelSlice:
+            showEditorWindow(voxelSliceView);
             break;
         case AppMenuCommand::ToggleProfiler:
             showEditorWindow(profilerWindow);
@@ -2276,6 +2308,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(VoxelEditWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
@@ -2292,6 +2325,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(NoiseGraphWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -2966,7 +3000,7 @@ void editor::App::show(){
         // the Animator, Particle Effect and graph windows edit project assets (their selection in the Inspector too)
         // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animationStatisticsWindow->isFocused() || animatorWindow->isFocused() ||
-                particleEffectWindow->isFocused() || spritePreviewWindow->isFocused() || GraphEditorWindow::focused() ||
+                particleEffectWindow->isFocused() || noiseGraphWindow->isFocused() || spritePreviewWindow->isFocused() || GraphEditorWindow::focused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
                  (animatorWindow->inspectorShowsSelection() || GraphEditorWindow::anyInspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
@@ -3051,6 +3085,9 @@ void editor::App::show(){
     aboutWindow.show();
     projectSettingsWindow.show();
     nativePluginDialog.show();
+    // Create Terrain opens from the Hierarchy and from the Terrain window's empty state: drawn here, where it
+    // shows whichever of the two asked and whether the Inspector is drawn or behind another tab
+    CreateTerrainDialog::instance().show();
     // a native plugin was made (either dialog): its Lua mock opens in the code editor
     for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
         if (created.empty()) continue;
@@ -3077,6 +3114,17 @@ void editor::App::show(){
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
+    noiseGraphWindow->show();
+    voxelEditWindow->show();
+    voxelSliceView->show();
+    VoxelCreateDialog::instance().draw();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R40, R41: drawn here, so they show whichever tab opened them
+    CreateTerrainWorldDialog::instance().show();
+    ConvertTerrainWorldDialog::instance().show();
+    ImportHeightmapDialog::instance().show();
+    TerrainWorldPanel::instance().show();
+#endif
     textureSynthesisWindow->show();
     audioMixerWindow->show();
     particleEffectWindow->show();
@@ -4095,6 +4143,9 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
+    ImpostorBaker::update();
+    if (ImpostorBaker::isRunning()) requestFrame();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     // Pixel Art Mode's checks on import and at Play (S42 R1, R25): nothing while the mode is off
@@ -4111,6 +4162,19 @@ void editor::App::engineRender(){
     // Physics Placement gesture (its preview poses are in the scene)
     project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // an edited terrain map reaches its file a second after the last edit (T1 R29)
+    TerrainMapPersistence::get().update();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: the worlds' pump (an idle editor runs no engine frame) and their tiles' debounce (R31)
+    {
+        static bool hostInstalled = false;
+        if (!hostInstalled) {
+            installTerrainWorldHost(&project);
+            hostInstalled = true;
+        }
+        updateTerrainWorlds(TerrainMapPersistence::clockSeconds());
+    }
+#endif
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();
@@ -5368,6 +5432,7 @@ void editor::App::prepareForProjectSwitch() {
     poseAnimationWindow->prepareForProjectSwitch();
     // the Animator window's preview goes back, its controller document is dropped
     animatorWindow->prepareForProjectSwitch();
+    noiseGraphWindow->prepareForProjectSwitch();
     avatarWindow->stopPreview();
     avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
@@ -5535,6 +5600,7 @@ void editor::App::stopTransientPreviews() {
     if (animationClipAppHooks().stopTransientPreviews) {
         animationClipAppHooks().stopTransientPreviews();
     }
+    VoxelBrushTool::get().disarm();
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -5931,7 +5997,15 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
     //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
     //      (pixelSnapInstanceMode).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
+    // v63: the terrain programme re-appended after S91, S43, S49 and S52: T5's foliage
+    //      (MESH 'Cin' 'Wnd' 'Dth' 49-51, DEPTH 21-23, GBUFFER 19-21; library:impostor), T3's holes
+    //      and tiers ('Thl': MESH 52, DEPTH 24, GBUFFER 22; GBUFFER 'Tqm' 'Tql' 'Txl' 23-25 and the
+    //      terrain's Lit defines), T6's Voxel Volumes (HAS_VOXEL and its tiers as Lit defines,
+    //      GBUFFER 'Vox' 26; includes/voxel_vs.glsl and voxel_fs.glsl), T3's u_fs_terrainLayers
+    //      packed to three vectors and a component a layer (includes/terrain_fs.glsl) and T4's Terrain
+    //      Worlds (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl; 'Twd': MESH 53, DEPTH 25, GBUFFER
+    //      27). The programme's own v58-v62 caches held other sources and numbers, so v63 is new to both sides.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v63";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -6163,7 +6237,8 @@ namespace {
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
                       editor::AudioMixerWindow* audioMixer, editor::ParticleEffectWindow* particleEffect,
-                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial) {
+                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial,
+                      editor::NoiseGraphWindow* noiseGraph, editor::VoxelEditWindow* voxelVolume, editor::VoxelSliceView* voxelSlice) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -6191,6 +6266,9 @@ namespace {
         visit(editor::ParticleEffectWindow::WINDOW_NAME, particleEffect);
         visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
         visit(editor::ProceduralMaterialWindow::WINDOW_NAME, proceduralMaterial);
+        visit(editor::NoiseGraphWindow::WINDOW_NAME, noiseGraph);
+        visit(editor::VoxelEditWindow::WINDOW_NAME, voxelVolume);
+        visit(editor::VoxelSliceView::WINDOW_NAME, voxelSlice);
     }
 
 }
@@ -6209,7 +6287,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
     return panels;
 }
 
@@ -6222,7 +6300,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -6234,6 +6312,8 @@ void editor::App::applyDefaultLayout(){
     poseAnimationWindow->setOpen(false);
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
+    voxelEditWindow->setOpen(false);
+    voxelSliceView->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     audioMixerWindow->setOpen(false);
     particleEffectWindow->setOpen(false);

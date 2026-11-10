@@ -19,6 +19,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Project.h"
+#include "component/TerrainWorldComponent.h"
 #include "object/Camera.h"
 #include "picking/MeshRaycast.h"
 #include "picking/PickCache.h"
@@ -26,6 +27,8 @@
 #include "render/SceneRender.h"
 #include "sceneview/SceneViewController.h"
 #include "sceneview/SceneViewVisibility.h"
+#include "terrain/FoliageTypes.h"
+#include "terrainworld/TerrainWorldTrees.h"
 #include "util/Base64.h"
 #include "util/GraphicUtils.h"
 #include "window/SceneWindow.h"
@@ -86,6 +89,16 @@ Json hitJson(Project* project, const ScenePickEntry& entry) {
                 {"point", McpValues::toJson(entry.hit.point)}, {"normal", McpValues::toJson(entry.hit.normal)},
                 {"distance", entry.hit.distance}, {"pending", entry.hit.pending}};
     out["path"] = scene ? McpRefs::entityPath(scene, entry.entity) : std::string();
+    if (entry.hit.kind == PickKind::TREE || entry.hit.kind == PickKind::DETAIL) {
+        // T5 R35: the GameObject is the Terrain, these say what on it
+        out["prototype"] = entry.hit.prototype;
+        if (entry.hit.kind == PickKind::TREE) {
+            // a Terrain World's tree as edit_terrain's remove_trees names it: tile and record (T4 R27)
+            const bool world = scene && scene->scene && scene->scene->findComponent<TerrainWorldComponent>(entry.entity);
+            out["tree_id"] = world ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(entry.hit.foliageId)), terraincore::treeIdRecord(entry.hit.foliageId))
+                                   : entry.hit.foliageId;
+        }
+    }
     return out;
 }
 

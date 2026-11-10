@@ -1,0 +1,34 @@
+---@meta _
+-- Hand-written: the table TerrainWorldClassesLua.cpp builds for TerrainWorld:getStats, which the
+-- generator does not read. docs/scripting/terrain-worlds.md.
+
+---What TerrainWorld:getStats returns: the world's streaming now (T4 R45)
+---@class TerrainWorldStats
+---@field running boolean # false: the world's data could not start (see error); only ready is set then
+---@field error? string # why the world does not run
+---@field ready boolean # the overview is in, so every present tile draws
+---@field frozen boolean # streaming frozen (edit_terrain_world set_streaming freeze)
+---@field tiles integer # tiles the world has
+---@field tileStates table<string, integer> # tiles per state: absent, cold, queued, loading, cpu_ready, uploading, resident, error
+---@field focuses integer # focuses now, the camera's and the component's included (at most 8)
+---@field gpuBytes integer
+---@field cpuBytes integer
+---@field gpuCap integer
+---@field cpuCap integer
+---@field poolSize integer # resident pages in effect
+---@field queue integer # tile loads waiting
+---@field inFlight integer # tile loads running
+---@field uploadBytesLastFrame integer
+---@field uploadBytesTotal integer
+---@field uploadRetries integer
+---@field mainThreadMs number # the last pump's main-thread time
+---@field worstMainThreadMs number
+---@field nodesVisited integer
+---@field nodesSelected integer
+---@field collisionFine integer # fine collision chunks
+---@field collisionCoarse integer # coarse tile colliders
+---@field frozenBodies integer # bodies put to sleep past the subject limit
+---@field seamErrors integer
+---@field poolExhausted integer
+---@field latePages integer # tiles the view wanted near before they had a page
+---@field errors string[]
