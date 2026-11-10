@@ -423,3 +423,4 @@ comparison of the old golden against the new image (before) and after the update
 |---|---|---|---|
 | `../titleart_compositor_part_effects_2d` | 3 / 0.001 / 0 (one pixel over the strict threshold 2) | 0 / 0 / 0 | The renderer tests' stand-in shadow and glow tint through the shared Adjust implementation (S80 Deviation 51) |
 | `../titleart_compositor_adjustment_in_group` | ≤ 2 / < 0.05 / 0 (within the strict limits) | 0 / 0 / 0 | Adjustment layers run the Adjust effect's implementation (S80 Deviation 51) |
+| `title-library/gems_diamond-3d` | 92 / 0.248 / 0.89 (against the new render) | 0 / 0 / 0 | The look's outline effect 2.5 -> 1.5, so it no longer closes the gaps the digits' bands enclose (counter_survival on 1234; S84 Deviation 29) |
