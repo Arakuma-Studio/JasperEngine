@@ -64,6 +64,9 @@ namespace jasperengine {
         // The frame start point (Engine::runFrame, before the fixed updates): start of every
         // script queued until now; scripts queued meanwhile wait for the next frame
         static void flushStarts();
+        // A private editor preview starts its own scripts without consuming another scene's
+        // queued starts. Null keeps the normal frame-wide behavior.
+        static void flushStarts(Scene* onlyScene);
         // Destroy: onDisable (pre-order), then onDestroy, before their instances are released
         static void destroyEntities(Scene* scene, const std::vector<Entity>& entities);
         // Scene unload: the same over whole scenes (all onDisable, then all onDestroy); the

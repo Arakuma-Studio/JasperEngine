@@ -131,6 +131,24 @@ TEST_F(ScriptLifecycleTest, LoadOrderInitThenEnableThenStartBeforeUpdate) {
     (void)b;
 }
 
+TEST_F(ScriptLifecycleTest, PrivatePreviewStartsLeaveOtherScenesQueued) {
+    writeLogger("L1");
+    Scene* live = newScene();
+    addScript(live, entity(live, "Live"), "L1");
+    Scene* preview = newScene();
+    addScript(preview, entity(preview, "Preview"), "L1");
+    LuaBinding::initializeLuaScripts(live);
+    LuaBinding::initializeLuaScripts(preview);
+    EXPECT_EQ(takeLog(), "initLive1 enableLive1 initPreview1 enablePreview1");
+
+    ScriptRuntime::flushStarts(preview);
+    EXPECT_EQ(takeLog(), "startPreview1");
+    ScriptRuntime::flushStarts(preview);
+    EXPECT_EQ(takeLog(), "") << "a private start runs once";
+    ScriptRuntime::flushStarts();
+    EXPECT_EQ(takeLog(), "startLive1") << "the normal frame still starts its pending scene";
+}
+
 // 2. a disabled script: init runs (Unity Awake), onEnable / start / onUpdate do not until enabled
 TEST_F(ScriptLifecycleTest, DisabledScriptInitsButWaitsForEnabled) {
     writeLogger("L1");
