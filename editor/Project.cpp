@@ -6463,7 +6463,7 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // the scene clock (the water's waves) holds with the bodies; a stopped scene's moves by the
-    // Scene view's Animate water (updateSceneRender)
+    // Scene view's Always Refresh (updateSceneRender)
     scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
@@ -6495,7 +6495,7 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // the wakes hold with the game (a hull dragged in edit mode leaves none)
     if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
     // only the tile animation clock (S50 R73): the layers keep drawing; a stopped scene's moves
-    // while the Scene view's Animate water is on (updateSceneRender)
+    // while the Scene view's Always Refresh is on (updateSceneRender)
     if (auto tilemaps = scene->findSystem<TilemapSystem>()) tilemaps->setPaused(pause);
 }
 
@@ -8984,7 +8984,7 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
 
     syncSceneRenderEditLayer(sceneId);
     // a stopped scene's clock (its paused one: Engine::runFrame leaves it) moves with the editor's
-    // frames while Animate water is on, once a frame, with its inline child scenes
+    // frames while Always Refresh is on, once a frame, with its inline child scenes
     {
         const auto now = std::chrono::steady_clock::now();
         const double delta = sceneProject->editClockValid

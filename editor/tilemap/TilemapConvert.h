@@ -77,6 +77,21 @@ namespace jasperengine::editor::tilemap {
     // Mesh (tilemapmesh::submeshTextures), where its rects' textures are
     ConvertCheck check(const TilemapComponent& tilemap, const std::vector<std::string>& submeshTextures);
 
+    // check() for a view drawn every frame (the Inspector, R72): it reads texture sizes from their
+    // files, so it runs again only when what it reads of the component or its textures changed
+    class ConvertCheckCache {
+    public:
+        const ConvertCheck& get(const TilemapComponent& tilemap, const std::vector<std::string>& submeshTextures);
+        // how many times check() ran
+        size_t checks() const { return runs; }
+
+    private:
+        std::string inputs;
+        bool valid = false;
+        ConvertCheck result;
+        size_t runs = 0;
+    };
+
     struct ConvertResult {
         bool ok = false;
         PixelProblem problem;                    // when refused or a step failed; nothing changed

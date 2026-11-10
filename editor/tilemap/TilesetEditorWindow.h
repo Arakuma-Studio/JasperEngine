@@ -13,6 +13,8 @@
 #include "tilemap/TerrainTemplates.h"
 #include "tilemap/TilesetPool.h"
 
+#include "imgui.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -66,6 +68,16 @@ namespace jasperengine::editor::tilemap {
         std::vector<int32_t> selection;              // sorted tile ids
         int32_t rangeAnchor = NO_TILE;
 
+        // ---- the field being held (a drag, a slider, typing): the fields read the document every
+        // frame, so the one held shows this copy until it is let go, then commits once
+        struct HeldField {
+            ImGuiID id = 0;
+            int frame = -1;                          // the last frame it was active
+            double values[4] = {0.0, 0.0, 0.0, 0.0};
+            std::vector<int32_t> tiles;              // the selection when it was taken
+        };
+        HeldField held;
+
         // ---- the peering painter: what a click paints (PEERING_ANY, PEERING_NONE, or a set-local terrain)
         int paintValue = PEERING_ANY;
 
@@ -117,6 +129,12 @@ namespace jasperengine::editor::tilemap {
         void select(int32_t id, bool shift, bool ctrl);
         bool isSelected(int32_t id) const;
         void forSelected(const std::string& name, const std::function<void(TileDef&)>& change);
+        void forTiles(const std::string& name, const std::vector<int32_t>& ids, const std::function<void(TileDef&)>& change);
+        // draws a field through `draw` over `values`, the held copy while it is held; true once, on
+        // the frame it is let go after an edit (`values` then holds the edited value, `held.tiles`
+        // the tiles it applies to)
+        template <typename T>
+        bool heldField(const char* label, T* values, int count, const std::function<void()>& draw);
 
         void drawToolbar();
         void drawSources();

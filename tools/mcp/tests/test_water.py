@@ -8,7 +8,7 @@ height and colours written into it), screenshots of the water from above and bel
 library:water material without textures keeps the flat, grey defaults it had (no ripples:
 the preset's BUILTIN_TEXTURES alone picks the engine's ripples and noise). The water-reflections
 spec: the waves hold while Play is paused or the time scale is 0 and follow a stopped scene's
-Animate water, a fork with @role water (made by hand or by fork_shader source) keeps the
+Always Refresh, a fork with @role water (made by hand or by fork_shader source) keeps the
 buoyancy, the queries and the underwater switch, and the planar reflection settings (undoable,
 in get_render_stats, a screenshot of the reflection)."""
 
@@ -239,7 +239,7 @@ async def test_waves_hold_while_paused(ed: Editor):
 
 
 async def test_edit_mode_animate_water(ed: Editor):
-    """A stopped scene's clock follows the Scene view's Animate water (on by default), frame by
+    """A stopped scene's clock follows the Scene view's Always Refresh (on by default), frame by
     frame of the Scene view (a headless editor draws one for each screenshot)."""
     async def scene_frames():
         await ed.call_raw("screenshot", {"view": "scene"})
@@ -249,13 +249,13 @@ async def test_edit_mode_animate_water(ed: Editor):
     first = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
     await scene_frames()
     second = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
-    ed.check(second > first, f"Animate water on: the clock moves in edit mode ({first} {second})")
+    ed.check(second > first, f"Always Refresh on: the clock moves in edit mode ({first} {second})")
     await ed.call("set_scene_camera", display={"animate_water": False})
     try:
         held = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
         await scene_frames()
         still = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
-        ed.check_eq(still, held, "Animate water off: the clock holds")
+        ed.check_eq(still, held, "Always Refresh off: the clock holds")
     finally:
         await ed.call("set_scene_camera", display={"animate_water": True})
 

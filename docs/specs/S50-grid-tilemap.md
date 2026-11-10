@@ -873,8 +873,9 @@ print(layer.cellCount, grid.cellSize, grid.layout)
   `perfSlack()`, and the mobile (Pixel 6a, iPhone 12) and web numbers are not measured (no devices on this host). Web,
   Android, Vulkan and the smoke export run at the batch landing (owner decision of 2026-11-08). The GPU placement tests
   compare against pictures computed in the test from R7/R8, not PNG goldens.
-- **R73 (Always Refresh).** The editor has no "Always Refresh" option; tile animations run in Edit mode under the
-  Scene view's existing "Animate water" toggle (the view's animate-in-edit setting), and always in Play.
+- **R73 (Always Refresh).** "Always Refresh" is the Scene view's former "Animate water" toggle (Rendering section; the
+  stored key stays `animateWater`, MCP `animate_water`): water, tile animations and the shaders on the scene clock run
+  in Edit mode while it is on, and always in Play.
 - **R69 (Compress Bounds).** The cell store drops empty chunks as it goes, so the button reports the used rect and
   chunk count and changes nothing.
 - **R67 (Navigation Area).** The Tileset Editor edits a tile's `nav_area` as an integer area index, not a named list.

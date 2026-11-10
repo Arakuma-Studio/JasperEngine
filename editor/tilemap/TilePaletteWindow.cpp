@@ -205,7 +205,7 @@ void TilePaletteWindow::createLayer(SceneProject* sceneProject, Entity grid) {
     }
     if (any) history->addCommandNoMerge(properties);
     else delete properties;
-    history->groupSince(mark, "Create Layer");
+    history->groupSince(mark, "Add Tilemap Layer");
     project->setSelectedEntity(sceneProject->id, entity);
     TilemapTools::get().setActiveLayer(sceneProject->id, entity);
 }
@@ -275,7 +275,7 @@ void TilePaletteWindow::drawToolbar() {
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_UP_DOWN "##flip_y")) tools.flipBrush(true);
     ImGui::SetItemTooltip("%s", catalog.tooltip("tilePalette.flipY", "Flip Brush Vertically").c_str());
-    ImGui::SameLine();
+    // the toggles on a row of their own: on one row Focus On fell outside the window's first size
     ImGui::Checkbox("Random", &brush.randomOn);
     ImGui::SameLine();
     ImGui::Checkbox("Keep Terrain", &brush.keepTerrain);

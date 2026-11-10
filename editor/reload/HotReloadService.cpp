@@ -169,6 +169,7 @@ void HotReloadService::detach() {
     externallyChangedScenes.clear();
     projectFileChanged = false;
     deferredScripts.clear();
+    deferredLinkedMaps.clear();
     assetRefreshAfterPlay = false;
     lateProblems.clear();
     lateUi.clear();
@@ -482,17 +483,19 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         for (const FileChange& change : changes) paths.push_back(change.path);
         project->audioFilesChanged(paths);
     }
-    if (!playing) {
-        // S50 R47: linked tile maps, after this pass: they write .tileset files
+    {
+        // S50 R47: linked tile maps, after this pass: they write .tileset files and edit the scene,
+        // which Play would throw away at Stop, so a change made in Play waits for it
         std::vector<fs::path> paths;
         for (const FileChange& change : changes) {
             if (change.kind != FileChangeKind::Removed && !change.directory) paths.push_back(change.path);
         }
-        if (!paths.empty()) {
-            Project* target = project;
-            getEditorHost().enqueueMainThreadTask([target, paths]() {
-                if (HotReloadService::get().getProject() == target) tilemapimport::linkedSourcesChanged(*target, paths);
-            });
+        if (playing) {
+            for (const fs::path& path : paths) {
+                if (std::find(deferredLinkedMaps.begin(), deferredLinkedMaps.end(), path) == deferredLinkedMaps.end()) deferredLinkedMaps.push_back(path);
+            }
+        } else {
+            reimportLinkedMaps(paths);
         }
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
@@ -661,8 +664,21 @@ bool HotReloadService::update() {
             assetRefreshAfterPlay = false;
             project->refreshAssetDatabase(true);
         }
+        if (!deferredLinkedMaps.empty()) {
+            std::vector<fs::path> maps;
+            maps.swap(deferredLinkedMaps);
+            reimportLinkedMaps(maps);
+        }
     }
     return adopted;
+}
+
+void HotReloadService::reimportLinkedMaps(const std::vector<fs::path>& paths) {
+    if (paths.empty()) return;
+    Project* target = project;
+    getEditorHost().enqueueMainThreadTask([target, paths]() {
+        if (HotReloadService::get().getProject() == target) tilemapimport::linkedSourcesChanged(*target, paths);
+    });
 }
 
 void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning) {

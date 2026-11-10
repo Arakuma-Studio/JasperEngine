@@ -38,7 +38,7 @@ TEST(SceneTime, HeldWhilePaused){
     EXPECT_TRUE(scene.isSceneTimePaused());
     scene.advanceSceneTime(1.0);
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), 1.0) << "the clock moved while the scene was paused";
-    // the editor's clock of a stopped scene moves it all the same (Animate water)
+    // the editor's clock of a stopped scene moves it all the same (Always Refresh)
     scene.advanceSceneTime(0.5, true);
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), 1.5);
     scene.setSceneTimePaused(false);

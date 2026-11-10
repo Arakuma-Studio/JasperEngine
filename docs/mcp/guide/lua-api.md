@@ -1286,7 +1286,7 @@ manifest with `@role water`; enabled, active), each resting at the top of its wo
 covering their XZ extent; with `WAVES` (and `GERSTNER`) the heights follow the same waves the
 shader draws, on its clock, the scene clock (`Water.getTime(scene)`: the seconds the scene has
 run, scaled by `Time.timeScale`, held while the game is paused, 0 when the scene starts; a
-stopped scene's follows the Scene view's Animate water), so a script and the screen agree. Where waters overlap the one whose
+stopped scene's follows the Scene view's Always Refresh), so a script and the screen agree. Where waters overlap the one whose
 bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
 looks through the scene's meshes: for many points a frame, keep the results.
 

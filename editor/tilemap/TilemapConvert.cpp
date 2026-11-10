@@ -341,6 +341,56 @@ namespace jasperengine::editor::tilemap {
         return result;
     }
 
+    const ConvertCheck& ConvertCheckCache::get(const TilemapComponent& tilemap, const std::vector<std::string>& submeshTextures) {
+        // what check() reads, as bytes: comparing them costs far less than its texture reads
+        std::string now;
+        const auto put = [&now](const void* data, size_t size) { now.append(static_cast<const char*>(data), size); };
+        const auto putText = [&](const std::string& text) {
+            const size_t size = text.size();
+            put(&size, sizeof(size));
+            now += text;
+        };
+        const auto putFloat = [&](float value) { put(&value, sizeof(value)); };
+        put(&tilemap.numTilesRect, sizeof(tilemap.numTilesRect));
+        for (unsigned int i = 0; i < tilemap.numTilesRect; i++) {
+            const TileRectData& rect = tilemap.tilesRect[i];
+            putText(rect.name);
+            put(&rect.submeshId, sizeof(rect.submeshId));
+            putFloat(rect.rect.getX());
+            putFloat(rect.rect.getY());
+            putFloat(rect.rect.getWidth());
+            putFloat(rect.rect.getHeight());
+        }
+        put(&tilemap.numTiles, sizeof(tilemap.numTiles));
+        for (unsigned int i = 0; i < tilemap.numTiles; i++) {
+            const TileData& tile = tilemap.tiles[i];
+            putText(tile.name);
+            put(&tile.rectId, sizeof(tile.rectId));
+            putFloat(tile.position.x);
+            putFloat(tile.position.y);
+            putFloat(tile.width);
+            putFloat(tile.height);
+        }
+        const uint8_t flags[2] = {(uint8_t)tilemap.automaticFlipY, (uint8_t)tilemap.flipY};
+        put(flags, sizeof(flags));
+        putFloat(tilemap.textureScaleFactor);
+        for (const std::string& texture : submeshTextures) {
+            putText(texture);
+            // a texture replaced on disk can change its size, which check() reads
+            std::error_code error;
+            const auto time = std::filesystem::last_write_time(FileData::getSystemPath(texture), error);
+            const int64_t stamp = error ? 0 : (int64_t)time.time_since_epoch().count();
+            put(&stamp, sizeof(stamp));
+        }
+        if (!valid || now != inputs) {
+            inputs = std::move(now);
+            result = check(tilemap, submeshTextures);
+            valid = true;
+            runs++;
+        }
+        return result;
+    }
+
     ConvertResult convert(Project* project, uint32_t sceneId, Entity entity) {
         ConvertResult result;
         SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;

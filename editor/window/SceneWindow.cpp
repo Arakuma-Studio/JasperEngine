@@ -2840,7 +2840,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
-        drawSettingRow(ICON_FA_WATER " Animate water", sceneProject.displaySettings.animateWater);
+        // (stored as animateWater: the key old settings files carry)
+        drawSettingRow(ICON_FA_ROTATE " Always Refresh", sceneProject.displaySettings.animateWater);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Water, animated tiles and shaders on the scene clock move while the scene is stopped (Play always animates them)");
 

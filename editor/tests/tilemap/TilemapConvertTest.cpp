@@ -26,6 +26,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -419,4 +420,29 @@ TEST_F(TilemapConvertTest, TheTilesetNamesItsImageByGuid) {
     const Guid expected = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(project->getAssetsPath() / "tiles.png"));
     ASSERT_FALSE(expected.isNull());
     EXPECT_EQ(written.sources[0].asset.guid, expected);
+}
+
+// the Inspector draws the check every frame (R72): the cache runs it again only when its inputs move
+TEST_F(TilemapConvertTest, CheckCacheRunsOnlyWhenTheInputsChange) {
+    // normalized: the check reads the texture's size from its file
+    addRect("grass", 0.0f, 0.0f, 0.5f, 1.0f);
+    addTile(0, 0.0f, 0.0f);
+    const std::vector<std::string> textures = {"tiles.png"};
+    ConvertCheckCache cache;
+    EXPECT_TRUE(cache.get(tilemap(), textures).ok);
+    for (int frame = 0; frame < 5; frame++) cache.get(tilemap(), textures);
+    EXPECT_EQ(cache.checks(), 1u) << "the same component is checked once";
+
+    tilemap().tiles[0].position = Vector2(3.0f, 0.0f);
+    EXPECT_FALSE(cache.get(tilemap(), textures).ok) << "a moved tile is checked again: off the grid";
+    EXPECT_EQ(cache.checks(), 2u);
+    tilemap().tiles[0].position = Vector2(16.0f, 0.0f);
+    EXPECT_TRUE(cache.get(tilemap(), textures).ok);
+    EXPECT_EQ(cache.checks(), 3u);
+
+    // the texture replaced on disk: its size is what a normalized rect reads
+    const fs::path file = project->getAssetsPath() / "tiles.png";
+    fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(5));
+    cache.get(tilemap(), textures);
+    EXPECT_EQ(cache.checks(), 4u) << "a texture written again is checked again";
 }

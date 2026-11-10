@@ -1491,7 +1491,7 @@ void editor::HierarchyWindow::createTilemapGrid(const CreateMenuEntry& entry, En
     history->addCommandNoMerge(createGrid);
     const Entity grid = createGrid->getEntity();
     if (layout != TileGridLayout::Rectangle) {
-        // through the reflection table: the enums are 1 byte, PropertyCmd<int> would not fit them
+        // through the reflection table, as the Grid Inspector's rows write these fields (one undoable value each)
         const reflect::ComponentDesc* desc = reflect::find(ComponentType::GridComponent);
         void* component = desc->find(sceneProject->scene, grid);
         const auto setField = [&](const char* path, const void* value) {
