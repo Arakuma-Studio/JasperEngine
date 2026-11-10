@@ -21,7 +21,7 @@ namespace {
         return v < lo ? lo : (v > hi ? hi : v);
     }
 
-    double fract(double v){
+    double titleAnimationFraction(double v){
         return v - std::floor(v);
     }
 
@@ -309,7 +309,7 @@ void titleanim::sampleTrackValue(const CompiledTitleTrack& track, double time, d
                 double v = from;
                 if (track.cycles > 0.0f){
                     const double span = std::max(1e-6, spanLength);
-                    const double f = fract((double)track.cycles * (time - spanStart) / span);
+                    const double f = titleAnimationFraction((double)track.cycles * (time - spanStart) / span);
                     // wrap: from -> to each cycle; else from -> to -> from (no jump at all)
                     const double u = track.driveWrap ? f : (f < 0.5 ? 2.0 * f : 2.0 * (1.0 - f));
                     v = from + (to - from) * (double)anim::applyEase(track.driveEase, (float)u);
@@ -317,7 +317,7 @@ void titleanim::sampleTrackValue(const CompiledTitleTrack& track, double time, d
                     v = from + (double)track.rate * time;
                     if (track.driveWrap && to != from){
                         const double range = to - from;
-                        v = from + range * fract((v - from) / range);
+                        v = from + range * titleAnimationFraction((v - from) / range);
                     }
                 }
                 out[i] = v;
