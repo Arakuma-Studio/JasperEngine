@@ -30,7 +30,9 @@ namespace jasperengine{
         ChunkCoord coord;
         SpriteInstanceBatch batch;
         TilemapChunkBuild build;
-        uint64_t builtRevision = 0;      // the chunk's revision the batch shows
+        // the chunk's revision last compared: a chunk out of view is not built, and its next edit
+        // is still told from the ones before it (its colliders rebuild once per change, R58)
+        uint64_t seenRevision = 0;
         float unseenSeconds = 0.0f;
         size_t listIndex = 0;
     };

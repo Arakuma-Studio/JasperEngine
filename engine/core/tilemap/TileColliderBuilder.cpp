@@ -662,12 +662,6 @@ namespace {
         return true;
     }
 
-    TilePoint cellBasis(const TileGridSpec& grid, CellCoord step){
-        const TilePoint origin = tilegrid::cellToLocal(grid, CellCoord{0, 0});
-        const TilePoint target = tilegrid::cellToLocal(grid, step);
-        return {target.x - origin.x, target.y - origin.y};
-    }
-
 }
 
 bool TileColliderChunk::operator==(const TileColliderChunk& other) const {
@@ -705,14 +699,8 @@ TileColliderBuilder::TileColliderBuilder(TileColliderSettings input): settings(s
         return;
     }
 
-    const TilePoint basisX = cellBasis(grid, CellCoord{1, 0});
-    const TilePoint basisY = cellBasis(grid, CellCoord{0, 1});
-    tileShift = {settings.tileAnchor.x * basisX.x + settings.tileAnchor.y * basisY.x,
-                 settings.tileAnchor.x * basisX.y + settings.tileAnchor.y * basisY.y};
-    if (settings.dualGrid){
-        tileShift.x -= (basisX.x + basisY.x) * 0.5;
-        tileShift.y -= (basisX.y + basisY.y) * 0.5;
-    }
+    // where the chunk builder draws the tiles (in this lattice's texels)
+    tileShift = tilegrid::tileShift(grid, settings.tileAnchor.x, settings.tileAnchor.y, settings.dualGrid);
 
     double overhang = std::max(std::fabs(tileShift.x), std::fabs(tileShift.y));
     const double cellSpan = std::min(tilegrid::pitchX(grid), tilegrid::pitchY(grid));

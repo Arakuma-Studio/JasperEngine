@@ -80,7 +80,7 @@ namespace jasperengine{
         bool merge = true;
         // moves every collider, local units
         TilePoint offset;
-        // the layer's tileAnchor (cells) and dualGrid: where its tiles are drawn (R8, R27); a
+        // the layer's tileAnchor (cells) and dualGrid: where its tiles are drawn (tilegrid::tileShift); a
         // terrain source is its logical cells, so these do not move it
         TilePoint tileAnchor;
         bool dualGrid = false;

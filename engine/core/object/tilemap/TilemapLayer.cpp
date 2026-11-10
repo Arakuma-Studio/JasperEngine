@@ -117,15 +117,16 @@ int TilemapLayer::getTile(int x, int y, uint32_t* flags) const{
     return readCells().getTile(CellCoord{x, y}, flags);
 }
 
-void TilemapLayer::fill(int x0, int y0, int x1, int y1, int tile, uint32_t flags){
+bool TilemapLayer::fill(int x0, int y0, int x1, int y1, int tile, uint32_t flags){
     const CellRect rect = CellRect::of(CellCoord{x0, y0}, CellCoord{x1, y1});
-    if (rect.area() > MAX_TILE_REGION_CELLS)
-        return;
+    if (rect.exceeds(MAX_TILE_REGION_CELLS))
+        return false;
     TileCells& cells = editCells();
     for (int64_t y = rect.minY; y <= rect.maxY; y++){
         for (int64_t x = rect.minX; x <= rect.maxX; x++)
             cells.setTile(CellCoord{(int32_t)x, (int32_t)y}, tile, flags);
     }
+    return true;
 }
 
 void TilemapLayer::clear(){
@@ -170,13 +171,9 @@ bool TilemapLayer::getCellAt(const Vector3& world, int& tile, CellCoord& cell) c
     const TileGridSpec spec = gridSpec();
     const Vector3 local = getComponent<Transform>().modelMatrix.inverse() * world;
     const float xyz[3] = {local.x, local.y, local.z};
-    TilePoint point = tilegrid::localToPlane(spec, xyz);
-    if (layer.dualGrid){
-        // the shown tiles sit half a cell down-left of the logical cells (R27)
-        point.x += tilegrid::pitchX(spec) * 0.5;
-        point.y += tilegrid::pitchY(spec) * 0.5;
-    }
-    cell = tilegrid::localToCell(spec, point);
+    // the tile drawn there: moved by the layer's tileAnchor and, on a dual grid, half a cell (R27)
+    const TilePoint shift = tilegrid::tileShift(spec, layer.tileAnchor.x, layer.tileAnchor.y, layer.dualGrid);
+    cell = tilegrid::shownCellAt(spec, tilegrid::localToPlane(spec, xyz), shift);
     tile = layer.cells.read().getTile(cell);
     return tile != NO_TILE;
 }
@@ -200,7 +197,7 @@ namespace{
 
 bool TilemapLayer::paintTerrain(const CellRect& rect, int terrainIndex, std::string& error){
     TilemapLayerComponent& layer = getComponent<TilemapLayerComponent>();
-    if (rect.area() > MAX_TILE_REGION_CELLS){
+    if (rect.exceeds(MAX_TILE_REGION_CELLS)){
         error = "the rectangle has more than 1,000,000 cells";
         return false;
     }

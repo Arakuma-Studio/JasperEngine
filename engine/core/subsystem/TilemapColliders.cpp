@@ -16,6 +16,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -35,9 +36,10 @@ namespace {
         collider.friction = source.friction;
         collider.restitution = source.restitution;
         collider.material = source.material;
-        collider.categoryBits = (uint16_t)source.categoryBits;
-        collider.maskBits = (uint16_t)source.maskBits;
-        collider.groupIndex = (int16_t)source.groupIndex;
+        // Box2D's filter is 16 bits: a wider value clamps instead of wrapping to other categories
+        collider.categoryBits = (uint16_t)std::min<uint32_t>(source.categoryBits, 0xFFFFu);
+        collider.maskBits = (uint16_t)std::min<uint32_t>(source.maskBits, 0xFFFFu);
+        collider.groupIndex = (int16_t)std::clamp<int32_t>(source.groupIndex, INT16_MIN, INT16_MAX);
         collider.contactEvents = source.contactEvents;
         collider.sensorEvents = source.sensorEvents;
         collider.enableHitEvents = source.enableHitEvents;
@@ -102,8 +104,9 @@ void tilemapcolliders::release(Scene* scene, Entity entity, TilemapCollider2DCom
     collider.generatedChains = 0;
     collider.generatedPolygons = 0;
     collider.needUpdate = true;
+    // a disabled collider is released every frame: only the first one has shapes to take away
     Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
-    if (body && body->generated){
+    if (body && body->generated && !body->generated->chunks.empty()){
         body->generated->clear();
         body->needUpdateColliders = true;
     }
@@ -117,11 +120,13 @@ void tilemapcolliders::update(Scene* scene, Entity entity, const TilemapLayerCom
         return;
     }
     TileColliderState& state = colliderStateOf(collider);
-    bool forceAll = state.allDirty;
+    // a field of the collider (surface, geometry, source) changed: every chunk's colliders are
+    // replaced; a layer-wide change (markAll) re-examines every chunk and replaces the ones whose
+    // shapes differ, so the bodies resting on the others keep their contacts
+    bool replaceAll = false;
     if (collider.needUpdate){
         collider.needUpdate = false;
-        // a field (surface, geometry, source) changed: every chunk's colliders are replaced
-        forceAll = true;
+        replaceAll = true;
         state.allDirty = true;
     }
     if (!state.allDirty && state.dirty.empty()){
@@ -199,7 +204,7 @@ void tilemapcolliders::update(Scene* scene, Entity entity, const TilemapLayerCom
         const bool hadColliders = found != state.built.end();
         // an unchanged chunk keeps its shapes (and the contacts on them), unless the surface
         // every collider copies changed
-        if (hadColliders ? (!forceAll && found->second == result) : result.empty()){
+        if (hadColliders ? (!replaceAll && found->second == result) : result.empty()){
             continue;
         }
         if (!body->generated){

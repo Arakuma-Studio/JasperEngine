@@ -8,11 +8,16 @@
 #include "reflect/Components.h"
 
 #include "Factory.h"
+#include "LoadReport.h"
 #include "Log.h"
+#include "StreamPreserved.h"
 #include "component/GridComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TilemapLayerComponent.h"
+#include "tilemap/TilesetPool.h"
 
+#include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <string>
 
@@ -93,26 +98,48 @@ namespace {
         return node;
     }
 
+    // "<cx>,<cy>": two decimal int32s and nothing else (from_chars: no overflow, no locale)
+    bool chunkKeyOf(const std::string& key, ChunkCoord& coord) {
+        const char* begin = key.data();
+        const char* end = begin + key.size();
+        const char* comma = std::find(begin, end, ',');
+        if (comma == end) return false;
+        const std::from_chars_result x = std::from_chars(begin, comma, coord.x);
+        if (x.ec != std::errc() || x.ptr != comma) return false;
+        const std::from_chars_result y = std::from_chars(comma + 1, end, coord.y);
+        return y.ec == std::errc() && y.ptr == end;
+    }
+
+    // a chunk whose cells lie outside the int32 cell range would wrap onto other cells
+    bool chunkInRange(ChunkCoord coord, int chunkSize) {
+        int shift = 0;
+        while ((1 << shift) < chunkSize) shift++;
+        const int32_t low = INT32_MIN >> shift, high = INT32_MAX >> shift;
+        return coord.x >= low && coord.x <= high && coord.y >= low && coord.y <= high;
+    }
+
+    // a value that does not read: refused whole (S03 keeps its text in the file and says so in
+    // the load report), the layer keeps the cells it had
+    bool cellsRefused(const YAML::Node& node, const std::string& why, std::string& reason) {
+        reason = why;
+        StreamLoad::unreadableValue(node, reason);
+        return false;
+    }
+
     bool cellsFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
         TileCellsRef decoded;
-        if (!node.IsMap()) {
-            reason = "chunks is not a map of \"<cx>,<cy>\" to chunk strings";
-            return false;
-        }
+        if (!node.IsMap()) return cellsRefused(node, "chunks is not a map of \"<cx>,<cy>\" to chunk strings", reason);
         bool reservedBits = false;
         for (auto it = node.begin(); it != node.end(); ++it) {
-            const std::string key = it->first.as<std::string>();
+            if (!it->first.IsScalar()) return cellsRefused(node, "a chunk key is not \"<cx>,<cy>\"", reason);
+            const std::string key = it->first.Scalar();
             ChunkCoord coord;
-            char tail = 0;
-            if (std::sscanf(key.c_str(), "%d,%d%c", &coord.x, &coord.y, &tail) != 2) {
-                reason = "chunk key \"" + key + "\" is not \"<cx>,<cy>\"";
-                return false;
-            }
+            if (!chunkKeyOf(key, coord)) return cellsRefused(node, "chunk key \"" + key + "\" is not \"<cx>,<cy>\" (two 32-bit integers)", reason);
+            if (!it->second.IsScalar()) return cellsRefused(node, "chunk \"" + key + "\" is not a base64 string", reason);
             std::string error;
-            if (!decoded.edit().decodeChunk(coord, it->second.as<std::string>(), error)) {
-                reason = "chunk \"" + key + "\": " + error;
-                return false;
-            }
+            if (!decoded.edit().decodeChunk(coord, it->second.Scalar(), error)) return cellsRefused(node, "chunk \"" + key + "\": " + error, reason);
+            if (!chunkInRange(coord, decoded.read().getChunkSize()))
+                return cellsRefused(node, "chunk \"" + key + "\" lies outside the 32-bit cell range", reason);
             if (const TileChunk* chunk = decoded.read().chunk(coord)) {
                 for (uint32_t cell : chunk->cells)
                     reservedBits = reservedBits || (cell & TILE_RESERVED_MASK) != 0;
@@ -122,6 +149,25 @@ namespace {
             Log::warn("A Tilemap Layer has cells with reserved bits set: they are kept as they are");
         *static_cast<TileCellsRef*>(value) = std::move(decoded);
         return true;
+    }
+
+    // R89: a layer whose tileset does not load keeps its cells (saved as they are) and draws
+    // nothing; the load report says which tileset and how many cells wait for it
+    void tilemapLayerPostDecode(void* comp, const DecodeContext& ctx) {
+        const TilemapLayerComponent& layer = *static_cast<const TilemapLayerComponent*>(comp);
+        if (layer.tileset.empty() || !ScopedLoadReport::current() || TilesetPool::get(layer.tileset.path)) return;
+        const std::string why = TilesetPool::lastError(layer.tileset.path);
+        LoadIssue issue;
+        issue.kind = LoadIssueKind::Fallback;
+        issue.fate = LoadIssueFate::Info;
+        issue.entity = ctx.entity;
+        if (ctx.registry && ctx.entity != NULL_ENTITY) issue.entityPath = StreamLoad::entityPath(ctx.registry, ctx.entity);
+        issue.component = ctx.component ? ctx.component : "tilemaplayer";
+        issue.field = "tileset";
+        issue.value = layer.tileset.path;
+        issue.message = "tileset_missing: the tileset did not load" + (why.empty() ? std::string() : " (" + why + ")") + ": the layer keeps its " +
+                        std::to_string(layer.cells.read().cellCount()) + " cells and draws nothing until it does";
+        recordLoadIssue(std::move(issue));
     }
 
     bool cellsEqual(const void* a, const void* b, float) {
@@ -176,9 +222,10 @@ namespace {
         JE_FIELD(TilemapCollider2DComponent, restitution, .updateFlags = kTile, .min = 0.0f),
         // a .physicsmaterial path as Collider2D's and Rigidbody2D's: a string with .asset needs a "<name>Guid" sibling
         JE_FIELD(TilemapCollider2DComponent, material, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
-        JE_FIELD(TilemapCollider2DComponent, categoryBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
-        JE_FIELD(TilemapCollider2DComponent, maskBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
-        JE_FIELD(TilemapCollider2DComponent, groupIndex, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
+        // Box2D's 16-bit filter (the generated colliders clamp a wider value too)
+        JE_FIELD(TilemapCollider2DComponent, categoryBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile, .min = 0.0f, .max = 65535.0f),
+        JE_FIELD(TilemapCollider2DComponent, maskBits, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile, .min = 0.0f, .max = 65535.0f),
+        JE_FIELD(TilemapCollider2DComponent, groupIndex, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile, .min = -32768.0f, .max = 32767.0f),
         JE_FIELD(TilemapCollider2DComponent, contactEvents, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, sensorEvents, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
         JE_FIELD(TilemapCollider2DComponent, enableHitEvents, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTile),
@@ -226,6 +273,7 @@ const ComponentDesc kTilemapLayerDesc{
     .displayName = "Tilemap Layer", .icon = ICON_FA_BORDER_ALL,
     .body = JE_STRUCT_DESC(TilemapLayerComponent, "TilemapLayerComponent", kTilemapLayerFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TilemapLayerComponent),
+    .postDecode = &tilemapLayerPostDecode,
     .codegenVar = "tilemapLayer", .codegenOrder = kTilemapLayerCodegenOrder, .codegenExtra = &tilemapLayerCodegen,
 };
 

@@ -44,6 +44,26 @@ TEST(TileCells, SetsGetsAndErasesAtFarCoordinates){
     EXPECT_TRUE(cells.empty());
 }
 
+// region limits at the int32 extremes: 2^32 x 2^32 cells must not wrap to a small count
+TEST(CellRect, AreaSaturatesAndExceedsAtTheExtremes){
+    const CellRect all = CellRect::of(CellCoord{INT32_MIN, INT32_MIN}, CellCoord{INT32_MAX, INT32_MAX});
+    EXPECT_EQ(all.width(), (int64_t)1 << 32);
+    EXPECT_EQ(all.area(), INT64_MAX);
+    EXPECT_TRUE(all.exceeds(MAX_TILE_REGION_CELLS));
+    // one row across the whole range, and 2^31 x 2^32
+    const CellRect row = CellRect::of(CellCoord{INT32_MIN, 5}, CellCoord{INT32_MAX, 5});
+    EXPECT_EQ(row.area(), (int64_t)1 << 32);
+    EXPECT_TRUE(row.exceeds(MAX_TILE_REGION_CELLS));
+    const CellRect half = CellRect::of(CellCoord{INT32_MIN, 0}, CellCoord{INT32_MAX, INT32_MAX});
+    EXPECT_EQ(half.area(), INT64_MAX);
+    EXPECT_TRUE(half.exceeds(MAX_TILE_REGION_CELLS));
+    const CellRect limit = CellRect::of(CellCoord{0, 0}, CellCoord{999, 999});
+    EXPECT_EQ(limit.area(), MAX_TILE_REGION_CELLS);
+    EXPECT_FALSE(limit.exceeds(MAX_TILE_REGION_CELLS));
+    EXPECT_TRUE(CellRect::of(CellCoord{0, 0}, CellCoord{1000, 999}).exceeds(MAX_TILE_REGION_CELLS));
+    EXPECT_FALSE(CellRect().exceeds(0));
+}
+
 TEST(TileCells, ChunkOfFloorsNegativeCoordinates){
     EXPECT_EQ(TileCells::chunkOf(CellCoord{-1, -32}, 32), (ChunkCoord{-1, -1}));
     EXPECT_EQ(TileCells::chunkOf(CellCoord{-33, 31}, 32), (ChunkCoord{-2, 0}));
@@ -64,29 +84,39 @@ TEST(TileCells, AValueWithNoTileIsStoredAsZero){
     EXPECT_TRUE(cells.empty());
 }
 
-TEST(TileCells, EmptyChunksAreDroppedAndReported){
+TEST(TileCells, EmptyChunksAreDropped){
     TileCells cells;
     cells.setTile(CellCoord{40, 40}, 3);
     ASSERT_EQ(cells.chunkCount(), 1u);
-    EXPECT_EQ(cells.takeChanged(), std::vector<ChunkCoord>{(ChunkCoord{1, 1})});
+    const uint64_t revision = cells.getRevision();
     cells.setTile(CellCoord{40, 40}, NO_TILE);
     EXPECT_EQ(cells.chunkCount(), 0u);
     EXPECT_EQ(cells.chunk(ChunkCoord{1, 1}), nullptr);
-    EXPECT_EQ(cells.takeChanged(), std::vector<ChunkCoord>{(ChunkCoord{1, 1})});
+    EXPECT_GT(cells.getRevision(), revision);
 }
 
-TEST(TileCells, ChangedChunksAreReportedOnceAndSorted){
-    TileCells cells;
-    cells.setTile(CellCoord{0, 40}, 1);
-    cells.setTile(CellCoord{40, 0}, 2);
-    cells.setTile(CellCoord{41, 0}, 2);
-    cells.setTile(CellCoord{0, 40}, NO_TILE);
-    cells.setTile(CellCoord{0, 40}, 5);
-    const std::vector<ChunkCoord> changed = cells.takeChanged();
-    ASSERT_EQ(changed.size(), 2u);
-    EXPECT_EQ(changed[0], (ChunkCoord{1, 0}));
-    EXPECT_EQ(changed[1], (ChunkCoord{0, 1}));
-    EXPECT_FALSE(cells.hasChanged());
+// the runtime tells changed chunks by revision (TilemapSystem, R33, R41): a write stamps only its
+// chunk, and a copy that writes (copy on write, an undo snapshot) never reuses a revision of the
+// store it came from, so the unchanged chunks of a copy compare equal and the changed ones do not
+TEST(TileCells, RevisionsNameOneWriteAcrossCopies){
+    TileCellsRef original;
+    original.edit().setTile(CellCoord{0, 0}, 1);
+    original.edit().setTile(CellCoord{40, 0}, 1);
+    const uint64_t left = original.read().chunk(ChunkCoord{0, 0})->revision;
+    const uint64_t right = original.read().chunk(ChunkCoord{1, 0})->revision;
+    EXPECT_NE(left, right);
+
+    TileCellsRef a = original;
+    TileCellsRef b = original;
+    a.edit().setTile(CellCoord{1, 0}, 2);
+    b.edit().setTile(CellCoord{1, 0}, 3);
+    // the chunk nobody wrote keeps its revision in every copy
+    EXPECT_EQ(a.read().chunk(ChunkCoord{1, 0})->revision, right);
+    EXPECT_EQ(b.read().chunk(ChunkCoord{1, 0})->revision, right);
+    // the same chunk written differently in two copies of one store: two revisions
+    EXPECT_NE(a.read().chunk(ChunkCoord{0, 0})->revision, left);
+    EXPECT_NE(a.read().chunk(ChunkCoord{0, 0})->revision, b.read().chunk(ChunkCoord{0, 0})->revision);
+    EXPECT_EQ(original.read().chunk(ChunkCoord{0, 0})->revision, left);
 }
 
 TEST(TileCells, RevisionMovesOnlyWhenAValueChanges){
@@ -143,7 +173,7 @@ TEST(TileCells, SetChunkSizeRebucketsEveryCell){
     cells.setTile(CellCoord{-1, -1}, 1);
     cells.setTile(CellCoord{33, 2}, 2, TILE_FLIP_Y);
     cells.setTerrain(CellCoord{33, 2}, 3);
-    cells.takeChanged();
+    const uint64_t revision = cells.getRevision();
     cells.setChunkSize(8);
     EXPECT_EQ(cells.getChunkSize(), 8);
     EXPECT_EQ(cells.getTile(CellCoord{-1, -1}), 1);
@@ -151,10 +181,10 @@ TEST(TileCells, SetChunkSizeRebucketsEveryCell){
     EXPECT_EQ(cells.getTerrain(CellCoord{33, 2}), 3);
     EXPECT_NE(cells.chunk(ChunkCoord{4, 0}), nullptr);
     EXPECT_EQ(cells.cellCount(), 2u);
-    // the coordinates of both sizes come back: stale builds of the old chunks must go too
-    const std::vector<ChunkCoord> changed = cells.takeChanged();
-    EXPECT_NE(std::find(changed.begin(), changed.end(), (ChunkCoord{4, 0})), changed.end());
-    EXPECT_NE(std::find(changed.begin(), changed.end(), (ChunkCoord{1, 0})), changed.end());
+    // every chunk of the new size is new to a consumer that built the old ones
+    EXPECT_GT(cells.getRevision(), revision);
+    for (const auto& [coord, chunk] : cells.chunks())
+        EXPECT_GT(chunk.revision, revision);
 }
 
 TEST(TileCells, InvalidChunkSizesAreIgnored){
@@ -254,11 +284,11 @@ TEST(TileCells, DecodingDropsFlagsOfEmptyCells){
 TEST(TileCells, ADecodedEmptyChunkReplacesAndDropsTheOldOne){
     TileCells cells(8);
     cells.setTile(CellCoord{0, 0}, 3);
-    cells.takeChanged();
+    const uint64_t revision = cells.getRevision();
     std::string error;
     ASSERT_TRUE(cells.decodeChunk(ChunkCoord{0, 0}, cellsRawBase64(cellsBytes({0x03, 64, 0, 0, 0, 0})), error)) << error;
     EXPECT_TRUE(cells.empty());
-    EXPECT_EQ(cells.takeChanged(), std::vector<ChunkCoord>{(ChunkCoord{0, 0})});
+    EXPECT_GT(cells.getRevision(), revision);
 }
 
 TEST(TileCells, AMissingChunkEncodesAsAValidEmptyOne){

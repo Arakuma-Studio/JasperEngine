@@ -69,15 +69,6 @@ namespace jasperengine::editor::tilemapscenetools {
         return "Paint";
     }
 
-    // the cell space's half-cell shift on a dual-grid layer: a display tile sits half a cell
-    // down-left of its logical corner (R27), so the display cell of a point is its logical cell
-    // of the point moved this much up-right
-    TilePoint dualShift(const TileGridSpec& spec) {
-        const TilePoint from = tilegrid::cellToLocal(spec, CellCoord{0, 0});
-        const TilePoint to = tilegrid::cellToLocal(spec, CellCoord{1, 1});
-        return TilePoint{(to.x - from.x) * 0.5, (to.y - from.y) * 0.5};
-    }
-
     // a stamp without holes covers its bounding box; this gives its width and height
     void stampSize(const BrushStamp& stamp, int& width, int& height) {
         width = stamp.width;
@@ -419,10 +410,8 @@ bool TilemapSceneTool::cellsAt(const SceneToolEvent& event, const TileLayerConte
     if (!rayToPlane(event.ray, context, point)) return false;
     logical = tilegrid::localToCell(context.spec, point);
     display = logical;
-    if (context.layer->dualGrid) {
-        const TilePoint shift = dualShift(context.spec);
-        display = tilegrid::localToCell(context.spec, TilePoint{point.x + shift.x, point.y + shift.y});
-    }
+    // a dual-grid tile sits half a cell down-left of its logical corner (R27)
+    if (context.layer->dualGrid) display = tilegrid::shownCellAt(context.spec, point, tilegrid::dualGridShift(context.spec));
     return true;
 }
 
@@ -762,11 +751,7 @@ void TilemapSceneTool::cancel() {
 
 void TilemapSceneTool::drawCellOutline(const TileLayerContext& context, SceneRender& render, ImDrawList& list, CellCoord cell, ImU32 color, float thickness, bool display) {
     const TileCellPolygon polygon = tilegrid::cellPolygon(context.spec, cell);
-    TilePoint shift{0.0, 0.0};
-    if (display && context.layer->dualGrid) {
-        const TilePoint half = dualShift(context.spec);
-        shift = TilePoint{-half.x, -half.y};
-    }
+    const TilePoint shift = display && context.layer->dualGrid ? tilegrid::dualGridShift(context.spec) : TilePoint{0.0, 0.0};
     ImVec2 points[6];
     for (int i = 0; i < polygon.count; i++) {
         const Vector3 world = cellLocalToWorld(context, TilePoint{polygon.points[i].x + shift.x, polygon.points[i].y + shift.y});
@@ -862,13 +847,9 @@ void TilemapSceneTool::drawTileGhost(const TileLayerContext& context, SceneRende
     TilePoint anchor = tilegrid::cellToLocal(context.spec, cell);
     double originX = context.spec.layout == TileGridLayout::Rectangle ? anchor.x : anchor.x - tileW * 0.5;
     double originY = anchor.y;
-    originX += (double)info->offsetX / ppu + context.layer->tileAnchor.x * tilegrid::pitchX(context.spec);
-    originY += (double)info->offsetY / ppu + context.layer->tileAnchor.y * tilegrid::pitchY(context.spec);
-    if (context.layer->dualGrid) {
-        const TilePoint half = dualShift(context.spec);
-        originX -= half.x;
-        originY -= half.y;
-    }
+    const TilePoint shift = tilegrid::tileShift(context.spec, context.layer->tileAnchor.x, context.layer->tileAnchor.y, context.layer->dualGrid);
+    originX += (double)info->offsetX / ppu + shift.x;
+    originY += (double)info->offsetY / ppu + shift.y;
     const double x0 = originX + info->x0 / ppu, x1 = originX + info->x1 / ppu;
     const double y0 = originY + info->y0 / ppu, y1 = originY + info->y1 / ppu;
     // the quad's corners on the plane, then the tile's flips and transpose in the texture's corners

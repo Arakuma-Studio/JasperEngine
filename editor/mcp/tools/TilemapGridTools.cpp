@@ -181,7 +181,7 @@ Json asciiGrid(const TileCells& cells, const TilesetData* data, const CellRect& 
     }
     out["columns"] = {region.minX, region.maxX};
     out["rows"] = {region.minY, region.maxY};
-    if (region.area() > static_cast<int64_t>(maxCells)) {
+    if (region.exceeds(static_cast<int64_t>(maxCells))) {
         out["tiles_on_grid"] = cells.cellCount();
         out["tiles_off_grid"] = 0;
         out["lines_omitted"] = "The region is " + std::to_string(region.width()) + "x" + std::to_string(region.height()) +
@@ -243,7 +243,7 @@ Json terrainGrid(const TileCells& cells, const TilesetData* data, const CellRect
         out["lines"] = Json::array();
         return out;
     }
-    if (region.area() > static_cast<int64_t>(maxCells)) {
+    if (region.exceeds(static_cast<int64_t>(maxCells))) {
         out["lines_omitted"] = "The region is larger than max_cells.";
         return out;
     }
@@ -1676,7 +1676,7 @@ bool getTilemapGrid(const CallPtr& call) {
         }
         region = CellRect::of(CellCoord{given[0].get<int32_t>(), given[1].get<int32_t>()}, CellCoord{given[2].get<int32_t>(), given[3].get<int32_t>()});
     }
-    if (region.area() > MAX_TILE_REGION_CELLS) {
+    if (region.exceeds(MAX_TILE_REGION_CELLS)) {
         failTyped(call, makeProblem("region_too_large", "region", "the region has " + std::to_string(region.area()) + " cells (limit " + std::to_string(MAX_TILE_REGION_CELLS) + ")",
                                     "read a smaller region"));
         return true;

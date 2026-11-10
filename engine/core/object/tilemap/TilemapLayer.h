@@ -57,7 +57,8 @@ namespace jasperengine{
         void setCell(int x, int y, int tile, uint32_t flags = 0);
         void eraseCell(int x, int y);
         int getTile(int x, int y, uint32_t* flags = nullptr) const;
-        void fill(int x0, int y0, int x1, int y1, int tile, uint32_t flags = 0);
+        // false, writing nothing, past MAX_TILE_REGION_CELLS (R79 region_too_large)
+        bool fill(int x0, int y0, int x1, int y1, int tile, uint32_t flags = 0);
         void clear();
 
         CellRect getUsedRect() const;

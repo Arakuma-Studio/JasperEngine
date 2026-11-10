@@ -114,6 +114,23 @@ namespace jasperengine{
         // hexagon), so a chunk keeps the painter's order instead of grouping by page (R32)
         JASPERENGINE_API bool layoutOverlaps(const TileGridSpec& spec);
 
+        // ---- where a layer draws its tiles (R8, R27): the one rule the chunk builder, the
+        // colliders, picking, the NavGrid and the editor's previews share. A tile drawn for cell c
+        // sits at cellToLocal(c) + tileShift(...), in plane units.
+        //
+        // the layer's tileAnchor, in cells: (ax, ay) moves every tile by ax pitches along u and ay
+        // pitches along v, whatever the layout
+        JASPERENGINE_API TilePoint tileAnchorShift(const TileGridSpec& spec, double anchorX, double anchorY);
+        // a dual-grid tile against its cell's anchor: half a cell down-left in cell space, so it
+        // covers the shared corner of the four logical cells (x - 1, y - 1)..(x, y): (-pitchX / 2,
+        // -pitchY / 2) on rectangles, (0, -pitchY / 2) on isometric diamonds (the layouts R27 allows;
+        // the others take the rectangle's)
+        JASPERENGINE_API TilePoint dualGridShift(const TileGridSpec& spec);
+        // both of them: a layer's tiles against their cells' anchors
+        JASPERENGINE_API TilePoint tileShift(const TileGridSpec& spec, double anchorX, double anchorY, bool dualGrid);
+        // the cell whose drawn tile's cell polygon holds a point, given the layer's tileShift
+        JASPERENGINE_API CellCoord shownCellAt(const TileGridSpec& spec, TilePoint point, TilePoint shift);
+
         // the plane's (u, v) in the Grid GameObject's local 3D space, and back (drops the third axis)
         JASPERENGINE_API void planeToLocal(const TileGridSpec& spec, TilePoint p, float out[3]);
         JASPERENGINE_API TilePoint localToPlane(const TileGridSpec& spec, const float local[3]);

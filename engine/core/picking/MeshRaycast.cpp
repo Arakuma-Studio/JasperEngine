@@ -347,13 +347,10 @@ namespace {
         }
         const Vector3 local = localOrigin + localDirection * t;
         const float xyz[3] = {local.x, local.y, local.z};
-        TilePoint point = tilegrid::localToPlane(spec, xyz);
-        if (layer.dualGrid){
-            point.x += tilegrid::pitchX(spec) * 0.5;
-            point.y += tilegrid::pitchY(spec) * 0.5;
-        }
+        const TilePoint point = tilegrid::localToPlane(spec, xyz);
+        const TilePoint shift = tilegrid::tileShift(spec, layer.tileAnchor.x, layer.tileAnchor.y, layer.dualGrid);
         const TileCells& cells = layer.cells.read();
-        const CellCoord cell = tilegrid::localToCell(spec, point);
+        const CellCoord cell = tilegrid::shownCellAt(spec, point, shift);
         bool found = cells.getTile(cell) != NO_TILE;
         std::shared_ptr<const TilesetRuntime> tileset = found || !layer.state ? nullptr : layer.state->tileset;
         if (!found && tileset){
@@ -368,7 +365,9 @@ namespace {
                     const TileRenderInfo* info = id == NO_TILE ? nullptr : tileset->tile(id);
                     if (!info)
                         continue;
-                    const TilePoint anchor = tilegrid::cellToLocal(spec, CellCoord{x, y});
+                    TilePoint anchor = tilegrid::cellToLocal(spec, CellCoord{x, y});
+                    anchor.x += shift.x;
+                    anchor.y += shift.y;
                     const double width = ((flags & TILE_TRANSPOSE) ? info->height : info->width) / ppu;
                     const double height = ((flags & TILE_TRANSPOSE) ? info->width : info->height) / ppu;
                     const double left = anchor.x + (spec.layout == TileGridLayout::Rectangle ? 0.0 : -width * 0.5) + info->offsetX / ppu;

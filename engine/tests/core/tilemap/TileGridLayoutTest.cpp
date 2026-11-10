@@ -509,3 +509,29 @@ TEST(TileGridLayout, ANonRegularHexSideChangesRowSpacing){
     EXPECT_EQ(tilegrid::localToCell(spec, TilePoint{13.99, 14}), (CellCoord{0, 0}));
     EXPECT_EQ(tilegrid::localToCell(spec, TilePoint{14, 14}), (CellCoord{1, 0}));
 }
+
+// R8, R27, R2 tileAnchor: where a layer draws its tiles against their anchors, written out per
+// layout (cells 32 x 16)
+TEST(TileGridLayout, TileShiftOfAnchorsAndDualGrids){
+    const TileGridSpec rect = layoutSpec(TileGridLayout::Rectangle);
+    const TileGridSpec iso = layoutSpec(TileGridLayout::Isometric);
+    auto expectPoint = [](TilePoint got, double x, double y){
+        EXPECT_DOUBLE_EQ(got.x, x);
+        EXPECT_DOUBLE_EQ(got.y, y);
+    };
+    expectPoint(tilegrid::dualGridShift(rect), -16, -8);
+    // the diamond (1, 1) step is straight up: half of it down
+    expectPoint(tilegrid::dualGridShift(iso), 0, -8);
+    expectPoint(tilegrid::tileAnchorShift(iso, 0.5, -0.25), 16, -4);
+    expectPoint(tilegrid::tileShift(rect, 1, 1, true), 16, 8);
+    expectPoint(tilegrid::tileShift(iso, 0.5, 0.25, true), 16, -4);
+    expectPoint(tilegrid::tileShift(iso, 0, 0, false), 0, 0);
+    // a shown tile's centre names its cell; a point just under its bottom does not
+    for (const TileGridSpec& spec : {rect, iso}){
+        const TilePoint shift = tilegrid::tileShift(spec, 0.25, 0.5, true);
+        for (CellCoord cell : {CellCoord{0, 0}, CellCoord{5, -3}, CellCoord{-7, 2}}){
+            const TilePoint centre = tilegrid::cellCenter(spec, cell);
+            EXPECT_EQ(tilegrid::shownCellAt(spec, TilePoint{centre.x + shift.x, centre.y + shift.y}, shift), cell);
+        }
+    }
+}

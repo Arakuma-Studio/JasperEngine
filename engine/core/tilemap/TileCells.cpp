@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 
 using namespace jasperengine;
@@ -16,6 +17,13 @@ namespace {
     constexpr uint8_t CELLS_HEADER_SIZE_MASK = 0x0F;
     constexpr uint8_t CELLS_HEADER_TERRAIN = 0x10;
     constexpr uint8_t CELLS_HEADER_RESERVED = 0xE0;
+
+    // one clock for every store: a revision names one write, whichever copy of a store made it
+    std::atomic<uint64_t> cellsRevisionClock{0};
+
+    uint64_t cellsNextRevision(){
+        return cellsRevisionClock.fetch_add(1, std::memory_order_relaxed) + 1;
+    }
 
     int cellsShiftOf(int size){
         int shift = 0;
@@ -163,13 +171,12 @@ bool TileCells::isValidChunkSize(int size){
 void TileCells::setChunkSize(int size){
     if (!isValidChunkSize(size) || size == chunkSize)
         return;
-    std::vector<ChunkCoord> reported = sortedChunks();
+    const std::vector<ChunkCoord> reported = sortedChunks();
     const size_t oldChunks = reported.size();
-    reported.insert(reported.end(), changedList.begin(), changedList.end());
     const int newShift = cellsShiftOf(size);
     const size_t newCount = (size_t)size * (size_t)size;
     std::unordered_map<ChunkCoord, TileChunk, ChunkCoordHash> rebucketed;
-    revision++;
+    revision = cellsNextRevision();
     for (size_t c = 0; c < oldChunks; c++){
         const ChunkCoord coord = reported[c];
         const TileChunk& old = chunkMap.at(coord);
@@ -201,12 +208,6 @@ void TileCells::setChunkSize(int size){
     chunkMap = std::move(rebucketed);
     chunkSize = size;
     chunkShift = newShift;
-    // the old coordinates too: what a consumer built for them is stale whatever the new size made
-    for (auto& [coord, chunk] : chunkMap){
-        chunk.inChanged = true;
-        reported.push_back(coord);
-    }
-    changedList = std::move(reported);
 }
 
 ChunkCoord TileCells::chunkOf(CellCoord cell, int size){
@@ -239,13 +240,9 @@ TileChunk* TileCells::editChunk(ChunkCoord coord, bool create){
     return &chunk;
 }
 
-void TileCells::touched(ChunkCoord coord, TileChunk* chunk){
-    revision++;
+void TileCells::touched(TileChunk* chunk){
+    revision = cellsNextRevision();
     chunk->revision = revision;
-    if (!chunk->inChanged){
-        chunk->inChanged = true;
-        changedList.push_back(coord);
-    }
 }
 
 void TileCells::dropIfEmpty(ChunkCoord coord){
@@ -275,7 +272,7 @@ uint32_t TileCells::set(CellCoord cell, uint32_t value){
         chunk->nonEmpty++;
     else if (value == 0)
         chunk->nonEmpty--;
-    touched(coord, chunk);
+    touched(chunk);
     dropIfEmpty(coord);
     return old;
 }
@@ -320,7 +317,7 @@ uint8_t TileCells::setTerrainValue(CellCoord cell, uint8_t value){
     // an all-none plane would make equal maps encode differently (R6: no plane without terrain)
     if (chunk->terrainCount == 0)
         std::vector<uint8_t>().swap(chunk->terrain);
-    touched(coord, chunk);
+    touched(chunk);
     dropIfEmpty(coord);
     return old;
 }
@@ -347,11 +344,7 @@ bool TileCells::hasTerrain() const{
 void TileCells::clear(){
     if (chunkMap.empty())
         return;
-    revision++;
-    for (const auto& [coord, chunk] : chunkMap){
-        if (!chunk.inChanged)
-            changedList.push_back(coord);
-    }
+    revision = cellsNextRevision();
     chunkMap.clear();
 }
 
@@ -389,7 +382,7 @@ size_t TileCells::cellCount() const{
 }
 
 size_t TileCells::memoryBytes() const{
-    size_t bytes = sizeof(TileCells) + changedList.capacity() * sizeof(ChunkCoord);
+    size_t bytes = sizeof(TileCells);
     for (const auto& [coord, chunk] : chunkMap)
         bytes += sizeof(TileChunk) + sizeof(ChunkCoord) + sizeof(void*) * 2 + chunk.cells.capacity() * sizeof(uint32_t) + chunk.terrain.capacity();
     return bytes;
@@ -495,7 +488,7 @@ bool TileCells::decodeChunkBytes(ChunkCoord coord, std::string_view bytes, std::
     auto it = chunkMap.find(coord);
     if (nonEmpty == 0 && terrainCount == 0){
         if (it != chunkMap.end()){
-            touched(coord, &it->second);
+            touched(&it->second);
             chunkMap.erase(it);
         }
         return true;
@@ -507,30 +500,8 @@ bool TileCells::decodeChunkBytes(ChunkCoord coord, std::string_view bytes, std::
     chunk->terrain = std::move(terrain);
     chunk->nonEmpty = nonEmpty;
     chunk->terrainCount = terrainCount;
-    touched(coord, chunk);
+    touched(chunk);
     return true;
-}
-
-std::vector<ChunkCoord> TileCells::takeChanged(){
-    std::vector<ChunkCoord> out;
-    out.swap(changedList);
-    std::sort(out.begin(), out.end());
-    out.erase(std::unique(out.begin(), out.end()), out.end());
-    for (const ChunkCoord& coord : out){
-        auto it = chunkMap.find(coord);
-        if (it != chunkMap.end())
-            it->second.inChanged = false;
-    }
-    return out;
-}
-
-void TileCells::markAllChanged(){
-    for (auto& [coord, chunk] : chunkMap){
-        if (!chunk.inChanged){
-            chunk.inChanged = true;
-            changedList.push_back(coord);
-        }
-    }
 }
 
 bool TileCells::operator==(const TileCells& other) const{

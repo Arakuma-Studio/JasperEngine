@@ -197,7 +197,7 @@ namespace jasperengine::editor::tilemap {
     bool boxCells(const CellRect& rect, std::vector<CellCoord>& out, PixelProblem& error) {
         out.clear();
         if (rect.isEmpty()) return true;
-        if (rect.area() > MAX_TILE_REGION_CELLS) {
+        if (rect.exceeds(MAX_TILE_REGION_CELLS)) {
             error = brushRegionTooLarge(rect.area());
             return false;
         }
@@ -213,7 +213,7 @@ namespace jasperengine::editor::tilemap {
         const uint32_t wanted = target.cells.get(start) & kBrushFloodMask;
         if (scope == FloodScope::EveryEqual) {
             const CellRect rect = target.cells.usedRect();
-            if (rect.area() > MAX_TILE_REGION_CELLS) {
+            if (rect.exceeds(MAX_TILE_REGION_CELLS)) {
                 error = brushRegionTooLarge(rect.area());
                 return false;
             }
@@ -386,7 +386,7 @@ namespace jasperengine::editor::tilemap {
 
     bool copyRect(const BrushTarget& target, const CellRect& rect, BrushStamp& out, PixelProblem& error) {
         out = BrushStamp();
-        if (rect.area() > MAX_TILE_REGION_CELLS) {
+        if (rect.exceeds(MAX_TILE_REGION_CELLS)) {
             error = brushRegionTooLarge(rect.area());
             return false;
         }
@@ -426,7 +426,7 @@ namespace jasperengine::editor::tilemap {
 
     bool moveRect(const BrushTarget& target, const CellRect& rect, CellCoord delta, BrushEdit& edit) {
         edit.error = PixelProblem();
-        if (rect.area() > MAX_TILE_REGION_CELLS) {
+        if (rect.exceeds(MAX_TILE_REGION_CELLS)) {
             edit.error = brushRegionTooLarge(rect.area());
             return false;
         }
