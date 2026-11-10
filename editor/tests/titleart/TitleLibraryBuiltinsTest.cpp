@@ -301,8 +301,9 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
     }
     std::set<std::string> tunedLooks;
     const Json overrides = readJson(repo / "tools/titleart/pachislop-port/overrides.json");
-    if (overrides.contains("looks")) {
-        for (auto it = overrides["looks"].begin(); it != overrides["looks"].end(); ++it) {
+    for (const char* section : {"looks", "color_schemes"}) {
+        if (!overrides.contains(section)) continue;
+        for (auto it = overrides[section].begin(); it != overrides[section].end(); ++it) {
             for (auto m = it.value().begin(); m != it.value().end(); ++m) {
                 if (m.key() != "check_allow" && m.key() != "lint_allow" && m.key() != "background") tunedLooks.insert(it.key());
             }
@@ -321,9 +322,9 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         const bool orb = lookId.find("orb") != std::string::npos;
         TitleArtDoc doc = textDoc(is3D ? "BIG" : "確定");
         if (orb) continue;      // orb bodies are covered by OrbTint and the shape-layer port
-        // a look tuned after the port (overrides.json beyond the gate's metadata; its review record says `tuned`)
+        // a look or colourway tuned after the port (overrides.json beyond the gate's metadata; its review record says `tuned`)
         // is ours by design: Pachislop's output no longer describes it
-        if (tunedLooks.count(ids[lookId])) {
+        if (tunedLooks.count(ids[lookId]) || tunedLooks.count(ids.count(colourway) ? ids[colourway] : colourway)) {
             tunedSkipped++;
             continue;
         }
