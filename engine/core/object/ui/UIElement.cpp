@@ -264,6 +264,12 @@ std::string UIElement::getInnerHTML() const{
 
 void UIElement::setInnerHTML(const std::string& markup){
     HTMLUI_ELEMENT()
+    for (Rml::Element* ancestor = element; ancestor; ancestor = ancestor->GetParentNode()){
+        if (ancestor->GetTagName() == "svg"){
+            element->SetInnerRML(markup);
+            return;
+        }
+    }
     if (isCompatElement(element)){
         element->SetInnerRML(LuaHooks::fragmentToRml(markup, documentOf(element), "innerHTML"));
         return;

@@ -297,3 +297,39 @@ TEST_F(AnimeSvgTest, HtmlSvgDescendantsUseSvgNamesAndDrawableGeometry){
     render();
     EXPECT_FALSE(pixels().empty());
 }
+
+TEST_F(AnimeSvgTest, DomCreatedShapesAndGroupInnerHtmlStayEditable){
+    auto child = document->CreateElement("path");
+    ASSERT_NE(child, nullptr);
+    child->SetAttribute("id", "dynamic");
+    child->SetAttribute("d", "M0 30L100 30");
+    child->SetAttribute("stroke", "purple");
+    child->SetAttribute("stroke-width", "4");
+    UIElementAccess::get(element("svg"))->AppendChild(std::move(child));
+    render();
+    const auto before = pixels();
+    element("dynamic").setAttribute("d", "M0 70L100 70");
+    render();
+    EXPECT_NE(before, pixels());
+    element("svg").setInnerHTML("<g id='group'><path id='inside' d='M10 20L80 20' stroke='red'/></g>");
+    element("group").setInnerHTML("<path id='replaced' d='M20 20L90 90' stroke='blue'/>");
+    ASSERT_TRUE(element("replaced").isValid());
+    element("replaced").setAttribute("transform", "translate(2 0)");
+    render();
+    EXPECT_FALSE(pixels().empty());
+}
+
+TEST_F(AnimeSvgTest, MotionPathKeepsAnime450UserSpaceAnglesUnderTransforms){
+    element("destination").setAttribute("transform", "rotate(90)");
+    auto object = std::make_shared<AnimObjectTarget>();
+    AnimParam parameters = Anime::createMotionPath(target("destination"));
+    parameters.set("duration", 1000);
+    parameters.set("ease", "linear");
+    parameters.set("autoplay", false);
+    auto animation = Anime::animate({object}, parameters);
+    animation->seek(250);
+    EXPECT_NEAR(object->getNumber("translateX"), -100, 1e-5);
+    EXPECT_NEAR(object->getNumber("translateY"), 0, 1e-5);
+    // Upstream motionpath.js applies CTM only to x/y, and reports a user-space tangent.
+    EXPECT_NEAR(object->getNumber("rotate"), 90, 1e-9);
+}

@@ -23,6 +23,8 @@
 namespace Rml {
 
 namespace {
+	void SetSVGContent(Element* element, const String& content);
+
 	void DirtyInlineSVG(Element* element)
 	{
 		for (; element; element = element->GetParentNode())
@@ -36,6 +38,11 @@ namespace {
 	class SVGContentElement : public Element {
 	public:
 		explicit SVGContentElement(const String& tag) : Element(StringUtilities::ToLower(tag)), svg_tag(tag) {}
+		void SetInnerRML(const String& content) override
+		{
+			SetSVGContent(this, content);
+			DirtyInlineSVG(GetParentNode());
+		}
 	protected:
 		void GetRML(String& output) override
 		{
@@ -144,9 +151,29 @@ namespace {
 		Vector<Element*> stack;
 		int depth = 0;
 	};
+
+	void SetSVGContent(Element* element, const String& content)
+	{
+		while (element->GetNumChildren() > 0)
+			element->RemoveChild(element->GetFirstChild());
+		const String wrapped = "<svg-content>" + content + "</svg-content>";
+		StreamMemory stream(reinterpret_cast<const byte*>(wrapped.data()), wrapped.size());
+		SVGContentParser parser(element);
+		parser.Parse(&stream);
+	}
 } // namespace
 
 namespace SVG {
+	void RegisterContentElements()
+	{
+		// Elements created by the public DOM API must invalidate their SVG parent just like
+		// nodes parsed from its inline source. These names are SVG-only, not HTML controls.
+		const char* names[] = {"path", "line", "polyline", "polygon", "circle", "ellipse", "rect", "g", "defs", "use", "symbol", "text", "tspan",
+			"lineargradient", "radialgradient", "linearGradient", "radialGradient", "stop", "clippath", "clipPath", "mask", "pattern", "marker"};
+		for (const char* name : names)
+			Factory::RegisterElementInstancer(name, SVGContentInstancer());
+	}
+
 	static SourceHook* source_hook = nullptr;
 
 	SourceHook::~SourceHook() {}
@@ -321,12 +348,7 @@ void ElementSVG::SetInnerRML(const String& content)
 	if (!HasAttribute("rmlui-svgdata-id"))
 		SetAttribute("rmlui-svgdata-id", "svgdata:" + CreateString("%lu", internal_id_counter++));
 
-	while (GetNumChildren() > 0)
-		RemoveChild(GetFirstChild());
-	const String wrapped = "<svg-content>" + content + "</svg-content>";
-	StreamMemory stream(reinterpret_cast<const byte*>(wrapped.data()), wrapped.size());
-	SVGContentParser parser(this);
-	parser.Parse(&stream);
+	SetSVGContent(this, content);
 	DirtySource();
 	EnsureSourceLoaded();
 }
