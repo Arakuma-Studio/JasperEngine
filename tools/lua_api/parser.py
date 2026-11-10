@@ -3369,7 +3369,8 @@ OVERRIDES.update({
                 'Words default on. Split options accept {wrap = "clip"} for masked reveals; revert restores the original markup.'],
         'overloads': [([('target', _ANIME_TARGETS), ('params?', 'AnimeSplitTextParams')], 'AnimeTextSplitter')]},
     ('AnimeTextSplitter', 'split'): {
-        'doc': ['Rebuilds from the original markup. Retrieve chars, words and lines again afterwards.'],
+        'doc': ['Recomputes line metadata, rebuilding line splits from the original markup.',
+                'Retrieve chars, words and lines again after a line rebuild.'],
         'overloads': [([], 'AnimeTextSplitter')]},
     ('AnimeTextSplitter', 'refresh'): {
         'doc': ['Rebuilds after layout or style edits. Width and font layout changes also refresh automatically.'],

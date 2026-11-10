@@ -4872,6 +4872,9 @@
 		4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C4FC740FC9687D5 /* PixelFxLua.h */; };
 		4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E377CB554D876579 /* PixelFxPlayer.h */; };
 		4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A895801520386487 /* ScreenTransition.h */; };
+		4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E47A92F799C23F48FBD /* AnimText.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C15278D6615B6CB /* AnimText.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9416,6 +9419,8 @@
 		4A534E472C4FC740FC9687D5 /* PixelFxLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxLua.h; sourceTree = "<group>"; };
 		4A534E47E377CB554D876579 /* PixelFxPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxPlayer.h; sourceTree = "<group>"; };
 		4A534E47A895801520386487 /* ScreenTransition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScreenTransition.h; sourceTree = "<group>"; };
+		4A534E47528C50B8603EC720 /* AnimText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimText.cpp; sourceTree = "<group>"; };
+		4A534E476C15278D6615B6CB /* AnimText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimText.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -13895,6 +13900,8 @@
 				414E494D450000000000003B /* AnimUtils.cpp */,
 				414E494D450000000000003E /* AnimValue.cpp */,
 				414E494D4500000000000041 /* Anime.cpp */,
+				4A534E47528C50B8603EC720 /* AnimText.cpp */,
+				4A534E476C15278D6615B6CB /* AnimText.h */,
 			);
 			path = anim;
 			sourceTree = "<group>";
@@ -16703,6 +16710,7 @@
 				4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */,
 				4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */,
 				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
+				4A534E47A92F799C23F48FBD /* AnimText.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19357,6 +19365,7 @@
 				4A534E47C75DDC3AC497EF70 /* HitStopClassesLua.cpp in Sources */,
 				4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */,
 				4A534E4757083662175146BF /* PixelFxClassesLua.cpp in Sources */,
+				4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20302,6 +20311,7 @@
 				4A534E4794F74B609D31BB49 /* HitStopClassesLua.cpp in Sources */,
 				4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */,
 				4A534E47882EFCB3A800CD7C /* PixelFxClassesLua.cpp in Sources */,
+				4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

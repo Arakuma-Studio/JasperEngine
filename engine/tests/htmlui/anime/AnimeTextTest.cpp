@@ -152,6 +152,38 @@ TEST_F(AnimeTextTest, LinesOnlyDoNotExposeHelperWords){
     EXPECT_TRUE(label.querySelectorAll("[data-word]").empty());
 }
 
+TEST_F(AnimeTextTest, CharacterOnlyRefreshKeepsTargetsAndRunningAnimations){
+    label.setTextContent("niño");
+    auto splitter = split(AnimParam::object({{"chars", true}, {"accessible", false}}));
+    const auto first = splitter->getChars()[0];
+    auto animation = Anime::animate(AnimTargets::fromElements(splitter->getChars()), AnimParam::object({
+        {"opacity", AnimParam::array({0, 1})}, {"duration", 1000}, {"ease", "linear"}, {"autoplay", false}}));
+    animation->seek(250);
+    label.setStyleProperty("width", "40px");
+    updateDocuments(fixture->getScene());
+    EXPECT_TRUE(first.isValid());
+    ASSERT_EQ(splitter->getChars().size(), 4u);
+    EXPECT_TRUE(first == splitter->getChars()[0]);
+    animation->seek(500);
+    EXPECT_NEAR(AnimUtils::get({AnimTargets::fromElement(first)}, "opacity").toNumber(), 0.5, 1e-6);
+    splitter->split();
+    EXPECT_TRUE(first == splitter->getChars()[0]);
+}
+
+TEST_F(AnimeTextTest, InitialCharacterSplitKeepsExistingInlineElements){
+    label.setInnerHTML("Hola <em>niño</em>");
+    const auto emphasis = label.querySelector("em");
+    ASSERT_TRUE(emphasis.isValid());
+    int events = 0;
+    emphasis.addEventListener("click", [&events](UIEvent&){ ++events; });
+    auto splitter = split(AnimParam::object({{"chars", true}, {"accessible", false}}));
+    ASSERT_TRUE(emphasis.isValid());
+    EXPECT_TRUE(emphasis == label.querySelector("em"));
+    emphasis.dispatchEvent("click");
+    EXPECT_EQ(events, 1);
+    EXPECT_EQ(splitter->getChars().size(), 8u);
+}
+
 TEST_F(AnimeTextTest, AccessibilityKeepsOneUnsplitCopyAndRevertRemovesIt){
     label.setTextContent("niño");
     auto splitter = split(AnimParam::object({{"chars", true}}));
@@ -164,6 +196,19 @@ TEST_F(AnimeTextTest, AccessibilityKeepsOneUnsplitCopyAndRevertRemovesIt){
     splitter->revert();
     EXPECT_EQ(label.getTextContent(), "niño");
     EXPECT_TRUE(label.querySelectorAll("[data-anime-accessible]").empty());
+}
+
+TEST_F(AnimeTextTest, AccessibilityCopyDoesNotDuplicateIdsOrKeyboardTargets){
+    label.setInnerHTML("<a id='split-link' href='https://example.com'>niño</a> <button id='split-button'>más</button>");
+    auto splitter = split(AnimParam::object({{"chars", true}}));
+    const auto copies = label.querySelectorAll("[data-anime-accessible]");
+    ASSERT_EQ(copies.size(), 1u);
+    EXPECT_EQ(copies[0].getTextContent(), "niño más");
+    EXPECT_TRUE(copies[0].getChildren().empty());
+    EXPECT_EQ(label.querySelectorAll("#split-link").size(), 1u);
+    EXPECT_EQ(label.querySelectorAll("#split-button").size(), 1u);
+    splitter->revert();
+    EXPECT_EQ(label.querySelectorAll("#split-link").size(), 1u);
 }
 
 TEST_F(AnimeTextTest, SplitCharactersUseAnimeStaggerAtExactTimes){

@@ -4,6 +4,8 @@
 // Text splitting follows Anime.js 4.5.0 src/text/split.js (MIT). The fork's existing UAX #29
 // segmenter supplies Intl.Segmenter('grapheme'); layout is synchronous instead of a browser
 // ResizeObserver/debounce, so an exact frame capture never depends on a wall-clock timeout.
+// Words use Anime's no-Intl fallback (whitespace groups); dictionary word segmentation is
+// a browser Intl facility, independent of the extended-grapheme character splitting below.
 
 #include "AnimText.h"
 
@@ -177,6 +179,24 @@ namespace {
             animTextSetLine(element->GetChild(i), line);
     }
 
+    int animTextMarkLines(const std::vector<UIElement>& words, const std::vector<UIElement>& chars){
+        const auto& units = !words.empty() ? words : chars;
+        int lineIndex = 0;
+        float previousTop = 0.f;
+        bool first = true;
+        for (const UIElement& unit : units){
+            auto* element = UIElementAccess::get(unit);
+            if (!element) continue;
+            const float top = element->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+            const float height = element->GetBox().GetSize(Rml::BoxArea::Border).y;
+            if (!first && top - previousTop > height * .5f) ++lineIndex;
+            animTextSetLine(element, lineIndex);
+            previousTop = top;
+            first = false;
+        }
+        return lineIndex;
+    }
+
     void animTextFilterLine(Rml::Element* parent, int line){
         for (int i = parent->GetNumChildren() - 1; i >= 0; --i){
             Rml::Element* child = parent->GetChild(i);
@@ -231,7 +251,10 @@ namespace {
 }
 
 AnimText::AnimText(const UIElement& element, const AnimParam& options): target(element), params(options){
-    if (auto* root = UIElementAccess::get(target)) original = root->GetInnerRML();
+    if (auto* root = UIElementAccess::get(target)){
+        original = root->GetInnerRML();
+        originalText = target.getTextContent();
+    }
 }
 
 AnimText::~AnimText() = default;
@@ -276,7 +299,7 @@ void AnimText::rebuild(){
         registered.push_back(shared_from_this());
     active = true;
     chars.clear(); words.clear(); lines.clear();
-    root->SetInnerRML(original);
+    if (ready) root->SetInnerRML(original);
     const bool needLines = animTextEnabled(params, "lines", false);
     const bool needChars = animTextEnabled(params, "chars", false);
     const bool showWords = animTextEnabled(params, "words", true);
@@ -291,18 +314,7 @@ void AnimText::rebuild(){
     animTextSplitNode(root, params, needWords, words, chars);
     if (Rml::Context* context = root->GetContext()) context->Update();
     const auto& units = !words.empty() ? words : chars;
-    int lineIndex = 0;
-    float previousTop = 0.f;
-    bool first = true;
-    for (const UIElement& unit : units){
-        auto* element = UIElementAccess::get(unit);
-        const float top = element->GetAbsoluteOffset(Rml::BoxArea::Border).y;
-        const float height = element->GetBox().GetSize(Rml::BoxArea::Border).y;
-        if (!first && top - previousTop > height * .5f) ++lineIndex;
-        animTextSetLine(element, lineIndex);
-        previousTop = top;
-        first = false;
-    }
+    const int lineIndex = animTextMarkLines(words, chars);
     if (needLines && !units.empty()){
         std::vector<Rml::ElementPtr> lineNodes;
         for (int i = 0; i <= lineIndex; ++i){
@@ -340,7 +352,9 @@ void AnimText::rebuild(){
         accessible->SetProperty("opacity", "0");
         accessible->SetProperty("pointer-events", "none");
         accessible->SetProperty("white-space", "nowrap");
-        accessible->SetInnerRML(original);
+        // Cloning links/controls would duplicate ids and keyboard focus stops. The accessible
+        // copy only supplies the original reading order; the visible tree keeps its elements.
+        accessible->AppendChild(animTextNode(accessible.get(), originalText));
         root->InsertBefore(std::move(accessible), root->GetChild(0));
         for (const auto* list : {&lines, &words, &chars}){
             for (const auto& element : *list) UIElementAccess::get(element)->SetAttribute("aria-hidden", "true");
@@ -353,7 +367,15 @@ void AnimText::rebuild(){
 }
 
 AnimText& AnimText::split(){
-    rebuild();
+    if (ready && active && !animTextEnabled(params, "lines", false)){
+        if (auto* root = UIElementAccess::get(target)){
+            if (Rml::Context* context = root->GetContext()) context->Update();
+        }
+        animTextMarkLines(words, chars);
+        rememberLayout();
+    } else {
+        rebuild();
+    }
     return *this;
 }
 
@@ -381,7 +403,12 @@ bool AnimText::updateLayouts(Rml::Context* context){
             continue;
         }
         if (root->GetContext() == context && !splitter->rebuilding && splitter->layoutChanged()){
-            splitter->rebuild();
+            if (animTextEnabled(splitter->params, "lines", false)){
+                splitter->rebuild();
+            } else {
+                animTextMarkLines(splitter->words, splitter->chars);
+                splitter->rememberLayout();
+            }
             changed = true;
         }
         ++i;

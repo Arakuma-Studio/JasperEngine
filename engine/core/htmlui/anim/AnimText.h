@@ -17,7 +17,7 @@ namespace Rml { class Context; }
 namespace jasperengine {
 
     // Anime.js 4.5.0's TextSplitter: the returned elements are ordinary anime targets.
-    // A layout refresh replaces the generated elements; retrieve the arrays again afterwards.
+    // A line-layout refresh replaces generated elements; retrieve the arrays again afterwards.
     class JASPERENGINE_API AnimText : public std::enable_shared_from_this<AnimText> {
     public:
         static std::shared_ptr<AnimText> create(const UIElement& target, const AnimParam& params = AnimParam::object());
@@ -45,6 +45,7 @@ namespace jasperengine {
         UIElement target;
         AnimParam params;
         std::string original;
+        std::string originalText;
         std::vector<UIElement> chars, words, lines;
         std::vector<float> layout;
         bool ready = false;
