@@ -15,6 +15,7 @@
 #include "window/ConsoleWindow.h"
 
 #include "component/PixelPerfectCameraComponent.h"
+#include "shader/ShaderManifest.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -158,6 +159,16 @@ std::string PixelArtMode::summaryLine(const CheckResult& result){
         }
     }
     return line;
+}
+
+void PixelArtMode::pickPixelOutline(std::vector<std::string>& features, const std::string& shader, bool pixelArtMode){
+    if (!pixelArtMode || ShaderReference::getBase(shader) != "library:sprite" || !ShaderLibraryValues::isFeatureEnabled(features, shader, "OUTLINE"))
+        return;
+    for (const std::string& feature : features){
+        if (feature.rfind("OUTLINE_STYLE_", 0) == 0)
+            return;
+    }
+    ShaderLibraryValues::setFeature(features, shader, "OUTLINE_STYLE_PIXEL4", true);
 }
 
 void PixelArtMode::setupNewScene(Project& project, uint32_t sceneId){

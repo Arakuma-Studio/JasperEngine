@@ -7,6 +7,7 @@
 
 #include "Scene.h"
 #include "Engine.h"
+#include "pixelart/HitStop.h"
 #include "util/Color.h"
 #include "util/Angle.h"
 #include "animation/AnimationPlayerRuntime.h"
@@ -1805,7 +1806,8 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
 // when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
 // or, for an update stepped outside an engine frame, the same value worked out here.
 double ActionSystem::unscaledDeltatime(double dt){
-    const double timeScale = Engine::getTimeScale();
+    // a hit-stop scales the frame's delta like the time scale (S48)
+    const double timeScale = Engine::getTimeScale() * pixelart::HitStop::getWorldFactor();
     if (timeScale > 0.0){
         return dt / timeScale;
     }
@@ -1848,7 +1850,7 @@ void ActionSystem::update(double dt){
             // the callbacks may have removed or moved the components
             AnimationComponent* current = action ? scene->findComponent<AnimationComponent>(entity) : nullptr;
             if (current && action->state == ActionState::Running){
-                animationUpdate(dt, entity, *action, *current);
+                animationUpdate(pixelart::HitStop::deltaFor(scene, entity, dt), entity, *action, *current);
             }
         }
     }
@@ -1869,7 +1871,10 @@ void ActionSystem::update(double dt){
         // Action update
         if (action && action->state == ActionState::Running){
             const TweenComponent* timed = scene->findComponent<TweenComponent>(entity);
-            processRunningAction((timed && timed->useUnscaledTime) ? unscaledDt : dt, entity, *action);
+            // a hit-stop freezes it, unless its GameObject (or the one it acts on) is Hit Stop
+            // Exempt (S48)
+            const Entity owner = (action->target != NULL_ENTITY && scene->isEntityCreated(action->target)) ? action->target : entity;
+            processRunningAction((timed && timed->useUnscaledTime) ? unscaledDt : pixelart::HitStop::deltaFor(scene, owner, dt), entity, *action);
         }
 
 	}

@@ -253,3 +253,10 @@ TEST(PixelParticleShaders, ShaderCacheVersionCoversThePixelParticles){
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
     EXPECT_GE(std::stoi(name.substr(1)), 60) << name;
 }
+
+// S48's Pixel FX sources (library:sprite's new features, the uber pass's 'Gli' bit, the screen
+// transition) are cached under v64 (after S49 took v60, S52 v61 and the terrain programme v63): an older cache holds sprite
+// and uber programs without them
+TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v64");
+}

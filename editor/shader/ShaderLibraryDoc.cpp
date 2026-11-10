@@ -156,6 +156,12 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             case ShaderPropertyKind::VECTOR2: return "vector2";
             case ShaderPropertyKind::VECTOR3: return "vector3";
             case ShaderPropertyKind::VECTOR4: return "vector4";
+            case ShaderPropertyKind::CHOICE:{
+                std::string names;
+                for (const std::string& choice : property.choices)
+                    names += (names.empty() ? "" : ", ") + choice;
+                return "choice: " + names;
+            }
         }
         return "float";
     }
@@ -167,6 +173,10 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             value = Color::linearTosRGB(value);
         if (property.kind == ShaderPropertyKind::TOGGLE)
             return value.x > 0.5f ? "on" : "off";
+        if (property.kind == ShaderPropertyKind::CHOICE){
+            const size_t index = (size_t)std::max(0.0f, value.x);
+            return index < property.choices.size() ? property.choices[index] : number(value.x);
+        }
         const size_t count = components(property.kind);
         if (count == 1)
             return number(value.x);
@@ -186,6 +196,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             case ShaderTextureDefault::RIPPLES: return "built-in ripples";
             case ShaderTextureDefault::NOISE: return "built-in noise";
             case ShaderTextureDefault::PARTICLE: return "built-in particle";
+            case ShaderTextureDefault::RAMP_GREY: return "built-in grey ramp";
         }
         return "white";
     }
@@ -206,7 +217,19 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 
     // a row's feature= condition: "with `X`", or "without `X`" for "!X"
     std::string rowCondition(const std::string& feature){
-        return (!feature.empty() && feature[0] == '!') ? condition(feature.substr(1), true) : condition(feature, false);
+        if (!feature.empty() && feature[0] == '!')
+            return condition(feature.substr(1), true);
+        // "A,B": with one of them
+        std::string text;
+        size_t start = 0;
+        while (start <= feature.size()){
+            size_t comma = feature.find(',', start);
+            if (comma == std::string::npos)
+                comma = feature.size();
+            text += (text.empty() ? "with `" : " or `") + feature.substr(start, comma - start) + "`";
+            start = comma + 1;
+        }
+        return text;
     }
 
     std::string requireList(uint32_t require){
@@ -385,7 +408,20 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
                 std::string values;
                 for (const std::string& value : group.values)
                     values += (values.empty() ? "" : ", ") + std::string("`") + group.group + "_" + value + "`";
-                out << "| `" << group.group << "` | " << values << " | " << escapeCell(group.label) << " |\n";
+                std::string label = group.label;
+                if (!group.feature.empty())
+                    label += " (" + condition(group.feature, false) + "; the first value adds no define)";
+                out << "| `" << group.group << "` | " << values << " | " << escapeCell(label) << " |\n";
+            }
+        }
+        if (!manifest.expands.empty()){
+            out << "\n| Quad growth | Texels | Description |\n|---|---|---|\n";
+            for (const ShaderManifestExpand& expand : manifest.expands){
+                std::string features;
+                for (const std::string& define : expand.features)
+                    features += (features.empty() ? "" : ",") + define;
+                const std::string texels = expand.member.empty() ? number(expand.texels) : "`" + expand.member + "`";
+                out << "| " << rowCondition(features) << " | " << texels << " | a sprite's quad grows by it so nothing drawn around the art is cut at the frame edge |\n";
             }
         }
     }

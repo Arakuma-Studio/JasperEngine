@@ -1,0 +1,1081 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "EffectCapture.h"
+
+#include "Engine.h"
+#include "Project.h"
+#include "Scene.h"
+#include "animation/ClipConverters.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
+#include "manager/SceneManager.h"
+#include "math/AABB.h"
+#include "object/Camera.h"
+#include "particles/ParticleEffectLibrary.h"
+#include "pixelart/Palette.h"
+#include "pixelart/HitStop.h"
+#include "pixelart/PaletteMaterial.h"
+#include "pool/AnimationClipPool.h"
+#include "registry/EntityCloner.h"
+#include "render/OffscreenDraw.h"
+#include "render/RenderUtil.h"
+#include "shader/SpriteTaps.h"
+#include "subsystem/RenderSystem.h"
+#include "texture/Framebuffer.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <cmath>
+#include <set>
+
+using namespace jasperengine;
+using namespace jasperengine::editor;
+using namespace jasperengine::editor::pixelart;
+using namespace jasperengine::editor::pixelart::fx;
+
+namespace {
+
+    double captureNow() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    std::vector<EffectCapture*>& liveCaptures() {
+        static std::vector<EffectCapture*> runs;
+        return runs;
+    }
+
+    std::function<void()>& captureFrameRequester() {
+        static std::function<void()> requester;
+        return requester;
+    }
+
+    // Copies pin their randomness and run on the capture's one clock: a Particle System picking a
+    // new seed at every play (seed 0) takes the run's seed, an explicit seed is kept for the sheet
+    // (run 1) and varied for spill's other runs, and nothing reads the engine's unscaled time
+    void pinCopies(Scene* scene, const std::vector<Entity>& roots, uint32_t runSeed) {
+        for (Entity root : roots) {
+            for (Entity e : EntityCloner::collectHierarchy(scene, root)) {
+                if (ParticleSystemComponent* p = scene->findComponent<ParticleSystemComponent>(e)) {
+                    if (p->seed == 0) p->seed = runSeed;
+                    else if (runSeed != 1) p->seed = p->seed * 31u + runSeed;
+                    p->useUnscaledTime = false;
+                    p->needReload = true;
+                }
+            }
+        }
+    }
+
+    // the scene's roots (no parent), every GameObject of it in collectHierarchy order
+    std::vector<Entity> wholeScene(SceneProject* source) {
+        std::vector<Entity> all;
+        std::set<Entity> seen;
+        for (Entity e : source->entities) {
+            const Transform* t = source->scene->findComponent<Transform>(e);
+            if (t && t->parent != NULL_ENTITY) continue;
+            for (Entity member : EntityCloner::collectHierarchy(source->scene, e)) {
+                if (seen.insert(member).second) all.push_back(member);
+            }
+        }
+        return all;
+    }
+
+    // the first palette a copy's material draws with (S43), for off_palette
+    bool findPalette(Scene* scene, const std::vector<Entity>& roots, std::vector<jasperengine::pixelart::Rgba8>& colors, std::string& name) {
+        for (Entity root : roots) {
+            for (Entity e : EntityCloner::collectHierarchy(scene, root)) {
+                const MeshComponent* mesh = scene->findComponent<MeshComponent>(e);
+                if (!mesh) continue;
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+                    const jasperengine::pixelart::PaletteBinding* binding = jasperengine::pixelart::findPaletteBinding(mesh->submeshes[i].material);
+                    if (!binding || binding->source.empty()) continue;
+                    std::shared_ptr<const jasperengine::pixelart::Palette> palette = jasperengine::pixelart::PaletteLibrary::get(binding->source.path);
+                    if (!palette || palette->colors.empty()) continue;
+                    colors = palette->colors;
+                    name = binding->source.path;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // the most texture reads one copy's library:sprite features add to the base sprite (R33's
+    // static count, as SpriteVariants.TapBudget); -1 when none is a library:sprite or no compiler
+    int spriteTaps(Scene* scene, const std::vector<Entity>& roots) {
+        int most = -1;
+        for (Entity root : roots) {
+            for (Entity e : EntityCloner::collectHierarchy(scene, root)) {
+                const MeshComponent* mesh = scene->findComponent<MeshComponent>(e);
+                if (!mesh) continue;
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+                    const Material& material = mesh->submeshes[i].material;
+                    if (material.shader != "library:sprite") continue;
+                    most = std::max(most, librarySpriteExtraTaps(material.shaderFeatures, material.blendMode));
+                }
+            }
+        }
+        return most;
+    }
+
+    // ------------------------------------------------------------------ targets
+
+    // A frame read back (screen pixels, rows top first, premultiplied) against the CPU evaluation at
+    // art resolution: the art pixels with a screen pixel more than 1 away in a channel (the GPU rounds its output, the
+    // twin rounds its float maths: ScreenTransitionGpu's allowance); the first in (x, y), the largest difference in `worst`
+    int countTwinDiffering(const PixelImage& frame, const jasperengine::pixelart::TransitionImage& twin, int pixelSize, int& x, int& y, int& worst) {
+        worst = 0;
+        if (frame.width() != twin.width * pixelSize || frame.height() != twin.height * pixelSize) {
+            worst = 255;
+            return twin.width * twin.height;
+        }
+        int differing = 0;
+        for (int ay = 0; ay < twin.height; ay++) {
+            for (int ax = 0; ax < twin.width; ax++) {
+                const jasperengine::pixelart::Rgba8 want = twin.colors[(size_t)ay * (size_t)twin.width + (size_t)ax];
+                bool same = true;
+                for (int sy = ay * pixelSize; sy < (ay + 1) * pixelSize; sy++) {
+                    const uint8_t* row = frame.row(sy);
+                    for (int sx = ax * pixelSize; sx < (ax + 1) * pixelSize; sx++) {
+                        const uint8_t* p = row + (size_t)sx * 4;
+                        const int d = std::max({std::abs(p[0] - want.r), std::abs(p[1] - want.g), std::abs(p[2] - want.b), std::abs(p[3] - want.a)});
+                        worst = std::max(worst, d);
+                        if (d > 1) same = false;
+                    }
+                }
+                if (!same) {
+                    if (differing == 0) {
+                        x = ax;
+                        y = ay;
+                    }
+                    differing++;
+                }
+            }
+        }
+        return differing;
+    }
+
+    class CaptureEntityTarget : public CaptureTarget {
+    public:
+        Project* project = nullptr;
+        uint32_t sceneId = NULL_PROJECT_SCENE;   // the id, not a SceneProject*: scenes live in a vector
+        Entity entity = NULL_ENTITY;
+        std::string clip;
+        double clipLength = 0.0;
+        bool clipLoops = false;
+        CaptureEffect effect;
+
+        SceneProject* scene() const { return project->getScene(sceneId); }
+
+        std::string label() const override {
+            const SceneProject* source = scene();
+            const std::string name = source && source->scene ? source->scene->getEntityName(entity) : std::string();
+            return (name.empty() ? "GameObject " + std::to_string(entity) : name) + (clip.empty() ? "" : " playing " + clip) +
+                   (effect.active ? std::string(" with ") + jasperengine::pixelart::pixelFxEffectName(effect.effect) : std::string());
+        }
+        double defaultDuration() const override {
+            double d = clip.empty() ? 1.0 : std::max(clipLength, 1.0 / 60.0);
+            if (effect.active) d = clip.empty() ? std::max((double)effect.duration, 1.0 / 60.0) : std::max(d, (double)effect.duration);
+            return d;
+        }
+        bool defaultLoop() const override { return !clip.empty() && clipLoops; }
+        SceneProject* sourceScene() const override { return scene(); }
+
+        bool build(Scene* into, uint32_t runSeed, std::vector<Entity>& made, std::string& error) override {
+            SceneProject* source = scene();
+            if (!source || !source->scene || !source->scene->isEntityCreated(entity)) {
+                error = "the GameObject is gone from its scene";
+                return false;
+            }
+            const std::vector<Entity> copies = EntityCloner::clone(source->scene, EntityCloner::collectHierarchy(source->scene, entity), into);
+            if (copies.empty()) {
+                error = "the GameObject could not be copied";
+                return false;
+            }
+            made = {copies.front()};
+            if (!clip.empty()) {
+                // the clip on an Animation Player of the copy's root, which an Animator would fight
+                if (AnimatorComponent* animator = into->findComponent<AnimatorComponent>(copies.front())) animator->enabled = false;
+                AnimationPlayerComponent player;
+                player.clips = {ClipConverters::playerEntry(project, clip)};
+                const AnimationPlayerClip& entry = player.clips.front();
+                player.defaultClip = entry.name.empty() ? std::filesystem::path(entry.clip).stem().string() : entry.name;
+                player.playAutomatically = true;
+                if (into->findComponent<AnimationPlayerComponent>(copies.front())) into->removeComponent<AnimationPlayerComponent>(copies.front());
+                into->addComponent<AnimationPlayerComponent>(copies.front(), player);
+            }
+            pinCopies(into, made, runSeed);
+            if (effect.active) {
+                // the effect on every copy with a library:sprite material, its time the capture's
+                jasperengine::pixelart::PixelFxOptions options = effect.options;
+                options.manual = true;
+                options.embers.clear();
+                bool played = false;
+                std::string why;
+                for (Entity e : EntityCloner::collectHierarchy(into, copies.front())) {
+                    const MeshComponent* mesh = into->findComponent<MeshComponent>(e);
+                    if (!mesh) continue;
+                    bool sprite = into->findComponent<SpriteComponent>(e) != nullptr;
+                    for (unsigned int i = 0; i < mesh->numSubmeshes && !sprite; i++) sprite = mesh->submeshes[i].material.shader == "library:sprite";
+                    if (!sprite) continue;
+                    played |= jasperengine::pixelart::PixelFxPlayer::play(into, e, effect.effect, effect.duration, options, &why).isValid();
+                }
+                if (!played) {
+                    error = "the effect needs a Sprite or a library:sprite material on the GameObject or its children" +
+                            (why.empty() ? std::string() : " (" + why + ")");
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        void seek(Scene* into, const std::vector<Entity>& made, double time) override {
+            if (!effect.active) return;
+            for (Entity root : made) {
+                for (Entity e : EntityCloner::collectHierarchy(into, root)) jasperengine::pixelart::PixelFxPlayer::seek(into, e, time);
+            }
+        }
+    };
+
+    // A screen transition drawn over transparent black at each time (R12-R14 through
+    // ScreenTransition::renderInto, the program the engine's overlay draws with)
+    class CaptureTransitionTarget : public CaptureTarget {
+    public:
+        jasperengine::pixelart::TransitionKind kind = jasperengine::pixelart::TransitionKind::IRIS;
+        jasperengine::pixelart::TransitionOptions options;
+        CaptureTransitionPhase phase = CaptureTransitionPhase::Play;
+        double duration = 1.0;
+        int artWidth = 160, artHeight = 90;
+
+        std::string label() const override {
+            return std::string("transition ") + jasperengine::pixelart::transitionKindName(kind);
+        }
+        double defaultDuration() const override { return duration; }
+
+        bool build(Scene* into, uint32_t runSeed, std::vector<Entity>& made, std::string& error) override {
+            (void)into;
+            (void)runSeed;
+            (void)error;
+            made.clear();
+            return true;
+        }
+
+        bool fixedFrame(int& width, int& height) const override {
+            const int scale = std::max(options.pixelSize, 1);
+            width = artWidth * scale;
+            height = artHeight * scale;
+            return true;
+        }
+
+        // the coverage and phase at `time` of the capture's run
+        void at(double time, float& coverage, jasperengine::pixelart::TransitionPhase& state) const {
+            using jasperengine::pixelart::TransitionPhase;
+            const double d = std::max(duration, 1e-6);
+            auto eased = [&](double u) { return jasperengine::pixelart::applyTransitionEase(options.ease, (float)std::clamp(u, 0.0, 1.0)); };
+            if (phase == CaptureTransitionPhase::Cover) {
+                coverage = eased(time / d);
+                state = TransitionPhase::COVER;
+                return;
+            }
+            if (phase == CaptureTransitionPhase::Reveal) {
+                coverage = eased(1.0 - time / d);
+                state = TransitionPhase::REVEAL;
+                return;
+            }
+            const double hold = options.hold < 0.0f ? 0.1 * d : std::min((double)options.hold, d);
+            const double edge = std::max((d - hold) * 0.5, 1e-6);
+            if (time < edge) {
+                coverage = eased(time / edge);
+                state = TransitionPhase::COVER;
+            } else if (time < edge + hold) {
+                coverage = 1.0f;
+                state = TransitionPhase::HOLD;
+            } else {
+                coverage = eased(1.0 - (time - edge - hold) / edge);
+                state = TransitionPhase::REVEAL;
+            }
+        }
+
+        bool drawOver(Framebuffer& target, double time, std::string& waitingFor) override {
+            float coverage = 0.0f;
+            jasperengine::pixelart::TransitionPhase state = jasperengine::pixelart::TransitionPhase::COVER;
+            at(time, coverage, state);
+            if (!jasperengine::pixelart::ScreenTransition::renderInto(&target, kind, options, coverage, state)) {
+                waitingFor = "the transition's program";
+                return false;
+            }
+            return true;
+        }
+
+        void describeLints(lint::EffectLintInput& input) const override {
+            input.transition = true;
+            // A test's way to make the CPU evaluation differ from what the shader drew (tools/mcp/tests/test_contact_sheet.py)
+            static const float twinSkew = [] {
+                const char* value = std::getenv("JASPER_TEST_TRANSITION_TWIN_SKEW");
+                return value ? (float)std::atof(value) : 0.0f;
+            }();
+            const int pixelSize = std::max(options.pixelSize, 1);
+            // the rim's width from the CPU twin of the shader (a colour image cannot show which axis a rim pixel was
+            // measured along), in art pixels whatever the pixel_size; the frames read back must be that twin, pixel by
+            // pixel, or this measures something the shader did not draw
+            for (size_t i = 0; i < input.times.size(); i++) {
+                float coverage = 0.0f;
+                jasperengine::pixelart::TransitionPhase state = jasperengine::pixelart::TransitionPhase::COVER;
+                at(input.times[i], coverage, state);
+                jasperengine::pixelart::TransitionImage image;
+                jasperengine::pixelart::ScreenTransition::evaluate(kind, options, twinSkew != 0.0f ? std::clamp(coverage + twinSkew, 0.0f, 1.0f) : coverage, state,
+                                                                   artWidth, artHeight, image);
+                const jasperengine::pixelart::TransitionRimMeasure m = jasperengine::pixelart::ScreenTransition::measureRim(kind, image);
+                lint::RimSpreadFrame frame{m.crossings, m.minWidth, m.maxWidth, m.atX, m.atY};
+                if (i < input.frames.size() && input.frames[i]) frame.twinDiffering = countTwinDiffering(*input.frames[i], image, pixelSize, frame.x2, frame.y2, frame.twinWorst);
+                input.rimSpreads.push_back(frame);
+            }
+            input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);
+            input.spillApplies = false;
+            input.spillSkipReason = "a transition draws over the whole screen";
+            input.cost = lint::FrameCost();
+            input.cost.skipReason = "a transition's cost is its one pass (R34): measure it with JASPERENGINE_FRAME_STATS or the GPU timers";
+        }
+    };
+
+    class CaptureParticlesTarget : public CaptureTarget {
+    public:
+        std::string effect;
+        double duration = 1.0;
+        bool looping = false;
+
+        std::string label() const override { return effect; }
+        double defaultDuration() const override { return duration; }
+        bool defaultLoop() const override { return looping; }
+
+        bool build(Scene* into, uint32_t runSeed, std::vector<Entity>& made, std::string& error) override {
+            (void)error;
+            const Entity e = into->createEntity();
+            into->setEntityName(e, "Particle System");
+            into->addComponent<Transform>(e, Transform{});
+            ParticleSystemComponent particles;
+            particles.effect = AssetRef(effect);
+            particles.playOnAwake = true;
+            particles.seed = runSeed;
+            into->addComponent<ParticleSystemComponent>(e, particles);
+            made = {e};
+            pinCopies(into, made, runSeed);
+            return true;
+        }
+    };
+
+    // ------------------------------------------------------------------ passes
+
+    // one fresh run of the target from t = 0, its frames read at `times`
+    struct CapturePass {
+        uint32_t seed = 1;
+        std::vector<double> times;
+        std::vector<PixelImage>* out = nullptr;
+        bool cost = false;          // frame_cost: the target shown, then hidden
+        bool reload = false;        // Play: the game's scene loaded again first (a fresh capture)
+    };
+
+    // the scratch scene of one pass
+    struct CaptureScratch {
+        Scene* scene = nullptr;
+        Camera* camera = nullptr;
+        Entity cameraEntity = NULL_ENTITY;
+        std::vector<Entity> made;
+        double simTime = 0.0;
+        double fixedAccumulator = 0.0;
+        bool warmed = false;
+        bool drawPending = false;   // stepped to the next time, not read back yet
+
+        CaptureScratch() = default;
+        CaptureScratch(const CaptureScratch&) = delete;
+        CaptureScratch& operator=(const CaptureScratch&) = delete;
+        ~CaptureScratch() {
+            delete camera;
+            delete scene;
+        }
+    };
+
+    double median(std::vector<double> v) {
+        if (v.empty()) return -1.0;
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    }
+
+}
+
+struct EffectCapture::Impl {
+    enum class Stage { Setup, Passes, Done };
+    Stage stage = Stage::Setup;
+    std::vector<CapturePass> passes;
+    size_t pass = 0;
+    size_t frame = 0;
+    std::unique_ptr<CaptureScratch> scratch;
+    Framebuffer target;
+    bool framed = false;
+    float centerX = 0.0f, centerY = 0.0f;   // the frame's centre (world, isolated)
+    std::string waiting = "starting";
+    double startedAt = 0.0;
+    int waitFrames = 0;
+    size_t totalFrames = 0, doneFrames = 0;
+    // frame_cost
+    std::vector<double> shown, hidden;
+    // the lints' frames (owned here; the lint input points into the output)
+    std::vector<PixelImage> spill[3];
+    std::vector<PixelImage> lastFrame, determinismA, determinismB, costFrames;   // costFrames: frame_cost's pass reads none
+    // Play
+    bool playing = false;
+    bool resumeAfter = false;
+    double fixedBefore = 0.0;
+    uint64_t stepsDone = 0;
+    bool stepPending = false;
+    bool reloadIssued = false;
+    bool reloadFailed = false;
+    std::shared_ptr<void> advance;
+    bool warmedPlay = false;
+    // frame_cost: the texture reads the copies' library:sprite features add (R33)
+    int taps = -1;
+};
+
+EffectCapture::EffectCapture(CaptureSettings s, std::unique_ptr<CaptureTarget> t) : settings(std::move(s)), target(std::move(t)), impl(std::make_unique<Impl>()) {}
+
+EffectCapture::~EffectCapture() {
+    auto& runs = liveCaptures();
+    runs.erase(std::remove(runs.begin(), runs.end(), this), runs.end());
+    if (!finished) finish("The capture was dropped.");
+    impl->target.destroy();
+}
+
+void EffectCapture::start() {
+    if (started) return;
+    started = true;
+    impl->startedAt = captureNow();
+    liveCaptures().push_back(this);
+    if (captureFrameRequester()) captureFrameRequester()();
+}
+
+void EffectCapture::cancel() {
+    if (!finished) finish("Cancelled.");
+}
+
+double EffectCapture::getProgress() const {
+    if (finished) return 1.0;
+    return impl->totalFrames ? (double)impl->doneFrames / (double)impl->totalFrames : 0.0;
+}
+
+std::string EffectCapture::getStage() const {
+    if (finished) return error.empty() ? "done" : "failed";
+    return "waiting for " + impl->waiting;
+}
+
+void EffectCapture::finish(const std::string& failure) {
+    if (finished) return;
+    Impl& d = *impl;
+    d.scratch.reset();
+    // Play: the game as it was (its clock, its pause)
+    if (d.playing) {
+        Engine::setFixedDeltatime(d.fixedBefore);
+        Project* project = settings.project;
+        if (d.resumeAfter && project && project->getPlaySessionSceneId() == settings.sceneId) project->resume(settings.sceneId);
+        d.advance.reset();
+        d.playing = false;
+    }
+    error = failure;
+    finished = true;
+    d.stage = Impl::Stage::Done;
+    if (error.empty()) {
+        // the lint input points into the output, which no longer moves
+        lint::EffectLintInput& in = output.lintInput;
+        in.frames = lint::frameView(output.frames);
+        in.times = output.times;
+        in.duration = settings.duration;
+        in.loop = settings.loop;
+        in.bounds = output.bounds;
+        in.margin = settings.margin;
+        in.spillApplies = !output.opaque;
+        in.spillSkipReason = "scene mode draws the whole view";
+        in.spillSeeds = {1};
+        in.spillRuns.clear();
+        output.spillRuns.clear();
+        for (int k = 0; k < 3; k++) {
+            if (!d.spill[k].empty()) output.spillRuns.push_back(std::move(d.spill[k]));
+        }
+        static const uint32_t extraSeeds[3] = {2, 3, 7};
+        for (size_t k = 0; k < output.spillRuns.size(); k++) {
+            in.spillRuns.push_back(lint::frameView(output.spillRuns[k]));
+            in.spillSeeds.push_back(extraSeeds[k]);
+        }
+        if (!d.lastFrame.empty()) output.last = std::move(d.lastFrame.front());
+        in.last = output.last.empty() ? nullptr : &output.last;
+        if (!d.determinismA.empty() && !d.determinismB.empty()) {
+            output.determinism[0] = std::move(d.determinismA.front());
+            output.determinism[1] = std::move(d.determinismB.front());
+            in.determinismFirst = &output.determinism[0];
+            in.determinismSecond = &output.determinism[1];
+        } else {
+            in.determinismSkipReason = d.reloadFailed ? "the played scene could not be loaded again for a fresh capture"
+                                       : settings.lints ? "two fresh captures were not made" : "lints were not asked for";
+        }
+        in.determinismTime = 0.37 * settings.duration;
+        if (d.shown.empty()) {
+#ifdef NDEBUG
+            in.cost.skipReason = output.opaque ? "the frame cost is measured in isolated mode" : "the frame cost was not measured";
+#else
+            in.cost.skipReason = "the frame cost is measured in release builds";
+#endif
+        } else {
+            in.cost.shownMs = median(d.shown);
+            in.cost.hiddenMs = median(d.hidden);
+        }
+        if (d.taps >= 0) in.cost.taps = d.taps;
+        in.wholeView = output.opaque;
+        if (settings.mode == CaptureMode::Scene && settings.sceneId != 0) {
+            // the longest HitStop.play the game asked for while it was captured (0: none)
+            const jasperengine::pixelart::HitStopStats stats = jasperengine::pixelart::HitStop::getStats();
+            in.hitStopSeconds = stats.requests > 0 ? stats.longestSeconds : 0.0;
+        } else {
+            in.hitStopSkipReason = "hit-stops are measured in a scene-mode capture of the playing game";
+        }
+        if (settings.lints) target->describeLints(in);
+    }
+    if (onFinished) {
+        std::function<void()> done = onFinished;
+        done();
+    }
+}
+
+bool EffectCapture::anyRunning() {
+    for (const EffectCapture* run : liveCaptures()) {
+        if (run->started && !run->finished) return true;
+    }
+    return false;
+}
+
+bool EffectCapture::processFrame() {
+    bool running = false;
+    const std::vector<EffectCapture*> runs = liveCaptures();
+    const double frameStart = captureNow();
+    for (EffectCapture* run : runs) {
+        auto& live = liveCaptures();
+        if (std::find(live.begin(), live.end(), run) == live.end() || !run->started || run->finished) continue;
+        const double left = kFrameBudgetMs - (captureNow() - frameStart) * 1000.0;
+        run->advance(std::max(left, 1.0));
+        auto& after = liveCaptures();
+        if (std::find(after.begin(), after.end(), run) != after.end() && !run->finished) running = true;
+    }
+    if (running && captureFrameRequester()) captureFrameRequester()();
+    return running;
+}
+
+void EffectCapture::setFrameRequester(std::function<void()> requester) {
+    captureFrameRequester() = std::move(requester);
+}
+
+void EffectCapture::releaseGpu() {
+    const std::vector<EffectCapture*> runs = liveCaptures();
+    for (EffectCapture* run : runs) {
+        if (!run->finished) run->finish("The editor is closing.");
+        run->impl->target.destroy();
+    }
+}
+
+namespace {
+
+    // the frame of a scene-mode capture: the canvas divided by the smallest whole number that
+    // brings it within maxWidth (the camera still covers the whole canvas)
+    void sceneFrameSize(int canvasW, int canvasH, int maxWidth, int& w, int& h) {
+        canvasW = std::max(canvasW, 1);
+        canvasH = std::max(canvasH, 1);
+        int k = 1;
+        while (canvasW / k > maxWidth) k++;
+        w = std::max(1, canvasW / k);
+        h = std::max(1, canvasH / k);
+    }
+
+    bool createTarget(Framebuffer& target, int w, int h) {
+        if (target.isCreated() && (int)target.getWidth() == w && (int)target.getHeight() == h) return true;
+        target.destroy();
+        target.setWidth((unsigned int)w);
+        target.setHeight((unsigned int)h);
+        target.create();
+        return target.isCreated();
+    }
+
+    PixelImage toImage(int w, int h, const std::vector<uint8_t>& rgba) {
+        PixelImage image(w, h);
+        std::span<uint8_t> pixels = image.editPixels();
+        if (rgba.size() >= pixels.size()) std::copy(rgba.begin(), rgba.begin() + (std::ptrdiff_t)pixels.size(), pixels.begin());
+        return image;
+    }
+
+}
+
+bool EffectCapture::advance(double budgetMs) {
+    if (finished) return true;
+    Impl& d = *impl;
+    const double sliceStart = captureNow();
+    auto overBudget = [&]() { return (captureNow() - sliceStart) * 1000.0 > budgetMs; };
+    if (captureNow() - d.startedAt > kTimeoutSeconds) {
+        finish("The capture did not finish within " + std::to_string((int)kTimeoutSeconds) + " s (it waited for " + d.waiting + ").");
+        return true;
+    }
+    Project* project = settings.project;
+    const std::vector<std::string>& ids = settings.lintIds;
+    auto wanted = [&](const char* id) { return settings.lints && (ids.empty() || std::find(ids.begin(), ids.end(), id) != ids.end()); };
+    const bool inPlay = settings.mode == CaptureMode::Scene && settings.sceneId != 0;
+
+    if (d.stage == Impl::Stage::Setup) {
+        // the passes: the sheet's frames, then the lints' fresh runs
+        CapturePass main;
+        main.times = settings.times;
+        main.out = &output.frames;
+        d.passes.push_back(main);
+        if (settings.lints && !settings.loop && wanted("one_shot_end") && settings.mode == CaptureMode::Isolated &&
+            (settings.times.empty() || settings.times.back() < settings.duration - 1e-9)) {
+            d.passes.push_back(CapturePass{1, {settings.duration}, &d.lastFrame});
+        }
+        int fixedWidth = 0, fixedHeight = 0;
+        if (wanted("spill") && settings.mode == CaptureMode::Isolated && !target->fixedFrame(fixedWidth, fixedHeight)) {
+            const uint32_t seeds[3] = {2, 3, 7};
+            for (int k = 0; k < 3; k++) d.passes.push_back(CapturePass{seeds[k], settings.times, &d.spill[k]});
+        }
+        if (wanted("determinism")) {
+            const double t = 0.37 * settings.duration;
+            d.passes.push_back(CapturePass{1, {t}, &d.determinismA, false, inPlay});
+            d.passes.push_back(CapturePass{1, {t}, &d.determinismB, false, inPlay});
+        }
+#ifdef NDEBUG
+        if (wanted("frame_cost") && settings.mode == CaptureMode::Isolated) {
+            d.passes.push_back(CapturePass{1, {0.37 * settings.duration}, &d.costFrames, true});
+        }
+#endif
+        for (const CapturePass& p : d.passes) d.totalFrames += p.times.size() + (p.cost ? 18 : 0);
+        output.times = settings.times;
+        if (inPlay) {
+            SceneProject* sp = project ? project->getScene(settings.sceneId) : nullptr;
+            if (!sp || project->getPlaySessionSceneId() != settings.sceneId) {
+                finish("Nothing is playing any more.");
+                return true;
+            }
+            d.playing = true;
+            // hit_stop_length: what the game asks for from now on
+            jasperengine::pixelart::HitStop::resetStats();
+            d.fixedBefore = Engine::getFixedDeltatime();
+            Engine::setFixedDeltatime(kStep);
+            if (settings.acquireAdvance) d.advance = settings.acquireAdvance();
+            if (sp->playState == ScenePlayState::PLAYING) {
+                project->pause(settings.sceneId);
+                d.resumeAfter = true;
+            }
+            sceneFrameSize(Engine::getCanvasWidth(), Engine::getCanvasHeight(), settings.sceneMaxWidth, output.width, output.height);
+            output.opaque = true;
+            output.bounds = {0, 0, output.width, output.height};
+            output.sceneColor = jasperengine::pixelart::Rgba8{21, 19, 29, 255};
+            if (!createTarget(d.target, output.width, output.height)) {
+                finish("The capture's framebuffer could not be made.");
+                return true;
+            }
+        }
+        d.stage = Impl::Stage::Passes;
+    }
+
+    while (d.stage == Impl::Stage::Passes && !finished) {
+        if (d.pass >= d.passes.size()) {
+            finish("");
+            return true;
+        }
+        CapturePass& pass = d.passes[d.pass];
+
+        // ---------------------------------------------------------------- Play: the game itself
+        if (inPlay) {
+            SceneProject* sp = project ? project->getScene(settings.sceneId) : nullptr;
+            if (!sp || project->getPlaySessionSceneId() != settings.sceneId) {
+                finish("Play stopped during the capture.");
+                return true;
+            }
+            if (d.stepPending) {
+                if (project->isStepPending(settings.sceneId)) {
+                    d.waiting = "the game's step";
+                    return false;
+                }
+                d.stepPending = false;
+                // a fresh capture counts its steps from the first frame after the reload
+                if (pass.reload && SceneManager::isLoading()) d.stepsDone = 0;
+                else d.stepsDone++;
+            }
+            if (pass.reload && !d.reloadIssued) {
+                // a fresh capture: the game's scene loaded again, counted from its first frame
+                // the scene the game loaded last, else the played one (registered under its id)
+                const uint32_t current = SceneManager::getCurrentSceneId() != 0 ? SceneManager::getCurrentSceneId() : settings.sceneId;
+                if (!SceneManager::loadScene(current)) {
+                    d.reloadFailed = true;
+                    while (d.pass < d.passes.size() && d.passes[d.pass].reload) d.pass++;
+                    continue;
+                }
+                d.reloadIssued = true;
+                d.stepsDone = 0;
+                project->step(settings.sceneId);
+                d.stepPending = true;
+                d.waiting = "the scene's reload";
+                return false;
+            }
+            if (pass.reload && SceneManager::isLoading()) {
+                project->step(settings.sceneId);
+                d.stepPending = true;
+                d.waiting = "the scene's reload";
+                return false;
+            }
+            const double t = pass.times[d.frame];
+            const uint64_t want = (uint64_t)std::llround(t / kStep);
+            if (d.stepsDone < want) {
+                project->step(settings.sceneId);
+                d.stepPending = true;
+                d.waiting = "the game's step";
+                return false;
+            }
+            std::vector<Engine::ViewLayer> layers;
+            for (Scene* scene : Engine::getSceneLayers()) {
+                if (!scene || scene->getCamera() == NULL_ENTITY) continue;
+                Engine::ViewLayer layer;
+                layer.scene = scene;
+                layer.camera = scene->getCamera();
+                layer.viewRect = Rect(0.0f, 0.0f, (float)output.width, (float)output.height);
+                layer.canvasWidth = (float)Engine::getCanvasWidth();
+                layer.canvasHeight = (float)Engine::getCanvasHeight();
+                layers.push_back(layer);
+            }
+            if (layers.empty()) {
+                finish("The playing game has no scene with a camera to capture.");
+                return true;
+            }
+            std::vector<uint8_t> rgba;
+            if (drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, layers, d.warmedPlay, rgba, d.waiting) == OffscreenDraw::Wait) return false;
+            PixelImage image = toImage(output.width, output.height, rgba);
+            // the view is opaque: its clear colour is the frame's background
+            for (uint8_t* p = image.editPixels().data(), *end = p + image.pixels().size(); p < end; p += 4) p[3] = 255;
+            pass.out->push_back(std::move(image));
+            d.doneFrames++;
+            if (++d.frame >= pass.times.size()) {
+                d.frame = 0;
+                d.pass++;
+                d.reloadIssued = false;
+            }
+            if (overBudget()) return false;
+            continue;
+        }
+
+        // ---------------------------------------------------------------- a scratch scene
+        if (!d.scratch) {
+            auto s = std::make_unique<CaptureScratch>();
+            s->scene = new Scene(EntityPool::System);
+            std::string failure;
+            if (settings.mode == CaptureMode::Isolated) {
+                s->scene->setBackgroundColor(0.0f, 0.0f, 0.0f, 0.0f);
+                if (!target->build(s->scene, pass.seed, s->made, failure)) {
+                    finish("The target could not be captured: " + failure + ".");
+                    return true;
+                }
+                s->camera = new Camera(s->scene);
+                s->camera->setType(CameraType::CAMERA_ORTHO);
+                s->camera->setAutoResize(false);
+                s->scene->setCamera(s->camera);
+                s->cameraEntity = s->camera->getEntity();
+            } else {
+                SceneProject* source = target->sourceScene();
+                if (!source || !source->scene) {
+                    finish("The target's scene is not open.");
+                    return true;
+                }
+                std::unordered_map<Entity, Entity> map;
+                const std::vector<Entity> all = wholeScene(source);
+                const std::vector<Entity> copies = EntityCloner::clone(source->scene, all, s->scene, NULL_ENTITY, &map);
+                for (size_t i = 0; i < all.size() && i < copies.size(); i++) {
+                    const Transform* t = source->scene->findComponent<Transform>(all[i]);
+                    if (!t || t->parent == NULL_ENTITY) s->made.push_back(copies[i]);
+                }
+                pinCopies(s->scene, s->made, pass.seed);
+                const Vector4 clear = source->scene->getBackgroundColor();
+                s->scene->setBackgroundColor(clear.x, clear.y, clear.z, 1.0f);
+                Entity camera = source->mainCamera != NULL_ENTITY ? source->mainCamera : source->scene->getCamera();
+                auto found = map.find(camera);
+                if (found != map.end()) {
+                    s->cameraEntity = found->second;
+                } else if (camera != NULL_ENTITY && source->scene->isEntityCreated(camera)) {
+                    // the scene's default camera (no GameObject of its own): copied on its own
+                    const std::vector<Entity> made = EntityCloner::clone(source->scene, EntityCloner::collectHierarchy(source->scene, camera), s->scene);
+                    if (!made.empty()) s->cameraEntity = made.front();
+                }
+                if (s->cameraEntity == NULL_ENTITY) {
+                    finish("The target's scene has no camera to capture through.");
+                    return true;
+                }
+                s->scene->setCamera(s->cameraEntity);
+                output.sceneColor = jasperengine::pixelart::Rgba8{(uint8_t)std::lround(std::clamp(clear.x, 0.0f, 1.0f) * 255.0f),
+                                                                  (uint8_t)std::lround(std::clamp(clear.y, 0.0f, 1.0f) * 255.0f),
+                                                                  (uint8_t)std::lround(std::clamp(clear.z, 0.0f, 1.0f) * 255.0f), 255};
+            }
+            s->scene->load();
+            // the geometry (sprites, meshes) and their bounds exist after an update
+            s->scene->update(0.0);
+            s->scene->update(0.0);
+            if (!d.framed) {
+                int fixedWidth = 0, fixedHeight = 0;
+                if (settings.mode == CaptureMode::Isolated && target->fixedFrame(fixedWidth, fixedHeight)) {
+                    // a target that draws itself over the frame (a transition): the frame is its screen
+                    output.width = std::max(fixedWidth, 1);
+                    output.height = std::max(fixedHeight, 1);
+                    output.bounds = {0, 0, output.width, output.height};
+                    output.groundY = output.height - 1;
+                    d.centerX = 0.0f;
+                    d.centerY = 0.0f;
+                } else if (settings.mode == CaptureMode::Isolated) {
+                    // the target's bounds at t = 0 (meshes; a GameObject without one is a point)
+                    AABB box;
+                    for (Entity root : s->made) {
+                        for (Entity e : EntityCloner::collectHierarchy(s->scene, root)) {
+                            const MeshComponent* mesh = s->scene->findComponent<MeshComponent>(e);
+                            if (mesh && !mesh->worldAABB.isNull() && mesh->worldAABB.isFinite()) {
+                                box.merge(mesh->worldAABB);
+                            } else if (const Transform* t = s->scene->findComponent<Transform>(e)) {
+                                box.merge(t->worldPosition);
+                            }
+                        }
+                    }
+                    const float ppu = (float)std::max(settings.pixelsPerUnit, 1);
+                    const Vector3 lo = box.isNull() ? Vector3(0, 0, 0) : box.getMinimum();
+                    const Vector3 hi = box.isNull() ? Vector3(0, 0, 0) : box.getMaximum();
+                    const int minX = (int)std::floor(lo.x * ppu + 1e-3f), maxX = std::max(minX + 1, (int)std::ceil(hi.x * ppu - 1e-3f));
+                    const int minY = (int)std::floor(lo.y * ppu + 1e-3f), maxY = std::max(minY + 1, (int)std::ceil(hi.y * ppu - 1e-3f));
+                    // twice the margin, so a spill past it shows; an even count each way puts the
+                    // camera's centre on a pixel corner
+                    const int pad = 2 * std::max(settings.margin, 0);
+                    int fx0 = minX - pad, fx1 = maxX + pad, fy0 = minY - pad, fy1 = maxY + pad;
+                    auto fit = [&](int& a, int& b) {
+                        if ((b - a) % 2) b++;
+                        if (b - a > settings.maxSide) {
+                            const int c = (a + b) / 2;
+                            a = c - settings.maxSide / 2;
+                            b = a + settings.maxSide;
+                        }
+                    };
+                    fit(fx0, fx1);
+                    fit(fy0, fy1);
+                    output.width = fx1 - fx0;
+                    output.height = fy1 - fy0;
+                    output.bounds = {minX - fx0, fy1 - maxY, maxX - minX, maxY - minY};
+                    output.groundY = std::min(output.height - 1, output.bounds.y + output.bounds.h);
+                    d.centerX = (float)(fx0 + fx1) * 0.5f / ppu;
+                    d.centerY = (float)(fy0 + fy1) * 0.5f / ppu;
+                } else {
+                    sceneFrameSize((int)project->getCanvasWidth(), (int)project->getCanvasHeight(), settings.sceneMaxWidth, output.width, output.height);
+                    output.opaque = true;
+                    output.bounds = {0, 0, output.width, output.height};
+                }
+                if (wanted("frame_cost")) d.taps = spriteTaps(s->scene, s->made);
+                std::vector<jasperengine::pixelart::Rgba8> colors;
+                std::string paletteName;
+                if (findPalette(s->scene, s->made, colors, paletteName)) {
+                    output.lintInput.palette = std::move(colors);
+                    output.lintInput.paletteName = paletteName;
+                }
+                d.framed = true;
+                if (!createTarget(d.target, output.width, output.height)) {
+                    finish("The capture's framebuffer could not be made.");
+                    return true;
+                }
+            }
+            if (s->camera) {
+                const float ppu = (float)std::max(settings.pixelsPerUnit, 1);
+                const float hw = (float)output.width * 0.5f / ppu, hh = (float)output.height * 0.5f / ppu;
+                s->camera->setOrtho(-hw, hw, -hh, hh, 0.1f, 1000.0f);
+                s->camera->setPosition(d.centerX, d.centerY, 100.0f);
+                s->camera->setTarget(d.centerX, d.centerY, 0.0f);
+                s->scene->update(0.0);
+            }
+            d.scratch = std::move(s);
+            d.frame = 0;
+            if (overBudget()) return false;
+        }
+
+        CaptureScratch& s = *d.scratch;
+        Engine::ViewLayer layer;
+        layer.scene = s.scene;
+        layer.camera = s.cameraEntity;
+        layer.viewRect = Rect(0.0f, 0.0f, (float)output.width, (float)output.height);
+        layer.postProcessing = output.opaque;
+        layer.disableFog = !output.opaque;
+        if (output.opaque) {
+            layer.canvasWidth = (float)project->getCanvasWidth();
+            layer.canvasHeight = (float)project->getCanvasHeight();
+        }
+
+        if (pass.cost) {
+            // the target shown, then hidden: a frame's update and draw, 9 times each
+            if (!s.warmed || !s.drawPending) {
+                const double t = pass.times.front();
+                while (s.simTime + 1e-9 < t) {
+                    const double step = std::min(kStep, t - s.simTime);
+                    s.scene->update(step);
+                    s.simTime += step;
+                }
+                s.drawPending = true;
+            }
+            std::vector<uint8_t> rgba;
+            if (!s.warmed) {
+                s.scene->getSystem<RenderSystem>()->update(0);
+                if (drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, {layer}, s.warmed, rgba, d.waiting) == OffscreenDraw::Wait) return false;
+            }
+            const double previousPin = Engine::getPinnedShaderTime();
+            Engine::setPinnedShaderTime(pass.times.front());
+            for (int round = 0; round < 2; round++) {
+                for (int k = 0; k < 9; k++) {
+                    const double t0 = captureNow();
+                    s.scene->update(0.0);
+                    Engine::drawView(CONTACT_SHEET_VIEW_ID, &d.target, {layer});
+                    (round == 0 ? d.shown : d.hidden).push_back((captureNow() - t0) * 1000.0);
+                    d.doneFrames++;
+                }
+                for (Entity root : s.made) s.scene->setEntityActive(root, false);
+            }
+            Engine::setPinnedShaderTime(previousPin);
+            d.scratch.reset();
+            d.pass++;
+            continue;
+        }
+
+        // step to the frame's time on the capture's clock (whole 1/60 s steps, the last one short)
+        if (!s.drawPending) {
+            const double t = pass.times[d.frame];
+            while (s.simTime + 1e-9 < t) {
+                const double step = std::min(kStep, t - s.simTime);
+                s.fixedAccumulator += step;
+                while (s.fixedAccumulator + 1e-9 >= kStep) {
+                    s.scene->fixedUpdate(kStep);
+                    s.fixedAccumulator -= kStep;
+                }
+                s.scene->advanceSceneTime(step);
+                s.scene->update(step);
+                s.simTime += step;
+            }
+            target->seek(s.scene, s.made, t);
+            s.drawPending = true;
+        }
+        // the objects load what the first draw asked for on an update (ParticleEffectPreview's drawScene)
+        s.scene->getSystem<RenderSystem>()->update(0);
+        const double previousPin = Engine::getPinnedShaderTime();
+        Engine::setPinnedShaderTime(pass.times[d.frame]);
+        std::vector<uint8_t> rgba;
+        const double frameTime = pass.times[d.frame];
+        const OffscreenDraw drawn = drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, {layer}, s.warmed, rgba, d.waiting, nullptr,
+                                                  [&](std::string& waitingFor) { return target->drawOver(d.target, frameTime, waitingFor); });
+        Engine::setPinnedShaderTime(previousPin);
+        if (drawn == OffscreenDraw::Wait) {
+            if (++d.waitFrames > 1200) {
+                finish("The target's shaders and textures did not load within 1200 frames (waiting for " + d.waiting + ").");
+                return true;
+            }
+            return false;
+        }
+        PixelImage image = toImage(output.width, output.height, rgba);
+        if (output.opaque) {
+            for (uint8_t* p = image.editPixels().data(), *end = p + image.pixels().size(); p < end; p += 4) p[3] = 255;
+        }
+        pass.out->push_back(std::move(image));
+        s.drawPending = false;
+        d.doneFrames++;
+        if (++d.frame >= pass.times.size()) {
+            d.scratch.reset();
+            d.frame = 0;
+            d.pass++;
+        }
+        if (overBudget()) return false;
+    }
+    return finished;
+}
+
+std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* project, SceneProject* scene, Entity entity, const std::string& clip,
+                                                                       std::string& error, const CaptureEffect& effect) {
+    if (!scene || !scene->scene || !scene->scene->isEntityCreated(entity)) {
+        error = "no such GameObject";
+        return nullptr;
+    }
+    auto target = std::make_unique<CaptureEntityTarget>();
+    target->project = project;
+    target->sceneId = scene->id;
+    target->entity = entity;
+    target->clip = clip;
+    target->effect = effect;
+    if (!clip.empty()) {
+        std::string why;
+        const std::string assetRelative = project->normalizeToAssetsRelative(project->getProjectPath() / std::filesystem::path(clip)).generic_string();
+        std::shared_ptr<const AnimationClip> loaded = AnimationClipPool::getOrLoad(assetRelative, &why);
+        if (!loaded) {
+            error = "the clip " + clip + " does not load" + (why.empty() ? std::string() : ": " + why);
+            return nullptr;
+        }
+        target->clipLength = loaded->getLength();
+        target->clipLoops = loaded->getWrap() == ClipWrapMode::Loop || loaded->getWrap() == ClipWrapMode::PingPong;
+    }
+    return target;
+}
+
+std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeTransitionTarget(jasperengine::pixelart::TransitionKind kind,
+                                                                           const jasperengine::pixelart::TransitionOptions& options,
+                                                                           CaptureTransitionPhase phase, double duration, int artWidth, int artHeight) {
+    auto target = std::make_unique<CaptureTransitionTarget>();
+    target->kind = kind;
+    target->options = options;
+    target->phase = phase;
+    target->duration = std::max(duration, 1.0 / 60.0);
+    target->artWidth = std::clamp(artWidth, 8, 1024);
+    target->artHeight = std::clamp(artHeight, 8, 1024);
+    return target;
+}
+
+bool editor::pixelart::fx::captureFitsLimits(const CaptureTarget& target, int frames, std::string& error) {
+    int width = 0, height = 0;
+    if (!target.fixedFrame(width, height)) return true;
+    const int64_t pixels = (int64_t)width * height * std::max(frames, 1);
+    if (width <= kCaptureMaxSide && height <= kCaptureMaxSide && pixels <= kCaptureMaxPixels) return true;
+    error = "a " + std::to_string(width) + " x " + std::to_string(height) + " frame x " + std::to_string(std::max(frames, 1)) + " frames is " +
+            std::to_string(pixels) + " px of frames; a capture takes at most " + std::to_string(kCaptureMaxSide) + " px a side and " +
+            std::to_string(kCaptureMaxPixels) + " px over all its frames";
+    return false;
+}
+
+std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeParticlesTarget(Project* project, const std::string& effect, std::string& error) {
+    (void)project;
+    const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(effect);
+    if (!asset.document) {
+        error = "the effect " + effect + " does not read";
+        for (const particles::Diagnostic& d : asset.diagnostics) {
+            error += ": " + d.message;
+            break;
+        }
+        return nullptr;
+    }
+    auto target = std::make_unique<CaptureParticlesTarget>();
+    target->effect = effect;
+    target->looping = asset.document->looping;
+    target->duration = std::max(0.05, (double)asset.document->duration);
+    return target;
+}
+
+PixelImage editor::pixelart::fx::composeCapture(const CaptureOutput& output, SheetSettings settings, SheetLayout* layout) {
+    settings.opaqueFrames = output.opaque;
+    settings.groundY = output.groundY;
+    settings.sceneColor = output.sceneColor;
+    std::vector<const PixelImage*> frames;
+    for (const PixelImage& f : output.frames) frames.push_back(&f);
+    return composeSheet(frames, output.times, settings, layout);
+}
+
+lint::LintReport editor::pixelart::fx::lintCapture(const CaptureOutput& output, const CaptureSettings& settings) {
+    if (!settings.lints) return lint::LintReport();
+    return lint::runEffectLints(output.lintInput, settings.lintIds);
+}

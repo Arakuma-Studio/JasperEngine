@@ -107,7 +107,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1097);
     scene->recreateEntity(1098);
     scene->recreateEntity(1099);
-    scene->setLastEntity(1099);
+    scene->recreateEntity(1100);
+    scene->setLastEntity(1100);
 
     {
         // Entity 1001 (Transform)
@@ -3321,6 +3322,29 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         terrainWorld.autoAddTiles = false;
         terrainWorld.overviewCastsShadows = true;
         scene->addComponent<TerrainWorldComponent>(1099, terrainWorld);
+    }
+
+    {
+        // Entity 1100 (HitStopExemptComponent)
+        scene->setEntityName(1100, "HitStopExemptComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(99.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1100, transform);
+
+        HitStopExemptComponent hitStopExempt;
+        hitStopExempt.includeChildren = false;
+        hitStopExempt.enabled = false;
+        scene->addComponent<HitStopExemptComponent>(1100, hitStopExempt);
     }
 
     // Default Camera 1

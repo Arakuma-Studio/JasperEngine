@@ -249,7 +249,26 @@ float anim::trackTime(const AnimationClip::Track& track, float clipTime){
     return clipTime;
 }
 
-bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackSample& out, KeyCursor* cursor){
+// Ported from pixelfx src/core/act.js (`poseAt`): MIT License, Copyright (c) 2026 Patch; the poses
+// held on 12 fps steps are how Hollow Crown plays its skills, MIT License, Copyright (c) 2026 rehan-remade.
+float anim::holdPoseTime(const float* times, size_t keyCount, float time, float stepFps){
+    if (!(stepFps > 0.0f) || !times || keyCount == 0 || std::isnan(time) || time < times[0]) return time;
+    // the last key at or before the time
+    const size_t next = (size_t)(std::upper_bound(times, times + keyCount, time) - times);
+    // a key shows its pose at its time, also from the clip time resolution before it (an
+    // accumulated play time lands a few ulps short of a key: locateKey's STEP slack)
+    if (next < keyCount && times[next] - time <= 1e-6f + std::fabs(times[next]) * FLT_EPSILON * 4.0f) return times[next];
+    const float key = times[next > 0 ? next - 1 : 0];
+    const float held = key + std::floor((time - key) * stepFps + 1e-6f) / stepFps;
+    return std::min(held, time);
+}
+
+float anim::holdStepTime(float elapsed, float stepFps){
+    if (!(stepFps > 0.0f) || !std::isfinite(elapsed) || elapsed <= 0.0f) return elapsed;
+    return std::min(elapsed, std::floor(elapsed * stepFps + 1e-6f) / stepFps);
+}
+
+bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackSample& out, KeyCursor* cursor, float stepFps){
     out.channel = track.channel;
     out.valid = false;
     if (!track.isSampled() || !track.times){
@@ -259,6 +278,8 @@ bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackS
     }
 
     float time = trackTime(track, clipTime);
+    // S48 Pose Frame Rate: held on whole steps from this track's previous key
+    if (stepFps > 0.0f) time = holdPoseTime(track.times, track.keyCount, time, stepFps);
     size_t last = track.keyCount - 1;
 
     // At or before the first key and at or after the last one the sample is exactly that key:

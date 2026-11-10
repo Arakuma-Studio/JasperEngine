@@ -104,6 +104,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 60, 0, 0, 1]
+  HitStopExemptComponent:
+    position: [99, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 99, 0, 0, 1]
   ImageComponent:
     position: [24, 0, 0]
     rotation: [1, 0, 0, 0]

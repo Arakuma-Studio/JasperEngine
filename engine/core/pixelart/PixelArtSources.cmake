@@ -10,6 +10,12 @@ set(JASPERENGINE_PIXELART_SRCS
     core/pixelart/PaletteRampTexture.cpp
     core/pixelart/PaletteSwap.cpp
     core/pixelart/PixelColor.cpp
+    # S48 Pixel FX
+    core/pixelart/PixelFxKey.cpp
+    core/pixelart/HitStop.cpp
+    core/pixelart/PixelFxPlayer.cpp
+    core/pixelart/Glitch.cpp
+    core/pixelart/ScreenTransition.cpp
 )
 
 if(MSVC)

@@ -6,9 +6,12 @@
 
 #include "MaterialPresets.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "pixelart/PaletteUse.h"
 #include "shader/ShaderManifest.h"
 
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -106,6 +109,24 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
                 case PbrFieldType::TexCoord: field(path.c_str(), *(int*)pbrField.ref(before), *(int*)pbrField.ref(after)); break;
             }
         }
+    }
+    return true;
+}
+
+bool editor::resolvePresetPalettes(Project& project, Material& material, bool& wroteCopy, std::string& error) {
+    wroteCopy = false;
+    std::vector<std::pair<std::string, std::string>> slots;
+    for (const auto& entry : material.shaderTextures) {
+        const std::string path = entry.second.getPath();
+        if (path.rfind("builtin:", 0) == 0 && path.find("#ramp:") != std::string::npos) slots.push_back({entry.first, path});
+    }
+    for (const auto& [uniform, path] : slots) {
+        const size_t ramp = path.find("#ramp:");
+        pixelart::ResolvedPalette resolved;
+        bool wrote = false;
+        if (!pixelart::usePalette(project, path.substr(0, ramp), resolved, wrote, error)) return false;
+        wroteCopy = wroteCopy || wrote;
+        ShaderLibraryValues::setTexture(material.shaderTextures, uniform, resolved.assetPath + path.substr(ramp));
     }
     return true;
 }

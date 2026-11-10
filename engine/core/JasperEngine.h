@@ -149,6 +149,7 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -189,6 +190,7 @@
 #include "object/PixelPerfectCamera.h"
 #include "object/SortingGroup.h"
 #include "object/SpriteBatch.h"
+#include "object/HitStopExempt.h"
 #include "object/CameraShaker.h"
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"
@@ -333,6 +335,7 @@
 #include "camera/ShakeInstance.h"
 #include "camera/ShakerRuntime.h"
 #include "camera/CameraShake.h"
+#include "pixelart/HitStop.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"

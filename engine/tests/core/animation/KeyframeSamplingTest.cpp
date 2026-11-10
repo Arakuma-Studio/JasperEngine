@@ -789,3 +789,54 @@ TEST(KeyframeSampling, SteppedKeysShowTheirOwnValueAtTheirTime){
     EXPECT_EQ(anim::locateKey(clipTimes, 2, step, 1, 1.0f / 3.0f).interpolation, 1.0f);
     EXPECT_EQ(anim::locateKey(entityTimes, 2, step, 1, 0.3333f).interpolation, 0.0f) << "earlier: the start key";
 }
+
+// S48 R23 (Pose Frame Rate): t_q = k_i + floor((t - k_i) * fps + 1e-6) / fps from each track's
+// previous key, so every key's pose shows at its time and the pose changes only on steps
+TEST(KeyframeSampling, StepFps){
+    const float times[] = {0.0f, 0.3f, 0.7f, 1.0f};
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.2f, 0.0f), 0.2f) << "0 fps: smooth";
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.0f, 12.0f), 0.0f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.08f, 12.0f), 0.0f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.09f, 12.0f), 1.0f / 12.0f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.29f, 12.0f), 3.0f / 12.0f);
+    // steps count from the previous key (0.3), not from 0
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.3f, 12.0f), 0.3f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.38f, 12.0f), 0.3f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.39f, 12.0f), 0.3f + 1.0f / 12.0f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, 0.7f, 12.0f), 0.7f);
+    // a play time a few ulps short of a key shows the key
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, std::nextafter(0.7f, 0.0f), 12.0f), 0.7f);
+    EXPECT_FLOAT_EQ(anim::holdPoseTime(times, 4, -1.0f, 12.0f), -1.0f) << "before the first key: as given";
+    EXPECT_FLOAT_EQ(anim::holdStepTime(0.2f, 10.0f), 0.2f);
+    EXPECT_FLOAT_EQ(anim::holdStepTime(0.25f, 10.0f), 0.2f);
+    EXPECT_FLOAT_EQ(anim::holdStepTime(0.25f, 0.0f), 0.25f);
+
+    // through sampleTrack: x keys 0 -> 3 (0.3 s) -> 1 (0.7 s) -> 1 (1 s)
+    ClipTrackData position = track(ClipChannel::Position, {key(0, {0, 0, 0}), key(0.3f, {3, 0, 0}), key(0.7f, {1, 0, 0}), key(1.0f, {1, 0, 0})});
+    ClipData clip;
+    clip.tracks = {position};
+    std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
+    const AnimationClip::Track& t = built->getTracks()[0];
+    anim::TrackSample sample;
+    ASSERT_TRUE(anim::sampleTrack(t, 0.3f, sample, nullptr, 12.0f));
+    EXPECT_FLOAT_EQ(sample.vector.x, 3.0f) << "the key's pose at its time";
+    ASSERT_TRUE(anim::sampleTrack(t, 0.7f, sample, nullptr, 12.0f));
+    EXPECT_FLOAT_EQ(sample.vector.x, 1.0f);
+    ASSERT_TRUE(anim::sampleTrack(t, 0.15f, sample, nullptr, 12.0f));
+    EXPECT_NEAR(sample.vector.x, 3.0f * (1.0f / 12.0f) / 0.3f, 1e-5f) << "held at the step 1/12 s";
+    // over 1 s at 60 fps the pose changes at most 12 + 3 times (a step from each key); smooth: every frame
+    int heldChanges = 0, smoothChanges = 0;
+    float heldPrevious = 0.0f, smoothPrevious = 0.0f;
+    for (int frame = 1; frame <= 60; frame++){
+        const float time = frame / 60.0f;
+        ASSERT_TRUE(anim::sampleTrack(t, time, sample, nullptr, 12.0f));
+        if (sample.vector.x != heldPrevious) heldChanges++;
+        heldPrevious = sample.vector.x;
+        ASSERT_TRUE(anim::sampleTrack(t, time, sample));
+        if (sample.vector.x != smoothPrevious) smoothChanges++;
+        smoothPrevious = sample.vector.x;
+    }
+    EXPECT_LE(heldChanges, 15);
+    EXPECT_GE(heldChanges, 8);
+    EXPECT_GE(smoothChanges, 40) << "the red control: without a Pose Frame Rate the pose moves every frame";
+}

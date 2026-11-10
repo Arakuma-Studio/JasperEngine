@@ -9,6 +9,7 @@
 #include "component/Transform.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseFile.h"
+#include "pixelart/HitStop.h"
 
 #include <cmath>
 #include <utility>
@@ -329,15 +330,19 @@ void PoseAnimatorSystem::update(double dt){
             continue;
         }
 
+        // a hit-stop freezes it, unless its GameObject is Hit Stop Exempt (S48)
+        const float step = (float)pixelart::HitStop::deltaFor(scene, entity, dt);
+        runtime.poseFrameRate = animator.poseFrameRate;
         pose::HumanPose shown = runtime.hasDisplayed ? runtime.displayed : runtime.frames()[0];
         if (runtime.transitionActive){
-            runtime.sampleTransition(runtime.transitionPaused ? 0.0f : (float)dt * std::abs(speed), shown);
+            runtime.sampleTransition(runtime.transitionPaused ? 0.0f : step * std::abs(speed), shown);
         }else{
-            if (pose::advancePlayback(animator.time, animator.playing, (float)dt, speed,
+            if (pose::advancePlayback(animator.time, animator.playing, step, speed,
                                       runtime.length, runtime.data.settings.loop)){
                 finished.push_back(entity);
             }
-            runtime.samplePlayback(animator.time, shown);
+            // S48 Pose Frame Rate: each pose held on whole steps counted from its key
+            runtime.samplePlayback(animator.time, shown, animator.poseFrameRate);
         }
         runtime.displayed = shown;
         runtime.hasDisplayed = true;

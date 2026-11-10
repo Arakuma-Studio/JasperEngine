@@ -239,12 +239,14 @@ namespace jasperengine::editor{
         // T6: a bounded box of smooth voxel terrain
         VoxelVolumeComponent,
         // T4: a Terrain's tiles past one map, streamed round its focuses
-        TerrainWorldComponent
+        TerrainWorldComponent,
+        // pixel art (S48): keeps a GameObject running through a hit-stop
+        HitStopExemptComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TerrainWorldComponent;
+    constexpr ComponentType LastComponentType = ComponentType::HitStopExemptComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

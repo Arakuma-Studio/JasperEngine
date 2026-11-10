@@ -58,6 +58,7 @@ namespace jasperengine{
     struct PanelComponent;
     struct ParticleSystemComponent;
     struct PixelPerfectCameraComponent;
+    struct HitStopExemptComponent;   // S48
     struct PointsComponent;
     struct PolygonComponent;
     struct PoseAnimatorComponent;

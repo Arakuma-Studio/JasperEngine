@@ -26,6 +26,8 @@
 #include "component/TerrainWorldComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "audio/SoundDrop.h"
 #include "window/SoundBrowserWindow.h"
@@ -900,10 +902,13 @@ void editor::InspectorWindow::stopTransientPreviews() {
     FluidEditorTools::stopAll(project);
     // the Vertex Animator preview (InspectorWindowVat.cpp)
     stopVertexAnimatorPreview();
+    // a sprite material's Pixel FX Preview (InspectorSpriteFx.cpp)
+    stopSpriteFxPreview();
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     FluidEditorTools::forgetScene(sceneId);
+    forgetSpriteFxScene(sceneId);
     // a Vertex Animator previewing in the closed scene: nothing to put back (its scene is gone)
     clearVertexAnimatorPreviewScene(sceneId);
 
@@ -12140,6 +12145,7 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::Bool, cpType, "autoplay", "Autoplay", sceneProject, entities, autoplaySettings);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::Float_0_1, cpType, "weight", "Weight", sceneProject, entities, weightSettings);
+    drawPoseFrameRateRow(cpType, sceneProject, entities, animator.poseFrameRate);
 
     // Bake (pose baker) and Open (Pose Animation window): shown once the editor tasks hook them in
     const PoseInspectorHooks& hooks = poseInspectorHooks();
@@ -13525,6 +13531,7 @@ void editor::InspectorWindow::show(){
         stopVertexAnimatorPreview();
         // a .shake's Test preview belongs to the inspected asset
         syncCameraShakePreview(project->getSelectedScene(), {});
+        syncSpriteFxPreview(project->getSelectedScene(), {});
         ImGui::End();
         return;
     }
@@ -13574,6 +13581,8 @@ void editor::InspectorWindow::show(){
     syncVertexAnimatorPreview(sceneProject, entities);
     // and the Camera Shaker's Test preview
     syncCameraShakePreview(sceneProject, entities);
+    // and a sprite material's Pixel FX Preview (S48 R37)
+    syncSpriteFxPreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }

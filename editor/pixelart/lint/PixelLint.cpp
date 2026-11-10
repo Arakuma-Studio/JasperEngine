@@ -54,37 +54,6 @@ namespace jasperengine::editor::pixelart::lint {
         return list;
     }
 
-    namespace {
-
-        // The frames with every clear pixel {0, 0, 0, 0}; `storage` holds only the copies that needed it
-        FrameView catalogueWithClearPixelsZeroed(std::span<const PixelImage> frames, std::vector<PixelImage>& storage) {
-            auto hidesColour = [](const PixelImage& frame) {
-                const std::span<const uint8_t> p = frame.pixels();
-                for (size_t i = 0; i + 3 < p.size(); i += 4) {
-                    if (p[i + 3] == 0 && (p[i] | p[i + 1] | p[i + 2]) != 0) return true;
-                }
-                return false;
-            };
-            storage.reserve(frames.size());   // the view points into it
-            FrameView view;
-            view.reserve(frames.size());
-            for (const PixelImage& frame : frames) {
-                if (!hidesColour(frame)) {
-                    view.push_back(&frame);
-                    continue;
-                }
-                PixelImage& copy = storage.emplace_back(frame);
-                const std::span<uint8_t> p = copy.editPixels();
-                for (size_t i = 0; i + 3 < p.size(); i += 4) {
-                    if (p[i + 3] == 0) p[i] = p[i + 1] = p[i + 2] = 0;
-                }
-                view.push_back(&copy);
-            }
-            return view;
-        }
-
-    }
-
     LintReport lint(const LintInput& input, const LintOptions& options) {
         LintReport report;
         auto wanted = [&](const char* id) {
@@ -144,10 +113,7 @@ namespace jasperengine::editor::pixelart::lint {
         if (wanted("holes")) report.add(lintHoles(frames, catalogueThreshold(options, "holes", CRAFT_SPOTS)));
         if (wanted("flicker")) {
             const LintThreshold t = catalogueThreshold(options, "flicker", 0.06);
-            // S48's lintFlicker compares whole pixels, so the RGB a clear pixel happens to keep would
-            // read as a change, or hide one (R26: a clear pixel has no colour)
-            std::vector<PixelImage> cleared;
-            LintResult r = lintFlicker(catalogueWithClearPixelsZeroed(input.frames, cleared), input.loop, t.value);
+            LintResult r = lintFlicker(frames, input.loop, t.value);
             if (r.status != LintStatus::Skip) r.thresholdSource = t.source;
             if (r.status == LintStatus::Warn && !r.at.empty()) {
                 r.fix = "edit_sprite: hold the pixel at " + std::to_string(r.at.front().x) + "," + std::to_string(r.at.front().y) + " of frame " +

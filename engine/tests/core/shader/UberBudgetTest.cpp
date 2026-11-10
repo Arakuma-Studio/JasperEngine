@@ -157,6 +157,11 @@ TEST(UberBudget, SampleCounts){
     const VariantBudget palette = compileUber(UBER_PALETTE, ShaderBackend::Vulkan, error);
     ASSERT_GE(palette.samples, 0) << error;
     EXPECT_LE(palette.samples - base.samples, 2);
+    // Glitch (S48) reads the RGB split's two taps beside the scene tap and adds 3 vec4 of
+    // parameters (the corruption is picked on the CPU)
+    const VariantBudget glitch = compileUber(UBER_GLITCH, ShaderBackend::Vulkan, error);
+    ASSERT_GE(glitch.samples, 0) << error;
+    EXPECT_LE(glitch.samples - base.samples, 2);
     EXPECT_LE(all.paramBytes, 24u * 16u);
 }
 

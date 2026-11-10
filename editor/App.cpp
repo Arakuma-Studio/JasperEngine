@@ -8,6 +8,7 @@
 #include "terrainworld/TerrainWorldEditor.h"
 #include "terrainworld/TerrainWorldPanel.h"
 #endif
+#include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -167,6 +168,7 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "particles/ParticleEffectPreview.h"
+#include "pixelart/fx/EffectCapture.h"
 #include "procmat/ProceduralRun.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
@@ -2599,6 +2601,7 @@ void editor::App::setup() {
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
     ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    pixelart::fx::EffectCapture::setFrameRequester([this]() { requestRedraw(); });
     procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
     ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
 
@@ -4151,6 +4154,15 @@ void editor::App::engineRender(){
     // Pixel Art Mode's checks on import and at Play (S42 R1, R25): nothing while the mode is off
     pixelart::PixelArtMode::get().tick(&project);
     project.updateGeneratedSources();
+    // screen transitions (S48): the Engine draws them over the game's frame while a game runs; in
+    // edit mode the Game view's preview draws them itself (never the Scene view) on the editor's clock
+    {
+        const bool playing = project.isAnyScenePlaying();
+        jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(playing);
+        jasperengine::pixelart::ScreenTransition::setViewDrawId(playing ? 0 : GAME_VIEW_ID);
+        if (!playing)
+            jasperengine::pixelart::ScreenTransition::update(ImGui::GetIO().DeltaTime);
+    }
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
         animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
@@ -4454,6 +4466,9 @@ void editor::App::engineRender(){
     // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
     // private scenes step and draw here, whether a view shows or not
     ParticleEffectPreview::processFrame();
+    // contact sheet captures (capture_contact_sheet, the Contact Sheet dialog): their scratch scenes
+    // step and draw here too
+    pixelart::fx::EffectCapture::processFrame();
     // Procedural Material evaluations and their lit balls (preview_procedural_material, bake_procedural_material):
     // the evaluator draws its own passes here, outside any render pass
     procmat::ProceduralRun::processFrame();
@@ -4750,6 +4765,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
+    // (the Game view's transition preview draws inside it: ScreenTransition::setViewDrawId)
     Engine::drawView(GAME_VIEW_ID, target, layers);
 
     gameWindow->markEditPassRendered(sceneProject.id);
@@ -4815,7 +4831,10 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     renderSystem->setDisableClouds(false);
     renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
+    // the Game view's transition preview: this frame is the game's, the Engine draws it over the scenes
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(true);
     Engine::systemDraw();
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(false);
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
@@ -5337,6 +5356,7 @@ void editor::App::shutdownBackgroundWork() {
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
     ParticleEffectPreview::setFrameRequester(nullptr);
+    pixelart::fx::EffectCapture::setFrameRequester(nullptr);
     procmat::ProceduralRun::setFrameRequester(nullptr);
     ProceduralMaterialWindow::setFrameRequester(nullptr);
 }
@@ -5352,6 +5372,7 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
+    pixelart::fx::EffectCapture::releaseGpu();
     procmat::ProceduralRun::releaseGpu();
     ProceduralMaterialWindow::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
@@ -6005,7 +6026,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      packed to three vectors and a component a layer (includes/terrain_fs.glsl) and T4's Terrain
     //      Worlds (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl; 'Twd': MESH 53, DEPTH 25, GBUFFER
     //      27). The programme's own v58-v62 caches held other sources and numbers, so v63 is new to both sides.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v63";
+    // v64: S48's Pixel FX (after the terrain programme's v63): library:sprite's DITHER_FADE, DISSOLVE, RAMP_RECOLOR,
+    //      DROP_SHADOW and OUTLINE_STYLE (includes/pixel_fx.glsl, u_fxRampTexture), the uber pass's Glitch
+    //      (BLIT 'Gli' 20) and the screen transition program.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v64";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -120,6 +120,14 @@ float PoseAnimator::getSpeed() const{
     return getComponent<PoseAnimatorComponent>().speed;
 }
 
+void PoseAnimator::setPoseFrameRate(float fps){
+    getComponent<PoseAnimatorComponent>().poseFrameRate = std::isfinite(fps) ? std::max(0.0f, fps) : 0.0f;
+}
+
+float PoseAnimator::getPoseFrameRate() const{
+    return getComponent<PoseAnimatorComponent>().poseFrameRate;
+}
+
 void PoseAnimator::setWeight(float weight){
     if (std::isnan(weight)) return;
     getComponent<PoseAnimatorComponent>().weight = std::clamp(weight, 0.0f, 1.0f);

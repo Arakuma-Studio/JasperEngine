@@ -46,9 +46,9 @@ self.gameObject:getCameraShaker():shake("assets/shakes/boom.shake", {seed = 7, u
   - a built-in name (the table below);
   - a `.shake` path relative to the assets folder, the same path you give MCP. In the default
     layout (assets folder = project folder) that is `"assets/shakes/boom.shake"`;
-  - a table `{type = "one_shot"|"sustained", strength, roughness, fadeIn, fadeOut,
-    positionInfluence = Vector3, rotationInfluence = Vector3}`. Missing keys take the `.shake`
-    defaults.
+  - a table `{type = "one_shot"|"sustained"|"kick", strength, roughness, fadeIn, fadeOut,
+    positionInfluence = Vector3, rotationInfluence = Vector3, units = "view"|"pixels", tick}`.
+    Missing keys take the `.shake` defaults.
 
   An unknown name, or a `.shake` that does not exist or does not parse, logs one warning per name
   and shakes nothing. A wrong argument type is a Lua error.
@@ -56,8 +56,15 @@ self.gameObject:getCameraShaker():shake("assets/shakes/boom.shake", {seed = 7, u
   `roughness` scale the preset's values. The same `seed` gives the same motion. `unscaled`
   overrides the shaker's `unscaledTime` for this shake. `fadeIn` and `fadeOut` override the
   preset's.
-- **One-shot or sustained.** A one-shot shake fades in, then fades out right away. A sustained
-  shake holds until `stop([fade])`.
+- **One-shot, sustained or kick.** A one-shot shake fades in, then fades out right away. A
+  sustained shake holds until `stop([fade])`. A kick (pixel art, pixelfx's hit shake) is a
+  decaying whole-pixel jolt over `fadeOut` seconds: `k = strength · remaining / fadeOut`,
+  `f = floor(remaining · tick)` (tick 0: 60), offset `(round(sin(2.4 f) k), round(cos(3.7 f) k 0.7))`,
+  no noise and no roll. `CameraShake.kick(amplitudePx, seconds)` plays one on every global shaker.
+- **Pixel art** (docs/pixel-fx.md). A shaker's `pixelSnap` rounds the applied offset to whole art
+  pixels (the Pixel Perfect Camera's grid, else the camera's screen pixels) and drops the roll;
+  `tickRate` (Hz, 0 = every frame) changes it only on ticks of its clock. Both act on 2D shakers.
+  A preset's `units: "pixels"` measures its strength in art pixels.
 - **ShakeInstance members.**
   - `pause([fade])` and `resume([fade])` slow the noise to a stop and back. A paused sustained
     shake holds its offset. A one-shot shake keeps fading while paused, as in MilkShake.
@@ -115,6 +122,7 @@ explosion, an earthquake, driving off-road.
 
 `CameraShake.getPresetNames()` lists them. The first thirteen are the ported game's MilkShake
 assets. `handheld`, `vibration` and `bump` come from EZ Camera Shake (strength = magnitude / 2).
+The last three are in art pixels (`units: pixels`); `pixel_rumble` ticks at 30 Hz.
 
 | name | type | strength | roughness | fade_in | fade_out | position | rotation |
 |---|---|---|---|---|---|---|---|
@@ -134,6 +142,9 @@ assets. `handheld`, `vibration` and `bump` come from EZ Camera Shake (strength =
 | `handheld` | sustained | 0.5 | 0.25 | 1 | 1 | 0, 0, 0 | 1, 0.5, 0.5 |
 | `vibration` | sustained | 0.2 | 20 | 0.5 | 0.5 | 0, 0.15, 0 | 1.25, 0, 4 |
 | `bump` | one_shot | 1.25 | 4 | 0.1 | 0.75 | 0.15, 0.15, 0.15 | 1, 1, 1 |
+| `pixel_hit` | kick | 2 px | 1 | 0 | 0.15 | 1, 1, 0 | 0, 0, 0 |
+| `pixel_heavy` | kick | 4 px | 1 | 0 | 0.35 | 1, 1, 0 | 0, 0, 0 |
+| `pixel_rumble` | sustained | 1 px | 8 | 0 | 0.2 | 1, 1, 0 | 0, 0, 0 |
 
 ## The `.shake` file
 
@@ -152,7 +163,8 @@ assets. `handheld`, `vibration` and `bump` come from EZ Camera Shake (strength =
 ```
 
 - **Defaults.** `type` one_shot, `strength` 1, `roughness` 1, fades 0 (instant), influences
-  `[1, 1, 1]`.
+  `[1, 1, 1]`, `units` view, `tick` 0. `units` and `tick` are written only when set, so an older
+  file re-saves unchanged; `get_asset_info` returns them (and, in pixels, `peak.pixels`).
 - **Leniency.** A missing or wrong `format` or `version`, or text that is not JSON, is an error.
   Everything else is repaired with a warning: a negative value becomes 0, a bad type becomes
   one_shot, a bad vector takes its default.
