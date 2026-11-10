@@ -207,7 +207,7 @@ deadline of 2026-11-11 19:0x UTC:
 
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
-| A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
+| A | 5.161.240.186 | 205d9b263da5 | destroyed 2026-11-10 after S46 landed (logs in `/tmp/je-logs/boxA-archive/`) |
 | B | 5.161.235.8 | 32dda2ca7cd1 | destroyed 2026-11-10 (idle after S47 and S48 runtime fixes; logs in `/tmp/je-logs/boxB-archive/`) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
