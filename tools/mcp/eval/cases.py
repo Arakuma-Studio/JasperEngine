@@ -1032,6 +1032,11 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "My last edit changed frame 1 of assets/hero.aseprite. Apply exactly the same change to frame 2.",
         "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite$"}, "result": ok(
+                "assets/hero.aseprite (Aseprite, indexed 16x16): 4 frames, 1 layer, no tags.",
+                {"path": "assets/hero.aseprite", "type": "aseprite_sprite", "frames": 4})},
+            {"tool": "read_sprite_pixels", "args": {"frame": "re:^1$"}, "result": ok("hero.aseprite frame 1, layer 1, rect [2, 2, 5, 2]:\n2----\n----3",
+                {"frames": [{"frame": 1, "rect": [2, 2, 5, 2], "rows": ["2----", "----3"]}]})},
             {"tool": "read_sprite_pixels", "after": "edit_sprite", "result": ok("hero.aseprite frame 2, layer 1, rect [2, 2, 5, 2]:\n2----\n----3",
                 {"frames": [{"frame": 2, "rect": [2, 2, 5, 2], "rows": ["2----", "----3"]}]})},
             {"tool": "get_sprite", "result": ok("hero.aseprite: 16x16 indexed, 4 frames, 1 layer, no tags. Revision d0d0d0d0d0d0.",
@@ -1053,7 +1058,7 @@ CASES = [
                              [{"calls": [{"tool": "edit_sprite", "args": {"ops": ops}}]} for f in (2, "2") for ops in (
                                  [{"op": "pixel", "x": 2, "y": 2, "color": 2, "frame": f}, {"op": "pixel", "x": 6, "y": 3, "color": 3, "frame": f}],
                                  [{"op": "pixel", "points": [[2, 2]], "color": 2, "frame": f}, {"op": "pixel", "points": [[6, 3]], "color": 3, "frame": f}])]},
-        "max_turns": 12,
+        "max_turns": 16,
     },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
@@ -4782,6 +4787,10 @@ CASES = [
         "prompt": "In the open scene, the Tilemap Layer 12 uses assets/Tilesets/overworld.tileset, which has a terrain named "
                   "Water with its edge tiles set up. Paint a lake of Water from cell (2, 2) to (8, 6), with proper shores.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nGrid/Tilemap Layer [12] tilemaplayer transform", {"entities": [{"id": 12, "path": "Grid/Tilemap Layer"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(12|.*tilemap layer.*)$"}, "result": ok(
+                "Tilemap Layer [12] components: tilemaplayer transform; tilemaplayer: tileset assets/Tilesets/overworld.tileset, 0 cells", {"id": 12, "name": "Tilemap Layer"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nGrid [11] grid\n  Tilemap Layer [12] tilemaplayer\n", {"scene_id": 1})},
             {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
             {"tool": "edit_tilemap", "result": ok("Layer \"Tilemap\": 35 cells, 35 changed (one undo step).", {"changed_cells": 35, "warnings": []})},
         ],
@@ -4798,6 +4807,10 @@ CASES = [
         "prompt": "Show me what filling Tilemap Layer 12 from (0, 0) to (3, 3) with the tile grass would look like, without "
                   "changing the scene.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nGrid/Tilemap Layer [12] tilemaplayer transform", {"entities": [{"id": 12, "path": "Grid/Tilemap Layer"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(12|.*tilemap layer.*)$"}, "result": ok(
+                "Tilemap Layer [12] components: tilemaplayer transform; tilemaplayer: tileset assets/Tilesets/overworld.tileset, 0 cells", {"id": 12, "name": "Tilemap Layer"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nGrid [11] grid\n  Tilemap Layer [12] tilemaplayer\n", {"scene_id": 1})},
             {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
             {"tool": "edit_tilemap", "result": ok("Preview only (nothing written). Layer \"Tilemap\": 16 cells, 16 changed.", {"preview": True, "changed_cells": 16})},
         ],
@@ -4847,6 +4860,14 @@ CASES = [
         "prompt": "Make a tileset from assets/art/bricks.png with 16x16 tiles. The Wall material uses the same image: tell me "
                   "whether anything about it changes.",
         "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:(bricks\\.tileset|Wall\\.material)$"}, "after": "edit_tileset", "result": ok(
+                "assets/art/bricks.tileset: tileset, 8 tiles of 16x16 from assets/art/bricks.png (imported as a pixel-art Sprite: no mips, point, uncompressed).",
+                {"type": "tileset"})},
+            {"tool": "get_asset_info", "args": {"path": "re:bricks\\.png$"}, "result": ok(
+                "assets/art/bricks.png: texture 128x16 RGBA, imported as Default (mips, bilinear, compressed); used by assets/materials/Wall.material (baseColorTexture).",
+                {"path": "assets/art/bricks.png", "type": "texture"})},
+            {"tool": "list_assets", "result": ok("2 assets: assets/art/bricks.png (texture), assets/materials/Wall.material (material).",
+                {"assets": [{"path": "assets/art/bricks.png"}, {"path": "assets/materials/Wall.material"}]})},
             {"tool": "edit_tileset",
              "result": ok("Wrote assets/art/bricks.tileset: 8 tiles (PASS, one undo step).",
                           {"path": "assets/art/bricks.tileset", "created": True, "tiles": 8, "sources": 1,
@@ -4856,7 +4877,7 @@ CASES = [
                                    "assets/materials/Wall.material, which now reads it as a Sprite too."})},
         ],
         "checks": {"calls": ["edit_tileset"], "reply_must": [r"sprite|mip|point|filter|compress"]},
-        "max_turns": 8,
+        "max_turns": 12,
     },
     {
         "id": "guard_import_tilemap_preview_first",
@@ -4879,7 +4900,7 @@ CASES = [
         ],
         "checks": {"must_not_call": [{"tool": "import_tilemap", "args": {"output": True}}],
                    "calls": [{"tool": "import_tilemap"}]},
-        "max_turns": 6,
+        "max_turns": 10,
     },
     {
         "id": "control_tilemap_trigger_word_is_not_edit",
