@@ -86,7 +86,7 @@ namespace {
         {"Color Picker", "window.colorPicker"},
         {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Voxel Volume", "window.voxelVolume"}, {"Voxel Slice", "window.voxelSlice"},
         {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
-        {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Physics Placement", "window.physicsPlacement"},
+        {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"}, {"Physics Placement", "window.physicsPlacement"},
         {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},

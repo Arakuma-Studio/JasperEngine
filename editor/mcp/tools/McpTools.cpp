@@ -81,6 +81,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
     {registerPixelArtTools, "Pixel art: the validator", "pixel_art"},   // S42
     {registerPixelFxTools, "Pixel art: effect contact sheets and checks", "pixel_art"},   // S48
+    {registerPixelArtCleanupTools, "Pixel art: cleanup and lints", "pixel_art"},   // S46
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29

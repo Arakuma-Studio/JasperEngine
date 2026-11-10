@@ -13,8 +13,11 @@
 #include "imgui_internal.h"
 #include "texture/TextureCookReport.h"
 #include "texture/TextureDecode.h"
+#include "EditorHost.h"
 #include "pixelart/PixelArtAssign.h"
 #include "pixelart/PixelArtFix.h"
+#include "pixelart/cleanup/CleanupImportCook.h"
+#include "pixelart/cleanup/CleanupRecipe.h"
 #include "Out.h"
 
 #include "stb_image_resize2.h"
@@ -834,6 +837,8 @@ bool TextureImporterView::draw(const std::vector<fs::path>& selection){
     if (assetPaths.size() == 1) {
         ImGui::Separator();
         drawSpriteMode(assetPaths[0]);
+        ImGui::Separator();
+        drawPixelArtCleanup(assetPaths[0]);
     }
 
     ImGui::Separator();
@@ -845,6 +850,86 @@ bool TextureImporterView::draw(const std::vector<fs::path>& selection){
         apply();
     ImGui::EndDisabled();
     return true;
+}
+
+void TextureImporterView::reloadCleanupSection(const std::string& assetPath){
+    const fs::path absolute = project->getAssetsPath() / fs::path(assetPath);
+    std::error_code ec;
+    const fs::file_time_type time = fs::last_write_time(SetAssetMetaCmd::metaPathOf(absolute), ec);
+    const std::string key = assetPath + "|" + (ec ? std::string() : std::to_string(time.time_since_epoch().count()));
+    if (key == cleanupSectionKey)
+        return;
+    cleanupSectionKey = key;
+    cleanupSection = SetAssetMetaCmd::read(absolute, "import.pixelCleanup");
+    cleanupSummary.clear();
+    const std::string text = pixelart::cleanup::importSectionRecipeText(cleanupSection);
+    if (text.empty())
+        return;
+    pixelart::cleanup::Recipe recipe;
+    std::vector<pixelart::PixelProblem> problems;
+    if (!pixelart::cleanup::decodeRecipeText(text, recipe, problems)){
+        cleanupSummary = problems.empty() ? std::string("The recipe could not be read.") : problems.front().message;
+        return;
+    }
+    cleanupSummary = std::string("Grid ") + pixelart::cleanup::gridKindName(recipe.grid.kind);
+    if (recipe.palette && !recipe.palette->colors.empty())
+        cleanupSummary += ", palette " + (recipe.palette->name.empty() ? std::to_string(recipe.palette->colors.size()) + " colors" : recipe.palette->name);
+    else if (recipe.autoPalette)
+        cleanupSummary += ", palette auto (" + std::to_string(recipe.autoPalette->count) + ")";
+    if (recipe.targetWidth)
+        cleanupSummary += ", width " + std::to_string((int)*recipe.targetWidth);
+    if (recipe.removeBackground)
+        cleanupSummary += ", no background";
+    if (!recipe.source.sha256.empty())
+        cleanupSummary += ", saved from this file";
+}
+
+void TextureImporterView::drawPixelArtCleanup(const std::string& assetPath){
+    const std::string lower = [&](){
+        std::string name = fs::path(assetPath).extension().string();
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return name;
+    }();
+    // .aseprite, .svg and .ktx2 never take the step
+    if (!isCookableTexture(assetPath) || lower == ".aseprite" || lower == ".ase")
+        return;
+    if (!ImGui::CollapsingHeader("Pixel Art Cleanup", ImGuiTreeNodeFlags_DefaultOpen))
+        return;
+    reloadCleanupSection(assetPath);
+    const bool hasSection = cleanupSection && cleanupSection.IsMap();
+    bool enabled = hasSection && (!cleanupSection["enabled"] || cleanupSection["enabled"].as<bool>(false));
+    if (ImGui::Checkbox("Enabled", &enabled)){
+        YAML::Node node = hasSection ? YAML::Clone(cleanupSection) : YAML::Node(YAML::NodeType::Map);
+        node["enabled"] = enabled;
+        auto* command = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(project->getAssetsPath() / assetPath), "import.pixelCleanup", node);
+        command->setAction(enabled ? "Enable Pixel Art Cleanup" : "Disable Pixel Art Cleanup");
+        command->setNoMerge();
+        project->getProjectCommandHistory()->addCommand(command);
+        cleanupSectionKey.clear();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Cook the fixed pixels instead of the source; the source file stays as it is. Applied at once as its own undo "
+                          "step: Revert does not undo it, Ctrl+Z does.");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Open in Cleanup Window"))
+        getEditorHost().openPixelArtCleanup(project->normalizeToProjectRelative(project->getAssetsPath() / assetPath));
+    if (!cleanupSummary.empty())
+        ImGui::TextDisabled("%s", cleanupSummary.c_str());
+    TextureCookState state;
+    if (enabled && TextureCookQueue::get().getState(assetPath, TextureFamily::Desktop, state) && state.status == TextureCookStatus::Cooked){
+        const std::string& stepState = state.plan.analysis.stepState;
+        if (stepState == "applied"){
+            // the verdict badge (R43): what the cook found on this source
+            const std::string& verdict = state.plan.analysis.stepVerdict;
+            const ImVec4 color = verdict == "clean" ? ImVec4(0.3f, 0.72f, 0.36f, 1.0f) : verdict == "needs_person" ? ImVec4(0.9f, 0.64f, 0.2f, 1.0f) : ImVec4(0.27f, 0.55f, 0.9f, 1.0f);
+            const char* label = verdict == "clean" ? "Clean" : verdict == "needs_person" ? "Needs a Person" : "Fixable";
+            ImGui::TextColored(color, ICON_FA_CIRCLE_CHECK " %s: fixed pixels cooked", label);
+        }
+        else if (stepState == "guarded")
+            ImGui::TextColored(ImVec4(0.9f, 0.64f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Cleanup needs a person (%s): the raw source was cooked", state.plan.analysis.stepGuard.c_str());
+        else if (stepState == "failed")
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Cleanup did not run: %s", state.plan.analysis.stepGuard.c_str());
+    }
 }
 
 void TextureImporterView::drawPixelArtNotes(const TextureImportSettings& settings){

@@ -16,13 +16,46 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
     class TextureData;
 }
 
 namespace jasperengine::editor {
+
+    // A step run on a 2D source's decoded pixels before they are prepared (S46 R33, the pixel-art
+    // cleanup of import.pixelCleanup). The cooker only knows this shape: what the step does is
+    // the hook's, so no code linked here depends on it. A request without a key runs no step and
+    // cooks exactly as it did.
+    struct TextureCookStep {
+        // the step's identity in the cache key ("" no step): whatever changes its output
+        std::string key;
+        struct Outcome {
+            bool applied = false;           // `rgba` holds the output, else the source is cooked as it is
+            int width = 0, height = 0;
+            std::vector<uint8_t> rgba;      // straight RGBA8, rows top first, when applied
+            std::string guard;              // not applied: why a person must look (a guard's id)
+            std::string error;              // not applied: the step could not run (a broken recipe)
+            std::string verdict;            // what the step found ("clean", "fixable", "needs_person"), "" when it did not run
+        };
+        // the source's straight RGBA8 pixels, rows top first, and its file's SHA-256
+        std::function<Outcome(const uint8_t* rgba, int width, int height, const std::string& sourceSha256)> run;
+        // The output of one run, shared by the requests that cook one source: its plan and cook
+        // stages, every family. Whoever builds those requests owns it, so the output lives only
+        // while one of them may still ask; null runs the step each time it is needed.
+        struct Memo {
+            std::mutex mutex;               // held through a run: a second family waits for the first's
+            bool filled = false;
+            std::string key, sourceSha256;  // what `outcome` is of, with the source's size
+            int width = 0, height = 0;
+            Outcome outcome;
+        };
+        std::shared_ptr<Memo> memo;
+    };
 
     struct TextureCookRequest {
         std::filesystem::path source;       // absolute
@@ -34,6 +67,8 @@ namespace jasperengine::editor {
         // post-processing LUTs, spot light masks
         bool cpuReadable = false;
         std::string cpuReason;
+        // optional (S46 R33)
+        TextureCookStep step;
     };
 
     struct TextureCookPlan {
@@ -58,6 +93,7 @@ namespace jasperengine::editor {
         // the plan of a cook (settings, format, key) without cooking: the inspector's table, the
         // report, a cache lookup. Decodes only when the source changed since it was last hashed.
         static bool plan(TextureCookCache& cache, const TextureCookRequest& request, TextureCookPlan& out, std::string& error);
+        // plans again, then cooks on a cache miss; a step without a memo gets one for the call
         static TextureCookResult cook(TextureCookCache& cache, const TextureCookRequest& request, const std::function<bool()>& cancelled);
 
         // The source as the cook reads it: float for .hdr / .exr, a 4:3 or 3:4 cross split

@@ -151,6 +151,10 @@ namespace jasperengine::editor {
         // ... with a GameObject's submesh texture as the source and Assign on (the Inspector's
         // wand and "Normal Map..."); now: generate, save and assign without opening it
         virtual void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now);
+        // Window > 2D > Pixel Art Cleanup on an image, or on a cleanup output (its recipe and source)
+        virtual void openPixelArtCleanup(const std::filesystem::path& image);
+        // Re-runs a cleanup output over itself, on the worker
+        virtual void rerunPixelArtCleanup(const std::filesystem::path& output);
         // Window > 2D > Palette on a palette (project-relative), with a texture's usage shown
         // (project-relative; empty: none): the material inspector's "Show" of the colours that
         // will not swap (S43 R33, R35). The base host does nothing.

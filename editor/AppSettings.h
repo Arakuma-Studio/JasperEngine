@@ -93,6 +93,7 @@ struct PanelVisibilitySettings {
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
+    bool pixelArtCleanup = false;
     bool mcp = false;
     bool game = true;
     bool undoHistory = true;
@@ -114,6 +115,7 @@ struct PanelVisibilitySettings {
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
+            && pixelArtCleanup == other.pixelArtCleanup
             && mcp == other.mcp
             && game == other.game
             && undoHistory == other.undoHistory;

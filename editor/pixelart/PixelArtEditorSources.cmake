@@ -193,6 +193,77 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPixelFont.cpp
 )
 
+# S48 (Pixel FX)'s effect and rule lints, copied verbatim from feature/s48-pixel-fx (8531847fc):
+# S46's lint() calls its off_palette, partial_alpha and flicker. S48 owns the file; at merge its
+# version wins (docs/specs/S46-pixel-art-cleanup.md, Deviations).
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S48's lint module: file-local helpers (drawn, skipped, hexOf) shared in name with the palette and particle tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+)
+
+# S46 (Pixel Art Cleanup): the craft lints and lint() (shared with S47 and S42), the C++ port of
+# ritmo's pixel fixer, the session layer, fix_pixel_art/lint_pixel_art, the CLI, the validator's
+# cleanup_outputs rule, the import step and the Pixel Art Cleanup window
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupGrid.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSample.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPalette.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSpecks.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupOutline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReduce.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupLost.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupBackground.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupEdits.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPipeline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSynthetic.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheet.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupAnimation.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheetOutput.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSession.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupCli.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupImportCook.cpp
+    ${EDITOR_DIR}/window/PixelArtCleanupWindow.cpp
+    ${EDITOR_DIR}/mcp/tools/PixelArtCleanupTools.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S46's session, CLI and MCP tools: file-local helpers (problemJson, lowerExtension, scaled) shared in name with the palette and sprite tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupSession.cpp
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupCli.cpp
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupImportCook.cpp
+        ${EDITOR_DIR}/window/PixelArtCleanupWindow.cpp
+        ${EDITOR_DIR}/mcp/tools/PixelArtCleanupTools.cpp
+)
+# the cleanup and the lints decide on doubles and S43's colours: the same bits on every platform
+set_source_files_properties(
+    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupGrid.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSample.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPalette.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSpecks.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupOutline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReduce.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupLost.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupBackground.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupEdits.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPipeline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSynthetic.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheet.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupAnimation.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheetOutput.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
+
 # S47 (Agent Sprite Drawing): the document session and its revisions, the grid codec, the ops
 # (paint, fill, colour, transform, structure), the rotation and scaler ports, the sheet renderer,
 # the diff, the edit events, SpriteEditCmd and the drawing tools of the sprites group
@@ -246,17 +317,3 @@ set_source_files_properties(
     ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
 
-# S46's lint library and S48's rule lints, copied verbatim from feature/s46-pixel-art-cleanup so
-# edit_sprite {lint} runs them; the batch landing keeps one copy of these lines and files
-list(APPEND JASPERENGINE_EDITOR_SOURCES
-    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
-    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
-    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
-)
-jasperengine_skip_unity_build(
-    REASON "the pixel-art lints' file-local helpers"
-    SOURCES
-        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
-        ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
-        ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
-)

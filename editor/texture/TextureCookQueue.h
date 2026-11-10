@@ -75,6 +75,8 @@ namespace jasperengine::editor {
         TextureImportSettings settings;
         bool hasSettings = false;       // false: the settings were inferred now (to be written)
         TextureInference inference;
+        // import.pixelCleanup's canonical recipe text ("" off, or .aseprite): S46 R33
+        std::string pixelCleanupRecipe;
     };
 
     // What a cook of one texture reads: its sidecar settings (inferred when it has none) and its
@@ -167,8 +169,9 @@ namespace jasperengine::editor {
         void setViewFamily(TextureFamily family);
         TextureFamily getViewFamily() const;
 
-        // the settings of a texture as stored (or inferred when it has none); any thread
-        bool settingsOf(const std::string& assetPath, TextureImportSettings& out);
+        // the settings of a texture as stored (or inferred when it has none), and when asked its
+        // Pixel Art Cleanup recipe; any thread
+        bool settingsOf(const std::string& assetPath, TextureImportSettings& out, std::string* pixelCleanupRecipe = nullptr);
 
         TextureCookCache& getCache() { return cache; }
         void setMemoryBudget(uint64_t bytes);
@@ -204,14 +207,21 @@ namespace jasperengine::editor {
 
         mutable std::mutex mutex;           // entries, settings memo, inbox
         std::map<std::pair<std::string, int>, Entry> entries;
-        // the stored settings of a texture (first: it has some)
-        std::unordered_map<std::string, std::pair<bool, TextureImportSettings>> settingsMemo;
+        // what a texture's .meta stores for the cook: its settings (has: it has some) and the
+        // Pixel Art Cleanup step's recipe (S46 R33, "" off)
+        struct StoredImport {
+            bool has = false;
+            TextureImportSettings settings;
+            std::string pixelCleanupRecipe;
+        };
+        std::unordered_map<std::string, StoredImport> settingsMemo;
         std::vector<std::string> loaderInbox;   // loaded through the raw path: cook at Loaded priority
         std::vector<std::shared_ptr<Job>> running;
         std::vector<std::shared_ptr<SwapIn>> swaps;
         std::deque<std::pair<std::string, std::string>> metaWrites;   // assetPath, YAML of inferred settings
         std::vector<std::string> cpuRequests;   // found cooked GPU-only by a CPU reader, for update()
         std::set<std::string> cpuRecooks;       // their next cook goes CPU-readable
+        std::set<std::string> cleanupWarned;    // "<asset>|<guard>": said on the Console (S46 R33)
         uint64_t sequence = 0;              // request order among equal priorities
         int progressDone = 0;
         int progressTotal = 0;

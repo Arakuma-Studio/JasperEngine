@@ -68,6 +68,8 @@ namespace jasperengine::editor {
 
         // Reads, renders and resaves .aseprite files, no project (editor/pixelart/aseprite/AsepriteCli.h)
         static int runAsepriteCommand(int argc, char** argv, const char* executableName);
+        static int runFixPixelArtCommand(int argc, char** argv, const char* executableName);
+        static int runLintPixelArtCommand(int argc, char** argv, const char* executableName);
 
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);

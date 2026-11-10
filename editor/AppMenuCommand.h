@@ -168,7 +168,8 @@ namespace jasperengine::editor {
         AssetsCreateSpriteAtlasFromSelection,
         AssetsConvertInlineSpriteFrames,
         // S42: Window > 2D > Pixel Art Check
-        TogglePixelArtCheck
+        TogglePixelArtCheck,
+        TogglePixelArtCleanup
     };
 
 }

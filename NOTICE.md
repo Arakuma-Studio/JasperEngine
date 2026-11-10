@@ -413,6 +413,16 @@ Ported or copied, each file keeping the original notices next to ours:
 |---|---|---|
 | The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
 
+## Pixel Art Cleanup (S46)
+
+Ported, each file keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The pixel fixer (`editor/pixelart/cleanup/Cleanup{Grid,Sample,Palette,Specks,Outline,Reduce,Lost,Background,Edits,Pipeline,Sheet,Animation,SheetOutput,Recipe,Report,Synthetic}.*`) and its ported tests (`editor/tests/pixelart/Cleanup*Test.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `103c46b11218`, `packages/tools/src/pixel/core/` and `packages/tools/test/` | MIT, Copyright (c) 2026 Sandro Maglione |
+| The outline repair and stroke-preserving shrink within that port (`CleanupOutline.*`, `CleanupReduce.*`) | ritmo's `outline.ts` and `reduce.ts`, which follow [ToPixel](https://github.com/daisuqe/ToPixel) | MIT, Copyright (c) 2026 Sandro Maglione; ToPixel as its authors publish it |
+| The craft and rule lints (`editor/pixelart/lint/CraftLints.*`) | ritmo `packages/tools/src/pixel/core/lint.ts`, `packages/tools/src/fx/core/craft.ts`, `check.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.

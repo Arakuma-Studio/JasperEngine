@@ -1447,7 +1447,133 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
-    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    },    # -- S46 pixel-art cleanup: fix_pixel_art's preview-then-write, needs_person, lint_pixel_art's route --------
+    {
+        "id": "guard_pixel_cleanup_preview_then_write",
+        "kind": "guard",
+        "what_happened": "New tools (S46): an AI sprite cleaned with fix_pixel_art must be looked at (preview, compare image) before "
+                         "it is written; without the description's 'previews' and 'the same arguments plus output:true' an agent "
+                         "writes straight away or reaches for shell image scripts.",
+        "text_at_issue": "fix_pixel_art: 'Without output it previews (image, nothing written); the same arguments plus output:true write it'; "
+                         "its result's `next`",
+        "source": "S46 R44 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art (fake big pixels, blurred). Clean it into real pixel "
+                  "art and keep the result as a new file next to it.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
+                {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}],
+                 "undo": {"id": 14, "name": "agent: Pixel Art Cleanup (hero_clean.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors (grid fit 100%, confidence 98%). Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": True}}],
+                   "must_not_call": ["apply_palette", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_cleanup_import_step",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R33): cleaning a texture at cook time, leaving its source file as it is, needs "
+                         "output:{import_step:true}. Without the description's words an agent writes a second file or edits the .meta by hand.",
+        "text_at_issue": "fix_pixel_art: 'output:{import_step:true} instead makes the fix that texture's import step'",
+        "source": "S46 R33 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art. Keep that file exactly as it is and no new image "
+                  "file, but make the game use the cleaned pixels when the texture is cooked. Preview it first.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": {"import_step": True}}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Saved as the import step of assets/art/hero.png.",
+                {"verdict": "fixable", "import_step": {"source": "assets/art/hero.png", "width": 32, "height": 32},
+                 "undo": {"id": 15, "name": "agent: Save as Import Step (hero.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": {"import_step": True}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.png$", r"\.meta$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_cleanup_needs_person_not_forced",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R30): a needs_person result is a stop sign. Without the result's `next` an agent passes "
+                         "force: true to get the file written instead of setting the grid or asking the user.",
+        "text_at_issue": "fix_pixel_art's `next`: 'needs_person: look at the guards and the image; set recipe.grid or palette and preview "
+                         "again. output: true is refused without force: true.'; the refusal's Fix naming force as the last option",
+        "source": "S46 R30 (new tool text); no failure on record",
+        "prompt": "Turn assets/art/photo.jpg into pixel art and save the result next to it.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": err(
+                "needs_person: assets/art/photo.jpg is needs_person (low_fit, low_confidence): Unsure of the grid: look at the preview, "
+                "or set the grid by hand. Nothing was written. Fix: set recipe.grid or recipe.palette and preview again, or pass force: "
+                "true to write it anyway")},
+            {"tool": "fix_pixel_art", "result": ok(
+                "needs_person: Unsure of the grid (fit 41%, confidence 33%): look at the preview, or set the grid by hand. Preview only: nothing written.",
+                {"verdict": "needs_person", "confidence": 0.33, "guards": [{"id": "low_fit", "value": 0.41, "threshold": 0.9}],
+                 "default_output": "assets/art/photo_clean.png",
+                 "next": "needs_person: look at the guards and the image; set recipe.grid or palette and preview again. "
+                         "output: true is refused without force: true."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/photo.jpg"}}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 2},
+                   "reply_must": [r"(?i)needs? (a )?person|low.?(fit|confidence)|guard"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_pixel_cleanup_timeout",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R37): fix_pixel_art answers with its job past 1 s, and timeout_seconds is how long the run "
+                         "may take. Without the parameter's text an agent asked to allow a long run leaves the 60 s default (the run "
+                         "is stopped and writes nothing) or re-calls the tool instead of polling the job.",
+        "text_at_issue": "fix_pixel_art's timeout_seconds: 'Seconds the run may take (default 60); past 1 s the call answers with the "
+                         "job.'; the guide's 'Past 1 s ...' line",
+        "source": "S46 R37 (new tool text); no failure on record",
+        "prompt": "assets/art/big.png is a 4096x4096 AI image that only looks like pixel art. Clean it into real pixel art and write "
+                  "the result next to it. It is big, so let the cleanup run for up to five minutes.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
+                "cancelled; cancel_job stops it.",
+                {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "default_output": "assets/art/big_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+            {"tool": "get_job", "result": ok(
+                "Pixel Art Cleanup: succeeded - fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Wrote assets/art/big_clean.png as one undo step.",
+                {"id": "j7", "status": "succeeded", "result": {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/big_clean.png"}]}})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"output": True, "timeout_seconds": 300}}, {"tool": "get_job"}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 3}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_lint_route",
+        "kind": "guard",
+        "what_happened": "New tool (S46): checking a sprite's craft (jaggies, palette, flicker) is lint_pixel_art, read-only; an agent "
+                         "that doesn't know it writes its own analysis script or calls fix_pixel_art on art that is meant to stay as it is.",
+        "text_at_issue": "lint_pixel_art: 'Checks an image, .aseprite ... or Sprite: craft lints and rule lints'; the group row "
+                         "'lints, cleanup'",
+        "source": "S46 R46 (new tool text); no failure on record",
+        "prompt": "Check assets/art/walk.aseprite's walk tag for pixel-art problems (jaggies, flicker, palette use). Don't change the file.",
+        "mocks": [
+            {"tool": "lint_pixel_art", "result": ok(
+                "clean: 0 fail, 1 warn.\nWARN flicker: 0.08 of the lit pixels blink for one frame. Fix: smooth the frame.",
+                {"verdict": "clean", "counts": {"pass": 12, "warn": 1, "fail": 0, "skip": 4}, "frames": 4, "results": []})},
+        ],
+        "checks": {"calls": [{"tool": "lint_pixel_art", "args": {"frames": "walk"}}],
+                   "must_not_call": ["fix_pixel_art", "edit_sprite"], "shell_must_not": [r"(?i)\bPIL\b|from PIL"]},
+        "max_turns": 8,
+    },
     {
         "id": "guard_palette_apply_route",
         "kind": "guard",
@@ -4323,7 +4449,7 @@ CASES = [
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
                          "preview, the same with output: true to apply); without the group's description and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
-        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, lints, cleanup, palettes, fonts (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",
         "source": "S42 R22 (new tool text); no failure on record",
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "

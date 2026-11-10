@@ -96,6 +96,13 @@ namespace jasperengine::editor {
         // S42 R7, R17, R20: a lossy override of a pixel-art texture, a sheet over 2048 x 2048, and
         // Apply to N References when references drifted from the Filter Mode
         void drawPixelArtNotes(const TextureImportSettings& settings);
+        // S46 R33, R43: Enabled, the recipe summary, the verdict badge, Open in Cleanup Window.
+        // import.pixelCleanup is written at once, as its own undo step, apart from Apply.
+        void drawPixelArtCleanup(const std::string& assetPath);
+        std::string cleanupSectionKey;
+        YAML::Node cleanupSection;
+        std::string cleanupSummary;
+        void reloadCleanupSection(const std::string& assetPath);
         size_t referenceCount = 0;          // Apply to N References: N, read twice a second
         std::string referenceChangesPath;
         double referenceChangesAt = -1.0;

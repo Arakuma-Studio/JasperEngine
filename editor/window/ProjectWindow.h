@@ -306,6 +306,8 @@ namespace jasperengine::editor {
         uint64_t dirTreeGeneration = 1;
         // the SpriteNormalsWatcher revision the badges were last read at
         uint64_t spriteNormalsRevision = 0;
+        // the last time cleanup outputs' sources were compared (they have no watcher of their own)
+        double pixelArtCleanupBadgesAt = -1.0;
 
         bool windowOpen;
         bool focusRequested;
@@ -420,6 +422,10 @@ namespace jasperengine::editor {
         // both badges of an image, from scratch: the sprite-normals one, else the bake's
         void updateImageBadges(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
+        // S46 R43: "Pixel Art Cleanup..." on an image, "Re-run Pixel Art Cleanup" on an output
+        void drawPixelArtCleanupMenuItems(const fs::path& filePath);
+        // S46 R32: a cleanup output's "Source changed" badge, as a generated normal map's
+        void updatePixelArtCleanupBadge(FileEntry& file, const fs::path& path);
         // S43 R37: a palette's Export menu, a texture's Apply Palette... / Reduce Colours... /
         // Extract Palette, a foreign palette file's Import as Palette
         void drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath);
