@@ -120,6 +120,8 @@ namespace jasperengine::editor::pixelart::cleanup {
             out.cellWidth = given ? recipe.grid.spec.cellWidth : (found ? found->size : 8);
             out.cellHeight = given ? recipe.grid.spec.cellHeight : (found ? found->size : 8);
             if (!given && found) out.confidence = found->confidence;
+            // no frame shows a grid: the 8 px fallback is a guess, which R29's shared_cell guard must catch
+            if (!given && !found) out.confidence = 0.0;
 
             // Each frame alone: no hand edits, no shrinking, no cropping, its background already cleared
             Recipe frameRecipe = recipe;

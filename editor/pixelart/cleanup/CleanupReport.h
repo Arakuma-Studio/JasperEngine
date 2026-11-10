@@ -46,7 +46,7 @@ namespace jasperengine::editor::pixelart::cleanup {
     bool isNative(const RgbaImage& image, const std::optional<Outcome>& outcome);
 
     struct Guard {
-        std::string id;               // "lost_share", "empty_frame", "shared_cell", "no_grid", "low_confidence", "low_fit", or a FAIL lint's id
+        std::string id;               // "lost_share", "empty_frame", "shared_cell", "no_clips", "no_grid", "low_confidence", "low_fit", or a FAIL lint's id
         double value = 0, threshold = 0;
     };
 

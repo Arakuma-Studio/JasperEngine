@@ -140,9 +140,20 @@ TEST(CleanupReport, ANativeFailThePipelineCannotFixNeedsAPerson) {
     const Report report = reportOfArt(demoSprite(), options);
     EXPECT_EQ(report.verdict, Verdict::NeedsPerson);
     EXPECT_TRUE(hasGuard(report, "size"));
+}
+
+// R29: native art is fixable only when its OUTPUT has no FAIL. Without a palette of one colour the
+// fix keeps the mushroom's colours, so max_colors 1 still fails on what would be written: that is
+// needs_person, not fixable (the earlier pin read the verdict from the source's lints)
+TEST(CleanupReport, ANativeFailTheOutputKeepsNeedsAPerson) {
     ReportOptions colors;
     colors.rules.maxColors = 1;
-    EXPECT_EQ(reportOfArt(demoSprite(), colors).verdict, Verdict::Fixable);
+    const Checked checked = checkImage(toRgba(demoSprite()), Recipe(), colors);
+    EXPECT_EQ(checked.report.verdict, Verdict::NeedsPerson) << checked.report.summary;
+    EXPECT_TRUE(hasGuard(checked.report, "colors"));
+    const lint::LintResult* lintColors = findLint(checked.report, "colors");
+    ASSERT_NE(lintColors, nullptr);
+    EXPECT_EQ(lintColors->status, lint::LintStatus::Fail);
 }
 
 // Partial alpha counts on the source, though the fixed art has none
@@ -320,4 +331,44 @@ TEST(CleanupReport, AnUnsureSharedCellTripsItsGuard) {
     EXPECT_EQ(report.verdict, Verdict::NeedsPerson);
     ASSERT_TRUE(hasGuard(report, "shared_cell"));
     EXPECT_NEAR(report.confidence, 0.2, 1e-9);
+}
+
+// R29: a sheet whose frames show no grid at all has no shared cell to trust (detection found
+// nothing, so the 8 px fallback is a guess): needs_person, not fixable
+TEST(CleanupReport, ASheetWithNoGridFoundNeedsAPerson) {
+    std::vector<RgbaImage> frames;
+    for (int f = 0; f < 3; f++) {
+        RgbaImage frame(16, 16);
+        frame.fill({90, 140, 200, 255});
+        frames.push_back(frame);
+    }
+    AnimationCache cache;
+    const Recipe recipe;
+    const AnimationOutcome outcome = runFrames(frames, {}, "flat", recipe, std::nullopt, cache);
+    const Report report = reportOfSheet(frames[0], recipe, outcome);
+    EXPECT_EQ(report.verdict, Verdict::NeedsPerson) << report.summary;
+    EXPECT_TRUE(hasGuard(report, "shared_cell"));
+}
+
+// R29: a sheet with no animation to export writes nothing: needs_person, not fixable
+TEST(CleanupReport, ASheetWithNoClipsNeedsAPerson) {
+    SheetCase c = runFakeSheet();
+    Sheet sheet = c.sheet;
+    for (SheetAnimation& animation : sheet.animations) animation.include = false;
+    AnimationCache cache;
+    const AnimationOutcome outcome = runSheet(c.image, c.recipe, sheet, cache);
+    const Report report = reportOfSheet(c.image, c.recipe, outcome);
+    EXPECT_EQ(report.verdict, Verdict::NeedsPerson) << report.summary;
+    EXPECT_TRUE(hasGuard(report, "no_clips"));
+}
+
+// R29: a sheet read on a grid that does not fit its frames trips low_fit, as a single picture does
+TEST(CleanupReport, ASheetThatFitsBadlyNeedsAPerson) {
+    SheetCase c = runFakeSheet();
+    c.recipe.grid.spec = {13, 13, 0, 0};
+    AnimationCache cache;
+    const AnimationOutcome outcome = runSheet(c.image, c.recipe, c.sheet, cache);
+    const Report report = reportOfSheet(c.image, c.recipe, outcome);
+    EXPECT_EQ(report.verdict, Verdict::NeedsPerson) << report.summary;
+    EXPECT_TRUE(hasGuard(report, "low_fit"));
 }

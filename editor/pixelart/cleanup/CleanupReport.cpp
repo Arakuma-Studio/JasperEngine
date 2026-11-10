@@ -385,6 +385,10 @@ namespace jasperengine::editor::pixelart::cleanup {
         for (const FixedFrame& frame : outcome.frames) fitSum += gridFit(frame.outcome.samples);
         const double fit = outcome.frames.empty() ? 0 : fitSum / outcome.frames.size();
         if (outcome.confidence && *outcome.confidence < CONFIDENT_CONFIDENCE) report.guards.push_back({"shared_cell", *outcome.confidence, CONFIDENT_CONFIDENCE});
+        // R29, as for a single picture: the frames must fit the cell they were read at
+        if (!outcome.frames.empty() && fit < CONFIDENT_FIT) report.guards.push_back({"low_fit", fit, CONFIDENT_FIT});
+        // nothing to write is never a fix
+        if (clips.empty()) report.guards.push_back({"no_clips", 0, 1});
         std::vector<Guard> failing;
         reportFailGuards(report.lints, false, failing);
         for (Guard& guard : failing) {
@@ -480,6 +484,22 @@ namespace jasperengine::editor::pixelart::cleanup {
             const std::optional<RecipePalette>& palette = checked.outcome && checked.outcome->palette ? checked.outcome->palette : recipe.palette;
             checked.report = reportOfArt(own.art, options, &image, palette);
             if (checked.outcome) {
+                // R29: native art is fixable only when what is written has no FAIL. The source's
+                // lints say what the fix removes (and stay the report's); the output's FAILs, a
+                // removable one the fix did not remove included, are guards
+                ReportOptions outputOptions = options;
+                outputOptions.rules.transparentBackground = outputOptions.rules.transparentBackground || recipe.removeBackground;
+                Palette outputPalette;
+                if (palette) outputPalette = reportLintPalette(*palette);
+                lint::LintInput input = reportLintInput(outputOptions, palette ? &outputPalette : nullptr);
+                const std::vector<PixelImage> exported = {toRgba(checked.outcome->exported)};
+                input.frames = exported;
+                std::vector<Guard> outputFails;
+                reportFailGuards(lint::lint(input, reportLintOptions(outputOptions)), false, outputFails);
+                for (Guard& guard : outputFails) {
+                    const bool listed = std::any_of(checked.report.guards.begin(), checked.report.guards.end(), [&](const Guard& g) { return g.id == guard.id; });
+                    if (!listed) checked.report.guards.push_back(std::move(guard));
+                }
                 reportLostShare(checked.outcome->lost, reportOpaqueCells(checked.outcome->samples), checked.report.guards);
                 if (!checked.report.guards.empty()) checked.report.verdict = Verdict::NeedsPerson;
                 for (const LostColor& entry : checked.outcome->lost) checked.report.lost.push_back(reportLostEntry(entry, checked.outcome->samples.width));
