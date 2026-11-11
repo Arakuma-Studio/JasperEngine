@@ -4,6 +4,7 @@
 #include "TitleArtExportKeys.h"
 
 #include "titleart/TitleArtIO.h"
+#include "titleart/TitleTranslations.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
@@ -54,18 +55,24 @@ bool editor::addTitleArtRenderKeys(const fs::path& projectRoot, const std::strin
         return !has3D;
     });
     const std::vector<int> tiers = has3D ? std::vector<int>{1, 2, 3} : std::vector<int>{0};
+    // Lua can select layers hidden in the source language. An unnamed source is not in the codes.
+    std::vector<std::string> languages = titleart::titleLanguageCodes(doc->root);
+    if (titleart::titleSourceLanguage(doc->root).empty()) languages.emplace_back();
     for (int tier : tiers){
         for (uint32_t flags : {0u, titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS}){
             for (titleart::OutputContent content : {titleart::OutputContent::All, titleart::OutputContent::Glow}){
-                titleart::RenderRequest request;
-                request.doc = doc;
-                request.testFlags = flags;
-                request.content = content;
-                request.tier = tier;
-                request.assets = &resolver;
-                std::unique_ptr<titleart::TitleRenderJob> job = renderer.begin(request);
-                if (!job) continue;
-                for (const ShaderKey& key : job->shaderKeys()) keys.insert(key);
+                for (const std::string& language : languages){
+                    titleart::RenderRequest request;
+                    request.doc = doc;
+                    request.testFlags = flags;
+                    request.content = content;
+                    request.language = language;
+                    request.tier = tier;
+                    request.assets = &resolver;
+                    std::unique_ptr<titleart::TitleRenderJob> job = renderer.begin(request);
+                    if (!job) continue;
+                    for (const ShaderKey& key : job->shaderKeys()) keys.insert(key);
+                }
             }
         }
     }
