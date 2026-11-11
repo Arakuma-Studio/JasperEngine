@@ -212,6 +212,7 @@ struct TimeControl {
 struct PlayToolsState {
     McpContext* frameHookCtx = nullptr;  // afterGameFrame's context
     TimeControl time;
+    bool clockSettingsDeferred = false;
     SessionRecord current;
     SessionRecord last;
     uint64_t serialCounter = 0;
@@ -303,8 +304,13 @@ void finishStartWaits(McpContext& ctx);
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
     // A capture keeps its timestep when the monitor first notices its Play session.
-    if (recorder::RecorderSession::get().recording()) return;
-    const TimeControl& t = state().time;
+    PlayToolsState& s = state();
+    if (recorder::RecorderSession::get().recording()) {
+        s.clockSettingsDeferred = true;
+        return;
+    }
+    s.clockSettingsDeferred = false;
+    const TimeControl& t = s.time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
 }
@@ -439,6 +445,10 @@ void observeSession(McpContext& ctx) {
         }
     }
 
+    if (s.clockSettingsDeferred && !recorder::RecorderSession::get().recording()) {
+        if (s.current.active) applyTimeSettings();
+        else s.clockSettingsDeferred = false;
+    }
     applyHold(ctx);
     finishStartWaits(ctx);
 }
