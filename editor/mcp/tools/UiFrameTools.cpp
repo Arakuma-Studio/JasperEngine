@@ -425,11 +425,6 @@ private:
         }
         scriptsStarted = true;
         const auto scriptComponents = scratch->getComponentArray<ScriptComponent>();
-        for (size_t i = 0; i < scriptComponents->size(); i++) {
-            for (const ScriptEntry& script : scriptComponents->getComponentFromIndex(i).scripts) {
-                if (script.type == ScriptType::LUA) LuaBinding::invalidateScriptChunk(script.path.path);
-            }
-        }
         LuaBinding::initializeLuaScripts(scratch.get());
         for (size_t i = 0; i < scriptComponents->size(); i++) {
             for (const ScriptEntry& script : scriptComponents->getComponentFromIndex(i).scripts) {

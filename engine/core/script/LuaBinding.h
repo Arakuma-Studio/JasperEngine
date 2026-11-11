@@ -182,6 +182,8 @@ namespace jasperengine {
         };
         static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
         static int getPreviewContextKey(); // its module-cache registry reference; negative outside previews
+        // Push the private globals shared by project chunks in this preview; false outside one.
+        static bool pushPreviewEnvironment(lua_State* L);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it

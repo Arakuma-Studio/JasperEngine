@@ -230,6 +230,7 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewGlobalsDoNotRebindCachedLiveScripts) {
     writeScript("PreviewGlobalState", R"(
 previewCreated = (previewCreated or 0) + 1
 local required = require('PreviewGlobalRequired')
+assert(require('_G') == _G)
 local M = {}
 function M:init()
     previewN = (previewN or 0) + 1
@@ -238,12 +239,23 @@ function M:init()
     self.created = previewCreated
     self.explicit = _G.previewExplicit
     self.required = required.n
+    if previewN == 1 then
+        assert(require('math') == math and require('package') == package)
+        self.initialRandom = math.random(1, 1000000)
+        math.randomseed(17, 29)
+        self.seededRandom = math.random(1, 1000000)
+        package.path = 'private-preview-path'
+        package.searchers.previewPrivateMarker = true
+        package.preload.previewPrivateMarker = true
+    end
 end
 return M
 )");
     EXPECT_EQ(lua("previewN = 40; previewCreated = 70; previewExplicit = 50; previewRequired = 60"), "");
     auto observed = [&](Scene* scene, Entity e, const char* field) {
         const ScriptEntry& entry = scene->getComponent<ScriptComponent>(e).scripts.front();
+        EXPECT_NE(entry.instance, nullptr);
+        if (!entry.instance) return 0;
         const int top = lua_gettop(L());
         lua_rawgeti(L(), LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
         lua_getfield(L(), -1, field);
@@ -261,6 +273,12 @@ return M
     EXPECT_EQ(observed(live, liveEntity, "explicit"), 51);
     EXPECT_EQ(observed(live, liveEntity, "required"), 61);
 
+    const std::string packagePath = lua("return package.path");
+    const std::string expectedRandom = lua("math.randomseed(13579, 24680); local a = math.random(1, 1000000); return a .. ',' .. math.random(1, 1000000)");
+    EXPECT_EQ(lua("math.randomseed(13579, 24680)"), "");
+    std::string actualRandom;
+    int initialRandom = 0;
+    int seededRandom = 0;
     for (int sample = 0; sample < 2; sample++) {
         Scene* preview = newScene();
         const Entity e = entity(preview, "Preview");
@@ -273,12 +291,25 @@ return M
             EXPECT_EQ(observed(preview, e, "created"), 1);
             EXPECT_EQ(observed(preview, e, "explicit"), 1);
             EXPECT_EQ(observed(preview, e, "required"), 1);
+            if (sample == 0) {
+                initialRandom = observed(preview, e, "initialRandom");
+                seededRandom = observed(preview, e, "seededRandom");
+                EXPECT_GT(initialRandom, 0);
+                EXPECT_GT(seededRandom, 0);
+            } else {
+                EXPECT_EQ(observed(preview, e, "initialRandom"), initialRandom);
+                EXPECT_EQ(observed(preview, e, "seededRandom"), seededRandom);
+            }
             // The ordinary VM and a previously initialized script keep their live state.
             EXPECT_EQ(lua("return previewN .. ',' .. previewCreated .. ',' .. previewExplicit .. ',' .. previewRequired"), "41,71,51,61");
             LuaBinding::cleanupLuaScripts(preview);
         }
         LuaBinding::releaseLuaRef(cache);
+        actualRandom += (sample ? "," : "") + lua("return math.random(1, 1000000)");
+        EXPECT_EQ(lua("return package.path"), packagePath);
+        EXPECT_EQ(lua("return package.searchers.previewPrivateMarker == nil and package.preload.previewPrivateMarker == nil"), "true");
     }
+    EXPECT_EQ(actualRandom, expectedRandom) << "preview randomseed/random calls leave the live RNG stream unchanged";
     Scene* nextLive = newScene();
     const Entity nextEntity = entity(nextLive, "NextLive");
     addScript(nextLive, nextEntity, "PreviewGlobalState");

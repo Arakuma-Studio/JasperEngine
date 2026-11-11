@@ -182,6 +182,7 @@ body {margin:0; width:128px; height:96px; background:#000;}
     await ed.call("create_script", scene=scene, entity=host, kind="lua", name="PrivatePreviewGlobals", content='''
 previewFrameTop = (previewFrameTop or 0) + 1
 local required = require("preview_global_counter")
+assert(require("_G") == _G)
 local ui = {}
 function ui:init()
     previewFrameN = (previewFrameN or 0) + 1
