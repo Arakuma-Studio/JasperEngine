@@ -86,6 +86,39 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
     ed.check_eq(sum(a == b for a, b in zip(*recordings)), 16,
                 "CSS and both anime clocks produce byte-identical repeated recordings")
 
+    # A newly observed Play session must not replace the recorder's timestep with the
+    # MCP clock retained from an earlier call. Poll while it records so the monitor runs.
+    owned_job = None
+    owned_state = None
+    try:
+        await ed.call("play", action="set", fixed_fps=60, auto_pause=False)
+        started = await ed.call("record_game", frames=64, fps=30, format="png", width=128, height=128,
+                                output=str(ed.scratch.root / "ui-clock-owner"), exit_play=True, wait=False)
+        owned_job = started["job_id"]
+        ed.check(started["status"] in ("running", "pending"), "the clock monitor overlaps an active recording")
+        await ed.call("wait", frames=3)
+        owned_state = await ed.call("get_job", job_id=owned_job)
+        for _ in range(256):
+            if owned_state["status"] not in ("running", "pending"):
+                break
+            await ed.call("wait", frames=1)
+            owned_state = await ed.call("get_job", job_id=owned_job)
+        ed.check_eq(owned_state["status"], "succeeded", "the recorder completes under the MCP clock monitor")
+        result = owned_state["result"]
+        by_frame = {int(Path(path).stem.rsplit("_", 1)[1]): Path(path).read_bytes() for path in result["files"]}
+        first = centre(by_frame[0], 2, 72)
+        ed.check(first >= 0, "the game-clock marker exists in the ownership take")
+        for index in (3, 9, 15):
+            position = centre(by_frame[index], 2, 72)
+            ed.check(abs(position - first - index) <= 0.6,
+                     f"recorder fps=30 owns GAME despite MCP fps=60, frame {index}: moved {position - first}")
+        ed.check_eq(result["frames"], 64, "the ownership take records every requested frame")
+        ed.check_eq(len(result["files"]), 64, "the ownership take saves every requested frame")
+    finally:
+        if owned_job and (owned_state is None or owned_state["status"] in ("running", "pending")):
+            await ed.call("cancel_job", job_id=owned_job)
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+
     # Establish a nonzero UI epoch before creating an unrelated animation. A fresh take
     # must not reset that process-wide clock and leave this context behind its old origin.
     await ed.call("play", action="start", scene=scene, fixed_fps=30, auto_pause=False)
