@@ -53,7 +53,7 @@ TEST(Light2DSteps, SceneClampsTheCount){
     EXPECT_EQ(scene.getLight2DSteps(), 16);
 }
 
-TEST(Light2DSteps, PropertyIsMeshBit54NamedLst){
+TEST(Light2DSteps, PropertyIsMeshBit55NamedLst){
     EXPECT_EQ(ShaderPool::getLight2DStepsProperty(), shaderPropertyBit(55));
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 55, true), "Lst");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 55, false), "Light Steps");
