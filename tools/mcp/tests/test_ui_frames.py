@@ -172,9 +172,7 @@ body {margin:0; width:128px; height:96px; background:#000;}
 #box {position:absolute; left:0; top:0; width:16px; height:16px; background:#ff0000;}
 </style></head><body><div id="box"></div></body></html>'''
     (ed.project / "assets/ui/private-globals.html").write_text(page, encoding="utf-8")
-    scripts = ed.project / "scripts"
-    scripts.mkdir(exist_ok=True)
-    (scripts / "preview_global_counter.lua").write_text(
+    (ed.project / "preview_global_counter.lua").write_text(
         "previewFrameRequired = (previewFrameRequired or 0) + 1; return previewFrameRequired", encoding="utf-8")
     await ed.call("sync_files")
     await ed.call("set_properties", scene=scene, entity=host,
@@ -188,9 +186,9 @@ function ui:init()
     previewFrameN = (previewFrameN or 0) + 1
     _G.previewFrameExplicit = (_G.previewFrameExplicit or 0) + 1
     local doc = UIDocument(self.scene, self.entity)
-    doc:getElementById("box"):setStyle("left", tostring((previewFrameN % 3) * 20) .. "px")
+    doc:getElementById("box"):setStyleProperty("left", tostring((previewFrameN % 3) * 20) .. "px")
     if required ~= 1 or previewFrameTop ~= 1 or _G.previewFrameExplicit ~= 1 then
-        doc:getElementById("box"):setStyle("background-color", "#0000ff")
+        doc:getElementById("box"):setStyleProperty("background-color", "#0000ff")
     end
 end
 return ui
