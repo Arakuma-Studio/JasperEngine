@@ -1161,8 +1161,10 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 `clip-path` animates in `@keyframes` and `transition`: `inset()`, `circle()` and `ellipse()`
 interpolate their components, including length/percentage radii. `polygon()` interpolates
 when both endpoints have the same vertex count and fill rule. Keep the same reference box at
-both endpoints; percentages resolve against that box. The shape updates on every animated
-frame, including after its reference box resizes.
+both endpoints; percentages resolve against that box. Circle/ellipse radii must be lengths
+or percentages; keyword radii and incompatible shape pairs switch discretely. Use literal
+length/percentage endpoints: input `calc()` arguments inside basic shapes are not supported.
+The shape updates on every animated frame, including after its reference box resizes.
 
 ```css
 .image-reveal { animation: reveal 1s cubic-bezier(.16,1,.3,1) both; }
@@ -1181,8 +1183,14 @@ frame, including after its reference box resizes.
 ```
 
 Linear and radial gradient masks support animated `mask-position` and `mask-size`. Set an
-explicit `mask-size` when animating its dimensions. Changing between gradient `mask-image`
-values is discrete, as in CSS; move or scale the gradient for a continuous soft reveal.
+explicit `mask-size` when animating its dimensions; changes to or from `auto`, `cover` or
+`contain` are discrete. Changing between gradient `mask-image` values is discrete, as in CSS;
+move or scale the gradient for a continuous soft reveal.
+
+`clip-path` does not clip pointer hit testing. On one element, `clip-path` and `mask-image`
+overwrite each other: apply them to separate nested elements to combine their clipping.
+Masks use the border box; `mask-origin`, `mask-clip`, `mask-mode` and `mask-composite` have the
+limits listed in the [support matrix](jasper://docs/html-ui-support).
 
 ### Splitting text for reveals
 
