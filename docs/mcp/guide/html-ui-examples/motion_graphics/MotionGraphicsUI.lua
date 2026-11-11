@@ -40,6 +40,14 @@ function MotionGraphicsUI:onDocumentLoad()
         chars = { wrap = "clip" }, words = true, lines = { wrap = "clip" }, accessible = true,
     })
 
+    -- Delayed children keep their authored styles until they start. Establish the
+    -- whole starting pose before frame zero, including every staggered character.
+    local deck = byId(doc, "deck")
+    local follower = byId(doc, "follower")
+    anime.utils.set(self.split.chars, { translateY = "110%" })
+    anime.utils.set(deck, { opacity = 0 })
+    anime.utils.set(follower, { translateX = 45, translateY = 270 })
+
     local logo = byId(doc, "logo")
     local drawable = anime.createDrawable(logo)
     local motion = anime.createMotionPath(byId(doc, "orbit"))
@@ -56,7 +64,7 @@ function MotionGraphicsUI:onDocumentLoad()
         translateY = { from = "110%", to = "0%" }, duration = 850,
         delay = anime.stagger(38), ease = "cubicBezier(.16,1,.3,1)",
     }, 0)
-    timeline:add(byId(doc, "deck"), { opacity = { from = 0, to = 1 }, duration = 700 }, 650)
+    timeline:add(deck, { opacity = { from = 0, to = 1 }, duration = 700 }, 650)
     timeline:add(drawable, { draw = "0 1", duration = 1400, ease = "inOutSine" }, 1100)
     timeline:add(logo, {
         fill = { from = "rgba(230,255,104,0)", to = "rgba(230,255,104,1)" },
@@ -65,7 +73,7 @@ function MotionGraphicsUI:onDocumentLoad()
     timeline:add(byId(doc, "morph"), {
         d = anime.morphTo(byId(doc, "morph-target")), duration = 1800, ease = "inOutSine",
     }, 1900)
-    timeline:add(byId(doc, "follower"), {
+    timeline:add(follower, {
         translateX = motion.translateX, translateY = motion.translateY, rotate = motion.rotate,
         duration = 4200, ease = "linear",
     }, 900)

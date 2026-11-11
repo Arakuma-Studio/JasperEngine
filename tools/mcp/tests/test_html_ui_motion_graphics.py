@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
@@ -95,11 +96,41 @@ def frame_hash(path: Path) -> tuple[int, int, str]:
     return width, height, hashlib.sha256(rgba).hexdigest()
 
 
+def recording_hashes(ffmpeg: str, files: list[Path]) -> list[tuple[int, int, str]]:
+    """SHA256 of every decoded frame's tightly packed RGBA8 bytes, in file order."""
+    process = subprocess.run([ffmpeg, "-nostdin", "-v", "error", "-threads", "2", "-filter_threads", "2",
+                              "-framerate", str(FPS), "-start_number", "0", "-i",
+                              str(files[0].parent / "frame_%04d.png"), "-pix_fmt", "rgba", "-c:v", "rawvideo",
+                              "-threads", "2", "-f", "framehash", "-hash", "sha256", "-"],
+                             capture_output=True, text=True, timeout=180)
+    if process.returncode:
+        raise AssertionError(f"FFmpeg could not decode the recording: {process.stderr}")
+    records = [line.split(",") for line in process.stdout.splitlines() if line and not line.startswith("#")]
+    if len(records) != len(files):
+        raise AssertionError(f"FFmpeg decoded {len(records)} of {len(files)} frames")
+    hashes = []
+    for path, record in zip(files, records):
+        with path.open("rb") as image:
+            header = image.read(24)
+        if header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+            raise AssertionError(f"The recorded frame is not a PNG: {path}")
+        width, height = struct.unpack(">II", header[16:24])
+        if len(record) != 6 or int(record[4]) != width * height * 4:
+            raise AssertionError(f"FFmpeg did not hash the complete RGBA8 frame: {path}: {record}")
+        digest = record[5].strip()
+        if len(digest) != 64 or len(bytes.fromhex(digest)) != 32:
+            raise AssertionError(f"Invalid SHA256 frame hash: {path}: {digest}")
+        hashes.append((width, height, digest))
+    return hashes
+
+
 async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
     # Fail immediately on a player without the modules, before spending time on 360 frames.
     await start(ed)
     await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     before = (await ed.call("read_console", limit=1))["next_cursor"]
+    ffmpeg = shutil.which("ffmpeg")
+    ed.check(ffmpeg is not None, "FFmpeg is available to decode and review every recorded frame")
     takes = []
     for take in range(2):
         output = ed.scratch.root / f"motion-graphics-{take + 1}"
@@ -108,7 +139,14 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
         files = sorted(output.rglob("frame_*.png"))
         ed.check_eq(result["frames"], FRAMES, f"take {take + 1} completed: {result}")
         ed.check_eq(len(files), FRAMES, f"take {take + 1} contains every frame")
-        hashes = [frame_hash(path) for path in files]
+        if take == 0:
+            region = pngdiff.crop(pngdiff.decode(files[0].read_bytes()), 90, 245, 850, 300)[2]
+            bright = sum(1 for pixel in range(0, len(region), 4) if min(region[pixel:pixel + 3]) > 200)
+            ed.check_eq(bright, 0, "frame zero has no visible pale headline pixels before the masked reveal")
+        hashes = recording_hashes(ffmpeg, files)
+        for index in (0, FRAMES // 2, FRAMES - 1):
+            ed.check_eq(hashes[index], frame_hash(files[index]),
+                        f"FFmpeg RGBA8 hash matches the independent PNG decoder: take {take + 1}, frame {index}")
         ed.check(all((width, height) == (WIDTH, HEIGHT) for width, height, _ in hashes), "every frame is 1080x1350")
         ed.check(len({digest for _, _, digest in hashes}) > 100, "the six-second composition visibly animates")
         takes.append(hashes)
@@ -118,8 +156,6 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
                 if entry.get("type") == "error" or "[HTML UI]" in entry.get("message", "") or "Lua" in entry.get("message", "")]
     ed.check_eq(problems, [], "no script or document warnings during either recording")
 
-    ffmpeg = shutil.which("ffmpeg")
-    ed.check(ffmpeg is not None, "FFmpeg is available to extract the visual review frames")
     samples = ed.scratch.root / "motion-graphics-samples"
     samples.mkdir()
     process = subprocess.run([ffmpeg, "-nostdin", "-y", "-v", "error", "-framerate", str(FPS), "-i",
@@ -129,7 +165,10 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
                              capture_output=True, text=True, timeout=180)
     ed.check_eq(process.returncode, 0, f"FFmpeg extracted frames 0, 9, 30, 75, 135, 179: {process.stderr}")
     ed.check_eq(len(list(samples.glob("sample_*.png"))), 6, "samples at 0, .3, 1, 2.5, 4.5, 5.9667 seconds")
-    (ed.scratch.root / "motion-graphics-pixel-hashes.json").write_text(json.dumps(takes, indent=2))
+    (ed.scratch.root / "motion-graphics-pixel-hashes.json").write_text(json.dumps({
+        "algorithm": "sha256", "pixel_format": "RGBA8", "bytes_per_frame": WIDTH * HEIGHT * 4,
+        "independent_png_decoder_frames": [0, FRAMES // 2, FRAMES - 1], "takes": takes,
+    }, indent=2))
     print(f"     [evidence] two 180-frame takes and six FFmpeg samples: {ed.scratch.root}", flush=True)
 
 
