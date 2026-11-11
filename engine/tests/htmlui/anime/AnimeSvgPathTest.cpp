@@ -75,3 +75,30 @@ TEST(AnimeSvgPath, DegenerateAndInvalidGeometry){
     EXPECT_DOUBLE_EQ(point.pointAtLength(0).x, 12);
     EXPECT_DOUBLE_EQ(point.pointAtLength(0).y, 34);
 }
+
+
+TEST(AnimeSvgPath, RootViewportMatchesRendererIgnoringRootTransform){
+    const auto viewport = AnimSvgViewport::fromAttributes({{"viewBox", "0 0 100 100"}, {"transform", "translate(30 40)"}}, 200, 200, true);
+    EXPECT_EQ(viewport.matrix, (std::array<double, 6>{2, 0, 0, 2, 0, 0}));
+    EXPECT_DOUBLE_EQ(viewport.width, 100);
+    EXPECT_DOUBLE_EQ(viewport.height, 100);
+}
+
+TEST(AnimeSvgPath, NestedViewportAttributesMatchAnimeGetCtmReference){
+    const auto viewport = AnimSvgViewport::fromAttributes({{"viewBox", "0 0 100 80"}, {"x", "10"}, {"y", "20"},
+        {"width", "50"}, {"height", "40"}, {"transform", "translate(3 4)"}}, 0, 0, false);
+    EXPECT_EQ(viewport.matrix, (std::array<double, 6>{.5, 0, 0, .5, 13, 24}));
+    EXPECT_DOUBLE_EQ(viewport.width, 100);
+    EXPECT_DOUBLE_EQ(viewport.height, 80);
+}
+
+
+TEST(AnimeSvgPath, NestedViewportPercentagesResolveAgainstParentUserDimensions){
+    const auto root = AnimSvgViewport::fromAttributes({{"viewBox", "0 0 100 80"}}, 200, 160, true);
+    const auto nested = AnimSvgViewport::fromAttributes({{"x", "10%"}, {"y", "25%"}, {"width", "50%"}, {"height", "50%"},
+        {"viewBox", "0 0 100 80"}}, root.width, root.height, false);
+    EXPECT_EQ(nested.matrix, (std::array<double, 6>{.5, 0, 0, .5, 10, 20}));
+    const auto stretch = AnimSvgViewport::fromAttributes({{"x", "1em"}, {"width", "50"}, {"height", "40"},
+        {"viewBox", "0 0 100 20"}, {"preserveAspectRatio", "none"}}, 100, 80, false, 12);
+    EXPECT_EQ(stretch.matrix, (std::array<double, 6>{.5, 0, 0, 2, 12, 0}));
+}

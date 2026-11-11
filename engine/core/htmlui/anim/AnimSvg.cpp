@@ -19,9 +19,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
-#include <cctype>
 #include <sstream>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -32,24 +31,6 @@ namespace {
     std::string svgTag(const UIElement& element){
         const Rml::Element* native = UIElementAccess::get(element);
         return native ? native->GetTagName() : std::string();
-    }
-
-    double svgLengthInUserUnits(const std::string& text, double reference, double fontSize){
-        char* end = nullptr;
-        const double value = std::strtod(text.c_str(), &end);
-        if (end == text.c_str() || !std::isfinite(value)) return std::nan("");
-        while (std::isspace((unsigned char)*end)) ++end;
-        std::string unit(end);
-        while (!unit.empty() && std::isspace((unsigned char)unit.back())) unit.pop_back();
-        if (unit == "%") return value * reference / 100;
-        if (unit == "em") return value * fontSize;
-        if (unit == "ex") return value * fontSize / 2;
-        if (unit == "in") return value * 96;
-        if (unit == "cm") return value * 96 / 2.54;
-        if (unit == "mm") return value * 96 / 25.4;
-        if (unit == "pt") return value * 96 / 72;
-        if (unit == "pc") return value * 16;
-        return unit.empty() || unit == "px" ? value : std::nan("");
     }
 
     double svgGeometryFontSize(Rml::Element* element){
@@ -80,11 +61,28 @@ namespace {
             auto property = local.find(Rml::PropertyId::FontSize);
             if (property != local.end()) value = property->second.ToString();
             if (!value.empty()){
-                const double resolved = svgLengthInUserUnits(value, size, size);
+                const double resolved = AnimSvgPath::resolveLength(value, size, size);
                 size = std::isfinite(resolved) && resolved >= 0 ? resolved : 12;
             }
         }
         return size;
+    }
+
+    AnimSvgViewport svgUserViewport(Rml::Element* current){
+        std::vector<Rml::Element*> viewports;
+        for (Rml::Element* viewport = current; viewport; viewport = viewport->GetParentNode())
+            if (viewport->GetTagName() == "svg") viewports.push_back(viewport);
+        std::reverse(viewports.begin(), viewports.end());
+        AnimSvgViewport resolved;
+        for (size_t i = 0; i < viewports.size(); ++i){
+            Rml::Element* viewport = viewports[i];
+            const auto size = viewport->GetBox().GetSize(Rml::BoxArea::Content);
+            // Nested SVG nodes are rasterizer content, with no HTML layout box. Their
+            // percentages resolve in the parent viewport's user coordinate system.
+            resolved = AnimSvgViewport::fromAttributes(UIElementAccess::wrap(viewport).getAttributes(),
+                i == 0 ? size.x : resolved.width, i == 0 ? size.y : resolved.height, i == 0, svgGeometryFontSize(viewport));
+        }
+        return resolved;
     }
 
     AnimSvgPath svgGeometry(const UIElement& element){
@@ -94,28 +92,15 @@ namespace {
         if (tag == "path" || tag == "polygon" || tag == "polyline")
             return AnimSvgPath::fromAttributes(tag, attributes);
         Rml::Element* native = UIElementAccess::get(element);
-        Rml::Element* viewport = native;
-        while (viewport && viewport->GetTagName() != "svg") viewport = viewport->GetParentNode();
-        double width = 0, height = 0;
-        if (viewport){
-            std::string viewBox = viewport->GetAttribute<Rml::String>("viewBox", "");
-            if (viewBox.empty()) viewBox = viewport->GetAttribute<Rml::String>("viewbox", "");
-            std::replace(viewBox.begin(), viewBox.end(), ',', ' ');
-            std::istringstream values(viewBox);
-            double x = 0, y = 0;
-            if (!(values >> x >> y >> width >> height) || width <= 0 || height <= 0){
-                const auto size = viewport->GetBox().GetSize(Rml::BoxArea::Content);
-                width = size.x;
-                height = size.y;
-            }
-        }
+        const auto viewport = svgUserViewport(native);
+        const double width = viewport.width, height = viewport.height;
         const double font = svgGeometryFontSize(native);
         const char* horizontal[] = {"x", "x1", "x2", "cx", "rx", "width"};
         const char* vertical[] = {"y", "y1", "y2", "cy", "ry", "height"};
         const auto resolve = [&](const char* name, double reference){
             auto found = attributes.find(name);
             if (found != attributes.end()){
-                const double resolved = svgLengthInUserUnits(found->second, reference, font);
+                const double resolved = AnimSvgPath::resolveLength(found->second, reference, font);
                 found->second = AnimMath::toString(std::isfinite(resolved) ? resolved : 0);
             }
         };
@@ -155,26 +140,9 @@ namespace {
             current = current->GetParentNode();
         }
         if (!current) return matrix;
-        std::string viewBox = current->GetAttribute<Rml::String>("viewBox", "");
-        if (viewBox.empty()) viewBox = current->GetAttribute<Rml::String>("viewbox", "");
-        std::replace(viewBox.begin(), viewBox.end(), ',', ' ');
-        std::istringstream values(viewBox);
-        double x = 0, y = 0, width = 0, height = 0;
-        if (!(values >> x >> y >> width >> height) || width <= 0 || height <= 0) return matrix;
-        const auto size = current->GetBox().GetSize(Rml::BoxArea::Content);
-        if (size.x <= 0 || size.y <= 0) return matrix;
-        double sx = size.x / width, sy = size.y / height;
-        double tx = -x * sx, ty = -y * sy;
-        const std::string aspect = current->GetAttribute<Rml::String>("preserveAspectRatio", "xMidYMid meet");
-        if (aspect.find("none") == std::string::npos){
-            const double scale = aspect.find("slice") != std::string::npos ? std::max(sx, sy) : std::min(sx, sy);
-            const double ax = aspect.find("xMin") != std::string::npos ? 0 : aspect.find("xMax") != std::string::npos ? 1 : 0.5;
-            const double ay = aspect.find("YMin") != std::string::npos ? 0 : aspect.find("YMax") != std::string::npos ? 1 : 0.5;
-            tx = -x * scale + ax * (size.x - width * scale);
-            ty = -y * scale + ay * (size.y - height * scale);
-            sx = sy = scale;
-        }
-        const plutovg_matrix_t viewport{(float)sx, 0, 0, (float)sy, (float)tx, (float)ty};
+        const auto resolved = svgUserViewport(current);
+        const auto& v = resolved.matrix;
+        const plutovg_matrix_t viewport{(float)v[0], (float)v[1], (float)v[2], (float)v[3], (float)v[4], (float)v[5]};
         plutovg_matrix_t combined;
         plutovg_matrix_multiply(&combined, &matrix, &viewport);
         return combined;

@@ -405,3 +405,38 @@ TEST_F(AnimeSvgTest, StylesheetTransformDoesNotEraseAuthoredSvgGeometry){
     render();
     EXPECT_EQ(withRule, pixels());
 }
+
+
+TEST_F(AnimeSvgTest, MotionPathRootTransformMatchesRasterizer){
+    UIElement root = element("svg");
+    root.setInnerHTML("<path id='root-route' d='M0 20L100 20' fill='none' stroke='green' stroke-width='4'/>");
+    render();
+    const auto before = pixels();
+    root.setAttribute("transform", "translate(30 40)");
+    render();
+    EXPECT_EQ(before, pixels());
+    AnimParam parameters = Anime::createMotionPath(target("root-route"));
+    parameters.set("duration", 1000);
+    parameters.set("ease", "linear");
+    parameters.set("autoplay", false);
+    auto object = std::make_shared<AnimObjectTarget>();
+    auto animation = Anime::animate({object}, parameters);
+    animation->seek(500);
+    EXPECT_DOUBLE_EQ(object->getNumber("translateX"), 100);
+    EXPECT_DOUBLE_EQ(object->getNumber("translateY"), 40);
+}
+
+TEST_F(AnimeSvgTest, MotionPathNestedViewportAttributesMatchAnimeGetCtm){
+    element("svg").setInnerHTML("<svg x='10' y='20' width='50' height='40' viewBox='0 0 100 80' transform='translate(3 4)'><path id='nested-route' d='M0 20L100 20' transform='translate(2 0)' fill='none' stroke='green' stroke-width='4'/></svg>");
+    render();
+    AnimParam parameters = Anime::createMotionPath(target("nested-route"));
+    parameters.set("duration", 1000);
+    parameters.set("ease", "linear");
+    parameters.set("autoplay", false);
+    auto object = std::make_shared<AnimObjectTarget>();
+    auto animation = Anime::animate({object}, parameters);
+    animation->seek(500);
+    EXPECT_DOUBLE_EQ(object->getNumber("translateX"), 39);
+    EXPECT_DOUBLE_EQ(object->getNumber("translateY"), 34);
+    EXPECT_DOUBLE_EQ(object->getNumber("rotate"), 0);
+}

@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <memory>
+#include <sstream>
 
 using namespace jasperengine;
 
@@ -142,4 +143,75 @@ AnimSvgPoint AnimSvgPath::pointAtLength(double distance) const{
     const double start = it == segments.begin() ? 0 : (it - 1)->end;
     const double fraction = (distance - start) / (it->end - start);
     return {it->from.x + (it->to.x - it->from.x) * fraction, it->from.y + (it->to.y - it->from.y) * fraction};
+}
+
+double AnimSvgPath::resolveLength(const std::string& text, double reference, double fontSize){
+    char* end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || !std::isfinite(value)) return std::nan("");
+    while (std::isspace((unsigned char)*end)) ++end;
+    std::string unit(end);
+    while (!unit.empty() && std::isspace((unsigned char)unit.back())) unit.pop_back();
+    if (unit == "%") return value * reference / 100;
+    if (unit == "em") return value * fontSize;
+    if (unit == "ex") return value * fontSize / 2;
+    if (unit == "in") return value * 96;
+    if (unit == "cm") return value * 96 / 2.54;
+    if (unit == "mm") return value * 96 / 25.4;
+    if (unit == "pt") return value * 96 / 72;
+    if (unit == "pc") return value * 16;
+    return unit.empty() || unit == "px" ? value : std::nan("");
+}
+
+
+AnimSvgViewport AnimSvgViewport::fromAttributes(const std::map<std::string, std::string>& attributes,
+                                                double referenceWidth, double referenceHeight, bool root, double fontSize){
+    const auto length = [&](const char* name, double reference, double fallback, bool negative){
+        auto found = attributes.find(name);
+        if (found == attributes.end()) return fallback;
+        const double value = AnimSvgPath::resolveLength(found->second, reference, fontSize);
+        return std::isfinite(value) && (negative || value >= 0) ? value : fallback;
+    };
+    const double viewportWidth = root ? referenceWidth : length("width", referenceWidth, referenceWidth, false);
+    const double viewportHeight = root ? referenceHeight : length("height", referenceHeight, referenceHeight, false);
+    AnimSvgViewport result;
+    result.width = viewportWidth;
+    result.height = viewportHeight;
+    std::string viewBox = svgAttribute(attributes, "viewBox");
+    if (viewBox.empty()) viewBox = svgAttribute(attributes, "viewbox");
+    std::replace(viewBox.begin(), viewBox.end(), ',', ' ');
+    std::istringstream values(viewBox);
+    double x = 0, y = 0, width = 0, height = 0;
+    const bool hasViewBox = (bool)(values >> x >> y >> width >> height) && width > 0 && height > 0;
+    if (hasViewBox){
+        result.width = width;
+        result.height = height;
+    }
+    if (hasViewBox && viewportWidth > 0 && viewportHeight > 0){
+        double sx = viewportWidth / width, sy = viewportHeight / height;
+        double tx = -x * sx, ty = -y * sy;
+        const std::string aspect = attributes.count("preserveAspectRatio") ? svgAttribute(attributes, "preserveAspectRatio") : "xMidYMid meet";
+        if (aspect.find("none") == std::string::npos){
+            const double scale = aspect.find("slice") != std::string::npos ? std::max(sx, sy) : std::min(sx, sy);
+            const double ax = aspect.find("xMin") != std::string::npos ? 0 : aspect.find("xMax") != std::string::npos ? 1 : 0.5;
+            const double ay = aspect.find("YMin") != std::string::npos ? 0 : aspect.find("YMax") != std::string::npos ? 1 : 0.5;
+            tx = -x * scale + ax * (viewportWidth - width * scale);
+            ty = -y * scale + ay * (viewportHeight - height * scale);
+            sx = sy = scale;
+        }
+        result.matrix = {sx, 0, 0, sy, tx, ty};
+    }
+    if (!root){
+        const auto& v = result.matrix;
+        plutovg_matrix_t matrix{(float)v[0], (float)v[1], (float)v[2], (float)v[3], (float)v[4], (float)v[5]};
+        const plutovg_matrix_t position{1, 0, 0, 1, (float)length("x", referenceWidth, 0, true), (float)length("y", referenceHeight, 0, true)};
+        plutovg_matrix_multiply(&matrix, &matrix, &position);
+        const std::string text = svgAttribute(attributes, "transform");
+        plutovg_matrix_t transform;
+        if (plutovg_matrix_parse(&transform, text.c_str(), (int)text.size()))
+            plutovg_matrix_multiply(&matrix, &matrix, &transform);
+        result.matrix = {matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f};
+    }
+    // LunaSVG ignores transforms on the outer root; nested SVG transforms are applied.
+    return result;
 }

@@ -6,6 +6,7 @@
 
 #include "Export.h"
 
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -14,10 +15,19 @@ namespace jasperengine {
 
     struct AnimSvgPoint { double x = 0, y = 0; };
 
+    // The SVG viewport matrix and the user dimensions against which descendant percentages resolve.
+    struct JASPERENGINE_API AnimSvgViewport {
+        std::array<double, 6> matrix{1, 0, 0, 1, 0, 0};
+        double width = 0, height = 0;
+        static AnimSvgViewport fromAttributes(const std::map<std::string, std::string>& attributes,
+                                              double referenceWidth, double referenceHeight, bool root, double fontSize = 12);
+    };
+
     // The SVG geometry used by Anime.js getTotalLength/getPointAtLength. Geometry is kept in
     // user units; the viewport transform is applied only for motion paths on HTML targets.
     class JASPERENGINE_API AnimSvgPath {
     public:
+        static double resolveLength(const std::string& text, double reference, double fontSize);
         static AnimSvgPath fromAttributes(const std::string& tag, const std::map<std::string, std::string>& attributes);
         bool isValid() const { return valid; }
         double length() const { return totalLength; }

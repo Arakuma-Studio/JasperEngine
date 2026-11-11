@@ -1250,6 +1250,8 @@ precision)` returns a function value for `d` or `points`, resampling shapes with
 point counts (default precision `.33`). `createMotionPath(path, offset)` returns three
 function values; offset defaults to zero. Put an HTML follower over the SVG viewport to use
 the path's position and tangent as its transform.
+Use SVG transform attributes on the guide or a child `<g>`: CSS guide transforms are not
+included in motion coordinates, and the renderer ignores transforms on the outermost `<svg>`.
 
 ### Procedural geometry and exact time
 
