@@ -137,8 +137,8 @@ CASES = [
         "source": "requested motion-graphics preview",
         "files": UI_FRAME_FILES,
         "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
-        "mocks": [{"tool": "render_ui_frames", "result": ok("Rendered 3 UI frame(s).", {
-            "files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1})}],
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1}}}],
         "checks": {"calls": [{"tool": "render_ui_frames", "args": {
             "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png"}}],
             "must_not_call": ["record_game", {"tool": "play", "args": {"action": "start"}}]},
@@ -153,9 +153,9 @@ CASES = [
         "files": UI_FRAME_FILES,
         "prompt": "Render assets/ui/title.html at 0.3, 1 and 2.5 seconds to sheet.png, stepping animation callbacks at 30 fps. "
                   "Keep the preview updating whenever I save the HTML or stylesheet.",
-        "mocks": [{"tool": "render_ui_frames", "result": ok("Rendered 3 UI frame(s).", {
-            "files": ["sheet.png"], "times": [0.3, 1, 2.5], "job_id": "ui-preview-1", "status": "running", "watching": True,
-            "next": "Saving a document or one of its dependencies regenerates the output; cancel_job stops watching."})}],
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "job_id": "ui-preview-1", "status": "running", "watching": True,
+            "next": "Saving a document or one of its dependencies regenerates the output; cancel_job stops watching."}}}],
         "checks": {"calls": [{"tool": "render_ui_frames", "args": {
             "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png", "fps": 30, "watch": True}}],
             "must_not_call": ["record_game", "cancel_job", {"tool": "play", "args": {"action": "start"}}]},
