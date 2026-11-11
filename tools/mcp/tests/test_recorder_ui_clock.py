@@ -34,7 +34,7 @@ function RecordedUiClock:init()
     anime.animate(doc:getElementById('game'), { translateX = 90, duration = 3000, ease = 'linear', clock = 'game' })
 end
 function RecordedUiClock:onUpdate()
-    local x = tonumber((self.css:getStyle('left'):gsub('px', '')))
+    local x = tonumber((self.css.style:getPropertyValue('left'):gsub('px', '')))
     if x and self.previousCss and x < self.previousCss - 0.01 then recordedUiClockWentBack = true end
     self.previousCss = x
 end
@@ -135,9 +135,9 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
 
         # Paused gameplay keeps its CSS UI clock running, including while it records.
         await ed.call("play", action="pause", auto_pause=False)
-        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'none')")
+        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyleProperty('animation-name', 'none')")
         await ed.call("wait", frames=2)
-        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyle('animation-name', 'slide')")
+        await ed.call("eval_lua", code="recordedUiClockDocument:getElementById('css'):setStyleProperty('animation-name', 'slide')")
         out = ed.scratch.root / "ui-paused-play"
         result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
                                output=str(out), exit_play=False, timeout_seconds=600)
