@@ -31,8 +31,9 @@
 #include "titleart/runtime/TitleArtOverrides.h"
 #include "titleart/runtime/TitleParticlePresets.h"
 #include "titleart/three_d/Title3DSchema.h"
-#include "util/Color.h"
 #include "util/TitleArtBakeInfo.h"
+#include "widget/ColorField.h"
+#include "widget/ColorPickerWindow.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -230,15 +231,18 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
                         CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
                     }
                 }else if (param.type == "color"){
-                    // stored linear, shown sRGB (as ui.color)
-                    Vector4 srgb = Color::linearTosRGB(value.value);
-                    float rgb[3] = {srgb.x, srgb.y, srgb.z};
-                    if (ImGui::ColorEdit3((label + id).c_str(), rgb) && overridden){
-                        const Vector4 linear = Color::sRGBToLinear(Vector4(rgb[0], rgb[1], rgb[2], 1.0f));
-                        cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, property, linear);
+                    // stored linear, shown sRGB (as ui.color): the field's linear storage
+                    Vector3 rgb(value.value.x, value.value.y, value.value.z);
+                    ui::ColorFieldOptions colorOptions;
+                    colorOptions.alpha = false;
+                    colorOptions.label = label.c_str();
+                    const ui::EditPhase phase = ui::colorField((label + id).c_str(), rgb, colorOptions);
+                    if (phase == ui::EditPhase::Begin && overridden){
+                        ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
+                    }else if (phase == ui::EditPhase::Changing && overridden){
+                        cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, property, Vector4(rgb, 1.0f));
                         CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                     }
-                    if (ImGui::IsItemDeactivatedAfterEdit() && cmd) cmd->setNoMerge();
                 }else if (param.type == "color_scheme" && !param.options.empty()){
                     if (ImGui::BeginCombo((label + id).c_str(), value.text.c_str())){
                         for (const std::string& scheme : param.options){
