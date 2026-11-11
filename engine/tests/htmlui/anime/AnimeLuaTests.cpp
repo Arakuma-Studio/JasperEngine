@@ -32,6 +32,8 @@ namespace {
             L = LuaBinding::getLuaState();
             ASSERT_NE(L, nullptr);
             AnimEngine::instance().reset();
+            // Other suites can leave unreachable timer userdata until the next collection.
+            lua_gc(L, LUA_GCCOLLECT, 0);
             now = 1000;
             AnimEngine::instance().tickMilliseconds(now, 0);
             TestSystem::get().clearLogs();
