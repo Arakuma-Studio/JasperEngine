@@ -32,6 +32,16 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+UI_FRAME_FILES = {
+    "assets/ui/title.html": """<html><head><link type="text/rcss" href="title.rcss" /></head>
+<body><h1>Motion title</h1></body></html>
+""",
+    "assets/ui/title.rcss": """body { width: 1080px; height: 1350px; background-color: #182438; }
+h1 { color: white; animation: reveal 3s linear both; }
+@keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+""",
+}
+
 # a shell command that writes project.yaml (reading it is fine)
 YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml|open\([^)]*project\.yaml[^)]*['\"]w)"
 
@@ -125,6 +135,7 @@ CASES = [
         "what_happened": "UI motion design needs exact CSS/anime sample times without entering Play or recording intermediate frames.",
         "text_at_issue": "render_ui_frames: exact seconds without Play; document, times, out and watch",
         "source": "requested motion-graphics preview",
+        "files": UI_FRAME_FILES,
         "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
         "mocks": [{"tool": "render_ui_frames", "result": ok("Rendered 3 UI frame(s).", {
             "files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1})}],
@@ -139,6 +150,7 @@ CASES = [
         "what_happened": "A motion-design preview should regenerate after source saves and keep its watch job alive.",
         "text_at_issue": "render_ui_frames watch parameter and structured next explaining source-save regeneration and cancel_job",
         "source": "requested motion-graphics watch preview",
+        "files": UI_FRAME_FILES,
         "prompt": "Render assets/ui/title.html at 0.3, 1 and 2.5 seconds to sheet.png, stepping animation callbacks at 30 fps. "
                   "Keep the preview updating whenever I save the HTML or stylesheet.",
         "mocks": [{"tool": "render_ui_frames", "result": ok("Rendered 3 UI frame(s).", {
