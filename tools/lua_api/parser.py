@@ -3494,7 +3494,7 @@ OVERRIDES.update({
         'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
     ('anime', 'createDrawable'): {
         'doc': ['SVG geometry targets with an animatable normalized `draw` range ("0 1", "0.5 1").'],
-        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('end?', 'number')], 'UIElement[]')]},
+        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('finish?', 'number')], 'UIElement[]')]},
     ('anime', 'morphTo'): {
         'doc': ['A function value morphing a path, polygon or polyline to `target`; precision defaults to .33.'],
         'overloads': [([('target', _ANIME_TARGETS), ('precision?', 'number')], 'AnimeStagger')]},

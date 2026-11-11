@@ -305,6 +305,19 @@ class Emitters(unittest.TestCase):
         self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
         self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
 
+    def test_svg_drawable_stub_uses_valid_parameter_names(self):
+        from lua_api import parser
+        signature = parser.Builder.override_sig(None, parser.OVERRIDES[('anime', 'createDrawable')]['overloads'][0])
+        overload = {'params': [{'name': name, 'type': kind, 'optional': optional}
+                               for name, kind, optional in signature.params], 'returns': [signature.ret]}
+        cls = {'name': 'anime', 'base': None, 'doc': [], 'conditions': [], 'eventObject': False,
+               'constructors': [], 'properties': [], 'callOverloads': [], 'operators': [], 'enumTables': [],
+               'methods': [{'name': 'createDrawable', 'static': True, 'doc': [], 'conditions': [],
+                            'unresolved': [], 'overloads': [overload]}]}
+        emitter = stubs.Emitter({'classes': [cls]})
+        emitter.emit_class(cls)
+        self.assertIn('function anime.createDrawable(targets, start, finish) end', emitter.files['anime.lua'])
+
     def test_svg_api_signatures(self):
         classes = {c['name']: c for c in api()['classes']}
         methods = {m['name']: m for m in classes['anime']['methods']}
