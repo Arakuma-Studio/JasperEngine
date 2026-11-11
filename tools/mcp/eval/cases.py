@@ -118,6 +118,48 @@ TERRAIN_IMPORT_DRY = {
 }
 
 
+def scene_2d(entities, after=None):
+    """S78: the editor's answers about an open 2D scene "Main" holding `entities` [(id, path, components text,
+    components {name: values}, name regex)] (world.py's scene is 3D, without them); `after`: only once that tool
+    succeeded (a GameObject it made)"""
+    tree = "\n".join(f"{path} [{eid}] {comps}" for eid, path, comps, _, _ in entities)
+    gate = {"after": after} if after else {}
+    mocks = [
+        {"tool": "get_scene_tree", **gate, "result": ok(
+            f"Scene 1 \"Main\" (2D, {len(entities)} GameObjects). Each line: Name [id] components (flags); children indented.\n" + tree,
+            {"entity_count": len(entities), "scene_id": 1, "scene_name": "Main", "tree": tree, "truncated": False})},
+        {"tool": "find_entities", **gate, "result": ok(
+            f"{len(entities)} GameObject(s) match:\n" + tree, {"entities": [{"id": e[0], "path": e[1]} for e in entities]})},
+    ]
+    for eid, path, comps, values, names in entities:
+        # shaped like the real get_entity (world.py's), so it goes out as structuredContent with the values
+        mocks.append({"tool": "get_entity", **gate, "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
+            f"{path} [{eid}] components: {comps}\n{json.dumps(values)}",
+            {"id": eid, "name": path, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+             "scene_id": 1, "child_count": 0, "components": values}), "real": True}})
+    if not after:
+        mocks += [
+            {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
+                                                 {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
+                                                  "selected_scene_id": 1})},
+            {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
+                                                   {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
+                                                    "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
+        ]
+    return mocks
+
+
+SCENE_2D_BASE = [(10, "Main Camera", "camera transform", {"camera": {"type": "orthographic"}}, "main camera"),
+                 (11, "Ground", "sprite transform", {"sprite": {"texture": "assets/sprites/ground.png", "width": 640, "height": 64}}, "ground")]
+LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0.0, 0.0]},
+                                             "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
+                                                         "falloff": 1.0, "height": 64.0, "shadows": False}}, "lamp")
+BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
+CAMPFIRE = (40, "Light 2D", "light2d transform", {"transform": {"position": [120.0, 40.0, 0.0]},
+                                                  "light2d": {"enabled": True, "color": [1.0, 0.55, 0.2], "intensity": 1.0, "range": 200.0,
+                                                              "falloff": 1.0, "height": 64.0}}, r"light 2d|campfire.*|.*light")
+
+
 CASES = [
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
@@ -5018,10 +5060,10 @@ CASES = [
                   "see its glow on the ground sprites around it.",
         "mocks": [
             {"tool": "create_entity", "result": ok(
-                "Created Light 2D \"Light 2D\" [12] at Light 2D (one undo step). The scene's Ambient Light 2D is bright (1), so "
+                "Created Light 2D \"Light 2D\" [40] at Light 2D (one undo step). The scene's Ambient Light 2D is bright (1), so "
                 "Light 2Ds barely show: set_scene_settings {settings: {ambient_light_2d_color: [0.24, 0.25, 0.33], "
                 "ambient_light_2d_intensity: 1}} darkens it.",
-                {"entity_id": 12, "scene_id": 1, "entity": {"id": 12, "name": "Light 2D", "path": "Light 2D"}, "type": "light_2d",
+                {"entity_id": 40, "scene_id": 1, "entity": {"id": 40, "name": "Light 2D", "path": "Light 2D"}, "type": "light_2d",
                  "components": ["transform", "light2d"],
                  "next": "The scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
                          "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it."})},
@@ -5029,10 +5071,12 @@ CASES = [
                 "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"light2d\":{\"color\":[1.0,0.55,0.2]}} The "
                 "scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
                 "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it.",
-                {"scene_id": 1, "entities": [{"id": 12, "name": "Light 2D"}], "values": {"light2d": {"color": [1.0, 0.55, 0.2]}},
+                {"scene_id": 1, "entities": [{"id": 40, "name": "Light 2D"}], "values": {"light2d": {"color": [1.0, 0.55, 0.2]}},
                  "next": "The scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
                          "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it."})},
             {"tool": "set_scene_settings", "result": ok("Set 2 scene setting(s) (one undo step).", {"scene_id": 1})},
+            *scene_2d(SCENE_2D_BASE + [CAMPFIRE], after="create_entity"),
+            *scene_2d(SCENE_2D_BASE),
         ],
         "checks": {"any_of": [{"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_color": "*"}}}]},
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_intensity": "*"}}}]}],
@@ -5078,6 +5122,7 @@ CASES = [
                                                     "{\"light2d\":{\"height\":512.0}}",
                                                     {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
                                                      "values": {"light2d": {"height": 512.0}}})},
+            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
         ],
         "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}]},
@@ -5106,6 +5151,7 @@ CASES = [
                                                     "{\"light2d\":{\"height\":512.0}}",
                                                     {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
                                                      "values": {"light2d": {"height": 512.0}}})},
+            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
         ],
         "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}],
