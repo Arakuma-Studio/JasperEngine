@@ -98,7 +98,7 @@ def frame_hash(path: Path) -> tuple[int, int, str]:
 async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
     # Fail immediately on a player without the modules, before spending time on 360 frames.
     await start(ed)
-    await ed.call("play", action="stop")
+    await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     before = (await ed.call("read_console", limit=1))["next_cursor"]
     takes = []
     for take in range(2):
@@ -135,7 +135,7 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
 
 async def test_motion_graphics_procedural_cost_per_frame(ed: Editor):
     await start(ed)
-    await ed.call("play", action="stop")
+    await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     output = ed.scratch.root / "motion-graphics-profile"
     recording = await ed.call("record_game", frames=64, fps=FPS, format="png", width=WIDTH, height=HEIGHT,
                               output=str(output), exit_play=True, wait=False)
