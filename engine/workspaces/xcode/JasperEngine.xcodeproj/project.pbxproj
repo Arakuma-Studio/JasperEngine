@@ -4902,6 +4902,7 @@
 		4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C4FC740FC9687D5 /* PixelFxLua.h */; };
 		4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E377CB554D876579 /* PixelFxPlayer.h */; };
 		4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A895801520386487 /* ScreenTransition.h */; };
+		4A534E47D9CD4A31DC3E9890 /* PivotPreset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4766741A7C4FB88EF3 /* PivotPreset.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9466,6 +9467,7 @@
 		4A534E472C4FC740FC9687D5 /* PixelFxLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxLua.h; sourceTree = "<group>"; };
 		4A534E47E377CB554D876579 /* PixelFxPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxPlayer.h; sourceTree = "<group>"; };
 		4A534E47A895801520386487 /* ScreenTransition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScreenTransition.h; sourceTree = "<group>"; };
+		4A534E4766741A7C4FB88EF3 /* PivotPreset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PivotPreset.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11388,6 +11390,7 @@
 				4A534E4717796360C2B35E36 /* SpriteSheetIO.h */,
 				4A534E47F916164B86075842 /* SpriteSheetPool.h */,
 				4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */,
+				4A534E4766741A7C4FB88EF3 /* PivotPreset.h */,
 			);
 			path = sprite;
 			sourceTree = "<group>";
@@ -16783,6 +16786,7 @@
 				4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */,
 				4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */,
 				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
+				4A534E47D9CD4A31DC3E9890 /* PivotPreset.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

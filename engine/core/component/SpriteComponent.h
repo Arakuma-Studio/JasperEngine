@@ -10,6 +10,7 @@
 #include "math/Rect.h"
 #include "Engine.h"
 #include "pixelart/PixelPerfectLayout.h"
+#include "sprite/PivotPreset.h"
 
 #include <cstdint>
 #include <atomic>
@@ -20,20 +21,6 @@
 namespace jasperengine{
 
     struct SpriteSheetData;   // sprite/SpriteSheet.h
-
-    enum class PivotPreset{
-        CENTER,
-        TOP_CENTER,
-        BOTTOM_CENTER,
-        LEFT_CENTER,
-        RIGHT_CENTER,
-        TOP_LEFT,
-        BOTTOM_LEFT,
-        TOP_RIGHT,
-        BOTTOM_RIGHT,
-        // the frame's own pivot (sheet frames: the Aseprite slice, the import settings); appended
-        FRAME
-    };
 
     // the point a sprite sorts by along the Transparency Sort Axis (spec S52 R4, Unity's Sprite
     // Sort Point): its world bounds' centre, or its pivot
