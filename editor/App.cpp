@@ -3309,7 +3309,6 @@ void editor::App::reportLoadingProgress(const std::string& status) {
     const auto now = std::chrono::steady_clock::now();
     if (lastLoadingFrame.time_since_epoch().count() != 0 &&
         now - lastLoadingFrame < std::chrono::milliseconds(33)) return;
-    lastLoadingFrame = now;
 
     // Project loading stays on the main thread. Pump only native events and the
     // loading UI here; editor tasks must wait until the project is complete.
@@ -3321,6 +3320,8 @@ void editor::App::reportLoadingProgress(const std::string& status) {
         throw;
     }
     pumpingLoading = false;
+    // Leave time for loading work even when rendering one frame exceeds the interval.
+    lastLoadingFrame = std::chrono::steady_clock::now();
 }
 
 static std::string jsonEscape(const std::string& text) {
