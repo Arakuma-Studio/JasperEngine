@@ -227,6 +227,9 @@ TEST_F(LitLightRecordsGpu, LightStepsBandThe2DLightsOfTheRecords){
         points.back()->setShadows(false);
     }
     Light2D light2d(&scene);
+    // at height 0 (pure radial), as the struct's default: a new Light 2D's 64 tilts its light away
+    // from this ground plane
+    light2d.setHeight(0.0f);
     light2d.setPosition(1.5f, 0.0f, 0.0f);
     light2d.setRange(4.0f);
     light2d.setIntensity(1.0f);
