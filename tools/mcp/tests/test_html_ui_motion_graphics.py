@@ -135,7 +135,23 @@ async def test_motion_graphics_six_second_recordings_are_identical(ed: Editor):
 
 async def test_motion_graphics_procedural_cost_per_frame(ed: Editor):
     await start(ed)
+    await ed.call("play", action="stop")
+    output = ed.scratch.root / "motion-graphics-profile"
+    recording = await ed.call("record_game", frames=64, fps=FPS, format="png", width=WIDTH, height=HEIGHT,
+                              output=str(output), exit_play=True, wait=False)
+    job_id = recording["job_id"]
     try:
+        # Profile the fixed recording clock, so the six-second timeline stays active even
+        # when thirty software-rendered frames take more than six wall-clock seconds.
+        for _ in range(120):
+            if output.is_dir() and any(path.stat().st_size > 0 for path in output.glob(".frame_*.je-tmp")):
+                break
+            state = await ed.call("get_job", job_id=job_id)
+            ed.check_eq(state["status"], "running", f"the recording is still arming: {state}")
+            await ed.call("wait", frames=1, timeout_seconds=60)
+        else:
+            ed.fail("the profiling recording did not capture its first frame")
+
         capture = await ed.call("capture_profile", frames=30, gpu=False,
                                 save_path="captures/motion-graphics.jetrace.json", timeout=600)
         samples = []
@@ -145,8 +161,19 @@ async def test_motion_graphics_procedural_cost_per_frame(ed: Editor):
             rows = [row for row in profile["rows"] if row["name"] == "motion_graphics.procedural"]
             ed.check(rows and rows[0]["calls"] == 1, f"the procedural callback ran once in the {frame} frame: {profile}")
             samples.append({"frame": frame, "geometry_cpu_ms": rows[0]["total_ms"], "frame_cpu_ms": profile["cpu_ms"]})
+        for _ in range(120):
+            state = await ed.call("get_job", job_id=job_id)
+            if state["status"] != "running":
+                break
+            await ed.call("wait", frames=2, timeout_seconds=60)
+        ed.check_eq(state["status"], "succeeded", f"the profiling recording completed: {state}")
+        ed.check_eq(state["result"]["frames"], 64, "the profiling workload captured every fixed-time frame")
         output = ed.scratch.root / "motion-graphics-cost.json"
-        output.write_text(json.dumps({"stars": 30, "samples": samples, "capture": capture}, indent=2))
+        output.write_text(json.dumps({"stars": 30, "samples": samples, "capture": capture,
+                                      "recording": state}, indent=2))
         print(f"     [bench] motion graphics, 30 stars: {json.dumps(samples)}; {output}", flush=True)
     finally:
+        state = await ed.call("get_job", job_id=job_id)
+        if state["status"] == "running":
+            await ed.call("cancel_job", job_id=job_id)
         await ed.call("play", action="stop")
