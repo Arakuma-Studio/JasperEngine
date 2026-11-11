@@ -958,6 +958,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     hasIBL = false;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
 
     lightListEpoch = 1;
     lightListCap = 0;
@@ -993,6 +994,7 @@ void RenderSystem::load(){
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
     numLights2D = 0;
 
     {
@@ -1479,6 +1481,9 @@ int RenderSystem::checkLightsAndShadow(){
 
     if (numLights2D > 0)
         hasLights2D = true;
+    // a scene without a Light 2D: its 2D ambient still multiplies the unlit 2D surfaces (as with
+    // one Light 2D out of range), unless it is (1, 1, 1), which draws as before
+    hasAmbient2D = !hasLights2D && isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
 
     return numLights;
 }
@@ -1942,6 +1947,11 @@ int RenderSystem::getLightCapacity(int maxLightsPerObject){
     if (maxLightsPerObject <= 8)
         return 8;
     return 16;
+}
+
+bool RenderSystem::isAmbient2DTinted(Vector3 ambientLinear, float intensity){
+    const Vector3 ambient = ambientLinear * intensity;
+    return std::fabs(ambient.x - 1.0f) > 1e-4f || std::fabs(ambient.y - 1.0f) > 1e-4f || std::fabs(ambient.z - 1.0f) > 1e-4f;
 }
 
 // Snapshot of every light as the object lists copy it, after the lights' transforms, shadow
@@ -2640,9 +2650,10 @@ void RenderSystem::processLights2D(){
         case ShadowQuality::ULTRA:  pcfRadius = 6.0f; break;
     }
 
-    // rows without shadows keep shadowMapIndex -1 and never sample the atlas
+    // rows without shadows keep shadowMapIndex -1 and never sample the atlas; z: the Light Steps,
+    // read only by the 'Lst' variants (includes/lighting2d.glsl)
     float atlasW = (hasShadow2DAtlas && shadow2DAtlasWidth > 0) ? (float)shadow2DAtlasWidth : 1.0f;
-    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, atlasW, pcfRadius);
+    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, (float)scene->getLight2DSteps(), pcfRadius);
 }
 
 bool RenderSystem::loadAndProcessFog(){
@@ -3469,6 +3480,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
+    environment.ambient2D = hasAmbient2D;
+    environment.light2DSteps = scene->getLight2DSteps() > 0;
     environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
@@ -4214,11 +4227,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
     // cheap unlit shader; accumulated 2D light multiplies the base color) and
     // with the lit path in mixed scenes (contributions add)
-    // (not with transmission: like SSAO, a uniform block it has no room for)
-    const bool useLight2D = environment.lights2D && inputs.receiveLights && !inputs.pbrTransmission;
+    // (not with transmission: like SSAO, a uniform block it has no room for). Without a Light 2D
+    // a tinting 2D ambient takes the unlit path too, with no light to read normals (S78 R6); the
+    // lit path adds 2D lights only, never the 2D ambient
+    const bool ambientOnly2D = !environment.lights2D && environment.ambient2D && p_unlit;
+    const bool useLight2D = (environment.lights2D || ambientOnly2D) && inputs.receiveLights && !inputs.pbrTransmission;
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
-    if (useLight2D){
+    if (useLight2D && !ambientOnly2D){
         // the 2D light path reads the normal when the mesh has one (+Z otherwise) and the
         // tangents only for a normal map (includes/lighting2d.glsl getNormal2DAt)
         p_hasNormal = p_hasNormal || inputs.normal;
@@ -4281,7 +4297,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormalMap = false;
         // @require normalmap: the material's normal map on the 2D light path (tangent frame
         // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
-        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+        if ((require & ShaderRequire_NormalMap) && useLight2D && !ambientOnly2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
                 p_hasTexture1 && !inputs.terrain){
             p_hasNormal = true;
             p_hasTangent = true;
@@ -4351,6 +4367,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // S78's Light Steps: each 2D light's term quantized (the count is a uniform, off is the
+    // variant without the bit)
+    if (p_light2d && environment.light2DSteps)
+        variant.properties |= ShaderPool::getLight2DStepsProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -17881,6 +17901,14 @@ void RenderSystem::update(double dt){
         loadedPbrTier = pbrTier;
         needReloadMeshVariants();
     }
+    // so are the 2D ambient of a scene without a Light 2D ('L2d' on the unlit ones) and the Light
+    // Steps being on ('Lst'); the count itself is a uniform
+    const bool light2DSteps = scene->getLight2DSteps() > 0;
+    if (hasAmbient2D != loadedAmbient2D || light2DSteps != loadedLight2DSteps){
+        loadedAmbient2D = hasAmbient2D;
+        loadedLight2DSteps = light2DSteps;
+        needReloadMeshVariants();
+    }
 
     if (pipelines != loadedPipelines){
         loadedPipelines = pipelines;
@@ -18537,7 +18565,7 @@ void RenderSystem::update(double dt){
     updateShadowCasters();
     updateLightCameras(mainCamera, mainCameraTransform);
     processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
-    if (hasLights2D){
+    if (hasLights2D || hasAmbient2D){
         processLights2D();
     }
 

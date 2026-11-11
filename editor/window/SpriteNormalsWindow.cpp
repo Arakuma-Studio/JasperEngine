@@ -908,9 +908,11 @@ void SpriteNormalsWindow::setPreset(sn::Preset p) {
     settings.softness = base.softness;
     settings.radius = base.radius;
     settings.quantize = base.quantize;   // Toon steps: the toon preset's, off for the others
-    settings.profile = base.profile;     // auto, or the painted / props preset's
-    // tile wraps; leaving it for another preset goes back to the preset's edges
-    if (p == sn::Preset::Tile || previous == sn::Preset::Tile) settings.edges = base.edges;
+    settings.profile = base.profile;     // auto, or the painted / props / stones preset's
+    settings.gaps = base.gaps;           // Dark Gaps Are Edges: the stones preset's, off for the others
+    // tile and stones wrap; leaving them for another preset goes back to the preset's edges
+    auto wraps = [](sn::Preset q) { return q == sn::Preset::Tile || q == sn::Preset::Stones; };
+    if (wraps(p) || wraps(previous)) settings.edges = base.edges;
     settings.version = sn::kSettingsVersion;   // a preset is a fresh start with the current generator
     markChanged();
     storeSettings();
@@ -1674,6 +1676,7 @@ sn::LightSetup SpriteNormalsWindow::lightSetup() const {
     l.intensity = 1.0f;
     setup.lights.push_back(l);
     setup.ambientIntensity = light.ambient;
+    setup.lightSteps = effectiveLightSteps();
     if (const std::shared_ptr<sn::SpriteNormalsRun> r = shown()) {
         setup.directx = r->prepared().request.settings.directx;
         setup.alphaThreshold = r->prepared().request.settings.alphaThreshold;
@@ -1692,6 +1695,7 @@ void SpriteNormalsWindow::renderLit() {
         return;
     }
     ensureLight();
+    litSteps = effectiveLightSteps();
     int x, y, w, h;
     cellRect(frame, x, y, w, h);
     const sn::Image& normal = displayNormal();
@@ -1757,6 +1761,17 @@ void SpriteNormalsWindow::setAmbient(float a) {
     light.ambient = std::clamp(a, 0.0f, 1.0f);
     litDirty = true;
     storeSettings();
+}
+
+void SpriteNormalsWindow::setLightSteps(int steps) {
+    lightSteps = std::clamp(steps, kSceneLightSteps, sn::kMaxLightSteps);
+    litDirty = true;
+}
+
+int SpriteNormalsWindow::effectiveLightSteps() const {
+    if (lightSteps != kSceneLightSteps) return lightSteps;
+    const SceneProject* sp = project->getScene(hasAssignTarget() ? target.sceneId : project->getSelectedSceneId());
+    return sp && sp->scene ? std::clamp(sp->scene->getLight2DSteps(), 0, sn::kMaxLightSteps) : 0;
 }
 
 void SpriteNormalsWindow::setFrame(int index) {
@@ -1881,8 +1896,30 @@ void SpriteNormalsWindow::refreshWarnings(bool force) {
     }
     if (!paintProblem.empty()) warnings.push_back({"paint_unreadable", paintProblem, false, {}});
 
-    // what the target's scene says (Phase 2's sceneWarnings, verbatim)
     const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    // what the shown result says about the shape, with the window's fixes
+    if (r) {
+        const sn::Result& res = r->result();
+        const sn::Settings& used = r->prepared().request.settings;
+        if (used.edges == sn::Edges::Transparent && res.boxyIslands > 0) {
+            const bool inflate = (res.profilesUsed & (1u << static_cast<int>(sn::Profile::Inflate))) != 0;
+            warnings.push_back({"boxy",
+                                std::string(res.boxyIslands == 1 ? "The sprite fills its box" : "The sprites fill their boxes") + " like a crate or panel: the " +
+                                    (inflate ? "Inflate" : "Rounded") + " profile bulges a box into a pillow.",
+                                false,
+                                {"Use Bevel (radius " + std::to_string(sn::boxyBevelRadius(res.boxySide)) + ")", "Use Props"}});
+        }
+        for (const sn::Problem& p : res.warnings) {
+            if (p.kind != "gaps_unmatched") continue;
+            warnings.push_back({"gaps_unmatched",
+                                "Dark Gaps Are Edges found no dark gaps: the darkest " + std::to_string(static_cast<int>(std::lround(used.gaps.share * 100.0f))) +
+                                    "% of the image is about as light as the rest (flat or evenly lit art), so nothing became an edge.",
+                                false,
+                                {"Lower Gap Amount", "Turn Off Dark Gaps"}});
+        }
+    }
+
+    // what the target's scene says (Phase 2's sceneWarnings, verbatim)
     int width = r ? r->result().normal.width : item.info.width;
     int height = r ? r->result().normal.height : item.info.height;
     std::vector<sn::Delay> delays = r ? r->prepared().source.delays : std::vector<sn::Delay>();
@@ -1893,11 +1930,12 @@ void SpriteNormalsWindow::refreshWarnings(bool force) {
         scene = sp ? sp->scene : nullptr;
     }
     for (const sn::Problem& p : sn::sceneWarnings(scene, scene ? target.entity : NULL_ENTITY, settings, width, height, delays, getAssign(),
-                                                      scene ? target.submesh : 0u)) {
+                                                      scene ? target.submesh : 0u, sn::framePixels(shownCells(), width, height))) {
         if (p.kind == "size_mismatch" && unknownSize) continue;
         WarningRow row{p.kind, p.message, false, {}};
         if (p.kind == "no_light") row.fixes = {"Create Light 2D"};
         else if (p.kind == "no_light_height") row.fixes = {"Set Height 64", "Select Lights"};
+        else if (p.kind == "light_low") row.fixes = {"Raise Light(s)"};
         else if (p.kind == "filter_mismatch") row.fixes = {"Match Base Texture"};
         else if (p.kind == "size_mismatch") {
             row.error = true;
@@ -1954,7 +1992,7 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         }
         auto* create = new CreateEntityCmd(project, sp->id, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
         create->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(position.x - 0.5f * w, position.y + 0.5f * h, position.z));
-        create->addProperty<float>(ComponentType::Light2DComponent, "height", 64.0f);
+        create->addProperty<float>(ComponentType::Light2DComponent, "height", Light2DComponent::NEW_HEIGHT);
         create->setNoMerge();
         CommandHandle::get(sp->id)->addCommand(create);
         project->setSelectedEntity(sp->id, create->getEntity());
@@ -1966,7 +2004,7 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         int count = 0;
         for (Entity e : enabledLights(sp)) {
             if (sp->scene->getComponent<Light2DComponent>(e).height > 0.0f) continue;
-            multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", 64.0f);
+            multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", Light2DComponent::NEW_HEIGHT);
             count++;
         }
         if (count == 0) {
@@ -1974,6 +2012,23 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
             error = "No Light 2D has height 0.";
             return false;
         }
+        multi->setNoMerge();
+        CommandHandle::get(sp->id)->addCommand(multi);
+        done = true;
+    } else if (kind == "light_low" && fix == "Raise Light(s)") {
+        SceneProject* sp = needTarget();
+        if (!sp) return false;
+        // the size the warning measured: the shown result's frames, else the source image
+        const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+        const int width = r ? r->result().normal.width : (current < items.size() ? items[current].info.width : 0);
+        const int height = r ? r->result().normal.height : (current < items.size() ? items[current].info.height : 0);
+        const sn::LowLights low = sn::lowLights(sp->scene, target.entity, sn::framePixels(shownCells(), width, height));
+        if (low.lights.empty()) {
+            error = "No Light 2D sits low for this sprite.";
+            return false;
+        }
+        auto* multi = new MultiPropertyCmd();
+        for (Entity e : low.lights) multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", low.raiseTo);
         multi->setNoMerge();
         CommandHandle::get(sp->id)->addCommand(multi);
         done = true;
@@ -2034,6 +2089,32 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         done = true;
     } else if (kind == "directx_in_engine" && fix == "Switch to OpenGL") {
         settings.directx = false;
+        markChanged();
+        storeSettings();
+        done = true;
+    } else if (kind == "boxy" && fix.rfind("Use Bevel", 0) == 0) {
+        // the radius the row offered: 5% of the boxy island's shorter side
+        const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+        if (!r || r->result().boxyIslands == 0) {
+            error = "There is no boxy sprite in the preview.";
+            return false;
+        }
+        settings.profile = sn::Profile::Bevel;
+        settings.radius = static_cast<float>(sn::boxyBevelRadius(r->result().boxySide));
+        markChanged();
+        storeSettings();
+        done = true;
+    } else if (kind == "boxy" && fix == "Use Props") {
+        setPreset(sn::Preset::Props);
+        done = true;
+    } else if (kind == "gaps_unmatched" && fix == "Lower Gap Amount") {
+        // half of it, in whole percent, at least 1%
+        settings.gaps.share = std::max(0.01f, std::round(settings.gaps.share * 50.0f) / 100.0f);
+        markChanged();
+        storeSettings();
+        done = true;
+    } else if (kind == "gaps_unmatched" && fix == "Turn Off Dark Gaps") {
+        settings.gaps.share = 0.0f;
         markChanged();
         storeSettings();
         done = true;
@@ -2152,6 +2233,8 @@ void SpriteNormalsWindow::updatePreviewImages() {
         normalUploadedAt = now();
     }
     const bool litDue = litRenderedAt < 0.0 || now() - litRenderedAt >= 1.0 / 30.0 || now() < litRenderedAt;
+    // following the scene's Light Steps: an edit of the scene redraws the preview
+    if (lightSteps == kSceneLightSteps && effectiveLightSteps() != litSteps) litDirty = true;
     if (litDirty && litDue) renderLit();
     else if (litDirtyX0 < litDirtyX1 && litDirtyY0 < litDirtyY1 && litDue) renderLitRect();
 }
@@ -2423,6 +2506,9 @@ namespace {
     constexpr const char* kPaintedPresetTip = "Painted, vector and organic art at any size: profile inflate (blown-up shapes, no crease down the middle; strength 1.5, detail 3, smoothing 1)";
     constexpr const char* kPropsPresetTip = "Crates, panels, coins and buttons: profile dome, a round rim and a flat face (strength 1.5, volume 0.7, detail 3, smoothing 0.5, softness 1)";
     constexpr const char* kTilePresetTip = "Seamless textures: edges wrap, more painted relief (strength 2, detail 3, smoothing 1)";
+    constexpr const char* kStonesPresetTip =
+        "Seamless floors of stones or bricks between dark gaps: Dark Gaps Are Edges (Gap Amount 30%), profile dome, edges wrap: every stone "
+        "a slab with a round rim (strength 2, detail 3, smoothing 1, softness 1.5)";
 
     // Physics Placement's segmented buttons (one selected, the others plain), equal widths; in a
     // dock too narrow for every label on one row they wrap to rows of equal columns (6: 3 + 3,
@@ -2783,7 +2869,7 @@ void SpriteNormalsWindow::drawFrames() {
 
 void SpriteNormalsWindow::drawPresetAndSliders() {
     ImGui::SeparatorText("Settings");
-    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky", "Toon", "Painted", "Props", "Tile"};
+    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky", "Toon", "Painted", "Props", "Tile", "Stones"};
     const char* tips[] = {"Gentle relief for painterly art (strength 1, detail 2, smoothing 1)",
                           "Best measured accuracy on 16-64 px sprites (strength 1.5, detail 3, smoothing 1); above 128 px it inflates the shape",
                           "Small characters: keeps 1 px features (smoothing 0.6)",
@@ -2792,9 +2878,10 @@ void SpriteNormalsWindow::drawPresetAndSliders() {
                           kToonPresetTip,
                           kPaintedPresetTip,
                           kPropsPresetTip,
-                          kTilePresetTip};
+                          kTilePresetTip,
+                          kStonesPresetTip};
     int preset = static_cast<int>(settings.preset);
-    if (segmentedButtons("##preset", preset, labels, tips, 9, "spriteNormals.presets")) setPreset(static_cast<sn::Preset>(preset));
+    if (segmentedButtons("##preset", preset, labels, tips, 10, "spriteNormals.presets")) setPreset(static_cast<sn::Preset>(preset));
     UIProbe::item("spriteNormals.preset");
     const sn::Settings base = sn::presetSettings(settings.preset);
     auto slider = [&](const char* label, const char* id, float& value, float presetValue, float lo, float hi, const char* format, const char* help) {
@@ -2827,6 +2914,7 @@ void SpriteNormalsWindow::drawPresetAndSliders() {
            "(px of a 128 px sprite: larger sprites scale it, see Resolution scale)");
     slider("Volume", "##volume", settings.volume, base.volume, 0.0f, 8.0f, "%.2f", "Rounding from the silhouette: how domed the sprite is");
     drawToonSteps(base);
+    drawGaps(base);
     for (const sn::Problem& p : current < items.size() ? items[current].problems : std::vector<sn::Problem>()) {
         if (p.kind == "invalid_settings") errorText(p.message);
     }
@@ -2873,6 +2961,47 @@ void SpriteNormalsWindow::drawToonSteps(const sn::Settings& base) {
         markChanged();
         storeSettings();
     }
+    ImGui::PopID();
+}
+
+void SpriteNormalsWindow::drawGaps(const sn::Settings& base) {
+    static const char* const help =
+        "Floor tiles and walls: the darkest part of the image (the gaps between stones or bricks) is not part of the shape, so "
+        "every stone gets its own rounded rim. Gap Amount: how much of the image is gap. Works with every profile and edges mode";
+    ImGui::PushID("##gaps");
+    rowLabel("Gaps", help);
+    if (settings.gaps != base.gaps) {
+        if (resetToPresetButton("gaps")) {
+            settings.gaps = base.gaps;
+            markChanged();
+            storeSettings();
+        }
+        ImGui::SameLine();
+    }
+    bool on = settings.gaps.on();
+    if (ImGui::Checkbox("Dark Gaps Are Edges", &on)) {
+        settings.gaps.share = on ? (base.gaps.on() ? base.gaps.share : 0.3f) : 0.0f;
+        markChanged();
+        storeSettings();
+    }
+    UIProbe::item("spriteNormals.gaps");
+    tooltip(help);
+    static const char* const amountHelp =
+        "How much of the image is gap: the darkest share of its pixels (30%: about the grout of a stone floor). Raise it when stones "
+        "merge, lower it when stones lose their dark edges into the gaps";
+    rowLabel("Gap Amount", amountHelp);
+    ImGui::BeginDisabled(!on);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    float percent = (on ? settings.gaps.share : (base.gaps.on() ? base.gaps.share : 0.3f)) * 100.0f;
+    if (UIUtils::sliderFloatInput("##gapAmount", &percent, 1.0f, 90.0f, "%.0f%%") && on) {
+        settings.gaps.share = std::clamp(percent, 1.0f, 90.0f) / 100.0f;
+        markChanged();
+        storeSettings();
+    }
+    ImGui::EndDisabled();
+    UIProbe::item("spriteNormals.gapAmount");
+    if (on) tooltip(amountHelp);
+    else reasonTooltip("Turn Dark Gaps Are Edges on to use this");
     ImGui::PopID();
 }
 
@@ -3628,6 +3757,27 @@ void SpriteNormalsWindow::drawToolbar() {
             litDirty = true;
         }
         tooltip("How far the light reaches, in pixels (the Light 2D's Range)");
+        const float stepsField = ImGui::GetFontSize() * 6.0f;   // "Scene (16)"
+        next(stepsField + ImGui::CalcTextSize("Light Steps").x + style.ItemSpacing.x);
+        ImGui::TextUnformatted("Light Steps");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(stepsField);
+        const int sceneSteps = effectiveLightSteps();
+        auto stepsName = [](int n) { return n > 0 ? std::to_string(n) : std::string("Off"); };
+        const std::string stepsText = lightSteps == kSceneLightSteps ? "Scene (" + stepsName(sceneSteps) + ")" : stepsName(lightSteps);
+        if (ImGui::BeginCombo("##lightSteps", stepsText.c_str())) {
+            if (ImGui::Selectable(("Scene (" + stepsName(sceneSteps) + ")").c_str(), lightSteps == kSceneLightSteps) && lightSteps != kSceneLightSteps) {
+                setLightSteps(kSceneLightSteps);
+            }
+            UIProbe::item("spriteNormals.lightSteps.Scene");
+            for (int n = 0; n <= sn::kMaxLightSteps; n++) {
+                if (ImGui::Selectable(stepsName(n).c_str(), n == lightSteps) && n != lightSteps) setLightSteps(n);
+                UIProbe::item("spriteNormals.lightSteps." + stepsName(n));
+            }
+            ImGui::EndCombo();
+        }
+        UIProbe::item("spriteNormals.lightSteps");
+        tooltip("Light in flat bands, as the scene's Light Steps draw it: each light's brightness rounded up to N steps (Scene: the scene's own setting; Off: smooth)");
         next(buttonWidth("Reset light"));
         if (ImGui::SmallButton("Reset light")) {
             project->getSpriteNormalsSettings().lightHeight = 0.0f;
@@ -3986,8 +4136,15 @@ void SpriteNormalsWindow::drawMetrics() {
         for (const std::string& line : metricsAssessment.lines) metricsLine += "  |  " + line;
     }
     ImGui::TextWrapped("%s", metricsLine.c_str());
-    if (!metricsAssessment.hint.empty() && metricsAssessment.hint != "Looks fine.") warningText(metricsAssessment.hint);
-    for (const sn::Problem& w : r->result().warnings) warningText(w.message);
+    // (boxy and gaps_unmatched are rows of the Warnings section, with their fixes)
+    for (const sn::Problem& w : metricsAssessment.warnings) {
+        if (w.kind == "boxy") continue;
+        warningText(w.fix);
+        break;
+    }
+    for (const sn::Problem& w : r->result().warnings) {
+        if (w.kind != "gaps_unmatched") warningText(w.message);
+    }
     if (!lastWritten.empty()) {
         subtle("Saved: " + lastWritten.front() + (lastWritten.size() > 1 ? " (+" + std::to_string(lastWritten.size() - 1) + " more)" : std::string()));
     }

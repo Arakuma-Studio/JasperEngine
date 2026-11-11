@@ -1721,6 +1721,8 @@ namespace jasperengine::editor{
         // a project script sets the scene's maxLightsPerObject (the export then ships the lit
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
+        // a script sets the 2D ambient or the Light Steps (S78: variants of the 2D-lit meshes)
+        bool scriptsSetLight2D() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
         bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;

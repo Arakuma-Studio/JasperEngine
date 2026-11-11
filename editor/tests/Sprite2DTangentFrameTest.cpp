@@ -440,7 +440,7 @@ namespace {
     }
 }
 
-TEST(Sprite2DLightHeight, LoadedAndScriptLightsKeepTheirHeight) {
+TEST(Sprite2DLightHeight, LoadedAndWrappedLightsKeepTheirHeight) {
     // a scene's Light2D without height: the struct default
     YAML::Node node = YAML::Load("intensity: 2\nrange: 300\n");
     const Light2DComponent loaded = decodeLight2D(node);
@@ -449,15 +449,17 @@ TEST(Sprite2DLightHeight, LoadedAndScriptLightsKeepTheirHeight) {
     // with one, its value
     EXPECT_EQ(decodeLight2D(YAML::Load("height: 12\n")).height, 12.0f);
 
-    // the loader's path (ProjectUtils::addEntityComponent), and the C++ / Lua constructor
+    // the loader's path (ProjectUtils::addEntityComponent) and a script wrapping that light keep
+    // 0; a light the C++ / Lua constructor makes new starts at 64, as the editor's (S78 R16)
     Scene scene;
     const Entity entity = scene.createEntity();
     std::vector<Entity> entities{entity};
     ProjectUtils::addEntityComponent(&scene, entity, ComponentType::Light2DComponent, entities);
     ASSERT_TRUE(scene.findComponent<Light2DComponent>(entity));
     EXPECT_EQ(scene.getComponent<Light2DComponent>(entity).height, 0.0f);
+    EXPECT_EQ(Light2D(&scene, entity).getHeight(), 0.0f);
     Light2D light(&scene);
-    EXPECT_EQ(light.getHeight(), 0.0f);
+    EXPECT_EQ(light.getHeight(), 64.0f);
 }
 
 // ---- U6: Mesh::setNormalTexture

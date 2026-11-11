@@ -333,6 +333,12 @@ namespace jasperengine::editor::spritenormals {
         return setup;
     }
 
+    float lightStep(float t, int steps) {
+        if (steps <= 0) return t;
+        const float n = static_cast<float>(steps);
+        return std::ceil(t * n) / n;
+    }
+
     Image renderLit(const Image& normal, const Image& color, const LightSetup& setup) {
         if (!isRgba8(normal) || !isRgba8(color) || normal.width != color.width || normal.height != color.height) return Image();
         Image out = Image::make(color.width, color.height, 4, 8);
@@ -361,7 +367,7 @@ namespace jasperengine::editor::spritenormals {
                         const float length = std::sqrt(tx * tx + ty * ty + l.height * l.height);
                         ndotl = std::clamp((n[0] * tx + n[1] * ty + n[2] * l.height) / length, 0.0f, 1.0f);
                     }
-                    const float k = l.intensity * atten * ndotl;
+                    const float k = l.intensity * lightStep(atten * ndotl, setup.lightSteps);
                     light[0] += l.red * k;
                     light[1] += l.green * k;
                     light[2] += l.blue * k;
@@ -453,7 +459,9 @@ namespace jasperengine::editor::spritenormals {
             const Image frameNormal = crop(normal, frames[static_cast<size_t>(r)]);
             std::vector<Image> tiles = {frameColor, frameNormal};
             for (float angle : angles) {
-                tiles.push_back(renderLit(frameNormal, frameColor, orbitLight(frameColor.width, frameColor.height, angle, directx, alphaThreshold)));
+                LightSetup setup = orbitLight(frameColor.width, frameColor.height, angle, directx, alphaThreshold);
+                setup.lightSteps = options.lightSteps;
+                tiles.push_back(renderLit(frameNormal, frameColor, setup));
             }
             const int y0 = r * (th * s + kGap);
             for (size_t t = 0; t < tiles.size(); t++) {
@@ -604,6 +612,10 @@ namespace jasperengine::editor::spritenormals {
         return m;
     }
 
+    int boxyBevelRadius(int side) {
+        return std::max(1, static_cast<int>(std::lround(0.05 * side)));
+    }
+
     Assessment assess(const Settings& settings, const Metrics& m, int cellCount, const Result* result) {
         Assessment a;
         std::string profile = toString(settings.profile);
@@ -631,7 +643,8 @@ namespace jasperengine::editor::spritenormals {
         auto warn = [&](const char* kind, const std::string& message, const std::string& fix) { a.warnings.push_back({kind, "", message, fix}); };
         const bool transparentEdges = settings.edges == Edges::Transparent;
         if (!m.hasTransparency && transparentEdges) {
-            warn("no_alpha", "The image has no transparent pixels: volume only bevels its border.", "For tiles use edges wrap or extend.");
+            warn("no_alpha", "The image has no transparent pixels: volume only bevels its border.",
+                 "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).");
         }
         if (m.flatPct > 60.0) {
             // the outer band took most of an island (a translucent sprite with a small solid core):
@@ -652,6 +665,15 @@ namespace jasperengine::editor::spritenormals {
         if (m.noisePct > 15.0) {
             warn("noisy", integer(m.noisePct) + "% of the pixels disagree with their neighbours (dithering or hard shading bands).",
                  "Raise smoothing to 1.5-2 or lower detail.");
+        }
+        // (wrap / extend cells are tiles: their islands are not measured)
+        if (transparentEdges && result && result->boxyIslands > 0) {
+            const int n = result->boxyIslands;
+            warn("boxy",
+                 std::to_string(n) + (n == 1 ? " sprite fills its box" : " sprites fill their boxes") + " like a crate or panel, and the " +
+                     (result->profilesUsed & (1u << static_cast<int>(Profile::Inflate)) ? "inflate" : "rounded") +
+                     " profile bulges a box into a pillow.",
+                 "Use preset props, or profile bevel with radius " + std::to_string(boxyBevelRadius(result->boxySide)) + ".");
         }
         if (m.creaseMeasured && m.creasePct > kCreasedPct) {
             warn("creased", oneDecimal(m.creasePct) + "% of the inside lies on sharp creases (ridges down the middle of the shapes).",

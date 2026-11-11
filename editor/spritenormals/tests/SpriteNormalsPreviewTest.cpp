@@ -10,6 +10,7 @@
 
 #include "spritenormals/SpriteNormalsPreview.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -347,7 +348,8 @@ TEST(SpriteNormalsPreview, AssessWarningThresholds) {
     m.flatPct = 90.0;
     a = sn::assess(settings, m, 4);
     EXPECT_EQ(kinds(a), (std::vector<std::string>{"no_alpha", "mostly_flat", "frames_touch_edges"}));
-    EXPECT_EQ(a.hint, "For tiles use edges wrap or extend.");
+    // (S78: the fix names the stones preset for floors between dark gaps; deliberately changed)
+    EXPECT_EQ(a.hint, "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).");
 }
 
 TEST(SpriteNormalsPreview, AssessHighResolution) {
@@ -392,4 +394,171 @@ TEST(SpriteNormalsPreview, AssessHighResolution) {
     settings.version = 1;
     ASSERT_EQ(sn::assess(settings, m, 0).warnings.size(), 1u);
     EXPECT_EQ(sn::assess(settings, m, 0).warnings[0].kind, "soft_edges");
+}
+
+// ---- Light Steps (S78 R2, R19): the runtime's per-light bands, on the CPU
+
+TEST(SpriteNormalsPreview, LightStepFormula) {
+    // ceil(t * N) / N; 0 stays 0; off (0) leaves t
+    EXPECT_EQ(sn::lightStep(0.0f, 6), 0.0f);
+    EXPECT_EQ(sn::lightStep(0.37f, 0), 0.37f);
+    EXPECT_FLOAT_EQ(sn::lightStep(0.01f, 6), 1.0f / 6.0f);
+    EXPECT_FLOAT_EQ(sn::lightStep(0.5f, 4), 0.5f);
+    EXPECT_FLOAT_EQ(sn::lightStep(0.51f, 4), 0.75f);
+    EXPECT_FLOAT_EQ(sn::lightStep(1.0f, 16), 1.0f);
+    EXPECT_FLOAT_EQ(sn::lightStep(0.2f, 1), 1.0f);
+    for (int n = 1; n <= sn::kMaxLightSteps; n++) {
+        for (int i = 0; i <= 100; i++) {
+            const float t = static_cast<float>(i) / 100.0f;
+            EXPECT_EQ(sn::lightStep(t, n), std::ceil(t * static_cast<float>(n)) / static_cast<float>(n)) << t << " " << n;
+        }
+    }
+}
+
+TEST(SpriteNormalsPreview, RenderLitStepsEachLightBeforeItsColourAndIntensity) {
+    const sn::Image color = solid(1, 1, 200, 100, 50, 255);
+    const sn::Image normal = solid(1, 1, 128, 128, 255, 255);
+    // one light 50 px to the side at height 10, range 200, intensity 0.8, colour (1, 0.5, 0.25), ambient 0.1
+    sn::LightSetup setup = oneLight(50.5f, 0.5f);
+    setup.lights[0].range = 200.0f;
+    setup.lights[0].intensity = 0.8f;
+    setup.lights[0].green = 0.5f;
+    setup.lights[0].blue = 0.25f;
+    setup.ambientIntensity = 0.1f;
+    auto expected = [&](int steps) {
+        float n[3] = {128 / 255.0f * 2.0f - 1.0f, 128 / 255.0f * 2.0f - 1.0f, 255 / 255.0f * 2.0f - 1.0f};
+        const float len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (float& v : n) v /= len;
+        const float tx = 50.0f, ty = 0.0f, d = 50.0f;
+        const float atten = std::pow(1.0f - d / 200.0f, 1.0f);
+        const float ndotl = std::clamp((n[0] * tx + n[1] * ty + n[2] * 10.0f) / std::sqrt(tx * tx + ty * ty + 100.0f), 0.0f, 1.0f);
+        float t = atten * ndotl;
+        if (steps > 0) t = std::ceil(t * static_cast<float>(steps)) / static_cast<float>(steps);
+        const float k = 0.8f * t;
+        const float light[3] = {0.1f + 1.0f * k, 0.1f + 0.5f * k, 0.1f + 0.25f * k};
+        std::vector<int> out;
+        const uint8_t c[3] = {200, 100, 50};
+        for (int ch = 0; ch < 3; ch++) out.push_back(static_cast<int>(std::lround(std::pow(std::clamp(std::pow(c[ch] / 255.0f, 2.2f) * light[ch], 0.0f, 1.0f), 1.0f / 2.2f) * 255.0f)));
+        out.push_back(255);
+        return out;
+    };
+    for (int steps : {0, 1, 3, 6, 16}) {
+        setup.lightSteps = steps;
+        EXPECT_EQ(px(sn::renderLit(normal, color, setup), 0, 0), expected(steps)) << steps;
+    }
+    // off is the formula before Light Steps (the same bytes as a setup that never heard of them)
+    setup.lightSteps = 0;
+    const sn::Image before = sn::renderLit(normal, color, setup);
+    setup.lightSteps = 6;
+    EXPECT_NE(px(sn::renderLit(normal, color, setup), 0, 0), px(before, 0, 0));
+}
+
+TEST(SpriteNormalsPreview, LightStepsBandTheLitDome) {
+    // a hemisphere lit from the side: N steps give at most N + 1 levels (the bands and unlit), the
+    // ambient (unstepped) under all of them
+    const sn::Image normal = dome(64, 30.0f);
+    const sn::Image color = solid(64, 64, 200, 200, 200, 255);
+    sn::LightSetup setup = sn::orbitLight(64, 64, 135.0f);
+    auto levels = [&](int steps) {
+        setup.lightSteps = steps;
+        const sn::Image lit = sn::renderLit(normal, color, setup);
+        std::vector<int> seen;
+        for (int y = 0; y < 64; y++) {
+            for (int x = 0; x < 64; x++) {
+                if (normal.pixel(x, y)[3] == 0) continue;
+                const int v = lit.pixel(x, y)[0];
+                if (std::find(seen.begin(), seen.end(), v) == seen.end()) seen.push_back(v);
+            }
+        }
+        return seen.size();
+    };
+    EXPECT_GT(levels(0), 40u);
+    for (int steps : {1, 4, 6}) {
+        EXPECT_LE(levels(steps), static_cast<size_t>(steps + 1)) << steps;
+        EXPECT_GE(levels(steps), 2u) << steps;
+    }
+    // the contact sheet's lit columns take the steps
+    sn::SheetOptions options;
+    const sn::Image smooth = sn::contactSheet(color, normal, {}, false, 0.03f, options);
+    options.lightSteps = 4;
+    const sn::Image stepped = sn::contactSheet(color, normal, {}, false, 0.03f, options);
+    ASSERT_EQ(smooth.width, stepped.width);
+    EXPECT_NE(smooth.data, stepped.data);
+}
+
+// ---- boxy (S78 R13)
+
+namespace {
+
+    sn::Image boxImage(int size, int margin, bool circle) {
+        sn::Image image = solid(size + 2 * margin, size + 2 * margin, 0, 0, 0, 0);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                const float dx = x + 0.5f - size * 0.5f, dy = y + 0.5f - size * 0.5f;
+                if (circle && dx * dx + dy * dy > size * size * 0.25f) continue;
+                uint8_t* p = image.pixel(margin + x, margin + y);
+                p[0] = 150, p[1] = 110, p[2] = 70, p[3] = 255;
+            }
+        }
+        return image;
+    }
+
+    std::vector<std::string> warningKinds(const sn::Settings& s, const sn::Image& image, sn::Result* out = nullptr) {
+        sn::Request request;
+        request.color = image;
+        request.settings = s;
+        request.threads = 2;
+        const sn::Result r = sn::generate(request);
+        EXPECT_EQ(r.status, sn::Status::Ok);
+        // (boxy needs no metrics: the generator's island facts)
+        sn::Metrics m;
+        m.hasTransparency = true;
+        const sn::Assessment a = sn::assess(s, m, 0, &r);
+        std::vector<std::string> kinds;
+        for (const sn::Problem& p : a.warnings) kinds.push_back(p.kind);
+        if (out) *out = r;
+        return kinds;
+    }
+
+    bool has(const std::vector<std::string>& kinds, const char* kind) { return std::find(kinds.begin(), kinds.end(), kind) != kinds.end(); }
+
+}
+
+TEST(SpriteNormalsPreview, BoxyOnRoundedAndInflateAtAnySize) {
+    for (int size : {16, 256}) {
+        const sn::Image square = boxImage(size, 4, false);
+        for (sn::Profile profile : {sn::Profile::Rounded, sn::Profile::Inflate, sn::Profile::Auto}) {
+            sn::Settings s;
+            s.profile = profile;
+            sn::Result r;
+            ASSERT_TRUE(has(warningKinds(s, square, &r), "boxy")) << size << " " << sn::toString(profile);
+            EXPECT_EQ(r.boxyIslands, 1);
+            EXPECT_EQ(r.boxySide, size);
+            const sn::Assessment a = sn::assess(s, sn::Metrics(), 0, &r);
+            const std::string radius = std::to_string(size == 16 ? 1 : 13);   // max(1, round(0.05 x side))
+            bool found = false;
+            for (const sn::Problem& p : a.warnings) {
+                if (p.kind != "boxy") continue;
+                found = true;
+                EXPECT_EQ(p.fix, "Use preset props, or profile bevel with radius " + radius + ".");
+            }
+            EXPECT_TRUE(found);
+        }
+        // not for the plateau profiles, nor a disc, nor a tile
+        for (sn::Profile profile : {sn::Profile::Dome, sn::Profile::Bevel}) {
+            sn::Settings s;
+            s.profile = profile;
+            EXPECT_FALSE(has(warningKinds(s, square), "boxy")) << size << " " << sn::toString(profile);
+        }
+        EXPECT_FALSE(has(warningKinds(sn::presetSettings(sn::Preset::Props), square), "boxy")) << size;
+        sn::Settings rounded;
+        rounded.profile = sn::Profile::Rounded;
+        EXPECT_FALSE(has(warningKinds(rounded, boxImage(size, 4, true)), "boxy")) << size << " disc";
+        sn::Settings wrap = rounded;
+        wrap.edges = sn::Edges::Wrap;
+        EXPECT_FALSE(has(warningKinds(wrap, square), "boxy")) << size << " wrap";
+    }
+    EXPECT_EQ(sn::boxyBevelRadius(8), 1);
+    EXPECT_EQ(sn::boxyBevelRadius(30), 2);
+    EXPECT_EQ(sn::boxyBevelRadius(512), 26);
 }

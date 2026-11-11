@@ -471,6 +471,9 @@ namespace jasperengine{
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
         float ambientLight2DIntensity = 1.0f;
+        // Light Steps (S78 R1, R2): each Light 2D's light quantized into this many bands, 0..16;
+        // 0 is off (smooth light, the variants of before)
+        int light2DSteps = 0;
         ShadowQuality shadow2DQuality = ShadowQuality::LOW;
 
         bool ssaoEnabled = false;

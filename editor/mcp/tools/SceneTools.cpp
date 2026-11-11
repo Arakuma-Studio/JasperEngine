@@ -844,6 +844,7 @@ const std::vector<SceneSetting>& sceneSettings() {
          "Scene view shadow debug view (editor only, never saved, no undo step): none, cascades, shadow_factor, texel_density, cache, atlas"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
+        {"light_2d_steps", SettingKind::Int, "Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth)"},
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
@@ -1314,6 +1315,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "max_planar_reflections" && (value.get<int>() < 1 || value.get<int>() > 4)) return expect("1 to 4");
+            if (name == "light_2d_steps" && (value.get<int>() < 0 || value.get<int>() > 16)) return expect("0 to 16");
             if (name == "ssr_debug_mode" && (value.get<int>() < 0 || value.get<int>() > 8)) return expect("0 to 8");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:

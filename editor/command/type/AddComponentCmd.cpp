@@ -97,7 +97,7 @@ bool editor::AddComponentCmd::execute() {
             // struct default (0) stays the loader's and the scripts'. Redo adds it again here
             if (componentType == ComponentType::Light2DComponent){
                 if (Light2DComponent* light = scene->findComponent<Light2DComponent>(entity)){
-                    light->height = 64.0f;
+                    light->height = Light2DComponent::NEW_HEIGHT;
                 }
             }
 

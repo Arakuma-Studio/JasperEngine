@@ -19,6 +19,9 @@ namespace jasperengine{
         float range = 200.0; // radius in world units
         float falloff = 1.0; // attenuation exponent: pow(1 - d/range, falloff)
         float height = 0.0;  // virtual Z of the light for normal-map response (0 = pure radial, ignores normals)
+        // the height a light made new starts at (the editor's, Light2D(scene)): normal maps answer
+        // it. The default above stays the loader's, so old scenes keep theirs
+        static constexpr float NEW_HEIGHT = 64.0f;
 
         bool shadows = false;
         float shadowBias = 0.01f;    // in normalized-distance units (dist/range)

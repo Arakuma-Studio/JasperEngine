@@ -22,6 +22,7 @@
 #include "component/Light2DComponent.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "mcp/McpServer.h"
 #include "mcp/tools/SpriteNormalsSheetWrite.h"
 #include "spritenormals/SpriteNormalsSession.h"
@@ -30,6 +31,7 @@
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectFileWrites.h"
 #include "util/SafeWrite.h"
+#include "util/Ambient2D.h"
 #include "SymlinkSupport.h"
 
 #include "json.hpp"
@@ -1388,11 +1390,12 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     scene->getComponent<Light2DComponent>(light).height = 64.0f;
     EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, still, true).empty());
 
-    // ambient
+    // ambient (S78 R15: its brightness, intensity x the brightest linear channel; the colour here is white)
     scene->setAmbientLight2D(0.8f);
     w = sn::sceneWarnings(scene, hero, settings, 32, 32, still, true);
     ASSERT_EQ(kinds(w), std::vector<std::string>{"ambient_high"});
-    EXPECT_EQ(w[0].message, "The scene's 2D ambient intensity is 0.8, which washes out normal maps.");
+    EXPECT_EQ(w[0].message, "The scene's 2D ambient brightness is 0.8 (intensity times its brightest colour channel), which washes out normal maps.");
+    EXPECT_EQ(w[0].fix, "Darken Ambient Light 2D: colour (0.24, 0.25, 0.33) at intensity 1, or a lower intensity.");
     scene->setAmbientLight2D(0.79f);
     EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, still, true).empty());
 
@@ -1462,6 +1465,126 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     ASSERT_EQ(kinds(w), std::vector<std::string>{"material_linked"});
     EXPECT_EQ(w[0].message, "The sprite's material comes from " + dir + "/hero.material; the scene's copy changed, the file did not.");
     project()->unlinkMaterialFile(sceneId, hero, 0);
+}
+
+TEST(SpriteNormalsScene, AmbientHighReadsTheBrightness) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity light = create(sceneId, "Lamp", EntityCreationType::POINT_LIGHT_2D);
+    ASSERT_TRUE(scene->findComponent<Light2DComponent>(light));
+    auto ambientHigh = [&]() { return findKind(sn::sceneWarnings(scene, NULL_ENTITY, sn::Settings(), 32, 32, {}, false), "ambient_high"); };
+    scene->setAmbientLight2D(0.8f, Vector3(1.0f, 1.0f, 1.0f));
+    EXPECT_TRUE(ambientHigh()) << "white at 0.8";
+    scene->setAmbientLight2D(0.7f, Vector3(1.0f, 1.0f, 1.0f));
+    EXPECT_FALSE(ambientHigh()) << "white at 0.7";
+    // a dark-blue night at intensity 1 (the intensity alone said bright)
+    scene->setAmbientLight2D(1.0f, Vector3(0.24f, 0.25f, 0.33f));
+    EXPECT_FALSE(ambientHigh()) << "dark blue at 1";
+    EXPECT_FLOAT_EQ(sn::lightCheck(scene).ambientBrightness, ambientLight2DBrightness(*scene));
+    scene->setAmbientLight2D(1.0f, Vector3(1.0f, 0.0f, 0.0f));
+    const std::optional<sn::Problem> red = ambientHigh();
+    ASSERT_TRUE(red) << "one full channel";
+    EXPECT_NE(red->message.find("brightness is 1 "), std::string::npos) << red->message;
+}
+
+TEST(SpriteNormalsScene, LightLowFollowsTheSpriteSize) {
+    const int ppuBefore = Engine::getPixelsPerUnit();
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    scene->setAmbientLight2D(0.2f);
+    const Entity hero = create(sceneId, "Hero", EntityCreationType::SPRITE);
+    SpriteComponent& sprite = scene->getComponent<SpriteComponent>(hero);
+    const Entity lamp = create(sceneId, "Lamp", EntityCreationType::POINT_LIGHT_2D);
+    Light2DComponent& light = scene->getComponent<Light2DComponent>(lamp);
+    auto lightLow = [&]() { return findKind(sn::sceneWarnings(scene, hero, sn::Settings(), 0, 0, {}, false), "light_low"); };
+    auto sized = [&](unsigned px, int ppu) {
+        sprite.width = sprite.height = px;
+        Engine::setPixelsPerUnit(ppu);
+    };
+
+    // pixel art, 16 px at 1 px per unit: Height 64 is plenty, 4 is under half of 16
+    sized(16, 1);
+    light.height = 64.0f;
+    EXPECT_FALSE(lightLow());
+    light.height = 4.0f;
+    std::optional<sn::Problem> w = lightLow();
+    ASSERT_TRUE(w);
+    EXPECT_EQ(w->message, "Light 2D \"Lamp\" sits lower than half the sprite's larger side (16 world units), so it lights it from the side only.");
+    EXPECT_EQ(w->fix, "Set its Height to at least 16 (the sprite's larger side).");
+    light.height = 8.0f;
+    EXPECT_FALSE(lightLow()) << "half the side is enough";
+
+    // high resolution, 512 px at 1 px per unit: the editor's 64 is low
+    sized(512, 1);
+    light.height = 64.0f;
+    w = lightLow();
+    ASSERT_TRUE(w);
+    EXPECT_EQ(w->fix, "Set its Height to at least 512 (the sprite's larger side).");
+    light.height = 512.0f;
+    EXPECT_FALSE(lightLow());
+
+    // the same sprites at 100 px per unit: 5.12 and 0.16 world units
+    sized(512, 100);
+    light.height = 64.0f;
+    EXPECT_FALSE(lightLow());
+    light.height = 2.0f;
+    w = lightLow();
+    ASSERT_TRUE(w);
+    EXPECT_NE(w->message.find("(5.12 world units)"), std::string::npos) << w->message;
+    EXPECT_EQ(w->fix, "Set its Height to at least 5.12 (the sprite's larger side).");
+    sized(16, 100);
+    EXPECT_FALSE(lightLow()) << "2 over a 0.16-unit sprite";
+    light.height = 0.05f;
+    w = lightLow();
+    ASSERT_TRUE(w);
+    EXPECT_EQ(w->fix, "Set its Height to at least 0.16 (the sprite's larger side).");
+    // the sprite's own Pixels Per Unit wins over the project's
+    sprite.pixelsPerUnit = 1.0f;
+    EXPECT_EQ(sn::lowLights(scene, hero, 0).spriteSize, 16.0f);
+    sprite.pixelsPerUnit = 0.0f;
+
+    // a scaled GameObject: 16 px x 4 at 1 px per unit is 64 units; its larger side counts
+    sized(16, 1);
+    sprite.height = 8;
+    scene->getComponent<Transform>(hero).worldScale = Vector3(4.0f, -2.0f, 1.0f);
+    light.height = 20.0f;
+    sn::LowLights low = sn::lowLights(scene, hero, 0);
+    EXPECT_EQ(low.spriteSize, 64.0f);
+    EXPECT_EQ(low.raiseTo, 64.0f);
+    ASSERT_EQ(low.lights, std::vector<Entity>{lamp});
+    light.height = 32.0f;
+    EXPECT_TRUE(sn::lowLights(scene, hero, 0).lights.empty());
+    scene->getComponent<Transform>(hero).worldScale = Vector3(1.0f, 1.0f, 1.0f);
+
+    // no Sprite size (or no GameObject): the frame's pixels over the project's Pixels Per Unit
+    sprite.width = sprite.height = 0;
+    light.height = 20.0f;
+    EXPECT_EQ(sn::lowLights(scene, hero, 64).spriteSize, 64.0f);
+    EXPECT_EQ(sn::lowLights(scene, NULL_ENTITY, 512).raiseTo, 512.0f);
+    EXPECT_TRUE(sn::lowLights(scene, NULL_ENTITY, 32).lights.empty());
+    EXPECT_EQ(sn::framePixels({}, 48, 20), 48);
+    EXPECT_EQ(sn::framePixels({{0, 0, 16, 24}, {16, 0, 32, 8}}, 512, 512), 32);
+    w = findKind(sn::sceneWarnings(scene, NULL_ENTITY, sn::Settings(), 512, 512, {}, false, 0, 32), "light_low");
+    EXPECT_FALSE(w) << "a 32 px frame of a 512 px sheet";
+    EXPECT_TRUE(findKind(sn::sceneWarnings(scene, NULL_ENTITY, sn::Settings(), 512, 512, {}, false), "light_low"));
+
+    // up to three named; disabled and height-0 lights are not low (no_light_height covers 0)
+    const Entity a = create(sceneId, "A", EntityCreationType::POINT_LIGHT_2D);
+    const Entity b = create(sceneId, "B", EntityCreationType::POINT_LIGHT_2D);
+    const Entity c = create(sceneId, "C", EntityCreationType::POINT_LIGHT_2D);
+    const Entity off = create(sceneId, "Off", EntityCreationType::POINT_LIGHT_2D);
+    for (Entity e : {a, b, c, off}) scene->getComponent<Light2DComponent>(e).height = 10.0f;
+    scene->getComponent<Light2DComponent>(off).enabled = false;
+    sized(512, 1);
+    w = lightLow();
+    ASSERT_TRUE(w);
+    EXPECT_EQ(w->message, "Light 2Ds \"Lamp\", \"A\", \"B\" and 1 more sit lower than half the sprite's larger side (512 world units), so they light "
+                          "it from the side only.");
+    EXPECT_EQ(w->fix, "Set their Height to at least 512 (the sprite's larger side).");
+    for (Entity e : {lamp, a, b, c}) scene->getComponent<Light2DComponent>(e).height = 0.0f;
+    EXPECT_FALSE(lightLow());
+    EXPECT_TRUE(sn::lowLights(nullptr, hero, 32).lights.empty());
+    Engine::setPixelsPerUnit(ppuBefore);
 }
 
 TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {

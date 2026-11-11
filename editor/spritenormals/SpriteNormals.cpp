@@ -111,6 +111,9 @@ namespace jasperengine::editor::spritenormals {
         struct ItemResult {
             uint32_t matched = 0;
             float radius = 0.0f;
+            bool radiusRange = false;     // gaps: one auto radius per stone, radiusMin..radiusMax
+            float radiusMin = 0.0f;
+            float radiusMax = 0.0f;
             float scale = 1.0f;           // k used
             bool cancelled = false;       // the inflate solve saw the cancel flag
             bool notConverged = false;    // the inflate solve stopped at its iteration cap
@@ -130,6 +133,8 @@ namespace jasperengine::editor::spritenormals {
             std::vector<float>* heights = nullptr;   // settings.height: strength * combined per image pixel
             std::vector<uint8_t>* heightMask = nullptr;
             const std::atomic<bool>* cancel = nullptr;
+            // gaps on: per cell its gap pixels (cell-local; empty: none)
+            const std::vector<std::vector<uint8_t>>* gaps = nullptr;
         };
 
         // The inflate profile's height: kInflateHeight * volume * sqrt(u), u the Poisson solution
@@ -343,7 +348,67 @@ namespace jasperengine::editor::spritenormals {
                     }
                 }
             }
+            // the cell's gap pixels are outside the shape (they keep their place in the mask: alpha, normals)
+            if (ctx.gaps && !(*ctx.gaps)[static_cast<size_t>(item.cell)].empty()) {
+                const std::vector<uint8_t>& gap = (*ctx.gaps)[static_cast<size_t>(item.cell)];
+                for (int i : f.pixels) {
+                    const int lx = i % f.width + f.ox, ly = i / f.width + f.oy;
+                    if (gap[static_cast<size_t>(ly) * cell.width + lx]) f.shape[static_cast<size_t>(i)] = 0;
+                }
+            }
             return f;
+        }
+
+        // Gaps: each part of the shape between gaps (a stone; 8-connected, periodic with wrap) is an
+        // island of its own for the auto radius: thicknessRadius of its own thickness and shorter side.
+        // Per field pixel; `fallback` where there is no part. lo..hi: the radii given (none: fallback).
+        std::vector<float> stoneRadii(const std::vector<uint8_t>& mask, const Field& depth, int w, int h, bool wrap, Profile profile, float fallback, float& lo,
+                                      float& hi) {
+            const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
+            std::vector<float> radii(n, fallback);
+            std::vector<uint8_t> seen(n, 0), cols(static_cast<size_t>(w)), rows(static_cast<size_t>(h));
+            std::vector<int> part;
+            lo = hi = fallback;
+            bool any = false;
+            for (size_t start = 0; start < n; start++) {
+                if (!mask[start] || seen[start]) continue;
+                std::fill(cols.begin(), cols.end(), 0);
+                std::fill(rows.begin(), rows.end(), 0);
+                part.clear();
+                part.push_back(static_cast<int>(start));
+                seen[start] = 1;
+                float deepest = 0.0f;
+                for (size_t head = 0; head < part.size(); head++) {
+                    const int i = part[head];
+                    const int x = i % w, y = i / w;
+                    cols[static_cast<size_t>(x)] = 1;
+                    rows[static_cast<size_t>(y)] = 1;
+                    const float d = depth.data[static_cast<size_t>(i)];
+                    if (std::isfinite(d)) deepest = std::max(deepest, d);
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int nx = x + dx, ny = y + dy;
+                            if (wrap) {
+                                nx = (nx % w + w) % w;
+                                ny = (ny % h + h) % h;
+                            } else if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                                continue;
+                            }
+                            const size_t j = static_cast<size_t>(ny) * w + nx;
+                            if (!mask[j] || seen[j]) continue;
+                            seen[j] = 1;
+                            part.push_back(static_cast<int>(j));
+                        }
+                    }
+                }
+                const float side = static_cast<float>(std::min(extentOf(cols, wrap), extentOf(rows, wrap)));
+                const float r = deepest > 0.0f ? thicknessRadius(profile, deepest, side) : autoRadius(side);
+                for (int i : part) radii[static_cast<size_t>(i)] = r;
+                lo = any ? std::min(lo, r) : r;
+                hi = any ? std::max(hi, r) : r;
+                any = true;
+            }
+            return radii;
         }
 
         float maxFinite(const Field& d, const std::vector<int>& pixels) {
@@ -416,6 +481,12 @@ namespace jasperengine::editor::spritenormals {
             float radius = item.radius;
             if (item.thicknessRadius) radius = thickness > 0.0f ? thicknessRadius(item.profile, thickness, item.side) : autoRadius(item.side);
             outcome.radius = radius;
+            // gaps: every stone its own auto radius (as an island's)
+            std::vector<float> radii;
+            if (item.thicknessRadius && item.profile != Profile::Inflate && ctx.gaps && !(*ctx.gaps)[static_cast<size_t>(item.cell)].empty()) {
+                radii = stoneRadii(field.shape, shape, width, height, s.edges == Edges::Wrap, item.profile, radius, outcome.radiusMin, outcome.radiusMax);
+                outcome.radiusRange = true;
+            }
             // the item's effective values: the 128 px reference ones times k (exact at k = 1)
             const float k = item.scaled ? thicknessScale(thickness, item.side) : 1.0f;
             outcome.scale = k;
@@ -443,7 +514,7 @@ namespace jasperengine::editor::spritenormals {
                 detail::parallelFor(pool, height, [&](int b, int e) {
                     for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
                         // the outer band and the outside: 0 (their distance is 0)
-                        shape.data[i] = profileHeight(item.profile, shape.data[i], s.volume, radius);
+                        shape.data[i] = profileHeight(item.profile, shape.data[i], s.volume, radii.empty() ? radius : radii[i]);
                     }
                 }, 16);
             }
@@ -609,6 +680,67 @@ namespace jasperengine::editor::spritenormals {
             return mask;
         }
 
+        // The gap pixels of a cell (Settings::Gaps; cell-local, 1 = gap), or empty when it has none:
+        // no pixel above the cutoff, or no dark gaps (`unmatched`: its lighter pixels' median is less
+        // than kGapContrast above the quantile). `scaled`: version 2 with resolution_scale auto.
+        std::vector<uint8_t> gapMask(const Image& color, const Cell& cell, const Settings& s, bool scaled, detail::Workers* workers, bool& unmatched) {
+            unmatched = false;
+            const int w = cell.width, h = cell.height;
+            const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
+            const std::vector<uint8_t> mask = cellMask(color, cell, s.alphaThreshold);
+            Field lightness = Field::zero(w, h);
+            Field weight = Field::zero(w, h);
+            std::vector<uint8_t> cols(static_cast<size_t>(w), 0), rows(static_cast<size_t>(h), 0);
+            size_t count = 0;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    const size_t i = static_cast<size_t>(y) * w + x;
+                    if (!mask[i]) continue;
+                    const uint8_t* px = color.pixel(cell.x + x, cell.y + y);
+                    lightness.data[i] = detail::oklabL(px[0], px[1], px[2]);
+                    weight.data[i] = 1.0f;
+                    cols[static_cast<size_t>(x)] = 1;
+                    rows[static_cast<size_t>(y)] = 1;
+                    count++;
+                }
+            }
+            if (count == 0) return {};
+            const bool wrap = s.edges == Edges::Wrap;
+            const Border border = wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero);
+            const float side = static_cast<float>(std::min(extentOf(cols, wrap), extentOf(rows, wrap)));
+            const float k = scaled ? std::max(1.0f, side / static_cast<float>(kHiresSide)) : 1.0f;
+            const Field blurred = detail::maskedGaussian(lightness, weight, 0.8f * k, border, workers, k > 1.0f ? 8.0f : detail::kExactGaussianSigma);
+            // the share quantile: the value of rank ceil(share x count) - 1 (the same whatever the order of the pixels)
+            std::vector<float> values;
+            values.reserve(count);
+            for (size_t i = 0; i < n; i++) {
+                if (mask[i]) values.push_back(blurred.data[i]);
+            }
+            const double wanted = std::ceil(static_cast<double>(s.gaps.share) * static_cast<double>(count));
+            const size_t rank = static_cast<size_t>(std::min(std::max(wanted, 1.0), static_cast<double>(count))) - 1;
+            std::vector<float> sorted = values;
+            std::nth_element(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(rank), sorted.end());
+            const float threshold = sorted[rank];
+            // the stones' level: the median of the pixels above the quantile
+            std::vector<float> lighter;
+            for (float v : values) {
+                if (v > threshold) lighter.push_back(v);
+            }
+            if (lighter.empty()) {
+                unmatched = true;
+                return {};
+            }
+            const size_t middle = lighter.size() / 2;
+            std::nth_element(lighter.begin(), lighter.begin() + static_cast<std::ptrdiff_t>(middle), lighter.end());
+            if (!(lighter[middle] - threshold >= kGapContrast)) {
+                unmatched = true;
+                return {};
+            }
+            std::vector<uint8_t> gaps(n, 0);
+            for (size_t i = 0; i < n; i++) gaps[i] = mask[i] && blurred.data[i] <= threshold;
+            return gaps;
+        }
+
         // 360 is a whole turn: exactly 0, so every caller gets 0's bits (sin and cos of 2 pi + x are not those of x)
         double quantizeRotation(const Quantize& q) { return q.rotationDeg == 360.0f ? 0.0 : static_cast<double>(q.rotationDeg); }
 
@@ -690,13 +822,23 @@ namespace jasperengine::editor::spritenormals {
                 s.strength = 2.0f; s.detail = 3.0f; s.smoothing = 1.0f; s.volume = 1.15f;
                 s.edges = Edges::Wrap;
                 break;
+            case Preset::Stones:
+                // seamless floors of stones or bricks between dark gaps (S78): the darkest 30% are
+                // gaps, each stone a dome (a round rim, a flat face); softness 1.5 keeps the rims of
+                // painted stones free of streaks from their ragged gap border (chosen on lit contact
+                // sheets of a 32 px brick tile and a 512 px painted stone tile, SpriteNormalsGapsTest)
+                s.strength = 2.0f; s.detail = 3.0f; s.smoothing = 1.0f; s.volume = 1.15f; s.softness = 1.5f;
+                s.edges = Edges::Wrap;
+                s.profile = Profile::Dome;
+                s.gaps.share = 0.3f;
+                break;
         }
         return s;
     }
 
     const std::vector<Preset>& allPresets() {
         static const std::vector<Preset> list = {Preset::Soft,  Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky,
-                                                 Preset::Toon,  Preset::Painted, Preset::Props, Preset::Tile};
+                                                 Preset::Toon,  Preset::Painted, Preset::Props, Preset::Tile,     Preset::Stones};
         return list;
     }
 
@@ -717,6 +859,7 @@ namespace jasperengine::editor::spritenormals {
             case Preset::Painted: return "painted";
             case Preset::Props: return "props";
             case Preset::Tile: return "tile";
+            case Preset::Stones: return "stones";
         }
         return "default";
     }
@@ -870,6 +1013,7 @@ namespace jasperengine::editor::spritenormals {
         }
         checkRange(problems, "quantize.flat_deg", q.flatDeg, 0.0f, 45.0f);
         checkRange(problems, "quantize.rotation_deg", q.rotationDeg, 0.0f, 360.0f);   // 360 is 0 (a whole turn)
+        checkRange(problems, "gaps.share", settings.gaps.share, 0.0f, 0.9f);
         return problems;
     }
 
@@ -1188,6 +1332,33 @@ namespace jasperengine::editor::spritenormals {
             result.threads = threads;
             detail::Workers workers(threads);
 
+            // the gaps of every cell (before any field: the sequence's thickness probe sees them too)
+            std::vector<std::vector<uint8_t>> gaps;
+            int gapCells = 0, unmatchedCells = 0;
+            if (s.gaps.on()) {
+                gaps.resize(cells.size());
+                std::vector<uint8_t> unmatched(cells.size(), 0), counted(cells.size(), 0);
+                auto gapsOf = [&](size_t c, detail::Workers* pool) {
+                    bool none = false;
+                    gaps[c] = gapMask(color, cells[c], s, scaled, pool, none);
+                    unmatched[c] = none;
+                    counted[c] = none || !gaps[c].empty();
+                };
+                std::vector<size_t> smallCells;
+                for (size_t c = 0; c < cells.size(); c++) {
+                    if (static_cast<int64_t>(cells[c].width) * cells[c].height >= detail::kParallelPixels) gapsOf(c, &workers);
+                    else smallCells.push_back(c);
+                }
+                workers.forRange(static_cast<int>(smallCells.size()), [&](int begin, int end) {
+                    for (int j = begin; j < end; j++) gapsOf(smallCells[static_cast<size_t>(j)], nullptr);
+                }, 1);
+                for (size_t c = 0; c < cells.size(); c++) {
+                    gapCells += counted[c];
+                    unmatchedCells += unmatched[c];
+                }
+                ctx.gaps = &gaps;
+            }
+
             if (sequenceSize && (autoR || scaled)) {
                 // version 2: the median over the frames of their largest island's thickness (k, the
                 // auto radius); version 1: the bbox auto radius of the median side
@@ -1218,6 +1389,29 @@ namespace jasperengine::editor::spritenormals {
             }
             result.islands = static_cast<int>(items.size());
             for (size_t k = 0; k < items.size(); k++) result.profilesUsed |= 1u << static_cast<int>(items[k].profile);
+            if (transparent) {
+                // per cell its largest island (the sprite: specks and 1-2 px lines are no boxes)
+                std::vector<int> largest(cells.size(), -1);
+                for (size_t k = 0; k < items.size(); k++) {
+                    int& best = largest[static_cast<size_t>(items[k].cell)];
+                    if (best < 0 || items[k].island.pixels.size() > items[static_cast<size_t>(best)].island.pixels.size()) best = static_cast<int>(k);
+                }
+                size_t biggest = 0;
+                for (int k : largest) {
+                    if (k < 0) continue;
+                    const Item& item = items[static_cast<size_t>(k)];
+                    if (item.profile != Profile::Rounded && item.profile != Profile::Inflate) continue;
+                    const int bw = item.island.maxX - item.island.minX + 1, bh = item.island.maxY - item.island.minY + 1;
+                    if (std::min(bw, bh) < 3) continue;
+                    const double area = static_cast<double>(bw) * static_cast<double>(bh);
+                    if (static_cast<double>(item.island.pixels.size()) < static_cast<double>(kBoxyFill) * area) continue;
+                    result.boxyIslands++;
+                    if (item.island.pixels.size() > biggest) {
+                        biggest = item.island.pixels.size();
+                        result.boxySide = std::min(bw, bh);
+                    }
+                }
+            }
 
             // ---- run the items (disjoint output pixels: any schedule writes the same bytes):
             // the large ones one after another on every thread, then the others side by side
@@ -1301,8 +1495,10 @@ namespace jasperengine::editor::spritenormals {
             if (autoR && !sequenceSize) {
                 result.radiusPerIsland = true;
                 for (size_t k = 0; k < items.size(); k++) {
-                    result.radiusMin = k ? std::min(result.radiusMin, outcomes[k].radius) : outcomes[k].radius;
-                    result.radiusMax = k ? std::max(result.radiusMax, outcomes[k].radius) : outcomes[k].radius;
+                    const ItemResult& o = outcomes[k];
+                    const float lo = o.radiusRange ? o.radiusMin : o.radius, hi = o.radiusRange ? o.radiusMax : o.radius;
+                    result.radiusMin = k ? std::min(result.radiusMin, lo) : lo;
+                    result.radiusMax = k ? std::max(result.radiusMax, hi) : hi;
                 }
                 if (items.empty()) result.radiusMin = result.radiusMax = 4.0f;
             } else if (autoR) {
@@ -1322,6 +1518,15 @@ namespace jasperengine::editor::spritenormals {
                                            "regions[" + std::to_string(region.userIndex) + "] (" + colorText(user.colors.front()) +
                                                ") matched no pixel; widen its tolerance (" + fmt(user.tolerance) + ").",
                                            "Raise regions[" + std::to_string(region.userIndex) + "].tolerance or pick the colour from the image."});
+            }
+            if (unmatchedCells > 0) {
+                const std::string share = fmt(s.gaps.share);
+                result.warnings.push_back({"gaps_unmatched", "gaps.share",
+                                           "gaps found no dark gaps in " + std::to_string(unmatchedCells) + " of " + std::to_string(gapCells) +
+                                               (gapCells == 1 ? " cell" : " cells") + ": the darkest " + fmt(std::round(s.gaps.share * 1000.0f) / 10.0f) +
+                                               "% is about as light as the rest (flat or evenly lit), so those cells got no gap edges.",
+                                           "Lower gaps.share (now " + share + ") to the share of the image that is dark gap, or leave gaps out for art "
+                                           "without dark gaps between lighter shapes."});
             }
             if (s.height) {
                 float lo = std::numeric_limits<float>::infinity(), hi = -std::numeric_limits<float>::infinity();

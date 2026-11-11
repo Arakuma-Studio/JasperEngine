@@ -3415,6 +3415,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
         .addFunction("setAmbientLight2D", (void (Scene::*)(float, Vector3))&Scene::setAmbientLight2D)
+        // the bands each Light 2D's light is quantized into, 0 (off) to 16
+        .addProperty("light2DSteps", &Scene::getLight2DSteps, &Scene::setLight2DSteps)
         .addProperty("shadow2DQuality", &Scene::getShadow2DQuality, &Scene::setShadow2DQuality)
         .addProperty("gravity2D", &Scene::getGravity2D, (void (Scene::*)(Vector2))&Scene::setGravity2D)
         .addFunction("setGravity2D",

@@ -692,6 +692,10 @@ uint64_t ShaderPool::getDirectionalOnlyProperty(){
     return shaderPropertyBit(44);
 }
 
+uint64_t ShaderPool::getLight2DStepsProperty(){
+    return shaderPropertyBit(55);
+}
+
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
 // fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
@@ -791,7 +795,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 55;
+        case ShaderType::MESH:   return 56;
         case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -928,6 +932,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 53: return shortName ? "Twd" : "Terrain World";
             // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
             case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
+            // S78: the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, includes/lighting2d.glsl)
+            case 55: return shortName ? "Lst" : "Light Steps";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1396,8 +1402,9 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
     // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
     // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
-    // bits a manifest shader's: never in one variant)
-    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // bits a manifest shader's: never in one variant. 'Lst' before them all: the smooth 2D light
+    // reads the same block)
+    static const int meshBits[] = {55, 43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Lst Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
@@ -1971,6 +1978,9 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     // the high-quality shadow filters only exist in a variant that receives shadows
     if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
         key.properties &= ~getShadowsHQProperty();
+    // Light Steps only exist on the 2D light path
+    if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(22)))
+        key.properties &= ~getLight2DStepsProperty();
     // the built-in Lit's unlit 2D light variant took 'Tan' without 'Nmp' until November 2026;
     // the 2D lights read tangents only for a normal map. A shader with a custom id keeps it: a
     // library shader may @require tangents on that path

@@ -3278,6 +3278,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setCapsuleShadowSoftness(" << formatFloat(scene->getCapsuleShadowSoftness()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatVector3(scene->getAmbientLight2DColor()) << ");\n";
+    if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
+        out << ind2 << "scene->setLight2DSteps(" << scene->getLight2DSteps() << ");\n";
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
     out << ind2 << "scene->setGravity2D(" << formatVector2(scene->getGravity2D()) << ");\n";
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";

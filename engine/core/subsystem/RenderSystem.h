@@ -101,7 +101,7 @@ namespace jasperengine{
 	    Vector4 color_intensity[MAX_LIGHTS_2D];  // rgb = color (linear), w = intensity
 	    Vector4 falloff_shadow[MAX_LIGHTS_2D];   // x = falloff exp, y = shadow atlas row (-1 = none), z = softness (texels), w = bias
 		Vector4 ambient;                         // rgb = ambient2D (linear) * intensity, w = numLights2D
-		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
+		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = Light Steps (0 off), w = PCF tap radius
 	} fs_lighting2d_t;
 
 	// The post-processing colour's parameters (phase 4, shaderlib/includes/post_color.glsl),
@@ -481,6 +481,11 @@ namespace jasperengine{
 		bool fog = false;
 		bool lights2D = false;
 		bool shadows2D = false;         // a shadow-casting 2D light and an occluder
+		// no Light 2D, and the scene's Ambient Light 2D tints (isAmbient2DTinted): the unlit
+		// variants take the 2D light path with no lights, so the ambient multiplies them (S78 R6)
+		bool ambient2D = false;
+		// the scene's Light Steps are on: the 2D-lit variants take 'Lst' (S78 R3)
+		bool light2DSteps = false;
 		bool ssao = false;
 		bool ssr = false;
 		bool depthPrepass = false;
@@ -1747,6 +1752,11 @@ namespace jasperengine{
 		bool hasLights2D = false;
 		bool hasShadows2D = false;
 		int numLights2D = 0;
+		// no Light 2D and a tinting Ambient Light 2D: the unlit variants take the 2D light path
+		// with no lights (S78 R6); with the Light Steps' on or off, as the meshes loaded them
+		bool hasAmbient2D = false;
+		bool loadedAmbient2D = false;
+		bool loadedLight2DSteps = false;
 
 		// Shadows (RenderSystemShadows.cpp, docs/rendering/shadows.md). The projective atlas
 		// (directional cascades and spot lights) and the point atlas (cube faces) are depth-only
@@ -3939,6 +3949,9 @@ namespace jasperengine{
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
 		static int getLightCapacity(int maxLightsPerObject);
+		// the 2D ambient (linear colour times intensity) is not (1, 1, 1), by more than 1e-4 in a
+		// channel: it changes what the 2D-lit unlit materials draw without a Light 2D (S78 R6)
+		static bool isAmbient2DTinted(Vector3 ambientLinear, float intensity);
 
 		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
