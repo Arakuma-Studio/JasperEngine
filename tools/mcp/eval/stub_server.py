@@ -46,7 +46,7 @@ class Stub:
         self.recorded = surface.get("recorded") or {}
         self.log_path = log_path
         self.calls = 0
-        self.seen: list[str] = []  # the tools called so far, for mocks with "after"
+        self.seen: list[dict] = []  # the calls that succeeded so far ({tool, args}), for mocks with "after"
         self.refused: list[str] = []  # the tools that returned an error, for mocks with "after_error"
 
     # -- listing ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ class Stub:
                 continue
             if mock.get("after_error") and mock["after_error"] not in self.refused:
                 continue
-            if mock.get("after") and mock["after"] not in self.seen:
+            if mock.get("after") and not any(partial_match(after_spec(mock["after"]), c) for c in self.seen):
                 continue
             if not partial_match(mock.get("args") or {}, args):
                 continue
@@ -114,7 +114,21 @@ class Stub:
             return result(mock.get("result") or {})
         if name == "tool_groups":
             return self.tool_groups(args)
+        if name == "read_file" and str(args.get("path", "")).startswith("jasper://"):
+            return self.read_doc(str(args["path"]), args)
         return error(f"eval stub: no canned result for {name} with these arguments.", unmocked=True)
+
+    def read_doc(self, uri: str, args: dict) -> dict:
+        """read_file of a jasper:// doc, as AssetTools.cpp's readResourceFile answers it (lineWindow)."""
+        if uri not in self.contents:
+            return error(f"Resource not found: {uri} The documents: read_file jasper://docs.")
+        lines = self.contents[uri].split("\n")
+        if lines and lines[-1] == "":
+            lines.pop()
+        start = max(1, int(args.get("start_line") or 1))
+        window = lines[start - 1:start - 1 + min(max(1, int(args.get("max_lines") or 2000)), 20000)]
+        text = f"{uri} lines {start}-{start + len(window) - 1} of {len(lines)}:\n" + "".join(line + "\n" for line in window)
+        return {"content": [{"type": "text", "text": text}], "isError": False}
 
     def call(self, name: str, args) -> dict:
         self.calls += 1
@@ -126,7 +140,7 @@ class Stub:
             problem = self.validate(name, args)
             res = error(problem) if problem else self.answer(name, args)
             if not res.get("isError"):
-                self.seen.append(name)
+                self.seen.append({"tool": name, "args": args})
             else:
                 self.refused.append(name)
         self.log({"n": self.calls, "tool": name, "args": args, "is_error": res.get("isError", False),
@@ -139,12 +153,23 @@ class Stub:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def after_spec(after) -> dict:
+    """A mock's "after": a tool name, or {tool, args} (args: a partial match, as the checks use)."""
+    spec = {"tool": after} if isinstance(after, str) else after
+    return {"tool": spec["tool"], "args": spec.get("args") or {}}
+
+
 def result(spec: dict) -> dict:
     """A recorded result (or a hand-written one marked real: shaped like the editor's) goes out as the
     editor sent it, text and structuredContent; Claude Code then shows the model only the
     structuredContent. Any other hand-written result sends its text alone, so the model reads what
-    the case states."""
-    out = {"content": [{"type": "text", "text": spec.get("text", "")}], "isError": bool(spec.get("is_error"))}
+    the case states, with its structured `next` after it when the text lacks it: the editor's hint is
+    in structuredContent, the part Claude Code shows."""
+    text = spec.get("text", "")
+    hint = (spec.get("structured") or {}).get("next") if isinstance(spec.get("structured"), dict) else None
+    if not spec.get("real") and isinstance(hint, str) and hint and hint not in text:
+        text = f"{text}\n{hint}" if text else hint
+    out = {"content": [{"type": "text", "text": text}], "isError": bool(spec.get("is_error"))}
     if spec.get("real") and spec.get("structured") is not None:
         out["structuredContent"] = spec["structured"]
     return out

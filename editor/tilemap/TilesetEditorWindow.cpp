@@ -16,6 +16,7 @@
 #include "util/FileUtils.h"
 #include "util/UIProbe.h"
 #include "util/Util.h"
+#include "widget/ColorField.h"
 #include "window/EditorModal.h"
 #include "window/ProjectWindow.h"
 
@@ -309,7 +310,7 @@ bool TilesetEditorWindow::heldField(const char* label, T* values, int count, con
         for (int i = 0; i < count; i++) values[i] = static_cast<T>(held.values[i]);
     }
     draw();
-    // the UI tests find the composite fields here (InputInt2, ColorEdit4: no item carries the label)
+    // the UI tests find the composite fields here (InputInt2: no item carries the label)
     if (UIProbe::enabled()) UIProbe::item(std::string("tilesetEditor.") + label);
     if (ImGui::IsItemActive()) {
         if (held.id != id) {
@@ -323,6 +324,55 @@ bool TilesetEditorWindow::heldField(const char* label, T* values, int count, con
     if (held.id != id) return false;
     held.id = 0;
     return ImGui::IsItemDeactivatedAfterEdit();
+}
+
+bool TilesetEditorWindow::heldColor(const char* id, float* values, int count, const char* label, float width) {
+    const ImGuiID key = ImGui::GetID(id);
+    const int frame = ImGui::GetFrameCount();
+    if (held.id == key && held.frame < frame - 1) held.id = 0;
+    if (held.id == key) {
+        for (int i = 0; i < count; i++) values[i] = static_cast<float>(held.values[i]);
+    }
+    ui::ColorFieldOptions options;
+    options.alpha = count == 4;
+    // the document's hex is the colour as shown
+    options.linearStorage = false;
+    options.label = label;
+    options.width = width;
+    Vector4 color(values[0], values[1], values[2], count == 4 ? values[3] : 1.0f);
+    const ui::EditPhase phase = ui::colorField(id, color, options);
+    if (UIProbe::enabled()) UIProbe::item(std::string("tilesetEditor.") + id);
+    const float edited[4] = {color.x, color.y, color.z, color.w};
+    switch (phase) {
+        case ui::EditPhase::Changing:
+            if (held.id != key) {
+                held.id = key;
+                held.tiles = selection;
+            }
+            held.frame = frame;
+            for (int i = 0; i < count; i++) held.values[i] = static_cast<double>(edited[i]);
+            return false;
+        case ui::EditPhase::Committed: {
+            // a session that changed nothing writes nothing
+            const bool changed = held.id == key;
+            held.id = 0;
+            return changed;
+        }
+        case ui::EditPhase::Cancelled:
+            // the document was never written while held: Esc only lets go
+            if (held.id == key) held.id = 0;
+            return false;
+        case ui::EditPhase::Applied:
+            for (int i = 0; i < count; i++) values[i] = edited[i];
+            held.id = 0;
+            held.tiles = selection;
+            return true;
+        case ui::EditPhase::Begin:
+        case ui::EditPhase::None:
+            if (held.id == key) held.frame = frame;
+            return false;
+    }
+    return false;
 }
 
 void TilesetEditorWindow::drawToolbar() {
@@ -890,11 +940,13 @@ void TilesetEditorWindow::drawProperties(TileDef& first) {
             }
             case TilePropertyType::Color: {
                 float v[4] = {value.color.x, value.color.y, value.color.z, value.color.w};
-                if (heldField(label.c_str(), v, 4, [&]() { ImGui::ColorEdit4(label.c_str(), v); })) {
+                if (heldColor(label.c_str(), v, 4, entry.name.c_str(), ImGui::CalcItemWidth())) {
                     TilePropertyValue next = value;
                     next.color = Vector4(v[0], v[1], v[2], v[3]);
                     set(next, held.tiles);
                 }
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                ImGui::TextUnformatted(entry.name.c_str());
                 break;
             }
         }
@@ -1010,7 +1062,7 @@ void TilesetEditorWindow::drawTerrainSets() {
             color[1] = (float)g / 255.0f;
             color[2] = (float)b / 255.0f;
             ImGui::Indent();
-            if (heldField("##terrainColor", color, 3, [&]() { ImGui::ColorEdit3("##terrainColor", color, ImGuiColorEditFlags_NoInputs); })) {
+            if (heldColor("##terrainColor", color, 3, "Terrain Color", ImGui::GetFrameHeight())) {
                 const std::string hex = hexOf(color);
                 edit("Set Terrain Color", [&](TilesetData& data) { data.terrainSets[setIndex].terrains[t].color = hex; });
             }
@@ -1061,7 +1113,19 @@ void TilesetEditorWindow::drawTerrainSets() {
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
         ImGui::InputText("##newTerrainName", terrainName, sizeof(terrainName));
         ImGui::SameLine();
-        ImGui::ColorEdit3("##newTerrainColor", terrainColor, ImGuiColorEditFlags_NoInputs);
+        ui::ColorFieldOptions newColorOptions;
+        newColorOptions.alpha = false;
+        newColorOptions.linearStorage = false;
+        newColorOptions.label = "New Terrain Color";
+        newColorOptions.width = ImGui::GetFrameHeight();
+        Vector4 newColor(terrainColor[0], terrainColor[1], terrainColor[2], 1.0f);
+        const ui::EditPhase newColorPhase = ui::colorField("##newTerrainColor", newColor, newColorOptions);
+        // a form value, not the document: written as it changes, with no undo step
+        if (newColorPhase == ui::EditPhase::Changing || newColorPhase == ui::EditPhase::Cancelled || newColorPhase == ui::EditPhase::Applied) {
+            terrainColor[0] = newColor.x;
+            terrainColor[1] = newColor.y;
+            terrainColor[2] = newColor.z;
+        }
         ImGui::SameLine();
         ImGui::BeginDisabled(terrainName[0] == 0);
         if (ImGui::Button("Add Terrain")) {

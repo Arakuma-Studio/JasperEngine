@@ -135,6 +135,9 @@ namespace jasperengine::editor::tilemap {
         // the tiles it applies to)
         template <typename T>
         bool heldField(const char* label, T* values, int count, const std::function<void()>& draw);
+        // a colour field (3 or 4 sRGB values): held like the fields above while the Color window
+        // changes it; true once, as the window's session ends after a change (or an Applied edit)
+        bool heldColor(const char* id, float* values, int count, const char* label, float width);
 
         void drawToolbar();
         void drawSources();
