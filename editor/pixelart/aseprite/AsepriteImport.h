@@ -17,7 +17,7 @@
 #include "asset/Guid.h"
 #include "asset/ModelSubAssets.h"
 #include "asset/SubAssetKeys.h"
-#include "component/SpriteComponent.h"
+#include "sprite/PivotPreset.h"
 #include "sprite/SpriteSheet.h"
 
 #include "json.hpp"

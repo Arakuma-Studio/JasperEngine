@@ -172,6 +172,25 @@ async def test_lint_doubles_warns_from_the_third_corner(ed: Editor):
     ed.check("counts" in blocked["lints"], f"lint: true returns counts: {blocked['lints']}")
 
 
+async def test_frame_number_as_text(ed: Editor):
+    """frame takes a tag name too, so a model sends frame 3 as "3" (the MCP eval's samples): with no tag of that
+    name it is frame 3, at the call and in an op; a tag named "2" still wins."""
+    path = "assets/sprites/frames_text.aseprite"
+    await ok(ed, "create_sprite", path=path, size=[8, 8], frames=4, palette=["#ff0000", "#00ff00"])
+    await ok(ed, "edit_sprite", sprite=path, frame="3", ops=[{"op": "pixel", "points": [[1, 1]], "color": 1}])
+    await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "points": [[2, 2]], "color": 1, "frame": "4"}])
+    read = await ok(ed, "read_sprite_pixels", sprite=path, frame=[3, 4], rect=[0, 0, 4, 4])
+    rows = {item["frame"]: item["rows"] for item in read["frames"]}
+    ed.check(rows[3][1][1] == "1" and rows[4][2][2] == "1", f"frame \"3\" is frame 3, an op's \"4\" frame 4: {rows}")
+    await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "tag", "name": "2", "from": 4, "to": 4}])
+    await ok(ed, "edit_sprite", sprite=path, frame="2", ops=[{"op": "pixel", "points": [[3, 3]], "color": 1}])
+    read = await ok(ed, "read_sprite_pixels", sprite=path, frame=[2, 4], rect=[0, 0, 4, 4])
+    rows = {item["frame"]: item["rows"] for item in read["frames"]}
+    ed.check(rows[4][3][3] == "1" and rows[2][3][3] == ".", f"the tag named \"2\" (frame 4) wins over frame 2: {rows}")
+    e = await err(ed, "edit_sprite", sprite=path, frame="9", ops=[{"op": "pixel", "points": [[0, 0]], "color": 1}])
+    ed.check(e["kind"] == "no_frame" and "1-4" in e["fix"], f"a number past the last frame names the range: {e}")
+
+
 async def test_flicker_runs_on_every_touched_tag(ed: Editor):
     path = "assets/sprites/flicker.aseprite"
     await ok(ed, "create_sprite", path=path, size=[16, 16], frames=6, palette=["#ff0000", "#00ff00"])

@@ -3,6 +3,7 @@
 How to make pixel art draw correctly, and prove it, for agents. User docs: `docs/pixel-art.md`.
 Palettes (edit_palette, apply_palette): jasper://docs/palettes. Bitmap fonts (preview_font): jasper://docs/pixel-fonts.
 Cleaning AI or loose pixel art, craft lints (fix_pixel_art, lint_pixel_art): jasper://docs/pixel-art-cleanup.
+Sprite effects and outline presets, screen transitions, and the contact sheets whose lint checks them (capture_contact_sheet): jasper://docs/pixel-fx.
 
 ## The rules
 

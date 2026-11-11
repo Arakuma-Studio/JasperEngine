@@ -244,6 +244,26 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
+- Title Art (not pixel-art): `ShaderNeutralApi.NeutralClassesAreTheReviewedOnes` is red on `main`.
+  S85 and S87 added 22 `TitleArt` Lua members (`animation*`, `*Language*`, `getMeshStats`,
+  `qualityTier`, ...) without the shader-neutral review. `qualityTier` picks export prebake tiers,
+  so Title Art's owner should judge it.
+- Older `main` issues seen in the CI-suite run:
+  - `test_bake_vertex_animation`: two tests have failed since S74 made `animation_entities` default
+    to auto (`cfe74ec02`).
+  - `test_hub_conditions`: `free_port()` folder reuse; a `mkdtemp` folder would fix it.
+  - `test_scene_view_icons`: the distance gauge fades by wall-clock time.
+  - `test_mesh_update_flags`: a direct 1.85 ratio assert that should go through `harness.over_budget`.
+- MCP eval: still failing are `guard_contact_sheet_lint` (agents reason from the `.particles` file
+  instead of measuring) and `guard_contact_sheet_transition_target` (borderline, 5/8). S50's
+  `guard_tileset_check_before_painting` gets an `edit_tilemap` result hint (the owner's choice); the
+  guide line is the fallback. Other tools with boolean-or-string `output` may get `"true"` too
+  (`generate_sprite_normals`, `bake_vertex_animation`, `optimize_animation`). "Callable by name" is
+  still in `navigation.md` and `profiling.md`. `capture_contact_sheet` (particles target) and
+  `preview_particle_effect` (pixel view) are near-duplicate routes. 7 of 9 at-risk cases still pass
+  with their text removed, so they need sharper prompts.
+- `MeshComponent.h` is at exactly 150 of 150 in `check_fanout`, so the next unit that includes it
+  fails the check.
 - S47 polish, within R41 as written: after an outside save the Sprite Preview's Undo stays enabled
   although the step can't be undone. The click is refused safely, but the panel says only "The step
   could not be undone" (the reason is in the status bar), and the "Edited by" line stays under the
@@ -263,6 +283,24 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-11: `fix/main-after-pixel-art` merged (`d7359a6fe`) together with the MCP eval's fixes. The
+  MCP CI suite on the eval branch failed 18 tests; triaged against current `main`:
+  - From the pixel-art landings:
+    - the search palette lacked the Pixel Art Check, Tile Palette and Tileset Editor windows (and
+      Title Art's);
+    - S47 registered a preference twice, with no Pixel Art Preferences page;
+    - S50's Tileset Editor colour fields didn't use the colour picker;
+    - S51 reset every vector-font Text's Nearest sampler to Linear.
+  - Also fixed on `main`: Title Art pushed `SpriteComponent.h` to 154 of 150 in `check_fanout`
+    (`PivotPreset.h` split, now 101), and the Xcode project lacked S50's and Title Art's engine
+    sources, so Apple builds would fail to link (`xcode_sync_engine.py`; not built here, since there
+    is no Apple host).
+  - The other 14: already failing before pixel-art (4 fixed by Title Art, 2 bake tests), or load and
+    flakiness, each passing 3 of 3 when run alone on `main`.
+  - Merged tree: `WERROR` build; MCP 247 passed, 0 failed, 3 skipped (prefab goldens); unit core
+    14/14, editor 127/128 (the Title Art hash review, left to its owner); lints, tool budget,
+    `gen_tool_docs` and `test_grade` 23/23 pass. Red and green runs are on each fix.
 
 - 2026-11-11: the MCP eval ran on the 41 pixel-art cases (Sonnet, `therealeduard465` and
   `jasperthegoat`, about $80; accounts returned). As found: 12/41 passed. After fixing the eval's own

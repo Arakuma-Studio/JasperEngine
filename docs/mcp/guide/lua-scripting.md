@@ -47,6 +47,8 @@ return Player
 
 ## Rules
 
+- Many copies of one sprite (bullets, coins): one Sprite Batch filled from the script, not a GameObject
+  or Prefab instance each (jasper://docs/rendering-2d).
 - Property types: bool, int, float, string, vector2/3/4, color3/color4, prefab, entity, any
   wrapper class name (Sprite, Text, Image, Button, AudioSource, Rigidbody2D, ...), or another
   Lua script's class name (you get that script's self). Values are read as self.<name>.

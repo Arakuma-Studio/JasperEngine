@@ -125,7 +125,7 @@ std::string fixed2(double v) {
 bool truthy(const Json& args, const char* key) {
     if (!args.contains(key) || args[key].is_null()) return false;
     if (args[key].is_boolean()) return args[key].get<bool>();
-    return !(args[key].is_string() && args[key].get<std::string>().empty());
+    return !(args[key].is_string() && (args[key].get<std::string>().empty() || args[key] == Json("false")));
 }
 
 std::string lowerExtension(const std::string& path) {
@@ -1095,7 +1095,9 @@ bool parseApplyArgs(Project* project, const Json& args, ApplyArgs& out, std::vec
 
     // output: false (preview), true (the texture itself) or a new file
     if (args.contains("output") && !args["output"].is_null()) {
-        const Json& output = args["output"];
+        Json output = args["output"];
+        // the schema also takes a path, so a model often sends output: true as the string "true"
+        if (output == Json("true") || output == Json("false")) output = output == Json("true");
         if (output.is_boolean()) {
             out.write = output.get<bool>();
             if (out.write) {
