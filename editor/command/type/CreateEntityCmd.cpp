@@ -3,6 +3,8 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -42,6 +44,8 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -78,6 +82,7 @@
 #include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <utility>
 
 using namespace jasperengine;
@@ -536,6 +541,18 @@ bool editor::CreateEntityCmd::execute(){
         if (type == EntityCreationType::SPRITE_BATCH)
             scene->addComponent<SpriteBatchComponent>(entity, {});
 
+    }else if (type == EntityCreationType::TILEMAP_GRID){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<GridComponent>(entity, {});
+
+    }else if (type == EntityCreationType::TILEMAP_LAYER){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<TilemapLayerComponent>(entity, {});
+        scene->getComponent<MeshComponent>(entity).numSubmeshes = 1;
+
     }else if (type == EntityCreationType::TILEMAP){
 
         scene->addComponent<Transform>(entity, {});
@@ -726,6 +743,32 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<AudioSnapshotComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
+    }else if (type == EntityCreationType::TITLE_ART_UI || type == EntityCreationType::TITLE_ART_SPRITE){
+
+        scene->addComponent<Transform>(entity, {});
+        if (type == EntityCreationType::TITLE_ART_UI){
+            scene->addComponent<RectTransformComponent>(entity, {});
+            scene->addComponent<UIComponent>(entity, {});
+            scene->addComponent<ImageComponent>(entity, {});
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+            layout.width = 100;
+            layout.height = 100;
+        }else{
+            scene->addComponent<MeshComponent>(entity, {});
+            scene->addComponent<SpriteComponent>(entity, {});
+            SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
+            sprite.width = 100;
+            sprite.height = 100;
+        }
+        TitleArtRendererComponent title;
+        title.title = titleArtPath;
+        scene->addComponent<TitleArtRendererComponent>(entity, std::move(title));
+        // R6: at native size (a title without a bake keeps the default size)
+        if (!titleArtPath.empty()){
+            std::string error;
+            TitleArtSystem::setNativeSize(scene, entity, error);
         }
 
     }else if (type == EntityCreationType::SPRITE_ANIMATION){
@@ -1127,4 +1170,13 @@ Entity editor::CreateEntityCmd::getEntity(){
 
 void editor::CreateEntityCmd::setQuiet(bool quiet){
     this->quiet = quiet;
+}
+
+void editor::CreateEntityCmd::setTitleArt(const std::string& projectRelativePath){
+    titleArtPath = projectRelativePath;
+    std::string stem = std::filesystem::path(projectRelativePath).filename().string();
+    const std::string extension = ".titleart";
+    if (stem.size() > extension.size() && stem.compare(stem.size() - extension.size(), extension.size(), extension) == 0)
+        stem = stem.substr(0, stem.size() - extension.size());
+    description = "Create Title Art (" + (stem.empty() ? std::string("Title Art") : stem) + ")";
 }

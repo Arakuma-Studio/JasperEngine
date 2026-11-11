@@ -9,6 +9,10 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+#include "titleart/TitleArtExport.h"
+#include "titleart/three_d/Title3DExport.h"
+#include "titleart/runtime/TitleArtRuntimeExport.h"
+#include "titleart/runtime/TitleArtRuntimeFonts.h"
 #include "cook/VoxelVolumeCook.h"
 #include "io/watch/LinkedFolders.h"
 
@@ -50,6 +54,7 @@
 #include "util/FbxImporter.h"
 #include "util/CubeLut.h"
 #include "pixelart/BitmapFont.h"
+#include "tilemap/Tileset.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -1272,11 +1277,14 @@ void editor::Exporter::runExport() {
     if (!checkHtmlUIReferences()) return;
     checkSoundEventClips();
     if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!prepareTitleArt()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookModels()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeTitleArtRuntime()) return;
     if (!writeAudioImports()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
@@ -1477,7 +1485,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2964,6 +2972,113 @@ bool editor::Exporter::writeAssetMap() {
     return true;
 }
 
+bool editor::Exporter::prepareTitleArt() {
+    TitleArtExport::Prepared prepared;
+    std::promise<void> done;
+    auto doneFuture = done.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &prepared, &done]() {
+        prepared = TitleArtExport::prepare(project, project->getTitleArtSettings().staleBakesOnExport);
+        // S81 R52: the documents a shipped Realtime or Glyph Atlas title reads ship
+        const TitleArtExportPlan plan = planTitleArtExport(project);
+        TitleArtExport::setRuntimeTitles(project, std::vector<std::string>(plan.runtimeTitles.begin(), plan.runtimeTitles.end()));
+        // S87 R25: the languages localization.languages leaves out (after any rebake above)
+        titleLanguages = planTitleLanguageShipping(project);
+        done.set_value();
+    });
+    doneFuture.get();
+    for (const std::string& line : titleLanguages.warnings) Out::warning("%s", line.c_str());
+    for (const std::string& line : prepared.rebaked) Out::info("Rebaked Title Art %s", line.c_str());
+    for (const std::string& line : prepared.warnings) Out::warning("%s", line.c_str());
+    if (!prepared.ok) {
+        setError(prepared.error);
+        return false;
+    }
+    return true;
+}
+
+std::vector<std::string> editor::Exporter::exportPlatformNames() const {
+    if (config.mode == ExportMode::Desktop) return {"linux"};
+    if (config.mode == ExportMode::Web) return {"web"};
+    if (config.mode == ExportMode::Player) return {buildPlatformName(config.platform)};
+    return {"windows", "linux", "macos", "ios", "android", "web"};
+}
+
+bool editor::Exporter::writeTitleArtRuntime() {
+    // S81 R11, R32, R54-R57: the prebaked initial states of the shipped Realtime titles, rendered
+    // in the editor into the build's assets (the fonts' subsets and credits come with them)
+    TitleArtPrebakeResult prebaked;
+    TitleArtFontShipResult fonts;
+    Title3DCookResult cooked3D;
+    Title3DCookPending cook3D;
+    std::string settingsError;
+    bool settingsFailed = false;
+    std::promise<void> done;
+    auto doneFuture = done.get_future();
+    const fs::path assetsDst = getExportProjectRoot() / "assets";
+    const std::vector<std::string> platforms = exportPlatformNames();
+    const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, assetsDst, &platforms, &families]() {
+        const TitleArtExportPlan plan = planTitleArtExport(project);
+        // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
+        fonts = shipTitleArtFonts(project, plan, assetsDst);
+        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
+        // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
+        if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
+        // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
+        if (fonts.ok && prebaked.ok && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
+        done.set_value();
+    });
+    doneFuture.get();
+    // the cubes on this worker: seconds of CPU a face size of 1024 takes
+    finishTitleArt3DCook(cook3D, cooked3D);
+    for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());
+    for (const std::string& line : fonts.warnings) Out::warning("%s", line.c_str());
+    if (!fonts.ok) {
+        setError(fonts.error);
+        return false;
+    }
+    for (const std::string& file : prebaked.written) Out::info("Prebaked Title Art %s", file.c_str());
+    for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
+    if (!prebaked.ok) {
+        setError(prebaked.error);
+        return false;
+    }
+    if (settingsFailed) {
+        setError("The Title Art settings of the build: " + settingsError);
+        return false;
+    }
+    if (cooked3D.meshes || cooked3D.environments) {
+        Out::info("Title Art 3D: %zu cooked meshes, %zu environment cubes (%zu KiB)", cooked3D.meshes, cooked3D.environments, cooked3D.bytes / 1024);
+    }
+    for (const std::string& line : cooked3D.warnings) Out::warning("%s", line.c_str());
+    if (!cooked3D.ok) {
+        setError(cooked3D.error);
+        return false;
+    }
+    // S87 R25: the build's source sidecars list only the shipped languages
+    for (const auto& [relative, text] : titleLanguages.sidecars) {
+        std::string writeError;
+        if (!assetio::writeFile(assetsDst / relative, text, assetio::Durability::Cache, &writeError)) {
+            setError("The Title Art languages of " + relative + ": " + writeError);
+            return false;
+        }
+    }
+    // R54: the shipped fonts' credits (copyLicenses carries the file to the build)
+    const fs::path credits = config.targetDir / "licenses" / TITLE_FONT_CREDITS_FILE;
+    std::error_code ec;
+    if (fonts.credits.empty()) {
+        fs::remove(credits, ec);
+        return true;
+    }
+    fs::create_directories(credits.parent_path(), ec);
+    std::string error;
+    if (!assetio::writeFile(credits, titleFontCreditsText(fonts.credits, project->getName()), assetio::Durability::Cache, &error)) {
+        setError("The font credits: " + error);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::gatherImportedAssets() {
     importedRecords.clear();
     using pixelart::aseprite::AsepriteImporter;
@@ -3203,11 +3318,7 @@ bool editor::Exporter::cookTextures() {
 
     // Windows/Linux/macOS -> desktop, iOS and Android -> mobile (+ android_etc2), Web -> web;
     // a source export builds for every platform, so it carries every family (R9)
-    std::vector<std::string> platforms;
-    if (config.mode == ExportMode::Desktop) platforms = {"linux"};
-    else if (config.mode == ExportMode::Web) platforms = {"web"};
-    else if (config.mode == ExportMode::Player) platforms = {buildPlatformName(config.platform)};
-    else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
+    const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families =
         TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
 
@@ -3227,6 +3338,8 @@ bool editor::Exporter::cookTextures() {
         setError("Texture import settings: " + gatherError);
         return false;
     }
+    // S87 R25: a Title Art language the build leaves out is not cooked
+    for (const std::string& dropped : titleLanguages.droppedFiles) inputs.erase(dropped);
     // S45: the export family's atlases cook under their je-imported/ path (R16: lossless pages as
     // S14 quality none, RGBA8 + Zstandard; the others as the project's sprites); a packed texture
     // only sprites read is not cooked
@@ -3594,6 +3707,11 @@ bool editor::Exporter::copyAssets() {
         // Skip project support files that should not ship as assets, and the assets' metas
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Enter;
 
+        // A Title Art document ships only when a Realtime or Glyph Atlas title reads it (its baked
+        // PNGs are ordinary textures)
+        if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) return TreeStep::Enter;
+        // S87 R25: the sets of the languages the build leaves out
+        if (titleLanguages.droppedFiles.count(relPath.generic_string())) return TreeStep::Enter;
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
         if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
 
@@ -3717,6 +3835,10 @@ bool editor::Exporter::copyAssets() {
         // loads in its place; one that does not load ships as it is (the game logs its error)
         if (Util::isBitmapFontFile(entry.path().string()) && cookBitmapFont(relPath, destPath)) return TreeStep::Skip;
 
+        // A .tileset ships with its images' current paths (S50): their GUIDs follow a move in the
+        // editor, a game loads by path
+        if (relPath.extension() == ".tileset" && writeResolvedTileset(entry.path(), destPath)) return TreeStep::Skip;
+
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
@@ -3803,6 +3925,35 @@ bool editor::Exporter::cookBitmapFont(const fs::path& relPath, const fs::path& d
     }
     std::error_code ec;
     fs::remove(destination, ec);
+    return true;
+}
+
+bool editor::Exporter::writeResolvedTileset(const fs::path& source, const fs::path& destination) {
+    std::string text;
+    if (!assetio::readFile(source, text)) return false;
+    TilesetData data;
+    std::vector<TilesetProblem> problems;
+    if (!tileset::parse(text, data, problems)) return false;
+    for (TilesetSource& tilesetSource : data.sources) {
+        if (tilesetSource.asset.guid.isNull()) continue;
+        const std::string hint = project->assetHintToProjectPath(tilesetSource.asset.path, AssetPathBase::Assets);
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(tilesetSource.asset.guid, hint, AssetType::Unknown, true);
+        if (found.found()) {
+            tilesetSource.asset.path = project->projectPathToAssetHint(found.path, AssetPathBase::Assets);
+        } else {
+            Out::warning("%s: source %d (%s) resolves to no asset; it ships with its path", FileUtils::pathToGenericUtf8(source).c_str(), tilesetSource.id,
+                         tilesetSource.asset.path.c_str());
+        }
+        tilesetSource.asset.guid = Guid();
+    }
+    const std::string bytes = tileset::write(data);
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(destination, std::string_view(bytes), options);
+    if (!written.ok()) {
+        Out::warning("%s ships as it is: %s", FileUtils::pathToGenericUtf8(source).c_str(), written.message.c_str());
+        return false;
+    }
     return true;
 }
 
@@ -4490,6 +4641,15 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_VOXEL", "voxel");
         moduleSwitch("JASPERENGINE_TERRAIN_WORLD", "terrainworld");
         moduleSwitch("JASPERENGINE_TERRAIN_EDIT", "terrainedit");
+        moduleSwitch("JASPERENGINE_TITLE_ART", "titleart");
+        // S81 R51: the sub-options, off when no shipped Realtime title needs them (ModuleUsage)
+        {
+            const bool titleArt = std::find(modules.begin(), modules.end(), "titleart") != modules.end();
+            const bool title3D = titleArt && (!moduleUsageKnown || moduleUsage.titleArt3D);
+            const bool mesher = title3D && (!moduleUsageKnown || moduleUsage.titleArtMesher);
+            projectSettings += indent + "set(JASPERENGINE_TITLE_ART_3D " + std::string(title3D ? "ON" : "OFF") + ")";
+            projectSettings += indent + "set(JASPERENGINE_TITLE_ART_MESHER " + std::string(mesher ? "ON" : "OFF") + ")";
+        }
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -6977,7 +7137,8 @@ bool editor::Exporter::writeEffectLicense() {
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt"}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt",
+                                 "licenses/THIRD-PARTY-FONTS.txt"}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

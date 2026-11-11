@@ -1,0 +1,81 @@
+# Pachislop -> Title Art: effect types and their param keys (docs/specs/S83-title-effects-generators.md
+# §6.9, R51). Read by editor/titleart/fx/PachislopFxMap.cpp (S84's converter, S87's importers).
+# Rules applied to every entry: `params` maps each Pachislop key to ours (every key of the
+# Pachislop effect is listed); `vec2` joins an x/y pair into one Vec2 param; `negate` lists the
+# Pachislop keys whose value changes sign (Pachislop's generator angles are counter-clockwise;
+# its effect angles are clockwise and kept, except Extrude's Light From, which becomes a
+# Photoshop light angle); `set` adds params Pachislop had no key for. S80's types keep S80's keys.
+# The generators' half of the map is the generators stream's (`generators:`).
+effects:
+  outerGlow: {type: outer_glow, params: {fill: fill, color: color, gradient: gradient, angle: angle, technique: technique, size: size, intensity: intensity, spread: spread, opacity: opacity, mode: mode, onFace: on_face}}
+  innerGlow: {type: inner_glow, params: {fill: fill, color: color, gradient: gradient, technique: technique, size: size, intensity: intensity, choke: choke, opacity: opacity, mode: mode, source: source}}
+  dropShadow: {type: drop_shadow, params: {angle: angle, distance: distance, size: size, spread: spread, color: color, opacity: opacity, useGlobalLight: use_global_light}}
+  innerShadow: {type: inner_shadow, params: {angle: angle, distance: distance, size: size, choke: choke, color: color, opacity: opacity, useGlobalLight: use_global_light}}
+  keyline: {type: outline, params: {width: width, color: color, opacity: opacity, softness: softness, threshold: threshold, follow: follow}}
+  gaussianBlur: {type: gaussian_blur, params: {radius: radius, scaleX: scale_x, scaleY: scale_y, repeatEdges: repeat_edges}}
+  gradientOverlay: {type: gradient_overlay, params: {gradient: gradient, style: style, angle: angle, scale: scale, offset: offset, length: length, position: position, wrap: wrap, amount: amount, mode: mode}}
+  adjust: {type: adjust, params: {adjustment: adjustment}}
+  deepGlow:
+    type: light_glow
+    params: {exposure: exposure, threshold: threshold, knee: knee, radius: radius, falloff: falloff, intensity: intensity, chroma: chroma, colorMode: color_mode, color: color, tintAmount: tint_amount, tintInner: tint_inner, tintOuter: tint_outer, highlightShift: highlight_shift, coreWhite: core_white, onFace: on_face}
+  contourLines:
+    type: contour_lines
+    params: {mode: mode, count: count, spacing: spacing, width: width, offset: offset, falloff: falloff, gradient: gradient, colorBy: color_by, angle: angle, intensity: intensity, glowSize: glow_size, glow: glow, dim: dim, follow: follow}
+  motionBlur: {type: motion_blur, params: {angle: angle, distance: distance, mode: mode}}
+  lensBlur: {type: lens_blur, params: {radius: radius, shape: shape, rotation: rotation, brightness: brightness, threshold: threshold, noise: noise, distribution: distribution, mono: mono}}
+  tiltShift: {type: tilt_shift, params: {blur: blur, angle: angle, width: width, falloff: falloff}, vec2: {center: [centerX, centerY]}}
+  radialBlur: {type: radial_blur, params: {type: type, amount: amount, spin: spin, keepOriginal: keep_original}, vec2: {center: [centerX, centerY]}}
+  wave: {type: wave_warp, params: {type: type, amplitude: amplitude, wavelength: wavelength, phase: phase, angle: angle}, vec2: {center: [centerX, centerY]}}
+  chromaticAberration: {type: chromatic_aberration, params: {amount: amount, type: type, angle: angle, smooth: smooth}, vec2: {center: [centerX, centerY]}}
+  grain: {type: grain, params: {amount: amount, size: size, color: color, seed: seed}}
+  glitch: {type: glitch, params: {amount: amount, slices: slices, offset: offset, split: split, seed: seed}, set: {mode: slices}}
+  extrude2d:
+    type: extrude
+    params: {angle: angle, length: length, gradient: gradient, light: light_angle, shading: shading, edge: edge, fade: fade, opacity: opacity, useGlobalLight: use_global_light}
+    negate: [light]
+  motionTrail:
+    type: motion_trail
+    params: {mode: mode, angle: angle, length: length, fade: fade, taper: taper, copies: copies, offset: offset, scaleStep: scale_step, decay: decay, echoBlur: echo_blur, opacity: opacity, tint: tint, tintStart: tint_start, tintEnd: tint_end, tintAmount: tint_amount}
+  halftone:
+    type: halftone
+    params: {size: size, angle: angle, dotScale: dot_scale, color: color, amount: amount, source: source, fade: fade, rampAngle: ramp_angle, mode: mode}
+    set: {dot: round}
+  perspectiveShadow:
+    type: perspective_shadow
+    params: {angle: angle, length: length, perspective: perspective, blurNear: blur_near, blurFar: blur_far, fade: fade, offset: offset, color: color, opacity: opacity, useGlobalLight: use_global_light}
+  floorReflection: {type: floor_reflection, params: {gap: gap, length: length, opacity: opacity, blur: blur, falloff: falloff, scale: scale}}
+  material: {type: material, params: {colorMode: color_mode, size: size, material: material}}
+  shatter:
+    type: shatter
+    params: {pattern: pattern, pieces: pieces, radius: radius, strength: strength, rotation: rotation, gap: gap, edgeColor: edge_color, edgeHighlight: edge_highlight, lost: lost, cracksOnly: cracks_only, seed: seed}
+    vec2: {impact: [x, y]}
+# Pachislop's blend modes (halftone `mode`) and option values keep their names, camelCase to snake_case
+values:
+  softLight: soft_light
+
+# The generators (the generators stream; editor/titleart/fx/PachislopGeneratorMap.cpp reads them):
+# - camelCase keys become snake_case unless `renames` names the key
+# - `vec2` pairs (x/y, cx/cy, rx/ry) become one Vec2 [x, y]; a pair given half keeps our default's other component
+# - `negated` lists our keys of generator angles: Pachislop's are counter-clockwise (y-up), ours clockwise (D16)
+# - `values` maps a Pachislop enum value to ours, by our key
+# - `follow` names the Pachislop param holding the followed layer: it becomes the layer's `follow` member
+# - `rows` turns numbered params (row1Type ...) into the rows of a RowArray param, as many as the `count` param says
+# - gradients get every stop's alpha (1) and mid (0.5) and the interp (rgb) Pachislop leaves out
+# - a layer's companionOf becomes a visible Group "<layer> FX" (D3), reported as a note
+# - `presets` maps every Pachislop preset id to ours (snake_case, or the §6.8 id)
+generators:
+  - {"pachislop": "particles", "type": "particles", "presets": {"goldDust": "gold_dust", "embers": "embers", "lightMotes": "light_motes", "confetti": "confetti", "sakura": "sakura", "starShower": "star_shower", "bokeh": "bokeh", "rain": "rain", "fireworks": "fireworks"}, "follow": "follow", "vec2": {"x/y": "point", "rx/ry": "radius"}, "renames": {"rotation": "rotation_random"}, "negated": ["angle", "heading"]}
+  - {"pachislop": "inkSplatter", "type": "ink_splatter", "presets": {"black": "ink_behind", "red": "red_ink", "over": "ink_over", "swept": "swept"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "speedLines", "type": "speed_lines", "presets": {"focus": "focus", "focusRed": "focus_red", "flowH": "flow_h", "flowDiag": "flow_diag", "flash": "flash", "beta": "beta", "spiky": "spiky", "rainbow": "rainbow"}, "follow": "layer", "vec2": {"x/y": "center", "rx/ry": "radius"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "lightStreaks", "type": "light_streaks", "presets": {"anamorphic": "anamorphic", "bundle": "bundle", "spears": "spears", "cyan": "cyan"}, "vec2": {"x/y": "origin"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "sunburst", "type": "sunburst", "presets": {"redGold": "red_gold", "blue": "blue", "rainbowHalo": "rainbow_halo", "purple": "purple", "blackGold": "black_gold", "focusLines": "focus_lines", "twoColourWedges": "two_colour_wedges"}, "follow": "follow", "vec2": {"x/y": "center"}, "renames": {"centre": "center_mode"}, "negated": ["rotation", "twist"]}
+  - {"pachislop": "shockwave", "type": "shockwave", "presets": {"white": "white", "red": "red", "neon": "neon", "halo": "halo", "ground": "ground"}, "vec2": {"cx/cy": "center"}, "renames": {}, "negated": ["tilt"]}
+  - {"pachislop": "magicCircle", "type": "magic_circle", "presets": {"gold": "gold", "blue": "blue", "hud": "hud", "hologram": "hologram", "radar": "radar", "bagua": "bagua"}, "vec2": {"cx/cy": "center"}, "renames": {"text": "glyphs"}, "rows": {"params": "row{n}", "count": "rows", "into": "rows"}, "negated": ["rotation", "rows[].angle"], "values": {"glyphs": {"eto": "zodiac", "bagua": "trigrams"}}}
+  - {"pachislop": "brushSwirl", "type": "brush_swirl", "presets": {"ink": "ink", "gold": "gold", "red": "red", "slash": "slash"}, "vec2": {"cx/cy": "center"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "glints", "type": "glints", "presets": {"highlights": "highlights", "hero": "hero", "stars": "stars", "rainbow": "rainbow", "scatter": "scatter"}, "follow": "follow", "vec2": {"x/y": "position"}, "renames": {}, "negated": ["rotation", "hero_angle"], "values": {"rays": {"4": "four", "8": "eight"}}}
+  - {"pachislop": "lensFlare", "type": "lens_flare", "presets": {"blue": "blue", "gold": "gold", "streak": "streak"}, "follow": "follow", "vec2": {"x/y": "position"}, "renames": {}, "negated": ["rotation"]}
+  - {"pachislop": "backlight", "type": "backlight", "presets": {"godRays": "god_rays", "jackpot": "jackpot", "blue": "blue"}, "follow": "follow", "vec2": {"x/y": "center"}, "renames": {"centreMode": "center_mode"}, "negated": ["rotation"]}
+  - {"pachislop": "fire", "type": "fire", "presets": {"behind": "behind", "overEdges": "over_edges", "red": "hot", "blaze": "blaze"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "smoke", "type": "smoke", "presets": {"grey": "grey", "steam": "steam", "black": "black"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "corona", "type": "aura", "presets": {"tendrils": "tendrils", "purple": "purple", "auraStrong": "strong", "auraWeakUp": "rising_weak"}, "follow": "follow", "renames": {"aura": "strength"}, "negated": [], "values": {"mode": {"aura": "rising"}}}
+  - {"pachislop": "lightning", "type": "lightning", "presets": {"bolts": "bolts", "electricBlue": "electric_blue", "electrify": "electrify"}, "follow": "follow", "renames": {}, "negated": []}

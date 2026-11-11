@@ -26,8 +26,9 @@ namespace jasperengine::editor {
         explicit BitmapFontInspector(Project* project);
         ~BitmapFontInspector();
 
-        // a .bitmapfont, .fnt, .ttf or .otf
-        void draw(const std::filesystem::path& asset);
+        // a .bitmapfont, .fnt, .ttf or .otf; `header` false when the caller draws the file's own
+        // header (a TrueType font's names and licence come from the Title Art font Inspector)
+        void draw(const std::filesystem::path& asset, bool header = true);
         // the texture Inspector's banner for a sheet named <name>@WxH.png; true when it drew
         static bool drawFontSheetBanner(Project* project, const std::filesystem::path& image);
 

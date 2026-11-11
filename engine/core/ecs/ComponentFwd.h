@@ -58,6 +58,7 @@ namespace jasperengine{
     struct PanelComponent;
     struct ParticleSystemComponent;
     struct PixelPerfectCameraComponent;
+    struct HitStopExemptComponent;   // S48
     struct PointsComponent;
     struct PolygonComponent;
     struct PoseAnimatorComponent;
@@ -73,6 +74,7 @@ namespace jasperengine{
     struct RotationTweenComponent;
     struct SafeAreaComponent;
     struct AudioSnapshotComponent;
+    struct TitleArtRendererComponent;
     struct ScaleTracksComponent;
     struct ScaleTweenComponent;
     struct ScriptComponent;
@@ -80,6 +82,9 @@ namespace jasperengine{
     struct ShadowCaster2DComponent;
     struct SortingGroupComponent;
     struct SpriteBatchComponent;
+    struct GridComponent;
+    struct TilemapLayerComponent;
+    struct TilemapCollider2DComponent;
     struct SkyboxComponent;
     struct SplineAnimateComponent;
     struct SplineComponent;

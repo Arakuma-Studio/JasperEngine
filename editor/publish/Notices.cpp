@@ -39,8 +39,20 @@ bool publish::loadNoticeLibraries(const fs::path& noticesJson, std::vector<Notic
         return false;
     }
     out.clear();
-    for (const auto& [name, entry] : json["libraries"].items())
-        out.push_back({name, entry.value("dir", ""), entry.value("when", "always")});
+    for (const auto& [name, entry] : json["libraries"].items()) {
+        NoticeLibrary library{name, entry.value("dir", ""), {}};
+        const auto when = entry.find("when");
+        if (when == entry.end()) {
+            library.when = {"always"};
+        } else if (when->is_string()) {
+            library.when = {when->get<std::string>()};
+        } else if (when->is_array()) {
+            for (const auto& condition : *when) {
+                if (condition.is_string()) library.when.push_back(condition.get<std::string>());
+            }
+        }
+        out.push_back(std::move(library));
+    }
     std::sort(out.begin(), out.end(), [](const NoticeLibrary& a, const NoticeLibrary& b) { return a.name < b.name; });
     return true;
 }
@@ -48,8 +60,10 @@ bool publish::loadNoticeLibraries(const fs::path& noticesJson, std::vector<Notic
 std::vector<publish::NoticeLibrary> publish::shippedLibraries(const std::vector<NoticeLibrary>& all, const std::vector<std::string>& features) {
     std::vector<NoticeLibrary> out;
     for (const NoticeLibrary& library : all) {
-        if (library.when == "always" || std::find(features.begin(), features.end(), library.when) != features.end())
-            out.push_back(library);
+        const bool ships = std::any_of(library.when.begin(), library.when.end(), [&](const std::string& condition) {
+            return condition == "always" || std::find(features.begin(), features.end(), condition) != features.end();
+        });
+        if (ships) out.push_back(library);
     }
     return out;
 }

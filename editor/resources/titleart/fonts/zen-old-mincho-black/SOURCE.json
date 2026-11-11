@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/zenoldmincho/OFL.txt",
+    "sha256": "469d214f9842809659c827b7f2adaf40ec0df6efdd5fe18b7127665c32aafaec",
+    "bytes": 4399
+  },
+  "path": "ofl/zenoldmincho/ZenOldMincho-Black.ttf",
+  "sha256": "84a80d8bca79d7d9478935045b216ed003ad40fdea5fd9116d524eb26e872cdc",
+  "bytes": 5416348
+}

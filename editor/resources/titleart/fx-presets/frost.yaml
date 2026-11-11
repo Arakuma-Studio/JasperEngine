@@ -1,0 +1,10 @@
+# Frost presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: frost
+    name: Frost
+    aliases: [frosty, 霜]
+    params: {}
+  - id: frozen_solid
+    name: Frozen Solid
+    aliases: [ice block, frozen]
+    params: {amount: 1, reach: 60}

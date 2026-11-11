@@ -1,0 +1,88 @@
+{
+  "style_lint-contrast": {
+    "check": "style_lint.contrast",
+    "bad": "style_lint-contrast-bad.titleart",
+    "good": "style_lint-contrast-good.titleart"
+  },
+  "style_lint-hue_count": {
+    "check": "style_lint.hue_count",
+    "bad": "style_lint-hue_count-bad.titleart",
+    "good": "style_lint-hue_count-good.titleart"
+  },
+  "style_lint-rims_thin": {
+    "check": "style_lint.rims_thin",
+    "bad": "style_lint-rims_thin-bad.titleart",
+    "good": "style_lint-rims_thin-good.titleart"
+  },
+  "style_lint-rims_thick": {
+    "check": "style_lint.rims_thick",
+    "bad": "style_lint-rims_thick-bad.titleart",
+    "good": "style_lint-rims_thick-good.titleart"
+  },
+  "style_lint-hard_shadow": {
+    "check": "style_lint.hard_shadow",
+    "bad": "style_lint-hard_shadow-bad.titleart",
+    "good": "style_lint-hard_shadow-good.titleart"
+  },
+  "style_lint-spectrum_span": {
+    "check": "style_lint.spectrum_span",
+    "bad": "style_lint-spectrum_span-bad.titleart",
+    "good": "style_lint-spectrum_span-good.titleart"
+  },
+  "style_lint-noop_knockout": {
+    "check": "style_lint.noop_knockout",
+    "bad": "style_lint-noop_knockout-bad.titleart",
+    "good": "style_lint-noop_knockout-good.titleart"
+  },
+  "style_lint-noop_erode": {
+    "check": "style_lint.noop_erode",
+    "bad": "style_lint-noop_erode-bad.titleart",
+    "good": "style_lint-noop_erode-good.titleart"
+  },
+  "color_scheme_match": {
+    "check": "color_scheme_match",
+    "bad": "color_scheme_match-bad.titleart",
+    "good": null
+  },
+  "metal_range": {
+    "check": "metal_range",
+    "bad": "metal_range-bad.titleart",
+    "good": "metal_range-good.titleart"
+  },
+  "not_clipped": {
+    "check": "not_clipped",
+    "bad": "not_clipped-bad.titleart",
+    "good": "not_clipped-good.titleart"
+  },
+  "glyphs_present": {
+    "check": "glyphs_present",
+    "bad": "glyphs_present-bad.titleart",
+    "good": "glyphs_present-good.titleart"
+  },
+  "noop_effects": {
+    "check": "noop_effects",
+    "bad": "noop_effects-bad.titleart",
+    "good": "noop_effects-good.titleart"
+  },
+  "counter_survival": {
+    "check": "counter_survival",
+    "bad": "counter_survival-bad.titleart",
+    "good": "counter_survival-good.titleart",
+    "also": [
+      "style_lint.contrast"
+    ]
+  },
+  "legibility_contrast": {
+    "check": "legibility_contrast",
+    "bad": "legibility_contrast-bad.titleart",
+    "good": "legibility_contrast-good.titleart"
+  },
+  "counter_survival-flooded": {
+    "check": "counter_survival",
+    "bad": "counter_survival-bad-flooded.titleart",
+    "good": "counter_survival-good.titleart",
+    "also": [
+      "style_lint.contrast"
+    ]
+  }
+}

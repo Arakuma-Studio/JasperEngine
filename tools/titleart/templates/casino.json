@@ -1,0 +1,170 @@
+{
+  "templates": [
+    {
+      "id": "casino/vegas-title",
+      "name": {
+        "en": "Vegas Title (marquee, rays)",
+        "ja": "ベガス風タイトル (電飾 + 光線)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title in marquee gold with bulb rims over red-and-gold wedge rays faded by a radial mask, gold dust around it and a red plate subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：電球付きの金の電飾文字、放射状マスクでぼかした赤と金の光線、周りに金の粒子、赤プレートのサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "casino",
+      "tags": [
+        "title",
+        "subtitle",
+        "gold",
+        "marquee",
+        "rays",
+        "particles",
+        "lucky"
+      ],
+      "synonyms": {
+        "en": [
+          "slot title",
+          "lucky sevens",
+          "marquee sign",
+          "jackpot banner"
+        ],
+        "ja": [
+          "スロットタイトル",
+          "ラッキーセブン",
+          "電飾看板",
+          "ジャックポット"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "LUCKY 777",
+          "ja": "ラッキー777"
+        },
+        "subtitle": {
+          "en": "JACKPOT",
+          "ja": "ジャックポット"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 240,
+            "transform.position": [
+              0,
+              70
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#5a0010",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#120004",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "sunburst",
+          "name": "Rays",
+          "preset": "two_colour_wedges",
+          "after": "Backdrop",
+          "values": {
+            "gen.color_a": "#ffc93c",
+            "gen.color_b": "#c2121c"
+          }
+        },
+        {
+          "op": "group",
+          "layers": [
+            "Rays"
+          ],
+          "name": "Rays Group"
+        },
+        {
+          "op": "add_mask",
+          "layer": "Rays Group",
+          "type": "gradient",
+          "values": {
+            "shape": "radial",
+            "length": 1000,
+            "inner": 0.25
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "JACKPOT",
+            "size": 110,
+            "transform.position": [
+              0,
+              -150
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "casino/vegas-marquee",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "casino/red-plate-gold-rim",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "particles",
+          "name": "Gold Dust",
+          "preset": "gold_dust",
+          "follow": "Title"
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

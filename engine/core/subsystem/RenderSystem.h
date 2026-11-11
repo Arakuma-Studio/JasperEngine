@@ -403,6 +403,9 @@ namespace jasperengine{
 		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
 		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
 		Vector4 palette;             // Palette Quantize: x cells per axis, y dither size (0 none), w 1 when its table is baked
+		Vector4 glitch;              // Glitch (S48): x RGB split (source texels, signed), y interlace darkening, z tear count
+		Vector4 glitchTearsA;        // tears 0-3 (pixelart::packGlitchTear)
+		Vector4 glitchTearsB;        // tears 4-7
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -550,7 +553,8 @@ namespace jasperengine{
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
 		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
 		UBER_PALETTE      = 1u << 19, // 'Pal' Palette Quantize (S43): the frame onto a palette, ordered dither per art pixel
-		UBER_FEATURE_COUNT = 20
+		UBER_GLITCH       = 1u << 20, // 'Gli' Glitch (S48): torn rows, RGB split and interlace in bursts, source texels
+		UBER_FEATURE_COUNT = 21
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -649,6 +653,7 @@ namespace jasperengine{
 		// a Voxel Volume's chunk: the tier (MeshComponent::voxelTier), 0 for anything else
 		uint8_t voxelTier = 0;
 		bool instanced = false;
+		bool tileClamp = false;          // a Tilemap Layer's variant (S50 'Tcl')
 		bool instanceFade = false;
 		// a foliage prototype (T5): 'Cin', 'Wnd', 'Dth'
 		bool compactInstance = false;
@@ -739,12 +744,21 @@ namespace jasperengine{
 	};
 
 	class FluidSystem;
+	class TitleArtSystem;
 
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
 		// null until then or without one)
 		FluidSystem* frameFluids = nullptr;
+		// the scene's Title Art Renderers, whose images their Images and Sprites show (S81 R2;
+		// set with frameFluids)
+		TitleArtSystem* frameTitles = nullptr;
+		// the image an entity's Image or Sprite (submesh 0's base colour) is lent this frame: a
+		// fluid's MATERIAL output or a title's (null: its own texture); `transparent` as the
+		// lender says (straight alpha)
+		TextureRender* lentTexture(Entity entity, bool* transparent = nullptr) const;
+		bool hasLentTextures() const;
 
 
 		friend class AtmosphereRenderer;
@@ -999,6 +1013,9 @@ namespace jasperengine{
 		static constexpr int DEFAULT_PARTICLE_SIZE = 64;
 		static uint32_t pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 		static TextureRender defaultParticle;
+		// @texture default "ramp_grey" (S48 R9, a Pixel FX ramp left unset): 8 steps black to
+		// white, Nearest; made the first time a draw binds it
+		static TextureRender defaultRampGrey;
 		static TextureRender emptyCubeGray;
 		// zeros for the morph inputs a mesh's shader declares and the mesh has none of
 		// (bindUnfedMorphInputs): one vertex buffer per size asked for, shared by every
@@ -2640,6 +2657,7 @@ namespace jasperengine{
 		// the S13 effects' uber parameters (VHS, halation, film grain and damage) at that time,
 		// for an output viewport of that size
 		void fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight);
+		void fillUberGlitch(const PostProcessingSettings& settings, double time, int sourceRows);
 		void destroyUber();
 		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
 		// whether the variants the loaded points, lines and sky take with the current colour bit
@@ -3703,6 +3721,8 @@ namespace jasperengine{
 		struct SortedDraw{
 			uint32_t index = 0;
 			uint64_t bucket = 0;
+			// a chunk list's piece drawn alone (Individual mode); -1: the whole GameObject
+			int32_t part = -1;
 		};
 		// the bucket of the UI subtrees (they keep their place: not sort items)
 		static constexpr uint64_t UI_SORT_BUCKET = UINT64_MAX - 1;
@@ -3737,11 +3757,16 @@ namespace jasperengine{
 		// Batch or an Instanced Mesh. The producer keeps the batch alive until it detaches it.
 		void attachInstanceBatch(Entity entity, SpriteInstanceBatch* batch);
 		void detachInstanceBatch(Entity entity);
-		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0; }
+		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0 || attachedInstanceChunks.count(entity) != 0; }
+		// S50: several batches drawn as that GameObject's instances (SpriteInstanceChunkList), each
+		// culled, built and uploaded on its own (a Tilemap Layer's chunks)
+		void attachInstanceChunks(Entity entity, SpriteInstanceChunkList* list);
+		void detachInstanceChunks(Entity entity);
 
 	private:
 		std::unordered_map<Entity, SpriteInstanceBatch*> attachedInstanceBatches;
 		std::unordered_map<Entity, uint64_t> attachedBoundsRevision;
+		std::unordered_map<Entity, SpriteInstanceChunkList*> attachedInstanceChunks;
 		void updateAttachedInstanceBatches();
 		// 2D sorting state (RenderSystemSorting.cpp)
 		struct SortItem{
@@ -3749,6 +3774,7 @@ namespace jasperengine{
 			uint32_t index = 0;
 			uint32_t last = 0;       // a Sorting Group: its subtree's last transform index
 			bool group = false;
+			int32_t part = -1;       // a chunk list's piece sorted on its own
 		};
 		bool sortingActive = false;
 		uint64_t sortFrame = 0;          // bumped by update(): the order is gathered once per frame
@@ -3763,6 +3789,8 @@ namespace jasperengine{
 		std::vector<uint32_t> sortGroupSequence;
 		// the bucket of the draw the 2D loop submits now (BatchItem::sortKey)
 		uint64_t passSortBucket = 0;
+		// the piece of a chunk list the 2D loop draws now (-1: the whole list, its usual draw)
+		int32_t passSpritePart = -1;
 		// layer value, order and axis point of an entity's renderer (or Sorting Group); false
 		// when it has no renderer
 		bool rendererSortFields(Entity entity, Signature signature, uint16_t& layerValue, int32_t& order, Vector3& point);
@@ -3786,7 +3814,14 @@ namespace jasperengine{
 		                     SpriteComponent& sprite, MeshComponent& mesh, Transform& transform);
 		// the instanced draws of its page runs (baseColorSlotType: the TextureShaderType a page binds
 		// to, -1 none); false when it has nothing to draw
-		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType);
+		// (bound: the batch whose buffers the render was loaded with, when another one's are drawn)
+		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType,
+		                         SpriteInstanceBatch* bound = nullptr, uint32_t rangeFirst = 0, uint32_t rangeCount = UINT32_MAX);
+		// the chunk list of the GameObject (null: none), and its pieces' draws, culled against
+		// the pass's frustum
+		SpriteInstanceChunkList* spriteInstanceChunksOf(Entity entity);
+		bool drawSpriteChunks(ObjectRender& render, Submesh& submesh, SpriteInstanceChunkList& list, ShaderRender* shader, int baseColorSlotType,
+		                      const Transform& transform, float cameraFar, const Plane frustumPlanes[6]);
 		// the custom fragment block with the instance= members 0 (a run or a Sprite Batch carries
 		// the amounts per vertex or per instance, S52 R21)
 		void applyInstanceSlotsZeroed(ObjectRender& render, Submesh& submesh);

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "duration": 1,
+  "looping": false,
+  "seed": 5,
+  "maxParticles": 64,
+  "simulationSpace": "world",
+  "modules": [
+    {
+      "type": "main",
+      "startLifetime": {"mode": "constant", "constant": 3},
+      "startSpeed": {"mode": "constant", "constant": 0.5},
+      "startSize": {"mode": "constant", "constant": 0.25},
+      "startColor": [1, 0.6, 0.2, 1]
+    },
+    {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 12}]},
+    {"type": "shape", "shape": "circle", "radius": 0.01}
+  ]
+}

@@ -51,6 +51,16 @@ namespace {
         return scrolls;
     }
 
+    std::map<std::string, unsigned long>& probeCounts() {
+        static std::map<std::string, unsigned long> totals;
+        return totals;
+    }
+
+    std::map<std::string, unsigned long>& writtenProbeCounts() {
+        static std::map<std::string, unsigned long> totals;
+        return totals;
+    }
+
     std::map<std::string, int>& writtenBegins() {
         static std::map<std::string, int> begins;
         return begins;
@@ -114,12 +124,17 @@ void editor::UIProbe::scroll(const std::string& name) {
     currentScroll()[name] = {window->Scroll.y, window->ScrollMax.y};
 }
 
+void editor::UIProbe::count(const std::string& name) {
+    if (!enabled()) return;
+    probeCounts()[name]++;
+}
+
 void editor::UIProbe::flush() {
     if (!enabled()) return;
     static unsigned long frame = 0;
     frame++;
     const std::map<std::string, int> begins = multipleBegins();
-    if (current() != written() || currentScroll() != writtenScroll() || begins != writtenBegins()) {
+    if (current() != written() || currentScroll() != writtenScroll() || begins != writtenBegins() || probeCounts() != writtenProbeCounts()) {
         std::ostringstream json;
         json << "{\"frame\": " << frame << ", \"items\": {";
         bool first = true;
@@ -135,8 +150,14 @@ void editor::UIProbe::flush() {
         }
         json << "}, \"begins\": {";
         first = true;
-        for (const auto& [name, count] : begins) {
-            json << (first ? "" : ", ") << jsonString(name) << ": " << count;
+        for (const auto& [name, beginCount] : begins) {
+            json << (first ? "" : ", ") << jsonString(name) << ": " << beginCount;
+            first = false;
+        }
+        json << "}, \"counts\": {";
+        first = true;
+        for (const auto& [name, total] : probeCounts()) {
+            json << (first ? "" : ", ") << jsonString(name) << ": " << total;
             first = false;
         }
         json << "}}\n";
@@ -147,6 +168,7 @@ void editor::UIProbe::flush() {
         written() = current();
         writtenScroll() = currentScroll();
         writtenBegins() = begins;
+        writtenProbeCounts() = probeCounts();
     }
     current().clear();
     currentScroll().clear();

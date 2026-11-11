@@ -86,10 +86,16 @@ namespace jasperengine::editor{
     class ApplyPaletteDialog;
     class PaletteWindow;
     class PixelArtCheckWindow;
+    class PixelArtCleanupWindow;
+    namespace tilemap {
+        class TilePaletteWindow;
+        class TilesetEditorWindow;
+    }
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
     class SpriteNormalsWindow;
+    class TitleDesignerWindow;
     class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
@@ -273,10 +279,14 @@ namespace jasperengine::editor{
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
+        PixelArtCleanupWindow* pixelArtCleanupWindow = nullptr;
+        tilemap::TilePaletteWindow* tilePaletteWindow = nullptr;
+        tilemap::TilesetEditorWindow* tilesetEditorWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
+        TitleDesignerWindow* titleDesignerWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
         SpritePreviewWindow* spritePreviewWindow;
@@ -419,7 +429,9 @@ namespace jasperengine::editor{
             AnimationClip,
             // the Sprite Normal Map window: its paint strokes first, then the scene of its last
             // Save & Assign while that assign is the scene's newest step, else the timeline
-            SpriteNormals
+            SpriteNormals,
+            // the Pixel Art Cleanup window: its recipe edits first (local until Write), else the timeline
+            PixelArtCleanup
         } lastFocusedWindow;
 
         void saveFunc();
@@ -737,10 +749,13 @@ namespace jasperengine::editor{
         VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
+        TitleDesignerWindow* getTitleDesignerWindow() const;
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
+        void openPixelArtCleanup(const std::filesystem::path& image) override;
+        void rerunPixelArtCleanup(const std::filesystem::path& output) override;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
@@ -752,6 +767,9 @@ namespace jasperengine::editor{
         void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
+        PixelArtCleanupWindow* getPixelArtCleanupWindow() const { return pixelArtCleanupWindow; }
+        tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }
+        tilemap::TilesetEditorWindow* getTilesetEditorWindow() const { return tilesetEditorWindow; }
         ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

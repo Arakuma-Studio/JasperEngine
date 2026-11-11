@@ -64,6 +64,8 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "util/TextEffects.h"
+#include "component/TitleArtRendererComponent.h"
+#include "titleart/runtime/TitleArtOverrides.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "fluid/FluidPresets.h"
 #include "fluid/FluidSimulator.h"
@@ -4212,8 +4214,17 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 pendingShader = sceneDefault(custom->second);
                 return &pendingShader;
             };
+            // a Title Art Renderer's "overrides.<name>" entries (S81 R4): gathered, then written by
+            // name into the component's list in the same undo step
+            std::vector<std::pair<std::string, Json>> titleOverrideEdits;
             for (const Change& change : changes) {
                 if (change.component != component) continue;
+                std::string overrideName;
+                if (component == ComponentType::TitleArtRendererComponent && change.op == "set" &&
+                        splitTitleArtOverrideProperty(change.property, overrideName)) {
+                    titleOverrideEdits.push_back({overrideName, change.value});
+                    continue;
+                }
                 std::string entryCollection, entryKey;
                 if (change.op == "set" && Catalog::splitShaderEntryProperty(change.property, entryCollection, entryKey)) {
                     // one entry of a shader-library collection: gathered, then set as one value
@@ -4269,8 +4280,16 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 }
                 typed.emplace_back(cmd);
             }
-            if (!yamlEdits.empty()) {
+            if (!yamlEdits.empty() || !titleOverrideEdits.empty()) {
                 YAML::Node value = YAML::Clone(EntityClipboard::encodeComponent(scene->scene, entity, component));
+                if (!titleOverrideEdits.empty()) {
+                    std::string why;
+                    const TitleArtRendererComponent* title = scene->scene->findComponent<TitleArtRendererComponent>(entity);
+                    if (!title || !applyTitleArtOverrideEdits(*title, value, titleOverrideEdits, why)) {
+                        error = componentLabel + " on " + label + ": " + why;
+                        return false;
+                    }
+                }
                 for (const YamlEdit& edit : yamlEdits) {
                     std::string why;
                     if (!editYamlPath(value, edit.property, edit.op, edit.value, edit.index, why, edit.known)) {

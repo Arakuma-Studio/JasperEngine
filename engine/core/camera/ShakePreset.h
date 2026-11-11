@@ -7,7 +7,9 @@
 // - Thread-safety: pure functions of their arguments: any thread.
 // - Format: UTF-8 JSON {"format": "jasperengine.shake", "version": 1, "guid"?, "type", "strength",
 //   "roughness", "fade_in", "fade_out", "position_influence": [x, y, z],
-//   "rotation_influence": [x, y, z], unknown keys...}.
+//   "rotation_influence": [x, y, z], "units"?, "tick"?, unknown keys...}. "units" ("view" or
+//   "pixels", S48 R22) and "tick" (Hz) are written only when they differ from their defaults
+//   ("view", 0), so a file without them re-saves byte for byte.
 // - Lenient: parseShakePreset fails (file empty, error set) only for text that is not JSON (with
 //   the line/column), a non-object root, a missing or different "format", a missing or newer
 //   "version". A bad value is repaired (negative strength, roughness or fade -> 0; an unknown
@@ -39,7 +41,20 @@ namespace jasperengine::camera{
         // fades in, then fades out right away
         OneShot,
         // fades in, then holds until stopped
-        Sustained
+        Sustained,
+        // S48 R22, pixelfx's hit shake (act.js): a decaying integer offset over fade_out seconds,
+        // k = strength * remaining / fade_out, f = floor(remaining * tick) (tick 0: 60),
+        // offset (round(sin(2.4 f) k), round(cos(3.7 f) k 0.7)); no noise, no rotation
+        Kick
+    };
+
+    // what a preset's strength and position influence are measured in (S48 R22)
+    enum class ShakeUnits : uint8_t{
+        // tenths of the view height in 2D, world units in 3D (the camera shake spec)
+        View,
+        // art pixels: the S41 grid's (1 / pixels per unit world units) with a Pixel Perfect
+        // Camera, else the camera's screen pixels
+        Pixels
     };
 
     // MilkShake's shake parameters (the .shake defaults)
@@ -51,6 +66,10 @@ namespace jasperengine::camera{
         float fadeOut = 0.0f;           // seconds, 0 = instant
         Vector3 positionInfluence = Vector3(1, 1, 1);   // per-axis amplitude in units
         Vector3 rotationInfluence = Vector3(1, 1, 1);   // per-axis amplitude in degrees
+        ShakeUnits units = ShakeUnits::View;
+        // the offset changes only on ticks of 1 / tick s of the shake's clock (0: every frame);
+        // a kick's step rate (0: 60)
+        float tick = 0.0f;
 
         bool operator==(const ShakePreset& other) const;
         bool operator!=(const ShakePreset& other) const { return !(*this == other); }
@@ -80,9 +99,15 @@ namespace jasperengine::camera{
     JASPERENGINE_API std::string writeShakePreset(const ShakePresetFile& file);
     JASPERENGINE_API std::string writeShakePreset(const ShakePreset& preset);
 
-    // "one_shot", "sustained"; false for other names
+    // "one_shot", "sustained", "kick"; false for other names
     JASPERENGINE_API const char* shakeTypeName(ShakeType type);
     JASPERENGINE_API bool shakeTypeFromName(const std::string& name, ShakeType& out);
+    // "view", "pixels"; false for other names
+    JASPERENGINE_API const char* shakeUnitsName(ShakeUnits units);
+    JASPERENGINE_API bool shakeUnitsFromName(const std::string& name, ShakeUnits& out);
+    // An unnamed pixel kick (CameraShake.kick, HitStop's {amplitude, seconds}): `amplitudePx`
+    // art pixels decaying over `seconds`
+    JASPERENGINE_API ShakePreset makeKickPreset(float amplitudePx, float seconds);
 
     // Clamps negative strength, roughness and fades to 0 (non-finite values to the defaults);
     // what it changed is appended to `warnings` ("strength: ..."), when given

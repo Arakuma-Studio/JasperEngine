@@ -51,7 +51,7 @@ article's *look* and its pitfalls caught early:
 - `getLight2DIntensity` (`lighting2d.glsl`) sums `pow(1 - d/range, falloff) * N·L` (× shadow,
   colour, intensity) per light, continuously; no banding. `atlasInfo.z` of `u_fs_lighting2d` is
   uploaded and read by no shader.
-- MESH shader property bits 0-53 are taken (`ShaderKeyTest.cpp`); `USE_LIGHT2D` is bit 22.
+- MESH shader property bits 0-54 are taken (`ShaderKeyTest.cpp`; 54 is S50's `'Tcl'`); `USE_LIGHT2D` is bit 22.
 - The generator's Toon steps quantize normal *directions* (facets), not the light.
 - An opaque cell (wrap/extend, or no transparency) has no distance field: shape height 0, only
   `detail` relief (Phase 2 §3.4). No mode turns dark pixels into edges.
@@ -81,7 +81,7 @@ article's *look* and its pitfalls caught early:
   intensity) becomes `ceil(t * N) / N`. 0 stays 0. The shadow factor, colour and intensity
   multiply after, unchanged. Ambient is not quantized.
 - **R3.** Free when off: N = 0 compiles and draws exactly today's variants (no new uniform reads,
-  no branch). N > 0 selects a new MESH property bit (54, `'Lst'`, define `LIGHT2D_STEPS`) only on
+  no branch). N > 0 selects a new MESH property bit (55, `'Lst'`, define `LIGHT2D_STEPS`) only on
   variants that already have `USE_LIGHT2D`; the count travels in `u_fs_lighting2d.atlasInfo.z`.
   The shader cache version is bumped; `ShaderKeyTest`, the variant collector and the shader lists
   know the bit.
@@ -191,7 +191,7 @@ article's *look* and its pitfalls caught early:
 |---|---|---|
 | AC1 | R1, R26 | Unit: YAML and cooked round trip of `light2DSteps`; Lua get/set; an old scene loads with 0 |
 | AC2 | R2-R4 | Golden (GL): a normal-mapped sprite and a tile under one Light 2D at steps 0 and 6; at 6 the image shows ≤ 7 distinct light levels per light; steps 0 matches today's golden |
-| AC3 | R3 | `ShaderKeyTest`: bit 54 `'Lst'`; steps 0 collects no `'Lst'` variant |
+| AC3 | R3 | `ShaderKeyTest`: bit 55 `'Lst'`; steps 0 collects no `'Lst'` variant |
 | AC4 | R5 | The `Lst` variant compiles for every backend target |
 | AC5 | R6, R7 | Render test: no Light 2D, ambient (0.3,0.3,0.4): sprite tinted; neutral: identical to today, no `L2d` variant |
 | AC6 | R8-R11 | Core unit: a 32 px and a 512 px stone tile with gaps 0.3 give per-stone plateaus; off is byte-identical; wrap 3×3 seamless; recipe round trip; deterministic over thread counts |

@@ -1,0 +1,466 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "wa/sakura-pink",
+  "revision": 1,
+  "name": {
+    "en": "Sakura Pink",
+    "ja": "桜ピンク"
+  },
+  "description": {
+    "en": "A pink gradient face with sakura marks and a bevel, a gloss band and an inner glow, four rims (pink, white, gold, a black dropped base), an outer glow and glints.",
+    "ja": "ピンクのグラデーションの面（桜柄、ベベル、光沢の帯、内側の光彩）、4本の縁（ピンク、白、金、黒の台）、外側の光彩、きらめき。"
+  },
+  "family": "wa",
+  "tags": [
+    "wa",
+    "2d",
+    "pink",
+    "pattern",
+    "sakura",
+    "gradient",
+    "bevel",
+    "gloss",
+    "outline",
+    "glow",
+    "sparkle"
+  ],
+  "synonyms": {
+    "en": [
+      "japanese",
+      "traditional",
+      "flat",
+      "rose",
+      "magenta",
+      "print",
+      "motif",
+      "cherry blossom",
+      "blossom",
+      "ramp",
+      "fade",
+      "emboss",
+      "chiselled",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine",
+      "glint",
+      "twinkle"
+    ],
+    "ja": [
+      "和風",
+      "和",
+      "わふう",
+      "wafu",
+      "平面",
+      "へいめん",
+      "heimen",
+      "ピンク",
+      "桃色",
+      "ももいろ",
+      "pinku",
+      "柄",
+      "模様",
+      "がら",
+      "gara",
+      "moyo",
+      "桜",
+      "さくら",
+      "sakura",
+      "グラデーション",
+      "gurade-shon",
+      "guradeshon",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#fff4f8",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff4f8"
+            },
+            {
+              "pos": 0.3,
+              "color": "#ffb0d0"
+            },
+            {
+              "pos": 0.6,
+              "color": "#f0508e"
+            },
+            {
+              "pos": 1,
+              "color": "#8a0a40"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "depth": 3.5,
+        "gloss": "cove",
+        "shadow_color": "#6a0030",
+        "shadow_opacity": 0.5
+      },
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        }
+      },
+      "pattern": {
+        "kind": "sakura",
+        "color": "#fff6fa",
+        "color2": "#ff4a8a",
+        "opacity": 0.9,
+        "scale": 11,
+        "seed": 6,
+        "relief": 0.2
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#fff0f6",
+        "size": 1.6,
+        "opacity": 0.55,
+        "noise": 0.3
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.4,
+        "position": 0.42,
+        "softness": 0.1
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#3a0018",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0018"
+                },
+                {
+                  "pos": 1,
+                  "color": "#3a0018"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "material": {
+          "fill": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#ffffff"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffffff"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.2,
+            "depth": 2,
+            "gloss": "linear",
+            "highlight_opacity": 0.6,
+            "shadow_opacity": 0.35
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 2.8,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "color": "#7a6030",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#7a6030"
+                },
+                {
+                  "pos": 0.2,
+                  "color": "#fbf0c0"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#b89a58"
+                },
+                {
+                  "pos": 0.6,
+                  "color": "#f6e7b4"
+                },
+                {
+                  "pos": 0.8,
+                  "color": "#a88a4a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#f8eecb"
+                }
+              ]
+            },
+            "angle": 270
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.6,
+            "depth": 4,
+            "shadow_color": "#5a3a20"
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a2a08"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#a8873a"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#f3e3a6"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffffff"
+                }
+              ]
+            },
+            "amount": 0.85
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "offset": [0, -2.6],
+        "material": {
+          "fill": {
+            "color": "#1a0010",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#1a0010"
+                },
+                {
+                  "pos": 1,
+                  "color": "#1a0010"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff8ac0",
+        "intensity": 0.6,
+        "size": 24,
+        "spread": 0.05
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "color": "#fff0f8",
+        "count": 8,
+        "intensity": 100,
+        "placement": "scatter",
+        "seed": 8,
+        "size": 22,
+        "spread": 12
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1074,
+    "item": "f-pat-sakura",
+    "license_note": "used with the author's permission"
+  }
+}

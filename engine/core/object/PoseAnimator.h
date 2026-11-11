@@ -43,6 +43,9 @@ namespace jasperengine{
 
         void setSpeed(float speed);
         float getSpeed() const;
+        // S48 Pose Frame Rate (fps, 0 = smooth): poses held on whole steps from each key
+        void setPoseFrameRate(float fps);
+        float getPoseFrameRate() const;
         // 0..1 blend over the clips (or the rest pose) under the animator
         void setWeight(float weight);
         float getWeight() const;

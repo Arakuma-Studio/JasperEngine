@@ -192,6 +192,34 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::LIGHTING_PASS;
         return true;
     }
+    if (typeToken == "transition") {
+        shaderType = ShaderType::TRANSITION;
+        return true;
+    }
+    if (typeToken == "titleart") {
+        shaderType = ShaderType::TITLE_ART;
+        return true;
+    }
+    if (typeToken == "titlelit") {
+        shaderType = ShaderType::TITLE_LIT;
+        return true;
+    }
+    if (typeToken == "title3dpost") {
+        shaderType = ShaderType::TITLE_3D_POST;
+        return true;
+    }
+    if (typeToken == "titleenv") {
+        shaderType = ShaderType::TITLE_ENV;
+        return true;
+    }
+    if (typeToken == "titleglintsprite") {
+        shaderType = ShaderType::TITLE_GLINT_SPRITE;
+        return true;
+    }
+    if (typeToken == "titleglint") {
+        shaderType = ShaderType::TITLE_GLINT;
+        return true;
+    }
 
     return false;
 }
@@ -614,6 +642,13 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
+        case ShaderType::TRANSITION: return lowerCase ? "transition" : "Screen Transition";
+        case ShaderType::TITLE_ART: return lowerCase ? "titleart" : "Title Art";
+        case ShaderType::TITLE_LIT: return lowerCase ? "titlelit" : "Title Lit";
+        case ShaderType::TITLE_3D_POST: return lowerCase ? "title3dpost" : "Title 3D Post";
+        case ShaderType::TITLE_ENV: return lowerCase ? "titleenv" : "Title Environment";
+        case ShaderType::TITLE_GLINT_SPRITE: return lowerCase ? "titleglintsprite" : "Title Glint Sprite";
+        case ShaderType::TITLE_GLINT: return lowerCase ? "titleglint" : "Title Glint";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -658,7 +693,7 @@ uint64_t ShaderPool::getDirectionalOnlyProperty(){
 }
 
 uint64_t ShaderPool::getLight2DStepsProperty(){
-    return shaderPropertyBit(54);
+    return shaderPropertyBit(55);
 }
 
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
@@ -740,6 +775,11 @@ uint64_t ShaderPool::getTerrainExtendedProperty(){
     return shaderPropertyBit(25);
 }
 
+// S50: MESH 54, after T4's 'Twd' 53: a Tilemap Layer's tiles clamp their UVs inside their frame
+uint64_t ShaderPool::getTileClampProperty(){
+    return shaderPropertyBit(54);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -755,7 +795,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 55;
+        case ShaderType::MESH:   return 56;
         case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -769,7 +809,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 20;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
+        case ShaderType::BLIT:   return 21;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -787,6 +827,19 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
+        // one program: the kind is a uniform
+        case ShaderType::TRANSITION: return 0;
+        // the program number (bits 0-6), the RGBA8 encodings Sfx, Dfx, S83's effect programs Efx,
+        // the live kernels Liv and S83's generator programs Gen (titleart/render/TitlePasses.h);
+        // the ELEMENT program's variants in bits 16-30 (titleart/render/TitleElementVariant.h)
+        case ShaderType::TITLE_ART: return 31;
+        // the TL_* bits (titleart/three_d/TitleTierFeatures.h TitleLitBits)
+        case ShaderType::TITLE_LIT: return 25;
+        // the pass number (bits 0-3)
+        case ShaderType::TITLE_3D_POST: return 4;
+        case ShaderType::TITLE_ENV: return 4;
+        case ShaderType::TITLE_GLINT_SPRITE: return 0;
+        case ShaderType::TITLE_GLINT: return 4;
         default:                 return 0;
     }
 }
@@ -877,8 +930,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 52: return shortName ? "Thl" : "Terrain Holes";
             // T4 R58: a Terrain World's pages and overview (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl)
             case 53: return shortName ? "Twd" : "Terrain World";
+            // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
+            case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
             // S78: the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, includes/lighting2d.glsl)
-            case 54: return shortName ? "Lst" : "Light Steps";
+            case 55: return shortName ? "Lst" : "Light Steps";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1068,6 +1123,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
             // Palette Quantize (S43 R19, UBER_PALETTE)
             case 19: return shortName ? "Pal" : "Palette Quantize";
+            // Glitch (S48 R18, UBER_GLITCH)
+            case 20: return shortName ? "Gli" : "Glitch";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -1083,6 +1140,36 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 0: return shortName ? "Lok" : "Look";
             case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
+    } else if (shaderType == ShaderType::TITLE_LIT) {
+        static const char* const SHORT[25] = {"Rmp", "Ccl", "Irs", "Gem", "Gbh", "Dsp", "Gld", "Flk", "Pat", "Sf0", "Sf1", "Elk", "Btx",
+                                              "Wuv", "Ems", "Trn", "Rig", "Lgt", "Hdc", "Ou0", "Ou1", "Mtc", "Saa", "Sfl", "Fim"};
+        static const char* const LONG[25] = {"Ramp", "Clearcoat", "Iridescence", "Gem", "Gem Behind", "Dispersion", "Glass Depth",
+                                             "Flakes", "Pattern", "Surface Bit 0", "Surface Bit 1", "Env Lock", "Base Texture", "Wrap UV",
+                                             "Emissive", "Transparent", "Rigs", "Lights", "HDR Compress", "Output Bit 0", "Output Bit 1",
+                                             "Matcap", "Specular AA", "Surface Lite", "Face Image"};
+        if (bit >= 0 && bit < 25) return shortName ? SHORT[bit] : LONG[bit];
+    } else if (shaderType == ShaderType::TITLE_3D_POST || shaderType == ShaderType::TITLE_ENV || shaderType == ShaderType::TITLE_GLINT) {
+        // the pass number (title3d_post.frag TP_PROGRAM, title_env.frag TE_PROGRAM, glint3d.frag TG_PROGRAM)
+        if (bit < 4) return (shortName ? "Pb" : "Pass Bit ") + std::to_string(bit);
+    } else if (shaderType == ShaderType::TITLE_ART) {
+        // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings
+        if (bit < 7) return (shortName ? "Pb" : "Program Bit ") + std::to_string(bit);
+        switch (bit) {
+            case 7: return shortName ? "Sfx" : "Seeds Fixed";
+            case 8: return shortName ? "Dfx" : "Distance Fixed";
+            case 9: return shortName ? "Efx" : "Catalogue Effect";
+            case 10: return shortName ? "Liv" : "Live Kernel";
+            case 11: return shortName ? "Gen" : "Generator";
+            case 21: return shortName ? "Erl" : "Element Relief";
+            case 26: return shortName ? "Egl" : "Element Glass";
+            case 27: return shortName ? "Erf" : "Element Reflection";
+            case 28: return shortName ? "Esa" : "Element Satin";
+            case 29: return shortName ? "Esp" : "Element Spans";
+            case 30: return shortName ? "Ewh" : "Element Whole";
+        }
+        // the element's pattern kind (bits 16-20) and texture kind (22-25), bit by bit
+        if (bit >= 16 && bit <= 20) return (shortName ? "Ek" : "Element Pattern Bit ") + std::to_string(bit - 16);
+        if (bit >= 22 && bit <= 25) return (shortName ? "Et" : "Element Texture Bit ") + std::to_string(bit - 22);
     }
     return shortName ? "?" : "Unknown";
 }
@@ -1317,7 +1404,7 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
     // bits a manifest shader's: never in one variant. 'Lst' before them all: the smooth 2D light
     // reads the same block)
-    static const int meshBits[] = {54, 43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Lst Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    static const int meshBits[] = {55, 43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Lst Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 

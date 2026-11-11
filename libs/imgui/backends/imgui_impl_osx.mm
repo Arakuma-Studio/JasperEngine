@@ -26,6 +26,7 @@
 #import "imgui.h"
 #ifndef IMGUI_DISABLE
 #import "imgui_impl_osx.h"
+#import "util/ImePreedit.h" // [JasperEngine patch] inline IME preedit (libs/imgui/JASPER_PATCHES.md)
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <GameController/GameController.h>
@@ -143,6 +144,8 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
     float _posX;
     float _posY;
     NSRect _imeRect;
+    NSRange _markedRange;   // [JasperEngine patch] UTF-16 ranges of the composition, valid while ImePreedit is active
+    NSRange _markedSelection;
 }
 
 #pragma mark - Public
@@ -210,6 +213,8 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
     else
         characters = (NSString*)aString;
 
+    // [JasperEngine patch] committing ends the composition; the committed text arrives as characters
+    jasperengine::editor::ImePreedit::clear();
     io.AddInputCharactersUTF8(characters.UTF8String);
 }
 
@@ -237,28 +242,53 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
     return _imeRect;
 }
 
+// [JasperEngine patch] begin: the marked text (the composition) is kept in ImePreedit, which the
+// editor draws inline (the Title Designer's canvas); without it the composition was never shown
 - (BOOL)hasMarkedText
 {
-    return NO;
+    return jasperengine::editor::ImePreedit::current().active;
 }
 
 - (NSRange)markedRange
 {
-    return NSMakeRange(NSNotFound, 0);
+    return jasperengine::editor::ImePreedit::current().active ? _markedRange : NSMakeRange(NSNotFound, 0);
 }
 
 - (NSRange)selectedRange
 {
-    return NSMakeRange(NSNotFound, 0);
+    return jasperengine::editor::ImePreedit::current().active ? _markedSelection : NSMakeRange(NSNotFound, 0);
 }
 
 - (void)setMarkedText:(nonnull id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
 {
+    NSString* marked;
+    if ([string isKindOfClass:[NSAttributedString class]])
+        marked = [string string];
+    else
+        marked = (NSString*)string;
+    const char* utf8 = marked.UTF8String;
+    if (marked.length == 0 || utf8 == nullptr)
+    {
+        jasperengine::editor::ImePreedit::clear();
+        return;
+    }
+    // selectedRange is the input method's caret (or highlighted clause) inside the marked text
+    const NSUInteger caret = (selectedRange.location == NSNotFound) ? marked.length : MIN(selectedRange.location, marked.length);
+    const NSUInteger selected = MIN(selectedRange.length, marked.length - caret);
+    jasperengine::editor::ImePreedit preedit;
+    preedit.text = utf8;
+    preedit.caretByte = (int)[[marked substringToIndex:caret] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+    preedit.active = true;
+    jasperengine::editor::ImePreedit::set(preedit);
+    _markedRange = NSMakeRange(0, marked.length);
+    _markedSelection = NSMakeRange(caret, selected);
 }
 
 - (void)unmarkText
 {
+    jasperengine::editor::ImePreedit::clear();
 }
+// [JasperEngine patch] end
 
 - (nonnull NSArray<NSAttributedStringKey>*)validAttributesForMarkedText
 {
@@ -528,6 +558,7 @@ bool ImGui_ImplOSX_Init(NSView* view)
             [bd->InputContext discardMarkedText];
             [bd->InputContext invalidateCharacterCoordinates];
             [bd->InputContext deactivate];
+            jasperengine::editor::ImePreedit::clear(); // [JasperEngine patch] no field takes text: the composition is gone
         }
         [bd->KeyEventResponder setImePosX:data->InputPos.x imePosY:data->InputPos.y + data->InputLineHeight];
     };
@@ -803,6 +834,12 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view)
     {
         if ([event isARepeat])
             return io.WantCaptureKeyboard;
+
+        // [JasperEngine patch] while text is being composed, key presses belong to the input method
+        // (Enter converts, Esc cancels, arrows and Backspace edit the composition): ImGui never sees
+        // them, so they cannot also end an edit or delete text. Releases still pass (no stuck keys).
+        if (event.type == NSEventTypeKeyDown && jasperengine::editor::ImePreedit::current().active)
+            return true;
 
         int key_code = (int)[event keyCode];
         ImGuiKey key = ImGui_ImplOSX_KeyCodeToImGuiKey(key_code);

@@ -7,6 +7,7 @@
 #include "reflect/Components.h"
 
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/HitStopExemptComponent.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -86,6 +87,18 @@ namespace {
     // the spelling of the spec's YAML sketch (S41 §6.1), read as the key
     constexpr const char* kPixelPerfectCameraAliases[] = {"pixelPerfectCamera"};
 
+    // S48 R21
+    constexpr FieldDesc kHitStopExemptFields[] = {
+        JE_FIELD(HitStopExemptComponent, enabled, .flags = CodegenIfChanged,
+                 .tooltip = "While a hit-stop freezes the game, this GameObject keeps running: its animations, actions, tweens, "
+                            "particles, shakes, follow, Pixel FX effects and its scripts' Time.deltaTime. Rigidbodies still run "
+                            "with the physics world."),
+        JE_FIELD(HitStopExemptComponent, includeChildren, .flags = OmitIfDefault | CodegenIfChanged, .label = "Include Children",
+                 .tooltip = "Its descendants keep running too."),
+    };
+
+    constexpr const char* kHitStopExemptCodegenOrder[] = {"includeChildren", "enabled"};
+
 }
 
 const ComponentDesc kPixelPerfectCameraDesc{
@@ -95,6 +108,14 @@ const ComponentDesc kPixelPerfectCameraDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(PixelPerfectCameraComponent),
     .keyAliases = kPixelPerfectCameraAliases,
     .codegenVar = "pixelPerfectCamera", .codegenOrder = kPixelPerfectCameraCodegenOrder,
+};
+
+const ComponentDesc kHitStopExemptDesc{
+    .type = ComponentType::HitStopExemptComponent, .cppName = "HitStopExemptComponent", .key = "hitstopexempt",
+    .displayName = "Hit Stop Exempt", .icon = ICON_FA_PAUSE,
+    .body = JE_STRUCT_DESC(HitStopExemptComponent, "HitStopExemptComponent", kHitStopExemptFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(HitStopExemptComponent),
+    .codegenVar = "hitStopExempt", .codegenOrder = kHitStopExemptCodegenOrder,
 };
 
 }

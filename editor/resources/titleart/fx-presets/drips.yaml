@@ -1,0 +1,18 @@
+# Drips presets (docs/specs/S83-title-effects-generators.md §6.8); icicles is the Icicles recipe's.
+presets:
+  - id: paint
+    name: Paint
+    aliases: [wet paint, dripping paint]
+    params: {}
+  - id: slime
+    name: Slime
+    aliases: [goo, ooze]
+    params: {style: slime, color_mode: custom, color: "#7cff2a"}
+  - id: blood
+    name: Blood
+    aliases: [horror, bloody]
+    params: {style: blood, color_mode: custom, color: "#8a0010"}
+  - id: icicles
+    name: Icicles
+    aliases: [ice, frozen drips, つらら]
+    params: {style: icicles, color_mode: custom, color: "#dff6ff", angle: 90}

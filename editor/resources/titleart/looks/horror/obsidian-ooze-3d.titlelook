@@ -1,0 +1,101 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/obsidian-ooze-3d",
+  "revision": 1,
+  "name": {
+    "en": "Obsidian Ooze 3D",
+    "ja": "黒曜石の粘液 3D"
+  },
+  "description": {
+    "en": "Inflated letters in black gloss whose sides glow a sickly green, in the dark.",
+    "ja": "黒い光沢の膨らんだ文字、側面が病的な緑に光り、暗闇の光。"
+  },
+  "family": "horror",
+  "tags": [
+    "obsidian",
+    "black",
+    "green",
+    "ooze",
+    "horror",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "black slime",
+      "toxic glow",
+      "alien goo",
+      "tar"
+    ],
+    "ja": [
+      "黒曜石",
+      "粘液",
+      "スライム",
+      "毒",
+      "kokuyōseki",
+      "suraimu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "light",
+  "font": {
+    "latin": "nosifer",
+    "ja": "yuji-syuku"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "inflate": {
+      "height": 20
+    },
+    "face": {
+      "preset": "black_gloss",
+      "color": "#050505",
+      "metallic": 0.2,
+      "roughness": 0.08,
+      "clearcoat": 1
+    },
+    "side": {
+      "color": "#0a1a0c",
+      "emission": "#40ff60",
+      "emission_intensity": 0.6
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_dark",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

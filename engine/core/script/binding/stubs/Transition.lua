@@ -1,0 +1,28 @@
+---@meta _
+-- Hand-written shapes of the screen transition arguments (engine/core/script/binding/TransitionClassesLua.cpp,
+-- S48), appended to the generated stubs. Rules: docs/mcp/guide/pixel-fx.md.
+
+---A screen transition's kind: a name or a TransitionKind value
+---@alias TransitionKindName "iris"|"blinds"|"slash"|"pixel_dissolve"|"crt_off"|"burn_away"|"fade"
+
+---Options of Transition.play, cover, reveal and loadScene; what is left out comes from Project
+---Settings > Graphics > Screen Transitions (snake_case names work as well)
+---@class TransitionOptions
+---@field color? string|Vector4 # the ink: "#rrggbb" or an sRGB Vector4 (default #0b0a10)
+---@field palette? string # a .palette asset whose `ramp` colours the rim
+---@field ramp? string # a ramp name of `palette`, or "<palette>.palette#ramp:<name>" (default the built-in ember ramp)
+---@field rim? integer # rim width in art pixels, 0..8 (default 2)
+---@field glow? number # light just outside the edge, 0..1 in ramp steps (default 0.4)
+---@field pixelSize? integer # screen pixels per art pixel (0: the Pixel Perfect Camera's grid)
+---@field seed? integer # noise seed (pixel_dissolve, burn_away)
+---@field ease? "linear"|"in"|"out"|"in_out" # (default in_out)
+---@field hold? number # play: seconds covered between cover and reveal (default 10 % of the duration)
+---@field shape? "circle"|"diamond"|"square" # iris
+---@field center? Vector2 # iris: normalized over the screen from its top-left (default 0.5, 0.5)
+---@field centerObject? EntityHandle # iris: closes on this GameObject's screen position
+---@field angle? number # slash: degrees (default 30)
+---@field count? integer # blinds: bands (default 8)
+---@field vertical? boolean # blinds: vertical bands
+---@field cell? integer # pixel_dissolve: art pixels per cell (default 16)
+---@field throughRamp? boolean # fade: step through the ramp's colours before the ink
+---@field onCovered? fun() # once, when the screen is covered (play, cover, loadScene: before the switch)

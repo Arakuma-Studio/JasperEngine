@@ -44,6 +44,7 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextEffectComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/TrailRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "reflect/Reflect.h"
@@ -1203,6 +1204,8 @@ std::string editor::Factory::createTransform(int indentSpaces, EntityRegistry* s
 
 std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<MeshComponent>(entity)) return "";
+    // a Title Art Renderer's Live Effects drive the shader: the game starts from the Sprite's own (S81 R2)
+    TitleArtCompanionScope companion(scene, entity);
     MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -1509,6 +1512,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
 std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<UIComponent>(entity)) return "";
+    // a Title Art Renderer's Live Effects drive the shader: the game starts from the Image's own (S81 R2)
+    TitleArtCompanionScope companion(scene, entity);
     UIComponent& ui = scene->getComponent<UIComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -2611,6 +2616,8 @@ std::string editor::Factory::createCameraShakerComponent(int indentSpaces, Entit
     code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
     code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
     code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    if (shaker.pixelSnap) code << ind << "camerashaker.pixelSnap = true;\n";
+    if (shaker.tickRate != defaults.tickRate) code << ind << "camerashaker.tickRate = " << formatFloat(shaker.tickRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
     return code.str();
 }
@@ -2691,6 +2698,7 @@ std::string editor::Factory::createPoseAnimatorComponent(int indentSpaces, Entit
     code << ind << "poseanimator.autoplay = " << formatBool(animator.autoplay) << ";\n";
     code << ind << "poseanimator.speed = " << formatFloat(animator.speed) << ";\n";
     code << ind << "poseanimator.weight = " << formatFloat(animator.weight) << ";\n";
+    if (animator.poseFrameRate != 0.0f) code << ind << "poseanimator.poseFrameRate = " << formatFloat(animator.poseFrameRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "PoseAnimatorComponent", "poseanimator", assignExisting);
     return code.str();
 }
@@ -2741,6 +2749,7 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
     code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
     code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
+    if (player.poseFrameRate != 0.0f) code << ind << "animationplayer.poseFrameRate = " << formatFloat(player.poseFrameRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
     return code.str();
 }

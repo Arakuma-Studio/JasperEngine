@@ -5,6 +5,7 @@
 #include "particles/PixelParticles.h"
 
 #include "Engine.h"
+#include "pixelart/HitStop.h"
 #include "Log.h"
 #include "Scene.h"
 #include "component/CameraComponent.h"
@@ -940,6 +941,8 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
         if (EmitterRuntime* child = runtime.child(c))
             playSounds(*child, emitterPosition);
     }
+#if JASPERENGINE_SOUND_LAYER
+    // free voices live in the sound layer (S34's soundlayer module): a build without it drops the events
     const CompiledEffect* effect = runtime.effect();
     if (runtime.soundEvents().empty() || !effect)
         return;
@@ -965,6 +968,7 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
         options.position = event.atEmitter ? emitterPosition : Vector3(event.position[0], event.position[1], event.position[2]);
         AudioSystem::playFree(guid->empty() ? *path : *guid, options, "particles");
     }
+#endif
     runtime.takeSoundEvents();
 }
 
@@ -1099,7 +1103,8 @@ void ParticleSubsystem::update(double dt){
         uint32_t maxTicks = kMaxTicksPerFrame;
         // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
         // pause menus)
-        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : dt;
+        // (a hit-stop freezes the scaled ones, except a Hit Stop Exempt GameObject's, S48)
+        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : pixelart::HitStop::deltaFor(scene, entity, dt);
         task.dt = cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;

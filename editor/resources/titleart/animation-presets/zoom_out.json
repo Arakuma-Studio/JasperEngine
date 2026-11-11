@@ -1,0 +1,57 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "zoom_out",
+  "name": "Zoom Out",
+  "group": "out",
+  "role": "outro",
+  "duration": 0.4,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Grows and fades out.",
+  "params": [
+    {
+      "name": "to_scale",
+      "label": "To Scale",
+      "type": "number",
+      "default": 1.4,
+      "min": 0,
+      "max": 8
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.scale",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          1,
+          "quad_in"
+        ],
+        [
+          "D",
+          "to_scale"
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "opacity",
+      "keys": [
+        [
+          0,
+          1,
+          "quad_in"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

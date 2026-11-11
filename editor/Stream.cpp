@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "pixelart/PixelColor.h"
+#include "pixelart/ScreenTransition.h"
+#include "util/TitleArtLanguage.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -11,6 +14,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "registry/SortingLayers.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
@@ -2839,6 +2843,26 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // graphics.bitmapTextCacheMiB (S51), only away from 0 (the platform's default)
         if (project->getBitmapTextCacheMiB() != 0)
             graphics["bitmapTextCacheMiB"] = project->getBitmapTextCacheMiB();
+        // graphics.screenTransitions (S48): the keys away from their defaults
+        {
+            const jasperengine::pixelart::TransitionDefaults& transitions = project->getTransitionDefaults();
+            const jasperengine::pixelart::TransitionDefaults defaults;
+            YAML::Node node;
+            if (transitions.kind != defaults.kind) node["kind"] = jasperengine::pixelart::transitionKindName(transitions.kind);
+            if (transitions.duration != defaults.duration) node["duration"] = transitions.duration;
+            if (transitions.color != defaults.color){
+                const jasperengine::pixelart::Rgba8 color{(uint8_t)std::lround(std::clamp(transitions.color.x, 0.0f, 1.0f) * 255.0f),
+                                                          (uint8_t)std::lround(std::clamp(transitions.color.y, 0.0f, 1.0f) * 255.0f),
+                                                          (uint8_t)std::lround(std::clamp(transitions.color.z, 0.0f, 1.0f) * 255.0f), 255};
+                node["color"] = jasperengine::pixelart::toHex(color, false);
+            }
+            if (transitions.ramp != defaults.ramp) node["ramp"] = transitions.ramp;
+            if (transitions.rim != defaults.rim) node["rim"] = transitions.rim;
+            if (transitions.pixelSize != defaults.pixelSize) node["pixelSize"] = transitions.pixelSize;
+            if (transitions.coverUI != defaults.coverUI) node["coverUI"] = transitions.coverUI;
+            if (node.size() > 0)
+                graphics["screenTransitions"] = node;
+        }
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3042,6 +3066,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
         if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
         if (presentationNode.size() != 0) root["presentation"] = presentationNode;
+    }
+
+    {
+        // Project Settings > Localization (S87 R64; non-defaults only)
+        const LocalizationSettings& localization = project->getLocalizationSettings();
+        YAML::Node localizationNode;
+        if (!localization.languages.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& code : localization.languages) list.push_back(code);
+            localizationNode["languages"] = list;
+        }
+        if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
     {
@@ -3325,6 +3362,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (debugNode.IsMap() && debugNode.size()) root["debug"] = debugNode;
     }
 
+    // Project Settings > Title Art: what differs from the defaults
+    {
+        const YAML::Node titleArtNode = project->getTitleArtSettings().encode();
+        if (titleArtNode.IsMap() && titleArtNode.size()) root["titleArt"] = titleArtNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -3603,6 +3646,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
         }
         project->setDrawSubmissionSettings(drawSubmission);
+    }
+
+    // graphics.screenTransitions (S48): projects saved before it, or a key left out, take the default
+    {
+        jasperengine::pixelart::TransitionDefaults transitions;
+        const YAML::Node graphics = node["graphics"];
+        const YAML::Node values = graphics && graphics.IsMap() ? graphics["screenTransitions"] : YAML::Node();
+        if (values && values.IsMap()){
+            if (values["kind"].IsDefined())
+                jasperengine::pixelart::transitionKindFromName(values["kind"].as<std::string>(), transitions.kind);
+            if (values["duration"].IsDefined())
+                transitions.duration = YamlNumbers::as<float>(values["duration"]);
+            if (values["color"].IsDefined()){
+                jasperengine::pixelart::Rgba8 color;
+                if (jasperengine::pixelart::parseHex(values["color"].as<std::string>(), color))
+                    transitions.color = Vector4(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, 1.0f);
+            }
+            if (values["ramp"].IsDefined())
+                transitions.ramp = values["ramp"].as<std::string>();
+            if (values["rim"].IsDefined())
+                transitions.rim = YamlNumbers::as<int>(values["rim"]);
+            if (values["pixelSize"].IsDefined())
+                transitions.pixelSize = YamlNumbers::as<int>(values["pixelSize"]);
+            if (values["coverUI"].IsDefined())
+                transitions.coverUI = YamlNumbers::as<bool>(values["coverUI"]);
+        }
+        project->setTransitionDefaults(transitions);
     }
 
     // graphics.shadowTier.<platform>: an absent platform takes its default tier
@@ -3991,6 +4061,24 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
     }
 
+    if (node["localization"] && node["localization"].IsMap()) {
+        const YAML::Node& localizationNode = node["localization"];
+        LocalizationSettings& localization = project->getLocalizationSettings();
+        localization = LocalizationSettings();
+        if (localizationNode["languages"] && localizationNode["languages"].IsSequence()) {
+            for (const YAML::Node& code : localizationNode["languages"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(code.as<std::string>(""));
+                if (TitleArtLanguage::isValid(tag) && std::find(localization.languages.begin(), localization.languages.end(), tag) == localization.languages.end()) {
+                    localization.languages.push_back(tag);
+                }
+            }
+        }
+        if (localizationNode["defaultLanguage"]) {
+            const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
+            if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
+        }
+    }
+
     if (node["application"] && node["application"].IsMap()) {
         const YAML::Node& applicationNode = node["application"];
         ApplicationSettings& application = project->getApplicationSettings();
@@ -4276,6 +4364,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         // a project without the node (older ones) gets the defaults
         project->setDebugSettings(debug);
+    }
+
+    // Project Settings > Title Art; older projects have no node and take the defaults
+    {
+        std::vector<std::string> warnings;
+        project->setTitleArtSettings(TitleArtProjectSettings::decode(node["titleArt"], &warnings));
+        for (const std::string& warning : warnings) Out::warning("Ignoring %s in project settings", warning.c_str());
     }
 
     if (node["standalonePrefabs"]) {
@@ -6012,6 +6107,7 @@ bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry
 bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature signature) {
     return signature.test(registry->getComponentId<SpriteComponent>()) ||
            signature.test(registry->getComponentId<TilemapComponent>()) ||
+           signature.test(registry->getComponentId<TilemapLayerComponent>()) ||
            signature.test(registry->getComponentId<MeshPolygonComponent>()) ||
            signature.test(registry->getComponentId<TerrainComponent>()) ||
            // the Spline Extrude's Mesh is its chunks' template: material and flags, no geometry
@@ -6493,6 +6589,9 @@ YAML::Node editor::Stream::encodeCameraShakerComponent(const CameraShakerCompone
     node["traumaMaxOffset"] = encodeVector3(shaker.traumaMaxOffset);
     node["traumaMaxAngle"] = encodeVector3(shaker.traumaMaxAngle);
     encodeFinite(node, "traumaFrequency", shaker.traumaFrequency);
+    // S48: written only when set (an old scene re-saves byte for byte)
+    if (shaker.pixelSnap) node["pixelSnap"] = YamlNumbers::text(true);
+    if (shaker.tickRate != 0.0f) encodeFinite(node, "tickRate", shaker.tickRate);
     return node;
 }
 
@@ -6517,6 +6616,8 @@ CameraShakerComponent editor::Stream::decodeCameraShakerComponent(const YAML::No
     if (node["traumaMaxOffset"]) shaker.traumaMaxOffset = decodeVector3(node["traumaMaxOffset"]);
     if (node["traumaMaxAngle"]) shaker.traumaMaxAngle = decodeVector3(node["traumaMaxAngle"]);
     if (node["traumaFrequency"]) shaker.traumaFrequency = std::max(0.0f, decodeFinite(node["traumaFrequency"], shaker.traumaFrequency));
+    if (node["pixelSnap"]) shaker.pixelSnap = YamlNumbers::as<bool>(node["pixelSnap"]);
+    if (node["tickRate"]) shaker.tickRate = std::max(0.0f, decodeFinite(node["tickRate"], shaker.tickRate));
     return shaker;
 }
 

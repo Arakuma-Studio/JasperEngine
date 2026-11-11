@@ -224,6 +224,26 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
             break;
+        case BlendMode::LIGHT_PREMULTIPLIED:
+            blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        case BlendMode::MAX_PREMULTIPLIED:
+            blend.op_rgb = SG_BLENDOP_MAX;
+            blend.op_alpha = SG_BLENDOP_MAX;
+            blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            break;
+        case BlendMode::ERASE_PREMULTIPLIED:
+            blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
         }
         blend.enabled = true;
     }

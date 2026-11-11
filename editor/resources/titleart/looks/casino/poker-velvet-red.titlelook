@@ -1,0 +1,162 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/poker-velvet-red",
+  "revision": 1,
+  "name": {
+    "en": "Poker Velvet Red",
+    "ja": "ポーカーベルベットレッド"
+  },
+  "description": {
+    "en": "Radial red velvet face with soft-light noise and a multiply satin, a cove-bevelled gold line, a near-black outline and a deep red drop shadow.",
+    "ja": "ソフトライトのノイズと乗算のサテンを重ねた放射状の赤いベルベットの面、コーブベベルの金の線、黒に近い外縁、深紅のドロップシャドウ。"
+  },
+  "family": "casino",
+  "tags": [
+    "red",
+    "velvet",
+    "gold",
+    "casino",
+    "elegant",
+    "serif"
+  ],
+  "synonyms": {
+    "en": [
+      "card table",
+      "poker",
+      "roulette red",
+      "luxury red"
+    ],
+    "ja": [
+      "ベルベット",
+      "ポーカー",
+      "赤",
+      "高級",
+      "akai",
+      "pōkā"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "playfair-black-italic",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "radial",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff3040"
+            },
+            {
+              "pos": 1,
+              "color": "#8a0010"
+            }
+          ]
+        }
+      },
+      "satin": {
+        "enabled": true,
+        "opacity": 0.4
+      },
+      "texture": {
+        "kind": "noise",
+        "amount": 0.15,
+        "blend": "soft_light"
+      }
+    },
+    "rims": [
+      {
+        "width": 1.6,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fff0a0"
+                },
+                {
+                  "pos": 0.45,
+                  "color": "#ffc830"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#a86000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffe080"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "cove",
+            "size": 1,
+            "depth": 4
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.8
+          }
+        }
+      },
+      {
+        "width": 3.6,
+        "material": {
+          "fill": {
+            "color": "#0a0204"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 20,
+        "color": "#2a0006",
+        "opacity": 0.55
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

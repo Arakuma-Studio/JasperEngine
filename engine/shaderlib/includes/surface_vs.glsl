@@ -198,6 +198,10 @@ in vec3 a_position;
     #endif
 #endif
 
+#if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+    flat out vec4 v_tileFrame;
+#endif
+
 // S52: a batchable sprite's per-sprite amounts ('Sfx', zeros drawn alone, the batch's values baked
 // in its vertices; a Sprite Batch's per instance), read in the fragment stage through
 // includes/sprite_fx.glsl as a manifest property's instance=fx.<slot>
@@ -326,6 +330,9 @@ vec2 surfaceUV1(vec3 objectPosition){
         #endif
         #ifdef HAS_INSTANCING
             uv = uv * i_textureRect.zw + i_textureRect.xy;
+            #ifdef TILE_CLAMP_FRAME
+                v_tileFrame = i_textureRect;
+            #endif
         #endif
     #endif
     return uv;

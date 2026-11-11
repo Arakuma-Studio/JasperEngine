@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
 #include "util/UIProbe.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
+#include "widget/ColorPickerWindow.h"
 #include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
@@ -32,9 +34,11 @@
 #include "subsystem/RenderSystem.h"
 #include "render/SystemRender.h"
 #include "render/RenderStats.h"
+#include "pixelart/HitStop.h"
 #include "render/SceneDrawModes.h"
 #include "render/RenderUtil.h"
 #include "window/EditorModal.h"
+#include "pixelart/ScreenTransition.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -82,6 +86,8 @@ namespace {
     }
 
 }
+
+editor::GameWindow::~GameWindow() = default;
 
 editor::GameWindow::GameWindow(Project* project, PlayInput* playInput)
     : project(project), playInput(playInput) {
@@ -543,6 +549,8 @@ void editor::GameWindow::show() {
     const uint32_t sceneId = getTargetSceneId();
     const bool sessionActive = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
 
+    if (contactSheet) contactSheet->show();
+
     if (!windowOpen) {
         if (wasVisible) playInput->release(sceneId);
         maximizedShown = false;
@@ -679,6 +687,79 @@ void editor::GameWindow::drawPixelScale(const PixelPerfectViewRequest& request) 
         ImGui::SameLine();
         ImGui::TextDisabled("%dx%d x%d", shown.baseWidth, shown.baseHeight, shown.scale);
     }
+}
+
+namespace {
+
+    // The Transition pop-up's preview colour (a preview setting, not saved: no undo step), under one ID wherever it
+    // is drawn. Picking in the Color window closes the pop-up, and a field not drawn for a frame ends the Color
+    // window's session, so while that window edits it the field is drawn on the toolbar instead.
+    constexpr const char* kTransitionPreviewColourId = "GameTransitionPreviewColour";
+
+    bool transitionPreviewColourEditing() {
+        ImGui::PushOverrideID(ImHashStr(kTransitionPreviewColourId));
+        ImGui::PushID("##value");
+        const ImGuiID id = ImGui::GetID("##colorField");
+        ImGui::PopID();
+        ImGui::PopID();
+        return editor::ui::ColorPickerWindow::get().targets(id);
+    }
+
+    void transitionPreviewColourField(Vector4& colour) {
+        ImGui::PushOverrideID(ImHashStr(kTransitionPreviewColourId));
+        editor::ui::ColorFieldOptions options;
+        options.alpha = false;
+        options.linearStorage = false;   // the ink is sRGB as picked (TransitionOptions::ink)
+        options.label = "Transition Preview Colour";
+        options.width = editor::Theme::dpi(160.0f);
+        Vector4 value = colour;
+        const editor::ui::EditPhase phase = editor::ui::colorField("##value", value, options);
+        if (phase == editor::ui::EditPhase::Changing || phase == editor::ui::EditPhase::Cancelled || phase == editor::ui::EditPhase::Applied)
+            colour = Vector4(value.x, value.y, value.z, 1.0f);
+        ImGui::PopID();
+    }
+
+}
+
+void editor::GameWindow::drawTransitionMenu() {
+    using namespace jasperengine::pixelart;
+    if (!ImGui::BeginPopup("##GameTransitionMenu")) {
+        if (transitionPreviewColourEditing()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Preview Colour");
+            ImGui::SameLine();
+            transitionPreviewColourField(transitionPreviewColor);
+        }
+        return;
+    }
+    const TransitionDefaults& defaults = ScreenTransition::getDefaults();
+    if (!transitionPreviewSet) {
+        transitionPreviewDuration = defaults.duration;
+        transitionPreviewColor = defaults.color;
+        std::snprintf(transitionPreviewRamp, sizeof(transitionPreviewRamp), "%s", defaults.ramp.c_str());
+        transitionPreviewSet = true;
+    }
+    static const char* const labels[kTransitionKindCount] = {"Iris", "Blinds", "Slash", "Pixel Dissolve", "CRT Off", "Burn Away", "Fade"};
+    for (int k = 0; k < kTransitionKindCount; k++) {
+        if (ImGui::MenuItem(labels[k], nullptr, ScreenTransition::isActive() && ScreenTransition::getKind() == (TransitionKind)k)) {
+            TransitionOptions options = TransitionOptions::fromDefaults();
+            options.ink = transitionPreviewColor;
+            options.ramp = transitionPreviewRamp;
+            ScreenTransition::play((TransitionKind)k, transitionPreviewDuration, options);
+            editPassDirty = true;
+        }
+    }
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    ImGui::DragFloat("Duration", &transitionPreviewDuration, 0.01f, 0.05f, 10.0f, "%.2f s");
+    ImGui::TextUnformatted("Colour");
+    ImGui::SameLine();
+    transitionPreviewColourField(transitionPreviewColor);
+    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    ImGui::InputTextWithHint("Ramp", "built-in ember ramp", transitionPreviewRamp, sizeof(transitionPreviewRamp));
+    ImGui::SetItemTooltip("A palette ramp, \"<palette>.palette#ramp:<name>\"");
+    ImGui::TextDisabled("Kind, rim and pixel size: Project Settings > Graphics > Screen Transitions");
+    ImGui::EndPopup();
 }
 
 void editor::GameWindow::drawToolbar() {
@@ -829,6 +910,30 @@ void editor::GameWindow::drawToolbar() {
     ImGui::SameLine(0, Theme::dpi(12.0f));
     drawDeviceTierMenu();
 
+    // S48 R40: a screen transition played over the view; left of the right-aligned group, which
+    // runs off a narrow view's edge
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    if (toggleButton(ICON_FA_CIRCLE_HALF_STROKE "##GameTransition", jasperengine::pixelart::ScreenTransition::isActive(),
+                     "Transition: play a screen transition (cover, hold, reveal) over the Game view, in edit mode or Play")) {
+        ImGui::OpenPopup("##GameTransitionMenu");
+    }
+    drawTransitionMenu();
+
+    // S48 R40: the shown scene's one selected GameObject drawn at N times on backdrops, with checks
+    ImGui::SameLine();
+    {
+        const uint32_t shownId = getTargetSceneId();
+        const std::vector<Entity> selected = project->getSelectedEntities(shownId);
+        ImGui::BeginDisabled(selected.size() != 1);
+        if (ImGui::Button("Contact Sheet...##GameContactSheet")) {
+            if (!contactSheet) contactSheet = std::make_unique<ContactSheetWindow>(project);
+            contactSheet->open(shownId, selected.front());
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip(selected.size() == 1 ? "Capture the selected GameObject at fixed times into a labelled contact sheet, with effect checks"
+                                                   : "Select one GameObject of the shown scene to capture it");
+    }
+
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
@@ -845,8 +950,8 @@ void editor::GameWindow::drawToolbar() {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(touchLabel) +
-               buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
+               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -1373,6 +1478,11 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             UIProbe::rect("game.capturingAudio", at.x, at.y, at.x + size.x, at.y + size.y);
         }
 
+        // the Transition menu's edit-mode preview: the scene redraws every frame while it runs
+        // (not the edit pass's dirty flag: a screenshot waits for that to settle)
+        if (!running && sceneProject && sceneProject->playState == ScenePlayState::STOPPED && jasperengine::pixelart::ScreenTransition::isActive())
+            sceneProject->needUpdateRender = true;
+
         // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes
         if (!running && sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
             std::shared_ptr<CameraControlSystem> cameras = sceneProject->scene->findSystem<CameraControlSystem>();
@@ -1511,6 +1621,12 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         lineCount++;
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
+        lineCount++;
+    }
+
+    // S48: the game frozen by a hit-stop, and for how long still
+    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 16) {
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HIT STOP %.2f s", ::jasperengine::pixelart::HitStop::getRemaining());
         lineCount++;
     }
 

@@ -11,6 +11,8 @@
 // (componentDrawer).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Catalog.h"
 #include "Theme.h"
@@ -59,6 +61,8 @@ namespace {
         {"modelEntity", RowPropertyType::LocalEntity},
         {"curve", RowPropertyType::Curve},
         {"gradient", RowPropertyType::Gradient},
+        // S48: Smooth / 8 / 12 / 24 / Custom (drawPoseFrameRateRow)
+        {"poseFrameRate", RowPropertyType::Float},
     };
 
     bool drawsColor(const reflect::FieldDesc& field) {
@@ -261,7 +265,12 @@ void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, ScenePr
                 }
                 const bool enabled = !(field.flags & reflect::ReadOnly) && (!field.enabledIf || field.enabledIf(comps.front()));
                 if (!enabled) ImGui::BeginDisabled();
-                propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
+                if (field.drawer && std::string_view(field.drawer) == "poseFrameRate" && field.kind == reflect::Kind::Float) {
+                    const reflect::FieldRef value = reflect::resolve(*desc, comps.front(), field.name);
+                    drawPoseFrameRateRow(cpType, sceneProject, entities, value ? *static_cast<const float*>(value.ref) : 0.0f);
+                } else {
+                    propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
+                }
                 if (!enabled) ImGui::EndDisabled();
             }
             endTable();
@@ -427,6 +436,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::ImageComponent: return &InspectorWindow::drawImageComponent;
         case ComponentType::SpriteComponent: return &InspectorWindow::drawSpriteComponent;
         case ComponentType::TilemapComponent: return &InspectorWindow::drawTilemapComponent;
+        case ComponentType::GridComponent: return &InspectorWindow::drawGridComponent;
+        case ComponentType::TilemapLayerComponent: return &InspectorWindow::drawTilemapLayerComponent;
         case ComponentType::TerrainComponent: return &InspectorWindow::drawTerrainComponent;
         case ComponentType::LightComponent: return &InspectorWindow::drawLightComponent;
         case ComponentType::ShadowCaster2DComponent: return &InspectorWindow::drawShadowCaster2DComponent;
@@ -439,6 +450,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::CameraComponent: return &InspectorWindow::drawCameraComponent;
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
+        case ComponentType::TitleArtRendererComponent: return &InspectorWindow::drawTitleArtRendererComponent;
         case ComponentType::SkyboxComponent: return &InspectorWindow::drawSkyboxComponent;
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
         case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;

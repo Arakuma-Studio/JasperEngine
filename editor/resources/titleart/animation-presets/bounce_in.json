@@ -1,0 +1,168 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "bounce_in",
+  "name": "Bounce In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.8,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Falls in from above, bounces and squashes as it lands.",
+  "params": [
+    {
+      "name": "height",
+      "label": "Height (%)",
+      "type": "number",
+      "default": 150,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "name": "squash",
+      "label": "Squash",
+      "type": "number",
+      "default": 0.25,
+      "min": 0,
+      "max": 0.8
+    },
+    {
+      "name": "per_glyph",
+      "label": "Per Glyph",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.position",
+      "when": "1-per_glyph",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          [
+            0,
+            "S*height/100"
+          ],
+          "bounce_out"
+        ],
+        [
+          "0.7*D",
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "transform.stretch",
+      "when": "1-per_glyph",
+      "relative": true,
+      "pivot": "bottom",
+      "keys": [
+        [
+          0,
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "0.55*D",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "0.6*D",
+          [
+            "1+squash",
+            "1-squash"
+          ],
+          "elastic_out"
+        ],
+        [
+          "D",
+          [
+            1,
+            1
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "glyph.offset",
+      "when": "per_glyph",
+      "relative": true,
+      "stagger": {
+        "each": 0.05
+      },
+      "keys": [
+        [
+          0,
+          [
+            0,
+            "height"
+          ],
+          "bounce_out"
+        ],
+        [
+          "0.7*D",
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "glyph.stretch",
+      "when": "per_glyph",
+      "relative": true,
+      "pivot": "bottom",
+      "stagger": {
+        "each": 0.05
+      },
+      "keys": [
+        [
+          0,
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "0.55*D",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "0.6*D",
+          [
+            "1+squash",
+            "1-squash"
+          ],
+          "elastic_out"
+        ],
+        [
+          "D",
+          [
+            1,
+            1
+          ]
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

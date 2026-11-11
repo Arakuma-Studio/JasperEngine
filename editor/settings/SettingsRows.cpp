@@ -15,14 +15,19 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "titleart/TitleArtSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/SortingLayersCmd.h"
+#include "command/type/TransitionSettingsCmd.h"
+#include "pixelart/PaletteRampTexture.h"
+#include "pixelart/PixelColor.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -49,6 +54,7 @@
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
+#include <cmath>
 #include <algorithm>
 #include <fstream>
 #include <cctype>
@@ -782,6 +788,33 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
     return s;
 }
 
+// Project Settings > Title Art: one key of TitleArtProjectSettings, applied as one undoable step
+Setting titleArtSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
+                        std::function<Json(const TitleArtProjectSettings&)> get,
+                        std::function<bool(TitleArtProjectSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.values = std::move(values);
+    s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTitleArtSettings()); };
+    s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        TitleArtProjectSettings changed = p->getTitleArtSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getTitleArtSettings()) {
+            auto* command = new TitleArtSettingsCmd(p, p->getTitleArtSettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the Title Art settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
 // GPU Instancing (spec S55): DrawSubmissionSettings changed, applied as one undoable step (undo
 // scope project)
 bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmissionSettings&)>& change, bool apply, std::string& error) {
@@ -810,6 +843,19 @@ bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply
             error = "the sorting settings could not be applied";
             return false;
         }
+    }
+    return true;
+}
+
+// Screen Transitions (S48 R41): the defaults changed, applied as one undoable step (undo scope project)
+bool setTransitionDefaults(SettingsContext& ctx, const std::function<void(jasperengine::pixelart::TransitionDefaults&)>& change, bool apply) {
+    Project* p = ctx.project();
+    jasperengine::pixelart::TransitionDefaults changed = p->getTransitionDefaults();
+    change(changed);
+    if (apply && changed != p->getTransitionDefaults()) {
+        auto* command = new TransitionSettingsCmd(p, changed);
+        command->setNoMerge();
+        p->getProjectCommandHistory()->addCommand(command);
     }
     return true;
 }
@@ -2338,8 +2384,288 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // Screen Transitions (S48 R41): what Lua's Transition and the Game view's preview take by default
+        {
+            using jasperengine::pixelart::TransitionDefaults;
+            auto transitionSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                         std::function<Json(const TransitionDefaults&)> get,
+                                         std::function<bool(TransitionDefaults&, const Json&, std::string&)> set,
+                                         std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.values = std::move(values);
+                s.description = description + " Undoable (undo scope project).";
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTransitionDefaults()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    TransitionDefaults changed = ctx.project()->getTransitionDefaults();
+                    if (!set(changed, value, error)) return false;
+                    return setTransitionDefaults(ctx, [&changed](TransitionDefaults& settings) { settings = changed; }, apply);
+                };
+                add(s);
+            };
+            std::vector<std::string> kinds;
+            for (int k = 0; k < jasperengine::pixelart::kTransitionKindCount; k++)
+                kinds.push_back(jasperengine::pixelart::transitionKindName((jasperengine::pixelart::TransitionKind)k));
+            transitionSetting("graphics.screen_transitions.kind", "enum", "The screen transition Transition.play and the Game view use when none is named.",
+                [](const TransitionDefaults& t) { return Json(jasperengine::pixelart::transitionKindName(t.kind)); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    if (!v.is_string() || !jasperengine::pixelart::transitionKindFromName(v.get<std::string>(), t.kind)) {
+                        e = "must be one of iris, blinds, slash, pixel_dissolve, crt_off, burn_away, fade";
+                        return false;
+                    }
+                    return true;
+                }, kinds);
+            transitionSetting("graphics.screen_transitions.duration", "number", "Seconds of a whole transition (cover, hold, reveal) when none is given.",
+                [](const TransitionDefaults& t) { return Json(t.duration); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    double d;
+                    if (!readNumber(v, 0.0, 30.0, d, e)) return false;
+                    t.duration = (float)d;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.color", "string", "The ink the screen is covered in, \"#rrggbb\" (sRGB).",
+                [](const TransitionDefaults& t) {
+                    auto byte = [](float c) { return (uint8_t)std::lround(std::clamp(c, 0.0f, 1.0f) * 255.0f); };
+                    return Json(jasperengine::pixelart::toHex(jasperengine::pixelart::Rgba8{byte(t.color.x), byte(t.color.y), byte(t.color.z), 255}, false));
+                },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    jasperengine::pixelart::Rgba8 c;
+                    if (!v.is_string() || !jasperengine::pixelart::parseHex(v.get<std::string>(), c)) {
+                        e = "must be \"#rrggbb\"";
+                        return false;
+                    }
+                    t.color = Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, 1.0f);
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.ramp", "string",
+                "The rims' ramp, \"<palette>.palette#ramp:<name>\" (\"\": the built-in ember ramp).",
+                [](const TransitionDefaults& t) { return Json(t.ramp); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    std::string ramp;
+                    if (!readString(v, ramp, e, 512)) return false;
+                    if (!ramp.empty() && !jasperengine::pixelart::parsePaletteRampPath(ramp)) {
+                        e = "must be \"<palette>.palette#ramp:<name>\" or \"\"";
+                        return false;
+                    }
+                    t.ramp = ramp;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.rim", "int", "Rim width in art pixels (0..8).",
+                [](const TransitionDefaults& t) { return Json(t.rim); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 8, n, e)) return false;
+                    t.rim = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.pixel_size", "int",
+                "Screen pixels per art pixel (0: the Pixel Perfect Camera's grid, else 1 without one).",
+                [](const TransitionDefaults& t) { return Json(t.pixelSize); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 64, n, e)) return false;
+                    t.pixelSize = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.cover_ui", "bool",
+                "On: transitions cover every scene (the HUD too). Off: they draw after the main scene, under its layer scenes.",
+                [](const TransitionDefaults& t) { return Json(t.coverUI); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) { return readBool(v, t.coverUI, e); });
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+        // Project Settings > Localization (S87 R56, R64): the languages a game ships and its default
+        {
+            Setting s;
+            s.key = "localization.languages";
+            s.type = "list";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
+                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of language tags";
+                    return false;
+                }
+                std::vector<std::string> codes;
+                for (const Json& item : value) {
+                    if (!item.is_string() || !TitleArtLanguage::isValid(item.get<std::string>(), &error)) {
+                        if (error.empty()) error = "must be a list of language tags";
+                        return false;
+                    }
+                    const std::string code = TitleArtLanguage::canonicalize(item.get<std::string>());
+                    if (std::find(codes.begin(), codes.end(), code) == codes.end()) codes.push_back(code);
+                }
+                if (apply) ctx.project()->getLocalizationSettings().languages = codes;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "localization.default_language";
+            s.type = "string";
+            s.description = "The language a game shows when none of the device's languages matches (\"\": the first of localization.languages, "
+                            "else en); before a title's source language (TitleArt.setLanguage and the device come first).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLocalizationSettings().defaultLanguage); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a language tag or \"\"";
+                    return false;
+                }
+                const std::string code = value.get<std::string>();
+                if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
+                if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
+        // Project Settings > Title Art (S80 R52): one undoable step each
+        add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
+                            [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
+                            [](TitleArtProjectSettings& t, const Json& value, std::string& error) { return readBool(value, t.autoBake, error); }));
+        add(titleArtSetting("title_art.stale_bakes_on_export", "enum",
+                            "What an export does with Title Art outputs that are stale or missing: rebake them first, warn, or fail.",
+                            {"rebake", "warn", "fail"}, [](const TitleArtProjectSettings& t) { return Json(titleStaleBakesPolicyName(t.staleBakesOnExport)); },
+                            [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                if (!value.is_string() || !titleStaleBakesPolicyFromName(value.get<std::string>(), t.staleBakesOnExport)) {
+                                    error = "must be rebake, warn or fail";
+                                    return false;
+                                }
+                                return true;
+                            }));
+        // S81 R58: the runtime's budgets, per S56 platform group (desktop, mobile, web)
+        {
+            auto groupJson = [](const TitleArtGroupValues& v) { return Json{{"desktop", v.desktop}, {"mobile", v.mobile}, {"web", v.web}}; };
+            auto readGroup = [](const Json& value, TitleArtGroupValues& v, double lo, double hi, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {desktop, mobile, web}";
+                    return false;
+                }
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    double* field = it.key() == "desktop" ? &v.desktop : it.key() == "mobile" ? &v.mobile : it.key() == "web" ? &v.web : nullptr;
+                    if (!field) {
+                        error = "'" + it.key() + "' is not desktop, mobile or web";
+                        return false;
+                    }
+                    if (!readNumber(it.value(), lo, hi, *field, error)) return false;
+                }
+                return true;
+            };
+            add(titleArtSetting("title_art.frame_budget_ms", "object",
+                                "Realtime and Glyph Atlas titles: ms of estimated GPU + main-thread work a frame may spend rendering them, per "
+                                "platform group {desktop, mobile, web} (0.25..16; default 4, 2, 2) and `editor` for the editor's Edit mode (8).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) {
+                                    Json j = groupJson(t.frameBudgetMs);
+                                    j["editor"] = t.editorFrameBudgetMs;
+                                    return j;
+                                },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    Json groups = value;
+                                    if (groups.is_object() && groups.contains("editor")) {
+                                        if (!readNumber(groups["editor"], 0.25, 16.0, t.editorFrameBudgetMs, error)) return false;
+                                        groups.erase("editor");
+                                    }
+                                    return readGroup(groups, t.frameBudgetMs, 0.25, 16.0, error);
+                                }));
+            add(titleArtSetting("title_art.release_delay_s", "object",
+                                "Seconds without a render after which the titles' render targets are freed, {desktop, mobile, web} (default 10, 3, 3).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) { return groupJson(t.releaseDelaySeconds); },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readGroup(value, t.releaseDelaySeconds, 0.0, 600.0, error);
+                                }));
+            add(titleArtSetting("title_art.cache_budget_mib", "object",
+                                "MiB of shown-before title images and render caches kept, {desktop, mobile, web} (default 64, 16, 16).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) { return groupJson(t.cacheBudgetMiB); },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
+                                }));
+            add(titleArtSetting("title_art.animation.flipbook_budget_mib", "object",
+                                "Baked flipbook pages against these budgets in MiB, per family {desktop, mobile, android_etc2, web} (S85, 1..4096; "
+                                "default 32, 8, 8, 8). A flipbook over a budget fails its check.",
+                                {}, [](const TitleArtProjectSettings& t) {
+                                    return Json{{"desktop", t.flipbookBudgetMiB.desktop}, {"mobile", t.flipbookBudgetMiB.mobile},
+                                                {"android_etc2", t.flipbookBudgetAndroidEtc2MiB}, {"web", t.flipbookBudgetMiB.web}};
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {desktop, mobile, android_etc2, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        double* field = it.key() == "desktop" ? &t.flipbookBudgetMiB.desktop : it.key() == "mobile" ? &t.flipbookBudgetMiB.mobile
+                                                        : it.key() == "web" ? &t.flipbookBudgetMiB.web : it.key() == "android_etc2" ? &t.flipbookBudgetAndroidEtc2MiB : nullptr;
+                                        if (!field) {
+                                            error = "'" + it.key() + "' is not desktop, mobile, android_etc2 or web";
+                                            return false;
+                                        }
+                                        if (!readNumber(it.value(), 1.0, 4096.0, *field, error)) return false;
+                                    }
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.animation.default_fps", "int", "New documents' animation fps (S85, 1..120; default 30).",
+                                {}, [](const TitleArtProjectSettings& t) { return Json(t.animationDefaultFps); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    double v = t.animationDefaultFps;
+                                    if (!readNumber(value, 1.0, 120.0, v, error)) return false;
+                                    t.animationDefaultFps = (int)v;
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.reference_height", "int",
+                                "The display height (px) Realtime UI titles and their prebaked first images render for; 0 (default) is the canvas height.", {},
+                                [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    long long height = 0;
+                                    if (!readInt(value, 0, 8192, height, error)) return false;
+                                    if (height > 0 && height < 120) {
+                                        error = "must be 0 (the canvas height) or 120..8192";
+                                        return false;
+                                    }
+                                    t.referenceHeight = (int)height;
+                                    return true;
+                                }));
+            // S86 R37: the tier of Realtime 3D titles per export platform
+            add(titleArtSetting("title_art.realtime_3d_quality", "object",
+                                "Realtime 3D titles whose Quality Tier is auto: high, medium or low per platform {windows, linux, macos, ios, "
+                                "android, web} (default high on desktop, medium on iOS, low on Android and HTML5). A device tier (S56) wins "
+                                "where one applies; GLES3/WebGL2 draw high as medium.", {},
+                                [](const TitleArtProjectSettings& t) {
+                                    Json j = Json::object();
+                                    for (const char* platform : {"windows", "linux", "macos", "ios", "android", "web"}) j[platform] = t.realtime3DQuality.of(platform);
+                                    return j;
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {windows, linux, macos, ios, android, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        std::string* tier = t.realtime3DQuality.find(it.key());
+                                        if (!tier) {
+                                            error = "'" + it.key() + "' is not windows, linux, macos, ios, android or web";
+                                            return false;
+                                        }
+                                        if (!it.value().is_string() || !isTitleArtRealtimeTier(it.value().get<std::string>())) {
+                                            error = it.key() + " must be high, medium or low";
+                                            return false;
+                                        }
+                                        *tier = it.value().get<std::string>();
+                                    }
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.simulate_export_characters", "bool",
+                                "Play in the editor shows only the characters a build ships for Realtime and Glyph Atlas titles (their "
+                                "Characters set), as the build would.", {},
+                                [](const TitleArtProjectSettings& t) { return Json(t.simulateExportCharacters); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readBool(value, t.simulateExportCharacters, error);
+                                }));
+        }
         // the tiers of volumetric fog and clouds per platform group
         for (int group = 0; group < 3; group++) {
             static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};
@@ -4043,7 +4369,27 @@ const Placement placements[] = {
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"graphics.transparency_sort_mode", "Graphics", "", "Transparency Sort Mode", "2d sorting axis custom axis top-down"},
     {"graphics.transparency_sort_axis", "Graphics", "", "Transparency Sort Axis", "2d sorting axis custom axis top-down"},
+    // S48 R41
+    {"graphics.screen_transitions.kind", "Graphics", "Screen Transitions", "Default Kind", "transition iris wipe fade scene change pixel"},
+    {"graphics.screen_transitions.duration", "Graphics", "Screen Transitions", "Duration", "transition seconds"},
+    {"graphics.screen_transitions.color", "Graphics", "Screen Transitions", "Colour", "transition ink color"},
+    {"graphics.screen_transitions.ramp", "Graphics", "Screen Transitions", "Ramp", "transition rim palette ramp"},
+    {"graphics.screen_transitions.rim", "Graphics", "Screen Transitions", "Rim", "transition rim width art pixels"},
+    {"graphics.screen_transitions.pixel_size", "Graphics", "Screen Transitions", "Pixel Size", "transition art pixel grid"},
+    {"graphics.screen_transitions.cover_ui", "Graphics", "Screen Transitions", "Cover UI", "transition hud layer scenes"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
+    {"localization.languages", "Localization", "", "Languages", "language locale translation"},
+    {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
+    {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
+    {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
+    {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
+    {"title_art.release_delay_s", "Title Art", "Runtime", "Release Delay", "titleart realtime render targets memory idle"},
+    {"title_art.cache_budget_mib", "Title Art", "Runtime", "Cache Budget", "titleart realtime memory images vram"},
+    {"title_art.animation.flipbook_budget_mib", "Title Art", "Animation", "Flipbook Budget", "titleart animation flipbook baked memory mobile desktop web"},
+    {"title_art.animation.default_fps", "Title Art", "Animation", "Default Fps", "titleart animation frames per second new document"},
+    {"title_art.reference_height", "Title Art", "Runtime", "Reference Height", "titleart prebake initial state export display"},
+    {"title_art.simulate_export_characters", "Title Art", "Runtime", "Simulate Export Characters in Play", "titleart characters subset glyphs missing"},
+    {"title_art.realtime_3d_quality", "Title Art", "Runtime", "Realtime 3D Quality", "titleart 3d tier high medium low mobile web"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
@@ -4374,6 +4720,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
         {"Pixel Art", SettingsScope::Project, 17, "pixel art 2d palette palettes colours colors swatches"},
         {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
+        {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
+        {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

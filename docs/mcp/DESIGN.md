@@ -423,7 +423,7 @@ the same work and reports it itself):
   map (mtime + size) of the project's tracked files (Lua, C++
   `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`, `.material`, HTML UI
   `.html/.htm/.css`, pose files `.poseanim/.humanoid`, animation clips `.anim`, Vertex
-  Animations `.vat`; models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers, picked up but not
+  Animations `.vat`, Title Art `.titleart`; models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers, picked up but not
   reported; assets: images (`.svg` included), fonts `.ttf/.otf`, `.json/.lottie`) and folders
   (mtime: an added, removed or renamed entry), skipping hidden folders (`.jasperengine`,
   `.git`...), `build`, `node_modules` and `trash`. `.scene`, `.prefab`, `project.yaml` and the

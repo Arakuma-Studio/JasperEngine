@@ -27,6 +27,9 @@ namespace jasperengine{
         bool autoplay = true;
         float speed = 1.0f;
         float weight = 1.0f;     // 0..1 blend over whatever the ActionSystem wrote this frame
+        // S48 Pose Frame Rate (fps, 0 = smooth): the pose holds on whole steps of 1 / fps from
+        // each key, so the animation reads as held drawings
+        float poseFrameRate = 0.0f;
 
         // runtime only (not serialised)
         bool playing = false;

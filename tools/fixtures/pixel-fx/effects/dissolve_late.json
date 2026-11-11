@@ -1,0 +1,5 @@
+{
+  "effect": "dissolve",
+  "effect_options": {"duration": 1.25, "ease": "linear"},
+  "note": "a dissolve still burning when the 1 s capture ends: texels are left at t = duration (one_shot_end WARN)"
+}

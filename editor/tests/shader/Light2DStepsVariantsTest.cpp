@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // S78 (docs/specs/S78-sprite-normals-improvements.md) in the variants a build ships:
-// - the Light Steps variant ('Lst', MESH bit 54) of the 2D light path compiles for every backend an
+// - the Light Steps variant ('Lst', MESH bit 55) of the 2D light path compiles for every backend an
 //   export targets within the resource budget: the built-in sprite (plain, normal-mapped, 2D
 //   shadows), library:sprite, and the built-in Lit lit by 2D lights with the per-object lights at
 //   their heaviest (the light records form on GL) (R5, AC4);

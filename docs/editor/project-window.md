@@ -41,7 +41,7 @@ same order:
 
 Folder; Lua Script, C++ Script, C++ Source File, C++ Header File; HTML Document; Animation Clip,
 Animator Controller, Avatar Mask, Animation Montage, Pose Animation; Audio Mixer; Physics Material,
-Physics Material 2D; Shake Preset; Procedural Material; Sprite Atlas. Assets > Create also has 2D (Sprite Atlas,
+Physics Material 2D; Shake Preset, Title Art; Procedural Material; Sprite Atlas. Assets > Create also has 2D (Sprite Atlas,
 Sprite Atlas from Selection), Scene and Native Plugin... A selection of textures or Aseprite files also has **Create
 Sprite Atlas from Selection** in its context menu ([sprites](../sprites.md)).
 

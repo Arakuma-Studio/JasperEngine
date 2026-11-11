@@ -1,0 +1,65 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/chalk-board",
+  "revision": 1,
+  "name": {
+    "en": "Chalkboard",
+    "ja": "黒板チョーク"
+  },
+  "description": {
+    "en": "White face drawn in chalk strokes with dusty edges, no rims.",
+    "ja": "ほこりっぽい縁のチョークの筆致で描いた白い面、縁取りなし。"
+  },
+  "family": "sports",
+  "tags": [
+    "chalk",
+    "chalkboard",
+    "white",
+    "hand-drawn",
+    "sports",
+    "school"
+  ],
+  "synonyms": {
+    "en": [
+      "blackboard",
+      "coach board",
+      "play diagram",
+      "classroom"
+    ],
+    "ja": [
+      "チョーク",
+      "黒板",
+      "手書き",
+      "作戦ボード",
+      "chōku",
+      "kokuban"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "archivo-black",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style": {},
+  "effects": [
+    {
+      "type": "chalk",
+      "params": {
+        "dust": 0.05
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

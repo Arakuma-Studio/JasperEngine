@@ -94,6 +94,43 @@ namespace jasperengine::io {
     JASPERENGINE_API WriteResult publishFile(const std::filesystem::path& temp, const std::filesystem::path& target,
             const AtomicWriteOptions& options = {});
 
+    // A file written in pieces, for output too large to hold in memory (writeFileAtomic needs
+    // all the bytes at once). The pieces go to a temporary sibling of the target, and commit()
+    // publishes it under writeFileAtomic's rules. Without a commit the temporary is removed
+    // when the writer goes away, so an abandoned or failed write leaves the target untouched.
+    class JASPERENGINE_API AtomicFileWriter {
+    public:
+        AtomicFileWriter() = default;
+        ~AtomicFileWriter();
+        AtomicFileWriter(const AtomicFileWriter&) = delete;
+        AtomicFileWriter& operator=(const AtomicFileWriter&) = delete;
+
+        // Creates the temporary (and the target's folder, per options). False: see result()
+        bool open(const std::filesystem::path& target, const AtomicWriteOptions& options = {});
+        // Appends; the first failure sticks and every later piece is dropped
+        bool write(const void* data, size_t size);
+        // Publishes the pieces. The writer is finished afterwards, whatever the outcome
+        WriteResult commit();
+        // Removes the temporary and finishes the writer
+        void discard();
+
+        // The file being written, readable while the writer is open (a working file a stream
+        // reads back): the pieces reach it as write() returns
+        const std::filesystem::path& temporaryPath() const { return temp; }
+        // Open, write and commit failures, none while everything went well
+        const WriteResult& result() const { return status; }
+
+    private:
+        void closeHandle();
+
+        std::filesystem::path realTarget;
+        std::filesystem::path temp;
+        AtomicWriteOptions writeOptions;
+        WriteResult status;
+        // A file descriptor, or a Win32 HANDLE; -1 when closed
+        intptr_t handle = -1;
+    };
+
     // Renames (moves) with the publish retry policy: a sharing violation, a permission error
     // or a busy target is retried; anything else (missing source, cross-device) fails at once.
     // For moves and renames of user files; the Document/Cache durability is ignored.

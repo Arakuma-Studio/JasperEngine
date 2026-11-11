@@ -75,8 +75,11 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
+            {ComponentType::GridComponent, "Cell layout of the Tilemap Layers on this GameObject and below it"},
+            {ComponentType::TilemapLayerComponent, "A layer of tiles from a Tileset on a Grid"},
+            {ComponentType::TilemapCollider2DComponent, "Colliders generated from this GameObject's Tilemap Layer"},
             {ComponentType::SortingGroupComponent, "Sorts this GameObject and its children as one item by Sorting Layer and Order in Layer"},
-            {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
+            {ComponentType::TitleArtRendererComponent, "Shows a Title Art through this Image or Sprite: Baked, Realtime or Glyph Atlas, with live effects"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
@@ -171,6 +174,9 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::MorphTracksComponent, "Blend shape keyframes"},
             {ComponentType::LatticeTracksComponent, "Lattice point keyframes"},
             {ComponentType::BoneComponent, "Skeleton bone of a model"},
+        }},
+        {"Pixel Art", ICON_FA_TABLE_CELLS, {
+            {ComponentType::HitStopExemptComponent, "Keeps this GameObject (and its children) running through a hit-stop"},
         }},
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},

@@ -536,7 +536,8 @@ bool anim::RetargetBinding::bind(const AnimationClip& clip, const std::shared_pt
     return true;
 }
 
-void anim::RetargetBinding::sample(const AnimationClip& clip, float clipTime, KeyCursor* cursors, bool withFeet, HumanoidSample& out) const{
+void anim::RetargetBinding::sample(const AnimationClip& clip, float clipTime, KeyCursor* cursors, bool withFeet, HumanoidSample& out,
+                                   float stepFps) const{
     out.clear();
     if (!active) return;
     const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
@@ -546,7 +547,8 @@ void anim::RetargetBinding::sample(const AnimationClip& clip, float clipTime, Ke
         for (size_t i = 0; i < count; i++){
             const int field = trackField[i];
             if (field < 0) continue;
-            if (!sampleTrack(tracks[i], clipTime, value, cursors ? &cursors[i] : nullptr)) continue;
+            const float fps = field == FIELD_POSITION + HUMANOID_POSITION_HIPS ? 0.0f : stepFps;
+            if (!sampleTrack(tracks[i], clipTime, value, cursors ? &cursors[i] : nullptr, fps)) continue;
             if (field < HUMAN_BONE_COUNT){
                 out.E[(size_t)field] = value.rotation;
                 out.hasE[(size_t)field] = true;
@@ -585,7 +587,8 @@ void anim::RetargetBinding::sample(const AnimationClip& clip, float clipTime, Ke
         const int field = trackField[i];
         if (field < 0) continue;
         const AnimationClip::Track& track = tracks[i];
-        if (!sampleTrack(track, clipTime, value, cursors ? &cursors[i] : nullptr)) continue;
+        const float fps = field == FIELD_POSITION + HUMANOID_POSITION_HIPS ? 0.0f : stepFps;
+        if (!sampleTrack(track, clipTime, value, cursors ? &cursors[i] : nullptr, fps)) continue;
         const int bone = trackBone[i];
         if (field < HUMANOID_TRACK_BONE_COUNT){
             Quatd q(value.rotation);

@@ -1,0 +1,420 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "leopard",
+  "revision": 1,
+  "name": {
+    "en": "Leopard",
+    "ja": "ヒョウ"
+  },
+  "description": {
+    "en": "Leopard rosettes on gold, a white line and a red rim.",
+    "ja": "金にヒョウ柄の斑、白の線と赤の縁。"
+  },
+  "family_hint": [
+    "casino"
+  ],
+  "tags": [
+    "leopard",
+    "pattern",
+    "animal",
+    "gold",
+    "spots"
+  ],
+  "synonyms": {
+    "en": [
+      "animal print",
+      "spots",
+      "cheetah"
+    ],
+    "ja": [
+      "ひょう",
+      "hyou",
+      "ヒョウ柄",
+      "豹柄"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.16,
+              "color": "#fff8b8"
+            },
+            {
+              "pos": 0.38,
+              "color": "#ffd820"
+            },
+            {
+              "pos": 0.6,
+              "color": "#ff9400"
+            },
+            {
+              "pos": 0.8,
+              "color": "#b84000"
+            },
+            {
+              "pos": 1,
+              "color": "#4a1000"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#3a0c00"
+          },
+          {
+            "pos": 0.25,
+            "color": "#a83800"
+          },
+          {
+            "pos": 0.5,
+            "color": "#f08c00"
+          },
+          {
+            "pos": 0.75,
+            "color": "#ffd23a"
+          },
+          {
+            "pos": 1,
+            "color": "#fff8d6"
+          }
+        ]
+      },
+      "material_3d": {
+        "preset": "gold",
+        "color": "#ffc23a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff8d8"
+            },
+            {
+              "pos": 0.06,
+              "color": "#ffe890"
+            },
+            {
+              "pos": 0.16,
+              "color": "#ffc838"
+            },
+            {
+              "pos": 0.3,
+              "color": "#f0a018"
+            },
+            {
+              "pos": 0.4,
+              "color": "#c06a06"
+            },
+            {
+              "pos": 0.47,
+              "color": "#5a2602"
+            },
+            {
+              "pos": 0.51,
+              "color": "#1a0800"
+            },
+            {
+              "pos": 0.55,
+              "color": "#120500"
+            },
+            {
+              "pos": 0.6,
+              "color": "#5a2804"
+            },
+            {
+              "pos": 0.72,
+              "color": "#c87810"
+            },
+            {
+              "pos": 0.84,
+              "color": "#f8b830"
+            },
+            {
+              "pos": 0.94,
+              "color": "#ffe080"
+            },
+            {
+              "pos": 1,
+              "color": "#fff4c8"
+            }
+          ]
+        },
+        "gradient_span": "line",
+        "gradient_bend": 0.6,
+        "metallic": 1,
+        "roughness": 0.06,
+        "pattern": {
+          "kind": "leopard",
+          "color": "#140800",
+          "color2": "#b0580e",
+          "scale": 8,
+          "seed": 2,
+          "shade": 0.5,
+          "relief": 0.32
+        }
+      },
+      "shade": "#5a2a00",
+      "pattern": {
+        "kind": "leopard",
+        "color": "#140800",
+        "color2": "#b0580e",
+        "scale": 8,
+        "seed": 2,
+        "shade": 0.5,
+        "relief": 0.2
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#0a0604",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#0a0604"
+            },
+            {
+              "pos": 1,
+              "color": "#0a0604"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#0a0604",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          }
+        },
+        "material_3d": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#5a6478"
+      },
+      {
+        "fill": {
+          "kind": "linear",
+          "color": "#ff5a5a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ff5a5a"
+              },
+              {
+                "pos": 0.45,
+                "color": "#e00012"
+              },
+              {
+                "pos": 1,
+                "color": "#5a0000"
+              }
+            ]
+          }
+        },
+        "ramp": {
+          "stops": [
+            {
+              "color": "#2a0000"
+            },
+            {
+              "pos": 0.4,
+              "color": "#a10010"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ff3a3a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff0f0"
+            }
+          ]
+        },
+        "material_3d": {
+          "preset": "red_metal",
+          "color": "#ff1d2d",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ff8a8a"
+              },
+              {
+                "pos": 0.22,
+                "color": "#ff3b3b"
+              },
+              {
+                "pos": 0.45,
+                "color": "#d0101c"
+              },
+              {
+                "pos": 0.52,
+                "color": "#5a0008"
+              },
+              {
+                "pos": 0.6,
+                "color": "#b80c18"
+              },
+              {
+                "pos": 0.8,
+                "color": "#ff3030"
+              },
+              {
+                "pos": 1,
+                "color": "#ff9a9a"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#3a0000"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#0a0200",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#0a0200"
+            },
+            {
+              "pos": 1,
+              "color": "#0a0200"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#0a0200",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "preset": "copper",
+      "color": "#ff8a52",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#fff0e0"
+          },
+          {
+            "pos": 0.22,
+            "color": "#ffb48a"
+          },
+          {
+            "pos": 0.45,
+            "color": "#d0652a"
+          },
+          {
+            "pos": 0.52,
+            "color": "#6e2a0c"
+          },
+          {
+            "pos": 0.6,
+            "color": "#c05a24"
+          },
+          {
+            "pos": 0.8,
+            "color": "#ffa77a"
+          },
+          {
+            "pos": 1,
+            "color": "#ffe6d6"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.12,
+      "clearcoat": 0.3
+    }
+  },
+  "face_glow": "#fff3b0",
+  "glow": "#ff8a20",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 0.3,
+        "color": "#ffb848"
+      },
+      {
+        "pos": 1,
+        "color": "#d03000"
+      }
+    ]
+  },
+  "shadow": "#2a0800",
+  "glint": "#fff0dc",
+  "light_ramp": [
+    "#2a0800",
+    "#801800",
+    "#e04010",
+    "#ff8a20",
+    "#ffb848",
+    "#fff0dc"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#fff4a0"
+        },
+        {
+          "pos": 0.55,
+          "color": "#ffb000"
+        },
+        {
+          "pos": 1,
+          "color": "#a83800"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#fff8b8",
+    "#ffd820",
+    "#ff9400",
+    "#b84000",
+    "#4a1000",
+    "#0a0604",
+    "#e00012"
+  ],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/colourways.ts",
+    "line": 352
+  }
+}

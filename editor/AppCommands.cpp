@@ -7,6 +7,8 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "titleart/localisation/TitleLanguageEditing.h"
+#include "window/TitleArtInterchangeWindows.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/GraphEditorWindow.h"
@@ -19,11 +21,16 @@
 #include "window/AnimatorWindow.h"
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 #include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
+#include "window/PixelArtCleanupWindow.h"
+#include "tilemap/TilePaletteWindow.h"
+#include "tilemap/TilemapSceneTools.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -169,6 +176,11 @@ void editor::App::registerCommands(){
             case UndoTimeline::Target::Timeline:
                 break;
         }
+        // the Pixel Art Cleanup window's recipe edits are undone first (undoRedo)
+        if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow &&
+            (undo ? pixelArtCleanupWindow->canUndo() : pixelArtCleanupWindow->canRedo())) {
+            return true;
+        }
         const uint32_t sceneId = project.getSelectedScene() ? project.getSelectedSceneId() : NULL_PROJECT_SCENE;
         return undo ? UndoTimeline::canUndo(sceneId) : UndoTimeline::canRedo(sceneId);
     };
@@ -282,7 +294,7 @@ void editor::App::registerCommands(){
     // nor while the Pose Animation window (or a Scene view posing its character) or the
     // Animation window editing a clip has the keys: their letters are theirs
     // (the Sprite Normal Map window, focused, has its letters too: handleShortcuts)
-    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused(); };
+    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused() && !pixelArtCleanupWindow->isFocused() && !titleDesignerWindow->isFocused(); };
     auto tool = [this, &bind, toolKeys](const char* id, MainToolbar::Tool which) {
         bind(id, [this, which](const CommandArgs&) { mainToolbar->setTool(which); },
              [this, which]() { return mainToolbar->canUseTool(which); }, toolKeys);
@@ -488,6 +500,49 @@ void editor::App::registerCommands(){
     browser("soundBrowser.selectAll", [this]() { soundBrowserWindow->selectAll(); });
     browser("soundBrowser.stop", [this]() { soundBrowserWindow->stopOrClear(); }, true);
 
+    // ---- The Title Designer, while it has focus (S82 §6.5): a text field, the search or the
+    // on-canvas text editor keeps its typing; arrows nudge only with the canvas focused
+    for (const char* id : {"titleDesigner.toolHand", "titleDesigner.toolMove", "titleDesigner.toolRotate", "titleDesigner.toolScale",
+                           "titleDesigner.toolRect", "titleDesigner.togglePivot", "titleDesigner.frameSelected", "titleDesigner.fitCanvas",
+                           "titleDesigner.zoomActual", "titleDesigner.zoomIn", "titleDesigner.zoomOut", "titleDesigner.editText",
+                           "titleDesigner.find", "titleDesigner.add", "titleDesigner.duplicate", "titleDesigner.delete", "titleDesigner.rename",
+                           "titleDesigner.selectAll", "titleDesigner.copy", "titleDesigner.cut", "titleDesigner.paste", "titleDesigner.group",
+                           "titleDesigner.ungroup", "titleDesigner.clip", "titleDesigner.forward", "titleDesigner.backward", "titleDesigner.toFront",
+                           "titleDesigner.toBack", "titleDesigner.toggleVisible", "titleDesigner.toggleLock", "titleDesigner.nudgeLeft",
+                           "titleDesigner.nudgeRight", "titleDesigner.nudgeUp", "titleDesigner.nudgeDown", "titleDesigner.nudgeLeftBig",
+                           "titleDesigner.nudgeRightBig", "titleDesigner.nudgeUpBig", "titleDesigner.nudgeDownBig", "titleDesigner.up",
+                           "titleDesigner.bake"}) {
+        const std::string command = id;
+        const bool nudge = command.find("nudge") != std::string::npos;
+        const bool whileTyping = command == "titleDesigner.find" || command == "titleDesigner.bake";
+        bind(id, [this, command](const CommandArgs&) { titleDesignerWindow->runCommand(command); }, [this]() { return titleDesignerWindow->isOpen(); },
+             [this, nudge, whileTyping]() {
+                 if (!whileTyping && titleDesignerWindow->typing()) return false;
+                 return !nudge || titleDesignerWindow->canvasHasKeys();
+             });
+    }
+
+    // ---- the Title Designer's Animation panel, while it has focus (S85 §6.10)
+    for (const char* id : {"titleAnimation.playPause", "titleAnimation.stop", "titleAnimation.addKey", "titleAnimation.addKeyModified",
+                           "titleAnimation.previousFrame", "titleAnimation.nextFrame", "titleAnimation.previousKey", "titleAnimation.nextKey",
+                           "titleAnimation.delete", "titleAnimation.copy", "titleAnimation.paste", "titleAnimation.duplicate",
+                           "titleAnimation.frameSelected", "titleAnimation.frameAll", "titleAnimation.record", "titleAnimation.toggleCurves",
+                           "titleAnimation.addPreset", "titleAnimation.saveAsPreset"}) {
+        const std::string command = id;
+        bind(id, [command](const CommandArgs&) { titledesigner::runTitleAnimationCommand(command); },
+             []() { return titledesigner::titleAnimationPanelFocused(); }, [this]() { return !titleDesignerWindow->typing(); });
+    }
+
+    // S87 R57: Assets > Import Title Art...
+    bind("assets.importTitleArt", [](const CommandArgs&) { openTitleArtImportDialog(); }, [this]() { return !project.getProjectPath().empty(); });
+
+    // S87 R51: the Title Designer's language switcher, one step either way
+    for (const auto& [id, step] : {std::pair<const char*, int>{"titleDesigner.nextLanguage", 1}, {"titleDesigner.previousLanguage", -1}}) {
+        const int by = step;
+        bind(id, [this, by](const CommandArgs&) { titleDesignerCycleLanguage(titleDesignerWindow->designer(), by); },
+             [this]() { return titleDesignerWindow->isOpen(); }, [this]() { return !titleDesignerWindow->typing(); });
+    }
+
     // ---- Window > Audio > Captures, while it has focus
     auto captures = [&bind, this](const char* id, std::function<void()> run) {
         bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
@@ -564,8 +619,15 @@ void editor::App::registerPanelClaims(){
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
                  {Verb::Duplicate, own("project.duplicate")}}});
     claims.add({"Console", [this]() { return consoleWindow->isListFocused(); }, {{Verb::Copy, own("console.copy")}}});
+    // the Title Designer's layers (S82 §6.5): its own commands shadow the broad ones
+    claims.add({"Title Designer", [this]() { return titleDesignerWindow->isFocused(); },
+                {{Verb::Delete, own("titleDesigner.delete")}, {Verb::Duplicate, own("titleDesigner.duplicate")}, {Verb::Copy, own("titleDesigner.copy")},
+                 {Verb::Cut, own("titleDesigner.cut")}, {Verb::Paste, own("titleDesigner.paste")}, {Verb::SelectAll, own("titleDesigner.selectAll")},
+                 {Verb::Rename, own("titleDesigner.rename")}, {Verb::Frame, own("titleDesigner.frameSelected")}}});
     claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
                 {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});
+    claims.add({"Pixel Art Cleanup", [this]() { return pixelArtCleanupWindow->isFocused(); },
+                {{Verb::Frame, {{}, nullptr, [this]() { pixelArtCleanupWindow->requestFit(); }}}}});
     // the Animation window editing a clip: the clip's keys
     claims.add({"Animation", [this]() { return clipWindowTakesKeys(); },
                 {{Verb::Delete, own("animation.delete")}, {Verb::Duplicate, own("animation.duplicate")}, {Verb::Copy, own("animation.copy")},
@@ -660,8 +722,15 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    // the Animation panel's keys are its own while it has the focus (Delete deletes keys, not layers)
+    if (titledesigner::titleAnimationPanelFocused()) state.panels.push_back(ShortcutContext::TitleAnimation);
+    else if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
     if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
+    if (pixelArtCleanupWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCleanup);
+    // the Tile Palette, or a Scene view with a tile tool up under the pointer or focused (R64)
+    if (tilePaletteWindow->takesKeys() || (tilemap::TilemapTools::get().isToolActive() && (sceneWindow->isFocused() || sceneWindow->isHovered())))
+        state.panels.push_back(ShortcutContext::TilePalette);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;

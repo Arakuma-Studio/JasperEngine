@@ -11050,7 +11050,7 @@
    "type_of_name": 44
   },
   {
-   "display_name": "Tilemap",
+   "display_name": "Free Tilemap (Legacy)",
    "enum_options": {},
    "has_enabled": true,
    "icon": "efa18c",
@@ -15080,6 +15080,7 @@
    "known_keys": [
     "animation",
     "autoplay",
+    "poseFrameRate",
     "speed",
     "weight"
    ],
@@ -15092,6 +15093,11 @@
     ],
     "autoplay": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -15114,6 +15120,11 @@
     ],
     "autoplay": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -15147,6 +15158,7 @@
     "enabled",
     "layers",
     "playAutomatically",
+    "poseFrameRate",
     "speed"
    ],
    "name": "AnimationPlayerComponent",
@@ -15178,6 +15190,11 @@
     ],
     "playAutomatically": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -15280,6 +15297,11 @@
     ],
     "playAutomatically": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -18245,6 +18267,7 @@
     "eventMode",
     "exposedBones",
     "ik",
+    "poseFrameRate",
     "retarget",
     "rootMotionBone",
     "sendEventsToScripts",
@@ -18292,6 +18315,11 @@
     "ik": [
      15,
      35184372088832,
+     true
+    ],
+    "poseFrameRate": [
+     2,
+     0,
      true
     ],
     "retarget": [
@@ -18528,6 +18556,11 @@
     ],
     "ik[].weightParameter": [
      1,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -20031,9 +20064,11 @@
     "enabled",
     "global",
     "mode",
+    "pixelSnap",
     "positionScale",
     "rotationScale",
     "startPreset",
+    "tickRate",
     "traumaDecay",
     "traumaFrequency",
     "traumaMaxAngle",
@@ -20058,6 +20093,11 @@
      0,
      true
     ],
+    "pixelSnap": [
+     0,
+     0,
+     true
+    ],
     "positionScale": [
      2,
      0,
@@ -20070,6 +20110,11 @@
     ],
     "startPreset": [
      1,
+     0,
+     true
+    ],
+    "tickRate": [
+     2,
      0,
      true
     ],
@@ -20120,6 +20165,11 @@
      0,
      true
     ],
+    "pixelSnap": [
+     0,
+     0,
+     true
+    ],
     "positionScale": [
      2,
      0,
@@ -20132,6 +20182,11 @@
     ],
     "startPreset": [
      1,
+     0,
+     true
+    ],
+    "tickRate": [
+     2,
      0,
      true
     ],
@@ -22962,6 +23017,1200 @@
    "type": 98,
    "type_of_key": 98,
    "type_of_name": 98
+  },
+  {
+   "display_name": "Hit Stop Exempt",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef818c",
+   "key": "hitstopexempt",
+   "known_keys": [
+    "enabled",
+    "includeChildren"
+   ],
+   "name": "HitStopExemptComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 99,
+   "type_of_key": 99,
+   "type_of_name": 99
+  },
+  {
+   "display_name": "Grid",
+   "enum_options": {
+    "layout": [
+     [
+      0,
+      "rectangle",
+      "Rectangle"
+     ],
+     [
+      1,
+      "isometric",
+      "Isometric"
+     ],
+     [
+      2,
+      "isometric_staggered",
+      "Isometric Staggered"
+     ],
+     [
+      3,
+      "hexagon",
+      "Hexagon"
+     ]
+    ],
+    "plane": [
+     [
+      0,
+      "xy",
+      "XY"
+     ],
+     [
+      1,
+      "xz",
+      "XZ"
+     ]
+    ],
+    "staggerAxis": [
+     [
+      0,
+      "x",
+      "X"
+     ],
+     [
+      1,
+      "y",
+      "Y"
+     ]
+    ],
+    "staggerIndex": [
+     [
+      0,
+      "odd",
+      "Odd"
+     ],
+     [
+      1,
+      "even",
+      "Even"
+     ]
+    ]
+   },
+   "has_enabled": false,
+   "icon": "ef808a",
+   "key": "grid",
+   "known_keys": [
+    "cellGap",
+    "cellSize",
+    "hexSideLength",
+    "importSource",
+    "layout",
+    "linked",
+    "plane",
+    "staggerAxis",
+    "staggerIndex"
+   ],
+   "name": "GridComponent",
+   "properties_of_default": {
+    "cellGap": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "cellSize": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "hexSideLength": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "importSource": [
+     18,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "linked": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerAxis": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerIndex": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "cellGap": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "cellSize": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "hexSideLength": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "importSource": [
+     18,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "linked": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerAxis": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "staggerIndex": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 100,
+   "type_of_key": 100,
+   "type_of_name": 100
+  },
+  {
+   "display_name": "Tilemap Layer",
+   "enum_options": {
+    "gpuResidency": [
+     [
+      0,
+      "visible",
+      "Visible"
+     ],
+     [
+      1,
+      "always",
+      "Always"
+     ]
+    ],
+    "mode": [
+     [
+      0,
+      "chunk",
+      "Chunk"
+     ],
+     [
+      1,
+      "individual",
+      "Individual"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "efa18c",
+   "key": "tilemaplayer",
+   "known_keys": [
+    "animationSpeed",
+    "chunkSize",
+    "chunks",
+    "dualGrid",
+    "enabled",
+    "gpuResidency",
+    "mode",
+    "seed",
+    "tileAnchor",
+    "tileset",
+    "tint",
+    "version"
+   ],
+   "name": "TilemapLayerComponent",
+   "properties_of_default": {
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "cellCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkSize": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "chunks": [
+     15,
+     0,
+     true
+    ],
+    "dualGrid": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "gpuResidency": [
+     13,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "seed": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "tileAnchor": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "tileset": [
+     18,
+     144115188075855872,
+     true
+    ],
+    "tint": [
+     6,
+     144115188075855872,
+     true
+    ],
+    "version": [
+     8,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "cellCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkCount": [
+     9,
+     0,
+     false
+    ],
+    "chunkSize": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "chunks": [
+     15,
+     0,
+     true
+    ],
+    "dualGrid": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "gpuResidency": [
+     13,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "seed": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "tileAnchor": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "tileset": [
+     18,
+     144115188075855872,
+     true
+    ],
+    "tint": [
+     6,
+     144115188075855872,
+     true
+    ],
+    "version": [
+     8,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 101,
+   "type_of_key": 101,
+   "type_of_name": 101
+  },
+  {
+   "display_name": "Tilemap Collider 2D",
+   "enum_options": {
+    "geometry": [
+     [
+      0,
+      "outlines",
+      "Outlines"
+     ],
+     [
+      1,
+      "polygons",
+      "Polygons"
+     ]
+    ],
+    "source": [
+     [
+      0,
+      "tiles",
+      "Tiles"
+     ],
+     [
+      1,
+      "terrain",
+      "Terrain"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "efa18c",
+   "key": "tilemapcollider2d",
+   "known_keys": [
+    "categoryBits",
+    "contactEvents",
+    "enableHitEvents",
+    "enabled",
+    "friction",
+    "geometry",
+    "groupIndex",
+    "maskBits",
+    "material",
+    "merge",
+    "offset",
+    "restitution",
+    "sensorEvents",
+    "solidTerrains",
+    "source"
+   ],
+   "name": "TilemapCollider2DComponent",
+   "properties_of_default": {
+    "categoryBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "contactEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enableHitEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "friction": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "generatedChains": [
+     9,
+     0,
+     false
+    ],
+    "generatedPolygons": [
+     9,
+     0,
+     false
+    ],
+    "geometry": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "groupIndex": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "maskBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "material": [
+     1,
+     144115188075855872,
+     true
+    ],
+    "merge": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "offset": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "restitution": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "sensorEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "solidTerrains": [
+     15,
+     144115188075855872,
+     true
+    ],
+    "source": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "categoryBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "contactEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enableHitEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "enabled": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "friction": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "generatedChains": [
+     9,
+     0,
+     false
+    ],
+    "generatedPolygons": [
+     9,
+     0,
+     false
+    ],
+    "geometry": [
+     13,
+     144115188075855872,
+     true
+    ],
+    "groupIndex": [
+     8,
+     144115188075855872,
+     true
+    ],
+    "maskBits": [
+     9,
+     144115188075855872,
+     true
+    ],
+    "material": [
+     1,
+     144115188075855872,
+     true
+    ],
+    "merge": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "offset": [
+     4,
+     144115188075855872,
+     true
+    ],
+    "restitution": [
+     2,
+     144115188075855872,
+     true
+    ],
+    "sensorEvents": [
+     0,
+     144115188075855872,
+     true
+    ],
+    "solidTerrains": [
+     15,
+     144115188075855872,
+     true
+    ],
+    "source": [
+     13,
+     144115188075855872,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 102,
+   "type_of_key": 102,
+   "type_of_name": 102
+  },
+  {
+   "display_name": "Title Art Renderer",
+   "enum_options": {
+    "renderMode": [
+     [
+      0,
+      "baked",
+      "Baked"
+     ],
+     [
+      1,
+      "realtime",
+      "Realtime"
+     ],
+     [
+      2,
+      "glyph_atlas",
+      "Glyph Atlas"
+     ]
+    ],
+    "transition": [
+     [
+      0,
+      "cut",
+      "Cut"
+     ],
+     [
+      1,
+      "crossfade",
+      "Crossfade"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee8b8a",
+   "key": "titleart",
+   "known_keys": [
+    "additionalCharacters",
+    "animationSpeed",
+    "animationUnscaledTime",
+    "atlasMaxPages",
+    "atlasPageSize",
+    "defaultAnimation",
+    "driveAnimation",
+    "enabled",
+    "glintAmount",
+    "glintColor",
+    "glintRate",
+    "glintSeed",
+    "glintSize",
+    "glintsEnabled",
+    "glowColor",
+    "glowEnabled",
+    "glowPulse",
+    "language",
+    "liveTime",
+    "liveUnscaledTime",
+    "overrides",
+    "pivotFromTitle",
+    "pixelsPerUnit",
+    "playAutomatically",
+    "prebakeInitialState",
+    "priority",
+    "qualityTier",
+    "renderMode",
+    "renderWhenHidden",
+    "resolutionScale",
+    "runtimeEnvironments",
+    "sweepAngle",
+    "sweepAuto",
+    "sweepColor",
+    "sweepEnabled",
+    "sweepInterval",
+    "sweepPosition",
+    "sweepSoftness",
+    "sweepSpeed",
+    "sweepWidth",
+    "tintAmount",
+    "tintColor",
+    "tintEnabled",
+    "title",
+    "transition",
+    "transitionDuration",
+    "uiScale"
+   ],
+   "name": "TitleArtRendererComponent",
+   "properties_of_default": {
+    "additionalCharacters": [
+     1,
+     0,
+     true
+    ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "atlasMaxPages": [
+     8,
+     0,
+     true
+    ],
+    "atlasPageSize": [
+     8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "glintAmount": [
+     2,
+     0,
+     true
+    ],
+    "glintColor": [
+     6,
+     0,
+     true
+    ],
+    "glintRate": [
+     2,
+     0,
+     true
+    ],
+    "glintSeed": [
+     9,
+     0,
+     true
+    ],
+    "glintSize": [
+     2,
+     0,
+     true
+    ],
+    "glintsEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowColor": [
+     6,
+     0,
+     true
+    ],
+    "glowEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowPulse": [
+     2,
+     0,
+     true
+    ],
+    "language": [
+     1,
+     0,
+     true
+    ],
+    "liveTime": [
+     2,
+     0,
+     true
+    ],
+    "liveUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "pivotFromTitle": [
+     0,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "prebakeInitialState": [
+     0,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "qualityTier": [
+     1,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderWhenHidden": [
+     0,
+     0,
+     true
+    ],
+    "resolutionScale": [
+     2,
+     0,
+     true
+    ],
+    "sweepAngle": [
+     2,
+     0,
+     true
+    ],
+    "sweepAuto": [
+     0,
+     0,
+     true
+    ],
+    "sweepColor": [
+     6,
+     0,
+     true
+    ],
+    "sweepEnabled": [
+     0,
+     0,
+     true
+    ],
+    "sweepInterval": [
+     2,
+     0,
+     true
+    ],
+    "sweepPosition": [
+     2,
+     0,
+     true
+    ],
+    "sweepSoftness": [
+     2,
+     0,
+     true
+    ],
+    "sweepSpeed": [
+     2,
+     0,
+     true
+    ],
+    "sweepWidth": [
+     2,
+     0,
+     true
+    ],
+    "tintAmount": [
+     2,
+     0,
+     true
+    ],
+    "tintColor": [
+     6,
+     0,
+     true
+    ],
+    "tintEnabled": [
+     0,
+     0,
+     true
+    ],
+    "title": [
+     18,
+     0,
+     true
+    ],
+    "transition": [
+     13,
+     0,
+     true
+    ],
+    "transitionDuration": [
+     2,
+     0,
+     true
+    ],
+    "uiScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "additionalCharacters": [
+     1,
+     0,
+     true
+    ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "atlasMaxPages": [
+     8,
+     0,
+     true
+    ],
+    "atlasPageSize": [
+     8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "glintAmount": [
+     2,
+     0,
+     true
+    ],
+    "glintColor": [
+     6,
+     0,
+     true
+    ],
+    "glintRate": [
+     2,
+     0,
+     true
+    ],
+    "glintSeed": [
+     9,
+     0,
+     true
+    ],
+    "glintSize": [
+     2,
+     0,
+     true
+    ],
+    "glintsEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowColor": [
+     6,
+     0,
+     true
+    ],
+    "glowEnabled": [
+     0,
+     0,
+     true
+    ],
+    "glowPulse": [
+     2,
+     0,
+     true
+    ],
+    "language": [
+     1,
+     0,
+     true
+    ],
+    "liveTime": [
+     2,
+     0,
+     true
+    ],
+    "liveUnscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "pivotFromTitle": [
+     0,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "prebakeInitialState": [
+     0,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "qualityTier": [
+     1,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderWhenHidden": [
+     0,
+     0,
+     true
+    ],
+    "resolutionScale": [
+     2,
+     0,
+     true
+    ],
+    "sweepAngle": [
+     2,
+     0,
+     true
+    ],
+    "sweepAuto": [
+     0,
+     0,
+     true
+    ],
+    "sweepColor": [
+     6,
+     0,
+     true
+    ],
+    "sweepEnabled": [
+     0,
+     0,
+     true
+    ],
+    "sweepInterval": [
+     2,
+     0,
+     true
+    ],
+    "sweepPosition": [
+     2,
+     0,
+     true
+    ],
+    "sweepSoftness": [
+     2,
+     0,
+     true
+    ],
+    "sweepSpeed": [
+     2,
+     0,
+     true
+    ],
+    "sweepWidth": [
+     2,
+     0,
+     true
+    ],
+    "tintAmount": [
+     2,
+     0,
+     true
+    ],
+    "tintColor": [
+     6,
+     0,
+     true
+    ],
+    "tintEnabled": [
+     0,
+     0,
+     true
+    ],
+    "title": [
+     18,
+     0,
+     true
+    ],
+    "transition": [
+     13,
+     0,
+     true
+    ],
+    "transitionDuration": [
+     2,
+     0,
+     true
+    ],
+    "uiScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 103,
+   "type_of_key": 103,
+   "type_of_name": 103
   }
  ],
  "ease_options": [
@@ -23279,6 +24528,11 @@
     0,
     true
    ],
+   "poseFrameRate": [
+    2,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
@@ -23488,6 +24742,11 @@
    ],
    "ik[N].weightParameter": [
     1,
+    0,
+    true
+   ],
+   "poseFrameRate": [
+    2,
     0,
     true
    ],
@@ -24082,6 +25341,11 @@
     0,
     true
    ],
+   "pixelSnap": [
+    0,
+    0,
+    true
+   ],
    "positionScale": [
     2,
     0,
@@ -24094,6 +25358,11 @@
    ],
    "startPreset": [
     1,
+    0,
+    true
+   ],
+   "tickRate": [
+    2,
     0,
     true
    ],
@@ -24705,6 +25974,65 @@
    ],
    "turbulence": [
     2,
+    0,
+    true
+   ]
+  },
+  "GridComponent": {
+   "cellGap": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "cellSize": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "hexSideLength": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "importSource": [
+    18,
+    0,
+    true
+   ],
+   "layout": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "linked": [
+    0,
+    0,
+    true
+   ],
+   "plane": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "staggerAxis": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "staggerIndex": [
+    13,
+    144115188075855872,
+    true
+   ]
+  },
+  "HitStopExemptComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
     0,
     true
    ]
@@ -28271,6 +29599,11 @@
     0,
     true
    ],
+   "poseFrameRate": [
+    2,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
@@ -30360,6 +31693,93 @@
     true
    ]
   },
+  "TilemapCollider2DComponent": {
+   "categoryBits": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "contactEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enableHitEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enabled": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "friction": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "generatedChains": [
+    9,
+    0,
+    false
+   ],
+   "generatedPolygons": [
+    9,
+    0,
+    false
+   ],
+   "geometry": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "groupIndex": [
+    8,
+    144115188075855872,
+    true
+   ],
+   "maskBits": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "material": [
+    1,
+    144115188075855872,
+    true
+   ],
+   "merge": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "offset": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "restitution": [
+    2,
+    144115188075855872,
+    true
+   ],
+   "sensorEvents": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "solidTerrains": [
+    15,
+    144115188075855872,
+    true
+   ],
+   "source": [
+    13,
+    144115188075855872,
+    true
+   ]
+  },
   "TilemapComponent": {
    "automaticFlipY": [
     0,
@@ -30410,6 +31830,310 @@
     9,
     4194304,
     false
+   ]
+  },
+  "TilemapLayerComponent": {
+   "animationSpeed": [
+    2,
+    0,
+    true
+   ],
+   "cellCount": [
+    9,
+    0,
+    false
+   ],
+   "chunkCount": [
+    9,
+    0,
+    false
+   ],
+   "chunkSize": [
+    8,
+    144115188075855872,
+    true
+   ],
+   "chunks": [
+    15,
+    0,
+    true
+   ],
+   "dualGrid": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "enabled": [
+    0,
+    144115188075855872,
+    true
+   ],
+   "gpuResidency": [
+    13,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    144115188075855872,
+    true
+   ],
+   "seed": [
+    9,
+    144115188075855872,
+    true
+   ],
+   "tileAnchor": [
+    4,
+    144115188075855872,
+    true
+   ],
+   "tileset": [
+    18,
+    144115188075855872,
+    true
+   ],
+   "tint": [
+    6,
+    144115188075855872,
+    true
+   ],
+   "version": [
+    8,
+    0,
+    true
+   ]
+  },
+  "TitleArtRendererComponent": {
+   "additionalCharacters": [
+    1,
+    0,
+    true
+   ],
+   "animationSpeed": [
+    2,
+    0,
+    true
+   ],
+   "animationTime": [
+    2,
+    0,
+    true
+   ],
+   "animationUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "atlasMaxPages": [
+    8,
+    0,
+    true
+   ],
+   "atlasPageSize": [
+    8,
+    0,
+    true
+   ],
+   "defaultAnimation": [
+    1,
+    0,
+    true
+   ],
+   "driveAnimation": [
+    1,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "glintAmount": [
+    2,
+    0,
+    true
+   ],
+   "glintColor": [
+    6,
+    0,
+    true
+   ],
+   "glintRate": [
+    2,
+    0,
+    true
+   ],
+   "glintSeed": [
+    9,
+    0,
+    true
+   ],
+   "glintSize": [
+    2,
+    0,
+    true
+   ],
+   "glintsEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowColor": [
+    6,
+    0,
+    true
+   ],
+   "glowEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowPulse": [
+    2,
+    0,
+    true
+   ],
+   "language": [
+    1,
+    0,
+    true
+   ],
+   "liveTime": [
+    2,
+    0,
+    true
+   ],
+   "liveUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "pivotFromTitle": [
+    0,
+    0,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    0,
+    true
+   ],
+   "playAutomatically": [
+    0,
+    0,
+    true
+   ],
+   "prebakeInitialState": [
+    0,
+    0,
+    true
+   ],
+   "priority": [
+    8,
+    0,
+    true
+   ],
+   "qualityTier": [
+    1,
+    0,
+    true
+   ],
+   "renderMode": [
+    13,
+    0,
+    true
+   ],
+   "renderWhenHidden": [
+    0,
+    0,
+    true
+   ],
+   "resolutionScale": [
+    2,
+    0,
+    true
+   ],
+   "sweepAngle": [
+    2,
+    0,
+    true
+   ],
+   "sweepAuto": [
+    0,
+    0,
+    true
+   ],
+   "sweepColor": [
+    6,
+    0,
+    true
+   ],
+   "sweepEnabled": [
+    0,
+    0,
+    true
+   ],
+   "sweepInterval": [
+    2,
+    0,
+    true
+   ],
+   "sweepPosition": [
+    2,
+    0,
+    true
+   ],
+   "sweepSoftness": [
+    2,
+    0,
+    true
+   ],
+   "sweepSpeed": [
+    2,
+    0,
+    true
+   ],
+   "sweepWidth": [
+    2,
+    0,
+    true
+   ],
+   "tintAmount": [
+    2,
+    0,
+    true
+   ],
+   "tintColor": [
+    6,
+    0,
+    true
+   ],
+   "tintEnabled": [
+    0,
+    0,
+    true
+   ],
+   "title": [
+    18,
+    0,
+    true
+   ],
+   "transition": [
+    13,
+    0,
+    true
+   ],
+   "transitionDuration": [
+    2,
+    0,
+    true
+   ],
+   "uiScale": [
+    2,
+    0,
+    true
    ]
   },
   "TouchAreaComponent": {

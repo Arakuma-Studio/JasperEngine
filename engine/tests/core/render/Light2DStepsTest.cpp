@@ -3,7 +3,7 @@
 
 // S78 (docs/specs/S78-sprite-normals-improvements.md): the variants of Light Steps and of the 2D
 // ambient without a Light 2D, as RenderSystem::getSubmeshShaderVariant derives them for loadMesh
-// and the export's collector alike. Light Steps add 'Lst' (MESH bit 54) only to a 2D-lit variant
+// and the export's collector alike. Light Steps add 'Lst' (MESH bit 55) only to a 2D-lit variant
 // and change nothing while off (R3); a tinting 2D ambient with no Light 2D gives the unlit
 // variants the 2D light path, without its normal map, and leaves the lit path and a neutral
 // ambient as they were (R6).
@@ -54,10 +54,10 @@ TEST(Light2DSteps, SceneClampsTheCount){
 }
 
 TEST(Light2DSteps, PropertyIsMeshBit54NamedLst){
-    EXPECT_EQ(ShaderPool::getLight2DStepsProperty(), shaderPropertyBit(54));
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 54, true), "Lst");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 54, false), "Light Steps");
-    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, kLight2D | shaderPropertyBit(54)), "mesh_L2dLst");
+    EXPECT_EQ(ShaderPool::getLight2DStepsProperty(), shaderPropertyBit(55));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 55, true), "Lst");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 55, false), "Light Steps");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, kLight2D | shaderPropertyBit(55)), "mesh_L2dLst");
 }
 
 // R3: 'Lst' only on a variant with 'L2d'; off, every variant is the one of before

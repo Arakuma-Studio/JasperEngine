@@ -63,6 +63,8 @@ namespace jasperengine::editor::reload {
     void addGraphFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
     // .palette files (S43 R3): Palette Swap, Palette Quantize and the ramp strips made from them
     void reloadPalettes(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .tileset files (S50 R11): the pool's copy goes, so the layers rebuild from the file
+    void reloadTilesets(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas
@@ -79,6 +81,9 @@ namespace jasperengine::editor::reload {
     // The load error or warnings of an .anim or .poseanim file as it is now (nothing for other
     // files): what reloadAnimations reports for it
     void addAnimationFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
+    // .titleart documents and the fonts, images and SVGs they read (`assets`: changed files of
+    // any kind; the documents naming them by the dependency index re-render and rebake)
+    void reloadTitleArt(Context& ctx, const std::vector<std::filesystem::path>& documents, const std::vector<std::filesystem::path>& assets);
     // Lua and C++ scripts: script properties, Lua syntax, lua-language-server stubs
     // (`all`: every attached script, a full sync)
     void reloadScripts(Context& ctx, const std::vector<std::filesystem::path>& files, bool all);

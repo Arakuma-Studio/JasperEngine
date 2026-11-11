@@ -1447,7 +1447,133 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
-    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    },    # -- S46 pixel-art cleanup: fix_pixel_art's preview-then-write, needs_person, lint_pixel_art's route --------
+    {
+        "id": "guard_pixel_cleanup_preview_then_write",
+        "kind": "guard",
+        "what_happened": "New tools (S46): an AI sprite cleaned with fix_pixel_art must be looked at (preview, compare image) before "
+                         "it is written; without the description's 'previews' and 'the same arguments plus output:true' an agent "
+                         "writes straight away or reaches for shell image scripts.",
+        "text_at_issue": "fix_pixel_art: 'Without output it previews (image, nothing written); the same arguments plus output:true write it'; "
+                         "its result's `next`",
+        "source": "S46 R44 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art (fake big pixels, blurred). Clean it into real pixel "
+                  "art and keep the result as a new file next to it.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
+                {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}],
+                 "undo": {"id": 14, "name": "agent: Pixel Art Cleanup (hero_clean.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors (grid fit 100%, confidence 98%). Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": True}}],
+                   "must_not_call": ["apply_palette", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_cleanup_import_step",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R33): cleaning a texture at cook time, leaving its source file as it is, needs "
+                         "output:{import_step:true}. Without the description's words an agent writes a second file or edits the .meta by hand.",
+        "text_at_issue": "fix_pixel_art: 'output:{import_step:true} instead makes the fix that texture's import step'",
+        "source": "S46 R33 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art. Keep that file exactly as it is and no new image "
+                  "file, but make the game use the cleaned pixels when the texture is cooked. Preview it first.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": {"import_step": True}}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Saved as the import step of assets/art/hero.png.",
+                {"verdict": "fixable", "import_step": {"source": "assets/art/hero.png", "width": 32, "height": 32},
+                 "undo": {"id": 15, "name": "agent: Save as Import Step (hero.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": {"import_step": True}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.png$", r"\.meta$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_cleanup_needs_person_not_forced",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R30): a needs_person result is a stop sign. Without the result's `next` an agent passes "
+                         "force: true to get the file written instead of setting the grid or asking the user.",
+        "text_at_issue": "fix_pixel_art's `next`: 'needs_person: look at the guards and the image; set recipe.grid or palette and preview "
+                         "again. output: true is refused without force: true.'; the refusal's Fix naming force as the last option",
+        "source": "S46 R30 (new tool text); no failure on record",
+        "prompt": "Turn assets/art/photo.jpg into pixel art and save the result next to it.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": err(
+                "needs_person: assets/art/photo.jpg is needs_person (low_fit, low_confidence): Unsure of the grid: look at the preview, "
+                "or set the grid by hand. Nothing was written. Fix: set recipe.grid or recipe.palette and preview again, or pass force: "
+                "true to write it anyway")},
+            {"tool": "fix_pixel_art", "result": ok(
+                "needs_person: Unsure of the grid (fit 41%, confidence 33%): look at the preview, or set the grid by hand. Preview only: nothing written.",
+                {"verdict": "needs_person", "confidence": 0.33, "guards": [{"id": "low_fit", "value": 0.41, "threshold": 0.9}],
+                 "default_output": "assets/art/photo_clean.png",
+                 "next": "needs_person: look at the guards and the image; set recipe.grid or palette and preview again. "
+                         "output: true is refused without force: true."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/photo.jpg"}}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 2},
+                   "reply_must": [r"(?i)needs? (a )?person|low.?(fit|confidence)|guard"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_pixel_cleanup_timeout",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R37): fix_pixel_art answers with its job past 1 s, and timeout_seconds is how long the run "
+                         "may take. Without the parameter's text an agent asked to allow a long run leaves the 60 s default (the run "
+                         "is stopped and writes nothing) or re-calls the tool instead of polling the job.",
+        "text_at_issue": "fix_pixel_art's timeout_seconds: 'Seconds the run may take (default 60); past 1 s the call answers with the "
+                         "job.'; the guide's 'Past 1 s ...' line",
+        "source": "S46 R37 (new tool text); no failure on record",
+        "prompt": "assets/art/big.png is a 4096x4096 AI image that only looks like pixel art. Clean it into real pixel art and write "
+                  "the result next to it. It is big, so let the cleanup run for up to five minutes.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
+                "cancelled; cancel_job stops it.",
+                {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "default_output": "assets/art/big_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+            {"tool": "get_job", "result": ok(
+                "Pixel Art Cleanup: succeeded - fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Wrote assets/art/big_clean.png as one undo step.",
+                {"id": "j7", "status": "succeeded", "result": {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/big_clean.png"}]}})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"output": True, "timeout_seconds": 300}}, {"tool": "get_job"}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 3}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_lint_route",
+        "kind": "guard",
+        "what_happened": "New tool (S46): checking a sprite's craft (jaggies, palette, flicker) is lint_pixel_art, read-only; an agent "
+                         "that doesn't know it writes its own analysis script or calls fix_pixel_art on art that is meant to stay as it is.",
+        "text_at_issue": "lint_pixel_art: 'Checks an image, .aseprite ... or Sprite: craft lints and rule lints'; the group row "
+                         "'lints, cleanup'",
+        "source": "S46 R46 (new tool text); no failure on record",
+        "prompt": "Check assets/art/walk.aseprite's walk tag for pixel-art problems (jaggies, flicker, palette use). Don't change the file.",
+        "mocks": [
+            {"tool": "lint_pixel_art", "result": ok(
+                "clean: 0 fail, 1 warn.\nWARN flicker: 0.08 of the lit pixels blink for one frame. Fix: smooth the frame.",
+                {"verdict": "clean", "counts": {"pass": 12, "warn": 1, "fail": 0, "skip": 4}, "frames": 4, "results": []})},
+        ],
+        "checks": {"calls": [{"tool": "lint_pixel_art", "args": {"frames": "walk"}}],
+                   "must_not_call": ["fix_pixel_art", "edit_sprite"], "shell_must_not": [r"(?i)\bPIL\b|from PIL"]},
+        "max_turns": 8,
+    },
     {
         "id": "guard_palette_apply_route",
         "kind": "guard",
@@ -1571,6 +1697,56 @@ CASES = [
                              {"tool": "preview_particle_effect", "args": {"view": "pixel"}}],
                    "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
         "max_turns": 14,
+    },
+    {
+        "id": "make_title_logo",
+        "kind": "guard",
+        "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
+                         "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
+                         "names the area and its tool.",
+        "text_at_issue": "Guide 'Other areas': 'titles (edit_title)' and the generated Tool groups list (title_art)",
+        "source": "guide index entry (S80 R60, AC40); no failure on record",
+        "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
+        "mocks": [
+            {"tool": "tool_groups", "result": ok("Enabled title_art.", {"enabled": ["title_art"]})},
+            {"tool": "edit_title", "result": ok("Created assets/titles/jackpot.titleart; applied 2 op(s).",
+                                                {"path": "assets/titles/jackpot.titleart", "rev": 2, "applied": 2})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/jackpot.titleart (rev 2) at 768 x 432.", {"rev": 2})},
+            {"tool": "export_title", "result": ok("Baked 1 output(s) of assets/titles/jackpot.titleart.",
+                                                  {"files": [{"output": "main", "path": "assets/titles/jackpot.titleart.png"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title"}],
+                   "must_not_call": ["create_texture", "write_file", "synthesize_texture"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "translate_title_de_ja",
+        "kind": "guard",
+        "what_happened": "A title is translated inside its .titleart (add_language, one set_translation per text layer, in one "
+                         "edit_title batch), then check_title {languages: all} is read and its fixes applied; an agent must not "
+                         "duplicate the layers per language or write a second document (S87 D1, D2).",
+        "text_at_issue": "jasper://docs/title-art 'Languages': the translation loop",
+        "source": "S87 R60, AC30; no failure on record",
+        "prompt": "Translate the title assets/titles/logo.titleart (it says BIG WIN) into German and Japanese, and make sure "
+                  "both versions fit.",
+        "groups_enabled": ["title_art"],
+        "mocks": [
+            {"tool": "get_title", "result": ok("assets/titles/logo.titleart rev 3: 1 layers, canvas 1024 x 512, 1 output(s), 0 not fresh, 0 problem(s).",
+                                               {"path": "assets/titles/logo.titleart", "rev": 3,
+                                                "layers": [{"path": "Title", "id": "0000000a", "type": "text", "text": "BIG WIN", "max_chars": 0}]})},
+            {"tool": "edit_title", "result": ok("Applied 4 op(s) to assets/titles/logo.titleart (Edit Title Art (12 changes)).",
+                                                {"path": "assets/titles/logo.titleart", "rev": 4, "applied": 4})},
+            {"tool": "check_title", "result": ok("PASS assets/titles/logo.titleart: 9 pass, 0 warn, 0 fail, 0 skipped.",
+                                                 {"verdict": "PASS", "checks": [{"id": "languages_complete", "status": "PASS", "language": "de"},
+                                                                                {"id": "languages_complete", "status": "PASS", "language": "ja"},
+                                                                                {"id": "text_overflow", "status": "PASS", "language": "de"}]})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/logo.titleart (rev 4) at 768 x 384.", {"rev": 4,
+                                                  "language_rows": ["en", "de \u00b7 fit 0.86", "ja"]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title", "args": {"ops": [{"op": "add_language"}]}},
+                             {"tool": "check_title"}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 16,
     },
     {
         "id": "guard_nav_carve_tiles_per_tick",
@@ -4323,7 +4499,7 @@ CASES = [
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
                          "preview, the same with output: true to apply); without the group's description and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
-        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, lints, cleanup, palettes, fonts (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",
         "source": "S42 R22 (new tool text); no failure on record",
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "
@@ -4539,6 +4715,127 @@ CASES = [
         "checks": {"calls": [{"tool": "set_project_settings",
                               "args": {"values": {"tags_and_layers.sorting_layers": "re:(?s)3.*Foreground|Foreground.*3"}}}]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_tilemap_terrain_needs_tile_of_terrain",
+        "kind": "bad",
+        "what_happened": "Asked to paint a lake, agents filled the area with one water tile, so the shore had no transitions; "
+                         "the terrain op paints the terrain and chooses the edge tiles (S50 R23, R75).",
+        "text_at_issue": "edit_tilemap description: 'Ops: jasper://docs/tilemaps'; guide 'Other areas': "
+                         "'tilemaps (edit_tilemap)'; jasper://docs/tilemaps (terrain op)",
+        "source": "S50 R75 (new op vocabulary); paraphrased from the design review",
+        "prompt": "In the open scene, the Tilemap Layer 12 uses assets/Tilesets/overworld.tileset, which has a terrain named "
+                  "Water with its edge tiles set up. Paint a lake of Water from cell (2, 2) to (8, 6), with proper shores.",
+        "mocks": [
+            {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
+            {"tool": "edit_tilemap", "result": ok("Layer \"Tilemap\": 35 cells, 35 changed (one undo step).", {"changed_cells": 35, "warnings": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tilemap", "args": {"ops": [{"op": "terrain"}]}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tilemap_preview_before_large_edit",
+        "kind": "guard",
+        "what_happened": "preview: true on edit_tilemap runs the ops and returns the result and image without writing; "
+                         "an agent asked only to see the result must use it (S50 R75).",
+        "text_at_issue": "edit_tilemap description: 'preview writes nothing'",
+        "source": "S50 R75",
+        "prompt": "Show me what filling Tilemap Layer 12 from (0, 0) to (3, 3) with the tile grass would look like, without "
+                  "changing the scene.",
+        "mocks": [
+            {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
+            {"tool": "edit_tilemap", "result": ok("Preview only (nothing written). Layer \"Tilemap\": 16 cells, 16 changed.", {"preview": True, "changed_cells": 16})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tilemap", "args": {"preview": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tileset_check_before_painting",
+        "kind": "guard",
+        "what_happened": "edit_tileset check: true returns the terrain coverage report (the masks without a tile) and "
+                         "writes nothing; asked which masks a tileset lacks, agents should use it rather than read the "
+                         ".tileset JSON and work the masks out themselves, or take a preview's contact sheet (S50 R77). "
+                         "The prompt names neither checking nor leaving the file alone: the description is what "
+                         "tells the agent the call exists and is safe.",
+        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'",
+        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers)",
+        "prompt": "Which terrain masks of assets/Tilesets/overworld.tileset have no tile yet?",
+        "files": {"assets/Tilesets/overworld.tileset": '{\n  "version": 1,\n  "name": "Overworld",\n  "tile_size": [16, 16],\n'
+                  '  "sources": [{"id": 0, "kind": "texture", "texture": {"path": "Tilesets/overworld.png"}, "tile_size": [16, 16]}],\n'
+                  '  "terrain_sets": [{"name": "Ground", "mode": "blob", "terrains": [{"name": "Grass", "color": "#5fa04eff"}]}],\n'
+                  '  "tiles": [{"id": 0, "source": 0, "at": [0, 0], "terrain": {"set": 0, "center": 0}}],\n  "next_id": 1\n}\n'},
+        "mocks": [
+            {"tool": "edit_tileset", "args": {"check": True},
+             "result": ok("WARN: 1 tiles, 46 missing masks, 0 problems.",
+                          {"verdict": "WARN", "tiles": 1, "missing_masks": 46,
+                           "terrain_sets": [{"name": "Ground", "mode": "blob", "required": 47, "missing_count": 46}], "problems": []})},
+            {"tool": "edit_tileset",
+             "result": ok("Preview of assets/Tilesets/overworld.tileset: 1 tiles (WARN). output: true writes it.",
+                          {"path": "assets/Tilesets/overworld.tileset", "created": False, "tiles": 1,
+                           "report": {"verdict": "WARN", "missing_masks": 46},
+                           "next": "A preview: nothing was written. Pass output: true to write it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_tileset", "args": {"check": True}}],
+                   "must_not_call": [{"tool": "edit_tileset", "args": {"output": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_tileset_image_other_use_reported",
+        "kind": "guard",
+        "what_happened": "Making a texture a tileset's image switches its import to a pixel-art Sprite (no mips, point "
+                         "filtering, uncompressed; S50 R12, R53), also when a material uses the same image. Only edit_tileset's "
+                         "`next` says the material's texture changed; asked to report what changes for the material, the agent "
+                         "must pass it on instead of answering that nothing changed.",
+        "text_at_issue": "edit_tileset result next: '<image> now imports as a pixel-art Sprite (no mips, point filtering, "
+                         "uncompressed) for the tileset; it is also used by <use>, which now reads it as a Sprite too.'",
+        "source": "S50 review: a tileset image imported before its .tileset kept S14's default type (mips, seams in exports)",
+        "prompt": "Make a tileset from assets/art/bricks.png with 16x16 tiles. The Wall material uses the same image: tell me "
+                  "whether anything about it changes.",
+        "mocks": [
+            {"tool": "edit_tileset",
+             "result": ok("Wrote assets/art/bricks.tileset: 8 tiles (PASS, one undo step).",
+                          {"path": "assets/art/bricks.tileset", "created": True, "tiles": 8, "sources": 1,
+                           "written": "assets/art/bricks.tileset", "warnings": [],
+                           "next": "assets/art/bricks.png now imports as a pixel-art Sprite (no mips, point filtering, "
+                                   "uncompressed) for the tileset; it is also used by baseColorTexture of "
+                                   "assets/materials/Wall.material, which now reads it as a Sprite too."})},
+        ],
+        "checks": {"calls": ["edit_tileset"], "reply_must": [r"sprite|mip|point|filter|compress"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_import_tilemap_preview_first",
+        "kind": "guard",
+        "what_happened": "import_tilemap previews by default and writes only with output: true; asked what a map would bring "
+                         "in, agents should take the preview (grids, layers, tilesets, skipped items) instead of reading "
+                         "the map's JSON by hand, and must not import it (S50 R78). The prompt does not say the call is "
+                         "safe: only the description does.",
+        "text_at_issue": "import_tilemap description: 'a preview (grids, layers, tilesets, skipped, warnings) until output: true writes'",
+        "source": "S50 R78; S50 review (the earlier prompt said 'Don't import it yet', which made the must-not trivially pass)",
+        "prompt": "What would importing assets/maps/level.tmj bring into the open scene?",
+        "files": {"assets/maps/level.tmj": '{"type": "map", "orientation": "orthogonal", "width": 10, "height": 12, "tilewidth": 16, '
+                  '"tileheight": 16, "infinite": false, "layers": [{"type": "tilelayer", "name": "Ground", "width": 10, "height": 12, '
+                  '"data": [1, 1, 1]}, {"type": "objectgroup", "name": "Spawns", "objects": []}], '
+                  '"tilesets": [{"firstgid": 1, "source": "overworld.tsj"}]}\n'},
+        "mocks": [
+            {"tool": "import_tilemap", "result": ok("Preview of assets/maps/level.tmj: 1 grid(s), 2 layer(s), 1 tileset(s), 120 tiles. output: true imports it.",
+                                                     {"preview": True, "counts": {"grids": 1, "layers": 2, "tilesets": 1, "tiles": 120},
+                                                      "next": "A preview: nothing was written. Pass output: true to import it (one undo step)."})},
+        ],
+        "checks": {"must_not_call": [{"tool": "import_tilemap", "args": {"output": True}}],
+                   "calls": [{"tool": "import_tilemap"}]},
+        "max_turns": 6,
+    },
+    {
+        "id": "control_tilemap_trigger_word_is_not_edit",
+        "kind": "control",
+        "what_happened": "A question about what a tilemap is must not pull in the tilemap tools.",
+        "text_at_issue": "Guide 'Other areas': 'tilemaps (edit_tilemap)'",
+        "source": "S50 R82 (control for the Other areas entry)",
+        "prompt": "In one sentence, what is the difference between a Sprite and a Tilemap in a 2D game? Answer without using any tools.",
+        "mocks": [],
+        "checks": {"must_not_call": ["edit_tilemap", "get_tilemap"]},
+        "max_turns": 2,
     },
     {
         "id": "bad_sprite_batch_without_sprite",
@@ -4845,5 +5142,223 @@ CASES = [
         "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"light_2d_steps": 6}}}],
                    "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
         "max_turns": 10,
+    },
+    # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
+    {
+        "id": "guard_contact_sheet_lint",
+        "kind": "guard",
+        "what_happened": "New area (S48): checking that an effect ends empty and stays in its bounds is capture_contact_sheet "
+                         "with lint in the pixel_art group; without the guide's index entry an agent takes screenshots in Play "
+                         "and judges them by eye.",
+        "text_at_issue": "Guide 'Other areas': 'pixel-fx (capture_contact_sheet)'; capture_contact_sheet: 'lint: effect "
+                         "checks and a verdict'",
+        "source": "S48 R27, R28 (new tool text); no failure on record",
+        "prompt": "The Explosion GameObject in the Main scene is a one-shot pixel-art burst. Check that it ends with nothing "
+                  "left on screen and that nothing flies outside its area, and tell me what you find.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"lint": "*"}, "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames. Checks WARN, verdict "
+                "fixable:\nWARN spill: 14.0. 14 px drawn outside the 4x4 bounds + 24 px margin (seed 3, frame 5) keep it inside "
+                "the margin: lower the speed, spread, lifetime or size that throws it out, or move its origin\nPASS "
+                "one_shot_end: 0.0\nFix what each WARN's fix_hint says, then capture again with lint.",
+                {"target": "Explosion", "mode": "isolated", "scale": 4, "cell": [100, 100], "verdict": "fixable",
+                 "check_status": "WARN",
+                 "checks": [{"id": "spill", "kind": "effect", "status": "WARN", "measured": 14, "threshold": 0,
+                             "fix_hint": "keep it inside the margin: lower the speed, spread, lifetime or size that throws it out"},
+                            {"id": "one_shot_end", "kind": "effect", "status": "PASS", "measured": 0, "threshold": 0}],
+                 "next": "Fix what each WARN's fix_hint says, then capture again with lint."})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames.",
+                {"target": "Explosion", "mode": "isolated", "scale": 4,
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"entity": "re:(?i)explosion"}, "lint": "*"}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game"],
+                   "reply_must": [r"(?i)spill|outside"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_write",
+        "kind": "guard",
+        "what_happened": "New tool (S48): capture_contact_sheet previews by default; asked to save a sheet, an agent must "
+                         "call again with output: true and path, which the description and the result's `next` say.",
+        "text_at_issue": "capture_contact_sheet: 'A preview until output: true writes path (one undo)'; the result's `next`",
+        "source": "S48 R27 (new tool text); no failure on record",
+        "prompt": "Save a contact sheet of the Hero GameObject's walk clip assets/anim/walk.anim to assets/sheets/walk.png.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"output": True}, "result": ok(
+                "Captured 8 frames of Hero playing assets/anim/walk.anim (isolated) at scale 6: a 821x350 sheet of 64x64 "
+                "frames. Wrote assets/sheets/walk.png as one undo step (undo with scope project).",
+                {"target": "Hero playing assets/anim/walk.anim", "path": "assets/sheets/walk.png",
+                 "undo": {"id": 7, "name": "Create File walk.png"}})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Hero playing assets/anim/walk.anim (isolated) at scale 6: a 821x350 sheet of 64x64 "
+                "frames.\nPreview only: the same arguments plus output: true and path write the PNG (one undo).",
+                {"target": "Hero playing assets/anim/walk.anim",
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet",
+                              "args": {"target": {"animation": "re:walk\\.anim"}, "output": True, "path": "re:sheets/walk\\.png"}}],
+                   "must_not_call": ["write_file", "screenshot", "record_game"], "shell_must_not": [r"(?i)ffmpeg|magick|montage"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_effect_target",
+        "kind": "guard",
+        "what_happened": "New tool text (S48 R27, WP-D): capture_contact_sheet draws a GameObject playing a PixelFX effect "
+                         "(target.effect); asked to check how an enemy burns away, an agent captures that target instead of "
+                         "starting Play and taking screenshots by hand.",
+        "text_at_issue": "capture_contact_sheet: '...; effect: a PixelFX effect), a .particles asset or a screen transition' "
+                         "and the target's effect / effect_options keys",
+        "source": "S48 R27 (new tool text); no failure on record",
+        "prompt": "Show me frames of the Enemy sprite burning away with the PixelFX dissolve effect over 0.9 seconds, so I can "
+                  "check that the burn looks right.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"target": {"effect": "dissolve"}}, "result": ok(
+                "Captured 8 frames of Enemy with dissolve (isolated) at scale 6: a 821x350 sheet of 64x64 frames.\nPreview "
+                "only: the same arguments plus output: true and path write the PNG (one undo).",
+                {"target": "Enemy with dissolve", "frames": [{"index": i, "t": round(i * 0.9 / 7, 3)} for i in range(8)],
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Enemy (isolated) at scale 6: a 821x350 sheet of 64x64 frames.",
+                {"target": "Enemy"})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet",
+                              "args": {"target": {"entity": "re:(?i)enemy", "effect": "dissolve"}}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_transition_target",
+        "kind": "guard",
+        "what_happened": "New tool text (S48 R27, AC12): capture_contact_sheet draws a screen transition kind by itself "
+                         "(target.transition) and its transition_edges check measures the rim; asked whether the iris rim keeps "
+                         "one width, an agent captures it with that lint instead of playing the game and judging screenshots.",
+        "text_at_issue": "capture_contact_sheet: '... a .particles asset or a screen transition at N times'; target.transition",
+        "source": "S48 R27, R28 (new tool text); no failure on record",
+        "prompt": "Check that the iris screen transition's coloured rim stays the same width all along its edge while it closes.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}, "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 2: a 1288x356 sheet of 160x90 frames. Checks PASS, "
+                "verdict clean:\nPASS transition_edges: 0.0",
+                {"target": "transition iris", "verdict": "clean", "check_status": "PASS",
+                 "checks": [{"id": "transition_edges", "kind": "effect", "status": "PASS", "measured": 0, "threshold": 0}]})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 2: a 1288x356 sheet of 160x90 frames.",
+                {"target": "transition iris"})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"],
+                   "reply_must": [r"(?i)rim|width|edge"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_too_large",
+        "kind": "guard",
+        "what_happened": "New error text (S48 review): capture_contact_sheet caps a transition's capture size; the error "
+                         "capture_too_large names the fix, and an agent retries smaller instead of giving up or looping.",
+        "text_at_issue": "capture_contact_sheet error: capture_too_large with 'lower target.transition_options' width, height or "
+                         "pixel_size, or ask for fewer frames'",
+        "source": "S48 review, finding 6 (new error text); no failure on record",
+        "prompt": "Capture an iris screen transition's contact sheet at 1024 by 1024 art pixels with pixel size 16 and 64 frames, "
+                  "and show me the sheet.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "once": True, "args": {"frames": 64}, "result": err(
+                "Can't capture the contact sheet:\n- capture_too_large: a 16384 x 16384 frame x 64 frames is 17179869184 px of frames; "
+                "a capture takes at most 4096 px a side and 33554432 px over all its frames Fix: lower "
+                "target.transition_options' width, height or pixel_size, or ask for fewer frames")},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 1: a 1288x176 sheet of 160x90 frames.",
+                {"target": "transition iris", "scale": 1, "cell": [160, 90],
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}}}],
+                   "min_calls": {"capture_contact_sheet": 2},
+                   "reply_must": [r"(?i)smaller|lower|too large|limit|cap"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_running",
+        "kind": "guard",
+        "what_happened": "New error text (S48 review): a capture is refused while another runs; the error names get_job, and "
+                         "the agent waits for the job then retries instead of concluding the tool is broken.",
+        "text_at_issue": "capture_contact_sheet error: capture_running with 'wait for job <id> with get_job, or cancel_job it, "
+                         "then call again'",
+        "source": "S48 review, finding 12 (new error text); no failure on record",
+        "prompt": "Capture a contact sheet of the Explosion GameObject and tell me its size.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "once": True, "result": err(
+                "Can't capture the contact sheet:\n- capture_running: another capture is still running (job job_7) Fix: wait for "
+                "job job_7 with get_job, or cancel_job it, then call again")},
+            {"tool": "get_job", "result": ok("job_7: succeeded", {"job_id": "job_7", "status": "succeeded"})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames.",
+                {"target": "Explosion", "scale": 4, "cell": [100, 100]})},
+        ],
+        "checks": {"calls": [{"tool": "get_job"}, {"tool": "capture_contact_sheet"}],
+                   "must_not_call": ["record_game", "screenshot"],
+                   "reply_must": [r"803|100"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_reload_disclosed",
+        "kind": "guard",
+        "what_happened": "New result text (S48 review): capture_contact_sheet's determinism check in Play reloads the played "
+                         "scene; the result's next says the game restarted, so the agent reports it instead of assuming the "
+                         "game's state is unchanged.",
+        "text_at_issue": "capture_contact_sheet next: 'The determinism check reloaded the played scene for its two fresh captures, "
+                         "so the game's state restarted.'",
+        "source": "S48 review, finding 10 (new result text); no failure on record",
+        "prompt": "While the game is playing, check with a contact sheet that the Random GameObject's frames are deterministic, "
+                  "and tell me anything I need to know about the state of the game afterwards.",
+        "mocks": [
+            {"tool": "play", "result": ok("Playing the Main scene.", {"state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Playing.", {"state": "playing"})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 3 frames of Random (scene) at scale 1: a 322x116 sheet of 320x180 frames. Checks FAIL, verdict "
+                "needs_person:\nFAIL determinism: 14.0",
+                {"target": "Random", "mode": "scene", "verdict": "needs_person", "check_status": "FAIL",
+                 "checks": [{"id": "determinism", "kind": "effect", "status": "FAIL", "measured": 14, "threshold": 0}],
+                 "next": "The determinism check reloaded the played scene for its two fresh captures, so the game's state restarted. "
+                         "Look at the sheet as well as the checks: they measure mistakes, not taste."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"lint": "*"}}],
+                   "reply_must": [r"(?i)reload|restart"]},
+        "max_turns": 10,
+    },
+    # ---- S48 Pixel FX: sprite effects (material presets and library:sprite features)
+    {
+        "id": "guard_pixel_fx_selout_preset",
+        "kind": "guard",
+        "what_happened": "New text (S48 R38): list_material_presets names the Pixel FX presets; an agent asked for a sel-out "
+                         "outline on a sprite applies selout_outline instead of hand-writing a shader or an outline pass.",
+        "text_at_issue": "list_material_presets: 'selout_outline (Sel-Out Outline): library:sprite with a one-texel selective "
+                         "outline (sel-out) ...'",
+        "source": "S48 R38 (new result text); no failure on record",
+        "prompt": "Give the Hero sprite a pixel-art sel-out outline.",
+        "mocks": [
+            {"tool": "list_material_presets", "result": ok(
+                "12 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra "
+                "pass ...\npixel_outline (Pixel Outline): library:sprite with a one-texel outline on the 4 neighbours (Outline "
+                "style PIXEL4) in the ramp's darkest colour; the quad grows so it is never cut at the frame edge.\n"
+                "selout_outline (Sel-Out Outline): library:sprite with a one-texel selective outline (sel-out): each outline "
+                "texel takes the colour of the art it touches, one ramp step darker.\ndrop_shadow (Drop Shadow): library:sprite "
+                "with a drop shadow one texel right and down ...",
+                {"presets": [{"id": "outline_hull", "name": "Outline (hull)"}, {"id": "pixel_outline", "name": "Pixel Outline"},
+                             {"id": "selout_outline", "name": "Sel-Out Outline"}, {"id": "drop_shadow", "name": "Drop Shadow"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset selout_outline to 1 submesh(es) (one undo step).",
+                {"preset": "selout_outline", "applied": [{"entity": {"id": 7, "name": "Hero"}, "submesh": 0}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 7 Hero (sprite)", {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 7 \"Hero\": transform, sprite, mesh (submeshes[0] material, shader "
+                                               "library:sprite).", {"id": 7})},
+            {"tool": "list_shaders", "result": ok("Library shaders (mesh): library:lit, library:sprite (outline, ...) ...",
+                                                 {"shaders": [{"name": "library:sprite", "type": "mesh"}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 7 \"Hero\".", {"entity": {"id": 7}})},
+            {"tool": "update_material", "result": ok("Updated the material.", {"entity": {"id": 7}})},
+        ],
+        "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
+                   "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 12,
     },
 ]

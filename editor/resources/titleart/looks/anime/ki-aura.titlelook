@@ -1,0 +1,129 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/ki-aura",
+  "revision": 1,
+  "name": {
+    "en": "Ki Aura",
+    "ja": "気のオーラ"
+  },
+  "description": {
+    "en": "White to gold face in a thick dark bronze outline, a strong golden aura rising behind and a gold light glow.",
+    "ja": "太い暗いブロンズの縁取りの中の白から金の面、背後に立ちのぼる強い金のオーラ、金のライトグロー。"
+  },
+  "family": "anime",
+  "tags": [
+    "aura",
+    "gold",
+    "power",
+    "anime",
+    "glow",
+    "energy"
+  ],
+  "synonyms": {
+    "en": [
+      "power up",
+      "battle aura",
+      "super mode",
+      "energy burst"
+    ],
+    "ja": [
+      "オーラ",
+      "気",
+      "覚醒",
+      "パワーアップ",
+      "ōra",
+      "kakusei"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe060"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#5a3a00"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "light_glow",
+      "params": {
+        "tint_amount": 0.6,
+        "tint_outer": "#ffb020"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "aura",
+      "preset": "strong",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.2,
+              "color": "#fff0a0"
+            },
+            {
+              "pos": 0.45,
+              "color": "#ffc020"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ff8a00"
+            },
+            {
+              "pos": 1,
+              "color": "#c04a00"
+            }
+          ]
+        }
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

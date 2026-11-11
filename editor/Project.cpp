@@ -5,7 +5,10 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "foliage/TreeDataFile.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
 #include "asset/ModelSubAssets.h"
@@ -16,6 +19,8 @@
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/TitleArtSystem.h"
+#include "subsystem/TilemapSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
@@ -45,6 +50,8 @@
 #include "component/AnimatorComponent.h"
 #include "pool/AnimatorAssetPool.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -157,6 +164,10 @@
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "particles/ParticleEffectCodec.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -1902,6 +1913,15 @@ const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings
     return drawSubmission;
 }
 
+void editor::Project::setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults){
+    jasperengine::pixelart::ScreenTransition::setDefaults(defaults);
+    transitionDefaults = jasperengine::pixelart::ScreenTransition::getDefaults();
+}
+
+const jasperengine::pixelart::TransitionDefaults& editor::Project::getTransitionDefaults() const{
+    return transitionDefaults;
+}
+
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
     deviceSettings = settings;
     Device::setProjectSettings(deviceSettings);
@@ -2460,6 +2480,20 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
+    // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
+        const std::string preset = name.rfind("pixel_", 0) == 0 ? name : "pixel_" + name;
+        if (editor::pixelart::pixelParticlePresetLabel(preset).empty())
+            return std::string();
+        editor::pixelart::PixelPresetBuild build;
+        build.pixelsPerUnit = std::max(1, Engine::getPixelsPerUnit());
+        particles::ParticleEffectDocument document;
+        std::string error;
+        if (!editor::pixelart::buildPixelParticlePreset(preset, build, document, error))
+            return std::string();
+        return particles::ParticleEffectCodec::write(document);
+    });
     // S25: the labels are read again (the assets may have moved roots), the search index
     // follows, and this user's organisation file belongs to the project's root
     assetLabels.open(this);
@@ -3470,6 +3504,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
+    settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3493,6 +3528,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    // S87: a Play starts in the device's language with the project's default
+    TitleArtLanguage::setGlobal("");
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -4614,6 +4652,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
+    // S48's screen transition: a script playing one (Transition in Lua or ScreenTransition in C++)
+    if (scriptsMention("Transition"))
+        keys.insert(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -6371,6 +6412,8 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setMouseMode(MouseMode::NORMAL);
     // a game (or the MCP server) may have changed the game clock and the foliage distance
     Engine::setTimeScale(1.0f);
+    // and a hit-stop may still be running (S48)
+    ::jasperengine::pixelart::HitStop::reset();
     Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
     Engine::setSimulationHeld(false);
@@ -6405,6 +6448,10 @@ void editor::Project::resetConfigs() {
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
     VatDocument::closeAll();
+    // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
+    TitleArtDocument::closeAll();
+    TitleArtAutoBake::get().reset();
+    TitleArtRenderHost::editor().reset();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();
@@ -6466,6 +6513,7 @@ void editor::Project::resetConfigs() {
     setBitmapTextCacheMiB(0);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
+    setTransitionDefaults(jasperengine::pixelart::TransitionDefaults());
     setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -6553,6 +6601,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
     assetLabels.close();
@@ -6615,7 +6664,7 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // the scene clock (the water's waves) holds with the bodies; a stopped scene's moves by the
-    // Scene view's Animate water (updateSceneRender)
+    // Scene view's Always Refresh (updateSceneRender)
     scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
@@ -6639,6 +6688,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<UISystem>()->setEditMode(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
+    // Title Art's Live Time runs in Play only (S81 R38) and Edit mode takes the editor's frame budget
+    if (auto titles = scene->findSystem<TitleArtSystem>()) titles->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
@@ -6648,6 +6699,9 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
     // the wakes hold with the game (a hull dragged in edit mode leaves none)
     if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
+    // only the tile animation clock (S50 R73): the layers keep drawing; a stopped scene's moves
+    // while the Scene view's Always Refresh is on (updateSceneRender)
+    if (auto tilemaps = scene->findSystem<TilemapSystem>()) tilemaps->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {
@@ -8441,6 +8495,7 @@ void editor::Project::configureGenerator() {
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
@@ -9154,13 +9209,17 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
 
     syncSceneRenderEditLayer(sceneId);
     // a stopped scene's clock (its paused one: Engine::runFrame leaves it) moves with the editor's
-    // frames while Animate water is on, once a frame, with its inline child scenes
+    // frames while Always Refresh is on, once a frame, with its inline child scenes
     {
         const auto now = std::chrono::steady_clock::now();
         const double delta = sceneProject->editClockValid
             ? std::clamp(std::chrono::duration<double>(now - sceneProject->editClockLast).count(), 0.0, 0.25) : 0.0;
         sceneProject->editClockLast = now;
         sceneProject->editClockValid = true;
+        // tile animations follow the same switch (R73): the scene clock is the option, not water alone
+        if (sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            if (auto tilemaps = sceneProject->scene->findSystem<TilemapSystem>()) tilemaps->setPaused(!sceneProject->displaySettings.animateWater);
+        }
         if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->displaySettings.animateWater && delta > 0.0){
             if (sceneProject->scene)
                 sceneProject->scene->advanceSceneTime(delta, true);
@@ -10486,6 +10545,10 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         // what the scripts that ran started (Coroutine.start, Timer.after)
         ScriptScheduler::clear();
+        // the PixelFX effects of the play and their callbacks (they may hold Lua)
+        jasperengine::pixelart::PixelFxPlayer::reset();
+        jasperengine::pixelart::ScreenTransition::reset();
+        jasperengine::pixelart::Glitch::stop();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -10646,6 +10709,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
@@ -11563,6 +11627,11 @@ void editor::Project::stop(uint32_t sceneId) {
             Scheduler::game().clear();
             // every coroutine and timer of the play (unowned ones too), before the scripts go
             ScriptScheduler::clear();
+            // the PixelFX effects of the play and their callbacks (they may hold Lua)
+            jasperengine::pixelart::PixelFxPlayer::reset();
+            // a screen transition of the play and its callbacks (they may hold Lua), the scripted glitch
+            jasperengine::pixelart::ScreenTransition::reset();
+            jasperengine::pixelart::Glitch::stop();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
             debugSettingsInPlay = false;

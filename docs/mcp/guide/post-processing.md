@@ -163,7 +163,9 @@ Unity's layout, or a `.cube`: see Colour LUTs below).
   `film_damage_enabled`, `film_damage_intensity` (0-4), `film_hair_amount`,
   `film_scratch_amount`, `film_dust_amount` (each 0-8 candidates per film frame, 0 none),
   `film_dust_size` (px), `film_gate_weave` (0-1 of a projector's), `film_gate_mask` (none,
-  rounded, academy_137, widescreen_185, anamorphic_239), `film_gate_mask_feather` (px).
+  rounded, academy_137, widescreen_185, anamorphic_239), `film_gate_mask_feather` (px),
+  `glitch_enabled` and the `glitch_*` fields (bursts of torn rows, RGB split and interlace in
+  source texels: `jasper://docs/pixel-fx`).
 - Bloom and blur: `bloom_enabled`, `bloom_threshold`, `bloom_knee`, `bloom_intensity`,
   `bloom_tint`, `bloom_scatter`, `blur_enabled`, `blur_radius`, `blur_intensity`.
 - Resolution: `render_scale` (0.5-1), `dynamic_resolution_enabled`,

@@ -343,6 +343,8 @@ void editor::InspectorWindow::drawCameraShakerComponent(ComponentType cpType, Sc
                               "A built-in preset or a .shake file (drop one here).");
     }
     prefabRowProperty.clear();
+    // S48: whole art pixels and ticks (2D)
+    drawShakerPixelRows(cpType, sceneProject, entities);
     endTable();
 
     if (!shaker.startPreset.empty()){
@@ -648,14 +650,24 @@ void editor::InspectorWindow::drawShakePresetAsset(const fs::path& asset){
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
         };
-        row("Type", "One Shot fades in, then out right away; Sustained holds until stopped.");
-        int type = preset.type == camera::ShakeType::Sustained ? 1 : 0;
-        if (ImGui::Combo("##shake_type", &type, "One Shot\0Sustained\0")){
-            preset.type = type == 1 ? camera::ShakeType::Sustained : camera::ShakeType::OneShot;
+        row("Type", "One Shot fades in, then out right away; Sustained holds until stopped; Kick is a pixel-art hit: a decaying "
+                    "whole-pixel jolt over Fade Out seconds (no noise, no roll).");
+        int type = preset.type == camera::ShakeType::Kick ? 2 : (preset.type == camera::ShakeType::Sustained ? 1 : 0);
+        if (ImGui::Combo("##shake_type", &type, "One Shot\0Sustained\0Kick\0")){
+            preset.type = type == 2 ? camera::ShakeType::Kick : (type == 1 ? camera::ShakeType::Sustained : camera::ShakeType::OneShot);
             changed = true;
             commit();
         }
         UIProbe::item("shake.type");
+        row("Units", "View: tenths of the view height in 2D, world units in 3D. Pixels: art pixels (the Pixel Perfect Camera's grid, "
+                     "else screen pixels).");
+        int units = preset.units == camera::ShakeUnits::Pixels ? 1 : 0;
+        if (ImGui::Combo("##shake_units", &units, "View\0Pixels\0")){
+            preset.units = units == 1 ? camera::ShakeUnits::Pixels : camera::ShakeUnits::View;
+            changed = true;
+            commit();
+        }
+        UIProbe::item("shake.units");
         auto floatRow = [&](const char* label, const char* id, float& value, float speed, const char* help){
             row(label, help);
             if (ImGui::DragFloat(id, &value, speed, 0.0f, 10000.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) changed = true;
@@ -675,7 +687,8 @@ void editor::InspectorWindow::drawShakePresetAsset(const fs::path& asset){
         floatRow("Strength", "##strength", preset.strength, 0.005f, "Amplitude multiplier");
         floatRow("Roughness", "##roughness", preset.roughness, 0.1f, "Noise speed: higher is jerkier");
         floatRow("Fade In (s)", "##fade_in", preset.fadeIn, 0.01f, "Seconds to full strength (0: instant)");
-        floatRow("Fade Out (s)", "##fade_out", preset.fadeOut, 0.01f, "Seconds to stop (0: instant)");
+        floatRow("Fade Out (s)", "##fade_out", preset.fadeOut, 0.01f, "Seconds to stop (0: instant); a Kick's length");
+        floatRow("Tick (Hz)", "##tick", preset.tick, 1.0f, "The offset changes only on ticks of 1 / Tick seconds (0: every frame; a Kick steps at 60)");
         vectorRow("Position Influence (units)", "##position_influence", preset.positionInfluence,
                   "Per-axis amplitude: world units in 3D, tenths of the view height in 2D");
         vectorRow("Rotation Influence (degrees)", "##rotation_influence", preset.rotationInfluence,

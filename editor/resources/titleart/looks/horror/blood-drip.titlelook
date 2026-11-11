@@ -1,0 +1,102 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/blood-drip",
+  "revision": 1,
+  "name": {
+    "en": "Blood Drip",
+    "ja": "血のしたたり"
+  },
+  "description": {
+    "en": "Glossy blood red gradient face in a thick near-black outline, dripping blood in its own colour, with a slight inner shadow.",
+    "ja": "太い黒に近い縁取りの中の光沢のある血の赤のグラデーションの面、同じ色でしたたる血、わずかな内側の影。"
+  },
+  "family": "horror",
+  "tags": [
+    "blood",
+    "drip",
+    "red",
+    "horror",
+    "gore",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "bleeding",
+      "slasher",
+      "dripping blood",
+      "gory"
+    ],
+    "ja": [
+      "血",
+      "したたり",
+      "ホラー",
+      "流血",
+      "chi",
+      "horā"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "nosifer",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#c00010"
+            },
+            {
+              "pos": 1,
+              "color": "#5a0008"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#200004"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drips",
+      "params": {
+        "style": "blood",
+        "length": 30
+      }
+    },
+    {
+      "type": "inner_shadow",
+      "params": {
+        "distance": 2,
+        "size": 2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

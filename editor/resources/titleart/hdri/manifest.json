@@ -1,0 +1,93 @@
+{
+  "environments": {
+    "city": {
+      "bytes": 6042302,
+      "file": "potsdamer_platz_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "bd71819f767a03f1342aa4c1abb56dbed7bd53c6b9ce414184366267dc9d8320",
+      "slug": "potsdamer_platz",
+      "title": "Potsdamer Platz",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/potsdamer_platz_2k.hdr"
+    },
+    "highway": {
+      "bytes": 6837932,
+      "file": "autumn_road_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "30ed60b6866cbaafd9e0ec53acff75712f73a7eeae625e4c319991f5cc1e985f",
+      "slug": "autumn_road",
+      "title": "Autumn Road",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/autumn_road_2k.hdr"
+    },
+    "night_city": {
+      "bytes": 6467753,
+      "file": "shanghai_bund_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "ed4be21489e86a915bc872072e7e6d83c163a2d2fbb1c260979f7b9224a3322b",
+      "slug": "shanghai_bund",
+      "title": "Shanghai Bund",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/shanghai_bund_2k.hdr"
+    },
+    "night_dark": {
+      "bytes": 6688317,
+      "file": "moonless_golf_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "d85421f5a0ed59f6f761babf088b80472e7b3b122e492f30668393dd1c1363bd",
+      "slug": "moonless_golf",
+      "title": "Moonless Golf",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/moonless_golf_2k.hdr"
+    },
+    "sky": {
+      "bytes": 5594896,
+      "file": "derelict_highway_midday_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "0ee162628dc421c863d390ff483ce09747104f3461eed2c6d69b2b5e2da900b4",
+      "slug": "derelict_highway_midday",
+      "title": "Derelict Highway Midday",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/derelict_highway_midday_2k.hdr"
+    },
+    "softbox": {
+      "bytes": 6312947,
+      "file": "studio_small_09_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "36724313c0fc66dab126ff90f081b85a0b1ef47be65eda1417bd20b033f0573f",
+      "slug": "studio_small_09",
+      "title": "Studio Small 09",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr"
+    },
+    "sunset_harbour": {
+      "bytes": 5723224,
+      "file": "venice_sunset_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "cbfac020ee17ab36016ccc7fbe9020b828587b9864af6ecda0a93089914889a6",
+      "slug": "venice_sunset",
+      "title": "Venice Sunset",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/venice_sunset_2k.hdr"
+    },
+    "warehouse": {
+      "bytes": 6581920,
+      "file": "empty_warehouse_01_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "9734d30c83fe480a2a7c7521b7bdb816d869c2468d45d3794bde729d6181f830",
+      "slug": "empty_warehouse_01",
+      "title": "Empty Warehouse 01",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/empty_warehouse_01_2k.hdr"
+    }
+  },
+  "version": 1
+}

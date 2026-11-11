@@ -5,6 +5,7 @@
 #include "TerrainRenderInfo.h"
 #include "subsystem/TerrainWorldRender.h"
 #include "FoliageSystem.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/CameraComponent.h"
 #if JASPERENGINE_VOXEL
@@ -75,6 +76,7 @@
 #include "component/TerrainComponent.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "particles/ParticleRender.h"
 #include "subsystem/ParticleSystemState.h"
 #include "subsystem/TrailSystem.h"
@@ -85,6 +87,7 @@
 #include <bit>
 #include "pixelart/PaletteQuantize.h"
 #include "pixelart/PaletteSwap.h"
+#include "pixelart/Glitch.h"
 #include <cstddef>
 #include <memory>
 #include <algorithm>
@@ -849,6 +852,7 @@ TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
 uint32_t RenderSystem::pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 TextureRender RenderSystem::defaultParticle;
+TextureRender RenderSystem::defaultRampGrey;
 TextureRender RenderSystem::emptyCubeGray;
 std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
 std::mutex RenderSystem::zeroVertexBuffersMutex;
@@ -1390,7 +1394,8 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent,
+        &defaultRampGrey
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -3508,7 +3513,8 @@ bool RenderSystem::isPixelArtDrawable(Entity entity) const{
     if (!pixelSnapVariants)
         return false;
     const Signature signature = scene->getSignature(entity);
-    return signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>());
+    return signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>()) ||
+           signature.test(scene->getComponentId<TilemapLayerComponent>());
 }
 
 const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
@@ -4044,6 +4050,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     }
     // a Sprite Batch draws its Sprite with the instanced variant (S52 R13)
     inputs.instanced = instmesh != nullptr || mesh.spriteInstanced;
+    inputs.tileClamp = mesh.tileLayer;
     inputs.instancedMesh = instmesh != nullptr;
     inputs.batchAttributes = mesh.batchAttributes;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
@@ -4391,6 +4398,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT);
     if (p_snapPivot)
         variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT);
+    if (inputs.tileClamp && inputs.instanced)
+        variant.properties |= ShaderPool::getTileClampProperty();
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -4531,6 +4540,23 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
         case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
         case ShaderTextureDefault::PARTICLE: return cube ? &emptyCubeWhite : &defaultParticle;
+        case ShaderTextureDefault::RAMP_GREY:{
+            if (cube)
+                return &emptyCubeGray;
+            if (!defaultRampGrey.isCreated()){
+                // the step i of 8 is i / 7 grey (sRGB bytes)
+                static uint32_t pixels[8];
+                for (int i = 0; i < 8; i++){
+                    const uint32_t v = (uint32_t)((i * 255 + 3) / 7);
+                    pixels[i] = 0xFF000000u | (v << 16) | (v << 8) | v;
+                }
+                void* data[6] = {(void*)pixels};
+                size_t sizes[6] = {sizeof(pixels)};
+                defaultRampGrey.createTexture("default|ramp_grey", 8, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, sizes,
+                                              TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+            }
+            return &defaultRampGrey;
+        }
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
@@ -4886,6 +4912,8 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
             settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
             settings.filmGateMask != FilmGateMask::NONE))
         features |= UBER_FILM_DAMAGE;
+    // Glitch: the switch alone (at intensity 0 the variant waits for scripted bursts)
+    if (settings.glitchEnabled) features |= UBER_GLITCH;
     // Palette Quantize, with a palette (none: off, and said so)
     if (settings.paletteEnabled){
         if (settings.palette.empty())
@@ -5330,6 +5358,22 @@ void RenderSystem::fillUberFilm(const PostProcessingSettings& settings, double t
     }
 }
 
+void RenderSystem::fillUberGlitch(const PostProcessingSettings& settings, double time, int sourceRows){
+    fs_uber.glitch = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    fs_uber.glitchTearsA = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    fs_uber.glitchTearsB = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (!settings.glitchEnabled)
+        return;
+    // a scripted burst (PixelFX.glitch) corrupts the main scene only
+    const float script = scene == Engine::getMainScene() ? pixelart::Glitch::getBurstIntensity() : 0.0f;
+    const pixelart::GlitchFrame frame = pixelart::glitchFrame(settings, time, sourceRows, script);
+    fs_uber.glitch = Vector4((float)frame.split, frame.interlace ? 0.7f : 0.0f, (float)frame.tearCount, frame.strength);
+    for (int i = 0; i < frame.tearCount; i++){
+        Vector4& packed = i < 4 ? fs_uber.glitchTearsA : fs_uber.glitchTearsB;
+        packed[i % 4] = pixelart::packGlitchTear(frame.tears[i]);
+    }
+}
+
 void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
                               FramebufferRender* destination, const Rect& viewport, bool nearestSource){
     // the background around the viewport, as the blit (CLEAR: a tiler loads nothing), or a
@@ -5433,6 +5477,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
                                     uberBlurTexture ? settings.blurIntensity : 0.0f);
         fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, uberSharpBilinear.x, uberSharpBilinear.y, 0.0f);
         fillUberFilm(settings, time, vw, vh);
+        fillUberGlitch(settings, time, (int)sh);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
@@ -6793,7 +6838,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
         submeshLoads[i].shaderInputs.pixelArt = isPixelArtDrawable(entity);
         // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
-        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+        if (i == 0 && lentTexture(entity))
             submeshLoads[i].shaderInputs.baseColorTexture = true;
         // the geometry the variant draws: no skin nor morph targets under a Vertex Animation
         // (or for a .vat.glb at rest), so the passes bind none
@@ -10640,9 +10685,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 render.shareBindings(mesh.submeshes[i].render);
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
             // base colour, lent for the draw (the material keeps its own texture)
-            if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
-                if (TextureRender* fluidTexture = frameFluids->getMaterialTexture(entity))
-                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
+            if (i == 0 && hasLentTextures()){
+                if (TextureRender* lent = lentTexture(entity))
+                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, lent);
             }
 
             // its fade variant, when it fades now and the variant is ready (else its dominant
@@ -10903,6 +10948,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (batch){
                 drawBatchGeometry(render, mesh.buffer, *batch);
+            }else if (SpriteInstanceChunkList* chunkList = spriteInstances ? spriteInstanceChunksOf(entity) : nullptr){
+                drawSpriteChunks(render, mesh.submeshes[i], *chunkList, mesh.submeshes[i].shader.get(), (int)TextureShaderType::BASECOLOR, transform, camera.farClip, camera.frustumPlanes);
             }else if (spriteInstances){
                 drawSpriteInstances(render, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].shader.get(), (int)TextureShaderType::BASECOLOR);
             }else if (tilemap && !tilemapDrawRanges.empty()){
@@ -11124,6 +11171,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                                       mesh.submeshes[i].slotVSDepthTerrain);
             }else if (batch){
                 drawBatchGeometry(depthRender, mesh.buffer, *batch);
+            }else if (SpriteInstanceChunkList* chunkList = spriteInstances ? spriteInstanceChunksOf(entity) : nullptr){
+                drawSpriteChunks(depthRender, mesh.submeshes[i], *chunkList, mesh.submeshes[i].depthShader.get(), (int)TextureShaderType::DEPTHTEXTURE, transform, cameraFar, frustumPlanes);
             }else if (spriteInstances){
                 drawSpriteInstances(depthRender, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].depthShader.get(), (int)TextureShaderType::DEPTHTEXTURE);
             }else if (tilemap && !tilemapDrawRanges.empty()){
@@ -13478,7 +13527,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     render.beginLoad(ui.primitiveType);
 
     // (an Image showing a FluidSimulation's output samples it even without a texture of its own)
-    bool hasUITexture = !ui.texture.empty() || (!isText && frameFluids && frameFluids->getMaterialTexture(entity));
+    bool hasUITexture = !ui.texture.empty() || (!isText && lentTexture(entity));
 
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
@@ -13609,13 +13658,27 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 }
 
 bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) const{
-    if (!frameFluids || !frameFluids->hasMaterialFluids())
+    if (!hasLentTextures())
         return false;
     // (a material or shader that chose its blending keeps it)
     if (submesh.manifest || submesh.material.alphaMode != MaterialAlphaMode::AUTO || submesh.material.blendMode != MaterialBlendMode::AUTO)
         return false;
     bool transparent = false;
-    return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
+    return lentTexture(entity, &transparent) && transparent;
+}
+
+bool RenderSystem::hasLentTextures() const{
+    return (frameFluids && frameFluids->hasMaterialFluids()) || (frameTitles && frameTitles->hasDisplayTextures());
+}
+
+TextureRender* RenderSystem::lentTexture(Entity entity, bool* transparent) const{
+    if (frameFluids && frameFluids->hasMaterialFluids()){
+        if (TextureRender* fluid = frameFluids->getMaterialTexture(entity, transparent))
+            return fluid;
+    }
+    if (frameTitles && frameTitles->hasDisplayTextures())
+        return frameTitles->getDisplayTexture(entity, transparent);
+    return nullptr;
 }
 
 bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
@@ -16209,7 +16272,7 @@ SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const M
                                                           const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const{
     SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, mesh.submeshes[index], terrain, instmesh, hasMirror, sceneMeshShader);
     inputs.pixelArt = isPixelArtDrawable(entity);
-    if (index == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+    if (index == 0 && lentTexture(entity))
         inputs.baseColorTexture = true;
     return inputs;
 }
@@ -16866,6 +16929,7 @@ bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
            !isComponentDisabled<SpriteComponent>(scene, entity, signature) &&
            !isComponentDisabled<ModelComponent>(scene, entity, signature) &&
            !isComponentDisabled<TilemapComponent>(scene, entity, signature) &&
+           !isComponentDisabled<TilemapLayerComponent>(scene, entity, signature) &&
            !isComponentDisabled<TerrainComponent>(scene, entity, signature) &&
            !isComponentDisabled<InstancedMeshComponent>(scene, entity, signature) &&
            !isComponentDisabled<PointsComponent>(scene, entity, signature) &&
@@ -17432,8 +17496,10 @@ uint16_t RenderSystem::getScenePipelines() const{
 
         // (a scene-colour reader: the scene camera switches between the swapchain and an
         // offscreen target without reloading)
+        // (a game that can play a screen transition composites it offscreen on Vulkan, starting
+        // mid-run: its objects have these pipelines from load and do not reload when it does)
         if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect ||
-                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity)){
+                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity) || Engine::isCompositeExpected()){
             pipelines |= camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
         }
 
@@ -17469,6 +17535,9 @@ void RenderSystem::update(double dt){
     // shadow maps drawn before this update hold another scene
     shadowEpoch++;
     updateSerial = updateSerial + 1 ? updateSerial + 1 : 1;
+    // the titles lend their images to this update's loads too (an untextured Image loads with
+    // a texture binding while a title lends it one)
+    frameTitles = scene->findSystem<TitleArtSystem>().get();
 
     // Dynamic Batching turned off: every object draws alone again, with its own MVP and buffers
     if (!Engine::isDynamicBatching()){
@@ -18594,6 +18663,11 @@ void RenderSystem::drawFramePasses(){
     frameFluids = scene->findSystem<FluidSystem>().get();
     if (frameFluids)
         frameFluids->renderFluids();
+    // the Title Art Renderers' Realtime and Glyph Atlas renders of the frame (S81 R13), before
+    // any camera draws their Images and Sprites
+    frameTitles = scene->findSystem<TitleArtSystem>().get();
+    if (frameTitles)
+        frameTitles->renderTitles();
     // the Video Players' frames of this update into their textures, before anything samples them
     if (std::shared_ptr<VideoPlayerSystem> videos = scene->findSystem<VideoPlayerSystem>())
         videos->processConversions();
@@ -19802,11 +19876,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // 2D sorting (S52 R3): a pass without distance sort draws in this frame's gathered order (UI
     // subtrees in place), each draw with its batcher bucket; with defaults, the hierarchy's
     const std::vector<SortedDraw>* sortedDraws = (!distanceSort && sortingActive) ? &getSorted2DOrder() : nullptr;
-    const bool sorted2D = sortedDraws && sortedDraws->size() == (size_t)transforms->size();
-    const int hierarchyCount = (int)transforms->size();
+    // (a chunk list in Individual mode adds an item per row: at least one item per transform)
+    const bool sorted2D = sortedDraws && sortedDraws->size() >= (size_t)transforms->size();
+    const int hierarchyCount = sorted2D ? (int)sortedDraws->size() : (int)transforms->size();
     for (int k = 0; k < hierarchyCount; k++){
         const int i = sorted2D ? (int)(*sortedDraws)[(size_t)k].index : k;
         passSortBucket = sorted2D ? (*sortedDraws)[(size_t)k].bucket : 0;
+        passSpritePart = sorted2D ? (*sortedDraws)[(size_t)k].part : -1;
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -19925,8 +20001,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
                     !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
-                submitUI(entity, ui, transform, colorPip,
-                         (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
+                submitUI(entity, ui, transform, colorPip, hasLentTextures() ? lentTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -20004,6 +20079,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
     passSortBucket = 0;
+    passSpritePart = -1;
 
     //---------Draw transparent renderers----------
     // layered around the pass's waters (WaterLayering.h): nothing to do without one
@@ -20602,8 +20678,7 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
 
             if (!clippedAway && !skipping){
                 if (UIComponent* ui = drawsInLayer(entity, signature, transform)){
-                    drawUI(*ui, transform, layerPip,
-                           (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr, true);
+                    drawUI(*ui, transform, layerPip, hasLentTextures() ? lentTexture(entity) : nullptr, true);
                 }
             }
 

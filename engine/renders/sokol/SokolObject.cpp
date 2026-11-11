@@ -29,8 +29,22 @@ namespace {
     // binds and draws the draw set up (its pipeline and uniforms applied): its bindings only when
     // they are not the ones applied last (SokolSystem); false when the frame's descriptor buffer
     // has no room for it (Vulkan: skipped and counted)
+    // a draw that reads no buffer, image or sampler (a fullscreen triangle from gl_VertexIndex and
+    // uniforms only): sokol's validation rejects an empty sg_apply_bindings, and such a pipeline
+    // requires none
+    bool sokolObjectBindingsEmpty(const sg_bindings& bind){
+        if (bind.index_buffer.id != SG_INVALID_ID) return false;
+        for (const sg_buffer& buffer : bind.vertex_buffers)
+            if (buffer.id != SG_INVALID_ID) return false;
+        for (const sg_view& view : bind.views)
+            if (view.id != SG_INVALID_ID) return false;
+        for (const sg_sampler& sampler : bind.samplers)
+            if (sampler.id != SG_INVALID_ID) return false;
+        return true;
+    }
+
     bool bindAndDraw(const sg_bindings& bind, int baseElement, int numElements, int numInstances){
-        const bool rebind = !SokolSystem::isBindingsApplied(bind);
+        const bool rebind = !sokolObjectBindingsEmpty(bind) && !SokolSystem::isBindingsApplied(bind);
         if (!SokolSystem::reserveDescriptorBytes(rebind))
             return false;
         if (rebind)
@@ -399,6 +413,27 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
             target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
             return;
+        // Title Art's light blends (Render.h): their own alpha, offscreen or not
+        case BlendMode::LIGHT_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            return;
+        case BlendMode::MAX_PREMULTIPLIED:
+            target.blend.op_rgb = SG_BLENDOP_MAX;
+            target.blend.op_alpha = SG_BLENDOP_MAX;
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            return;
+        case BlendMode::ERASE_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            return;
         default:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -697,6 +732,7 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     case BlendOperation::ADD: return SG_BLENDOP_ADD;
     case BlendOperation::SUBTRACT: return SG_BLENDOP_SUBTRACT;
     case BlendOperation::REVERSE_SUBTRACT: return SG_BLENDOP_REVERSE_SUBTRACT;
+    case BlendOperation::MAX: return SG_BLENDOP_MAX;
     }
     return _SG_BLENDOP_DEFAULT;
 }

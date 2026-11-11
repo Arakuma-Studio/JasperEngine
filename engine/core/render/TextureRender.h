@@ -94,6 +94,8 @@ namespace jasperengine {
         // the size of the image (0 when there is none)
         int getWidth() const;
         int getHeight() const;
+        // the state a driver may compile a shader variant on (SokolTexture::getSamplingKey)
+        uint32_t getSamplingKey() const;
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();

@@ -460,7 +460,8 @@ namespace jasperengine::anim{
         void sampleSlot(size_t slot, float clipTime, Pose& out, bool additive, AdditiveReference reference, float referenceTime,
                         const AnimatorComponent& component, bool mirror = false, bool footIK = false);
         // the humanoid path of a retargeted slot at `clipTime` into `out` (holding the rest elsewhere)
-        void sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors) const;
+        void sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors,
+                            float stepFps = 0.0f) const;
         // the clip slot plays through the humanoid path: its source (null: a humanoid clip), false when it plays by path
         bool humanoidSource(const AnimatorClipSlot& slot, const AnimatorComponent& component,
                             std::shared_ptr<const RetargetSource>& source, std::string* error) const;

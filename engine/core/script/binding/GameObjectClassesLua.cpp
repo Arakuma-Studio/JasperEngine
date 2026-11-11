@@ -895,9 +895,9 @@ bool luaShakeVectorField(lua_State* L, int index, const char* key, Vector3& out,
     return ok;
 }
 
-// preset: a built-in name or a .shake path, or a table {type = "one_shot"|"sustained", strength,
-// roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3} whose
-// missing keys take the .shake defaults
+// preset: a built-in name or a .shake path, or a table {type = "one_shot"|"sustained"|"kick",
+// strength, roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3,
+// units = "view"|"pixels", tick} whose missing keys take the .shake defaults
 bool luaShakeSourceArg(lua_State* L, int index, ShakeSource& out, const char* function, ShakeArgError& error){
     index = lua_absindex(L, index);
     if (lua_type(L, index) == LUA_TSTRING){
@@ -912,13 +912,25 @@ bool luaShakeSourceArg(lua_State* L, int index, ShakeSource& out, const char* fu
     if (lua_type(L, -1) == LUA_TSTRING){
         if (!camera::shakeTypeFromName(lua_tostring(L, -1), preset.type)){
             lua_pop(L, 1);
-            return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+            return error.set(function, "preset type must be \"one_shot\", \"sustained\" or \"kick\"");
         }
     }else if (!lua_isnil(L, -1)){
         lua_pop(L, 1);
-        return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+        return error.set(function, "preset type must be \"one_shot\", \"sustained\" or \"kick\"");
     }
     lua_pop(L, 1);
+    lua_getfield(L, index, "units");
+    if (lua_type(L, -1) == LUA_TSTRING){
+        if (!camera::shakeUnitsFromName(lua_tostring(L, -1), preset.units)){
+            lua_pop(L, 1);
+            return error.set(function, "preset units must be \"view\" or \"pixels\"");
+        }
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "preset units must be \"view\" or \"pixels\"");
+    }
+    lua_pop(L, 1);
+    if (!luaShakeNumberField(L, index, "tick", preset.tick, function, error)) return false;
     if (!luaShakeNumberField(L, index, "strength", preset.strength, function, error) ||
         !luaShakeNumberField(L, index, "roughness", preset.roughness, function, error) ||
         !luaShakeNumberField(L, index, "fadeIn", preset.fadeIn, function, error) ||
@@ -3972,6 +3984,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getLength", &PoseAnimator::getLength)
         .addFunction("setSpeed", &PoseAnimator::setSpeed)
         .addFunction("getSpeed", &PoseAnimator::getSpeed)
+        // fps (0 = smooth): the pose holds on whole steps counted from each key (held drawings)
+        .addProperty("poseFrameRate", &PoseAnimator::getPoseFrameRate, &PoseAnimator::setPoseFrameRate)
         .addFunction("setWeight", &PoseAnimator::setWeight)
         .addFunction("getWeight", &PoseAnimator::getWeight)
         .addProperty("autoplay", &PoseAnimator::isAutoplay, &PoseAnimator::setAutoplay)
@@ -4154,6 +4168,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)
         .addProperty("speed", &AnimationPlayer::getSpeed, &AnimationPlayer::setSpeed)
+        // fps (0 = smooth): every track holds on whole steps from its previous key, fades step too
+        .addProperty("poseFrameRate", &AnimationPlayer::getPoseFrameRate, &AnimationPlayer::setPoseFrameRate)
         .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
         .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
@@ -4463,6 +4479,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBonePosition", &Animator::getBonePosition)
         .addFunction("getBoneRotation", &Animator::getBoneRotation)
         .addProperty("speed", &Animator::getSpeed, &Animator::setSpeed)
+        // fps (0 = smooth): every track holds on whole steps from its previous key, transitions
+        // step too; root motion and events stay at the true time
+        .addProperty("poseFrameRate", &Animator::getPoseFrameRate, &Animator::setPoseFrameRate)
         .addProperty("applyRootMotion", &Animator::isApplyRootMotion, &Animator::setApplyRootMotion)
         .addFunction("getDeltaPosition", &Animator::getDeltaPosition)
         .addFunction("getDeltaRotation", &Animator::getDeltaRotation)
@@ -4517,6 +4536,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("shakeAt", &luaCameraShakeShakeAt)
         // Adds trauma (0..1, clamped) to every global shaker: shake = trauma^power, decaying linearly
         .addStaticFunction("addTrauma", &CameraShake::addTrauma)
+        // A pixel kick of amplitudePx art pixels decaying over seconds on every global shaker
+        // (pixelfx's hit shake; whole pixels with the shaker's Pixel Snap)
+        .addStaticFunction("kick", &CameraShake::kick)
         .addStaticFunction("stopAll",
             luabridge::overload<>(&CameraShake::stopAll),
             luabridge::overload<float>(&CameraShake::stopAll))
@@ -4554,6 +4576,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // degrees
         .addProperty("traumaMaxAngle", &CameraShaker::getTraumaMaxAngle, &CameraShaker::setTraumaMaxAngle)
         .addProperty("traumaFrequency", &CameraShaker::getTraumaFrequency, &CameraShaker::setTraumaFrequency)
+        // Rounds the applied offset to whole art pixels and drops the roll (2D)
+        .addProperty("pixelSnap", &CameraShaker::isPixelSnap, &CameraShaker::setPixelSnap)
+        // Hz: the offset changes only on ticks of 1 / tickRate s (0: every frame)
+        .addProperty("tickRate", &CameraShaker::getTickRate, &CameraShaker::setTickRate)
         // The position offset applied this frame
         .addProperty("offsetPosition", &CameraShaker::getOffsetPosition)
         // The rotation offset applied this frame (Euler degrees)

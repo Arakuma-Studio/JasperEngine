@@ -1,0 +1,401 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/rainbow-candy-3d",
+  "revision": 1,
+  "name": {
+    "en": "Rainbow Candy 3D",
+    "ja": "虹キャンディ 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a rainbow face, four bands (gloss white, gold, brown metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "虹色の面の3D押し出し文字、4本の帯（白の光沢、金、茶のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "3d",
+    "rainbow",
+    "white",
+    "gold",
+    "metal",
+    "brown",
+    "black",
+    "bands",
+    "outline",
+    "glow",
+    "candy"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "three-dimensional",
+      "extruded",
+      "spectrum",
+      "multicolour",
+      "iridescent",
+      "snow",
+      "pearl white",
+      "golden",
+      "gilded",
+      "yellow gold",
+      "metallic",
+      "metal finish",
+      "chocolate",
+      "bronze",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine",
+      "glossy",
+      "sweet"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "虹",
+      "レインボー",
+      "にじ",
+      "niji",
+      "reinbo",
+      "白",
+      "ホワイト",
+      "しろ",
+      "shiro",
+      "金",
+      "ゴールド",
+      "きん",
+      "kin",
+      "gorudo",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "茶色",
+      "ブラウン",
+      "ちゃいろ",
+      "chairo",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "キャンディ",
+      "飴",
+      "あめ",
+      "kyandi",
+      "ame"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 11.6,
+    "curve_segments": 10,
+    "face": {
+      "preset": "rainbow",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ff7080"
+          },
+          {
+            "pos": 0.1,
+            "color": "#ff2a3a"
+          },
+          {
+            "pos": 0.22,
+            "color": "#ff7a00"
+          },
+          {
+            "pos": 0.34,
+            "color": "#ffd400"
+          },
+          {
+            "pos": 0.44,
+            "color": "#30e040"
+          },
+          {
+            "pos": 0.5,
+            "color": "#0a8a3a"
+          },
+          {
+            "pos": 0.53,
+            "color": "#003a5a"
+          },
+          {
+            "pos": 0.57,
+            "color": "#0070c0"
+          },
+          {
+            "pos": 0.66,
+            "color": "#20b8ff"
+          },
+          {
+            "pos": 0.82,
+            "color": "#3040ff"
+          },
+          {
+            "pos": 0.94,
+            "color": "#9020ff"
+          },
+          {
+            "pos": 1,
+            "color": "#e0a0ff"
+          }
+        ]
+      },
+      "gradient_span": "line",
+      "metallic": 0.8,
+      "roughness": 0.14,
+      "env_multiplier": 0.55,
+      "specular_multiplier": 1.4,
+      "clearcoat": 0.4,
+      "surface": {
+        "kind": "liquid",
+        "amount": 0.3,
+        "scale": 30,
+        "seed": 2
+      },
+      "emission": "#ffffff",
+      "emission_intensity": 0.08
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 11.2,
+        "offset": -11.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.4
+        },
+        "material": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1.6,
+        "depth": 9.6,
+        "offset": -11.2,
+        "bevel": {
+          "width": 1.6,
+          "depth": 1.6
+        },
+        "material": {
+          "preset": "gold",
+          "color": "#ffc23a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff8d8"
+              },
+              {
+                "pos": 0.06,
+                "color": "#ffe890"
+              },
+              {
+                "pos": 0.16,
+                "color": "#ffc838"
+              },
+              {
+                "pos": 0.3,
+                "color": "#f0a018"
+              },
+              {
+                "pos": 0.4,
+                "color": "#c06a06"
+              },
+              {
+                "pos": 0.47,
+                "color": "#5a2602"
+              },
+              {
+                "pos": 0.51,
+                "color": "#1a0800"
+              },
+              {
+                "pos": 0.55,
+                "color": "#120500"
+              },
+              {
+                "pos": 0.6,
+                "color": "#5a2804"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c87810"
+              },
+              {
+                "pos": 0.84,
+                "color": "#f8b830"
+              },
+              {
+                "pos": 0.94,
+                "color": "#ffe080"
+              },
+              {
+                "pos": 1,
+                "color": "#fff4c8"
+              }
+            ]
+          },
+          "gradient_span": "line",
+          "gradient_bend": 0.6,
+          "metallic": 1,
+          "roughness": 0.06
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 9,
+        "offset": -9.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#3a1000",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#4a1a00",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 4.2,
+        "depth": 7,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#12001f",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#0a0014",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#b040ff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#fff4c8"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": -20,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1444,
+    "item": "f-3d-rainbow",
+    "license_note": "used with the author's permission"
+  }
+}

@@ -1,0 +1,4 @@
+The HDRIs in this folder come from Poly Haven (https://polyhaven.com) and are published under
+CC0 1.0 Universal (public domain dedication): https://polyhaven.com/license and
+https://creativecommons.org/publicdomain/zero/1.0/. manifest.json lists each file's title, slug,
+source URL and SHA-256; tools/titleart/fetch_hdris.py downloads them again.

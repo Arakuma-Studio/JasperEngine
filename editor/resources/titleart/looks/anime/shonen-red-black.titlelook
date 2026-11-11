@@ -1,0 +1,110 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/shonen-red-black",
+  "revision": 1,
+  "name": {
+    "en": "Shonen Red and Black",
+    "ja": "少年漫画の赤と黒"
+  },
+  "description": {
+    "en": "Red gradient face with a satin, a white line and a wide round-joined black outline, a drop shadow and halftone beta flash lines behind.",
+    "ja": "サテンを持つ赤のグラデーションの面、白い線、丸い角の太い黒い外縁、ドロップシャドウ、背後のハーフトーンのベタフラッシュ。"
+  },
+  "family": "anime",
+  "tags": [
+    "red",
+    "black",
+    "shonen",
+    "anime",
+    "manga",
+    "bold"
+  ],
+  "synonyms": {
+    "en": [
+      "battle manga",
+      "hot blooded",
+      "action title",
+      "fighting"
+    ],
+    "ja": [
+      "少年漫画",
+      "熱血",
+      "赤",
+      "黒",
+      "shōnen manga",
+      "nekketsu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "light",
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff1a1a"
+            },
+            {
+              "pos": 1,
+              "color": "#8a0000"
+            }
+          ]
+        }
+      },
+      "satin": {
+        "enabled": true
+      }
+    },
+    "rims": [
+      {
+        "width": 1
+      },
+      {
+        "width": 4,
+        "join": "round",
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "opacity": 0.6
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "speed_lines",
+      "preset": "beta",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

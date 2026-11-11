@@ -97,6 +97,7 @@ namespace jasperengine {
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);
+        static void registerTitleArtClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
@@ -109,6 +110,14 @@ namespace jasperengine {
         static void registerPixelArtClasses(lua_State *L);
         // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
         static void registerSortingClasses(lua_State *L);
+        // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
+        static void registerHitStopClasses(lua_State *L);
+        // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
+        static void registerTransitionClasses(lua_State *L);
+        // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
+        static void registerPixelFxClasses(lua_State *L);
+        // S50: Grid, TilemapLayer, Tileset, TileFlip (TilemapClassesLua.cpp)
+        static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

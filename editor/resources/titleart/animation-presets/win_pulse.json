@@ -1,0 +1,143 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "win_pulse",
+  "name": "Win Pulse",
+  "group": "loop",
+  "role": "win",
+  "duration": 2,
+  "wrap": "loop",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Pulses on the beat with a glow and a flash; sunburst rays turn.",
+  "params": [
+    {
+      "name": "bpm",
+      "label": "BPM",
+      "type": "number",
+      "default": 120,
+      "min": 30,
+      "max": 300
+    },
+    {
+      "name": "scale",
+      "label": "Scale",
+      "type": "number",
+      "default": 1.06,
+      "min": 1,
+      "max": 1.5
+    },
+    {
+      "name": "glow",
+      "label": "Glow",
+      "type": "number",
+      "default": 0.8,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "rays",
+      "label": "Rays",
+      "type": "bool",
+      "default": true
+    }
+  ],
+  "vars": {
+    "B": "60/bpm"
+  },
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.scale",
+      "relative": true,
+      "repeat": {
+        "count": "floor(D/B+0.001)",
+        "period": "B"
+      },
+      "keys": [
+        [
+          0,
+          1,
+          "sine_in_out"
+        ],
+        [
+          "B/2",
+          "scale",
+          "sine_in_out"
+        ],
+        [
+          "B",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "live.glow_pulse",
+      "repeat": {
+        "count": "floor(D/B+0.001)",
+        "period": "B"
+      },
+      "keys": [
+        [
+          0,
+          0,
+          "sine_in_out"
+        ],
+        [
+          "B/2",
+          "glow",
+          "sine_in_out"
+        ],
+        [
+          "B",
+          0
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "flash.amount",
+      "repeat": {
+        "count": "floor(D/B+0.001)",
+        "period": "B"
+      },
+      "keys": [
+        [
+          0,
+          0,
+          "sine_in_out"
+        ],
+        [
+          "B/2",
+          0.25,
+          "sine_in_out"
+        ],
+        [
+          "B",
+          0
+        ]
+      ]
+    },
+    {
+      "target": "generator:sunburst",
+      "field": "gen.rotation",
+      "when": "rays",
+      "drive": {
+        "from": -180,
+        "to": 180,
+        "cycles": 1,
+        "wrap": true
+      }
+    }
+  ],
+  "markers": [
+    {
+      "name": "onBeat",
+      "generate": {
+        "kind": "beats",
+        "period": "B"
+      }
+    }
+  ]
+}

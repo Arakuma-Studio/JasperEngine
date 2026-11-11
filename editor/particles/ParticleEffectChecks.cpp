@@ -3,6 +3,8 @@
 
 #include "ParticleEffectChecks.h"
 
+#include "pixelart/lint/EffectLints.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -277,11 +279,58 @@ namespace {
         return row;
     }
 
-    // S48's lints of an effect (S49 R38): one implementation, theirs; SKIP until S48 lands
+    // S48's lints of an effect (S49 R38): one implementation, S48's EffectLints, over the pixel
+    // view's cells (base pixels); the row in S91's check shape (lint::toCheckRow)
     Json s48(const char* id, const ParticleMeasurements& m){
-        Json row = qa::row(id, "content");
-        row["limited_by"] = m.pixelEffect ? std::string("needs S48 (Pixel FX): its EffectLints compute ") + id
-                                          : std::string("Not a pixel effect (S48's pixel-art lint).");
+        const std::string name = id;
+        if (!m.pixelEffect){
+            Json row = qa::row(id, "content");
+            row["limited_by"] = "Not a pixel effect (S48's pixel-art lint).";
+            return row;
+        }
+        if (!m.pixelGrid || m.pixelFrames.empty()){
+            Json row = qa::row(id, "content");
+            row["limited_by"] = "Measured on the pixel view's cells: run with view \"pixel\" and frames above 0.";
+            return row;
+        }
+        namespace lint = pixelart::lint;
+        const lint::FrameView frames = lint::frameView(m.pixelFrames);
+        lint::LintResult result;
+        if (name == "off_palette"){
+            // a particle effect's colours are its ramps, not a palette it names: off_palette SKIPs
+            result = lint::lintOffPalette(frames, {});
+        }else if (name == "partial_alpha"){
+            if (m.additive){
+                result.id = name;
+                result.status = lint::LintStatus::Skip;
+                result.thresholdSource = "default";
+                result.message = "an additive emitter adds light: its pixels have no alpha of their own";
+            }else{
+                result = lint::lintPartialAlpha(frames);
+            }
+        }else if (name == "spill"){
+            // the emitters' origin is the effect's box; pixelfx's margin of 24 base pixels around it
+            result = lint::lintSpill({frames}, {m.pixelSeed}, pixelart::IntRect{m.pixelOriginX, m.pixelOriginY, 1, 1}, 24);
+        }else if (name == "one_shot_end"){
+            const bool atEnd = !m.pixelTimes.empty() && m.pixelTimes.back() >= m.seconds - 1e-6;
+            if (m.looping || atEnd){
+                result = lint::lintOneShotEnd(&m.pixelFrames.back(), m.looping);
+            }else{
+                result.id = name;
+                result.status = lint::LintStatus::Skip;
+                result.thresholdSource = "default";
+                result.message = "no cell at the run's end: add a time equal to seconds (or the effect's duration)";
+            }
+        }else if (name == "loop_seam"){
+            result = lint::lintLoopSeam(frames, m.looping);
+        }else{
+            result.id = name;
+            result.status = lint::LintStatus::Skip;
+            result.thresholdSource = "default";
+            result.message = "a preview is one run: compare two runs of the same seed with their state_hash, or capture_contact_sheet with lint";
+        }
+        Json row = lint::toCheckRow(result, m.pixelTimes);
+        row["kind"] = "content";
         return row;
     }
 

@@ -1,0 +1,2507 @@
+{
+  "_about": "The Pachislop port's map (docs/specs/S84-title-library.md §6.7.1): Pachislop ids to library refs, families, bilingual names, font pairs, 2D reflection maps to S86 environments, field exceptions to the camelCase to snake_case rule (`<our schema kind>.<Pachislop key>`), members dropped with reasons (Pachislop path patterns: `[]` any index, `*` one segment, `**` any depth; `kind:<our kind>.<key>` for every place of a kind), template texts and the tag vocabulary the port derives synonyms from. A Pachislop id or text that holds a denied term (tools/titleart/denied_terms.txt) is written as `sha256:` and the hex SHA-256 of its UTF-8 (S84 Deviation 34): the port hashes what it reads, so a real dump and the committed one map alike. Pachislop is by SafEight, used with the author's permission. S87's Pachislop importer reads the same file.",
+  "source": {
+    "repository": "Pachislop",
+    "author": "SafEight",
+    "commit": "1c32502",
+    "license_note": "used with the author's permission"
+  },
+  "ids": {
+    "f-outline-white": "casino/outline-white",
+    "f-outline-blue": "casino/outline-blue",
+    "f-outline-green": "casino/outline-green",
+    "f-outline-purple": "casino/outline-purple",
+    "f-outline-red": "casino/outline-red",
+    "f-outline-gold": "casino/outline-gold",
+    "f-outline-silver": "casino/outline-silver",
+    "f-outline-zebra": "casino/outline-zebra",
+    "f-outline-giraffe": "casino/outline-giraffe",
+    "f-outline-leopard": "casino/outline-leopard",
+    "f-outline-rainbow": "casino/outline-rainbow",
+    "f-rainbow-kakutei": "casino/rainbow-confirm",
+    "f-rainbow-glass-gold": "casino/rainbow-glass-gold",
+    "f-pat-zebra": "casino/zebra-gold",
+    "f-pat-giraffe": "casino/giraffe",
+    "f-pat-leopard": "casino/leopard",
+    "f-pat-tiger": "casino/tiger",
+    "f-pat-checker": "casino/checker",
+    "f-plate-red": "casino/red-plate-gold-rim",
+    "f-plate-makura": "casino/pillow-plate-black-gold",
+    "sha256:81f37015e7fe5ceac56110dd6b9d2c4437aa0cfa3718a72dc38f92b828a51176": {
+      "ref": "casino/slanted-box-plate",
+      "withheld": true
+    },
+    "f-fx-jackpot": "casino/jackpot-rays-sparkles",
+    "f-3d-gold-plate": "casino/gold-on-red-stack-3d",
+    "f-3d-box-plate": "casino/slanted-box-plates-3d",
+    "f-3d-rainbow": "casino/rainbow-candy-3d",
+    "f-3d-rainbow-glass-gold": "casino/rainbow-glass-gold-3d",
+    "f-3d-popout": "casino/pop-out-gold-3d",
+    "f-3d-candy": "casino/candy-glitter-3d",
+    "f-3d-inflate": "casino/inflate-candy-3d",
+    "f-3d-two-tone": "casino/two-tone-split-3d",
+    "f-orb-candy-blue": "casino/orb-candy-blue-3d",
+    "f-orb-candy-green": "casino/orb-candy-green-3d",
+    "f-orb-candy-red": "casino/orb-candy-red-3d",
+    "f-orb-candy-gold": "casino/orb-candy-gold-3d",
+    "f-orb-candy-rainbow": "casino/orb-candy-rainbow-3d",
+    "f-orb-candy-white": "casino/orb-candy-white-3d",
+    "f-orb-candy-purple": "casino/orb-candy-purple-3d",
+    "f-orb-glass-green": "casino/orb-glass-green-3d",
+    "f-orb-glass-purple": "casino/orb-glass-purple-3d",
+    "f-orb-metal-gold": "casino/orb-metal-gold-3d",
+    "f-orb-metal-silver": "casino/orb-metal-silver-3d",
+    "f-gold-classic": "metal/classic-gold",
+    "f-gold-hiro": {
+      "ref": "metal/double-stroke-gold",
+      "withheld": true
+    },
+    "f-gold-ultimate": "metal/gradient-map-gold",
+    "f-gold-liquid": "metal/liquid-gold",
+    "f-gold-crumple": "metal/crumpled-gold",
+    "f-gold-pale": "metal/pale-gold",
+    "f-silver-premium": "metal/silver-premium",
+    "f-rose-gold": "metal/rose-gold",
+    "f-copper": "metal/copper",
+    "f-black-gold": "metal/black-gold",
+    "f-black-silver": "metal/black-silver",
+    "f-chrome": "metal/chrome-bevel",
+    "f-chrome-satin": "metal/satin-chrome",
+    "f-chrome-liquid": "metal/liquid-chrome",
+    "f-fx-deepglow-gold": "metal/light-glow-gold",
+    "f-fx-chrome-glint": "metal/chrome-star-glints",
+    "f-3d-gold": "metal/gold-3d",
+    "f-3d-chrome": "metal/chrome-3d",
+    "f-3d-silver": "metal/silver-premium-3d",
+    "f-3d-black-chrome": "metal/black-chrome-red-line-3d",
+    "f-3d-red": "metal/candy-apple-red-3d",
+    "f-3d-chrome-blue": "metal/chrome-blue-stack-3d",
+    "f-3d-titanium": "metal/anodised-titanium-3d",
+    "f-3d-kin-gin": "metal/silver-on-gold-3d",
+    "f-3d-copper-bronze": "metal/rose-copper-teal-3d",
+    "f-3d-rose-chocolate": "metal/rose-gold-chocolate-3d",
+    "f-3d-carbon-orange": "metal/carbon-gunmetal-orange-3d",
+    "f-3d-emerald": "metal/emerald-metal-3d",
+    "f-3d-holo-silver": "metal/holographic-silver-3d",
+    "f-neon": "neon/neon-tube",
+    "f-neon-knockout": "neon/hollow-neon",
+    "f-3d-neon-glass": "neon/neon-glass-tube-3d",
+    "f-3d-violet-neon": "neon/violet-neon-edge-3d",
+    "f-3d-matte-glow": "neon/matte-black-glowing-rim-3d",
+    "f-fire-gekiatsu": "elements/red-hot-fire",
+    "f-lightning-blue": "elements/electric-blue",
+    "f-corona-purple": "elements/corona-purple",
+    "f-ice": "elements/ice",
+    "f-3d-ice-crystal": "elements/ice-crystal-glass-3d",
+    "f-3d-fire": "elements/fire-3d",
+    "f-3d-lava": "elements/lava-crust-3d",
+    "f-3d-toxic": "elements/toxic-acid-glow-3d",
+    "f-3d-aurora": "elements/aurora-teal-violet-3d",
+    "f-glass-red": "gems/red-glass",
+    "f-glass-blue": "gems/blue-glass",
+    "f-hologram": "gems/hologram-foil",
+    "f-3d-sapphire": "gems/sapphire-silver-frame-3d",
+    "f-3d-amethyst": "gems/amethyst-crystal-3d",
+    "f-3d-jade": "gems/jade-gold-rim-3d",
+    "f-3d-obsidian": "gems/obsidian-gold-line-3d",
+    "f-3d-diamond": "gems/diamond-3d",
+    "f-3d-pearl-pink": "gems/pearl-pink-rim-3d",
+    "f-brush-black": "wa/ink-brush",
+    "f-brush-red": "wa/red-brush",
+    "f-brush-kasure": "wa/dry-brush-ink",
+    "f-pat-sakura": "wa/sakura-pink",
+    "f-pat-seigaiha": "wa/seigaiha-gold",
+    "f-3d-shu-lacquer": "wa/vermilion-lacquer-gold-leaf-3d",
+    "f-3d-lacquer-gold": "wa/black-lacquer-gold-3d",
+    "f-3d-sometsuke": "wa/porcelain-cobalt-3d",
+    "f-3d-sakura": "wa/sakura-pearl-3d",
+    "f-3d-galaxy": "scifi/galaxy-starfield-3d",
+    "f-pat-hazard": "scifi/hazard-stripes",
+    "t-kakutei-rainbow": "casino/confirm-rainbow",
+    "t-gekiatsu-fire": "casino/red-hot-fire",
+    "t-gekiatsu-burst": "casino/red-hot-burst",
+    "t-oatari-3d": "casino/big-win-3d",
+    "t-bigbonus-3d": "casino/big-bonus-3d",
+    "t-bonus-ribbon": "casino/bonus-ribbon",
+    "t-counter-100g": "casino/game-counter",
+    "t-giji-ren": "casino/chain-x3-slanted",
+    "t-horyu-orb": "casino/reserve-orbs-3d",
+    "t-push-button": "casino/push-button-candy-3d",
+    "t-zugara-7": "casino/reel-symbol-7",
+    "t-serif": "casino/speech-frame-red",
+    "t-cutin": "casino/cut-in-band",
+    "t-kakutei-giraffe-3d": "casino/confirm-giraffe-3d",
+    "t-shindai-flyer": "casino/new-machine-flyer",
+    "t-chance": "casino/chance-green-blue",
+    "t-gekinetsu-brush": "wa/red-hot-brush-vertical",
+    "t-premium": "casino/premium-black-gloss",
+    "t-rainbow-3d": "casino/attack-chance-rainbow-3d",
+    "t-popout-3d": "casino/rush-pop-out-3d",
+    "t-cho-gekiatsu": "casino/super-red-hot",
+    "t-satin-chrome": "metal/special-satin-chrome",
+    "sha256:9f86d666fcb4d3c3e2f700a794ff5340e88d0f025663700143ed10f735c7c374": {
+      "ref": "casino/slanted-box-plate",
+      "withheld": true
+    },
+    "t-kanzen-fukkatsu": "metal/liquid-gold-vertical-kicker",
+    "t-push-inflate": "casino/push-button-inflate-3d",
+    "t-ganso-3d": "casino/original-depth-fade-3d",
+    "t-yaku-80": "casino/about-80-percent-3d",
+    "t-neon-knockout": "neon/fever-hollow-neon",
+    "t-kasure-brush": "wa/awakening-dry-brush",
+    "t-gekiatsu-rim-glow": "casino/red-hot-rim-glow",
+    "t-kakutei-zebra-clip": "casino/confirm-zebra-clip",
+    "t-bigbonus-3d-groups": "casino/big-bonus-3d-groups",
+    "t-recipe-gekinetsu": "casino/red-hot-plate-fx",
+    "t-recipe-cutin": "casino/cut-in-band-fx",
+    "t-recipe-rush": "casino/rush-title-fx",
+    "t-recipe-premium-rainbow": "casino/premium-rainbow-fx",
+    "t-recipe-horyu-issen": "casino/reserve-flash-fx",
+    "white": "white",
+    "blue": "blue",
+    "green": "green",
+    "purple": "purple",
+    "red": "red",
+    "gold": "gold",
+    "silver": "silver",
+    "zebra": "zebra",
+    "giraffe": "giraffe",
+    "leopard": "leopard",
+    "rainbow": "rainbow"
+  },
+  "families": {
+    "casino": {
+      "en": "Casino & Pachislot",
+      "ja": "カジノ・パチスロ"
+    },
+    "metal": {
+      "en": "Metal & Chrome",
+      "ja": "メタル・クローム"
+    },
+    "neon": {
+      "en": "Neon",
+      "ja": "ネオン"
+    },
+    "elements": {
+      "en": "Fire, Ice & Energy",
+      "ja": "炎・氷・エネルギー"
+    },
+    "gems": {
+      "en": "Gems & Glass",
+      "ja": "宝石・ガラス"
+    },
+    "wa": {
+      "en": "Japanese Wa",
+      "ja": "和風"
+    },
+    "scifi": {
+      "en": "Sci-fi",
+      "ja": "SF"
+    },
+    "fantasy": {
+      "en": "Fantasy",
+      "ja": "ファンタジー"
+    },
+    "horror": {
+      "en": "Horror",
+      "ja": "ホラー"
+    },
+    "cartoon": {
+      "en": "Cartoon",
+      "ja": "カートゥーン"
+    },
+    "retro": {
+      "en": "Retro Arcade",
+      "ja": "レトロアーケード"
+    },
+    "anime": {
+      "en": "Anime",
+      "ja": "アニメ"
+    },
+    "sports": {
+      "en": "Sports",
+      "ja": "スポーツ"
+    },
+    "minimal": {
+      "en": "Minimal",
+      "ja": "ミニマル"
+    }
+  },
+  "names": {
+    "looks": {
+      "casino/outline-white": {
+        "en": "Outline White",
+        "ja": "白の縁取り"
+      },
+      "casino/outline-blue": {
+        "en": "Outline Blue",
+        "ja": "青の縁取り"
+      },
+      "casino/outline-green": {
+        "en": "Outline Green",
+        "ja": "緑の縁取り"
+      },
+      "casino/outline-purple": {
+        "en": "Outline Purple",
+        "ja": "紫の縁取り"
+      },
+      "casino/outline-red": {
+        "en": "Outline Red",
+        "ja": "赤の縁取り"
+      },
+      "casino/outline-gold": {
+        "en": "Outline Gold",
+        "ja": "金の縁取り"
+      },
+      "casino/outline-silver": {
+        "en": "Outline Silver",
+        "ja": "銀の縁取り"
+      },
+      "casino/outline-zebra": {
+        "en": "Outline Zebra",
+        "ja": "ゼブラ柄の縁取り"
+      },
+      "casino/outline-giraffe": {
+        "en": "Outline Giraffe",
+        "ja": "キリン柄の縁取り"
+      },
+      "casino/outline-leopard": {
+        "en": "Outline Leopard",
+        "ja": "ヒョウ柄の縁取り"
+      },
+      "casino/outline-rainbow": {
+        "en": "Outline Rainbow",
+        "ja": "虹色の縁取り"
+      },
+      "casino/rainbow-confirm": {
+        "en": "Rainbow Confirm",
+        "ja": "虹確定"
+      },
+      "casino/rainbow-glass-gold": {
+        "en": "Rainbow Glass + Gold Rim",
+        "ja": "虹ガラス + 金縁"
+      },
+      "casino/zebra-gold": {
+        "en": "Zebra Gold",
+        "ja": "ゼブラ柄ゴールド"
+      },
+      "casino/giraffe": {
+        "en": "Giraffe",
+        "ja": "キリン柄"
+      },
+      "casino/leopard": {
+        "en": "Leopard",
+        "ja": "ヒョウ柄"
+      },
+      "casino/tiger": {
+        "en": "Tiger",
+        "ja": "虎柄"
+      },
+      "casino/checker": {
+        "en": "Checker",
+        "ja": "チェッカー"
+      },
+      "casino/red-plate-gold-rim": {
+        "en": "Red Plate + Gold Rim",
+        "ja": "赤プレート + 金縁"
+      },
+      "casino/pillow-plate-black-gold": {
+        "en": "Pillow Plate Black / Gold",
+        "ja": "まくら 黒 / 金"
+      },
+      "casino/slanted-box-plate": {
+        "en": "Slanted Box Plate",
+        "ja": "斜めボックスプレート"
+      },
+      "casino/jackpot-rays-sparkles": {
+        "en": "Jackpot Rays + Sparkles",
+        "ja": "大当り 光線 + きらめき"
+      },
+      "casino/gold-on-red-stack-3d": {
+        "en": "Gold on Red Stack 3D",
+        "ja": "赤地に金の外枠 3D"
+      },
+      "casino/slanted-box-plates-3d": {
+        "en": "Slanted Box Plates 3D",
+        "ja": "斜めボックスプレート 3D"
+      },
+      "casino/rainbow-candy-3d": {
+        "en": "Rainbow Candy 3D",
+        "ja": "虹キャンディ 3D"
+      },
+      "casino/rainbow-glass-gold-3d": {
+        "en": "Rainbow Glass + Gold Rim 3D",
+        "ja": "虹ガラス + 金縁 3D"
+      },
+      "casino/pop-out-gold-3d": {
+        "en": "Pop-out Gold 3D",
+        "ja": "飛び出しゴールド 3D"
+      },
+      "casino/candy-glitter-3d": {
+        "en": "Candy Glitter 3D",
+        "ja": "キャンディグリッター 3D"
+      },
+      "casino/inflate-candy-3d": {
+        "en": "Inflate Candy 3D",
+        "ja": "ぷっくりキャンディ 3D"
+      },
+      "casino/two-tone-split-3d": {
+        "en": "Two-tone Split 3D",
+        "ja": "ツートン 3D"
+      },
+      "casino/orb-candy-blue-3d": {
+        "en": "Orb Candy Blue 3D",
+        "ja": "キャンディ保留玉 青 3D"
+      },
+      "casino/orb-candy-green-3d": {
+        "en": "Orb Candy Green 3D",
+        "ja": "キャンディ保留玉 緑 3D"
+      },
+      "casino/orb-candy-red-3d": {
+        "en": "Orb Candy Red 3D",
+        "ja": "キャンディ保留玉 赤 3D"
+      },
+      "casino/orb-candy-gold-3d": {
+        "en": "Orb Candy Gold 3D",
+        "ja": "キャンディ保留玉 金 3D"
+      },
+      "casino/orb-candy-rainbow-3d": {
+        "en": "Orb Candy Rainbow 3D",
+        "ja": "キャンディ保留玉 虹 3D"
+      },
+      "casino/orb-candy-white-3d": {
+        "en": "Orb Candy White 3D",
+        "ja": "キャンディ保留玉 白 3D"
+      },
+      "casino/orb-candy-purple-3d": {
+        "en": "Orb Candy Purple 3D",
+        "ja": "キャンディ保留玉 紫 3D"
+      },
+      "casino/orb-glass-green-3d": {
+        "en": "Orb Glass Green 3D",
+        "ja": "ガラス保留玉 緑 3D"
+      },
+      "casino/orb-glass-purple-3d": {
+        "en": "Orb Glass Purple 3D",
+        "ja": "ガラス保留玉 紫 3D"
+      },
+      "casino/orb-metal-gold-3d": {
+        "en": "Orb Metal Gold 3D",
+        "ja": "メタル保留玉 金 3D"
+      },
+      "casino/orb-metal-silver-3d": {
+        "en": "Orb Metal Silver 3D",
+        "ja": "メタル保留玉 銀 3D"
+      },
+      "metal/classic-gold": {
+        "en": "Classic Gold",
+        "ja": "クラシックゴールド"
+      },
+      "metal/double-stroke-gold": {
+        "en": "Double-stroke Gold",
+        "ja": "二重縁ゴールド"
+      },
+      "metal/gradient-map-gold": {
+        "en": "Gradient-map Gold",
+        "ja": "グラデーションマップゴールド"
+      },
+      "metal/liquid-gold": {
+        "en": "Liquid Gold",
+        "ja": "液体金"
+      },
+      "metal/crumpled-gold": {
+        "en": "Crumpled Gold",
+        "ja": "クシャ金"
+      },
+      "metal/pale-gold": {
+        "en": "Pale Gold",
+        "ja": "淡いゴールド"
+      },
+      "metal/silver-premium": {
+        "en": "Silver Premium",
+        "ja": "シルバープレミアム"
+      },
+      "metal/rose-gold": {
+        "en": "Rose Gold",
+        "ja": "ローズゴールド"
+      },
+      "metal/copper": {
+        "en": "Copper",
+        "ja": "銅"
+      },
+      "metal/black-gold": {
+        "en": "Black Gold",
+        "ja": "黒光沢 + 金縁"
+      },
+      "metal/black-silver": {
+        "en": "Black Silver",
+        "ja": "黒光沢 + 銀縁"
+      },
+      "metal/chrome-bevel": {
+        "en": "Chrome Bevel",
+        "ja": "クロームベベル"
+      },
+      "metal/satin-chrome": {
+        "en": "Satin Chrome",
+        "ja": "サテンクローム"
+      },
+      "metal/liquid-chrome": {
+        "en": "Liquid Chrome",
+        "ja": "液体クローム"
+      },
+      "metal/light-glow-gold": {
+        "en": "Light Glow Gold",
+        "ja": "ライトグローゴールド"
+      },
+      "metal/chrome-star-glints": {
+        "en": "Chrome Star Glints",
+        "ja": "クロームの星きらめき"
+      },
+      "metal/gold-3d": {
+        "en": "Gold 3D",
+        "ja": "ゴールド 3D"
+      },
+      "metal/chrome-3d": {
+        "en": "Chrome 3D",
+        "ja": "クローム 3D"
+      },
+      "metal/silver-premium-3d": {
+        "en": "Silver Premium 3D",
+        "ja": "シルバープレミアム 3D"
+      },
+      "metal/black-chrome-red-line-3d": {
+        "en": "Black Chrome + Red Line 3D",
+        "ja": "黒クローム + 赤ライン 3D"
+      },
+      "metal/candy-apple-red-3d": {
+        "en": "Candy-apple Red 3D",
+        "ja": "赤メタル 3D"
+      },
+      "metal/chrome-blue-stack-3d": {
+        "en": "Chrome + Blue Stack 3D",
+        "ja": "クローム + 青スタック 3D"
+      },
+      "metal/anodised-titanium-3d": {
+        "en": "Anodised Titanium 3D",
+        "ja": "青チタン 3D"
+      },
+      "metal/silver-on-gold-3d": {
+        "en": "Silver on Gold 3D",
+        "ja": "金銀 3D"
+      },
+      "metal/rose-copper-teal-3d": {
+        "en": "Rose Copper + Teal 3D",
+        "ja": "ローズカッパー + 青緑 3D"
+      },
+      "metal/rose-gold-chocolate-3d": {
+        "en": "Rose Gold + Chocolate 3D",
+        "ja": "ローズゴールド + チョコレート 3D"
+      },
+      "metal/carbon-gunmetal-orange-3d": {
+        "en": "Carbon Gunmetal + Orange 3D",
+        "ja": "カーボン + オレンジ 3D"
+      },
+      "metal/emerald-metal-3d": {
+        "en": "Emerald Metal 3D",
+        "ja": "エメラルドメタル 3D"
+      },
+      "metal/holographic-silver-3d": {
+        "en": "Holographic Silver 3D",
+        "ja": "ホログラムシルバー 3D"
+      },
+      "neon/neon-tube": {
+        "en": "Neon Tube",
+        "ja": "ネオン管"
+      },
+      "neon/hollow-neon": {
+        "en": "Hollow Neon",
+        "ja": "中抜きネオン"
+      },
+      "neon/neon-glass-tube-3d": {
+        "en": "Neon Glass Tube 3D",
+        "ja": "ネオンガラス管 3D"
+      },
+      "neon/violet-neon-edge-3d": {
+        "en": "Violet Neon Edge 3D",
+        "ja": "紫ネオンエッジ 3D"
+      },
+      "neon/matte-black-glowing-rim-3d": {
+        "en": "Matte Black + Glowing Rim 3D",
+        "ja": "マットブラック + 発光縁 3D"
+      },
+      "elements/red-hot-fire": {
+        "en": "Red Hot Fire",
+        "ja": "激アツの炎"
+      },
+      "elements/electric-blue": {
+        "en": "Electric Blue",
+        "ja": "青い電撃"
+      },
+      "elements/corona-purple": {
+        "en": "Corona Purple",
+        "ja": "紫のコロナ"
+      },
+      "elements/ice": {
+        "en": "Ice",
+        "ja": "氷"
+      },
+      "elements/ice-crystal-glass-3d": {
+        "en": "Ice Crystal Glass 3D",
+        "ja": "氷結クリスタル 3D"
+      },
+      "elements/fire-3d": {
+        "en": "Fire 3D",
+        "ja": "炎 3D"
+      },
+      "elements/lava-crust-3d": {
+        "en": "Lava Crust 3D",
+        "ja": "溶岩 3D"
+      },
+      "elements/toxic-acid-glow-3d": {
+        "en": "Toxic Acid Glow 3D",
+        "ja": "毒々しい発光 3D"
+      },
+      "elements/aurora-teal-violet-3d": {
+        "en": "Aurora Teal → Violet 3D",
+        "ja": "オーロラ 3D"
+      },
+      "gems/red-glass": {
+        "en": "Red Glass",
+        "ja": "赤ガラス"
+      },
+      "gems/blue-glass": {
+        "en": "Blue Glass",
+        "ja": "青ガラス"
+      },
+      "gems/hologram-foil": {
+        "en": "Hologram Foil",
+        "ja": "ホログラム箔"
+      },
+      "gems/sapphire-silver-frame-3d": {
+        "en": "Sapphire + Silver Frame 3D",
+        "ja": "サファイア + 銀枠 3D"
+      },
+      "gems/amethyst-crystal-3d": {
+        "en": "Amethyst Crystal 3D",
+        "ja": "アメジスト 3D"
+      },
+      "gems/jade-gold-rim-3d": {
+        "en": "Jade + Gold Rim 3D",
+        "ja": "翡翠 + 金縁 3D"
+      },
+      "gems/obsidian-gold-line-3d": {
+        "en": "Obsidian + Gold Line 3D",
+        "ja": "黒曜石 + 金ライン 3D"
+      },
+      "gems/diamond-3d": {
+        "en": "Diamond 3D",
+        "ja": "ダイヤモンド 3D"
+      },
+      "gems/pearl-pink-rim-3d": {
+        "en": "Pearl + Pink Rim 3D",
+        "ja": "パール + ピンク縁 3D"
+      },
+      "wa/ink-brush": {
+        "en": "Ink Brush",
+        "ja": "筆文字 墨"
+      },
+      "wa/red-brush": {
+        "en": "Red Brush",
+        "ja": "筆文字 朱"
+      },
+      "wa/dry-brush-ink": {
+        "en": "Dry-brush Ink",
+        "ja": "かすれ墨"
+      },
+      "wa/sakura-pink": {
+        "en": "Sakura Pink",
+        "ja": "桜ピンク"
+      },
+      "wa/seigaiha-gold": {
+        "en": "Seigaiha Gold",
+        "ja": "青海波 金"
+      },
+      "wa/vermilion-lacquer-gold-leaf-3d": {
+        "en": "Vermilion Lacquer + Gold Leaf 3D",
+        "ja": "朱塗り + 金箔 3D"
+      },
+      "wa/black-lacquer-gold-3d": {
+        "en": "Black Lacquer + Gold 3D",
+        "ja": "漆黒 + 金 3D"
+      },
+      "wa/porcelain-cobalt-3d": {
+        "en": "Porcelain + Cobalt 3D",
+        "ja": "染付 3D"
+      },
+      "wa/sakura-pearl-3d": {
+        "en": "Sakura Pearl 3D",
+        "ja": "桜パール 3D"
+      },
+      "scifi/galaxy-starfield-3d": {
+        "en": "Galaxy Starfield 3D",
+        "ja": "銀河 3D"
+      },
+      "scifi/hazard-stripes": {
+        "en": "Hazard Stripes",
+        "ja": "警告ストライプ"
+      }
+    },
+    "templates": {
+      "casino/confirm-rainbow": {
+        "en": "Confirm (rainbow)",
+        "ja": "確定 (虹)"
+      },
+      "casino/red-hot-fire": {
+        "en": "Red Hot (fire)",
+        "ja": "激アツ (炎)"
+      },
+      "casino/red-hot-burst": {
+        "en": "Red Hot Burst (red and gold on a burst)",
+        "ja": "激アツ ギザギザ (赤と金、バースト)"
+      },
+      "casino/big-win-3d": {
+        "en": "Big Win (3D gold, rays)",
+        "ja": "大当り (3D 金 + 光線)"
+      },
+      "casino/big-bonus-3d": {
+        "en": "Big Bonus (3D gold plates)",
+        "ja": "BIG BONUS (3D 金プレート)"
+      },
+      "casino/bonus-ribbon": {
+        "en": "Bonus Ribbon (arch warp)",
+        "ja": "BONUS リボン (アーチ)"
+      },
+      "casino/game-counter": {
+        "en": "Game Counter (+100G)",
+        "ja": "ゲーム数カウンター (+100G)"
+      },
+      "casino/chain-x3-slanted": {
+        "en": "Chain ×3 (slanted)",
+        "ja": "擬似連×3 (斜め)"
+      },
+      "casino/reserve-orbs-3d": {
+        "en": "Reserve Orbs (3D spheres)",
+        "ja": "保留玉 (3D)"
+      },
+      "casino/push-button-candy-3d": {
+        "en": "Push Button (3D candy dome)",
+        "ja": "PUSH ボタン (3D キャンディ)"
+      },
+      "casino/reel-symbol-7": {
+        "en": "Reel Symbol 7 (pillow + band)",
+        "ja": "図柄 7 (まくら + 帯)"
+      },
+      "casino/speech-frame-red": {
+        "en": "Speech Frame (red text)",
+        "ja": "セリフ枠 (赤文字)"
+      },
+      "casino/cut-in-band": {
+        "en": "Cut-in Band (chance)",
+        "ja": "カットイン帯 (チャンス)"
+      },
+      "casino/confirm-giraffe-3d": {
+        "en": "Confirm Giraffe (3D glint)",
+        "ja": "キリン柄 確定 (3D きらめき)"
+      },
+      "casino/new-machine-flyer": {
+        "en": "New Machine Flyer (gold)",
+        "ja": "新台入替 (金のチラシ)"
+      },
+      "casino/chance-green-blue": {
+        "en": "Chance (green / blue)",
+        "ja": "チャンス (緑 / 青)"
+      },
+      "wa/red-hot-brush-vertical": {
+        "en": "Red Hot Brush (vertical)",
+        "ja": "激熱 筆文字 (縦長)"
+      },
+      "casino/premium-black-gloss": {
+        "en": "Premium (black gloss serif)",
+        "ja": "プレミアム (黒光沢の明朝)"
+      },
+      "casino/attack-chance-rainbow-3d": {
+        "en": "Attack Chance (3D rainbow, two lines)",
+        "ja": "ATTACK CHANCE (3D 虹、2行)"
+      },
+      "casino/rush-pop-out-3d": {
+        "en": "Rush Pop-out (3D slanted extrusion + AO)",
+        "ja": "飛び出し RUSH (3D 斜め押し出し + AO)"
+      },
+      "casino/super-red-hot": {
+        "en": "Super Red Hot (line scale)",
+        "ja": "超 激アツ (行ごとの大きさ)"
+      },
+      "metal/special-satin-chrome": {
+        "en": "Special (satin chrome)",
+        "ja": "SPECIAL (サテンクローム)"
+      },
+      "casino/slanted-box-plate": {
+        "en": "Slanted Box Plate (one strike)",
+        "ja": "斜めボックスプレート (一撃必殺)"
+      },
+      "metal/liquid-gold-vertical-kicker": {
+        "en": "Liquid Gold Vertical + Kicker",
+        "ja": "液体金 縦書き + キッカー"
+      },
+      "casino/push-button-inflate-3d": {
+        "en": "Push Button (3D inflate)",
+        "ja": "PUSH ボタン (3D ぷっくり)"
+      },
+      "casino/original-depth-fade-3d": {
+        "en": "The Original (3D depth-fade walls)",
+        "ja": "元祖 (3D 奥行きフェードの側面)"
+      },
+      "casino/about-80-percent-3d": {
+        "en": "About 80% (small, big, small; 3D gold)",
+        "ja": "約80% (小・大・小、3D 金)"
+      },
+      "neon/fever-hollow-neon": {
+        "en": "Fever (hollow neon)",
+        "ja": "FEVER (中抜きネオン)"
+      },
+      "wa/awakening-dry-brush": {
+        "en": "Awakening (dry brush)",
+        "ja": "覚醒 (かすれ筆)"
+      },
+      "casino/red-hot-rim-glow": {
+        "en": "Red Hot Rim Glow (part effect, Hue/Saturation)",
+        "ja": "激アツ 縁の光彩 (パーツ効果、色相・彩度)"
+      },
+      "casino/confirm-zebra-clip": {
+        "en": "Confirm Zebra (clipping mask, Curves)",
+        "ja": "確定 金 + ゼブラ (クリッピング、トーンカーブ)"
+      },
+      "casino/big-bonus-3d-groups": {
+        "en": "Big Bonus 3D (band glow, nested groups, Photo Filter)",
+        "ja": "BIG BONUS 3D (帯の光彩、入れ子のグループ、レンズフィルター)"
+      },
+      "casino/red-hot-plate-fx": {
+        "en": "Red Hot Plate FX (focus lines, fire, embers)",
+        "ja": "激熱プレート (集中線 + 炎 + 火の粉)"
+      },
+      "casino/cut-in-band-fx": {
+        "en": "Cut-in Band FX (flow lines, lightning, speech)",
+        "ja": "カットイン帯 (流線 + 稲妻 + セリフ)"
+      },
+      "casino/rush-title-fx": {
+        "en": "Rush Title FX (sunburst, focus lines, glitter)",
+        "ja": "RUSH タイトル (サンバースト + 集中線 + きらめき)"
+      },
+      "casino/premium-rainbow-fx": {
+        "en": "Premium Rainbow FX (tunnel, shards, bokeh)",
+        "ja": "プレミアム虹 (トンネル + 破片 + ボケ)"
+      },
+      "casino/reserve-flash-fx": {
+        "en": "Reserve Flash FX (ink burst, light pillar, ring glow)",
+        "ja": "保留変化 一閃 (墨のバースト + 光の柱 + リングの光彩)"
+      }
+    }
+  },
+  "fonts": {
+    "dela-gothic-one": {
+      "latin": "dela-gothic-one",
+      "ja": "dela-gothic-one"
+    },
+    "mplus1p-black": {
+      "latin": "mplus1p-black",
+      "ja": "mplus1p-black"
+    },
+    "zen-kaku-gothic-black": {
+      "latin": "zen-kaku-gothic-new-black",
+      "ja": "zen-kaku-gothic-new-black"
+    },
+    "zen-old-mincho-black": {
+      "latin": "zen-old-mincho-black",
+      "ja": "zen-old-mincho-black"
+    },
+    "yuji-syuku": {
+      "latin": "yuji-syuku",
+      "ja": "yuji-syuku"
+    },
+    "reggae-one": {
+      "latin": "reggae-one",
+      "ja": "reggae-one"
+    },
+    "rocknroll-one": {
+      "latin": "rocknroll-one",
+      "ja": "rocknroll-one"
+    },
+    "rampart-one": {
+      "latin": "rampart-one",
+      "ja": "rampart-one"
+    },
+    "train-one": {
+      "latin": "train-one",
+      "ja": "train-one"
+    },
+    "playfair-black-italic": {
+      "latin": "playfair-black-italic",
+      "ja": "zen-old-mincho-black",
+      "variations": {
+        "opsz": 5,
+        "wght": 900
+      },
+      "approximation": "Playfair Black Italic is upstream's variable italic at wght 900, opsz 5 (Pachislop ships a static instance of it); kana and kanji fall back to Zen Old Mincho Black"
+    },
+    "potta-one": {
+      "latin": "potta-one",
+      "ja": "potta-one"
+    },
+    "mochiy-pop-one": {
+      "latin": "mochiy-pop-one",
+      "ja": "mochiy-pop-one"
+    }
+  },
+  "environments": {
+    "highway": "highway",
+    "city": "city",
+    "sky": "sky",
+    "studio": "softbox"
+  },
+  "fields": {
+    "rim.offsetX": {
+      "to": "offset",
+      "component": 0
+    },
+    "rim.offsetY": {
+      "to": "offset",
+      "component": 1,
+      "negate": true
+    },
+    "reflection.map": {
+      "to": "map",
+      "environment": true
+    },
+    "fill_image.offsetX": {
+      "to": "offset",
+      "component": 0
+    },
+    "fill_image.offsetY": {
+      "to": "offset",
+      "component": 1
+    },
+    "fill_image.rotate": "rotation",
+    "fill_image.assetId": "image",
+    "pattern.assetId": "image",
+    "char_adjust.dx": {
+      "to": "offset",
+      "component": 0
+    },
+    "char_adjust.dy": {
+      "to": "offset",
+      "component": 1
+    },
+    "char_adjust.rotate": "rotation",
+    "char_adjust.face3d": "face_3d",
+    "char_adjust.side3d": "side_3d",
+    "char_adjust.bands3d": "bands_3d",
+    "line_adjust.dx": {
+      "to": "offset",
+      "component": 0
+    },
+    "line_adjust.dy": {
+      "to": "offset",
+      "component": 1
+    },
+    "transform.x": {
+      "to": "position",
+      "component": 0
+    },
+    "transform.y": {
+      "to": "position",
+      "component": 1
+    },
+    "transform.rotZ": "rotation",
+    "transform.rotX": "rotation_x",
+    "transform.rotY": "rotation_y",
+    "transform.opacity": "^opacity",
+    "layer.text.tsume": "proportional",
+    "mask.kind": "type",
+    "mask.layerId": "layer",
+    "mask.shape.source": "shape",
+    "mask.shape.x": {
+      "to": "position",
+      "component": 0
+    },
+    "mask.shape.y": {
+      "to": "position",
+      "component": 1
+    },
+    "mask.gradient.x": {
+      "to": "position",
+      "component": 0
+    },
+    "mask.gradient.y": {
+      "to": "position",
+      "component": 1
+    },
+    "mask.gradient.angle": {
+      "to": "angle",
+      "negate": true
+    },
+    "camera_3d.rotX": "rotation_x",
+    "camera_3d.rotY": "rotation_y",
+    "camera_3d.rotZ": "rotation",
+    "light_3d.x": {
+      "to": "position",
+      "component": 0
+    },
+    "light_3d.y": {
+      "to": "position",
+      "component": 1
+    },
+    "light_3d.z": {
+      "to": "position",
+      "component": 2
+    },
+    "scene_3d.toneMapping": {
+      "to": "tone_mapping",
+      "values": {
+        "aces": "aces_filmic"
+      }
+    },
+    "environment_3d.customAssetId": "hdri"
+  },
+  "dropped": [
+    {
+      "path": "look.builtin",
+      "reason": "every factory look is built in; the library knows a built-in by where its file lives"
+    },
+    {
+      "path": "look.group",
+      "reason": "Pachislop's library section; the families of S84 §6.6 replace it (`family`)"
+    },
+    {
+      "path": "look.**.id",
+      "reason": "a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+    },
+    {
+      "path": "**.style3d.shadow",
+      "reason": "the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+    },
+    {
+      "path": "template.version",
+      "reason": "Pachislop's project format version (11); the document has its own `version`"
+    },
+    {
+      "path": "template.comp.dpi",
+      "reason": "the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)"
+    },
+    {
+      "path": "kind:gen:sunburst.count",
+      "reason": "a stale key some templates carry beside `rays`: Pachislop's sunburst reads only `rays`"
+    },
+    {
+      "path": "template.layers[].solo",
+      "reason": "a Layers-panel view state; S80 documents have no solo"
+    },
+    {
+      "path": "template.layers[].fill.span",
+      "reason": "a background layer becomes a Fill generator, which always spans the canvas"
+    }
+  ],
+  "template_texts": {
+    "casino/confirm-rainbow": [
+      {
+        "source": "確定",
+        "name": "text",
+        "en": "WINNER",
+        "ja": "確定"
+      }
+    ],
+    "casino/red-hot-fire": [
+      {
+        "source": "激アツ",
+        "name": "text",
+        "en": "RED HOT",
+        "ja": "激アツ"
+      }
+    ],
+    "casino/red-hot-burst": [
+      {
+        "source": "激アツ",
+        "name": "text",
+        "en": "RED HOT",
+        "ja": "激アツ",
+        "chars_en": {
+          "0": 0,
+          "1": 0,
+          "2": 0
+        }
+      }
+    ],
+    "casino/big-win-3d": [
+      {
+        "source": "大当り",
+        "name": "text",
+        "en": "BIG WIN",
+        "ja": "大当り"
+      }
+    ],
+    "casino/big-bonus-3d": [
+      {
+        "source": "BIG\nBONUS",
+        "name": "text",
+        "en": "BIG\nBONUS",
+        "ja": "BIG\nBONUS"
+      }
+    ],
+    "casino/bonus-ribbon": [
+      {
+        "source": "BONUS",
+        "name": "text",
+        "en": "BONUS",
+        "ja": "BONUS"
+      }
+    ],
+    "casino/game-counter": [
+      {
+        "source": "+100G",
+        "name": "text",
+        "en": "+100G",
+        "ja": "+100G"
+      }
+    ],
+    "casino/chain-x3-slanted": [
+      {
+        "source": "擬似連×3",
+        "name": "text",
+        "en": "CHAIN ×3",
+        "ja": "擬似連×3",
+        "chars_en": {
+          "6": 3,
+          "7": 4
+        }
+      }
+    ],
+    "casino/reserve-orbs-3d": [],
+    "casino/push-button-candy-3d": [
+      {
+        "source": "PUSH",
+        "name": "text",
+        "en": "PUSH",
+        "ja": "PUSH"
+      }
+    ],
+    "casino/reel-symbol-7": [
+      {
+        "source": "7",
+        "name": "text",
+        "en": "7",
+        "ja": "7"
+      }
+    ],
+    "casino/speech-frame-red": [
+      {
+        "source": "ここで決めろ！",
+        "name": "text",
+        "en": "THIS IS IT!",
+        "ja": "ここで決めろ！",
+        "chars_en": {
+          "8": 3,
+          "9": 4
+        }
+      }
+    ],
+    "casino/cut-in-band": [
+      {
+        "source": "チャンス",
+        "name": "text",
+        "en": "CHANCE",
+        "ja": "チャンス"
+      }
+    ],
+    "casino/confirm-giraffe-3d": [
+      {
+        "source": "確定",
+        "name": "text",
+        "en": "WINNER",
+        "ja": "確定"
+      }
+    ],
+    "casino/new-machine-flyer": [
+      {
+        "source": "新台入替",
+        "name": "text",
+        "en": "NEW ARRIVAL",
+        "ja": "新台入替"
+      }
+    ],
+    "casino/chance-green-blue": [
+      {
+        "source": "チャンス",
+        "name": "text",
+        "en": "CHANCE",
+        "ja": "チャンス"
+      },
+      {
+        "source": "CHANCE",
+        "name": "subtitle",
+        "en": "GO FOR IT",
+        "ja": "CHANCE"
+      }
+    ],
+    "wa/red-hot-brush-vertical": [
+      {
+        "source": "激熱",
+        "name": "text",
+        "en": "RED HOT",
+        "ja": "激熱"
+      }
+    ],
+    "casino/premium-black-gloss": [
+      {
+        "source": "プレミアム",
+        "name": "text",
+        "en": "PREMIUM",
+        "ja": "プレミアム"
+      }
+    ],
+    "casino/attack-chance-rainbow-3d": [
+      {
+        "source": "ATTACK\nCHANCE",
+        "name": "text",
+        "en": "ATTACK\nCHANCE",
+        "ja": "ATTACK\nCHANCE"
+      }
+    ],
+    "casino/rush-pop-out-3d": [
+      {
+        "source": "RUSH",
+        "name": "text",
+        "en": "RUSH",
+        "ja": "RUSH"
+      }
+    ],
+    "casino/super-red-hot": [
+      {
+        "source": "超\n激アツ",
+        "name": "text",
+        "en": "SUPER\nRED HOT",
+        "ja": "超\n激アツ",
+        "chars_en": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      }
+    ],
+    "metal/special-satin-chrome": [
+      {
+        "source": "SPECIAL",
+        "name": "text",
+        "en": "SPECIAL",
+        "ja": "SPECIAL"
+      }
+    ],
+    "casino/slanted-box-plate": [
+      {
+        "source": "sha256:972a7fe88de16f12906cb3a917161f2c8015bc06e61eb406b6cfd8b1cc811141",
+        "source_japanese": true,
+        "name": "text",
+        "en": "ONE STRIKE",
+        "ja": "一撃必殺"
+      }
+    ],
+    "metal/liquid-gold-vertical-kicker": [
+      {
+        "source": "完全復活",
+        "name": "text",
+        "en": "LIMIT BREAK",
+        "ja": "限界突破"
+      },
+      {
+        "source": "転生",
+        "name": "kicker",
+        "en": "AWAKEN",
+        "ja": "覚醒"
+      }
+    ],
+    "casino/push-button-inflate-3d": [
+      {
+        "source": "PUSH",
+        "name": "text",
+        "en": "PUSH",
+        "ja": "PUSH"
+      }
+    ],
+    "casino/original-depth-fade-3d": [
+      {
+        "source": "sha256:c52259d49a52b9a6fe2439bdb91bba817d0d39b9e61bed314c06bd5bebbaae69",
+        "source_japanese": true,
+        "name": "text",
+        "en": "THE ORIGINAL",
+        "ja": "元祖カミナリ",
+        "chars_en": {
+          "0": 0,
+          "1": 0,
+          "2": 1
+        }
+      }
+    ],
+    "casino/about-80-percent-3d": [
+      {
+        "source": "約80%",
+        "name": "text",
+        "en": "ABOUT 80%",
+        "ja": "約80%",
+        "chars_en": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "8": 3
+        }
+      }
+    ],
+    "neon/fever-hollow-neon": [
+      {
+        "source": "FEVER",
+        "name": "text",
+        "en": "FEVER",
+        "ja": "FEVER"
+      }
+    ],
+    "wa/awakening-dry-brush": [
+      {
+        "source": "覚醒",
+        "name": "text",
+        "en": "AWAKEN",
+        "ja": "覚醒"
+      }
+    ],
+    "casino/red-hot-rim-glow": [
+      {
+        "source": "激アツ",
+        "name": "text",
+        "en": "RED HOT",
+        "ja": "激アツ",
+        "chars_en": {
+          "0": 0,
+          "1": 0,
+          "2": 0
+        }
+      }
+    ],
+    "casino/confirm-zebra-clip": [
+      {
+        "source": "確定",
+        "name": "text",
+        "en": "WINNER",
+        "ja": "確定"
+      }
+    ],
+    "casino/big-bonus-3d-groups": [
+      {
+        "source": "BIG BONUS",
+        "name": "text",
+        "en": "BIG BONUS",
+        "ja": "BIG BONUS"
+      }
+    ],
+    "casino/red-hot-plate-fx": [
+      {
+        "source": "激熱",
+        "name": "text",
+        "en": "RED HOT",
+        "ja": "激熱"
+      }
+    ],
+    "casino/cut-in-band-fx": [
+      {
+        "source": "CHANCE",
+        "name": "text",
+        "en": "CHANCE",
+        "ja": "CHANCE"
+      },
+      {
+        "source": "ここで決めろ！",
+        "name": "subtitle",
+        "en": "THIS IS IT!",
+        "ja": "ここで決めろ！"
+      }
+    ],
+    "casino/rush-title-fx": [
+      {
+        "source": "RUSH",
+        "name": "text",
+        "en": "RUSH",
+        "ja": "RUSH"
+      }
+    ],
+    "casino/premium-rainbow-fx": [
+      {
+        "source": "PREMIUM",
+        "name": "text",
+        "en": "PREMIUM",
+        "ja": "PREMIUM"
+      }
+    ],
+    "casino/reserve-flash-fx": []
+  },
+  "tag_synonyms": {
+    "gold": {
+      "en": [
+        "golden",
+        "gilded",
+        "yellow gold"
+      ],
+      "ja": [
+        "金",
+        "ゴールド",
+        "きん",
+        "kin",
+        "gorudo"
+      ]
+    },
+    "silver": {
+      "en": [
+        "silvery",
+        "platinum"
+      ],
+      "ja": [
+        "銀",
+        "シルバー",
+        "ぎん",
+        "gin",
+        "shiruba"
+      ]
+    },
+    "chrome": {
+      "en": [
+        "mirror",
+        "polished metal"
+      ],
+      "ja": [
+        "クローム",
+        "鏡面",
+        "kuromu",
+        "kyomen"
+      ]
+    },
+    "copper": {
+      "en": [
+        "bronze"
+      ],
+      "ja": [
+        "銅",
+        "カッパー",
+        "どう",
+        "do",
+        "kappa"
+      ]
+    },
+    "rose-gold": {
+      "en": [
+        "pink gold"
+      ],
+      "ja": [
+        "ローズゴールド",
+        "ピンクゴールド",
+        "rozu gorudo"
+      ]
+    },
+    "metal": {
+      "en": [
+        "metallic",
+        "metal finish"
+      ],
+      "ja": [
+        "メタル",
+        "金属",
+        "きんぞく",
+        "kinzoku",
+        "metaru"
+      ]
+    },
+    "red": {
+      "en": [
+        "crimson",
+        "scarlet"
+      ],
+      "ja": [
+        "赤",
+        "レッド",
+        "あか",
+        "aka"
+      ]
+    },
+    "blue": {
+      "en": [
+        "azure",
+        "cobalt"
+      ],
+      "ja": [
+        "青",
+        "ブルー",
+        "あお",
+        "ao"
+      ]
+    },
+    "green": {
+      "en": [
+        "emerald green",
+        "lime"
+      ],
+      "ja": [
+        "緑",
+        "グリーン",
+        "みどり",
+        "midori"
+      ]
+    },
+    "purple": {
+      "en": [
+        "violet",
+        "magenta"
+      ],
+      "ja": [
+        "紫",
+        "パープル",
+        "むらさき",
+        "murasaki"
+      ]
+    },
+    "pink": {
+      "en": [
+        "rose",
+        "magenta"
+      ],
+      "ja": [
+        "ピンク",
+        "桃色",
+        "ももいろ",
+        "pinku"
+      ]
+    },
+    "white": {
+      "en": [
+        "snow",
+        "pearl white"
+      ],
+      "ja": [
+        "白",
+        "ホワイト",
+        "しろ",
+        "shiro"
+      ]
+    },
+    "black": {
+      "en": [
+        "dark",
+        "jet black"
+      ],
+      "ja": [
+        "黒",
+        "ブラック",
+        "くろ",
+        "kuro"
+      ]
+    },
+    "orange": {
+      "en": [
+        "amber"
+      ],
+      "ja": [
+        "オレンジ",
+        "橙",
+        "だいだい",
+        "orenji"
+      ]
+    },
+    "cyan": {
+      "en": [
+        "aqua",
+        "teal"
+      ],
+      "ja": [
+        "水色",
+        "シアン",
+        "みずいろ",
+        "mizuiro"
+      ]
+    },
+    "brown": {
+      "en": [
+        "chocolate",
+        "bronze"
+      ],
+      "ja": [
+        "茶色",
+        "ブラウン",
+        "ちゃいろ",
+        "chairo"
+      ]
+    },
+    "rainbow": {
+      "en": [
+        "spectrum",
+        "multicolour",
+        "iridescent"
+      ],
+      "ja": [
+        "虹",
+        "レインボー",
+        "にじ",
+        "niji",
+        "reinbo"
+      ]
+    },
+    "outline": {
+      "en": [
+        "stroke",
+        "border",
+        "rim"
+      ],
+      "ja": [
+        "縁取り",
+        "ふちどり",
+        "縁",
+        "fuchidori",
+        "fuchi"
+      ]
+    },
+    "bevel": {
+      "en": [
+        "emboss",
+        "chiselled"
+      ],
+      "ja": [
+        "ベベル",
+        "面取り",
+        "めんとり",
+        "mentori",
+        "beberu"
+      ]
+    },
+    "gradient": {
+      "en": [
+        "ramp",
+        "fade"
+      ],
+      "ja": [
+        "グラデーション",
+        "gurade-shon",
+        "guradeshon"
+      ]
+    },
+    "glass": {
+      "en": [
+        "transparent",
+        "crystal"
+      ],
+      "ja": [
+        "ガラス",
+        "透明",
+        "とうめい",
+        "garasu",
+        "tomei"
+      ]
+    },
+    "glow": {
+      "en": [
+        "light",
+        "bloom",
+        "shine"
+      ],
+      "ja": [
+        "光彩",
+        "発光",
+        "グロー",
+        "はっこう",
+        "hakko",
+        "guro"
+      ]
+    },
+    "shadow": {
+      "en": [
+        "drop shadow",
+        "shade"
+      ],
+      "ja": [
+        "影",
+        "シャドウ",
+        "かげ",
+        "kage"
+      ]
+    },
+    "pattern": {
+      "en": [
+        "print",
+        "motif"
+      ],
+      "ja": [
+        "柄",
+        "模様",
+        "がら",
+        "gara",
+        "moyo"
+      ]
+    },
+    "zebra": {
+      "en": [
+        "zebra stripes",
+        "animal print"
+      ],
+      "ja": [
+        "ゼブラ",
+        "シマウマ",
+        "zebura",
+        "shimauma"
+      ]
+    },
+    "giraffe": {
+      "en": [
+        "giraffe print",
+        "animal print"
+      ],
+      "ja": [
+        "キリン",
+        "きりん",
+        "kirin"
+      ]
+    },
+    "leopard": {
+      "en": [
+        "leopard print",
+        "animal print"
+      ],
+      "ja": [
+        "ヒョウ",
+        "豹",
+        "ひょう",
+        "hyo"
+      ]
+    },
+    "tiger": {
+      "en": [
+        "tiger stripes",
+        "animal print"
+      ],
+      "ja": [
+        "虎",
+        "トラ",
+        "とら",
+        "tora"
+      ]
+    },
+    "checker": {
+      "en": [
+        "checkerboard",
+        "chequered"
+      ],
+      "ja": [
+        "チェッカー",
+        "市松",
+        "いちまつ",
+        "ichimatsu"
+      ]
+    },
+    "hazard": {
+      "en": [
+        "warning stripes",
+        "caution"
+      ],
+      "ja": [
+        "警告",
+        "危険",
+        "けいこく",
+        "keikoku",
+        "kiken"
+      ]
+    },
+    "sakura": {
+      "en": [
+        "cherry blossom",
+        "blossom"
+      ],
+      "ja": [
+        "桜",
+        "さくら",
+        "sakura"
+      ]
+    },
+    "seigaiha": {
+      "en": [
+        "wave pattern",
+        "japanese waves"
+      ],
+      "ja": [
+        "青海波",
+        "せいがいは",
+        "seigaiha",
+        "和柄",
+        "wagara"
+      ]
+    },
+    "hollow": {
+      "en": [
+        "knockout",
+        "cut out"
+      ],
+      "ja": [
+        "中抜き",
+        "なかぬき",
+        "nakanuki"
+      ]
+    },
+    "brush": {
+      "en": [
+        "calligraphy",
+        "ink brush",
+        "dry brush"
+      ],
+      "ja": [
+        "筆文字",
+        "毛筆",
+        "ふでもじ",
+        "fudemoji",
+        "かすれ",
+        "kasure"
+      ]
+    },
+    "ink": {
+      "en": [
+        "sumi",
+        "calligraphy"
+      ],
+      "ja": [
+        "墨",
+        "すみ",
+        "sumi"
+      ]
+    },
+    "plate": {
+      "en": [
+        "badge",
+        "panel"
+      ],
+      "ja": [
+        "プレート",
+        "板",
+        "いた",
+        "pureto"
+      ]
+    },
+    "sparkle": {
+      "en": [
+        "glint",
+        "twinkle",
+        "shine"
+      ],
+      "ja": [
+        "きらめき",
+        "キラキラ",
+        "kirameki",
+        "kirakira"
+      ]
+    },
+    "rays": {
+      "en": [
+        "sunburst",
+        "light rays",
+        "beams"
+      ],
+      "ja": [
+        "光線",
+        "放射",
+        "こうせん",
+        "kosen"
+      ]
+    },
+    "fire": {
+      "en": [
+        "flame",
+        "blaze",
+        "burning"
+      ],
+      "ja": [
+        "炎",
+        "火",
+        "ほのお",
+        "honoo",
+        "hi"
+      ]
+    },
+    "lightning": {
+      "en": [
+        "electric",
+        "thunder",
+        "bolt"
+      ],
+      "ja": [
+        "稲妻",
+        "雷",
+        "いなずま",
+        "inazuma",
+        "kaminari"
+      ]
+    },
+    "aura": {
+      "en": [
+        "energy",
+        "corona"
+      ],
+      "ja": [
+        "オーラ",
+        "気",
+        "ora"
+      ]
+    },
+    "particles": {
+      "en": [
+        "embers",
+        "dust"
+      ],
+      "ja": [
+        "パーティクル",
+        "粒子",
+        "りゅうし",
+        "ryushi"
+      ]
+    },
+    "speed-lines": {
+      "en": [
+        "focus lines",
+        "action lines"
+      ],
+      "ja": [
+        "集中線",
+        "しゅうちゅうせん",
+        "shuchusen"
+      ]
+    },
+    "neon": {
+      "en": [
+        "neon sign",
+        "tube light"
+      ],
+      "ja": [
+        "ネオン",
+        "ネオン管",
+        "neon"
+      ]
+    },
+    "ice": {
+      "en": [
+        "frozen",
+        "frost"
+      ],
+      "ja": [
+        "氷",
+        "こおり",
+        "koori",
+        "氷結",
+        "hyoketsu"
+      ]
+    },
+    "candy": {
+      "en": [
+        "glossy",
+        "sweet"
+      ],
+      "ja": [
+        "キャンディ",
+        "飴",
+        "あめ",
+        "kyandi",
+        "ame"
+      ]
+    },
+    "diamond": {
+      "en": [
+        "gem",
+        "brilliant"
+      ],
+      "ja": [
+        "ダイヤモンド",
+        "ダイヤ",
+        "daiya"
+      ]
+    },
+    "sapphire": {
+      "en": [
+        "blue gem"
+      ],
+      "ja": [
+        "サファイア",
+        "safaia"
+      ]
+    },
+    "emerald": {
+      "en": [
+        "green gem"
+      ],
+      "ja": [
+        "エメラルド",
+        "emerarudo"
+      ]
+    },
+    "ruby": {
+      "en": [
+        "red gem"
+      ],
+      "ja": [
+        "ルビー",
+        "rubi"
+      ]
+    },
+    "orb": {
+      "en": [
+        "sphere",
+        "ball",
+        "reserve ball"
+      ],
+      "ja": [
+        "保留玉",
+        "球",
+        "たま",
+        "tama",
+        "horyu"
+      ]
+    },
+    "inflate": {
+      "en": [
+        "puffy",
+        "balloon"
+      ],
+      "ja": [
+        "ぷっくり",
+        "膨らみ",
+        "pukkuri"
+      ]
+    },
+    "pop-out": {
+      "en": [
+        "oblique extrusion",
+        "slanted"
+      ],
+      "ja": [
+        "飛び出し",
+        "とびだし",
+        "tobidashi"
+      ]
+    },
+    "bands": {
+      "en": [
+        "layered rims",
+        "stacked outlines"
+      ],
+      "ja": [
+        "外枠",
+        "そとわく",
+        "sotowaku"
+      ]
+    },
+    "3d": {
+      "en": [
+        "three-dimensional",
+        "extruded"
+      ],
+      "ja": [
+        "立体",
+        "3D",
+        "りったい",
+        "rittai"
+      ]
+    },
+    "2d": {
+      "en": [
+        "flat"
+      ],
+      "ja": [
+        "平面",
+        "へいめん",
+        "heimen"
+      ]
+    },
+    "casino": {
+      "en": [
+        "slots",
+        "jackpot",
+        "pachislot"
+      ],
+      "ja": [
+        "カジノ",
+        "パチスロ",
+        "スロット",
+        "kajino",
+        "pachisuro"
+      ]
+    },
+    "elements": {
+      "en": [
+        "energy",
+        "elemental"
+      ],
+      "ja": [
+        "エネルギー",
+        "属性",
+        "zokusei"
+      ]
+    },
+    "gems": {
+      "en": [
+        "jewel",
+        "precious stone"
+      ],
+      "ja": [
+        "宝石",
+        "ほうせき",
+        "hoseki"
+      ]
+    },
+    "wa": {
+      "en": [
+        "japanese",
+        "traditional"
+      ],
+      "ja": [
+        "和風",
+        "和",
+        "わふう",
+        "wafu"
+      ]
+    },
+    "scifi": {
+      "en": [
+        "science fiction",
+        "futuristic"
+      ],
+      "ja": [
+        "SF",
+        "近未来",
+        "きんみらい",
+        "kinmirai"
+      ]
+    },
+    "lacquer": {
+      "en": [
+        "urushi",
+        "lacquerware"
+      ],
+      "ja": [
+        "漆",
+        "うるし",
+        "urushi"
+      ]
+    },
+    "pearl": {
+      "en": [
+        "pearlescent",
+        "nacre"
+      ],
+      "ja": [
+        "パール",
+        "真珠",
+        "しんじゅ",
+        "shinju"
+      ]
+    },
+    "jade": {
+      "en": [
+        "nephrite",
+        "green stone"
+      ],
+      "ja": [
+        "翡翠",
+        "ひすい",
+        "hisui"
+      ]
+    },
+    "obsidian": {
+      "en": [
+        "volcanic glass",
+        "black glass"
+      ],
+      "ja": [
+        "黒曜石",
+        "こくようせき",
+        "kokuyoseki"
+      ]
+    },
+    "galaxy": {
+      "en": [
+        "space",
+        "starfield",
+        "cosmos"
+      ],
+      "ja": [
+        "銀河",
+        "宇宙",
+        "ぎんが",
+        "ginga",
+        "uchu"
+      ]
+    },
+    "lava": {
+      "en": [
+        "magma",
+        "molten"
+      ],
+      "ja": [
+        "溶岩",
+        "マグマ",
+        "ようがん",
+        "yogan"
+      ]
+    },
+    "toxic": {
+      "en": [
+        "acid",
+        "poison",
+        "radioactive"
+      ],
+      "ja": [
+        "毒",
+        "どく",
+        "doku"
+      ]
+    },
+    "aurora": {
+      "en": [
+        "northern lights"
+      ],
+      "ja": [
+        "オーロラ",
+        "orora"
+      ]
+    },
+    "hologram": {
+      "en": [
+        "holographic",
+        "iridescent foil"
+      ],
+      "ja": [
+        "ホログラム",
+        "horoguramu"
+      ]
+    },
+    "holographic": {
+      "en": [
+        "hologram",
+        "iridescent"
+      ],
+      "ja": [
+        "ホログラム",
+        "horoguramu"
+      ]
+    },
+    "liquid": {
+      "en": [
+        "molten",
+        "melted"
+      ],
+      "ja": [
+        "液体",
+        "えきたい",
+        "ekitai"
+      ]
+    },
+    "crumpled": {
+      "en": [
+        "foil",
+        "creased"
+      ],
+      "ja": [
+        "クシャクシャ",
+        "箔",
+        "kushakusha"
+      ]
+    },
+    "premium": {
+      "en": [
+        "luxury",
+        "deluxe",
+        "high class"
+      ],
+      "ja": [
+        "プレミアム",
+        "高級",
+        "こうきゅう",
+        "kokyu"
+      ]
+    },
+    "classic": {
+      "en": [
+        "traditional",
+        "standard"
+      ],
+      "ja": [
+        "クラシック",
+        "定番",
+        "teiban"
+      ]
+    },
+    "satin": {
+      "en": [
+        "brushed",
+        "soft sheen"
+      ],
+      "ja": [
+        "サテン",
+        "satin"
+      ]
+    },
+    "titanium": {
+      "en": [
+        "anodised"
+      ],
+      "ja": [
+        "チタン",
+        "chitan"
+      ]
+    },
+    "carbon": {
+      "en": [
+        "carbon fibre"
+      ],
+      "ja": [
+        "カーボン",
+        "kabon"
+      ]
+    },
+    "porcelain": {
+      "en": [
+        "ceramic",
+        "china"
+      ],
+      "ja": [
+        "磁器",
+        "染付",
+        "じき",
+        "jiki",
+        "sometsuke"
+      ]
+    },
+    "vertical": {
+      "en": [
+        "portrait",
+        "tall"
+      ],
+      "ja": [
+        "縦長",
+        "縦書き",
+        "たてなが",
+        "tatenaga"
+      ]
+    },
+    "confirm": {
+      "en": [
+        "winner",
+        "certain win"
+      ],
+      "ja": [
+        "確定",
+        "かくてい",
+        "kakutei"
+      ]
+    },
+    "red-hot": {
+      "en": [
+        "hot",
+        "big chance"
+      ],
+      "ja": [
+        "激アツ",
+        "げきあつ",
+        "gekiatsu"
+      ]
+    },
+    "jackpot": {
+      "en": [
+        "big win"
+      ],
+      "ja": [
+        "大当り",
+        "おおあたり",
+        "oatari"
+      ]
+    },
+    "glitter": {
+      "en": [
+        "sparkle",
+        "flakes"
+      ],
+      "ja": [
+        "ラメ",
+        "グリッター",
+        "rame"
+      ]
+    },
+    "burst": {
+      "en": [
+        "starburst",
+        "explosion"
+      ],
+      "ja": [
+        "バースト",
+        "ギザギザ",
+        "giza giza"
+      ]
+    },
+    "ribbon": {
+      "en": [
+        "banner",
+        "sash"
+      ],
+      "ja": [
+        "リボン",
+        "ribon"
+      ]
+    },
+    "speech": {
+      "en": [
+        "speech bubble",
+        "dialogue"
+      ],
+      "ja": [
+        "吹き出し",
+        "セリフ",
+        "fukidashi",
+        "serifu"
+      ]
+    },
+    "button": {
+      "en": [
+        "push button"
+      ],
+      "ja": [
+        "ボタン",
+        "botan"
+      ]
+    },
+    "stack": {
+      "en": [
+        "layered",
+        "stacked"
+      ],
+      "ja": [
+        "重ね",
+        "かさね",
+        "kasane"
+      ]
+    },
+    "glowing": {
+      "en": [
+        "luminous",
+        "emissive"
+      ],
+      "ja": [
+        "発光",
+        "はっこう",
+        "hakko"
+      ]
+    },
+    "matte": {
+      "en": [
+        "flat finish",
+        "unpolished"
+      ],
+      "ja": [
+        "マット",
+        "つや消し",
+        "tsuyakeshi"
+      ]
+    },
+    "two-tone": {
+      "en": [
+        "split colour",
+        "duotone"
+      ],
+      "ja": [
+        "ツートン",
+        "二色",
+        "nishoku"
+      ]
+    },
+    "electric": {
+      "en": [
+        "lightning",
+        "voltage"
+      ],
+      "ja": [
+        "電撃",
+        "でんげき",
+        "dengeki"
+      ]
+    },
+    "corona": {
+      "en": [
+        "aura",
+        "halo"
+      ],
+      "ja": [
+        "コロナ",
+        "後光",
+        "korona"
+      ]
+    },
+    "crystal": {
+      "en": [
+        "clear gem",
+        "quartz"
+      ],
+      "ja": [
+        "クリスタル",
+        "水晶",
+        "suisho"
+      ]
+    },
+    "amethyst": {
+      "en": [
+        "purple gem"
+      ],
+      "ja": [
+        "アメジスト",
+        "紫水晶",
+        "amejisuto"
+      ]
+    },
+    "vermilion": {
+      "en": [
+        "cinnabar red"
+      ],
+      "ja": [
+        "朱",
+        "朱色",
+        "しゅいろ",
+        "shuiro"
+      ]
+    },
+    "cobalt": {
+      "en": [
+        "deep blue"
+      ],
+      "ja": [
+        "コバルト",
+        "藍",
+        "ai"
+      ]
+    },
+    "starfield": {
+      "en": [
+        "stars",
+        "night sky"
+      ],
+      "ja": [
+        "星空",
+        "ほしぞら",
+        "hoshizora"
+      ]
+    },
+    "stripes": {
+      "en": [
+        "striped"
+      ],
+      "ja": [
+        "ストライプ",
+        "縞",
+        "shima"
+      ]
+    }
+  }
+}

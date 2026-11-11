@@ -1,0 +1,172 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "ocean",
+  "revision": 1,
+  "name": {
+    "en": "Ocean",
+    "ja": "海"
+  },
+  "description": {
+    "en": "Glossy sea from foam white through turquoise to deep navy, a white line and a navy frame.",
+    "ja": "泡の白からターコイズ、深い紺への光沢ある海、白の線と紺の枠。"
+  },
+  "family_hint": [
+    "elements",
+    "sports",
+    "minimal"
+  ],
+  "tags": [
+    "blue",
+    "sea",
+    "water",
+    "cool",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "sea",
+      "marine",
+      "aqua",
+      "wave"
+    ],
+    "ja": [
+      "海",
+      "うみ",
+      "マリン",
+      "umi",
+      "marin"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#e0fbff",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e0fbff"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#40c8e0"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#0a6aa0"
+            },
+            {
+              "pos": 1,
+              "color": "#02203a"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#35b5d3",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#001a2a"
+    },
+    "dark": {
+      "fill": {
+        "color": "#001424"
+      },
+      "material_3d": {
+        "color": "#001424",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#001a2a"
+      },
+      {
+        "fill": {
+          "color": "#0a3a6a"
+        },
+        "material_3d": {
+          "color": "#0a3a6a",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#001a2a"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000c18"
+      },
+      "material_3d": {
+        "color": "#000c18",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#011629",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#e0fbff",
+  "glow": "#40e0ff",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#40e0ff"
+      },
+      {
+        "pos": 1,
+        "color": "#2599c0"
+      }
+    ]
+  },
+  "shadow": "#001a2a",
+  "glint": "#e0fbff",
+  "light_ramp": [
+    "#001a2a",
+    "#02203a",
+    "#0a6aa0",
+    "#40c8e0",
+    "#40e0ff",
+    "#e0fbff"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#b0ecf6"
+        },
+        {
+          "pos": 0.55,
+          "color": "#1d8bb6"
+        },
+        {
+          "pos": 1,
+          "color": "#032b49"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#e0fbff",
+    "#40c8e0",
+    "#0a6aa0",
+    "#02203a",
+    "#001424",
+    "#0a3a6a"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -12,6 +12,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "titleart/runtime/TitleArtExportKeys.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TextComponent.h"
@@ -40,6 +42,7 @@
 #include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/TilemapLayerComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -657,7 +660,11 @@ namespace {
                         const FluidSimulationComponent* fluid = registry->isComponentRegistered<FluidSimulationComponent>()
                                                                 ? registry->findComponent<FluidSimulationComponent>(entity) : nullptr;
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
-                        pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
+                        // a Title Art Renderer lends its Sprite the title's image the same way (S81 R2)
+                        const TitleArtRendererComponent* title = registry->isComponentRegistered<TitleArtRendererComponent>()
+                                                                 ? registry->findComponent<TitleArtRendererComponent>(entity) : nullptr;
+                        if (title && registry->findComponent<SpriteComponent>(entity)) lentBaseColor = true;
+                                                pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
                                                            registry->findComponent<TilemapComponent>(entity));
                         // S52: a Sprite's batching inputs and its Sprite Batch as MeshSystem::update gives
                         // them (not the mesh's fields: a scene not drawn yet has none), and a snapped one
@@ -673,7 +680,28 @@ namespace {
                                 spriteAttributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
                             snapPivotKeys = pixelSnapKeys && !instancedMesh;
                         }
+                        tileLayerKeys = registry->findComponent<TilemapLayerComponent>(entity) != nullptr;
+                        if (tileLayerKeys){
+                            spriteInstancedKeys = true;
+                            spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
+                            snapPivotKeys = pixelSnapKeys;
+                        }
                         collectMesh(registry, entity, *mesh);
+                        // and with a Live Effect, its title_fx_sprite variant (S81 R33)
+                        if (title && registry->findComponent<SpriteComponent>(entity) && mesh->numSubmeshes > 0){
+                            // the Sprite as the title drives it, then as saved again
+                            MeshComponent& live = const_cast<MeshComponent&>(*mesh);
+                            const ShaderRef savedShader = live.customShader;
+                            const std::vector<std::string> savedFeatures = live.submeshes[0].material.shaderFeatures;
+                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title)){
+                                live.customShader = ShaderRef("library:title_fx_sprite");
+                                live.submeshes[0].material.shaderFeatures = features;
+                                collectMesh(registry, entity, live);
+                            }
+                            live.customShader = savedShader;
+                            live.submeshes[0].material.shaderFeatures = savedFeatures;
+                        }
+                        tileLayerKeys = false;
                         pixelSnapKeys = false;
                         snapPivotKeys = false;
                         spriteInstancedKeys = false;
@@ -691,6 +719,16 @@ namespace {
                     pixelSnapKeys = scenePixelSnap;
                     collectUI(*ui, registry->findComponent<TextComponent>(entity),
                               registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
+                    // a Title Art Renderer's Live Effects draw its Image with library:title_fx (S81 R33)
+                    if (registry->isComponentRegistered<TitleArtRendererComponent>()){
+                        if (const TitleArtRendererComponent* title = registry->findComponent<TitleArtRendererComponent>(entity)){
+                            // (an Image the title lends its image to: the textured variant)
+                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title)){
+                                const uint16_t id = shaderId(ShaderRef("library:title_fx"), ShaderType::UI, features, ui->blendMode);
+                                insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
+                            }
+                        }
+                    }
                     pixelSnapKeys = false;
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
@@ -738,6 +776,8 @@ namespace {
         bool snapPivotKeys = false;
         // a Sprite's S52 inputs: its Sprite Batch draws it instanced; what its shader reads per vertex
         bool spriteInstancedKeys = false;
+        // a Tilemap Layer: its instanced variant with the frame clamp (S50)
+        bool tileLayerKeys = false;
         uint8_t spriteAttributes = 0;
 
         static bool scenePixelSnaps(EntityRegistry* registry){
@@ -817,6 +857,7 @@ namespace {
                 }
             }
             inputs.instanced = instmesh || spriteInstancedKeys;
+            inputs.tileClamp = tileLayerKeys;
             inputs.batchAttributes = spriteAttributes;
 
             const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
@@ -1332,7 +1373,8 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
         "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
         "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
         "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale",
-        "vhsEnabled", "halationEnabled", "filmDamageEnabled", "filmGrainType", "dynamicResolutionEnabled"
+        "vhsEnabled", "halationEnabled", "filmDamageEnabled", "filmGrainType", "dynamicResolutionEnabled",
+        "glitchEnabled"
     };
     return fields;
 }
@@ -1632,6 +1674,28 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
         fluid = fluid || hasFluid(prefab);
     if (fluid)
         addFluidKeys(keys);
+
+    // the TITLE_ART programs of every Realtime and Glyph Atlas document (S81 R47): both pixel
+    // paths, as the device picks one at run time
+    if (!projectRoot.empty()){
+        std::set<std::string> titles;
+        auto addTitles = [&titles](const ShaderVariantContent& content){
+            if (!content.registry || !content.registry->isComponentRegistered<TitleArtRendererComponent>())
+                return;
+            for (Entity entity : content.entities){
+                if (!content.registry->isEntityCreated(entity))
+                    continue;
+                const TitleArtRendererComponent* title = content.registry->findComponent<TitleArtRendererComponent>(entity);
+                if (title && title->enabled && title->renderMode != TitleArtRenderMode::BAKED && !title->title.path.empty())
+                    titles.insert(title->title.path);
+            }
+        };
+        addTitles(sceneContent);
+        for (const ShaderVariantContent& prefab : prefabContents)
+            addTitles(prefab);
+        for (const std::string& title : titles)
+            addTitleArtRenderKeys(projectRoot, title, keys);
+    }
 
     // the UI effects the scene's (and its prefabs') HTML UI documents use
     if (!projectRoot.empty()){

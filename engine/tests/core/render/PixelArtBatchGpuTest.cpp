@@ -5,7 +5,7 @@
 // R18-R23, AC5-AC9): pixel-snapped sprites (S41) batch, a run holding one snap mode, the pivot-
 // snapped ones with their snap pivot per vertex; Steps90's rounded rotations reach the bake;
 // library:sprite batches (@batchable) with its instance= amounts (FLASH, the Palette Swap row, the
-// fx.z / fx.w slots of a test shader) baked per vertex while the run's uniforms are 0, its
+// fx.z / fx.w slots of a test shader and S48's Dither Fade and Dissolve) baked per vertex while the run's uniforms are 0, its
 // OUTLINE / OVERLAY frame rect per vertex; a mesh that is not a Sprite stays alone
 // (ineligible_frame_rect). Every scene is drawn with Dynamic Batching on and off: 0 differing
 // pixels (R23). glcore and Vulkan (lavapipe).
@@ -343,6 +343,27 @@ TEST_F(PixelArtBatchGpu, FxSlotsZW){
     }
     ASSERT_TRUE(settle());
     EXPECT_LE(expectParity(), 1u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S48 AC11 (R10): library:sprite's own fx.z / fx.w amounts, Dither Fade and Dissolve, with the
+// Pixel FX features that read the frame rect (pixel outline, drop shadow, grown quads): 64 sprites
+// differing only in the two amounts (and their frame) stay in the runs of one material and match
+// the unbatched draws, which read the amounts from their uniforms (an absent stream is 0)
+TEST_F(PixelArtBatchGpu, FxSlotsDitherFadeDissolve){
+    JASPER_REQUIRE_GPU();
+    for (int i = 0; i < 64; i++){
+        Sprite& s = sprite(12.0f + (float)(i % 8) * 30.0f, 12.0f + (float)(i / 8) * 30.0f, i % 2);
+        librarySprite(s, {"DITHER_FADE", "DISSOLVE", "DROP_SHADOW", "OUTLINE", "OUTLINE_STYLE_PIXEL4"},
+                      {{"ditherFadeAmount", Vector4((float)(i % 8) / 8.0f, 0, 0, 0)},
+                       {"dissolveProgress", Vector4((float)(i / 8) / 8.0f, 0, 0, 0)},
+                       {"dissolveEdgeWidth", Vector4(1.0f, 0, 0, 0)},
+                       {"outlineColor", Vector4(1.0f, 1.0f, 0.0f, 1.0f)}, {"outlineWidth", Vector4(1.0f, 0, 0, 0)},
+                       {"shadowOffset", Vector4(1.0f, -1.0f, 0, 0)}});
+    }
+    ASSERT_TRUE(settle());
+    EXPECT_LE(expectParity(), 2u);
+    EXPECT_EQ(onStats.breaks[(size_t)BatchBreak::INELIGIBLE_FRAME_RECT], 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

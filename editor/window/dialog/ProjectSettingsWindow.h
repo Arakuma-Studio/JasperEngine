@@ -86,11 +86,17 @@ namespace jasperengine::editor {
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
         DrawSubmissionSettings m_drawSubmission;
+        // Graphics > Screen Transitions (S48 R41)
+        jasperengine::pixelart::TransitionDefaults m_transitions;
+        char m_transitionRampBuffer[512] = {0};
         // Quality > Device Tiers and the rest of the device settings (S56), and the platform
         // group the table shows
         DeviceSettings m_deviceSettings;
         int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
+        TitleArtProjectSettings m_titleArt;
+        LocalizationSettings m_localization;
+        char m_localizationInput[64] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
@@ -301,6 +307,8 @@ namespace jasperengine::editor {
         void drawAudioSettings();
         void drawNavigationSettings();
         void drawMeshSettings();
+        void drawTitleArtSettings();
+        void drawLocalizationSettings();
         void draw2DSettings();
         void drawAnimationSettings();
         void drawPixelArtSettings();

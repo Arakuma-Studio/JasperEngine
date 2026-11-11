@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="3" height="2" tilewidth="16" tileheight="16">
+ <tileset firstgid="1" name="props" tilewidth="16" tileheight="16" tilecount="4" columns="2" margin="1" spacing="2">
+  <tileoffset x="3" y="4"/>
+  <image source="images/props.png" width="36" height="36"/>
+  <tile id="0" probability="0.5">
+   <properties>
+    <property name="damage" type="int" value="3"/>
+    <property name="label" value="lava"/>
+    <property name="hot" type="bool" value="true"/>
+    <property name="heat" type="float" value="0.25"/>
+    <property name="glow" type="color" value="#ff102030"/>
+   </properties>
+   <objectgroup>
+    <object x="0" y="8" width="16" height="8"/>
+   </objectgroup>
+   <animation>
+    <frame tileid="0" duration="100"/>
+    <frame tileid="1" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="1">
+   <objectgroup>
+    <object x="0" y="0">
+     <polygon points="0,0 16,0 8,16"/>
+    </object>
+   </objectgroup>
+  </tile>
+  <tile id="2">
+   <objectgroup>
+    <object x="0" y="0" width="16" height="16"><ellipse/></object>
+   </objectgroup>
+  </tile>
+  <tile id="3">
+   <objectgroup>
+    <object x="0" y="0"><polyline points="0,0 16,16"/></object>
+    <object x="4" y="4"><point/></object>
+   </objectgroup>
+  </tile>
+ </tileset>
+ <tileset firstgid="5" name="extra" tilewidth="16" tileheight="16" tilecount="1" columns="1">
+  <image source="images/extra.png" width="16" height="16"/>
+ </tileset>
+ <imagelayer id="1" name="Backdrop"><image source="images/bg.png"/></imagelayer>
+ <group id="2" name="Group" offsetx="8" offsety="4" opacity="0.5">
+  <layer id="3" name="Inner" width="3" height="2" visible="0">
+   <data encoding="csv">1,0,0,
+2,3,268435460</data>
+  </layer>
+ </group>
+ <objectgroup id="4" name="Spawns"/>
+ <layer id="5" name="Flat" width="3" height="2" opacity="0.75" offsetx="2" offsety="-6" parallaxx="0.5" tintcolor="#ff0000">
+  <data encoding="csv">5,1,0,
+0,0,0</data>
+ </layer>
+</map>

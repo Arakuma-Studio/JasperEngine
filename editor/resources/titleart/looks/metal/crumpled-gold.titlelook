@@ -1,0 +1,373 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/crumpled-gold",
+  "revision": 1,
+  "name": {
+    "en": "Crumpled Gold",
+    "ja": "クシャ金"
+  },
+  "description": {
+    "en": "A gold gradient face with a bevel, a gradient-map finish, a gloss band, a crumple texture and an inner glow, three rims (brown, black, a black dropped base) and an outer glow.",
+    "ja": "金のグラデーションの面（ベベル、グラデーションマップ仕上げ、光沢の帯、クシャのテクスチャ、内側の光彩）、3本の縁（茶、黒、黒の台）、外側の光彩。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "2d",
+    "gold",
+    "gradient",
+    "bevel",
+    "gloss",
+    "crumpled",
+    "outline",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "flat",
+      "golden",
+      "gilded",
+      "yellow gold",
+      "ramp",
+      "fade",
+      "emboss",
+      "chiselled",
+      "foil",
+      "creased",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "平面",
+      "へいめん",
+      "heimen",
+      "金",
+      "ゴールド",
+      "きん",
+      "kin",
+      "gorudo",
+      "グラデーション",
+      "gurade-shon",
+      "guradeshon",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "クシャクシャ",
+      "箔",
+      "kushakusha",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#e8a020",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e8a020"
+            },
+            {
+              "pos": 0.2,
+              "color": "#fff6b0"
+            },
+            {
+              "pos": 0.4,
+              "color": "#f0a820"
+            },
+            {
+              "pos": 0.6,
+              "color": "#ffc840"
+            },
+            {
+              "pos": 0.8,
+              "color": "#c05a08"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe070"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 4,
+        "depth": 5,
+        "light_altitude": 34,
+        "highlight_opacity": 0.9,
+        "shadow_color": "#5a1800",
+        "shadow_opacity": 0.55
+      },
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "amount": 0.9
+      },
+      "texture": {
+        "kind": "crumple",
+        "amount": 0.55,
+        "scale": 9,
+        "seed": 5,
+        "target": "surface"
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#fff3b0",
+        "size": 1.2,
+        "opacity": 0.35,
+        "noise": 0.3
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.25,
+        "position": 0.42,
+        "softness": 0.12,
+        "curve": 0.2
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#3a1000",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a1000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#3a1000"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 5.5,
+        "material": {
+          "fill": {
+            "color": "#050302",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#050302"
+                },
+                {
+                  "pos": 1,
+                  "color": "#050302"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.6,
+            "depth": 2,
+            "gloss": "cove",
+            "highlight_opacity": 0.35
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "offset": [0, -2.4],
+        "material": {
+          "fill": {
+            "color": "#000000",
+            "gradient": {
+              "stops": [
+                {},
+                {
+                  "pos": 1
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#000000",
+        "intensity": 0.8,
+        "opacity": 0.7,
+        "size": 22,
+        "spread": 0.2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 388,
+    "item": "f-gold-crumple",
+    "license_note": "used with the author's permission"
+  }
+}

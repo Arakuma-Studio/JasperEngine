@@ -1,0 +1,10 @@
+# Radial Blur presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: impact_zoom
+    name: Impact Zoom
+    aliases: [impact, zoom in, 集中]
+    params: {amount: 0.5}
+  - id: spin
+    name: Spin
+    aliases: [whirl, rotate blur]
+    params: {type: spin, spin: 30}

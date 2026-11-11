@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/rampartone/OFL.txt",
+    "sha256": "1286896706738557c1fb98f0f66006d4ca675e475d681ca85976fd0da9daa353",
+    "bytes": 4484
+  },
+  "path": "ofl/rampartone/RampartOne-Regular.ttf",
+  "sha256": "a4c60ee835175fa147eb483fac0dd8ff9007c37884ef77af86b0a868fa554d49",
+  "bytes": 3722352
+}

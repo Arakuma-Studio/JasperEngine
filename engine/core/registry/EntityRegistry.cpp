@@ -7,6 +7,7 @@
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -67,6 +68,10 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -226,6 +231,13 @@ EntityRegistry::EntityRegistry() {
     // 2D sorting and Sprite Batch (S52)
     registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
     registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
+    // S48 Pixel FX
+    registerComponent<HitStopExemptComponent>(ComponentOrder::Insertion, "HitStopExemptComponent");
+    registerComponent<GridComponent>(ComponentOrder::Insertion, "GridComponent");
+    registerComponent<TilemapLayerComponent>(ComponentOrder::Insertion, "TilemapLayerComponent");
+    registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
+    // S81 R58: after the last one, so no ComponentType moves
+    registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

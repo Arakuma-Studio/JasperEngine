@@ -87,9 +87,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"NavGrid", 0x5911c33cu},
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
         // constraint's shape and its last solve, bones only)
-        {"Animator", 0x0abd4236u},
-        {"AnimationPlayer", 0xc4bf72c9u},
-        {"PoseAnimator", 0xe172172au},
+        {"Animator", 0xe5218434u},
+        {"AnimationPlayer", 0x6216f07fu},
+        {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
         {"AnimatorStateInfo", 0x6a5a657eu},
@@ -115,12 +115,15 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"AnimationComponent", 0x1f9ef76eu},
         {"TweenComponent", 0x6fb2e681u},
         {"ActionSystem", 0x2b5420b8u},
-        {"AnimationPlayerComponent", 0x7910401bu},
-        {"AnimatorComponent", 0x1d9d525cu},
-        {"PoseAnimatorComponent", 0xef0fbae3u},
+        {"AnimationPlayerComponent", 0xcf5f06f5u},
+        {"AnimatorComponent", 0xc953276au},
+        {"PoseAnimatorComponent", 0x39f009a9u},
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},
         {"SplineAnimate", 0x00658326u},
+        // S81 R67: a script changes a title's values, never its asset, its Render Mode or which
+        // Live Effects it has (the export collects title_fx for the titles of shipped content)
+        {"TitleArt", 0xb946fadau},
     };
     return classes;
 }
@@ -179,7 +182,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "removeRigidbody2D", "getCharacterController2D", "removeCharacterController2D", "getRigidbody",
             "removeRigidbody", "getCharacterController", "removeCharacterController", "getBuoyancy",
             "getWaterVolume", "getSplineAnimate", "getRay", "getAnimationPlayer", "hasAnimationPlayer",
-            "hasVertexAnimator", "getAnimator", "hasAnimator", "position", "rotation", "scale", "visible",
+            "hasVertexAnimator", "getAnimator", "hasAnimator", "getTitleArt", "position", "rotation", "scale", "visible",
             "localMatrix", "modelMatrix", "normalMatrix"}},
         // its projection, transform and culling (not its render target, sorting or depth test)
         {"Camera", {

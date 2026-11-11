@@ -1,0 +1,16 @@
+# Shatter presets (docs/specs/S83-title-effects-generators.md §6.8); blast is the jackpot sequence's
+# end state (animate progress 0 -> 1 with S85).
+presets:
+  - id: glass_break
+    name: Glass Break
+    aliases: [broken glass, ガラス割れ]
+    params: {}
+  - id: cracks
+    name: Cracks
+    aliases: [cracked, crack lines]
+    params: {cracks_only: true}
+  - id: blast
+    name: Blast
+    aliases: [explosion, jackpot blast]
+    cost: C4
+    params: {progress: 1, strength: 600, fall: 800, fade: 0.6}

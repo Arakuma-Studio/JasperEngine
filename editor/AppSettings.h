@@ -93,6 +93,7 @@ struct PanelVisibilitySettings {
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
+    bool pixelArtCleanup = false;
     bool mcp = false;
     bool game = true;
     bool undoHistory = true;
@@ -114,6 +115,7 @@ struct PanelVisibilitySettings {
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
+            && pixelArtCleanup == other.pixelArtCleanup
             && mcp == other.mcp
             && game == other.game
             && undoHistory == other.undoHistory;
@@ -497,6 +499,14 @@ public:
     // the Project Hub's last parent folder of a new or imported project ("" before any)
     static std::filesystem::path getHubLastLocation();
     static void setHubLastLocation(const std::filesystem::path& location);
+
+    // The Title Designer's per-user settings (settings.yaml `title_designer`: region sizes,
+    // section states, preview budget; docs/specs/S82-title-designer.md R84), kept as one node
+    static YAML::Node getTitleDesignerSettings();
+    static void setTitleDesignerSettings(const YAML::Node& node);
+    // S84's per-user library settings (favorites, recents, Apply Font, Keep Color Scheme, folded sections)
+    static YAML::Node getTitleLibrarySettings();
+    static void setTitleLibrarySettings(const YAML::Node& node);
 
     // Editor UI Scale (Preferences): multiplies the display scale the system reports
     static float getUiScale();

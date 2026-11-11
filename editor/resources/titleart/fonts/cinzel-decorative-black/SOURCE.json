@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/cinzeldecorative/OFL.txt",
+    "sha256": "1e5d6660366ddcfca4f2fc10e2acfba9fa4d97d40aec80d7dbfd41d730a420ae",
+    "bytes": 4393
+  },
+  "path": "ofl/cinzeldecorative/CinzelDecorative-Black.ttf",
+  "sha256": "a6c1eb3e228f639a98aafd8a8e8a035582dd50ad5f8a84e9dcbc8664e7457114",
+  "bytes": 62692
+}

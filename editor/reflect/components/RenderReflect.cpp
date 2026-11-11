@@ -12,6 +12,7 @@
 #include "Factory.h"
 #include "Stream.h"
 #include "component/InstancedMeshComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
@@ -251,6 +252,8 @@ namespace {
     // A mesh's geometry regenerated from a model file, sprite, tilemap, polygon or terrain is not
     // written (Stream::isModelBackedMesh / isGeneratedMesh)
     YAML::Node encodeMesh(const void* comp, const EncodeContext& ctx) {
+        // a Title Art Renderer's Live Effects drive the shader: the Sprite's own one is saved (S81 R2)
+        TitleArtCompanionScope companion(ctx.registry, ctx.entity);
         const MeshComponent& mesh = *static_cast<const MeshComponent*>(comp);
         if (!ctx.registry) return Stream::encodeMeshComponent(mesh);
         const bool isModel = Stream::isModelBackedMesh(ctx.entity, ctx.registry, ctx.signature);
@@ -798,7 +801,7 @@ namespace {
 }
 
 const ComponentDesc kTilemapDesc{
-    .type = ComponentType::TilemapComponent, .cppName = "TilemapComponent", .key = "tilemap", .displayName = "Tilemap", .icon = ICON_FA_BORDER_ALL,
+    .type = ComponentType::TilemapComponent, .cppName = "TilemapComponent", .key = "tilemap", .displayName = "Free Tilemap (Legacy)", .icon = ICON_FA_BORDER_ALL,
     .body = JE_STRUCT_DESC(TilemapComponent, "TilemapComponent", kTilemapFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TilemapComponent),
     .codec = &kTilemapCodec,

@@ -14,6 +14,7 @@
 #include "asset/AssetTypes.h"
 #include "command/type/AssetRefCmds.h"
 #include "external/IconsFontAwesome6.h"
+#include "titleart/TitleArtBaker.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 
@@ -77,6 +78,7 @@ namespace {
         if (!referrer.component.empty()) label += "  " ICON_FA_ANGLE_RIGHT "  " + Catalog::getComponentDisplayName(
             [&] { ComponentType type; return AssetRefSchema::componentByName(referrer.component, type) ? type : ComponentType::Transform; }());
         label += "  " + referrer.field;
+        if (referrer.kind == DepEdgeKind::TitleArtOutput) label += "  (not baked)";
         return label;
     }
 
@@ -251,6 +253,25 @@ void MissingAssetsWindow::drawGroup(const MissingAssetTracker::Group& group, siz
                           group.guid.isNull() ? "(none, a reference by path)" : group.guid.str().c_str(), group.lastPath.c_str());
     }
     if (!open) {
+        ImGui::PopID();
+        return;
+    }
+
+    // a Title Art output that was never baked: the fix is a bake, not a retarget
+    const bool notBaked = !group.referrers.empty() &&
+        std::all_of(group.referrers.begin(), group.referrers.end(),
+                    [](const MissingAssetTracker::Referrer& r) { return r.kind == DepEdgeKind::TitleArtOutput; });
+    if (notBaked) {
+        if (ImGui::SmallButton(ICON_FA_FIRE " Bake")) {
+            for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
+                TitleArtAutoBake::get().requestBake(project, project->getProjectPath() / std::filesystem::path(referrer.ownerPath), {}, false);
+            }
+        }
+        ImGui::SetItemTooltip("Bakes the Title Art outputs that were never baked");
+        for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
+            ImGui::TextUnformatted(referrerLabel(referrer).c_str());
+        }
+        ImGui::TreePop();
         ImGui::PopID();
         return;
     }

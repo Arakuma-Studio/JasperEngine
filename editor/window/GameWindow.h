@@ -11,6 +11,7 @@
 #include "window/GameResolutions.h"
 #include "device/Device.h"
 
+#include <memory>
 #include <set>
 
 namespace jasperengine::editor {
@@ -20,10 +21,14 @@ namespace jasperengine::editor {
     // is hidden behind another, and the view forwards game input while it is hovered
     // or focused. When stopped it shows the selected scene through its game camera
     // (a secondary view of the Scene view's frame, see App::engineRender).
+    class ContactSheetWindow;
+
     class GameWindow {
     private:
         Project* project;
         PlayInput* playInput;
+        // the toolbar's Contact Sheet... window (S48 R40)
+        std::unique_ptr<ContactSheetWindow> contactSheet;
 
         bool windowOpen = true;
         bool focusRequested = false;
@@ -87,6 +92,11 @@ namespace jasperengine::editor {
         bool editPassRendered = false;
         // what the view shows: the running game, or the edit-mode pass
         Framebuffer framebuffer;
+        // the Transition menu's preview values (Project Settings' defaults until changed)
+        bool transitionPreviewSet = false;
+        float transitionPreviewDuration = 0.6f;
+        Vector4 transitionPreviewColor;
+        char transitionPreviewRamp[512] = {0};
 
         void loadSettings();
         void saveSettings();
@@ -103,6 +113,8 @@ namespace jasperengine::editor {
         // Device: Auto | Low | Medium | High | Ultra, its platform family and thermal state (S56)
         void drawDeviceTierMenu();
         void drawToolbar();
+        // Transition ▾ (S48 R40): plays a screen transition over the view, edit mode or Play
+        void drawTransitionMenu();
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;
@@ -116,6 +128,7 @@ namespace jasperengine::editor {
         static constexpr const char* WINDOW_NAME = "Game";
 
         GameWindow(Project* project, PlayInput* playInput);
+        ~GameWindow();
 
         void show();
 

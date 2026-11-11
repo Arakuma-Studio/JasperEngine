@@ -19,6 +19,7 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "pixelart/PixelSnap.h"
+#include "shader/ShaderManifest.h"
 
 #include "Scene.h"
 #include "object/TerrainEdit.h"
@@ -192,6 +193,64 @@ namespace {
 
     // the largest sprite grid a lattice can ask for (LatticeModifierComponent::subdivisions)
     constexpr int SPRITE_MAX_GRID = 64;
+
+    // S48 R7: the texels a sprite's quad grows by on each side for what its material draws around
+    // the art (a pixel outline, a drop shadow: the manifest's @expand rules); zero for a sprite
+    // without a library shader or fork, so a plain sprite pays nothing
+    ShaderExpand spriteFxExpand(const MeshComponent& mesh, const std::string& sceneMeshShader){
+        if (mesh.numSubmeshes == 0)
+            return {};
+        const Submesh& submesh = mesh.submeshes[0];
+        const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, sceneMeshShader);
+        if (shader.empty())
+            return {};
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        if (!manifest || manifest->expands.empty())
+            return {};
+        return manifest->resolveExpand(manifest->resolveFeatures(submesh.material.shaderFeatures), submesh.material.shaderParams);
+    }
+
+    // SpriteComponent::builtFxExpand: the four sides a byte each
+    uint32_t packSpriteFxExpand(const ShaderExpand& expand){
+        auto side = [](int texels){ return (uint32_t)std::clamp(texels, 0, 255); };
+        return side(expand.left) | (side(expand.bottom) << 8) | (side(expand.right) << 16) | (side(expand.top) << 24);
+    }
+
+    // Grows a sprite rect (x0, y0 its first corner, x1, y1 the opposite one) and its UVs (u along
+    // x, v from the bottom row to the top row) by the expand's texels, extrapolating the UVs
+    // linearly so the art keeps its texels and the shader reads the border as outside the frame.
+    // The expand's sides are the art's (y up the image): the quad's sides follow its UVs and the
+    // texture rect's sign (a mirrored frame). frameTexelsX, Y: the frame in texels.
+    void growSpriteRect(const ShaderExpand& expand, float frameTexelsX, float frameTexelsY, bool mirrorX, bool mirrorY,
+                        float& x0, float& y0, float& x1, float& y1, float& u0, float& u1, float& vBottom, float& vTop){
+        if (expand.isZero() || frameTexelsX <= 0.0f || frameTexelsY <= 0.0f || x1 == x0 || y1 == y0)
+            return;
+        const float spanU = std::fabs(u1 - u0), spanV = std::fabs(vTop - vBottom);
+        if (spanU <= 0.0f || spanV <= 0.0f)
+            return;
+        // v runs down the image: the quad's bottom row shows the image's bottom when its v is larger
+        const bool artRightIsQuadRight = (u1 > u0) != mirrorX;
+        const bool artBottomIsQuadBottom = (vBottom > vTop) != mirrorY;
+        const int left = artRightIsQuadRight ? expand.left : expand.right;
+        const int right = artRightIsQuadRight ? expand.right : expand.left;
+        const int bottom = artBottomIsQuadBottom ? expand.bottom : expand.top;
+        const int top = artBottomIsQuadBottom ? expand.top : expand.bottom;
+        // a texel in quad units, along x and y
+        const float unitX = (x1 - x0) / (spanU * frameTexelsX);
+        const float unitY = (y1 - y0) / (spanV * frameTexelsY);
+        const float duPerX = (u1 - u0) / (x1 - x0);
+        const float dvPerY = (vTop - vBottom) / (y1 - y0);
+        const float growLeft = (float)left * unitX, growRight = (float)right * unitX;
+        const float growBottom = (float)bottom * unitY, growTop = (float)top * unitY;
+        x0 -= growLeft;
+        u0 -= growLeft * duPerX;
+        x1 += growRight;
+        u1 += growRight * duPerX;
+        y0 -= growBottom;
+        vBottom -= growBottom * dvPerY;
+        y1 += growTop;
+        vTop += growTop * dvPerY;
+    }
 
     // cells per side the sprite mesh should have: n x n while a lattice deforms it (spec
     // lattice §6.4, LatticeRender::prepare asks for it), else the quad (1)
@@ -724,6 +783,32 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
         mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
+void MeshSystem::prepareTileLayerMesh(MeshComponent& mesh){
+    prepareSpriteMesh(mesh);
+    Attribute* positions = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* uvs = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* normals = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* tangents = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* colors = mesh.buffer.getAttribute(AttributeType::COLOR);
+    const float qx[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+    const float qy[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    for (int i = 0; i < 4; i++){
+        mesh.buffer.addVector3(positions, Vector3(qx[i], qy[i], 0.0f));
+        mesh.buffer.addVector2(uvs, Vector2(qx[i], 1.0f - qy[i]));
+        mesh.buffer.addVector3(normals, Vector3(0.0f, 0.0f, 1.0f));
+        mesh.buffer.addVector4(tangents, Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(true)));
+        mesh.buffer.addVector4(colors, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+    static const uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&indices[0], sizeof(uint16_t));
+    mesh.submeshes[0].vertexCount = 6;
+    mesh.submeshes[0].hasTextureRect = false;
+    const AABB unitQuad(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 1.0f, 0.0f));
+    mesh.verticesAABB = unitQuad;
+    mesh.aabb = unitQuad;
+}
+
 void MeshSystem::fillSpriteBatchAttributes(MeshComponent& mesh){
     const Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
     if (!position || mesh.batchAttributes == 0)
@@ -898,36 +983,39 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         return true;
     }
 
-    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x,  quadHeight-pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  quadHeight-pivotPos.y, 0));
-
     Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
 
     float texCutRatioW = 0;
     float texCutRatioH = 0;
+    const Rect& frameRect = mesh.submeshes[0].textureRect;
+    float rectWidth = std::fabs(frameRect.getWidth()) > 0.0f ? std::fabs(frameRect.getWidth()) : 1.0f;
+    float rectHeight = std::fabs(frameRect.getHeight()) > 0.0f ? std::fabs(frameRect.getHeight()) : 1.0f;
     if (texWidth != 0 && texHeight != 0){
         // in texels of the frame, as the shader scales these UVs by the texture rect
         // (mirrored frames have a negative width)
-        const Rect& rect = mesh.submeshes[0].textureRect;
-        float rectWidth = std::fabs(rect.getWidth()) > 0.0f ? std::fabs(rect.getWidth()) : 1.0f;
-        float rectHeight = std::fabs(rect.getHeight()) > 0.0f ? std::fabs(rect.getHeight()) : 1.0f;
         texCutRatioW = sprite.textureScaleFactor / (texWidth * rectWidth);
         texCutRatioH = sprite.textureScaleFactor / (texHeight * rectHeight);
     }
 
-    if (!sprite.flipY){ 
-        mesh.buffer.addVector2(attTexcoord, Vector2(texCutRatioW, texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(1.0-texCutRatioW, texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(1.0-texCutRatioW, 1.0-texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(texCutRatioW, 1.0-texCutRatioH));
-    }else{
-        mesh.buffer.addVector2(attTexcoord, Vector2(texCutRatioW, 1.0-texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(1.0-texCutRatioW, 1.0-texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(1.0-texCutRatioW, texCutRatioH));
-        mesh.buffer.addVector2(attTexcoord, Vector2(texCutRatioW, texCutRatioH));
-    }
+    float x0 = -pivotPos.x, y0 = -pivotPos.y, x1 = quadWidth - pivotPos.x, y1 = quadHeight - pivotPos.y;
+    float u0 = texCutRatioW, u1 = (float)(1.0 - texCutRatioW);
+    float vBottom = sprite.flipY ? (float)(1.0 - texCutRatioH) : texCutRatioH;
+    float vTop = sprite.flipY ? texCutRatioH : (float)(1.0 - texCutRatioH);
+    // what the material draws around the art (S48 R7): the quad, and so its bounds, grow
+    const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
+    sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
+    growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, frameRect.getWidth() < 0.0f,
+                   frameRect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
+
+    mesh.buffer.addVector3(attVertex, Vector3(x0, y0, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(x1, y0, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(x1, y1, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(x0, y1, 0));
+
+    mesh.buffer.addVector2(attTexcoord, Vector2(u0, vBottom));
+    mesh.buffer.addVector2(attTexcoord, Vector2(u1, vBottom));
+    mesh.buffer.addVector2(attTexcoord, Vector2(u1, vTop));
+    mesh.buffer.addVector2(attTexcoord, Vector2(u0, vTop));
 
     Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
 
@@ -1004,11 +1092,21 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         texCutRatioW = sprite.textureScaleFactor / (texWidth * rectWidth);
         texCutRatioH = sprite.textureScaleFactor / (texHeight * rectHeight);
     }
-    const float u0 = texCutRatioW;
-    const float u1 = (float)(1.0 - texCutRatioW);
+    float u0 = texCutRatioW;
+    float u1 = (float)(1.0 - texCutRatioW);
     // flipY swaps the V of the bottom and top rows
-    const float vBottom = sprite.flipY ? (float)(1.0 - texCutRatioH) : texCutRatioH;
-    const float vTop = sprite.flipY ? texCutRatioH : (float)(1.0 - texCutRatioH);
+    float vBottom = sprite.flipY ? (float)(1.0 - texCutRatioH) : texCutRatioH;
+    float vTop = sprite.flipY ? texCutRatioH : (float)(1.0 - texCutRatioH);
+    // what the material draws around the art (S48 R7): the rect grows, its corners and bounds too
+    {
+        const Rect& rect = mesh.submeshes[0].textureRect;
+        const float rectWidth = std::fabs(rect.getWidth()) > 0.0f ? std::fabs(rect.getWidth()) : 1.0f;
+        const float rectHeight = std::fabs(rect.getHeight()) > 0.0f ? std::fabs(rect.getHeight()) : 1.0f;
+        const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
+        sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
+        growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, rect.getWidth() < 0.0f,
+                       rect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
+    }
 
     // exact at both ends: (1 - t) * a + t * b
     auto lerp = [](float a, float b, float t){
@@ -1085,7 +1183,34 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
 
 // The 9-slice of a sheet frame (S45 R6): 16 vertices and 54 indices on the sprite's own buffer,
 // with the quad's normals, tangent and colour
-void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced){
+void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& slicedIn){
+    // what the material draws around the art (S48 R7): the outer rows and columns move out, the
+    // corners keep their texel scale
+    SpriteSlicedMesh sliced = slicedIn;
+    {
+        const ShaderExpand fxExpand = spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH));
+        sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
+        const Texture& texture = mesh.submeshes[0].material.baseColorTexture;
+        const float frameX = std::fabs(sliced.textureRect.getWidth()) * (float)texture.getWidth();
+        const float frameY = std::fabs(sliced.textureRect.getHeight()) * (float)texture.getHeight();
+        if (!fxExpand.isZero() && frameX > 0.0f && frameY > 0.0f){
+            // each side from its corner cell, whose UVs map texels as drawn
+            float x0 = sliced.x[0], x1 = sliced.x[1], y0 = sliced.y[0], y1 = sliced.y[1];
+            float u0 = sliced.u[0], u1 = sliced.u[1], vb = sliced.v[0], vt = sliced.v[1];
+            ShaderExpand low = fxExpand;
+            low.right = low.top = 0;
+            growSpriteRect(low, frameX, frameY, sliced.textureRect.getWidth() < 0.0f, sliced.textureRect.getHeight() < 0.0f,
+                           x0, y0, x1, y1, u0, u1, vb, vt);
+            sliced.x[0] = x0; sliced.u[0] = u0; sliced.y[0] = y0; sliced.v[0] = vb;
+            x0 = sliced.x[2]; x1 = sliced.x[3]; y0 = sliced.y[2]; y1 = sliced.y[3];
+            u0 = sliced.u[2]; u1 = sliced.u[3]; vb = sliced.v[2]; vt = sliced.v[3];
+            ShaderExpand high = fxExpand;
+            high.left = high.bottom = 0;
+            growSpriteRect(high, frameX, frameY, sliced.textureRect.getWidth() < 0.0f, sliced.textureRect.getHeight() < 0.0f,
+                           x0, y0, x1, y1, u0, u1, vb, vt);
+            sliced.x[3] = x1; sliced.u[3] = u1; sliced.y[3] = y1; sliced.v[3] = vt;
+        }
+    }
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
     Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
     Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
@@ -1279,24 +1404,24 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
 
         numTiles++;
 
-        // Clamp tile position to non-negative — negative local coords are not supported
-        if (tilemap.tiles[i].position.x < 0) tilemap.tiles[i].position.x = 0;
-        if (tilemap.tiles[i].position.y < 0) tilemap.tiles[i].position.y = 0;
+        // a negative local position draws at 0 (negative coords are not supported), but the stored
+        // position stays as authored: a draw must not change the data (a save, a conversion read it)
+        const Vector2 tilePosition(std::max(tilemap.tiles[i].position.x, 0.0f), std::max(tilemap.tiles[i].position.y, 0.0f));
 
         Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
-        const float tileX0 = tileEdge(tilemap.tiles[i].position.x);
-        const float tileX1 = tileEdge(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
-        const float tileY0 = tileEdge(tilemap.tiles[i].position.y);
-        const float tileY1 = tileEdge(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        const float tileX0 = tileEdge(tilePosition.x);
+        const float tileX1 = tileEdge(tilePosition.x + tilemap.tiles[i].width);
+        const float tileY0 = tileEdge(tilePosition.y);
+        const float tileY1 = tileEdge(tilePosition.y + tilemap.tiles[i].height);
         mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY0, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY0, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY1, 0));
         mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY1, 0));
 
-        if (tilemap.width < tilemap.tiles[i].position.x + tilemap.tiles[i].width)
-            tilemap.width = static_cast<unsigned int>(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
-        if (tilemap.height < tilemap.tiles[i].position.y + tilemap.tiles[i].height)
-            tilemap.height = static_cast<unsigned int>(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        if (tilemap.width < tilePosition.x + tilemap.tiles[i].width)
+            tilemap.width = static_cast<unsigned int>(tilePosition.x + tilemap.tiles[i].width);
+        if (tilemap.height < tilePosition.y + tilemap.tiles[i].height)
+            tilemap.height = static_cast<unsigned int>(tilePosition.y + tilemap.tiles[i].height);
 
         TileRectData& rectData = tilemap.tilesRect[tilemap.tiles[i].rectId];
         int submeshId = (rectData.submeshId >= 0 && (unsigned int)rectData.submeshId < mesh.numSubmeshes) ? rectData.submeshId : 0;
@@ -7574,6 +7699,16 @@ void MeshSystem::update(double dt){
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+
+            // the material's features or values changed: a quad grown for them (S48 R7) follows.
+            // A write after this update (a coroutine, onPostUpdate) was flushed at the draw and
+            // reaches this frame only through the write counter
+            if (!sprite.needUpdateSprite && mesh.numSubmeshes > 0 &&
+                    (mesh.customUniformWrites != sprite.fxWritesSeen || mesh.needUpdateShaderUniforms || mesh.needReload)){
+                sprite.fxWritesSeen = mesh.customUniformWrites;
+                if (packSpriteFxExpand(spriteFxExpand(mesh, scene->getDefaultCustomShader(ShaderType::MESH))) != sprite.builtFxExpand)
+                    sprite.needUpdateSprite = true;
+            }
 
             if (sprite.tagPlaying){
                 stepSpriteTag(sprite, dt);

@@ -165,6 +165,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
     b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
         "Drop the cached measurements of the selected audio files: they are measured again";
+    b.add("assets.importTitleArt", "Import Title Art...", C::Editor).description =
+        "Import a Pachislop project, a layered PSD or an SVG as a new Title Art";
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
@@ -172,12 +174,16 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "A new palette (black and white): edit it in Window > 2D > Palette";
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
         "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
+    b.menu("assets.createTileset", "Create Tileset", AppMenuCommand::AssetsCreateTileset).description =
+        "A new .tileset (edit it in the Tileset Editor)";
     // S45
     b.menu("assets.createSpriteAtlas", "Create Sprite Atlas", AppMenuCommand::AssetsCreateSpriteAtlas);
     b.menu("assets.createSpriteAtlasFromSelection", "Create Sprite Atlas from Selection", AppMenuCommand::AssetsCreateSpriteAtlasFromSelection);
     b.menu("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames...", AppMenuCommand::AssetsConvertInlineSpriteFrames);
     b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
     b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
+    b.menu("assets.createTitleArt", "Create Title Art", AppMenuCommand::AssetsCreateTitleArt);
+    b.menu("titleArt.bakeAll", "Title Art: Bake All", AppMenuCommand::TitleArtBakeAll);
     b.menu("assets.createNoiseGraph", "Create Noise Graph", AppMenuCommand::AssetsCreateNoiseGraph).description =
         "A Blank Noise Graph in the current folder; the Project window's Create menu offers the presets too";
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
@@ -266,13 +272,21 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
         "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
+    b.menu("window.tilePalette", "Tile Palette", AppMenuCommand::ToggleTilePalette).description =
+        "The tile brushes: tools, terrains, random brushes and stamps of the active Tilemap Layer";
+    b.menu("window.tilesetEditor", "Tileset Editor", AppMenuCommand::ToggleTilesetEditor).description =
+        "Edit a .tileset: collision, animation, terrains and properties of its tiles";
     b.menu("window.pixelArtCheck", "Pixel Art Check", AppMenuCommand::TogglePixelArtCheck).description =
         "The pixel-art rules on the project: findings, measured values and one-click fixes";
+    b.menu("window.pixelArtCleanup", "Pixel Art Cleanup", AppMenuCommand::TogglePixelArtCleanup).description =
+        "Recover AI or loose art as real pixels: a grid, a palette, verdicts and a split compare";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
     b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
         "Generate and edit normal maps for 2D sprites";
+    b.menu("window.titleDesigner", "Title Designer", AppMenuCommand::ToggleTitleDesigner).description =
+        "Design Title Art: stylized titles and logos";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
         "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
@@ -305,6 +319,23 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("help.documentation", "Documentation", AppMenuCommand::Documentation, C::Global, "F1");
     b.menu("help.keyboardShortcuts", "Keyboard Shortcuts", AppMenuCommand::KeyboardShortcuts);
     b.menu("help.reportIssue", "Report an Issue...", AppMenuCommand::ReportIssue);
+
+    // The Tile Palette (S50 R64): the window, or a Scene view with a tile tool up (these keys win
+    // over the Scene view's L, [, ], Delete and the gizmo keys then: first in the catalog)
+    b.group = "Tile Palette";
+    b.add("tilePalette.select", "Select Tool", C::TilePalette, "S").description = "Draw a selection of cells: move, copy into the brush, delete";
+    b.add("tilePalette.paint", "Paint Tool", C::TilePalette, "B").description = "Paint the chosen tiles in the Scene view (Shift erases, Ctrl picks)";
+    b.add("tilePalette.box", "Box Tool", C::TilePalette, "U").description = "Fill a rectangle of cells";
+    b.add("tilePalette.line", "Line Tool", C::TilePalette, "L").description = "Paint a line of cells";
+    b.add("tilePalette.flood", "Flood Tool", C::TilePalette, "G").description = "Flood fill contiguous equal cells";
+    b.add("tilePalette.eraser", "Eraser Tool", C::TilePalette, "D").description = "Erase cells";
+    b.add("tilePalette.picker", "Picker Tool", C::TilePalette, "I").description = "Take a cell's tile as the brush";
+    b.add("tilePalette.rotateCW", "Rotate Brush Clockwise", C::TilePalette, "]").repeat = true;
+    b.add("tilePalette.rotateCCW", "Rotate Brush Counter-Clockwise", C::TilePalette, "[").repeat = true;
+    b.add("tilePalette.flipX", "Flip Brush Horizontally", C::TilePalette, "Shift+[").repeat = true;
+    b.add("tilePalette.flipY", "Flip Brush Vertically", C::TilePalette, "Shift+]").repeat = true;
+    b.add("tilePalette.copySelection", "Copy Cells into the Brush", C::TilePalette, "Ctrl+C");
+    b.add("tilePalette.deleteSelection", "Delete Selected Cells", C::TilePalette, "Delete", "Backspace");
 
     b.group = "Tools";
     b.add("tools.hand", "Hand Tool", C::Editor, "Q").description = "Pan the Scene view";
@@ -503,6 +534,27 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Apply the selected finding's fix (one undo step)";
     b.add("pixelArtCheck.fixAll", "Fix All Pixel Art Findings", C::PixelArtCheck).description =
         "Preview every fix of the check, then apply them as one undo step";
+    // The Pixel Art Cleanup window (S46)
+    b.group = "Pixel Art Cleanup";
+    b.add("pixelArtCleanup.write", "Write Pixel Art Cleanup", C::PixelArtCleanup, "Ctrl+Enter").description =
+        "Write the shown result (one undo step)";
+    {
+        // the Lints tab steps through spots; the Frames tab nudges the player's frame a pixel
+        CommandDef& next = b.add("pixelArtCleanup.nextSpot", "Next Lint Spot", C::PixelArtCleanup, "Right", "Down");
+        next.description = "Lints tab: pan and zoom to the next spot";
+        next.repeat = true;
+        CommandDef& previous = b.add("pixelArtCleanup.previousSpot", "Previous Lint Spot", C::PixelArtCleanup, "Left", "Up");
+        previous.description = "Lints tab: pan and zoom to the previous spot";
+        previous.repeat = true;
+        const struct { const char* id; const char* name; const char* chord; } nudges[] = {
+            {"pixelArtCleanup.nudgeLeft", "Nudge Frame Left", "Alt+Left"}, {"pixelArtCleanup.nudgeRight", "Nudge Frame Right", "Alt+Right"},
+            {"pixelArtCleanup.nudgeUp", "Nudge Frame Up", "Alt+Up"}, {"pixelArtCleanup.nudgeDown", "Nudge Frame Down", "Alt+Down"}};
+        for (const auto& nudge : nudges) {
+            CommandDef& def = b.add(nudge.id, nudge.name, C::PixelArtCleanup, nudge.chord);
+            def.description = "Frames tab: move the player's frame one pixel (one undo step)";
+            def.repeat = true;
+        }
+    }
     // The Palette window (S43): while it, or its Apply Palette dialog, has focus
     b.group = "Palette";
     b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");
@@ -522,6 +574,71 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("project.rename", "Rename Asset", C::Project, "F2");
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
 
+    // the Title Designer, focused (docs/specs/S82-title-designer.md §6.5): Unity's keys
+    b.group = "Title Designer";
+    // S85 §6.10: the Animation panel's keys
+    b.add("titleAnimation.playPause", "Play / Pause Preview", C::TitleAnimation, "Space");
+    b.add("titleAnimation.stop", "Stop Preview", C::TitleAnimation, "Shift+Space");
+    b.add("titleAnimation.addKey", "Add Key", C::TitleAnimation, "K");
+    b.add("titleAnimation.addKeyModified", "Key Modified Fields", C::TitleAnimation, "Shift+K");
+    b.add("titleAnimation.previousFrame", "Previous Frame", C::TitleAnimation, ",");
+    b.add("titleAnimation.nextFrame", "Next Frame", C::TitleAnimation, ".");
+    b.add("titleAnimation.previousKey", "Previous Key", C::TitleAnimation, "Alt+,");
+    b.add("titleAnimation.nextKey", "Next Key", C::TitleAnimation, "Alt+.");
+    b.add("titleAnimation.delete", "Delete Keys", C::TitleAnimation, "Delete");
+    b.add("titleAnimation.copy", "Copy Keys", C::TitleAnimation, "Ctrl+C");
+    b.add("titleAnimation.paste", "Paste Keys", C::TitleAnimation, "Ctrl+V");
+    b.add("titleAnimation.duplicate", "Duplicate Keys", C::TitleAnimation, "Ctrl+D");
+    b.add("titleAnimation.frameSelected", "Frame Selected", C::TitleAnimation, "F");
+    b.add("titleAnimation.frameAll", "Frame All", C::TitleAnimation, "A");
+    b.add("titleAnimation.record", "Record", C::TitleAnimation, "R");
+    b.add("titleAnimation.toggleCurves", "Dopesheet / Curves", C::TitleAnimation, "Tab");
+    b.add("titleAnimation.addPreset", "Add Animation Preset...", C::TitleAnimation, "");
+    b.add("titleAnimation.saveAsPreset", "Save Animation as Preset...", C::TitleAnimation, "");
+
+    b.add("titleDesigner.toolHand", "Hand Tool", C::TitleDesigner, "Q");
+    b.add("titleDesigner.toolMove", "Move Tool", C::TitleDesigner, "W");
+    b.add("titleDesigner.toolRotate", "Rotate Tool", C::TitleDesigner, "E");
+    b.add("titleDesigner.toolScale", "Scale Tool", C::TitleDesigner, "R");
+    b.add("titleDesigner.toolRect", "Rect Tool", C::TitleDesigner, "T");
+    b.add("titleDesigner.togglePivot", "Toggle Pivot/Center", C::TitleDesigner, "Z");
+    b.add("titleDesigner.frameSelected", "Frame Selected", C::TitleDesigner, "F");
+    b.add("titleDesigner.fitCanvas", "Fit Canvas", C::TitleDesigner, "Home", "Alt+F");
+    b.add("titleDesigner.zoomActual", "Actual Size", C::TitleDesigner, "Shift+0");
+    b.add("titleDesigner.zoomIn", "Zoom In", C::TitleDesigner, "Ctrl+=");
+    b.add("titleDesigner.zoomOut", "Zoom Out", C::TitleDesigner, "Ctrl+-");
+    b.add("titleDesigner.editText", "Edit Text", C::TitleDesigner, "Enter");
+    b.add("titleDesigner.find", "Find Setting", C::TitleDesigner, "Ctrl+F");
+    b.add("titleDesigner.add", "Add...", C::TitleDesigner, "Ctrl+Shift+N");
+    b.add("titleDesigner.duplicate", "Duplicate", C::TitleDesigner, "Ctrl+D");
+    b.add("titleDesigner.delete", "Delete", C::TitleDesigner, "Delete", "Backspace");
+    b.add("titleDesigner.rename", "Rename", C::TitleDesigner, "F2");
+    b.add("titleDesigner.selectAll", "Select All Layers", C::TitleDesigner, "Ctrl+A");
+    b.add("titleDesigner.copy", "Copy Layers", C::TitleDesigner, "Ctrl+C");
+    b.add("titleDesigner.cut", "Cut Layers", C::TitleDesigner, "Ctrl+X");
+    b.add("titleDesigner.paste", "Paste Layers", C::TitleDesigner, "Ctrl+V");
+    b.add("titleDesigner.group", "Group", C::TitleDesigner, "Ctrl+G");
+    b.add("titleDesigner.ungroup", "Ungroup", C::TitleDesigner, "Ctrl+Shift+G");
+    b.add("titleDesigner.clip", "Clipping Mask", C::TitleDesigner, "Ctrl+Alt+G");
+    b.add("titleDesigner.forward", "Bring Forward", C::TitleDesigner, "Ctrl+]");
+    b.add("titleDesigner.backward", "Send Backward", C::TitleDesigner, "Ctrl+[");
+    b.add("titleDesigner.toFront", "Bring to Front", C::TitleDesigner, "Ctrl+Shift+]");
+    b.add("titleDesigner.toBack", "Send to Back", C::TitleDesigner, "Ctrl+Shift+[");
+    b.add("titleDesigner.toggleVisible", "Hide Layers", C::TitleDesigner, "H");
+    b.add("titleDesigner.toggleLock", "Lock Layers", C::TitleDesigner, "L");
+    b.add("titleDesigner.nudgeLeft", "Nudge Left", C::TitleDesigner, "Left").repeat = true;
+    b.add("titleDesigner.nudgeRight", "Nudge Right", C::TitleDesigner, "Right").repeat = true;
+    b.add("titleDesigner.nudgeUp", "Nudge Up", C::TitleDesigner, "Up").repeat = true;
+    b.add("titleDesigner.nudgeDown", "Nudge Down", C::TitleDesigner, "Down").repeat = true;
+    b.add("titleDesigner.nudgeLeftBig", "Nudge Left x10", C::TitleDesigner, "Shift+Left").repeat = true;
+    b.add("titleDesigner.nudgeRightBig", "Nudge Right x10", C::TitleDesigner, "Shift+Right").repeat = true;
+    b.add("titleDesigner.nudgeUpBig", "Nudge Up x10", C::TitleDesigner, "Shift+Up").repeat = true;
+    b.add("titleDesigner.nudgeDownBig", "Nudge Down x10", C::TitleDesigner, "Shift+Down").repeat = true;
+    b.add("titleDesigner.up", "Select Parent", C::TitleDesigner, "Escape");
+    b.add("titleDesigner.bake", "Bake Now", C::TitleDesigner, "Ctrl+B");
+    // S87 R51: rebindable, no default keys
+    b.add("titleDesigner.nextLanguage", "Next Language", C::TitleDesigner);
+    b.add("titleDesigner.previousLanguage", "Previous Language", C::TitleDesigner);
     b.group = "Sound Browser";
     b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
     b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");

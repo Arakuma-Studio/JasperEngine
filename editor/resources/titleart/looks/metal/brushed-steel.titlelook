@@ -1,0 +1,148 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/brushed-steel",
+  "revision": 1,
+  "name": {
+    "en": "Brushed Steel",
+    "ja": "ヘアラインスチール"
+  },
+  "description": {
+    "en": "Steel gradient face with a brushed texture and a chamfer bevel with linear gloss, inside a dark keyline, a chamfered steel band and an outer black line, over a drop shadow.",
+    "ja": "ヘアラインの質感とリニア光沢のチャンファーベベルを持つスチールグラデーションの面、暗い縁、面取りしたスチールの帯、外側の黒い線、ドロップシャドウ。"
+  },
+  "family": "metal",
+  "tags": [
+    "steel",
+    "silver",
+    "brushed",
+    "metal",
+    "chamfer",
+    "industrial"
+  ],
+  "synonyms": {
+    "en": [
+      "stainless",
+      "iron",
+      "hairline metal",
+      "machined"
+    ],
+    "ja": [
+      "スチール",
+      "ステンレス",
+      "鉄",
+      "ヘアライン",
+      "hagane",
+      "sutenresu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "anton",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e8ecf0"
+            },
+            {
+              "pos": 0.5,
+              "color": "#8a94a0"
+            },
+            {
+              "pos": 1,
+              "color": "#d0d6dc"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "chamfer",
+        "size": 2.5,
+        "depth": 4,
+        "gloss": "linear"
+      },
+      "texture": {
+        "kind": "brushed",
+        "amount": 0.5
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#1a1e24"
+          }
+        }
+      },
+      {
+        "width": 2.8,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#9aa2ac"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#4a525c"
+                },
+                {
+                  "pos": 1,
+                  "color": "#8a929c"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "chamfer",
+            "size": 1,
+            "gloss": "linear"
+          },
+          "texture": {
+            "kind": "brushed",
+            "amount": 0.4
+          }
+        }
+      },
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#0a0c10"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 10,
+        "opacity": 0.6
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

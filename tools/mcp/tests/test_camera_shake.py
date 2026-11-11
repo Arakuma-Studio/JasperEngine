@@ -194,3 +194,59 @@ async def test_d_camera_follow(ed: Editor):
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     await ed.call("remove_component", scene=s["scene"], entity=s["camera"], component="camerafollow")
+
+
+KICK = """{
+  "format": "jasperengine.shake",
+  "version": 1,
+  "type": "kick",
+  "strength": 3,
+  "fade_out": 0.5,
+  "position_influence": [1, 1, 0],
+  "rotation_influence": [0, 0, 0],
+  "units": "pixels",
+  "tick": 30
+}
+"""
+
+
+async def test_e_pixel_shake(ed: Editor):
+    """S48 R22 (AC18): Pixel Snap and Tick Rate on a 2D shaker, a kick .shake in pixels, CameraShake.kick."""
+    scene = (await ed.call("create_scene", name="PixelShake", type="2D", path="scenes/PixelShake"))["scene"]["id"]
+    cam = (await ed.call("create_entity", scene=scene, type="camera", name="Pixel Camera"))["entity_id"]
+    await ed.call("set_main_camera", scene=scene, entity="Pixel Camera")
+    # a Pixel Perfect Camera at 1 pixel per unit: an art pixel is one world unit
+    await ed.call("add_component", scene=scene, entity=cam, component="pixelperfectcamera")
+    await ed.call("add_component", scene=scene, entity=cam, component="camerashaker",
+                  values={"camerashaker": {"pixelSnap": True, "tickRate": 30}})
+    got = (await ed.call("get_entity", scene=scene, entity=cam, components=["camerashaker"]))["components"]["camerashaker"]
+    ed.check_eq((got["pixelSnap"], got["tickRate"]), (True, 30.0), f"the S48 fields: {got}")
+    await ed.check_error("set_properties", scene=scene, entity=cam, values={"camerashaker": {"tickRate": -1}}, contains="0")
+
+    written = await ed.call("write_file", path="assets/shakes/kick.shake", content=KICK)
+    ed.check(not written.get("warnings"), f"a kick in pixels reads clean: {written}")
+    info = await ed.call("get_asset_info", path="assets/shakes/kick.shake")
+    ed.check_eq((info["shake"]["type"], info["shake"]["units"], info["shake"]["tick"]), ("kick", "pixels", 30.0), f"{info['shake']}")
+    ed.check(abs(info["peak"]["pixels"][0] - 3) < 1e-4, f"a 3 px kick peaks at 3 px: {info['peak']}")
+    # an old file keeps its bytes (no units, no tick written back)
+    old = (ed.project / "assets/shakes/boom.shake").read_text()
+    ed.check("units" not in old and "tick" not in old, "an older .shake carries no S48 keys")
+    await ed.call("save_scene", scene=scene)
+
+    await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
+    try:
+        await ed.call("wait", frames=2)
+        await ed.call("eval_lua", code="CameraShake.kick(3, 0.5) CameraShake.shake('earthquake')")
+        offsets = []
+        for _ in range(16):
+            await ed.call("wait", frames=1)
+            runtime = (await runtime_of(ed, "Pixel Camera", "camerashaker"))["camerashaker"]["runtime"]
+            offsets.append((runtime["offset_position"], runtime["offset_rotation"]))
+        ed.check(any(any(abs(v) > 0 for v in p) for p, _ in offsets), f"it shakes: {offsets}")
+        for position, rotation in offsets:
+            ed.check(all(abs(v - round(v)) < 1e-4 for v in position), f"whole art pixels: {position}")
+            ed.check(all(v == 0 for v in rotation), f"no roll with Pixel Snap: {rotation}")
+        changes = [i for i in range(1, len(offsets)) if offsets[i][0] != offsets[i - 1][0]]
+        ed.check(all(b - a >= 2 for a, b in zip(changes, changes[1:])), f"Tick Rate 30 at 60 fps: at most every other frame {changes}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)

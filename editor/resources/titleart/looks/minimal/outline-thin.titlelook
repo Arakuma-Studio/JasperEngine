@@ -1,0 +1,74 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/outline-thin",
+  "revision": 1,
+  "name": {
+    "en": "Thin Outline",
+    "ja": "細いアウトライン"
+  },
+  "description": {
+    "en": "Hollow letters drawn by one thin white outline.",
+    "ja": "一本の細い白い輪郭線で描いた中抜きの文字。"
+  },
+  "family": "minimal",
+  "tags": [
+    "outline",
+    "hollow",
+    "thin",
+    "minimal",
+    "line",
+    "white"
+  ],
+  "synonyms": {
+    "en": [
+      "stroke only",
+      "line art",
+      "open letters",
+      "wireframe"
+    ],
+    "ja": [
+      "アウトライン",
+      "中抜き",
+      "線",
+      "細線",
+      "autorain",
+      "nakanuki"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 700
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#000000"
+      },
+      "opacity": 0
+    },
+    "rims": [
+      {
+        "width": 1
+      }
+    ],
+    "knockout": true
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

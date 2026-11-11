@@ -75,6 +75,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
 `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
+`JASPER_TEST_TRANSITION_TWIN_SKEW=<coverage>` shifts the CPU evaluation a transition capture's `transition_edges` compares the frames with, for the lint's red path (`tools/mcp/tests/test_contact_sheet.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
 its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
 there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
@@ -119,6 +120,7 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
   go first. So no long file starts last and alone. Each file has its own process, editor and
   scratch directory, so the order changes nothing a test sees.
+- `SMOKE_METHOD=build SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed`: a Compile build with only the engine modules the project needs (`jasperengine-editor build --method compile`): a fixed-text Realtime 3D title without the mesher, checked against the editor's frame.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
   A hang watchdog report fails it, with one exception: on a project's first editor open, when every
@@ -337,14 +339,15 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text) and an HTML UI document (`htmlui`), goldens in its
-`golden/`:
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
+the same golden), goldens in its `golden/`:
 
 ```sh
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).

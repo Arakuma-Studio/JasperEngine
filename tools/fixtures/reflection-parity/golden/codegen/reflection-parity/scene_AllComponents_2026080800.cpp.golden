@@ -107,7 +107,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1097);
     scene->recreateEntity(1098);
     scene->recreateEntity(1099);
-    scene->setLastEntity(1099);
+    scene->recreateEntity(1100);
+    scene->recreateEntity(1101);
+    scene->recreateEntity(1102);
+    scene->recreateEntity(1103);
+    scene->recreateEntity(1104);
+    scene->setLastEntity(1104);
 
     {
         // Entity 1001 (Transform)
@@ -3321,6 +3326,195 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         terrainWorld.autoAddTiles = false;
         terrainWorld.overviewCastsShadows = true;
         scene->addComponent<TerrainWorldComponent>(1099, terrainWorld);
+    }
+
+    {
+        // Entity 1100 (HitStopExemptComponent)
+        scene->setEntityName(1100, "HitStopExemptComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(99.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1100, transform);
+
+        HitStopExemptComponent hitStopExempt;
+        hitStopExempt.includeChildren = false;
+        hitStopExempt.enabled = false;
+        scene->addComponent<HitStopExemptComponent>(1100, hitStopExempt);
+    }
+
+    {
+        // Entity 1101 (GridComponent)
+        scene->setEntityName(1101, "GridComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(100.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1101, transform);
+
+        GridComponent grid;
+        grid.layout = TileGridLayout::Hexagon;
+        grid.cellSize = Vector2(8.000000f, 12.000000f);
+        grid.cellGap = Vector2(1.000000f, 2.000000f);
+        grid.plane = TileGridPlane::XZ;
+        grid.staggerAxis = StaggerAxis::X;
+        grid.staggerIndex = StaggerIndex::Even;
+        grid.hexSideLength = 5.000000f;
+        grid.linked = true;
+        scene->addComponent<GridComponent>(1101, grid);
+    }
+
+    {
+        // Entity 1102 (TilemapLayerComponent)
+        scene->setEntityName(1102, "TilemapLayerComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(101.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1102, transform);
+
+        TilemapLayerComponent tilemapLayer;
+        tilemapLayer.tileset = "";
+        tilemapLayer.tint = Vector4(0.500000f, 0.600000f, 0.700000f, 0.800000f);
+        tilemapLayer.mode = TilemapRenderMode::Individual;
+        tilemapLayer.chunkSize = 32;
+        tilemapLayer.tileAnchor = Vector2(0.500000f, 0.250000f);
+        tilemapLayer.animationSpeed = 2.500000f;
+        tilemapLayer.dualGrid = true;
+        tilemapLayer.seed = 9;
+        tilemapLayer.gpuResidency = TilemapGpuResidency::Always;
+        tilemapLayer.enabled = false;
+        {
+            std::string chunkError;
+            tilemapLayer.cells.edit().decodeChunk(ChunkCoord{-1, 2}, 
+                "BYAIAQAAAA==", chunkError);
+        }
+        scene->addComponent<TilemapLayerComponent>(1102, tilemapLayer);
+    }
+
+    {
+        // Entity 1103 (TilemapCollider2DComponent)
+        scene->setEntityName(1103, "TilemapCollider2DComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(102.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1103, transform);
+
+        TilemapCollider2DComponent tilemapCollider2D;
+        tilemapCollider2D.enabled = false;
+        tilemapCollider2D.source = TileColliderSource::Terrain;
+        tilemapCollider2D.geometry = TileColliderGeometry::Polygons;
+        tilemapCollider2D.merge = false;
+        tilemapCollider2D.offset = Vector2(1.500000f, 2.500000f);
+        tilemapCollider2D.friction = 0.250000f;
+        tilemapCollider2D.restitution = 0.500000f;
+        tilemapCollider2D.categoryBits = 2;
+        tilemapCollider2D.maskBits = 4;
+        tilemapCollider2D.groupIndex = -3;
+        tilemapCollider2D.contactEvents = false;
+        tilemapCollider2D.sensorEvents = true;
+        tilemapCollider2D.enableHitEvents = true;
+        tilemapCollider2D.solidTerrains = {"Water", "Lava"};
+        scene->addComponent<TilemapCollider2DComponent>(1103, tilemapCollider2D);
+    }
+
+    {
+        // Entity 1104 (TitleArtRendererComponent)
+        scene->setEntityName(1104, "TitleArtRendererComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(103.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1104, transform);
+
+        TitleArtRendererComponent titleArt;
+        titleArt.enabled = true;
+        titleArt.title = "";
+        titleArt.renderMode = TitleArtRenderMode::BAKED;
+        titleArt.language = "";
+        titleArt.pivotFromTitle = true;
+        titleArt.uiScale = 1.000000f;
+        titleArt.pixelsPerUnit = 0.000000f;
+        titleArt.resolutionScale = 1.000000f;
+        titleArt.priority = 0;
+        titleArt.renderWhenHidden = false;
+        titleArt.prebakeInitialState = true;
+        titleArt.transition = TitleArtTransition::CUT;
+        titleArt.transitionDuration = 0.150000f;
+        titleArt.additionalCharacters = "";
+        titleArt.atlasPageSize = 1024;
+        titleArt.atlasMaxPages = 4;
+        titleArt.qualityTier = "auto";
+        titleArt.liveTime = 0.000000f;
+        titleArt.liveUnscaledTime = false;
+        titleArt.sweepEnabled = false;
+        titleArt.sweepPosition = 0.000000f;
+        titleArt.sweepWidth = 0.150000f;
+        titleArt.sweepAngle = 25.000000f;
+        titleArt.sweepSoftness = 0.600000f;
+        titleArt.sweepColor = Vector4(1.000000f, 1.000000f, 1.000000f, 0.800000f);
+        titleArt.sweepAuto = false;
+        titleArt.sweepSpeed = 1.500000f;
+        titleArt.sweepInterval = 2.500000f;
+        titleArt.glowEnabled = false;
+        titleArt.glowPulse = 0.000000f;
+        titleArt.glowColor = Vector4(1.000000f, 0.850000f, 0.400000f, 1.000000f);
+        titleArt.tintEnabled = false;
+        titleArt.tintColor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        titleArt.tintAmount = 0.000000f;
+        titleArt.glintsEnabled = false;
+        titleArt.glintAmount = 1.000000f;
+        titleArt.glintSize = 0.060000f;
+        titleArt.glintRate = 0.500000f;
+        titleArt.glintSeed = 0;
+        titleArt.glintColor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        titleArt.playAutomatically = true;
+        titleArt.defaultAnimation = "";
+        titleArt.animationSpeed = 1.000000f;
+        titleArt.animationUnscaledTime = false;
+        titleArt.driveAnimation = "";
+        scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
     }
 
     // Default Camera 1

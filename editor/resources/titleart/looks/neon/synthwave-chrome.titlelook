@@ -1,0 +1,125 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/synthwave-chrome",
+  "revision": 1,
+  "name": {
+    "en": "Synthwave Chrome",
+    "ja": "シンセウェーブクローム"
+  },
+  "description": {
+    "en": "Horizon chrome face (white to cyan sky over a hard horizon into violet and pink) with a button bevel, a white line and a deep violet frame, a pink glow behind and cyan light streaks.",
+    "ja": "白からシアンの空、くっきりした地平線から紫とピンクへ続く地平線クロームの面とボタンベベル、白い線、深い紫の枠、背後のピンクのグロー、シアンの光条。"
+  },
+  "family": "neon",
+  "tags": [
+    "synthwave",
+    "chrome",
+    "retro",
+    "80s",
+    "pink",
+    "cyan"
+  ],
+  "synonyms": {
+    "en": [
+      "neon sunset",
+      "retrowave",
+      "eighties chrome",
+      "vaporwave"
+    ],
+    "ja": [
+      "シンセウェーブ",
+      "80年代",
+      "クローム",
+      "レトロ",
+      "shinsewēbu",
+      "hachijū nendai"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "audiowide",
+    "ja": "rocknroll-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.45,
+              "color": "#7ae0ff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#1a0050"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ff3ad0"
+            },
+            {
+              "pos": 1,
+              "color": "#fff0ff"
+            }
+          ]
+        },
+        "span": "line"
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "button",
+        "size": 2
+      }
+    },
+    "rims": [
+      {
+        "width": 1.2
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#2a0060"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff3ad0",
+        "size": 30
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "light_streaks",
+      "preset": "cyan",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

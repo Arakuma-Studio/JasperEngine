@@ -19,6 +19,7 @@
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
+#include "pixelart/ScreenTransition.h"
 
 #include "json.hpp"
 
@@ -107,6 +108,8 @@ namespace jasperengine::player {
         PbrTier mobilePbrTier = PbrTier::REDUCED;
         // Project Settings > Graphics > Light Mode
         LightMode lightMode = LightMode::AUTOMATIC;
+        // Project Settings > Graphics > Screen Transitions (S48): "transitions", written when not the defaults
+        pixelart::TransitionDefaults transitions;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the

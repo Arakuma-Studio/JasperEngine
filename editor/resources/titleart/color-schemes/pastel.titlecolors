@@ -1,0 +1,166 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "pastel",
+  "revision": 1,
+  "name": {
+    "en": "Pastel",
+    "ja": "パステル"
+  },
+  "description": {
+    "en": "Glossy candy pastels of pink, lavender and mint, a white line and a lilac frame.",
+    "ja": "ピンク、ラベンダー、ミントの光沢あるパステル、白の線と藤色の枠。"
+  },
+  "family_hint": [
+    "anime",
+    "cartoon"
+  ],
+  "tags": [
+    "pastel",
+    "pink",
+    "soft",
+    "cute",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "soft",
+      "kawaii",
+      "baby colours"
+    ],
+    "ja": [
+      "パステル",
+      "ゆめかわ",
+      "かわいい",
+      "pasuteru",
+      "kawaii"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#ffd6ec"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#c8d8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#d0fff0"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#f4d6f0",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#6a5a8a"
+    },
+    "dark": {
+      "fill": {
+        "color": "#5a4a7a"
+      },
+      "material_3d": {
+        "color": "#5a4a7a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#6a5a8a"
+      },
+      {
+        "fill": {
+          "color": "#c08aff"
+        },
+        "material_3d": {
+          "color": "#c08aff",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#6a5a8a"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#3a2a5a"
+      },
+      "material_3d": {
+        "color": "#3a2a5a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#92b3a8",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "glow": "#ffd6ff",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffd6ff"
+      },
+      {
+        "pos": 1,
+        "color": "#e3d7f6"
+      }
+    ]
+  },
+  "shadow": "#6a5a8a",
+  "light_ramp": [
+    "#6a5a8a",
+    "#c8d8ff",
+    "#ffd6ec",
+    "#ffd6ff",
+    "#d0fff0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#fff3f9"
+        },
+        {
+          "pos": 0.55,
+          "color": "#dbd7f8"
+        },
+        {
+          "pos": 1,
+          "color": "#cff9f2"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#ffd6ec",
+    "#c8d8ff",
+    "#d0fff0",
+    "#5a4a7a",
+    "#c08aff"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

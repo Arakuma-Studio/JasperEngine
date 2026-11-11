@@ -1,0 +1,98 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/static-signal",
+  "revision": 1,
+  "name": {
+    "en": "Static Signal",
+    "ja": "砂嵐の信号"
+  },
+  "description": {
+    "en": "White to grey face broken by interlaced scanlines, a strong glitch, a wide chromatic split and heavy grain.",
+    "ja": "インターレースの走査線、強いグリッチ、広い色収差、粗い粒子で乱れた白から灰色の面。"
+  },
+  "family": "horror",
+  "tags": [
+    "static",
+    "glitch",
+    "signal",
+    "horror",
+    "analog",
+    "grain"
+  ],
+  "synonyms": {
+    "en": [
+      "tv static",
+      "lost signal",
+      "found footage",
+      "interference"
+    ],
+    "ja": [
+      "砂嵐",
+      "ノイズ",
+      "グリッチ",
+      "電波",
+      "sunaarashi",
+      "noizu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "background": "dark",
+  "font": {
+    "latin": "creepster",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#9a9a9a"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "scanlines",
+      "params": {
+        "style": "interlace"
+      }
+    },
+    {
+      "type": "glitch",
+      "params": {
+        "amount": 0.5
+      }
+    },
+    {
+      "type": "chromatic_aberration",
+      "params": {}
+    },
+    {
+      "type": "grain",
+      "params": {
+        "amount": 0.4
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

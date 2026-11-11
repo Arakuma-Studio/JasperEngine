@@ -79,6 +79,9 @@ namespace jasperengine::editor::mcp::w3 {
         bool focus = true;               // bring the view's tab to the front when it must render
         int timeoutMs = 20000;
         bool deviceOverlay = true;       // game view with a simulated device: its screen drawn over the image
+        // editor: the part of the editor window to keep (ImGui pixels from the main viewport's
+        // corner; empty: the whole window). view "title_designer" sets it to that window's rect
+        float cropX = 0.0f, cropY = 0.0f, cropWidth = 0.0f, cropHeight = 0.0f;
     };
 
     struct CaptureResult {
@@ -135,6 +138,18 @@ namespace jasperengine::editor::mcp::w3 {
     Entity resolveLiveEntity(Project* project, SceneProject* scene, const Json& ref, std::string& error);
     // The scene's GameObjects, plus what the running game created
     std::vector<Entity> liveEntities(Project* project, SceneProject* scene);
+
+    // Lets an auto_paused game run (play auto_pause holds it between calls) while it lives: a capture
+    // stepping the paused game with Project::step (capture_contact_sheet's scene mode, S48)
+    class GameAdvance {
+    public:
+        explicit GameAdvance(McpContext& ctx);
+        ~GameAdvance();
+        GameAdvance(const GameAdvance&) = delete;
+        GameAdvance& operator=(const GameAdvance&) = delete;
+    private:
+        McpContext* ctx = nullptr;
+    };
 
     // The Lua value at `index` as JSON, as eval_lua returns values (tables nested maxDepth deep, at
     // most maxItems entries each); userdata with a __pairs metamethod (HTML UI data-model proxies)

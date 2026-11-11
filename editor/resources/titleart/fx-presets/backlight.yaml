@@ -1,0 +1,65 @@
+{
+  "presets": [
+    {
+      "id": "god_rays",
+      "name": "God Rays",
+      "aliases": [
+        "god rays",
+        "後光"
+      ],
+      "source": "backlight/godRays",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "jackpot",
+      "name": "Jackpot Rays (大当り)",
+      "aliases": [
+        "jackpot rays",
+        "大当り rays",
+        "大当り"
+      ],
+      "source": "backlight/jackpot",
+      "params": {
+        "length": 200,
+        "intensity": 130,
+        "color": "#fff6d0",
+        "outer_color": "#ff9a10",
+        "rays": 40,
+        "noise": 90,
+        "seed": 3
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "blue",
+      "name": "Blue Rays",
+      "aliases": [
+        "blue rays",
+        "青い後光"
+      ],
+      "source": "backlight/blue",
+      "params": {
+        "length": 320,
+        "intensity": 200,
+        "color": "#e6f6ff",
+        "outer_color": "#2a8aff",
+        "rays": 28,
+        "noise": 80
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    }
+  ]
+}

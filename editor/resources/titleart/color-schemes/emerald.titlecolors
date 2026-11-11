@@ -1,0 +1,267 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "emerald",
+  "revision": 1,
+  "name": {
+    "en": "Emerald",
+    "ja": "エメラルド"
+  },
+  "description": {
+    "en": "Emerald green metal, a silver metal rim and a white frame.",
+    "ja": "エメラルドグリーンの金属、金属の銀の縁と白の枠。"
+  },
+  "family_hint": [
+    "gems",
+    "casino"
+  ],
+  "tags": [
+    "green",
+    "gem",
+    "jewel",
+    "metal",
+    "silver"
+  ],
+  "synonyms": {
+    "en": [
+      "jade",
+      "jewel green",
+      "gem"
+    ],
+    "ja": [
+      "エメラルド",
+      "翠",
+      "宝石",
+      "emerarudo",
+      "midori"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#e0ffe8",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#e0ffe8"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#40e080"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#008a40"
+            },
+            {
+              "pos": 1,
+              "color": "#002a14"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#00140a"
+          },
+          {
+            "pos": 0.25,
+            "color": "#002a14"
+          },
+          {
+            "pos": 0.5,
+            "color": "#20b560"
+          },
+          {
+            "pos": 0.75,
+            "color": "#e0ffe8"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "material_3d": {
+        "color": "#33cf73",
+        "metallic": 1,
+        "roughness": 0.25
+      },
+      "shade": "#00200f"
+    },
+    "dark": {
+      "fill": {
+        "color": "#00140a"
+      },
+      "material_3d": {
+        "color": "#00140a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "kind": "linear",
+          "color": "#f4f6fa",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#f4f6fa"
+              },
+              {
+                "pos": 0.28,
+                "color": "#9aa3b2"
+              },
+              {
+                "pos": 0.5,
+                "color": "#283040"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c3cad6"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          }
+        },
+        "ramp": {
+          "stops": [
+            {
+              "color": "#14161c"
+            },
+            {
+              "pos": 0.35,
+              "color": "#5d6474"
+            },
+            {
+              "pos": 0.7,
+              "color": "#c9cfdb"
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff"
+            }
+          ]
+        },
+        "material_3d": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        },
+        "shade": "#1a2234"
+      },
+      {
+        "material_3d": {
+          "metallic": 1,
+          "roughness": 0.25
+        },
+        "shade": "#00200f"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#001a0c"
+      },
+      "material_3d": {
+        "color": "#001a0c",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#001d0e",
+      "metallic": 1,
+      "roughness": 0.25
+    }
+  },
+  "face_glow": "#e0ffe8",
+  "glow": "#40ff90",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#40ff90"
+      },
+      {
+        "pos": 1,
+        "color": "#20b560"
+      }
+    ]
+  },
+  "shadow": "#00200f",
+  "glint": "#e0ffe8",
+  "light_ramp": [
+    "#00200f",
+    "#002a14",
+    "#008a40",
+    "#40e080",
+    "#40ff90",
+    "#e0ffe8"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#b0f6c9"
+        },
+        {
+          "pos": 0.55,
+          "color": "#16a856"
+        },
+        {
+          "pos": 1,
+          "color": "#00381b"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#e0ffe8",
+    "#40e080",
+    "#008a40",
+    "#002a14",
+    "#00140a",
+    "#ffffff"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

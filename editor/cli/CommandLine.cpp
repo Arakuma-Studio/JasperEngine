@@ -58,6 +58,7 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "titleart/TitleArtProjectCheck.h"
 #include "util/QaChecks.h"
 #include "particles/ParticleEffectPreview.h"
 #include "procmat/ProceduralBake.h"
@@ -77,6 +78,8 @@
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "sprite/SpriteMigration.h"
 #include "pixelart/PixelArtCheck.h"
+#include "pixelart/cleanup/CleanupCli.h"
+#include "pixelart/cleanup/CleanupSession.h"
 #include "pixelart/PixelArtInput.h"
 #include "spritenormals/SpriteNormalsCli.h"
 #include "pixelart/aseprite/AsepriteCli.h"
@@ -312,9 +315,15 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " import-title-art <file>... --project <dir>  Import Pachislop projects, PSDs, SVGs, Photoshop styles\n"
+        << "                                                     or strings (CSV, XLIFF) into Title Art (exit 0/1/2).\n"
+        << "  " << commandName << " export-title-art <x.titleart>... --project <dir> --format <f>  PNG, PSD, SVG, sheets, atlases,\n"
+        << "                                                     sequences, KTX2, CSV or XLIFF of Title Art documents (exit 0/1/2).\n"
         << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4).\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " fix-pixel-art <in> [options]  Clean AI or loose pixel art (grid, palette, sheets); see --help.\n"
+        << "  " << commandName << " lint-pixel-art <in>... [options]  Craft and rule lints on images and .aseprite files; see --help.\n"
         << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
@@ -322,6 +331,7 @@ static void printMainUsage(const std::string& commandName) {
         << "                                                     Measure audio files (the analyze_audio numbers; exit 0/2).\n"
         << "  " << commandName << " sound-library verify|list [options]\n"
         << "                                                     Check or list the starter library (exit 0/1/2).\n"
+        << "  " << commandName << " title-library <subcommand> [options]  Port, normalize and check the Title Art library (exit 0/1/2).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
         << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
@@ -2150,6 +2160,7 @@ struct CheckOptions {
     bool vat = false;
     bool normals = false;
     bool videos = false;
+    bool titles = false;
     bool particles = false;
     bool materials = false;
     std::string failOn = "fail";
@@ -2198,6 +2209,9 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
+        << "      --titles             Title Art documents (.titleart), no GPU: parse errors and newer versions,\n"
+        << "                           missing fonts and images (errors), missing glyphs, and outputs not baked,\n"
+        << "                           stale or with an invalid recipe (warnings, with the export_title command).\n"
         << "      --particles          Particle effects (.particles): preview_particle_effect's checks at each\n"
         << "                           effect's default seed, metrics only (capacity_hit, overdraw_budget,\n"
         << "                           invisible, pop, never_ends, platform_budget; cost is an estimate).\n"
@@ -2216,14 +2230,14 @@ void printCheckUsage(const std::string& commandName) {
         << "                           when the project's Pixel Art Mode is on; given files, only the findings of the\n"
         << "                           changed scenes, of the changed images that are pixel art and of project.yaml.\n"
         << "      --all                Lua, shaders, C++, UI, textures, clips, clip quality, vertex animations, normal maps,\n"
-        << "                           videos, sprites, particle effects, Procedural Materials and pixel art.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos\n"
+        << "                           videos, sprites, particle effects, Procedural Materials, pixel art and titles.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos --titles\n"
         << "                           (and --pixel-art in Pixel Art Mode).\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
         << "                           .vat files baked from it. An image checks the normal map it is (a recipe)\n"
-        << "                           or the normal maps made from it.\n"
+        << "                           or the normal maps made from it. A .titleart or a baked PNG checks the title.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -2258,6 +2272,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.ui = true;
         } else if (arg == "--textures") {
             options.textures = true;
+        } else if (arg == "--titles") {
+            options.titles = true;
         } else if (arg == "--anims") {
             options.anims = true;
         } else if (arg == "--anim-quality") {
@@ -3400,6 +3416,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     // given files (--hook), only the changed scenes and the changed images that are pixel art,
     // and only their findings
     if (pixelArtWanted) {
+        pixelart::cleanup::registerCleanupOutputsRule();
         pixelart::Scope scope;
         if (pixelArtChanged) {
             scope.scenes = pixelArtChanged->scenes;
@@ -3550,14 +3567,15 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
+    bool titles = options.titles || options.all;
     const bool particles = options.particles || options.all;
     const bool materials = options.materials || options.all;
     const bool sprites = options.sprites || options.all;
     bool pixelArt = options.pixelArt || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
         !options.videos && !options.animQuality && !options.particles && !options.materials && !options.sprites && !options.pixelArt &&
-        !options.all) {
-        lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
+        !options.titles && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = videos = titles = true;
         // S42 R24: in the default set (and so in --hook) while Pixel Art Mode is on
         pixelArt = pixelArtModeOn(options.project);
     }
@@ -3593,6 +3611,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
+    std::vector<fs::path> titleFiles;   // .titleart documents and baked PNGs (their documents)
     PixelArtChanged pixelArtChanged;           // the scenes, images and project.yaml given
     std::vector<fs::path> particleFiles;
     std::vector<fs::path> materialFiles;    // .procmat files and PNGs (baked ones)
@@ -3638,6 +3657,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
+            // a Title Art document, or a PNG baked from one
+            if (titles && (Util::isTitleArtFile(name) || Util::isImageFile(name))) titleFiles.push_back(path);
             // a Procedural Material, or a PNG it baked
             if (materials && (Util::isProceduralMaterialFile(name) || Util::isImageFile(name))) materialFiles.push_back(path);
             if (pixelArt) {
@@ -3667,6 +3688,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
     const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
+    const bool titlesWanted = fileMode ? !titleFiles.empty() : titles;
     // scene files' Video Players (a whole-project check: not per file)
     const bool videosWanted = !fileMode && videos;
     // the recipes are read without the engine: it starts only when a .vat is concerned
@@ -3723,6 +3745,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (titlesWanted) {
+        // documents, references and recipes: no engine, no GPU
+        const fs::path assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root.lexically_normal());
+        const TitleArtProjectCheck titleCheck = checkTitleArtFiles(root, assetsDir, fileMode ? titleFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), titleCheck.findings.begin(), titleCheck.findings.end());
+        if (!fileMode || titleCheck.documents) run.checked.push_back({"titles", titleCheck.documents});
     }
     if (materialsWanted) {
         // the graphs planned and the PNGs' recipe chunks: no engine, no device
@@ -3834,7 +3863,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"}, {"anim_quality", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}, {"materials", "file"}, {"sprites", "file"},
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"titles", "title"}, {"materials", "file"}, {"sprites", "file"},
                                                           {"pixel_art", "item"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
@@ -4303,6 +4332,16 @@ int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const ch
 int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runFixPixelArtCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::cleanup::runFixPixelArt(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runLintPixelArtCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::cleanup::runLintPixelArt(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

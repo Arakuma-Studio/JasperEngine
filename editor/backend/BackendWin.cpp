@@ -10,6 +10,7 @@
 #include "WinPen.h"
 #include "WglWorkerContext.h"
 #include "renderer/Renderer.h"
+#include "util/ImePreedit.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -26,6 +27,7 @@
 #endif
 #include <windows.h>
 #include <dwmapi.h>
+#include <imm.h>
 #include <shellapi.h>
 #include <xinput.h>
 
@@ -354,6 +356,41 @@ void handleDrop(HDROP drop) {
     if (!paths.empty()) editor::Backend::getApp().handleExternalDrop(paths);
 }
 
+std::wstring compositionString(HIMC context, DWORD kind) {
+    const LONG bytes = ImmGetCompositionStringW(context, kind, nullptr, 0);
+    if (bytes <= 0) return {};
+    std::wstring text(static_cast<size_t>(bytes) / sizeof(wchar_t), L'\0');
+    ImmGetCompositionStringW(context, kind, text.data(), static_cast<DWORD>(text.size() * sizeof(wchar_t)));
+    return text;
+}
+
+// The canvas text editor draws the composition inline (ImePreedit::inlineWanted), so it is read
+// here instead of going to the system's composition window. The converted text goes through
+// WM_CHAR, the path typed characters take.
+void handleInlineComposition(HWND window, LPARAM flags) {
+    HIMC context = ImmGetContext(window);
+    if (!context) return;
+    if (flags & GCS_RESULTSTR) {
+        for (wchar_t unit : compositionString(context, GCS_RESULTSTR))
+            SendMessageW(window, WM_CHAR, static_cast<WPARAM>(unit), 1);
+    }
+    if (flags & GCS_COMPSTR) {
+        const std::wstring composing = compositionString(context, GCS_COMPSTR);
+        LONG cursor = static_cast<LONG>(composing.size());
+        if (flags & GCS_CURSORPOS) cursor = ImmGetCompositionStringW(context, GCS_CURSORPOS, nullptr, 0);
+        cursor = std::clamp(cursor, LONG(0), static_cast<LONG>(composing.size()));
+        editor::ImePreedit preedit;
+        preedit.text = wideToUtf8(composing.c_str(), static_cast<int>(composing.size()));
+        preedit.caretByte = static_cast<int>(wideToUtf8(composing.c_str(), static_cast<int>(cursor)).size());
+        preedit.active = true;
+        editor::ImePreedit::set(preedit);
+    } else {
+        // committed with nothing left to compose, or the composition was emptied
+        editor::ImePreedit::clear();
+    }
+    ImmReleaseContext(window, context);
+}
+
 void paintNativeLoading(HWND window, HDC deviceContext) {
     RECT client{};
     GetClientRect(window, &client);
@@ -484,6 +521,27 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             case WM_SYSKEYUP:
             case WM_CHAR:
                 backend->redrawRequested = true;
+                break;
+            // the composition is drawn inline by the canvas text editor while it has the
+            // keyboard: the system's composition window never starts then
+            case WM_IME_STARTCOMPOSITION:
+                if (editor::ImePreedit::inlineWanted()) {
+                    editor::ImePreedit::clear();
+                    backend->redrawRequested = true;
+                    return 0;
+                }
+                break;
+            case WM_IME_COMPOSITION:
+                if (editor::ImePreedit::inlineWanted()) {
+                    handleInlineComposition(window, lParam);
+                    backend->redrawRequested = true;
+                    return 0;
+                }
+                break;
+            case WM_IME_ENDCOMPOSITION:
+                editor::ImePreedit::clear();
+                backend->redrawRequested = true;
+                if (editor::ImePreedit::inlineWanted()) return 0;
                 break;
             case WM_SETCURSOR:
                 if (LOWORD(lParam) == HTCLIENT && WindowWin::isCursorHidden()) {

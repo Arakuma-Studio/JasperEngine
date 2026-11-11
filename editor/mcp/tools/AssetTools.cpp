@@ -71,6 +71,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "texsynth/SynthImage.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "model/ModelAudit.h"
@@ -952,6 +953,13 @@ void getAssetInfoTool(const CallPtr& call) {
                 text += "." + synthesisAssetText(synthesis);
                 text.pop_back();
             }
+            // a Title Art bake: the document and output that made it, and whether it is fresh
+            const Json bake = titleArtBakedPngInfo(project, file);
+            if (!bake.is_null()) {
+                data["title_art_bake"] = bake;
+                text += ". Baked from " + bake.value("source", std::string()) + " output " + bake.value("output", std::string()) + " (" +
+                        bake.value("status", std::string()) + ")";
+            }
         }
         if (extensionOf(file) != ".svg") {
             // a sprite normal map: its recipe, whether its source changed, the regenerate arguments;
@@ -1099,6 +1107,9 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "vertex_animation") {
         // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
         vatAssetInfo(project, file, data, text);
+    } else if (kind == "title_art") {
+        // a .titleart: canvas, layers, fonts (missing marked), outputs with freshness, problems
+        titleArtAssetInfo(project, file, data, text);
     } else if (kind == "shake") {
         // a .shake: its values and the peaks of its graph (the Inspector's: 60 Hz, seed 0)
         std::string source;
@@ -1115,9 +1126,12 @@ void getAssetInfoTool(const CallPtr& call) {
                              {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
                              {"fade_out", McpValues::number(preset.fadeOut)},
                              {"position_influence", McpValues::toJson(preset.positionInfluence)},
-                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)},
+                             {"units", camera::shakeUnitsName(preset.units)}, {"tick", McpValues::number(preset.tick)}};
             data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
                             {"duration", McpValues::number(duration)}};
+            // a preset in art pixels peaks in pixels (S48)
+            if (preset.units == camera::ShakeUnits::Pixels) data["peak"]["pixels"] = McpValues::toJson(peaks.pixels);
             if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
             char summary[160];
             std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",
@@ -1187,6 +1201,25 @@ void viewAssetTool(const CallPtr& call) {
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
+        return;
+    }
+    if (Util::isTitleArtFile(rel)) {
+        // its fresh main output, else a render (S80 R59)
+        texsynth::Image image;
+        std::string label, error;
+        if (!titleArtViewImage(project, file, maxSize, image, label, error)) {
+            call->fail(rel + ": " + error);
+            return;
+        }
+        std::vector<uint8_t> png;
+        if (!texsynth::encodePng(image, png)) {
+            call->fail("Can't encode the preview of " + rel + ".");
+            return;
+        }
+        ToolResult result = ToolResult::success(rel + ": " + label + " (" + std::to_string(image.width) + "x" + std::to_string(image.height) + ").",
+                                                Json{{"preview_width", image.width}, {"preview_height", image.height}, {"shows", label}});
+        result.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+        call->reply(std::move(result));
         return;
     }
     if (SpriteSheetPool::isAsepritePath(rel)) {
@@ -2731,6 +2764,12 @@ void applyMaterialPresetTool(const CallPtr& call) {
             return;
         }
         material = applyMaterialPreset(*preset, material);
+        // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+        bool wroteCopy = false;
+        if (!resolvePresetPalettes(*project, material, wroteCopy, error)) {
+            call->fail(error);
+            return;
+        }
         material.name = rel;
         if (!materialWriteAllowed(call, file, rel)) return;
         if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
@@ -2787,7 +2826,14 @@ void applyMaterialPresetTool(const CallPtr& call) {
                 unlinked.push_back(McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(s) + " (" + linked + ")");
             }
             // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
-            const Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+            bool wroteCopy = false;
+            if (!resolvePresetPalettes(*project, to, wroteCopy, error)) {
+                delete multi;
+                call->fail(error);
+                return;
+            }
             addMaterialChangeCommands(*multi, project, sceneProject->id, entity, s, from, to);
             applied.push_back({{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", s}, {"unlinked", !linked.empty()}});
         }

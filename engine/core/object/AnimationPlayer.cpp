@@ -542,6 +542,14 @@ float AnimationPlayer::getSpeed() const{
     return getComponent<AnimationPlayerComponent>().speed;
 }
 
+void AnimationPlayer::setPoseFrameRate(float fps){
+    getComponent<AnimationPlayerComponent>().poseFrameRate = std::isfinite(fps) ? std::max(0.0f, fps) : 0.0f;
+}
+
+float AnimationPlayer::getPoseFrameRate() const{
+    return getComponent<AnimationPlayerComponent>().poseFrameRate;
+}
+
 void AnimationPlayer::setDefaultClip(const std::string& name){
     getComponent<AnimationPlayerComponent>().defaultClip = name;
 }

@@ -56,6 +56,11 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/HitStopExemptComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -924,6 +929,15 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<TitleArtRendererComponent>(TitleArtRendererComponent& title, Entity, CloneContext&) {
+    // the authored fields are copied; the copy gets its own state (events, live render, what it
+    // drives of its own companion) at its first update
+    title.runtime.reset();
+    title.needUpdate = true;
+    title.sweepPositionKeyed = false;
+}
+
+template<>
 void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
@@ -944,6 +958,22 @@ template<>
 void prepare<SpriteBatchComponent>(SpriteBatchComponent& batch, Entity, CloneContext&) {
     // instances are runtime data scripts fill: a copy starts empty, with GPU buffers of its own
     batch.state.reset();
+}
+
+template<>
+void prepare<TilemapLayerComponent>(TilemapLayerComponent& layer, Entity, CloneContext&) {
+    // the cells are shared until one of the copies writes (TileCellsRef); chunks and GPU buffers
+    // are the copy's own
+    layer.state.reset();
+    layer.needUpdate = true;
+}
+
+template<>
+void prepare<TilemapCollider2DComponent>(TilemapCollider2DComponent& collider, Entity, CloneContext&) {
+    collider.state.reset();
+    collider.generatedChains = 0;
+    collider.generatedPolygons = 0;
+    collider.needUpdate = true;
 }
 
 template<>
@@ -1043,6 +1073,8 @@ void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneCont
         body.hasPendingVelocity = true;
     }
     body.body = b2_nullBodyId;
+    // made again for the copy by its own Tilemap Collider 2D
+    body.generated.reset();
     for (Collider2D& collider : body.colliders) {
         collider.shapes.clear();
         collider.chain = b2_nullChainId;
@@ -1329,12 +1361,17 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TitleArtRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

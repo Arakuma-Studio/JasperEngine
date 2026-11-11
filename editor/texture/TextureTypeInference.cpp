@@ -160,6 +160,12 @@ std::vector<TextureSlot> TextureTypeInference::classify(const DepEdge& edge, con
         slots.push_back(TextureSlot::SourceFile);
         return slots;
     }
+    if (edge.kind == DepEdgeKind::Other && context.referrerPath && lowerExtensionOf(context.referrerPath(edge.referrer)) == ".tileset"){
+        // a tileset's image (S50): its tiles draw as sprites do, so it imports as a sprite sheet
+        // does (no mips; point filtering in Pixel Art Mode)
+        slots.push_back(TextureSlot::Sprite);
+        return slots;
+    }
     if (edge.kind == DepEdgeKind::ModelUri){
         // a glTF's external image, by the slots of the materials that sample it: the model loader
         // takes its cook by path (MeshSystem), so the source need not ship
@@ -331,11 +337,17 @@ TextureInference TextureTypeInference::fromEdges(const Project& project, const s
                 if (texture.uniform != uniform)
                     continue;
                 cube = texture.cube;
-                return texture.defaultTexture == ShaderTextureDefault::NORMAL ? TextureSlot::Normal : TextureSlot::Color;
+                if (texture.defaultTexture == ShaderTextureDefault::NORMAL)
+                    return TextureSlot::Normal;
+                // a Pixel FX ramp strip (S48 R9): exact texels, as a sprite's (Nearest, no mips, never compressed)
+                if (texture.defaultTexture == ShaderTextureDefault::RAMP_GREY)
+                    return TextureSlot::Sprite;
+                return TextureSlot::Color;
             }
         }
         return TextureSlot::Color;
     };
+    context.referrerPath = [&](const Guid& referrer){ return index.referrerPath(referrer); };
     context.modelSlots = [&](const DepEdge& edge) -> std::vector<TextureSlot> {
         const std::string model = index.referrerPath(edge.referrer);
         if (model.empty())

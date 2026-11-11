@@ -1,0 +1,75 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "glow_up",
+  "name": "Glow Up",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.8,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Fades in as its glow swells and settles.",
+  "params": [
+    {
+      "name": "peak",
+      "label": "Peak",
+      "type": "number",
+      "default": 2.5,
+      "min": 0,
+      "max": 10
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "opacity",
+      "keys": [
+        [
+          0,
+          0
+        ],
+        [
+          "0.3*D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "live.glow_pulse",
+      "keys": [
+        [
+          0,
+          0,
+          "sine_out"
+        ],
+        [
+          "0.6*D",
+          "peak",
+          "sine_in_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "flash.amount",
+      "keys": [
+        [
+          0,
+          0.6,
+          "sine_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

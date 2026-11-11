@@ -502,6 +502,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
+                if (panelsNode["pixelArtCleanup"]) panelVisibility.pixelArtCleanup = panelsNode["pixelArtCleanup"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
                 if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
@@ -834,6 +835,7 @@ bool AppSettings::saveSettings() {
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
+        panelsNode["pixelArtCleanup"] = panelVisibility.pixelArtCleanup;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         panelsNode["undo_history"] = panelVisibility.undoHistory;
@@ -1479,6 +1481,24 @@ std::string AppSettings::getCjkFontLanguage() {
 
 void AppSettings::setCjkFontLanguage(const std::string& language) {
     cjkFontLanguage = SystemFonts::isLanguageSetting(language) ? language : "auto";
+}
+
+YAML::Node AppSettings::getTitleDesignerSettings() {
+    const YAML::Node node = settingsData["title_designer"];
+    return node && node.IsMap() ? YAML::Clone(node) : YAML::Node(YAML::NodeType::Map);
+}
+
+void AppSettings::setTitleDesignerSettings(const YAML::Node& node) {
+    settingsData["title_designer"] = YAML::Clone(node);
+}
+
+YAML::Node AppSettings::getTitleLibrarySettings() {
+    const YAML::Node node = settingsData["title_library"];
+    return node && node.IsMap() ? YAML::Clone(node) : YAML::Node(YAML::NodeType::Map);
+}
+
+void AppSettings::setTitleLibrarySettings(const YAML::Node& node) {
+    settingsData["title_library"] = YAML::Clone(node);
 }
 
 bool AppSettings::getSoundBrowserAutoplay() {

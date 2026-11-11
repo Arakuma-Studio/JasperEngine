@@ -1,0 +1,78 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "flash",
+  "name": "Flash",
+  "group": "emphasis",
+  "role": "emphasis",
+  "duration": "max(0.15, count*0.5)",
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": true,
+  "description": "Flashes a colour over the title, at most twice a second (an overlay).",
+  "params": [
+    {
+      "name": "color",
+      "label": "Color",
+      "type": "color",
+      "default": "#ffffff"
+    },
+    {
+      "name": "amount",
+      "label": "Amount",
+      "type": "number",
+      "default": 1.5,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "count",
+      "label": "Count",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 10
+    }
+  ],
+  "vars": {
+    "P": "max(0.5, D/count)"
+  },
+  "tracks": [
+    {
+      "target": "title",
+      "field": "flash.color",
+      "keys": [
+        [
+          0,
+          "$color",
+          "step"
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "flash.amount",
+      "repeat": {
+        "count": "count",
+        "period": "P"
+      },
+      "keys": [
+        [
+          0,
+          0,
+          "sine_out"
+        ],
+        [
+          "min(0.075, P/2)",
+          "amount",
+          "sine_in"
+        ],
+        [
+          "min(0.15, P)",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

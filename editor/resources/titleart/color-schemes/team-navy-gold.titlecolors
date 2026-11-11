@@ -1,0 +1,270 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "team-navy-gold",
+  "revision": 1,
+  "name": {
+    "en": "Navy & Gold",
+    "ja": "ネイビー＆ゴールド"
+  },
+  "description": {
+    "en": "Glossy navy blue, a white line and a gold metal frame: team colours.",
+    "ja": "光沢のある紺、白の線と金属の金の枠：チームカラー。"
+  },
+  "family_hint": [
+    "sports"
+  ],
+  "tags": [
+    "navy",
+    "gold",
+    "team",
+    "sports",
+    "blue"
+  ],
+  "synonyms": {
+    "en": [
+      "navy and gold",
+      "blue and gold",
+      "varsity"
+    ],
+    "ja": [
+      "紺と金",
+      "ネイビー",
+      "ゴールド",
+      "neibī",
+      "kon"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#2a4aa0",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#2a4aa0"
+            },
+            {
+              "pos": 1,
+              "color": "#0a1f44"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#1d397b",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#000a20"
+    },
+    "dark": {
+      "fill": {
+        "color": "#000814"
+      },
+      "material_3d": {
+        "color": "#000814",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#000a20"
+      },
+      {
+        "fill": {
+          "kind": "linear",
+          "color": "#8a2c00",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8a2c00"
+              },
+              {
+                "pos": 0.17,
+                "color": "#ffe470"
+              },
+              {
+                "pos": 0.33,
+                "color": "#c05a00"
+              },
+              {
+                "pos": 0.5,
+                "color": "#ffbe30"
+              },
+              {
+                "pos": 0.67,
+                "color": "#fff0a0"
+              },
+              {
+                "pos": 0.83,
+                "color": "#f09a10"
+              },
+              {
+                "pos": 1,
+                "color": "#ffe060"
+              }
+            ]
+          }
+        },
+        "ramp": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "material_3d": {
+          "preset": "gold",
+          "color": "#ffc23a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff8d8"
+              },
+              {
+                "pos": 0.06,
+                "color": "#ffe890"
+              },
+              {
+                "pos": 0.16,
+                "color": "#ffc838"
+              },
+              {
+                "pos": 0.3,
+                "color": "#f0a018"
+              },
+              {
+                "pos": 0.4,
+                "color": "#c06a06"
+              },
+              {
+                "pos": 0.47,
+                "color": "#5a2602"
+              },
+              {
+                "pos": 0.51,
+                "color": "#1a0800"
+              },
+              {
+                "pos": 0.55,
+                "color": "#120500"
+              },
+              {
+                "pos": 0.6,
+                "color": "#5a2804"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c87810"
+              },
+              {
+                "pos": 0.84,
+                "color": "#f8b830"
+              },
+              {
+                "pos": 0.94,
+                "color": "#ffe080"
+              },
+              {
+                "pos": 1,
+                "color": "#fff4c8"
+              }
+            ]
+          },
+          "gradient_span": "line",
+          "gradient_bend": 0.6,
+          "metallic": 1,
+          "roughness": 0.06
+        },
+        "shade": "#4a2200"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000814"
+      },
+      "material_3d": {
+        "color": "#000814",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#071630",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#2a4aa0",
+  "glow": "#ffd040",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffd040"
+      },
+      {
+        "pos": 1,
+        "color": "#1a3572"
+      }
+    ]
+  },
+  "shadow": "#000a20",
+  "glint": "#2a4aa0",
+  "light_ramp": [
+    "#000a20",
+    "#0a1f44",
+    "#2a4aa0",
+    "#ffd040"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#274697"
+        },
+        {
+          "pos": 0.55,
+          "color": "#18326d"
+        },
+        {
+          "pos": 1,
+          "color": "#0c2149"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#2a4aa0",
+    "#0a1f44",
+    "#000814",
+    "#ffbe30"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

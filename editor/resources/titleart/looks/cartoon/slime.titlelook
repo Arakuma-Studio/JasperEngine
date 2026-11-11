@@ -1,0 +1,103 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/slime",
+  "revision": 1,
+  "name": {
+    "en": "Slime",
+    "ja": "スライム"
+  },
+  "description": {
+    "en": "Lime to green gradient face under a green glass with a gloss band, in a thick dark green outline, dripping slime.",
+    "ja": "光沢の帯付きの緑のガラスを重ねたライムから緑のグラデーションの面、太い濃い緑の縁取り、したたるスライム。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "slime",
+    "green",
+    "goo",
+    "cartoon",
+    "glossy",
+    "drip"
+  ],
+  "synonyms": {
+    "en": [
+      "ooze",
+      "gooey",
+      "jelly",
+      "gross"
+    ],
+    "ja": [
+      "スライム",
+      "ねばねば",
+      "緑",
+      "どろどろ",
+      "suraimu",
+      "nebaneba"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "potta-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#8aff4a"
+            },
+            {
+              "pos": 1,
+              "color": "#20a010"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true
+      },
+      "glass": {
+        "enabled": true,
+        "color": "#60ff40",
+        "tint": 0.4
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#0a3a00"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drips",
+      "params": {
+        "style": "slime",
+        "length": 20,
+        "color_mode": "custom",
+        "color": "#7cff2a",
+        "seed": 2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

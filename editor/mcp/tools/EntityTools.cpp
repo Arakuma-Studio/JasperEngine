@@ -205,7 +205,9 @@ const std::vector<EntityKind>& entityKinds() {
         {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
         {"sprite", EntityCreationType::SPRITE, "Sprite"},
-        {"tilemap", EntityCreationType::TILEMAP, "Tilemap"},
+        // S50: a Grid and its Tilemap Layer child, as one undo step (createEntityRun)
+        {"tilemap", EntityCreationType::TILEMAP_GRID, "Grid"},
+        {"free_tilemap", EntityCreationType::TILEMAP, "Free Tilemap"},
         {"light_2d", EntityCreationType::POINT_LIGHT_2D, "Light 2D"},
         {"shadow_caster_2d", EntityCreationType::SHADOW_CASTER_2D, "Shadow Caster 2D"},
         {"rigidbody2d", EntityCreationType::RIGIDBODY2D, "Rigidbody 2D"},
@@ -685,6 +687,15 @@ void createEntityRun(const CallPtr& call, bool waited) {
             };
             why = "The GameObject could not be created.";
             return new Capture(cmd, created);
+        });
+    }
+    if (kind->type == EntityCreationType::TILEMAP_GRID) {
+        stepCount++;
+        steps->addStep([project, sceneId, created](std::string& why) -> Command* {
+            auto* layer = new CreateEntityCmd(project, sceneId, "Tilemap", EntityCreationType::TILEMAP_LAYER, *created);
+            layer->setQuiet(true);
+            why = "The Tilemap Layer could not be created.";
+            return layer;
         });
     }
     for (ComponentType type : extraComponents) {
@@ -1255,7 +1266,7 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create in one step: parent, name (default: the type's Unity name), local transform, extra "
+            "GameObject > Create: parent, name (default: the type's Unity name), local transform, "
             "components, values ({component: "
             "{property: value}} or set_properties changes). empty: Transform only; bare: "
             "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "

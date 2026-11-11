@@ -134,8 +134,8 @@ b2ShapeId Rigidbody2D::getBox2DShape(size_t index) const{
 std::vector<b2ShapeId> Rigidbody2D::getBox2DShapes(size_t index) const{
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index < body.colliders.size()){
-        return colliderShapeIds(body.colliders[index]);
+    if (const Collider2D* collider = findCollider2D(body, (int)index)){
+        return colliderShapeIds(*collider);
     }
     Log::error("Cannot find shape %zu of body", index);
     return {};
@@ -144,8 +144,8 @@ std::vector<b2ShapeId> Rigidbody2D::getBox2DShapes(size_t index) const{
 b2ChainId Rigidbody2D::getBox2DChain(size_t index) const{
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index < body.colliders.size()){
-        return body.colliders[index].chain;
+    if (const Collider2D* collider = findCollider2D(body, (int)index)){
+        return collider->chain;
     }else{
         Log::error("Cannot find shape %zu of body", index);
     }

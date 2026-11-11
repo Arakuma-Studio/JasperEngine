@@ -43,6 +43,10 @@ WALKS = {
     # InputActions::unload runs at Stop (editor/Project.cpp) while the Lua state is there
     "InputAction": [("engine/core/input/InputActions.cpp", "InputActions::unload"),
                     ("engine/core/input/InputActions.cpp", "InputActions::resetSession")],
+    # a TitleArtRendererComponent's runtime state: Engine::clearComponentSubscriptions and
+    # Scene::removeSubscriptionsByTag walk the scene's titles through these
+    "TitleArtInstance": [("engine/core/subsystem/TitleArtSystem.cpp", "TitleArtSystem::clearSubscriptions"),
+                         ("engine/core/subsystem/TitleArtSystem.cpp", "TitleArtSystem::removeSubscriptionsByTag")],
 }
 # files whose holders are values that never outlive the call that makes them
 TRANSIENT = {

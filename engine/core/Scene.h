@@ -283,7 +283,7 @@ namespace jasperengine{
         // has run, scaled by Time.timeScale. Engine::runFrame advances it with the game's frame
         // delta, so it holds while the game, the editor's Play or this scene is paused, at time
         // scale 0 and while the simulation is held; the editor moves a stopped scene's clock (the
-        // Scene view's Animate water). 0 when the scene is made. A pinned shader time
+        // Scene view's Always Refresh). 0 when the scene is made. A pinned shader time
         // (Engine::setPinnedShaderTime, golden tests) replaces it wherever it is read.
         double getSceneTime() const;
         void setSceneTime(double seconds);

@@ -156,6 +156,10 @@ uint32_t TextureRender::getViewId() const{
     return backend.getViewId();
 }
 
+uint32_t TextureRender::getSamplingKey() const{
+    return backend.getSamplingKey();
+}
+
 int TextureRender::getWidth() const{
     return backend.getWidth();
 }

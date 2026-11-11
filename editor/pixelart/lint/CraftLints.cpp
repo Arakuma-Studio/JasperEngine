@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <unordered_map>
 
 namespace jasperengine::editor::pixelart::lint {
 
@@ -26,6 +27,9 @@ namespace jasperengine::editor::pixelart::lint {
         constexpr double CRAFT_FAINT = 0.12;
         // check.ts FAINT_SHARE: a backdrop warns when more than this share of the pixels are faint on it
         constexpr double CRAFT_FAINT_SHARE = 0.5;
+        // near_duplicates compares every pair of used colours: past this many the picture is not
+        // pixel art yet (256 colours at most), and the pairs would grow with the square of a photo's
+        constexpr size_t CRAFT_MAX_PAIRED = 1024;
         // R27: a pillow-shading body needs this many pixels and lightness levels to be judged
         constexpr int PILLOW_MIN_PIXELS = 64;
         constexpr int PILLOW_MIN_LEVELS = 3;
@@ -72,6 +76,35 @@ namespace jasperengine::editor::pixelart::lint {
 
         uint32_t craftRgb(const uint8_t* p) {
             return (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+        }
+
+        // Every drawn colour once, in the order first met (frames, then rows, then columns), with its
+        // pixels and where it was first met: a hash table, not a sorted insert, so a frame with a
+        // photo's colours stays linear
+        struct CraftColour {
+            uint32_t rgb = 0;
+            int pixels = 0;
+            LintSpot first;
+        };
+        std::vector<CraftColour> craftUsedColours(const FrameView& frames, std::unordered_map<uint32_t, size_t>* indexOut = nullptr) {
+            std::unordered_map<uint32_t, size_t> local;
+            std::unordered_map<uint32_t, size_t>& index = indexOut ? *indexOut : local;
+            std::vector<CraftColour> used;
+            for (size_t fi = 0; fi < frames.size(); fi++) {
+                const PixelImage* f = frames[fi];
+                if (!f) continue;
+                for (int y = 0; y < f->height(); y++) {
+                    const uint8_t* row = f->row(y);
+                    for (int x = 0; x < f->width(); x++) {
+                        if (row[x * 4 + 3] == 0) continue;
+                        const uint32_t rgb = craftRgb(row + x * 4);
+                        const auto [it, added] = index.try_emplace(rgb, used.size());
+                        if (added) used.push_back({rgb, 0, {(int)fi + 1, x, y}});
+                        used[it->second].pixels++;
+                    }
+                }
+            }
+            return used;
         }
 
         std::string craftHex(uint32_t rgb) {
@@ -575,33 +608,16 @@ namespace jasperengine::editor::pixelart::lint {
     }
 
     LintResult lintNearDuplicates(const FrameView& frames, const LintThreshold& threshold) {
-        // the used colours in the order first met, with where
-        std::vector<uint32_t> sorted;
-        struct Used {
-            uint32_t rgb;
-            LintSpot first;
-        };
-        std::vector<Used> used;
-        for (size_t fi = 0; fi < frames.size(); fi++) {
-            const PixelImage* f = frames[fi];
-            if (!f) continue;
-            for (int y = 0; y < f->height(); y++) {
-                const uint8_t* row = f->row(y);
-                for (int x = 0; x < f->width(); x++) {
-                    if (row[x * 4 + 3] == 0) continue;
-                    const uint32_t rgb = craftRgb(row + x * 4);
-                    auto it = std::lower_bound(sorted.begin(), sorted.end(), rgb);
-                    if (it != sorted.end() && *it == rgb) continue;
-                    sorted.insert(it, rgb);
-                    used.push_back({rgb, {(int)fi + 1, x, y}});
-                }
-            }
-        }
+        const std::vector<CraftColour> used = craftUsedColours(frames);
         if (used.size() < 2) return craftSkipped("near_duplicates", "fewer than 2 colours", &threshold);
+        if (used.size() > CRAFT_MAX_PAIRED) {
+            return craftSkipped("near_duplicates", std::to_string(used.size()) + " colours, more than " + std::to_string(CRAFT_MAX_PAIRED) +
+                                                       ": not pixel art yet; fix_pixel_art snaps it to a palette first", &threshold);
+        }
         LintResult r = craftStarted("near_duplicates", threshold);
         std::vector<jasperengine::pixelart::Lab> labs;
         labs.reserve(used.size());
-        for (const Used& u : used) labs.push_back(jasperengine::pixelart::toOklab(jasperengine::pixelart::unpackRgb(u.rgb)));
+        for (const CraftColour& u : used) labs.push_back(jasperengine::pixelart::toOklab(jasperengine::pixelart::unpackRgb(u.rgb)));
         double closest = -1.0;
         int pairs = 0;
         std::string listed;
@@ -775,32 +791,20 @@ namespace jasperengine::editor::pixelart::lint {
         if (backdrops.empty()) return craftSkipped("contrast", "no backdrops given (options.backdrops, the pixel_art.backdrops setting or a 2D camera's clear colour)", &threshold);
         LintResult r = craftStarted("contrast", threshold);
         // the drawn pixels by colour (craft.ts counts each palette entry's pixels)
-        std::vector<std::pair<uint32_t, int>> counts;
+        std::unordered_map<uint32_t, size_t> index;
+        const std::vector<CraftColour> counts = craftUsedColours(frames, &index);
         int all = 0;
-        for (const PixelImage* f : frames) {
-            if (!f) continue;
-            for (int y = 0; y < f->height(); y++) {
-                const uint8_t* row = f->row(y);
-                for (int x = 0; x < f->width(); x++) {
-                    if (row[x * 4 + 3] == 0) continue;
-                    const uint32_t rgb = craftRgb(row + x * 4);
-                    auto it = std::lower_bound(counts.begin(), counts.end(), rgb, [](const std::pair<uint32_t, int>& e, uint32_t v) { return e.first < v; });
-                    if (it == counts.end() || it->first != rgb) it = counts.insert(it, {rgb, 0});
-                    it->second++;
-                    all++;
-                }
-            }
-        }
+        for (const CraftColour& c : counts) all += c.pixels;
         std::vector<jasperengine::pixelart::Lab> labs;
         labs.reserve(counts.size());
-        for (const auto& c : counts) labs.push_back(jasperengine::pixelart::toOklab(jasperengine::pixelart::unpackRgb(c.first)));
+        for (const CraftColour& c : counts) labs.push_back(jasperengine::pixelart::toOklab(jasperengine::pixelart::unpackRgb(c.rgb)));
         int worst = -1;
         double worstShare = -1.0;
         for (size_t b = 0; b < backdrops.size(); b++) {
             const jasperengine::pixelart::Lab back = jasperengine::pixelart::toOklab(Rgba8{backdrops[b].r, backdrops[b].g, backdrops[b].b, 255});
             int faint = 0;
             for (size_t c = 0; c < counts.size(); c++) {
-                if (craftDistance(labs[c], back) < CRAFT_FAINT) faint += counts[c].second;
+                if (craftDistance(labs[c], back) < CRAFT_FAINT) faint += counts[c].pixels;
             }
             const double share = all == 0 ? 0.0 : (double)faint / all;
             if (share > worstShare) {
@@ -819,8 +823,7 @@ namespace jasperengine::editor::pixelart::lint {
                 for (int x = 0; x < f->width(); x++) {
                     if (row[x * 4 + 3] == 0) continue;
                     const uint32_t rgb = craftRgb(row + x * 4);
-                    auto it = std::lower_bound(counts.begin(), counts.end(), rgb, [](const std::pair<uint32_t, int>& e, uint32_t v) { return e.first < v; });
-                    if (craftDistance(labs[(size_t)(it - counts.begin())], back) < CRAFT_FAINT) r.addSpot({(int)fi + 1, x, y});
+                    if (craftDistance(labs[index.at(rgb)], back) < CRAFT_FAINT) r.addSpot({(int)fi + 1, x, y});
                 }
             }
         }
