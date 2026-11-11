@@ -43,7 +43,6 @@ function MotionGraphicsUI:onDocumentLoad()
     local logo = byId(doc, "logo")
     local drawable = anime.createDrawable(logo)
     local motion = anime.createMotionPath(byId(doc, "orbit"))
-    local fill = { alpha = 0 }
     local timeline = anime.createTimeline({
         defaults = { ease = "outCubic" },
         onRender = function(animation)
@@ -59,12 +58,10 @@ function MotionGraphicsUI:onDocumentLoad()
     }, 0)
     timeline:add(byId(doc, "deck"), { opacity = { from = 0, to = 1 }, duration = 700 }, 650)
     timeline:add(drawable, { draw = "0 1", duration = 1400, ease = "inOutSine" }, 1100)
-    timeline:add(fill, {
-        alpha = 1, duration = 700, ease = "linear",
-        onRender = function()
-            logo:setAttribute("fill", string.format("rgba(230,255,104,%.4f)", fill.alpha))
-        end,
-    }, 2400)
+    timeline:add(logo, {
+        fill = { from = "rgba(230,255,104,0)", to = "rgba(230,255,104,1)" },
+        duration = 700, ease = "linear",
+    }, 2600)
     timeline:add(byId(doc, "morph"), {
         d = anime.morphTo(byId(doc, "morph-target")), duration = 1800, ease = "inOutSine",
     }, 1900)

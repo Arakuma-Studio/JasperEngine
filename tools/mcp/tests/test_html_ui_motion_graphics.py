@@ -67,14 +67,21 @@ async def test_motion_graphics_exact_procedural_seek(ed: Editor):
             ui.timeline:pause()
             ui.timeline:seek(1234)
             local first = ui.starPath:getAttribute("d")
+            local logo = ui.doc:getElementById("logo")
+            local firstFill = logo:getAttribute("fill")
+            ui.timeline:seek(2500)
+            local drawCompleteFill = logo:getAttribute("fill")
             ui.timeline:seek(4321)
             local other = ui.starPath:getAttribute("d")
+            local filled = logo:getAttribute("fill")
             ui.timeline:seek(1234)
             return first == ui.starPath:getAttribute("d"), first ~= other,
+                   firstFill == drawCompleteFill and firstFill == logo:getAttribute("fill"), firstFill ~= filled,
                    #ui.stars, #ui.split.chars, #ui.split.words, #ui.split.lines
         """)
-        same, moves, stars, chars, words, lines = result["values"]
+        same, moves, fill_replays, fills, stars, chars, words, lines = result["values"]
         ed.check(same and moves, "procedural paths depend on exact timeline time and seed, even after a backwards seek")
+        ed.check(fill_replays and fills, "the logo fills after its stroke completes and restores its fill on a backwards seek")
         ed.check_eq(stars, 30, "thirty stars from the fixed seed")
         ed.check(chars >= 18 and words == 3 and lines >= 1, f"the headline is split into animatable units: {result['values']}")
         checked = await ed.call("assert_ui", entity="MotionGraphics", checks=ENTRY["checks"], viewports=ENTRY["viewports"])
