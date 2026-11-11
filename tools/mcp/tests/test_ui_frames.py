@@ -227,8 +227,8 @@ body {margin:0; width:128px; height:96px; background:#000;}
 local completions = 0
 anime.createTimer({duration=500,onComplete=function()
     completions = completions + 1
-    if completions > 1 then document:getElementById("box"):setStyle("background-color", "#0000ff") end
-    document:getElementById("box"):setStyle("left","80px")
+    if completions > 1 then document:getElementById("box"):setStyleProperty("background-color", "#0000ff") end
+    document:getElementById("box"):setStyleProperty("left","80px")
 end})
 </script></body></html>''', encoding="utf-8")
     await ed.call("sync_files")
@@ -342,9 +342,7 @@ async def test_real_cli_one_shot_and_watch(ed: Editor):
 
 async def test_preview_private_require_cache_and_dependency_watch(ed: Editor):
     await setup(ed)
-    scripts = ed.project / "scripts"
-    scripts.mkdir(exist_ok=True)
-    module = scripts / "motion_counter.lua"
+    module = ed.project / "motion_counter.lua"
     module.write_text("return {n=0}", encoding="utf-8")
     page = '''<!doctype html><html><head><style>
 body {margin:0; width:128px; height:96px; background:#000;}
