@@ -93,7 +93,7 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
     try:
         await ed.call("play", action="set", fixed_fps=60, auto_pause=False)
         started = await ed.call("record_game", frames=64, fps=30, format="png", width=128, height=128,
-                                output=str(ed.scratch.root / "ui-clock-owner"), exit_play=True, wait=False)
+                                output=str(ed.scratch.root / "ui-clock-owner"), exit_play=False, wait=False)
         owned_job = started["job_id"]
         ed.check(started["status"] in ("running", "pending"), "the clock monitor overlaps an active recording")
         await ed.call("wait", frames=3)
@@ -120,6 +120,12 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
                      f"recorder fps=30 owns GAME despite MCP fps=60, frame {index}: moved {position - first}")
         ed.check_eq(result["frames"], 64, "the ownership take records every requested frame")
         ed.check_eq(len(result["files"]), 64, "the ownership take saves every requested frame")
+        restored = await ed.call("eval_lua", code="return Engine.fixedDeltatime")
+        ed.check(abs(restored["values"][0] - 1 / 60) < 1e-9,
+                 f"the deferred MCP clock applies after capture leaves Play running: {restored}")
+        after_capture = await ed.call("get_play_state")
+        ed.check_eq(after_capture["state"], "playing", "the ownership take leaves Play running")
+        ed.check(after_capture["time"]["held"], "MCP auto-pause resumes after capture releases its clock")
     finally:
         if owned_job and (owned_state is None or owned_state["status"] in ("running", "pending")):
             await ed.call("cancel_job", job_id=owned_job)
