@@ -192,7 +192,9 @@ bool parseFixArgs(const CallPtr& call, cleanup::Spec& spec, FixState& state, std
         else problems.push_back({"invalid_value", "format", "format is png or aseprite", "\"png\" or \"aseprite\""});
     }
     if (args.contains("output") && !args["output"].is_null()) {
-        const Json& output = args["output"];
+        Json output = args["output"];
+        // the schema also takes a path, so a model often sends output: true as the string "true"
+        if (output == Json("true") || output == Json("false")) output = output == Json("true");
         if (output.is_boolean()) {
             spec.output.write = output.get<bool>();
         } else if (output.is_string()) {
@@ -817,7 +819,7 @@ void registerPixelArtCleanupTools(McpRegistry& registry) {
         tool.annotations.readOnly = false;
         tool.annotations.destructive = false;
         tool.annotations.idempotent = false;
-        tool.writesFiles = [](const Json& args) { return args.contains("output") && !args["output"].is_null() && args["output"] != Json(false); };
+        tool.writesFiles = [](const Json& args) { return args.contains("output") && !args["output"].is_null() && args["output"] != Json(false) && args["output"] != Json("false"); };
         tool.allowedWhilePlaying = true;
         tool.activity = ToolActivity::Edit;
         tool.handler = pixelcleanuptools::fixPixelArtTool;
