@@ -5005,34 +5005,34 @@ CASES = [
         "prompt": "Make a normal map for the sprite assets/sprites/block_07.png and write it. Fix any problem the tool reports "
                   "about the map before you write it.",
         "mocks": [
-            {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
                 "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
                 {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "props", "profile": "dome"},
                  "hint": "Looks fine.", "warnings": []})},
-            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
                 "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
                 {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
                  "hint": "Looks fine.", "warnings": []})},
-            {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
                 {"written": False, "settings": {"preset": "props", "profile": "dome"}, "hint": "Looks fine.", "warnings": [],
                  "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
                          "assets/sprites/block_07_normal.png) to write exactly this."})},
-            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
                 {"written": False, "settings": {"preset": "default", "profile": "bevel", "radius": 1}, "hint": "Looks fine.", "warnings": [],
                  "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
                          "assets/sprites/block_07_normal.png) to write exactly this."})},
-            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
                 "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
                 {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "auto"},
                  "profile_resolved": ["rounded"], "hint": "Use preset props, or profile bevel with radius 1.",
                  "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
                                "fix": "Use preset props, or profile bevel with radius 1."}]})},
-            {"tool": "generate_sprite_normals", "result": ok(
+            {"tool": "generate_sprite_normals", "result": real(
                 "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
                 {"written": False, "settings": {"preset": "default", "profile": "auto"}, "profile_resolved": ["rounded"],
                  "hint": "Use preset props, or profile bevel with radius 1.",
