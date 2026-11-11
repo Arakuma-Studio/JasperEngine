@@ -264,6 +264,18 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-11: the MCP eval ran on the 41 pixel-art cases (Sonnet, `therealeduard465` and
+  `jasperthegoat`, about $80; accounts returned). As found: 12/41 passed. After fixing the eval's own
+  bugs (mocks that hid groups, a stub that didn't serve `jasper://` docs or `next` hints, strict
+  checks): 34/41. After text and editor fixes on `eval/pixel-art`: 39/41. Those fixes are `output:
+  "true"` taken as a boolean, `frame: "3"` accepted, `capture_contact_sheet`'s description, guide
+  links, and dropping "callable by name". Still failing: `guard_contact_sheet_lint`,
+  `guard_contact_sheet_transition_target` (borderline), and S50's
+  `guard_tileset_check_before_painting`; the owner chose an `edit_tilemap` result hint over a guide
+  line for that one. `check-changed` on the branch: build and unit tests pass; the MCP CI suite gave
+  2465 passed, 18 failed, 5 skipped. The 18 failures look unrelated to the branch and are being
+  triaged as possible `main` regressions from the landings, which ran with filtered gates.
+
 - 2026-11-10: boxes C and D destroyed; no build boxes remain (total about $87 for A–D).
 - 2026-11-10: S50 Grid Tilemap merged (`46021c04d`). All twelve specs S41–S52 are on `main`. Gate on
   the merged tree, boxes C and D: `WERROR` build; core 341/341; editor 377/377 with the shared-data
