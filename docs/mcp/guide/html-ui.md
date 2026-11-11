@@ -229,7 +229,7 @@ and `attach_script {"entity": "Menu", "path": "scripts/MenuUI.lua"}`.
   stylesheet. A leading `/` (`/ui/logo.png`) or `asset://ui/logo.png` starts at the assets
   directory.
 - Formats: PNG, JPG and the other image formats the engine loads (not WebP or AVIF), SVG,
-  Lottie `.json` / `.lottie`, fonts TTF / OTF (not WOFF / WOFF2).
+  Lottie `.json` / `.lottie`, fonts TTF / OTF / WOFF / WOFF2.
 - **No remote URLs at run time.** An `http(s)://` font, stylesheet, image or animation is
   imported into the project by the editor ("Images, SVG, Lottie, fonts, icons"); until then
   it is an `HTMLUI-IMP-0001` error.
@@ -479,8 +479,6 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **SVG filters** (`filter: url(#f)`: `HTMLUI-CSS-0004`): the CSS filter functions.
 - **`border-collapse: collapse`** (`HTMLUI-CSS-0006`): removes the spacing but keeps each
   cell's borders: put borders on one side of each cell.
-- **Fonts other than TTF/OTF** (WOFF/WOFF2-only `@font-face`: `HTMLUI-CSS-0022`): convert to
-  TTF; remote fonts are imported as TTF.
 - **`cursor: url()`** (info): the fallback keyword is used.
 - **`direction: rtl`** mirrors the text only: flex rows, grid columns, `start`/`end` and
   sticky/fixed insets stay left to right (info).
@@ -591,7 +589,7 @@ cheap for titles and dialog lines.
   are the built-in **Roboto** (Latin, Cyrillic, Greek) with **Noto Sans Arabic**. A family
   that is not loaded is skipped (info `HTMLUI-CSS-0023`) and the next one in the list is
   used.
-- Your own fonts: `@font-face` with the project's TTF/OTF files ("Images, SVG, Lottie, fonts,
+- Your own fonts: `@font-face` with the project's TTF/OTF/WOFF/WOFF2 files ("Images, SVG, Lottie, fonts,
   icons"), or a **Google Fonts `<link>`** kept as written and imported by the editor
   (`import_files {"fonts": ["Inter:400,700"]}` or `{"from_document": ...}`).
 - Icons: `<i data-lucide="play"></i>` is a built-in **Lucide** icon, colored by `color`
@@ -1155,8 +1153,138 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 - **Lifetime of handles**: an animation handle kept in a global stays valid after play stops,
   but cancelled.
 - Differences from Anime.js: `andThen` for `then` (no Promises), string forms of the ease
-  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no SVG,
-  draggable, scroll, layout, text, WAAPI, scope or animatable modules.
+  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no draggable,
+  scroll, layout, WAAPI, scope or animatable modules.
+
+### Shape and gradient reveals
+
+`clip-path` animates in `@keyframes` and `transition`: `inset()`, `circle()` and `ellipse()`
+interpolate their components, including length/percentage radii. `polygon()` interpolates
+when both endpoints have the same vertex count and fill rule. Keep the same reference box at
+both endpoints; percentages resolve against that box. Circle/ellipse radii must be lengths
+or percentages; keyword radii and incompatible shape pairs switch discretely. Use literal
+length/percentage endpoints: input `calc()` arguments inside basic shapes are not supported.
+The shape updates on every animated frame, including after its reference box resizes.
+
+```css
+.image-reveal { animation: reveal 1s cubic-bezier(.16,1,.3,1) both; }
+@keyframes reveal {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.soft-reveal {
+  mask-image: linear-gradient(to bottom, #000 45%, transparent 55%);
+  mask-size: 100% 200%;
+  mask-position: 0 100%;
+  animation: soft-reveal 1s ease-out forwards;
+}
+@keyframes soft-reveal { to { mask-position: 0 0; } }
+```
+
+Linear and radial gradient masks support animated `mask-position` and `mask-size`. Set an
+explicit `mask-size` when animating its dimensions; changes to or from `auto`, `cover` or
+`contain` are discrete. Changing between gradient `mask-image` values is discrete, as in CSS;
+move or scale the gradient for a continuous soft reveal.
+
+`clip-path` does not clip pointer hit testing. On one element, `clip-path` and `mask-image`
+overwrite each other: apply them to separate nested elements to combine their clipping.
+Masks use the border box; `mask-origin`, `mask-clip`, `mask-mode` and `mask-composite` have the
+limits listed in the [support matrix](jasper://docs/html-ui-support).
+
+### Splitting text for reveals
+
+`anime.splitText(target, options)` returns a splitter with animatable `chars`, `words` and
+`lines` arrays of `UIElement`s. A character is a grapheme cluster: `ñ`, a letter plus combining
+accents and joined emoji stay together. `words` defaults to true; `chars` and `lines` default
+to false. `includeSpaces = true` includes spaces in `chars`. `accessible = true` (the default)
+keeps the unsplit text as the accessible label and hides the visual wrappers from assistive
+technology.
+
+```lua
+local title = anime.splitText("#headline", {
+    chars = { wrap = "clip" }, words = true, lines = { wrap = "clip" },
+})
+anime.animate(title.chars, {
+    translateY = { from = "110%", to = "0%" },
+    duration = 850, delay = anime.stagger(38), ease = "cubicBezier(.16,1,.3,1)",
+})
+```
+
+Each split option accepts a boolean or `{ wrap = "clip", class = "my-class" }`. A `clip` or
+`hidden` wrapper uses `overflow: hidden`, so translated glyphs emerge from inside their line.
+`splitter:revert()` restores the original markup and accessibility attributes.
+`splitter:refresh()` rebuilds from that original content after layout or style changes; a
+width, font-size or line-height change also refreshes automatically. With `lines = false`,
+automatic layout refresh preserves character/word elements and their animations. Regrouping
+lines or calling `refresh()` explicitly replaces wrappers: retrieve the arrays again and
+restart animations targeting them. To adopt newly
+authored text, revert first, edit the text, then call `anime.splitText` again.
+
+### Drawing and following SVG shapes
+
+Inline SVG children are selectable `UIElement`s. Changing `d`, `points`, `stroke-dasharray`,
+`stroke-dashoffset` or `transform` with `setAttribute` invalidates the SVG geometry for its next
+render. Keep editable SVG inline; an `<img src="logo.svg">` exposes the image element.
+
+```lua
+local path = doc:getElementById("logo-path")
+local drawable = anime.createDrawable(path)       -- UIElement array, initially draw = "0 0"
+anime.animate(drawable, { draw = "0 1", duration = 1500, ease = "inOutSine" })
+-- Other ranges reveal just that fraction of the stroke, for example draw = "0.5 1".
+
+local destination = doc:getElementById("round-shape")
+anime.animate(path, { d = anime.morphTo(destination), duration = 1200 })
+-- Use points = anime.morphTo(destination) for polygons and polylines.
+
+local motion = anime.createMotionPath(doc:getElementById("route"))
+anime.animate("#follower", {
+    translateX = motion.translateX, translateY = motion.translateY, rotate = motion.rotate,
+    duration = 4000, ease = "linear",
+})
+```
+
+`createDrawable(targets, start, end)` supports paths, lines, polylines, polygons, circles and
+ellipses; start/end default to zero and use normalized stroke positions. `morphTo(target,
+precision)` returns a function value for `d` or `points`, resampling shapes with different
+point counts (default precision `.33`). `createMotionPath(path, offset)` returns three
+function values; offset defaults to zero. Put an HTML follower over the SVG viewport to use
+the path's position and tangent as its transform.
+Use SVG transform attributes on the guide or a child `<g>`: CSS guide transforms are not
+included in motion coordinates, and the renderer ignores transforms on the outermost `<svg>`.
+
+### Procedural geometry and exact time
+
+Use a timeline's `currentTime` in `onRender` (or `onUpdate`) to generate SVG each frame. Create
+seeded random parameters once, then calculate geometry from those parameters and the current
+time. Seeking backwards and rendering the same time again then produces the same geometry.
+Avoid accumulating positions from the wall clock or drawing new random values each frame.
+
+```lua
+local random = anime.utils.createSeededRandom(2718)
+local phase = random(0, 6283) / 1000
+local state = { time = 0 }
+local root = anime.createTimeline({
+    onRender = function(animation)
+        local t = animation.currentTime / 1000
+        local y = 80 + math.sin(t + phase) * 30
+        doc:getElementById("wave"):setAttribute("d",
+            string.format("M0 80 Q150 %.4f 300 80", y))
+    end,
+})
+root:add(state, { time = 6, duration = 6000, ease = "linear" }, 0)
+root:pause()
+root:seek(2500)                              -- milliseconds, callbacks update geometry too
+```
+
+`record_game` advances both the default UI clock and `clock = "game"` by the fixed recording
+step; game-clock animations still obey `Engine.timeScale`. At 30 fps, frame `k` samples time
+`k / 30` seconds. An animation or root timeline already has `seek(ms)` for exact sampling.
+The `motion_graphics` example contains thirty seeded stars updated in one SVG path, a masked
+letter stagger, a drawn-and-filled logo, a morph and a motion-path follower. Its
+`motion_graphics.procedural` profiler scope measures the Lua geometry callback; SVG
+rasterization belongs to the renderer's scopes. Use `capture_profile` and `get_cpu_profile`
+to measure both on the target device.
 
 ### Animating custom properties (@property)
 
@@ -1422,8 +1550,14 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
+WOFF and WOFF2 decode to SFNT in memory when loaded, on every export target. Keep the
+original font files in the project and use them directly in `@font-face`; no converter
+or network access is needed in the player. Decoded fonts are limited to 64 MiB. Invalid
+compressed data reports the font path and format in the Console. The remote importer
+prefers a TTF/OTF source when one is supplied and imports WOFF/WOFF2 sources otherwise.
+
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
-- Project fonts: `@font-face` with TTF/OTF files, relative to the stylesheet; `font-weight` and
+- Project fonts: `@font-face` with TTF/OTF/WOFF/WOFF2 files, relative to the stylesheet; `font-weight` and
   `font-style` pick the face. A weight or style without a face is synthesized (bold strokes
   `max(1, size / 24)` px wider, italic slanted 12 degrees); load the real face when the design
   depends on it.
@@ -1756,6 +1890,28 @@ introduced it (errors every time). JSON findings carry `code` and `suggestion`. 
 `docs/mcp/checks.md` in the engine repository; `jasperengine-editor ui-support` prints the support
 tables as JSON.
 
+### Exact-time frame previews
+
+`render_ui_frames` (group `html_ui`) renders CSS animations and document-script `anime`
+tweens at requested seconds while the editor stays out of Play. Pass `document` with a
+project-relative HTML/RML asset, or `scene` for its enabled screen UI Documents. Each sample
+starts from a fresh document at time zero; request order and duplicate times are preserved.
+Inline Lua and Lua scripts attached to the scene's UI Documents run in the isolated preview,
+including `init` and `start`. Procedural `onUpdate`/`onRender` code should derive its output
+from the animation's current time and a fixed seed. Use `record_game` for gameplay.
+
+```sh
+jasperengine-editor call --project P render_ui_frames --document assets/ui/title.html --times 0.3,1,2.5 --out sheet.png
+jasperengine-editor call --project P render_ui_frames --times 0.3,1,2.5 --out sheet.png --watch
+```
+
+The default output is a labelled contact sheet. `layout: "frames"` writes one PNG per time
+into the `out` directory. `width` and `height` default to the project canvas; `columns` sets
+the sheet's grid. `watch: true` renders once, then regenerates when the existing file watcher
+reports a change to a document or dependency. Its result includes a running `job_id`;
+`cancel_job` stops it. The CLI stays attached until Ctrl-C. Stop Play and other captures
+before starting a preview.
+
 ### UI hot reload
 
 The editor checks every document's files (the `.html`, stylesheets, templates, images, fonts,
@@ -1903,7 +2059,6 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | Tailwind Play CDN | run the Tailwind CLI and `<link>` its CSS output | `HTMLUI-HTML-0007` |
 | Google Fonts `<link>` | keep it; the editor imports it (`import_files {"from_document": ...}` or `{"fonts": [...]}`) | `HTMLUI-IMP-0001` until imported |
 | remote `<img src="https://...">`, CDN CSS | keep it and import it, or put the file in `assets/ui/<name>_assets/` | `HTMLUI-IMP-0001` until imported |
-| WOFF/WOFF2 `@font-face` | TTF or OTF | `HTMLUI-CSS-0022` |
 | `@container`, `container-type` | `@media` on the canvas size, or classes set from Lua | `HTMLUI-AT-0001`, `HTMLUI-CSS-0002` |
 | `mix-blend-mode`, `background-blend-mode` | `opacity`, or a pre-blended image | `HTMLUI-CSS-0002` |
 | `writing-mode: vertical-rl` | `transform: rotate(90deg)` | `HTMLUI-CSS-0002` |
@@ -1934,7 +2089,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 
 ## Examples
 
-Thirteen polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Fourteen examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1957,6 +2112,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, virtual_window, visible, within_viewport |
 | `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
 | `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
+| `motion_graphics` | a six-second 1080 × 1350 composition: masked `splitText` stagger, SVG draw and fill, morph, motion path and thirty procedural stars from a fixed seed | count, within_viewport, text_fits; every decoded frame of two 180-frame recordings compared exactly |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with

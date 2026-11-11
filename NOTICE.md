@@ -26,6 +26,8 @@ Libraries of the engine, the editor and the tools:
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) (Angus Johnson) | 2.0.1 (`Clipper2_2.0.1`), the C++ library `CPP/Clipper2Lib` only | `engine/libs/clipper2/` (`LICENSE`, `README.jasper.md`) | BSL-1.0 | polygon union of the tilemap colliders; Title Art's polygon offsets and unions of outlines (face weight, plate closing, stroke outlines) |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
+| [Brotli](https://github.com/google/brotli) | 1.2.1 (`db24a98aed38`), decoder/common only | `engine/libs/brotli/` (`LICENSE`, `README.jasper.md`) | MIT | WOFF2 font decompression |
+| [WOFF2](https://github.com/google/woff2) | `7b67e12355fe`, decoder only; intermediate-buffer limit in `README.jasper.md` | `engine/libs/woff2/` (`LICENSE`, `README.jasper.md`) | MIT | WOFF2 font table reconstruction |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`); its subsetter, editor only: `engine/libs/harfbuzz/subset/` (`COPYING`; upstream's `hb-subset*.cc`, `hb-depend.cc`, `graph/` and the `harfbuzz-subset.cc` amalgamation, unchanged) | Old MIT | text shaping; font subsetting (editor) |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
 | [Tracy](https://github.com/wolfpld/tracy) | 0.11.1 (the client, `public/`) | `engine/libs/tracy/` (`LICENSE`) | BSD-3-Clause | optional remote profiling of development games (`JASPERENGINE_TRACY`, off by default; never in the editor or release games) |

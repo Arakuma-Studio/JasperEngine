@@ -38,7 +38,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
         {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
         {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
-        {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
+        {"html_ui", "HTML UI: preview exact frames without Play and watch for saves; interactive list, grid, tree and table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"tilemaps", "Tilesets (tiles, collision, terrains, animation, properties) and Tiled/LDtk map import (jasper://docs/tilemaps)."},

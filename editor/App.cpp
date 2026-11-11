@@ -12,6 +12,7 @@
 #include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
+#include "component/UIDocumentComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"
@@ -3308,7 +3309,6 @@ void editor::App::reportLoadingProgress(const std::string& status) {
     const auto now = std::chrono::steady_clock::now();
     if (lastLoadingFrame.time_since_epoch().count() != 0 &&
         now - lastLoadingFrame < std::chrono::milliseconds(33)) return;
-    lastLoadingFrame = now;
 
     // Project loading stays on the main thread. Pump only native events and the
     // loading UI here; editor tasks must wait until the project is complete.
@@ -3320,6 +3320,8 @@ void editor::App::reportLoadingProgress(const std::string& status) {
         throw;
     }
     pumpingLoading = false;
+    // Leave time for loading work even when rendering one frame exceeds the interval.
+    lastLoadingFrame = std::chrono::steady_clock::now();
 }
 
 static std::string jsonEscape(const std::string& text) {
@@ -3719,6 +3721,21 @@ void editor::App::setupRecorder() {
         return project.getPlaySessionSceneId() != NULL_PROJECT_SCENE;
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
+    host.resetUiDocuments = [this]() {
+        SceneProject* main = project.getScene(project.getPlaySessionSceneId());
+        if (!main) main = project.getSelectedScene();
+        std::vector<uint32_t> sceneIds;
+        if (main) project.collectStartActiveScenesForExport(main->id, sceneIds);
+        for (uint32_t id : sceneIds) {
+            SceneProject* source = project.getScene(id);
+            if (!source || !source->scene) continue;
+            auto system = source->scene->getSystem<UIDocumentSystem>();
+            auto documents = source->scene->getComponentArray<UIDocumentComponent>();
+            std::vector<Entity> entities;
+            for (size_t i = 0; i < documents->size(); ++i) entities.push_back(documents->getEntity(i));
+            for (Entity entity : entities) system->reloadDocument(entity, false, UIReloadMode::REBUILD);
+        }
+    };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
     host.gameScene = [playScene]() -> Scene* {
         const SceneProject* scene = playScene();
@@ -4632,6 +4649,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // A paused game advances one frame here when Step was pressed
     const bool steppingFrame = project.beginStepFrame(sceneProject.id);
 
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemDraw();
 
     if (steppingFrame) {
@@ -4727,6 +4745,7 @@ bool editor::App::runHiddenGameFrame() {
         pendingResizeScene = sceneProject->id;
     }
     // waits for the GPU on Metal first
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemUpdate();
     return true;
 }
@@ -5454,6 +5473,7 @@ void editor::App::shutdownBackgroundWork() {
 }
 
 void editor::App::engineViewDestroyed(){
+    mcp::stopUiFramePreviews();
     imageViewerWindow->closeAll();
     // no thumbnail step renders off the main thread (and commits to the render queue) from
     // here on, nor touches the scenes the view's destruction removes
@@ -5698,6 +5718,7 @@ void editor::App::updateWindowTitle(const std::string& projectName) {
 }
 
 void editor::App::stopTransientPreviews() {
+    mcp::stopUiFramePreviews();
     // before a scene save or play: posed bones go back to their saved transforms
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();

@@ -311,6 +311,7 @@ AnimTimer& AnimTimer::reset(bool softReset){
 }
 
 AnimTimer& AnimTimer::init(bool internalRender){
+    AnimEngine::instance().captureTimer(*this);
     setFps(fps);
     // speed setter (resetTime included)
     const double pbr = speed;

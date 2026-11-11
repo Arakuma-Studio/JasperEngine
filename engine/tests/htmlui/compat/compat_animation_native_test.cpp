@@ -144,6 +144,29 @@ TEST(CompatAnimationNative, RmlUiReadsTheOutput){
     HtmlUI::release();
 }
 
+TEST(CompatAnimationNative, TimingFunctionsPassThroughWithoutApproximation){
+    ASSERT_TRUE(HtmlUI::acquire());
+    const char* values[] = {
+        "linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end",
+        "cubic-bezier(0.16, 1, 0.3, 1)", "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+        "steps(4, jump-start)", "steps(4, jump-end)", "steps(4, jump-none)", "steps(4, jump-both)",
+        "linear(0, 0.25 25% 75%, 1)", "linear(0 0%, 0.5 0%, 1)", "linear(0.4)"
+    };
+    for (const char* value : values){
+        SCOPED_TRACE(value);
+        const Rewritten out = rewrite(std::string(".box { transition: translate 1s ") + value +
+                                      "; animation-timing-function: " + value + "; }", ForkFeatures::present());
+        EXPECT_FALSE(out.reported(codes::EasingApproximated));
+        EXPECT_FALSE(out.reported(codes::StepsApproximated));
+        EXPECT_EQ(out.warnings(), 0u) << out.rcss;
+        EXPECT_TRUE(out.has(std::string("animation-timing-function: ") + value + ";")) << out.rcss;
+        const unsigned warningsBefore = HtmlUI::getSystemInterface().getWarningCount();
+        EXPECT_NE(Rml::Factory::InstanceStyleSheetString(out.rcss), nullptr) << out.rcss;
+        EXPECT_EQ(HtmlUI::getSystemInterface().getWarningCount(), warningsBefore) << out.rcss;
+    }
+    HtmlUI::release();
+}
+
 TEST(CompatAnimationNative, PhaseTwoRewritesWithoutTheFeatures){
     // AnimationLonghands absent: merged shorthands, mirrored keyframes, the fill emulation, dropped keyframe easing
     const Rewritten merged = rewrite(kSheet, without(ForkFeature::AnimationLonghands));

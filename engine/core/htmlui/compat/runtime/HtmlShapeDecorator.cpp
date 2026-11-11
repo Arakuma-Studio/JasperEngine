@@ -12,6 +12,9 @@
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/PropertyParser.h>
+#include <RmlUi/Core/StyleSheetSpecification.h>
+#include <RmlUi/Core/StyleValue.h>
 
 #include <algorithm>
 #include <array>
@@ -30,13 +33,17 @@ namespace {
     struct Resolver {
         Rml::Element* element;
         float width, height;
+        Rml::Unit coefficientUnit = Rml::Unit::UNKNOWN;
 
         // a length-percentage against `base`; false when not one
         bool length(const std::string& token, float base, float& out) const{
             Length length;
             if (!parseLength(token, length))
                 return false;
-            out = resolve(element, length, base);
+            if (coefficientUnit != Rml::Unit::UNKNOWN)
+                out = length.unit == coefficientUnit ? length.value * (length.isPercent() ? base / 100.0f : 1.0f) : 0.0f;
+            else
+                out = resolve(element, length, base);
             return true;
         }
     };
@@ -154,7 +161,9 @@ namespace {
         horizontal = expand(horizontal);
         vertical = expand(vertical);
         for (int i = 0; i < 4; i++){
-            if (!r.length(horizontal[i], w, radii[i][0]) || !r.length(vertical[i], h, radii[i][1]))
+            // CSS Shapes resolves percentages against the reference box, before reducing
+            // overlapping corner curves to fit the inset rectangle.
+            if (!r.length(horizontal[i], r.width, radii[i][0]) || !r.length(vertical[i], r.height, radii[i][1]))
                 return fail(error, "radius '" + horizontal[i] + "' is not a length or percentage");
             radii[i][0] = std::max(0.0f, radii[i][0]);
             radii[i][1] = std::max(0.0f, radii[i][1]);
@@ -217,9 +226,224 @@ namespace {
         return true;
     }
 
+    std::vector<std::string> expandShapeCorners(std::vector<std::string> values){
+        if (values.empty()) values = {"0"};
+        if (values.size() == 1) return {values[0], values[0], values[0], values[0]};
+        if (values.size() == 2) return {values[0], values[1], values[0], values[1]};
+        if (values.size() == 3) return {values[0], values[1], values[2], values[1]};
+        return values;
+    }
+
+    struct ShapeAnimationParts {
+        std::string name;
+        std::string fillRule = "nonzero";
+        std::vector<std::string> values;
+        std::vector<std::string> position;
+        std::vector<std::string> radii;
+    };
+
+    bool shapeAnimationParts(const BasicShape& shape, ShapeAnimationParts& out){
+        const size_t open = shape.text.find('(');
+        out.name = lower(shape.text.substr(0, open));
+        auto tokens = tokenize(shape.text.substr(open + 1, shape.text.size() - open - 2));
+        for (auto& token : tokens) token = lower(token);
+        if (out.name == "inset"){
+            std::vector<std::string> radiusTokens;
+            splitRound(tokens, out.values, radiusTokens);
+            out.values = expandShapeCorners(out.values);
+            auto slash = std::find(radiusTokens.begin(), radiusTokens.end(), "/");
+            std::vector<std::string> x(radiusTokens.begin(), slash);
+            std::vector<std::string> y = slash == radiusTokens.end() ? x : std::vector<std::string>(slash + 1, radiusTokens.end());
+            x = expandShapeCorners(x);
+            y = expandShapeCorners(y);
+            out.radii = x;
+            out.radii.insert(out.radii.end(), y.begin(), y.end());
+            return out.values.size() == 4 && out.radii.size() == 8;
+        }
+        if (out.name == "circle" || out.name == "ellipse"){
+            auto at = std::find(tokens.begin(), tokens.end(), "at");
+            out.values.assign(tokens.begin(), at);
+            if (at != tokens.end()) out.position.assign(at + 1, tokens.end());
+            if (out.values.empty()) out.values.assign(out.name == "circle" ? 1 : 2, "closest-side");
+            return out.values.size() == (out.name == "circle" ? 1u : 2u);
+        }
+        if (out.name == "polygon"){
+            size_t start = 0;
+            if (tokens.size() > 1 && (tokens[0] == "nonzero" || tokens[0] == "evenodd")){
+                out.fillRule = tokens[0];
+                start = 2;
+            }
+            for (size_t i = start; i < tokens.size(); i++)
+                if (tokens[i] != ",") out.values.push_back(tokens[i]);
+            return out.values.size() >= 6 && out.values.size() % 2 == 0;
+        }
+        return false;
+    }
+
+    class ShapeAnimationValue : public Rml::StyleValue {
+    public:
+        explicit ShapeAnimationValue(BasicShape shape): shape(std::move(shape)) {}
+
+        Rml::String ToString() const override{
+            const char* box = shape.box == Rml::BoxArea::Content ? " content-box" : shape.box == Rml::BoxArea::Padding ? " padding-box" : "";
+            return serializeString(shape.text + box);
+        }
+
+        bool Equals(const Rml::StyleValue& other) const override{
+            const auto& to = static_cast<const ShapeAnimationValue&>(other);
+            return shape.text == to.shape.text && shape.box == to.shape.box;
+        }
+
+        Rml::SharedPtr<const Rml::StyleValue> Interpolate(const Rml::StyleValue& other, float alpha, Rml::Element& /*element*/) const override{
+            const auto& to = static_cast<const ShapeAnimationValue&>(other);
+            BasicShape mixed;
+            if (!shape.interpolate(to.shape, alpha, mixed))
+                return nullptr;
+            return std::make_shared<ShapeAnimationValue>(std::move(mixed));
+        }
+
+        Rml::Units GetUnitDependencies() const override{
+            return shape.unitDependencies();
+        }
+
+        BasicShape shape;
+    };
+
+    class ShapeAnimationParser : public Rml::PropertyParser {
+    public:
+        bool ParseValue(Rml::Property& property, const Rml::String& value, const Rml::ParameterMap&) const override{
+            BasicShape shape;
+            std::string error;
+            if (!BasicShape::parse(value, shape, &error)){
+                Log::warn("[HTML UI] html-shape(): %s", error.c_str());
+                return false;
+            }
+            property = Rml::Property(Rml::StyleValuePtr(std::make_shared<ShapeAnimationValue>(std::move(shape))), Rml::Unit::STYLE_VALUE);
+            return true;
+        }
+    };
+
 }
 
 // ---------------------------------------------------------------- BasicShape
+
+struct BasicShape::AnimationComponents {
+    using Component = std::vector<Length>;
+    std::string name, fillRule;
+    std::vector<Component> values;
+
+    static std::shared_ptr<const AnimationComponents> from(const BasicShape& shape){
+        if (shape.animationComponents) return shape.animationComponents;
+        ShapeAnimationParts parts;
+        if (!shapeAnimationParts(shape, parts)) return nullptr;
+        auto result = std::make_shared<AnimationComponents>();
+        result->name = parts.name;
+        result->fillRule = parts.fillRule;
+        for (const auto* list : {&parts.values, &parts.radii}){
+            for (const auto& token : *list){
+                Length length;
+                if (!parseLength(token, length)) return nullptr;
+                result->values.push_back({length});
+            }
+        }
+        if (parts.name == "circle" || parts.name == "ellipse"){
+            Component x, y;
+            std::vector<Rml::Unit> units{Rml::Unit::PERCENT};
+            for (const auto& token : parts.position){
+                Length length;
+                if (parseLength(token, length) && std::find(units.begin(), units.end(), length.unit) == units.end())
+                    units.push_back(length.unit);
+            }
+            // Evaluate the position grammar once per unit with a unit reference box. This
+            // keeps edge offsets and relative units as coefficients, without resolving layout.
+            for (Rml::Unit unit : units){
+                const float base = unit == Rml::Unit::PERCENT ? 1.0f : 0.0f;
+                const Resolver probe{nullptr, base, base, unit};
+                float cx, cy;
+                if (!parsePosition(parts.position, probe, cx, cy, nullptr)) return nullptr;
+                const float scale = unit == Rml::Unit::PERCENT ? 100.0f : 1.0f;
+                if (cx != 0.0f) x.push_back({cx * scale, unit});
+                if (cy != 0.0f) y.push_back({cy * scale, unit});
+            }
+            result->values.push_back(std::move(x));
+            result->values.push_back(std::move(y));
+        }
+        return result;
+    }
+
+    static Component mix(const Component& from, const Component& to, float alpha){
+        Component result;
+        const auto add = [&](const Component& source, float weight){
+            for (const Length& length : source){
+                auto found = std::find_if(result.begin(), result.end(), [&](const Length& item){ return item.unit == length.unit; });
+                if (found == result.end()) result.push_back({length.value * weight, length.unit});
+                else found->value += length.value * weight;
+            }
+        };
+        add(from, 1.0f - alpha);
+        add(to, alpha);
+        result.erase(std::remove_if(result.begin(), result.end(), [](const Length& length){ return length.value == 0.0f; }), result.end());
+        std::sort(result.begin(), result.end(), [](const Length& a, const Length& b){ return a.unit < b.unit; });
+        return result;
+    }
+
+    static std::string componentText(const Component& value){
+        if (value.empty()) return "0px";
+        if (value.size() == 1) return Rml::Property(value[0].value, value[0].unit).ToString();
+        std::string result = "calc(";
+        for (size_t i = 0; i < value.size(); i++){
+            const Length& length = value[i];
+            result += i == 0 ? (length.value < 0 ? "-" : "") : (length.value < 0 ? " - " : " + ");
+            result += Rml::Property(std::fabs(length.value), length.unit).ToString();
+        }
+        return result + ")";
+    }
+
+    std::string serialize(bool used, float width, float height, Rml::Element* element) const{
+        const auto value = [&](size_t index, float basis, bool radius = false){
+            if (!used) return componentText(values[index]);
+            float pixels = 0.0f;
+            for (const Length& length : values[index]) pixels += resolve(element, length, basis);
+            return num(radius ? std::max(0.0f, pixels) : pixels) + "px";
+        };
+        std::string result = name + "(";
+        if (name == "inset"){
+            for (size_t i = 0; i < 4; i++) result += (i ? " " : "") + value(i, i % 2 == 0 ? height : width);
+            result += " round";
+            for (size_t i = 0; i < 8; i++) result += (i == 4 ? " / " : " ") + value(i + 4, i < 4 ? width : height, true);
+        }else if (name == "circle" || name == "ellipse"){
+            const size_t radii = name == "circle" ? 1 : 2;
+            for (size_t i = 0; i < radii; i++){
+                const float basis = radii == 1 ? std::hypot(width, height) / std::sqrt(2.0f) : i == 0 ? width : height;
+                result += (i ? " " : "") + value(i, basis, true);
+            }
+            result += " at " + value(radii, width) + " " + value(radii + 1, height);
+        }else{
+            result += fillRule + ", ";
+            for (size_t i = 0; i < values.size(); i++) result += (i ? i % 2 == 0 ? ", " : " " : "") + value(i, i % 2 == 0 ? width : height);
+        }
+        return result + ")";
+    }
+};
+
+Rml::Units BasicShape::unitDependencies() const{
+    const auto components = AnimationComponents::from(*this);
+    Rml::Units units = Rml::Unit::UNKNOWN;
+    if (components){
+        for (const auto& component : components->values)
+            for (const Length& length : component) units = units | length.unit;
+    }else{
+        ShapeAnimationParts parts;
+        if (!shapeAnimationParts(*this, parts)) return units;
+        for (const auto* list : {&parts.values, &parts.position, &parts.radii}){
+            for (const auto& token : *list){
+                Length length;
+                if (parseLength(token, length)) units = units | length.unit;
+            }
+        }
+    }
+    return units;
+}
 
 bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string* error){
     shape = BasicShape();
@@ -247,7 +471,25 @@ bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string*
     return true;
 }
 
+bool BasicShape::interpolate(const BasicShape& to, float alpha, BasicShape& result) const{
+    const auto a = AnimationComponents::from(*this), b = AnimationComponents::from(to);
+    if (box != to.box || !a || !b || a->name != b->name || a->fillRule != b->fillRule || a->values.size() != b->values.size())
+        return false;
+    auto mixed = std::make_shared<AnimationComponents>(*a);
+    for (size_t i = 0; i < mixed->values.size(); i++) mixed->values[i] = AnimationComponents::mix(a->values[i], b->values[i], alpha);
+    result.box = box;
+    result.text = mixed->serialize(false, 0, 0, nullptr);
+    result.animationComponents = std::move(mixed);
+    return true;
+}
+
 std::string BasicShape::toSvg(float width, float height, Rml::Element* element, std::string* error) const{
+    if (animationComponents){
+        BasicShape resolved;
+        resolved.box = box;
+        resolved.text = animationComponents->serialize(true, width, height, element);
+        return resolved.toSvg(width, height, element, error);
+    }
     if (!(width > 0.0f) || !(height > 0.0f)){
         fail(error, "the reference box is empty");
         return std::string();
@@ -523,7 +765,9 @@ Rml::Vector2i HtmlShapeDecorator::pixelSizeOf(Rml::DecoratorDataHandle element_d
 // ---------------------------------------------------------------- instancer
 
 HtmlShapeDecoratorInstancer::HtmlShapeDecoratorInstancer(){
-    shapeId = RegisterProperty("shape", "").AddParser("string").GetId();
+    shapeParser = std::make_unique<ShapeAnimationParser>();
+    Rml::StyleSheetSpecification::RegisterParser("html-shape", shapeParser.get());
+    shapeId = RegisterProperty("shape", "\"inset(0)\"").AddParser("html-shape").GetId();
     RegisterShorthand("decorator", "shape", Rml::ShorthandType::FallThrough);
 }
 
@@ -531,11 +775,14 @@ HtmlShapeDecoratorInstancer::~HtmlShapeDecoratorInstancer() = default;
 
 Rml::SharedPtr<Rml::Decorator> HtmlShapeDecoratorInstancer::InstanceDecorator(const Rml::String& /*name*/, const Rml::PropertyDictionary& properties,
                                                                               const Rml::DecoratorInstancerInterface& /*instancer_interface*/){
-    BasicShape shape;
-    std::string error;
-    if (!BasicShape::parse(stringArgument(properties, shapeId), shape, &error)){
-        Log::warn("[HTML UI] html-shape(): %s", error.c_str());
+    const Rml::Property* property = properties.GetProperty(shapeId);
+    if (!property || property->unit != Rml::Unit::STYLE_VALUE)
         return nullptr;
-    }
-    return std::make_shared<HtmlShapeDecorator>(std::move(shape));
+    const Rml::StyleValuePtr value = property->Get<Rml::StyleValuePtr>();
+    if (!value) return nullptr;
+    return std::make_shared<HtmlShapeDecorator>(static_cast<const ShapeAnimationValue&>(*value).shape);
+}
+
+bool HtmlShapeDecoratorInstancer::InterpolatesAsImageLayer() const{
+    return true;
 }

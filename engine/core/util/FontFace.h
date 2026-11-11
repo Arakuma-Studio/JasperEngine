@@ -31,6 +31,7 @@ namespace jasperengine {
     // shape a face from one thread at a time, which is the main thread for both users).
     class JASPERENGINE_API FontFace {
     public:
+        // TTF/OTF/TTC and WOFF/WOFF2 (decoded to owned SFNT bytes, at most 64 MiB).
         // Read through the engine's file system (Data::open: project-relative, asset://,
         // data://, resource packs). On failure returns nullptr and, when `error` is given,
         // writes why ("Font file not found: <path>", "Failed to initialize font: <path>");

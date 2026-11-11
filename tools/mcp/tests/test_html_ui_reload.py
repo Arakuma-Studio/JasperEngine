@@ -231,6 +231,59 @@ async def test_tracked_extensions(ed: Editor):
     ed.check(ext is not None and sorted(ext.get("removed", [])) == sorted(files), f"removed: {ext}")
 
 
+def _webfont_bytes(extension: str) -> bytes:
+    return (REPO / "engine/tests/htmlui/fixtures/fonts/webfonts" / f"webfont.{extension}").read_bytes()
+
+
+def _webfont_version_edit(extension: str, source: bytes) -> bytes:
+    edited = bytearray(source)
+    # Change the container's majorVersion, preserving all tables and checksums.
+    edited[21 if extension == "woff" else 25] ^= 1
+    return bytes(edited)
+
+
+async def test_webfont_edits_are_tracked(ed: Editor):
+    await status(ed)
+    files = {f"assets/ui/webfont-tracking/font.{extension}": _webfont_bytes(extension) for extension in ("woff", "woff2")}
+    for rel, source in files.items():
+        disk_write(ed, rel, source)
+    ext = ext_of(await status(ed))
+    ed.check(ext is not None and all(rel in ext.get("changed", []) for rel in files), f"webfont additions are tracked: {ext}")
+    for extension in ("woff", "woff2"):
+        rel = f"assets/ui/webfont-tracking/font.{extension}"
+        disk_write(ed, rel, _webfont_version_edit(extension, files[rel]))
+        ext = ext_of(await status(ed))
+        ed.check(ext is not None and rel in ext.get("changed", []), f"a {extension} save is tracked: {ext}")
+
+
+async def test_webfont_sync_files_reloads_documents(ed: Editor):
+    for extension in ("woff", "woff2"):
+        font = f"assets/ui/webfont-reload/font.{extension}"
+        html = f"assets/ui/webfont-reload/{extension}.html"
+        source = _webfont_bytes(extension)
+        disk_write(ed, font, source)
+        disk_write(ed, html, "<html><head><style>"
+                   f"@font-face {{font-family: WebReload{extension}; src: url(font.{extension}) format('{extension}');}}"
+                   f"body {{font-family: WebReload{extension};}}"
+                   "</style></head><body><p>Webfont reload</p></body></html>")
+        made = await ed.call("create_ui_document", html=html, name=f"WebReload{extension}")
+        ed.check(not [d for d in made["diagnostics"] if d.get("severity") == "error"], f"valid {extension} fixture loads: {made}")
+        entity = made["entity"]["id"]
+        await status(ed)
+        before = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        disk_write(ed, font, _webfont_version_edit(extension, source))
+        picked_up = ext_of(await status(ed))
+        ed.check(reloaded_for_call(picked_up, html), f"the {extension} save reloads before the next call: {picked_up}")
+        after_save = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        ed.check_eq(after_save, before + 1, f"the document reloads once after the {extension} save")
+        # Explicit paths force a reload even if the watcher already applied the save.
+        result = await ed.call("sync_files", paths=[font], full=False)
+        ed.check(any(r.get("html") == html for r in result.get("ui_reloaded", [])) or result.get("ui_current", 0) >= 1,
+                 f"sync_files dispatches the changed {extension} dependency to HTML UI: {result}")
+        after = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        ed.check_eq(after, after_save + 1, f"explicit sync_files forces one {extension} document reload")
+
+
 async def test_css_edit_reloads_before_call(ed: Editor):
     await _setup_panel(ed)
     count_before = await load_count(ed, "Panel")

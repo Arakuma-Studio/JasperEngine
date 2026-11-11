@@ -39,28 +39,28 @@ namespace {
 
 using Json = SoundSearch::Json;
 
-std::string lower(std::string text) {
+std::string soundSearchLower(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     return text;
 }
 
 std::vector<std::string> words(const std::string& text) {
     std::vector<std::string> out;
-    std::istringstream in(lower(text));
+    std::istringstream in(soundSearchLower(text));
     std::string word;
     while (in >> word) out.push_back(word);
     return out;
 }
 
 bool contains(const std::string& haystack, const std::string& word) {
-    return lower(haystack).find(word) != std::string::npos;
+    return soundSearchLower(haystack).find(word) != std::string::npos;
 }
 
 // the words of a text (runs of letters and digits), lower case
 std::vector<std::string> tokens(const std::string& text) {
     std::vector<std::string> out;
     std::string word;
-    for (char c : lower(text)) {
+    for (char c : soundSearchLower(text)) {
         if (std::isalnum((unsigned char)c)) {
             word += c;
         } else if (!word.empty()) {
@@ -83,7 +83,7 @@ std::string foldedText(const std::string& text) {
 // folded words ("body" in "bodies")
 bool matches(const std::string& field, const std::string& word, const std::string& singular) {
     if (field.empty()) return false;
-    const std::string text = lower(field);
+    const std::string text = soundSearchLower(field);
     if (text.find(word) != std::string::npos) return true;
     if (singular != word && text.find(singular) != std::string::npos) return true;
     return foldedText(field).find(singular) != std::string::npos;
@@ -154,7 +154,7 @@ size_t editDistance(const std::string& a, const std::string& b, size_t limit) {
     return std::min(previous[m], limit + 1);
 }
 
-double numberOr(const Json& value, double fallback) {
+double soundSearchNumberOr(const Json& value, double fallback) {
     return value.is_number() ? value.get<double>() : fallback;
 }
 
@@ -236,20 +236,20 @@ void setFeatures(SoundSearch::Entry& entry, const Json& cached, const AudioAnaly
     entry.error.clear();
     entry.sha1 = cached.value("sha1", std::string());
     const Json format = cached.value("format", Json::object());
-    entry.durationMs = numberOr(format.value("duration_s", Json(0.0)), 0.0) * 1000.0;
+    entry.durationMs = soundSearchNumberOr(format.value("duration_s", Json(0.0)), 0.0) * 1000.0;
     const Json loudness = cached.value("loudness", Json::object());
-    entry.lufs = numberOr(loudness.value("momentary_max", Json(nullptr)), NAN);
+    entry.lufs = soundSearchNumberOr(loudness.value("momentary_max", Json(nullptr)), NAN);
     const Json peak = cached.value("peak", Json::object());
-    entry.truePeakDbtp = numberOr(peak.value("true_peak_dbtp", Json(nullptr)), NAN);
-    entry.centroidHz = numberOr(cached.value("centroid_hz", Json(nullptr)), NAN);
-    entry.flatness = numberOr(cached.value("flatness", Json(nullptr)), NAN);
+    entry.truePeakDbtp = soundSearchNumberOr(peak.value("true_peak_dbtp", Json(nullptr)), NAN);
+    entry.centroidHz = soundSearchNumberOr(cached.value("centroid_hz", Json(nullptr)), NAN);
+    entry.flatness = soundSearchNumberOr(cached.value("flatness", Json(nullptr)), NAN);
     const Json onset = cached.value("onset", Json::object());
-    entry.attackMs = numberOr(onset.value("attack_ms", Json(nullptr)), 0.0);
+    entry.attackMs = soundSearchNumberOr(onset.value("attack_ms", Json(nullptr)), 0.0);
     const Json pitch = cached.value("pitch", Json::object());
-    entry.pitchConfidence = numberOr(pitch.value("confidence", Json(nullptr)), 0.0);
+    entry.pitchConfidence = soundSearchNumberOr(pitch.value("confidence", Json(nullptr)), 0.0);
     const Json share = cached.value("band_share", Json::object());
     for (int b = 0; b < AudioMeter::BANDS; b++) {
-        entry.bandShare[b] = numberOr(share.value(AudioMeter::bandLabel(b), Json(0.0)), 0.0);
+        entry.bandShare[b] = soundSearchNumberOr(share.value(AudioMeter::bandLabel(b), Json(0.0)), 0.0);
     }
     std::string kind, kindSource;
     AudioAnalysis::resolveKind(cached.value("measured_kind", std::string(SoundTypes::TRANSIENT)), labels, kind, kindSource);
@@ -628,7 +628,7 @@ std::vector<std::string> SoundSearch::eventProblems(const SoundEventDef& event, 
         std::array<bool, AudioMeter::BANDS> audible = {};
         for (size_t i = 0; i < clips.size(); i++) {
             for (int b = 0; b < AudioMeter::BANDS; b++) {
-                const double db = clips[i].ok ? numberOr(clips[i].bandsDb.value(AudioMeter::bandLabel(b), Json(nullptr)), AudioMeter::SILENCE_DB)
+                const double db = clips[i].ok ? soundSearchNumberOr(clips[i].bandsDb.value(AudioMeter::bandLabel(b), Json(nullptr)), AudioMeter::SILENCE_DB)
                                               : AudioMeter::SILENCE_DB;
                 levels[i][b] = db + (clips[i].ok ? clips[i].offsetDb : 0.0);
                 if (clips[i].ok && levels[i][b] > SoundTypes::SILENCE_THRESHOLD_DBFS) audible[b] = true;
@@ -714,7 +714,7 @@ bool SoundSearch::search(const std::vector<Entry>& index, const Query& query, st
     const std::vector<std::string> queryWords = words(query.text);
     std::vector<std::string> singulars;
     for (const std::string& word : queryWords) singulars.push_back(folded(word));
-    const std::string type = lower(query.type);
+    const std::string type = soundSearchLower(query.type);
     const Filters& f = query.filters;
 
     const Entry* reference = nullptr;
@@ -749,7 +749,7 @@ bool SoundSearch::search(const std::vector<Entry>& index, const Query& query, st
     for (const Entry& entry : index) {
         if (&entry == reference) continue;
         if (!inScopeOf(query.scope, entry)) continue;
-        if (!type.empty() && lower(entry.type) != type) continue;
+        if (!type.empty() && soundSearchLower(entry.type) != type) continue;
         if (!f.kind.empty() && entry.kind != f.kind) continue;
         if (f.any() && !entry.analysed) continue;
         if (f.minMs >= 0.0 && entry.durationMs < f.minMs) continue;
@@ -769,7 +769,7 @@ bool SoundSearch::search(const std::vector<Entry>& index, const Query& query, st
             for (const std::string& tag : entry.tags) inTags = inTags || matches(tag, word, singular);
             for (const std::string& tag : entry.heardTags) inHeard = inHeard || heardMatches(tag, word, singular);
             const bool inName = matches(entry.name, word, singular);
-            if (lower(entry.type) == word || lower(entry.type) == singular) typeMatch = true;
+            if (soundSearchLower(entry.type) == word || soundSearchLower(entry.type) == singular) typeMatch = true;
             const bool found = inTags || inHeard || inName || matches(entry.path, word, singular) || matches(entry.type, word, singular) ||
                                matches(entry.description, word, singular);
             if (!found) {

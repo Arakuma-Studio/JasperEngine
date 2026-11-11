@@ -150,7 +150,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
         case GradientValueMode::Ramp: {
             // S49 R32: the ramp's steps as a stepped bar; a click edits the reference, a ramp
             // strip dragged from the Palette window (or a .palette from the Project window) sets it
-            const std::vector<pixelart::Rgba8> colors = value.resolveRamp();
+            const std::vector<jasperengine::pixelart::Rgba8> colors = value.resolveRamp();
             const ImVec2 size(avail, ImGui::GetFrameHeight());
             const ImVec2 min = ImGui::GetCursorScreenPos();
             const bool clicked = ImGui::InvisibleButton("##rampBar", size);
@@ -159,7 +159,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             checker(drawList, min, max);
             const int n = (int)colors.size();
             for (int i = 0; i < n; i++){
-                const pixelart::Rgba8& c = colors[(size_t)(value.rampReverse ? n - 1 - i : i)];
+                const jasperengine::pixelart::Rgba8& c = colors[(size_t)(value.rampReverse ? n - 1 - i : i)];
                 const float x0 = min.x + size.x * (float)i / (float)n, x1 = min.x + size.x * (float)(i + 1) / (float)n;
                 drawList->AddRectFilled(ImVec2(x0, min.y), ImVec2(x1, max.y), IM_COL32(c.r, c.g, c.b, c.a));
             }
@@ -169,8 +169,8 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             // a palette set: its ramp kept when it has one of that name, else its first
             auto setPalette = [&](const std::string& palette){
                 std::string current;
-                pixelart::parsePaletteRampPath(value.ramp, nullptr, &current);
-                std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette);
+                jasperengine::pixelart::parsePaletteRampPath(value.ramp, nullptr, &current);
+                std::shared_ptr<const jasperengine::pixelart::Palette> read = palette.empty() ? nullptr : jasperengine::pixelart::PaletteLibrary::get(palette);
                 if (read && !read->ramps.empty() && read->findRamp(current) == nullptr) current = read->ramps.front().name;
                 value.ramp = palette.empty() ? std::string() : palette + "#ramp:" + current;
                 value.rampColors.clear();
@@ -197,7 +197,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             if (clicked) ImGui::OpenPopup("##rampEdit");
             if (ImGui::BeginPopup("##rampEdit")){
                 std::string palette, rampName;
-                pixelart::parsePaletteRampPath(value.ramp, &palette, &rampName);
+                jasperengine::pixelart::parsePaletteRampPath(value.ramp, &palette, &rampName);
                 // the palette: an asset field (the project's palettes, or one dropped on it)
                 ImGui::SetNextItemWidth(Theme::dpi(240.0f));
                 if (ImGui::BeginCombo("Palette", palette.empty() ? "None (inline colours)" : palette.c_str())){
@@ -213,14 +213,14 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
                     ImGui::EndDragDropTarget();
                 }
                 ImGui::SetItemTooltip("A .palette asset: pick one, or drop one from the Project window");
-                if (std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette)){
+                if (std::shared_ptr<const jasperengine::pixelart::Palette> read = palette.empty() ? nullptr : jasperengine::pixelart::PaletteLibrary::get(palette)){
                     // the ramps, each with its strip
                     const float strip = Theme::dpi(96.0f), height = ImGui::GetTextLineHeight();
-                    auto drawStrip = [&](ImVec2 at, const pixelart::PaletteRamp& ramp){
+                    auto drawStrip = [&](ImVec2 at, const jasperengine::pixelart::PaletteRamp& ramp){
                         const int n = (int)ramp.colors.size();
                         for (int i = 0; i < n; i++){
                             const int index = ramp.colors[(size_t)i];
-                            const pixelart::Rgba8 c = read->validIndex(index) ? read->colors[(size_t)index] : pixelart::Rgba8{0, 0, 0, 255};
+                            const jasperengine::pixelart::Rgba8 c = read->validIndex(index) ? read->colors[(size_t)index] : jasperengine::pixelart::Rgba8{0, 0, 0, 255};
                             const float x0 = at.x + strip * (float)i / (float)n, x1 = at.x + strip * (float)(i + 1) / (float)n;
                             ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x0, at.y), ImVec2(x1, at.y + height), IM_COL32(c.r, c.g, c.b, 255));
                         }
@@ -228,7 +228,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
                     ImGui::SetNextItemWidth(Theme::dpi(240.0f));
                     if (ImGui::BeginCombo("Ramp", rampName.c_str(), ImGuiComboFlags_HeightLarge)){
                         for (size_t r = 0; r < read->ramps.size(); r++){
-                            const pixelart::PaletteRamp& ramp = read->ramps[r];
+                            const jasperengine::pixelart::PaletteRamp& ramp = read->ramps[r];
                             ImGui::PushID((int)r);
                             const ImVec2 at = ImGui::GetCursorScreenPos();
                             if (ImGui::Selectable("##ramp", ramp.name == rampName, 0, ImVec2(0.0f, height))){
@@ -280,7 +280,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
                 if (item.mode == GradientValueMode::Ramp && value.ramp.empty() && value.rampColors.empty())
                 {
                     auto byte = [](float v) { return (uint8_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
-                    value.rampColors = {pixelart::Rgba8{byte(value.color.x), byte(value.color.y), byte(value.color.z), byte(value.color.w)}};
+                    value.rampColors = {jasperengine::pixelart::Rgba8{byte(value.color.x), byte(value.color.y), byte(value.color.z), byte(value.color.w)}};
                 }
                 // a gradient starts from the colour it replaces
                 const Vector3 rgb(value.color.x, value.color.y, value.color.z);

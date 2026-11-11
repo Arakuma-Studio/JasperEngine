@@ -121,9 +121,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},
         {"SplineAnimate", 0x00658326u},
-        // S81 R67: a script changes a title's values, never its asset, its Render Mode or which
-        // Live Effects it has (the export collects title_fx for the titles of shipped content)
-        {"TitleArt", 0xb946fadau},
+        // S81/S85-S87: animation, localisation and quality controls keep the authored title,
+        // Render Mode and Live Effects. Export cooks both pixel paths and every 3D tier.
+        {"TitleArt", 0x6b2b23a2u},
     };
     return classes;
 }

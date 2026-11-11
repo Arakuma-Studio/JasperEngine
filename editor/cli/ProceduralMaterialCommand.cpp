@@ -25,7 +25,7 @@ namespace {
     constexpr int EXIT_USAGE = 2;
     constexpr int EXIT_CONNECTION = 3;
 
-    void printUsage(const std::string& exe) {
+    void proceduralMaterialPrintUsage(const std::string& exe) {
         std::cout
             << "Usage:\n"
             << "  " << exe << " procedural-material bake <file.procmat> [options]\n\n"
@@ -72,7 +72,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     const std::string exe = fs::path(executableName ? executableName : "jasperengine-editor").filename().string();
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty() || args[0] == "-h" || args[0] == "--help") {
-        printUsage(exe);
+        proceduralMaterialPrintUsage(exe);
         return args.empty() ? EXIT_USAGE : 0;
     }
     if (args[0] != "bake") {
@@ -84,7 +84,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     double timeout = 600.0;
     const auto usage = [&](const std::string& message) {
         std::cerr << exe << " procedural-material bake: " << message << "\n\n";
-        printUsage(exe);
+        proceduralMaterialPrintUsage(exe);
         return EXIT_USAGE;
     };
     for (size_t i = 1; i < args.size(); i++) {
@@ -97,7 +97,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
         std::string text;
         long long number = 0;
         if (arg == "-h" || arg == "--help") {
-            printUsage(exe);
+            proceduralMaterialPrintUsage(exe);
             return 0;
         } else if (arg == "--output") {
             if (!value(text)) return usage("--output needs a folder");

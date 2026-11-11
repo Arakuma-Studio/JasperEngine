@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "htmlui/HtmlUIInspectorInternal.h"
+#include "htmlui/anim/AnimSvg.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
@@ -263,6 +264,12 @@ std::string UIElement::getInnerHTML() const{
 
 void UIElement::setInnerHTML(const std::string& markup){
     HTMLUI_ELEMENT()
+    for (Rml::Element* ancestor = element; ancestor; ancestor = ancestor->GetParentNode()){
+        if (ancestor->GetTagName() == "svg"){
+            element->SetInnerRML(markup);
+            return;
+        }
+    }
     if (isCompatElement(element)){
         element->SetInnerRML(LuaHooks::fragmentToRml(markup, documentOf(element), "innerHTML"));
         return;
@@ -290,6 +297,10 @@ std::string UIElement::getAttribute(const std::string& name) const{
 
 void UIElement::setAttribute(const std::string& name, const std::string& value){
     HTMLUI_ELEMENT()
+    if (name == "draw" && element->HasAttribute("data-anime-drawable")){
+        AnimSvg::setDraw(*this, value);
+        return;
+    }
     if (isCompatElement(element)){
         if (LuaHooks::isHiddenAttribute(name)){
             Log::warn("[HTML UI] UIElement::setAttribute: '%s' is reserved for the engine", name.c_str());

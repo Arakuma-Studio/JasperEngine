@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool readBytes(const fs::path& file, std::string& out) {
+bool builtinSoundReadBytes(const fs::path& file, std::string& out) {
     std::ifstream in(file, std::ios::binary);
     if (!in) return false;
     std::ostringstream bytes;
@@ -149,7 +149,7 @@ bool BuiltinSoundImport::plan(const std::vector<Clip>& clips, const fs::path& di
         bool same = false;
         if (fs::exists(file, ec)) {
             std::string current;
-            same = readBytes(file, current) && current == bytes;
+            same = builtinSoundReadBytes(file, current) && current == bytes;
             if (!same && existing == Existing::SkipIdentical) {
                 plan.conflicts.push_back(file);
                 continue;

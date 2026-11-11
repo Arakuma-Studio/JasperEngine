@@ -32,6 +32,16 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+UI_FRAME_FILES = {
+    "assets/ui/title.html": """<html><head><link type="text/rcss" href="title.rcss" /></head>
+<body><h1>Motion title</h1></body></html>
+""",
+    "assets/ui/title.rcss": """body { width: 1080px; height: 1350px; background-color: #182438; }
+h1 { color: white; animation: reveal 3s linear both; }
+@keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+""",
+}
+
 # a shell command that writes project.yaml (reading it is fine)
 YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml|open\([^)]*project\.yaml[^)]*['\"]w)"
 
@@ -119,6 +129,38 @@ TERRAIN_IMPORT_DRY = {
 
 
 CASES = [
+    {
+        "id": "guard_ui_frames_exact_preview",
+        "kind": "guard",
+        "what_happened": "UI motion design needs exact CSS/anime sample times without entering Play or recording intermediate frames.",
+        "text_at_issue": "render_ui_frames: exact seconds without Play; document, times, out and watch",
+        "source": "requested motion-graphics preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png"}}],
+            "must_not_call": ["record_game", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_ui_frames_watch",
+        "kind": "guard",
+        "what_happened": "A motion-design preview should regenerate after source saves and keep its watch job alive.",
+        "text_at_issue": "render_ui_frames watch parameter and structured next explaining source-save regeneration and cancel_job",
+        "source": "requested motion-graphics watch preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Render assets/ui/title.html at 0.3, 1 and 2.5 seconds to sheet.png, stepping animation callbacks at 30 fps. "
+                  "Keep the preview updating whenever I save the HTML or stylesheet.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "job_id": "ui-preview-1", "status": "running", "watching": True,
+            "next": "Saving a document or one of its dependencies regenerates the output; cancel_job stops watching."}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png", "fps": 30, "watch": True}}],
+            "must_not_call": ["record_game", "cancel_job", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
         "id": "control_readme_typo",

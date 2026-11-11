@@ -7,7 +7,11 @@
 
 #include "hb.h"
 #include "hb-ot.h"
+#include "stb_image.h"
 
+#include <woff2/decode.h>
+
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -26,6 +30,187 @@ namespace {
     uint32_t fontReadU32(const unsigned char* p){
         return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
     }
+
+    constexpr size_t maxWebFontBytes = 64 * 1024 * 1024;
+
+    void fontWriteU16(unsigned char* p, uint16_t value){
+        p[0] = (unsigned char)(value >> 8);
+        p[1] = (unsigned char)value;
+    }
+
+    void fontWriteU32(unsigned char* p, uint32_t value){
+        p[0] = (unsigned char)(value >> 24);
+        p[1] = (unsigned char)(value >> 16);
+        p[2] = (unsigned char)(value >> 8);
+        p[3] = (unsigned char)value;
+    }
+
+    size_t fontPaddedSize(size_t size){
+        return (size + 3) & ~size_t(3);
+    }
+
+    uint32_t fontChecksum(const unsigned char* data, size_t length, bool head = false){
+        uint32_t sum = 0;
+        for (size_t i = 0; i < length; i += 4){
+            // The head table's checksum excludes checkSumAdjustment.
+            if (head && i == 8)
+                continue;
+            uint32_t word = 0;
+            for (size_t j = 0; j < 4; j++)
+                word = (word << 8) | (i + j < length ? data[i + j] : 0);
+            sum += word;
+        }
+        return sum;
+    }
+
+    uint32_t fontAdler32(const unsigned char* data, size_t length){
+        uint32_t a = 1, b = 0;
+        while (length){
+            const size_t block = std::min(length, size_t(5552));
+            for (size_t i = 0; i < block; i++){
+                a += data[i];
+                b += a;
+            }
+            a %= 65521;
+            b %= 65521;
+            data += block;
+            length -= block;
+        }
+        return (b << 16) | a;
+    }
+
+    bool decodeWoff(const unsigned char* data, size_t length, std::vector<unsigned char>& decoded){
+        if (length < 44 || fontReadU32(data + 8) != length || fontReadU16(data + 14) != 0)
+            return false;
+        const size_t count = fontReadU16(data + 12);
+        const size_t directoryEnd = 44 + count * 20;
+        const size_t sfntSize = fontReadU32(data + 16);
+        if (count == 0 || count > 4095 || directoryEnd > length || sfntSize > maxWebFontBytes)
+            return false;
+
+        size_t computedSize = 12 + count * 16;
+        std::vector<std::pair<size_t, size_t>> ranges{{0, directoryEnd}};
+        std::vector<size_t> order;
+        uint32_t previousTag = 0;
+        size_t lastTableEnd = directoryEnd;
+        for (size_t i = 0; i < count; i++){
+            const unsigned char* entry = data + 44 + i * 20;
+            const uint32_t tag = fontReadU32(entry);
+            const size_t at = fontReadU32(entry + 4);
+            const size_t compressed = fontReadU32(entry + 8);
+            const size_t original = fontReadU32(entry + 12);
+            if ((i && tag <= previousTag) || at % 4 || at < directoryEnd || at > length ||
+                compressed > length - at || compressed > original || original > maxWebFontBytes ||
+                fontPaddedSize(original) > maxWebFontBytes - computedSize)
+                return false;
+            previousTag = tag;
+            computedSize += fontPaddedSize(original);
+            ranges.emplace_back(at, at + compressed);
+            lastTableEnd = std::max(lastTableEnd, fontPaddedSize(at + compressed));
+            order.push_back(i);
+        }
+        if (computedSize != sfntSize)
+            return false;
+
+        const size_t metaAt = fontReadU32(data + 24), metaSize = fontReadU32(data + 28);
+        const size_t privateAt = fontReadU32(data + 36), privateSize = fontReadU32(data + 40);
+        if ((!metaAt && (metaSize || fontReadU32(data + 32))) || (!privateAt && privateSize))
+            return false;
+        for (const auto& [at, size] : {std::pair{metaAt, metaSize}, std::pair{privateAt, privateSize}}){
+            if (!at)
+                continue;
+            if (!size || at % 4 || at < lastTableEnd || at > length || size > length - at)
+                return false;
+            ranges.emplace_back(at, at + size);
+        }
+        if (metaAt && privateAt && metaAt >= privateAt)
+            return false;
+        std::sort(ranges.begin(), ranges.end());
+        size_t end = 0;
+        for (const auto& [at, nextEnd] : ranges){
+            if (at != fontPaddedSize(end))
+                return false;
+            for (size_t i = end; i < at; i++)
+                if (data[i] != 0)
+                    return false;
+            end = nextEnd;
+        }
+        if (length < end || length > fontPaddedSize(end))
+            return false;
+        for (size_t i = end; i < length; i++)
+            if (data[i] != 0)
+                return false;
+
+        decoded.assign(sfntSize, 0);
+        std::memcpy(decoded.data(), data + 4, 4);
+        fontWriteU16(decoded.data() + 4, (uint16_t)count);
+        uint16_t selector = 0;
+        while ((size_t(1) << (selector + 1)) <= count)
+            selector++;
+        const uint16_t searchRange = (uint16_t)((size_t(1) << selector) * 16);
+        fontWriteU16(decoded.data() + 6, searchRange);
+        fontWriteU16(decoded.data() + 8, selector);
+        fontWriteU16(decoded.data() + 10, (uint16_t)(count * 16 - searchRange));
+        // Keep the original physical table order, including a font's digital signature.
+        std::sort(order.begin(), order.end(), [data](size_t a, size_t b){
+            return fontReadU32(data + 44 + a * 20 + 4) < fontReadU32(data + 44 + b * 20 + 4);
+        });
+        size_t outAt = 12 + count * 16;
+        size_t headAt = 0;
+        for (size_t i : order){
+            const unsigned char* entry = data + 44 + i * 20;
+            const size_t at = fontReadU32(entry + 4);
+            const size_t compressed = fontReadU32(entry + 8);
+            const size_t original = fontReadU32(entry + 12);
+            unsigned char* table = decoded.data() + outAt;
+            if (compressed == original){
+                std::memcpy(table, data + at, original);
+            }else{
+                if (compressed < 6 || stbi_zlib_decode_buffer((char*)table, (int)original,
+                        (const char*)data + at, (int)compressed) != (int)original ||
+                    fontAdler32(table, original) != fontReadU32(data + at + compressed - 4))
+                    return false;
+            }
+            const bool head = std::memcmp(entry, "head", 4) == 0;
+            if (fontChecksum(table, original, head) != fontReadU32(entry + 16))
+                return false;
+            if (head && original >= 12)
+                headAt = outAt;
+            unsigned char* sfntEntry = decoded.data() + 12 + i * 16;
+            std::memcpy(sfntEntry, entry, 4);
+            std::memcpy(sfntEntry + 4, entry + 16, 4);
+            fontWriteU32(sfntEntry + 8, (uint32_t)outAt);
+            fontWriteU32(sfntEntry + 12, (uint32_t)original);
+            outAt += fontPaddedSize(original);
+        }
+        if (headAt){
+            fontWriteU32(decoded.data() + headAt + 8, 0);
+            fontWriteU32(decoded.data() + headAt + 8, 0xB1B0AFBAu - fontChecksum(decoded.data(), decoded.size()));
+        }
+        return true;
+    }
+
+    class WebFontOutput final : public woff2::WOFF2Out {
+    public:
+        explicit WebFontOutput(std::vector<unsigned char>& bytes): bytes(bytes){}
+
+        bool Write(const void* data, size_t count) override{ return Write(data, bytes.size(), count); }
+
+        bool Write(const void* data, size_t offset, size_t count) override{
+            if (offset > maxWebFontBytes || count > maxWebFontBytes - offset)
+                return false;
+            if (offset + count > bytes.size())
+                bytes.resize(offset + count);
+            if (count)
+                std::memcpy(bytes.data() + offset, data, count);
+            return true;
+        }
+
+        size_t Size() override{ return bytes.size(); }
+
+    private:
+        std::vector<unsigned char>& bytes;
+    };
 
     bool isSfntVersion(const unsigned char* p){
         static const unsigned char trueType[4] = {0, 1, 0, 0};
@@ -157,6 +342,24 @@ FontFace::~FontFace(){
 
 bool FontFace::init(int index, std::string* error, FontFaceRasterizer rasterizer){
     faceIndex = index;
+
+    if (bytes && length >= 4 && (std::memcmp(bytes, "wOFF", 4) == 0 || std::memcmp(bytes, "wOF2", 4) == 0)){
+        const bool woff = std::memcmp(bytes, "wOFF", 4) == 0;
+        std::vector<unsigned char> decoded;
+        WebFontOutput out(decoded);
+        const bool valid = length <= maxWebFontBytes && (woff ? decodeWoff(bytes, length, decoded) :
+            (length >= 48 && fontReadU32(bytes + 16) <= maxWebFontBytes &&
+             woff2::ConvertWOFF2ToTTF(bytes, length, &out)));
+        if (!valid){
+            if (error)
+                *error = std::string("Failed to decode ") + (woff ? "WOFF" : "WOFF2") + " font: " + label +
+                         " (invalid data or decoded font exceeds 64 MiB)";
+            return false;
+        }
+        storage = std::move(decoded);
+        bytes = storage.data();
+        length = storage.size();
+    }
 
     size_t offset = 0;
     const bool found = findFontOffset(bytes, length, index, offset);

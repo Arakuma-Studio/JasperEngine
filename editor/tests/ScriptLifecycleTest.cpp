@@ -131,6 +131,196 @@ TEST_F(ScriptLifecycleTest, LoadOrderInitThenEnableThenStartBeforeUpdate) {
     (void)b;
 }
 
+TEST_F(ScriptLifecycleTest, PrivatePreviewStartsLeaveOtherScenesQueued) {
+    writeLogger("L1");
+    Scene* live = newScene();
+    addScript(live, entity(live, "Live"), "L1");
+    Scene* preview = newScene();
+    addScript(preview, entity(preview, "Preview"), "L1");
+    LuaBinding::initializeLuaScripts(live);
+    LuaBinding::initializeLuaScripts(preview);
+    EXPECT_EQ(takeLog(), "initLive1 enableLive1 initPreview1 enablePreview1");
+
+    ScriptRuntime::flushStarts(preview);
+    EXPECT_EQ(takeLog(), "startPreview1");
+    ScriptRuntime::flushStarts(preview);
+    EXPECT_EQ(takeLog(), "") << "a private start runs once";
+    ScriptRuntime::flushStarts();
+    EXPECT_EQ(takeLog(), "startLive1") << "the normal frame still starts its pending scene";
+}
+
+TEST_F(ScriptLifecycleTest, PrivatePreviewInvalidatesOnlyItsSavedScriptChunk) {
+    writeScript("PreviewCache", "return {init = function() log[#log + 1] = 'preview-old' end}");
+    writeScript("OtherCache", "return {init = function() log[#log + 1] = 'other-old' end}");
+    Scene* first = newScene();
+    addScript(first, entity(first, "First"), "PreviewCache");
+    addScript(first, entity(first, "Other"), "OtherCache");
+    LuaBinding::initializeLuaScripts(first);
+    EXPECT_EQ(takeLog(), "preview-old other-old");
+    LuaBinding::cleanupLuaScripts(first);
+
+    writeScript("PreviewCache", "return {init = function() log[#log + 1] = 'preview-new' end}");
+    writeScript("OtherCache", "return {init = function() log[#log + 1] = 'other-new' end}");
+    LuaBinding::invalidateScriptChunk("PreviewCache.lua");
+    LuaBinding::invalidateScriptChunk("not-cached.lua");
+    Scene* second = newScene();
+    addScript(second, entity(second, "Second"), "PreviewCache");
+    addScript(second, entity(second, "Other"), "OtherCache");
+    LuaBinding::initializeLuaScripts(second);
+    EXPECT_EQ(takeLog(), "preview-new other-old") << "a preview refreshes only its own saved script";
+}
+
+TEST_F(ScriptLifecycleTest, PrivatePreviewModulesPersistOnlyWithinTheirOwnScratch) {
+    writeScript("PreviewModuleCounter", "return {n = 0}");
+    EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = 41; return m.n"), "41");
+    const int first = LuaBinding::createPreviewModuleCache();
+    const int second = LuaBinding::createPreviewModuleCache();
+    EXPECT_FALSE(LuaBinding::isPreviewContext());
+    EXPECT_LT(LuaBinding::getPreviewContextKey(), 0);
+    {
+        LuaBinding::ScopedModuleCache cache(first);
+        EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(LuaBinding::getPreviewContextKey(), first);
+        EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED and require('math') == math"), "true");
+        EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
+        {
+            LuaBinding::ScopedModuleCache nested(second);
+            EXPECT_EQ(LuaBinding::getPreviewContextKey(), second);
+            EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
+        }
+        EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(LuaBinding::getPreviewContextKey(), first);
+        EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "1");
+    }
+    EXPECT_FALSE(LuaBinding::isPreviewContext());
+    EXPECT_LT(LuaBinding::getPreviewContextKey(), 0);
+    EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "41");
+    {
+        LuaBinding::ScopedModuleCache cache(first);
+        EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "2");
+    }
+    EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "41");
+    LuaBinding::releaseLuaRef(first);
+    LuaBinding::releaseLuaRef(second);
+}
+
+TEST_F(ScriptLifecycleTest, PrivatePreviewRestoresPackageLoadedAliasIndependently) {
+    lua_getglobal(L(), "package");
+    lua_getfield(L(), -1, "loaded");
+    const int originalAlias = luaL_ref(L(), LUA_REGISTRYINDEX);
+    lua_pop(L(), 1);
+    EXPECT_EQ(lua("package.loaded = {keep_alias = true}; return package.loaded == debug.getregistry()._LOADED"), "false");
+    const int cache = LuaBinding::createPreviewModuleCache();
+    {
+        LuaBinding::ScopedModuleCache scope(cache);
+        EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED"), "true");
+        EXPECT_EQ(lua("package = {loaded = {discard = true}}; return package.loaded.discard"), "true");
+    }
+    EXPECT_EQ(lua("return package.loaded.keep_alias and package.loaded ~= debug.getregistry()._LOADED"), "true");
+    lua_getglobal(L(), "package");
+    lua_rawgeti(L(), LUA_REGISTRYINDEX, originalAlias);
+    lua_setfield(L(), -2, "loaded");
+    lua_pop(L(), 1);
+    LuaBinding::releaseLuaRef(originalAlias);
+    LuaBinding::releaseLuaRef(cache);
+}
+
+TEST_F(ScriptLifecycleTest, PrivatePreviewGlobalsDoNotRebindCachedLiveScripts) {
+    writeScript("PreviewGlobalRequired", "previewRequired = (previewRequired or 0) + 1; return {n = previewRequired}");
+    writeScript("PreviewGlobalState", R"(
+previewCreated = (previewCreated or 0) + 1
+local required = require('PreviewGlobalRequired')
+assert(require('_G') == _G)
+local M = {}
+function M:init()
+    previewN = (previewN or 0) + 1
+    _G.previewExplicit = (_G.previewExplicit or 0) + 1
+    self.seen = previewN
+    self.created = previewCreated
+    self.explicit = _G.previewExplicit
+    self.required = required.n
+    if previewN == 1 then
+        assert(require('math') == math and require('package') == package)
+        self.initialRandom = math.random(1, 1000000)
+        math.randomseed(17, 29)
+        self.seededRandom = math.random(1, 1000000)
+        package.path = 'private-preview-path'
+        package.searchers.previewPrivateMarker = true
+        package.preload.previewPrivateMarker = true
+    end
+end
+return M
+)");
+    EXPECT_EQ(lua("previewN = 40; previewCreated = 70; previewExplicit = 50; previewRequired = 60"), "");
+    auto observed = [&](Scene* scene, Entity e, const char* field) {
+        const ScriptEntry& entry = scene->getComponent<ScriptComponent>(e).scripts.front();
+        EXPECT_NE(entry.instance, nullptr);
+        if (!entry.instance) return 0;
+        const int top = lua_gettop(L());
+        lua_rawgeti(L(), LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
+        lua_getfield(L(), -1, field);
+        EXPECT_TRUE(lua_isinteger(L(), -1)) << field;
+        const int value = static_cast<int>(lua_tointeger(L(), -1));
+        lua_settop(L(), top);
+        return value;
+    };
+    Scene* live = newScene();
+    const Entity liveEntity = entity(live, "Live");
+    addScript(live, liveEntity, "PreviewGlobalState");
+    LuaBinding::initializeLuaScripts(live);
+    EXPECT_EQ(observed(live, liveEntity, "seen"), 41);
+    EXPECT_EQ(observed(live, liveEntity, "created"), 71);
+    EXPECT_EQ(observed(live, liveEntity, "explicit"), 51);
+    EXPECT_EQ(observed(live, liveEntity, "required"), 61);
+
+    const std::string packagePath = lua("return package.path");
+    const std::string expectedRandom = lua("math.randomseed(13579, 24680); local a = math.random(1, 1000000); return a .. ',' .. math.random(1, 1000000)");
+    EXPECT_EQ(lua("math.randomseed(13579, 24680)"), "");
+    std::string actualRandom;
+    int initialRandom = 0;
+    int seededRandom = 0;
+    for (int sample = 0; sample < 2; sample++) {
+        Scene* preview = newScene();
+        const Entity e = entity(preview, "Preview");
+        addScript(preview, e, "PreviewGlobalState");
+        const int cache = LuaBinding::createPreviewModuleCache();
+        {
+            LuaBinding::ScopedModuleCache scope(cache);
+            LuaBinding::initializeLuaScripts(preview);
+            EXPECT_EQ(observed(preview, e, "seen"), 1);
+            EXPECT_EQ(observed(preview, e, "created"), 1);
+            EXPECT_EQ(observed(preview, e, "explicit"), 1);
+            EXPECT_EQ(observed(preview, e, "required"), 1);
+            if (sample == 0) {
+                initialRandom = observed(preview, e, "initialRandom");
+                seededRandom = observed(preview, e, "seededRandom");
+                EXPECT_GT(initialRandom, 0);
+                EXPECT_GT(seededRandom, 0);
+            } else {
+                EXPECT_EQ(observed(preview, e, "initialRandom"), initialRandom);
+                EXPECT_EQ(observed(preview, e, "seededRandom"), seededRandom);
+            }
+            // The ordinary VM and a previously initialized script keep their live state.
+            EXPECT_EQ(lua("return previewN .. ',' .. previewCreated .. ',' .. previewExplicit .. ',' .. previewRequired"), "41,71,51,61");
+            LuaBinding::cleanupLuaScripts(preview);
+        }
+        LuaBinding::releaseLuaRef(cache);
+        actualRandom += (sample ? "," : "") + lua("return math.random(1, 1000000)");
+        EXPECT_EQ(lua("return package.path"), packagePath);
+        EXPECT_EQ(lua("return package.searchers.previewPrivateMarker == nil and package.preload.previewPrivateMarker == nil"), "true");
+    }
+    EXPECT_EQ(actualRandom, expectedRandom) << "preview randomseed/random calls leave the live RNG stream unchanged";
+    Scene* nextLive = newScene();
+    const Entity nextEntity = entity(nextLive, "NextLive");
+    addScript(nextLive, nextEntity, "PreviewGlobalState");
+    LuaBinding::initializeLuaScripts(nextLive);
+    EXPECT_EQ(observed(nextLive, nextEntity, "seen"), 42);
+    EXPECT_EQ(observed(nextLive, nextEntity, "created"), 72);
+    EXPECT_EQ(observed(nextLive, nextEntity, "explicit"), 52);
+    EXPECT_EQ(observed(nextLive, nextEntity, "required"), 61);
+    EXPECT_EQ(lua("previewN = nil; previewCreated = nil; previewExplicit = nil; previewRequired = nil"), "");
+}
+
 // 2. a disabled script: init runs (Unity Awake), onEnable / start / onUpdate do not until enabled
 TEST_F(ScriptLifecycleTest, DisabledScriptInitsButWaitsForEnabled) {
     writeLogger("L1");

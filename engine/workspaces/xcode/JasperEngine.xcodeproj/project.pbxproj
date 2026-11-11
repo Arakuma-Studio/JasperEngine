@@ -4902,6 +4902,69 @@
 		4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C4FC740FC9687D5 /* PixelFxLua.h */; };
 		4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E377CB554D876579 /* PixelFxPlayer.h */; };
 		4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A895801520386487 /* ScreenTransition.h */; };
+		5649444593A4CE3A3ABD3BF8 /* constants.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CA9A869AC5D51CC9 /* constants.c */; };
+		56494445E50C5BE11B4E4E74 /* context.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A40DEAEDA03683AA /* context.c */; };
+		56494445FD9C1DCA2DC7CC6E /* dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445051B0BD3F98144E0 /* dictionary.c */; };
+		564944458A6995CA5DA83811 /* platform.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944459A344C15EBD08AEC /* platform.c */; };
+		564944459E4A18B5A10DE009 /* shared_dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D78C3A11DA8DAFAE /* shared_dictionary.c */; };
+		56494445F5168D2EFB960FAF /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944450E882CCC878612CC /* transform.c */; };
+		56494445B74AC42195BD6991 /* bit_reader.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944458C7A51A330C08627 /* bit_reader.c */; };
+		56494445E41C9689B4A4F582 /* decode.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CFD89A9F7468B183 /* decode.c */; };
+		56494445E212009B61B0CA36 /* huffman.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944450323469BB8A53E01 /* huffman.c */; };
+		56494445CBB68AFF44BE9E86 /* prefix.c in Sources */ = {isa = PBXBuildFile; fileRef = 5649444540C10900607A4AD3 /* prefix.c */; };
+		5649444573CF9B0E3A6AF7E6 /* state.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944455B8EF3701E9B2AE3 /* state.c */; };
+		56494445A4B4804928406E31 /* static_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944452283226B04BABEE7 /* static_init.c */; };
+		564944455824E16523C07E36 /* constants.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CA9A869AC5D51CC9 /* constants.c */; };
+		5649444541BF9CB04F7DEB6B /* context.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A40DEAEDA03683AA /* context.c */; };
+		56494445AD57DB7B43D16A13 /* dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445051B0BD3F98144E0 /* dictionary.c */; };
+		56494445E8F128B53FCE8B2D /* platform.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944459A344C15EBD08AEC /* platform.c */; };
+		5649444546C75CAD1E56E1CE /* shared_dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D78C3A11DA8DAFAE /* shared_dictionary.c */; };
+		564944453F7979C535232B30 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944450E882CCC878612CC /* transform.c */; };
+		5649444509501990AE133DCB /* bit_reader.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944458C7A51A330C08627 /* bit_reader.c */; };
+		56494445D1D68CEFED298B40 /* decode.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CFD89A9F7468B183 /* decode.c */; };
+		564944452551B70422DF0B1F /* huffman.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944450323469BB8A53E01 /* huffman.c */; };
+		5649444584870E6EA555F81F /* prefix.c in Sources */ = {isa = PBXBuildFile; fileRef = 5649444540C10900607A4AD3 /* prefix.c */; };
+		5649444507A7B1A502B9A2E6 /* state.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944455B8EF3701E9B2AE3 /* state.c */; };
+		564944453E469C71372D7558 /* static_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944452283226B04BABEE7 /* static_init.c */; };
+		5649444593644AB6B886152B /* libbrotlidec-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 564944459FDC84FDEF2AC8DD /* libbrotlidec-ios.a */; };
+		56494445D1DCD7A98CA9AB0B /* libbrotlidec-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 564944451234AF8849768D56 /* libbrotlidec-macos.a */; };
+		56494445C5D0FE5D5AD2C603 /* table_tags.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5649444560AAD323C93DB60D /* table_tags.cc */; };
+		5649444559970360C4D1164E /* variable_length.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5649444568B3BD5973BA83E5 /* variable_length.cc */; };
+		564944451B0703286C7BBE85 /* woff2_common.cc in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D052C480F6A985BF /* woff2_common.cc */; };
+		564944456F57A222BCC8A1C8 /* woff2_dec.cc in Sources */ = {isa = PBXBuildFile; fileRef = 564944452C8AC809175A1EF1 /* woff2_dec.cc */; };
+		56494445406E54402B168876 /* woff2_out.cc in Sources */ = {isa = PBXBuildFile; fileRef = 56494445228B5722DBAE97B5 /* woff2_out.cc */; };
+		56494445CDC8462ED1D50FEE /* table_tags.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5649444560AAD323C93DB60D /* table_tags.cc */; };
+		564944459833F99FEF329D0C /* variable_length.cc in Sources */ = {isa = PBXBuildFile; fileRef = 5649444568B3BD5973BA83E5 /* variable_length.cc */; };
+		5649444584BD078D1864FEF9 /* woff2_common.cc in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D052C480F6A985BF /* woff2_common.cc */; };
+		564944458318B0D8906A1575 /* woff2_dec.cc in Sources */ = {isa = PBXBuildFile; fileRef = 564944452C8AC809175A1EF1 /* woff2_dec.cc */; };
+		56494445FE1475B5D3C77AFA /* woff2_out.cc in Sources */ = {isa = PBXBuildFile; fileRef = 56494445228B5722DBAE97B5 /* woff2_out.cc */; };
+		564944454DB574DC7E85D726 /* libwoff2-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 56494445F7DCBA778DA8423C /* libwoff2-ios.a */; };
+		56494445B39B0009777D770D /* libwoff2-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 56494445D0108915C851EECC /* libwoff2-macos.a */; };
+		4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E47A92F799C23F48FBD /* AnimText.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C15278D6615B6CB /* AnimText.h */; };
+		4A534E4717D598AC10F249DE /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E47F53AC28DC55C1011 /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E475C90B7A4D26BECDC /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F4078D26169F423 /* AnimSvg.h */; };
+		4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABD65217C8875602 /* AnimSvgPath.h */; };
+		4A534E4724DB6FAADFE31AB5 /* Grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4757F326F5CAE7139E /* Grid.cpp */; };
+		4A534E475E61E9364CBB2793 /* Grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4757F326F5CAE7139E /* Grid.cpp */; };
+		4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47285E951A632E467F /* TilemapLayer.cpp */; };
+		4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47285E951A632E467F /* TilemapLayer.cpp */; };
+		4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47157896361DA814BE /* TilemapClassesLua.cpp */; };
+		4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47157896361DA814BE /* TilemapClassesLua.cpp */; };
+		4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */; };
+		4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */; };
+		4A534E47C5314B5D2773B31B /* GridComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE8A0A760A25A6C5 /* GridComponent.h */; };
+		4A534E476060A3C4AA0582DC /* TilemapCollider2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */; };
+		4A534E47A1C277E3D4CEED42 /* TilemapLayerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */; };
+		4A534E47B8E519C0B4F56667 /* Grid.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474640DABFD618DC98 /* Grid.h */; };
+		4A534E47CAEA749A48C679DA /* TilemapLayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471C3454E96067A2E7 /* TilemapLayer.h */; };
+		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
+		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
+		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -5271,6 +5334,34 @@
 			proxyType = 1;
 			remoteGlobalIDString = 545854526D6292947F3BFC30;
 			remoteInfo = "zstd-macos";
+		};
+		564944450CC4493DED74B106 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 56494445772EEA340AD263F3;
+			remoteInfo = "brotlidec-ios";
+		};
+		564944454E8ABABBE15C6C7D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5649444516B9C270441010F7;
+			remoteInfo = "brotlidec-macos";
+		};
+		564944453335FC21F1D39A2F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 56494445FD4460B4AA0992B5;
+			remoteInfo = "woff2-ios";
+		};
+		564944450A077C663ED0F7DC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 564944450AEDF9AF0B78AB7C;
+			remoteInfo = "woff2-macos";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -9466,6 +9557,45 @@
 		4A534E472C4FC740FC9687D5 /* PixelFxLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxLua.h; sourceTree = "<group>"; };
 		4A534E47E377CB554D876579 /* PixelFxPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxPlayer.h; sourceTree = "<group>"; };
 		4A534E47A895801520386487 /* ScreenTransition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScreenTransition.h; sourceTree = "<group>"; };
+		564944459FDC84FDEF2AC8DD /* libbrotlidec-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libbrotlidec-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		564944451234AF8849768D56 /* libbrotlidec-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libbrotlidec-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		56494445CA9A869AC5D51CC9 /* constants.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = constants.c; sourceTree = "<group>"; };
+		56494445A40DEAEDA03683AA /* context.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = context.c; sourceTree = "<group>"; };
+		56494445051B0BD3F98144E0 /* dictionary.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dictionary.c; sourceTree = "<group>"; };
+		564944459A344C15EBD08AEC /* platform.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = platform.c; sourceTree = "<group>"; };
+		56494445D78C3A11DA8DAFAE /* shared_dictionary.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = shared_dictionary.c; sourceTree = "<group>"; };
+		564944450E882CCC878612CC /* transform.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = transform.c; sourceTree = "<group>"; };
+		564944458C7A51A330C08627 /* bit_reader.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = bit_reader.c; sourceTree = "<group>"; };
+		56494445CFD89A9F7468B183 /* decode.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = decode.c; sourceTree = "<group>"; };
+		564944450323469BB8A53E01 /* huffman.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = huffman.c; sourceTree = "<group>"; };
+		5649444540C10900607A4AD3 /* prefix.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = prefix.c; sourceTree = "<group>"; };
+		564944455B8EF3701E9B2AE3 /* state.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = state.c; sourceTree = "<group>"; };
+		564944452283226B04BABEE7 /* static_init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = static_init.c; sourceTree = "<group>"; };
+		56494445F7DCBA778DA8423C /* libwoff2-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libwoff2-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		56494445D0108915C851EECC /* libwoff2-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libwoff2-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5649444560AAD323C93DB60D /* table_tags.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = table_tags.cc; sourceTree = "<group>"; };
+		5649444568B3BD5973BA83E5 /* variable_length.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = variable_length.cc; sourceTree = "<group>"; };
+		56494445D052C480F6A985BF /* woff2_common.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = woff2_common.cc; sourceTree = "<group>"; };
+		564944452C8AC809175A1EF1 /* woff2_dec.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = woff2_dec.cc; sourceTree = "<group>"; };
+		56494445228B5722DBAE97B5 /* woff2_out.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = woff2_out.cc; sourceTree = "<group>"; };
+		4A534E47528C50B8603EC720 /* AnimText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimText.cpp; sourceTree = "<group>"; };
+		4A534E476C15278D6615B6CB /* AnimText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimText.h; sourceTree = "<group>"; };
+		4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvg.cpp; sourceTree = "<group>"; };
+		4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvgPath.cpp; sourceTree = "<group>"; };
+		4A534E476F4078D26169F423 /* AnimSvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvg.h; sourceTree = "<group>"; };
+		4A534E47ABD65217C8875602 /* AnimSvgPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvgPath.h; sourceTree = "<group>"; };
+		4A534E4757F326F5CAE7139E /* Grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Grid.cpp; sourceTree = "<group>"; };
+		4A534E47285E951A632E467F /* TilemapLayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapLayer.cpp; sourceTree = "<group>"; };
+		4A534E47157896361DA814BE /* TilemapClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtLanguage.cpp; sourceTree = "<group>"; };
+		4A534E47BE8A0A760A25A6C5 /* GridComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GridComponent.h; sourceTree = "<group>"; };
+		4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapCollider2DComponent.h; sourceTree = "<group>"; };
+		4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapLayerComponent.h; sourceTree = "<group>"; };
+		4A534E474640DABFD618DC98 /* Grid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Grid.h; sourceTree = "<group>"; };
+		4A534E471C3454E96067A2E7 /* TilemapLayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapLayer.h; sourceTree = "<group>"; };
+		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
+		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
+		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9519,6 +9649,8 @@
 				48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */,
 				50564543000000000000011B /* libthorvg-ios.a in Frameworks */,
 				50564543000000000000004D /* liblunasvg-ios.a in Frameworks */,
+				564944454DB574DC7E85D726 /* libwoff2-ios.a in Frameworks */,
+				5649444593644AB6B886152B /* libbrotlidec-ios.a in Frameworks */,
 				5458545259CB5F9143FDCA75 /* libzstd-ios.a in Frameworks */,
 				564944456952266E8C78E9D0 /* libwebm-ios.a in Frameworks */,
 				56494445CE183DB339340913 /* libopus-ios.a in Frameworks */,
@@ -9581,6 +9713,8 @@
 				48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */,
 				505645430000000000000156 /* libthorvg-macos.a in Frameworks */,
 				50564543000000000000006D /* liblunasvg-macos.a in Frameworks */,
+				56494445B39B0009777D770D /* libwoff2-macos.a in Frameworks */,
+				56494445D1DCD7A98CA9AB0B /* libbrotlidec-macos.a in Frameworks */,
 				545854521DB9865AD8F63146 /* libzstd-macos.a in Frameworks */,
 				56494445672427D86A43EBF3 /* libwebm-macos.a in Frameworks */,
 				56494445880DCE3D89AEDC6F /* libopus-macos.a in Frameworks */,
@@ -9850,6 +9984,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		564944459A2B3FE8F0CC6846 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445F1C6F64851733043 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445AA8E985B9E2E62A2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445304262E8F60EBAF2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -10034,6 +10196,7 @@
 				4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */,
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
+				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10790,6 +10953,10 @@
 				5056454300000000000000E3 /* libthorvg-ios.a */,
 				505645430000000000000050 /* liblunasvg-macos.a */,
 				505645430000000000000030 /* liblunasvg-ios.a */,
+				56494445D0108915C851EECC /* libwoff2-macos.a */,
+				56494445F7DCBA778DA8423C /* libwoff2-ios.a */,
+				564944451234AF8849768D56 /* libbrotlidec-macos.a */,
+				564944459FDC84FDEF2AC8DD /* libbrotlidec-ios.a */,
 				545854524F81EF8691EBEBCC /* libzstd-macos.a */,
 				5458545206117992C981EF93 /* libzstd-ios.a */,
 				56494445D8B4361E94C9BE1B /* libwebm-macos.a */,
@@ -11728,6 +11895,8 @@
 				4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */,
 				4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */,
 				4A534E474365841B0820D5A8 /* NearestName.h */,
+				4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */,
+				4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -11950,6 +12119,9 @@
 				54574C44F1831F2151D5808D /* TerrainWorldComponent.h */,
 				4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */,
 				4A534E473BB6B49B158BE980 /* HitStopExemptComponent.h */,
+				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
+				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
+				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11993,6 +12165,17 @@
 				4A534E47D02364B83FAFB4BA /* HashRandom.h */,
 			);
 			path = math;
+			sourceTree = "<group>";
+		};
+		4A534E47B2C3C858EC6764BC /* tilemap */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4757F326F5CAE7139E /* Grid.cpp */,
+				4A534E47285E951A632E467F /* TilemapLayer.cpp */,
+				4A534E474640DABFD618DC98 /* Grid.h */,
+				4A534E471C3454E96067A2E7 /* TilemapLayer.h */,
+			);
+			path = tilemap;
 			sourceTree = "<group>";
 		};
 		7162FC6225962A0E0075B97D /* object */ = {
@@ -12078,6 +12261,7 @@
 				54574C44826C51C1E67ABA3D /* TerrainWorld.h */,
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
+				4A534E47B2C3C858EC6764BC /* tilemap */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12286,6 +12470,8 @@
 				4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */,
 				4A534E479C6E796903EF07CE /* FoliageSystem.h */,
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
+				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
+				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12356,6 +12542,7 @@
 			isa = PBXGroup;
 			children = (
 				71E823872A9C209500C8E6F2 /* box2d */,
+				564944458A0A9DC6A2589DA5 /* brotli */,
 				56494445ACD9A9D0B8849204 /* dav1d */,
 				71A8000B2AD9A001007C91BA /* harfbuzz */,
 				7105CAE32AD61DA4007C91BA /* joltphysics */,
@@ -12378,6 +12565,7 @@
 				71E36BB125D599C000EFEED4 /* tinyobjloader */,
 				71393ED328F8EF200074442E /* tinyxml2 */,
 				53313658205D4C7B978283CB /* msdfgen */,
+				5649444591D894A693DBEEA2 /* woff2 */,
 				5458545227649E7756DFE7F0 /* zstd */,
 			);
 			path = libs;
@@ -13965,6 +14153,12 @@
 				414E494D450000000000003B /* AnimUtils.cpp */,
 				414E494D450000000000003E /* AnimValue.cpp */,
 				414E494D4500000000000041 /* Anime.cpp */,
+				4A534E47528C50B8603EC720 /* AnimText.cpp */,
+				4A534E476C15278D6615B6CB /* AnimText.h */,
+				4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */,
+				4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */,
+				4A534E476F4078D26169F423 /* AnimSvg.h */,
+				4A534E47ABD65217C8875602 /* AnimSvgPath.h */,
 			);
 			path = anim;
 			sourceTree = "<group>";
@@ -15860,6 +16054,69 @@
 			path = decompress;
 			sourceTree = "<group>";
 		};
+		564944458A0A9DC6A2589DA5 /* brotli */ = {
+			isa = PBXGroup;
+			children = (
+				564944454E5159BCBCB2BEE7 /* c */,
+			);
+			path = brotli;
+			sourceTree = "<group>";
+		};
+		564944454E5159BCBCB2BEE7 /* c */ = {
+			isa = PBXGroup;
+			children = (
+				564944452A0D505988A930BA /* common */,
+				564944459911030041511D44 /* dec */,
+			);
+			path = c;
+			sourceTree = "<group>";
+		};
+		564944452A0D505988A930BA /* common */ = {
+			isa = PBXGroup;
+			children = (
+				56494445CA9A869AC5D51CC9 /* constants.c */,
+				56494445A40DEAEDA03683AA /* context.c */,
+				56494445051B0BD3F98144E0 /* dictionary.c */,
+				564944459A344C15EBD08AEC /* platform.c */,
+				56494445D78C3A11DA8DAFAE /* shared_dictionary.c */,
+				564944450E882CCC878612CC /* transform.c */,
+			);
+			path = common;
+			sourceTree = "<group>";
+		};
+		564944459911030041511D44 /* dec */ = {
+			isa = PBXGroup;
+			children = (
+				564944458C7A51A330C08627 /* bit_reader.c */,
+				56494445CFD89A9F7468B183 /* decode.c */,
+				564944450323469BB8A53E01 /* huffman.c */,
+				5649444540C10900607A4AD3 /* prefix.c */,
+				564944455B8EF3701E9B2AE3 /* state.c */,
+				564944452283226B04BABEE7 /* static_init.c */,
+			);
+			path = dec;
+			sourceTree = "<group>";
+		};
+		5649444591D894A693DBEEA2 /* woff2 */ = {
+			isa = PBXGroup;
+			children = (
+				564944458D63BCF8216A1E9E /* src */,
+			);
+			path = woff2;
+			sourceTree = "<group>";
+		};
+		564944458D63BCF8216A1E9E /* src */ = {
+			isa = PBXGroup;
+			children = (
+				5649444560AAD323C93DB60D /* table_tags.cc */,
+				5649444568B3BD5973BA83E5 /* variable_length.cc */,
+				56494445D052C480F6A985BF /* woff2_common.cc */,
+				564944452C8AC809175A1EF1 /* woff2_dec.cc */,
+				56494445228B5722DBAE97B5 /* woff2_out.cc */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -16783,6 +17040,17 @@
 				4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */,
 				4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */,
 				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
+				4A534E47A92F799C23F48FBD /* AnimText.h in Headers */,
+				4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */,
+				4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */,
+				4A534E47C5314B5D2773B31B /* GridComponent.h in Headers */,
+				4A534E476060A3C4AA0582DC /* TilemapCollider2DComponent.h in Headers */,
+				4A534E47A1C277E3D4CEED42 /* TilemapLayerComponent.h in Headers */,
+				4A534E47B8E519C0B4F56667 /* Grid.h in Headers */,
+				4A534E47CAEA749A48C679DA /* TilemapLayer.h in Headers */,
+				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
+				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
+				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17115,6 +17383,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5649444521125457EB99CDDD /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		564944456582970D73484E11 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445B712DBA9065AA2D9 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445E7A5F414F30D06D6 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -17234,6 +17530,8 @@
 				48544D4C000000000000029C /* PBXTargetDependency */,
 				50564543000000000000011D /* PBXTargetDependency */,
 				50564543000000000000004F /* PBXTargetDependency */,
+				56494445539A10E9CEA1FF04 /* PBXTargetDependency */,
+				5649444539F01B64739971BF /* PBXTargetDependency */,
 				54585452977E8C024A2A10F8 /* PBXTargetDependency */,
 				5649444521115696D429F1BF /* PBXTargetDependency */,
 				56494445B91CD1A19F7D8721 /* PBXTargetDependency */,
@@ -17327,6 +17625,8 @@
 				48544D4C00000000000002A5 /* PBXTargetDependency */,
 				505645430000000000000158 /* PBXTargetDependency */,
 				50564543000000000000006F /* PBXTargetDependency */,
+				5649444515A50ADB1C623173 /* PBXTargetDependency */,
+				564944453E5F171F8DD9DCDA /* PBXTargetDependency */,
 				54585452B91FC47B881142FD /* PBXTargetDependency */,
 				56494445C4D616F46482E4AB /* PBXTargetDependency */,
 				56494445B650B2E2F7BAB588 /* PBXTargetDependency */,
@@ -17949,6 +18249,74 @@
 			productReference = 545854524F81EF8691EBEBCC /* libzstd-macos.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		56494445772EEA340AD263F3 /* brotlidec-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 564944458BE6FECE03F86C28 /* Build configuration list for PBXNativeTarget "brotlidec-ios" */;
+			buildPhases = (
+				5649444521125457EB99CDDD /* Headers */,
+				564944451F41DB1EAA146A77 /* Sources */,
+				564944459A2B3FE8F0CC6846 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "brotlidec-ios";
+			productName = "brotlidec-ios";
+			productReference = 564944459FDC84FDEF2AC8DD /* libbrotlidec-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		5649444516B9C270441010F7 /* brotlidec-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56494445299759436C9A1487 /* Build configuration list for PBXNativeTarget "brotlidec-macos" */;
+			buildPhases = (
+				564944456582970D73484E11 /* Headers */,
+				56494445568BB42B5A10914C /* Sources */,
+				56494445F1C6F64851733043 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "brotlidec-macos";
+			productName = "brotlidec-macos";
+			productReference = 564944451234AF8849768D56 /* libbrotlidec-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		56494445FD4460B4AA0992B5 /* woff2-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 564944456DF8312F530C87F8 /* Build configuration list for PBXNativeTarget "woff2-ios" */;
+			buildPhases = (
+				56494445B712DBA9065AA2D9 /* Headers */,
+				564944458F03F8E08B64A360 /* Sources */,
+				56494445AA8E985B9E2E62A2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "woff2-ios";
+			productName = "woff2-ios";
+			productReference = 56494445F7DCBA778DA8423C /* libwoff2-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		564944450AEDF9AF0B78AB7C /* woff2-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56494445FF09318303224CC7 /* Build configuration list for PBXNativeTarget "woff2-macos" */;
+			buildPhases = (
+				56494445E7A5F414F30D06D6 /* Headers */,
+				564944458683537F16EF7DF8 /* Sources */,
+				56494445304262E8F60EBAF2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "woff2-macos";
+			productName = "woff2-macos";
+			productReference = 56494445D0108915C851EECC /* libwoff2-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -18096,6 +18464,10 @@
 				50564543000000000000011A /* thorvg-ios */,
 				50564543000000000000006C /* lunasvg-macos */,
 				50564543000000000000004C /* lunasvg-ios */,
+				564944450AEDF9AF0B78AB7C /* woff2-macos */,
+				56494445FD4460B4AA0992B5 /* woff2-ios */,
+				5649444516B9C270441010F7 /* brotlidec-macos */,
+				56494445772EEA340AD263F3 /* brotlidec-ios */,
 				545854526D6292947F3BFC30 /* zstd-macos */,
 				54585452EC438CFBB0DCF3E7 /* zstd-ios */,
 				5649444518A140BC8A082C53 /* webm-macos */,
@@ -19447,6 +19819,13 @@
 				4A534E47C75DDC3AC497EF70 /* HitStopClassesLua.cpp in Sources */,
 				4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */,
 				4A534E4757083662175146BF /* PixelFxClassesLua.cpp in Sources */,
+				4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */,
+				4A534E4717D598AC10F249DE /* AnimSvg.cpp in Sources */,
+				4A534E475C90B7A4D26BECDC /* AnimSvgPath.cpp in Sources */,
+				4A534E4724DB6FAADFE31AB5 /* Grid.cpp in Sources */,
+				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
+				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
+				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20402,6 +20781,13 @@
 				4A534E4794F74B609D31BB49 /* HitStopClassesLua.cpp in Sources */,
 				4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */,
 				4A534E47882EFCB3A800CD7C /* PixelFxClassesLua.cpp in Sources */,
+				4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */,
+				4A534E47F53AC28DC55C1011 /* AnimSvg.cpp in Sources */,
+				4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */,
+				4A534E475E61E9364CBB2793 /* Grid.cpp in Sources */,
+				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
+				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
+				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -22332,6 +22718,68 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		564944451F41DB1EAA146A77 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5649444593A4CE3A3ABD3BF8 /* constants.c in Sources */,
+				56494445E50C5BE11B4E4E74 /* context.c in Sources */,
+				56494445FD9C1DCA2DC7CC6E /* dictionary.c in Sources */,
+				564944458A6995CA5DA83811 /* platform.c in Sources */,
+				564944459E4A18B5A10DE009 /* shared_dictionary.c in Sources */,
+				56494445F5168D2EFB960FAF /* transform.c in Sources */,
+				56494445B74AC42195BD6991 /* bit_reader.c in Sources */,
+				56494445E41C9689B4A4F582 /* decode.c in Sources */,
+				56494445E212009B61B0CA36 /* huffman.c in Sources */,
+				56494445CBB68AFF44BE9E86 /* prefix.c in Sources */,
+				5649444573CF9B0E3A6AF7E6 /* state.c in Sources */,
+				56494445A4B4804928406E31 /* static_init.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56494445568BB42B5A10914C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				564944455824E16523C07E36 /* constants.c in Sources */,
+				5649444541BF9CB04F7DEB6B /* context.c in Sources */,
+				56494445AD57DB7B43D16A13 /* dictionary.c in Sources */,
+				56494445E8F128B53FCE8B2D /* platform.c in Sources */,
+				5649444546C75CAD1E56E1CE /* shared_dictionary.c in Sources */,
+				564944453F7979C535232B30 /* transform.c in Sources */,
+				5649444509501990AE133DCB /* bit_reader.c in Sources */,
+				56494445D1D68CEFED298B40 /* decode.c in Sources */,
+				564944452551B70422DF0B1F /* huffman.c in Sources */,
+				5649444584870E6EA555F81F /* prefix.c in Sources */,
+				5649444507A7B1A502B9A2E6 /* state.c in Sources */,
+				564944453E469C71372D7558 /* static_init.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		564944458F03F8E08B64A360 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				56494445C5D0FE5D5AD2C603 /* table_tags.cc in Sources */,
+				5649444559970360C4D1164E /* variable_length.cc in Sources */,
+				564944451B0703286C7BBE85 /* woff2_common.cc in Sources */,
+				564944456F57A222BCC8A1C8 /* woff2_dec.cc in Sources */,
+				56494445406E54402B168876 /* woff2_out.cc in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		564944458683537F16EF7DF8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				56494445CDC8462ED1D50FEE /* table_tags.cc in Sources */,
+				564944459833F99FEF329D0C /* variable_length.cc in Sources */,
+				5649444584BD078D1864FEF9 /* woff2_common.cc in Sources */,
+				564944458318B0D8906A1575 /* woff2_dec.cc in Sources */,
+				56494445FE1475B5D3C77AFA /* woff2_out.cc in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -22575,6 +23023,26 @@
 			target = 545854526D6292947F3BFC30 /* zstd-macos */;
 			targetProxy = 545854521C86DFFACE021A3E /* PBXContainerItemProxy */;
 		};
+		5649444539F01B64739971BF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 56494445772EEA340AD263F3 /* brotlidec-ios */;
+			targetProxy = 564944450CC4493DED74B106 /* PBXContainerItemProxy */;
+		};
+		564944453E5F171F8DD9DCDA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5649444516B9C270441010F7 /* brotlidec-macos */;
+			targetProxy = 564944454E8ABABBE15C6C7D /* PBXContainerItemProxy */;
+		};
+		56494445539A10E9CEA1FF04 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 56494445FD4460B4AA0992B5 /* woff2-ios */;
+			targetProxy = 564944453335FC21F1D39A2F /* PBXContainerItemProxy */;
+		};
+		5649444515A50ADB1C623173 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 564944450AEDF9AF0B78AB7C /* woff2-macos */;
+			targetProxy = 564944450A077C663ED0F7DC /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -22811,6 +23279,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -22868,6 +23338,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23078,6 +23550,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23143,6 +23617,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23215,6 +23691,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23280,6 +23758,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23348,6 +23828,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -23408,6 +23890,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/brotli/c/include",
 					"$(SRCROOT)/../../libs/bcdec",
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
@@ -25177,6 +25661,216 @@
 			};
 			name = Release;
 		};
+		5649444516ECF7B695F2A6AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USE_HEADERMAP = NO;
+			};
+			name = Debug;
+		};
+		564944455E17B7EC7645C8A0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USE_HEADERMAP = NO;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5649444585097237A0C32662 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
+			};
+			name = Debug;
+		};
+		564944455CB16A5236AF0BDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
+			};
+			name = Release;
+		};
+		5649444583D1E5B857756443 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/woff2/src",
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USE_HEADERMAP = NO;
+			};
+			name = Debug;
+		};
+		564944453E67E69F7CF76DA9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/woff2/src",
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USE_HEADERMAP = NO;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		564944450C6858195715ED61 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/woff2/src",
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
+			};
+			name = Debug;
+		};
+		5649444575142F703875F636 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/woff2/include",
+					"$(SRCROOT)/../../libs/woff2/src",
+					"$(SRCROOT)/../../libs/brotli/c/include",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -25599,6 +26293,42 @@
 			buildConfigurations = (
 				545854529A6FAFFDF15DFE3A /* Debug */,
 				5458545263854B58CDABC553 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		564944458BE6FECE03F86C28 /* Build configuration list for PBXNativeTarget "brotlidec-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5649444516ECF7B695F2A6AB /* Debug */,
+				564944455E17B7EC7645C8A0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		56494445299759436C9A1487 /* Build configuration list for PBXNativeTarget "brotlidec-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5649444585097237A0C32662 /* Debug */,
+				564944455CB16A5236AF0BDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		564944456DF8312F530C87F8 /* Build configuration list for PBXNativeTarget "woff2-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5649444583D1E5B857756443 /* Debug */,
+				564944453E67E69F7CF76DA9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		56494445FF09318303224CC7 /* Build configuration list for PBXNativeTarget "woff2-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				564944450C6858195715ED61 /* Debug */,
+				5649444575142F703875F636 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

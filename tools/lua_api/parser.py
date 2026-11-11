@@ -2496,6 +2496,8 @@ OVERRIDES.update({
     ('Grid', 'worldToCell'): {
         'doc': ['The cell holding a world point (y up, the shared edge belongs to the cell above or to the right).'],
         'overloads': [([('world', 'Vector3')], 'integer, integer')]},
+    ('Grid', 'getGridComponent'): {
+        'overloads': [([], 'any')]},
     ('Tileset', 'getProperty'): {
         'doc': ["A tile's property, or the schema's default; nil when the tileset declares no such property."],
         'overloads': [([('tile', 'integer'), ('name', 'string')], 'boolean|integer|number|string|Vector4|nil')]},
@@ -2797,6 +2799,10 @@ OVERRIDES.update({
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+    ('TitleArt', 'playOverlay'): {
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}')], 'boolean')]},
+    ('TitleArt', 'stop'): {
+        'overloads': [([], ''), ([('name', 'string')], 'boolean')]},
 })
 
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
@@ -2805,6 +2811,10 @@ PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # The tilemap Grid shares its C++ short name with internal grid types.
+    ('Grid', 'layout'): ('TileGridLayout', False),
+    ('Grid', 'cellSize'): ('Vector2', True),
+    ('Grid', 'cellGap'): ('Vector2', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
@@ -3452,6 +3462,20 @@ _PARAM_TYPE_OVERRIDES = {
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
 _ANIME_TARGETS = 'AnimeTargets'
 OVERRIDES.update({
+    ('anime', 'splitText'): {
+        'doc': ['Splits the first matching element into animatable words, grapheme characters and layout lines.',
+                'Words default on. Split options accept {wrap = "clip"} for masked reveals; revert restores the original markup.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('params?', 'AnimeSplitTextParams')], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'split'): {
+        'doc': ['Recomputes line metadata, rebuilding line splits from the original markup.',
+                'Retrieve chars, words and lines again after a line rebuild.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'refresh'): {
+        'doc': ['Rebuilds after layout or style edits. Width and font layout changes also refresh automatically.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'revert'): {
+        'doc': ['Restores the original markup and disconnects automatic layout refresh.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
     ('anime', 'animate'): {
         'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
                 '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],
@@ -3468,6 +3492,15 @@ OVERRIDES.update({
     ('anime', 'spring'): {
         'doc': ['Same as anime.createSpring.'],
         'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'createDrawable'): {
+        'doc': ['SVG geometry targets with an animatable normalized `draw` range ("0 1", "0.5 1").'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('finish?', 'number')], 'UIElement[]')]},
+    ('anime', 'morphTo'): {
+        'doc': ['A function value morphing a path, polygon or polyline to `target`; precision defaults to .33.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('precision?', 'number')], 'AnimeStagger')]},
+    ('anime', 'createMotionPath'): {
+        'doc': ['Function values for translateX, translateY and rotate along SVG geometry.'],
+        'overloads': [([('path', _ANIME_TARGETS), ('offset?', 'number')], 'AnimeMotionPath|nil')]},
     ('anime', 'stagger'): {
         'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
                 'delays, property values or timeline positions.'],
@@ -3490,7 +3523,7 @@ OVERRIDES.update({
         'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
     ('AnimeStagger', '__call'): {
         'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
-        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string|table')]},
     ('AnimeTimer', 'andThen'): {
         'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
                 'renamed because `then` is a Lua keyword.'],
@@ -3859,6 +3892,13 @@ class Builder:
             return
         res = self.r.resolve(getter, m) if getter else None
         if res is None:
+            # An explicit property signature also covers ambiguous C++ getter owners.
+            if (c.name, m.name) in PROPERTY_OVERRIDES:
+                m.lua_type, m.copy = PROPERTY_OVERRIDES[(c.name, m.name)]
+                m.writable = setter is not None
+                m.assign_fn = None
+                m.doc = list(m.call.doc)
+                return
             self.unresolve(c, m, 'getter not resolved: ' + (join_tokens(getter)[:80] if getter else ''))
             m.lua_type = 'any'
             m.doc = list(m.call.doc)

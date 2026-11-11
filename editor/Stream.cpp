@@ -6206,6 +6206,17 @@ namespace {
     // GameObject, or left it alone) takes the node's worldAABB and stays: the decode would set
     // only what the encoding holds, and run update flags that always reload a Mesh
     bool keepSameMesh(const reflect::ComponentDesc& desc, Entity entity, EntityRegistry* registry, void* existing, const YAML::Node& componentNode) {
+        // A changed scalar already rules out keeping the Mesh. Check it before encoding the
+        // buffers and materials, which would otherwise be paid again by the decode below.
+        for (const reflect::FieldDesc& field : desc.body.fields) {
+            if (!reflect::isSaved(field) || !field.ops->scalar || field.ops->encodeKey) continue;
+            const YAML::Node saved = componentNode[field.yamlKey];
+            if (!saved || !saved.IsScalar()) continue;
+            const void* value = field.peek ? field.peek(existing) : field.ref(existing);
+            if (!value) continue;
+            if (field.ops->skip && field.ops->skip(field, value)) continue;
+            if (field.ops->scalar(field, value) != saved.Scalar()) return false;
+        }
         reflect::EncodeContext ctx;
         ctx.registry = registry;
         ctx.entity = entity;

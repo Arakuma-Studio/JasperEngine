@@ -722,6 +722,17 @@ async def test_ui_support_schema_and_diagnostic_codes():
     check(draggable["support"] == "rewritten" and draggable["note"].startswith("mapped"), f"draggable: {draggable}")
     for tag in ("list-view", "grid-view", "tree-view", "table-view", "markdown"):
         check_eq(support_row(data, "element", tag)["support"], "emulated", tag)
+    easing_rows = [support_row(data, "property", name) for name in (
+        "animation", "transition", "animation-timing-function", "transition-timing-function")]
+    easing_rows += [support_row(data, "function", name) for name in ("cubic-bezier", "steps", "linear")]
+    for prop in ("animation-timing-function", "transition-timing-function"):
+        easing_rows += [support_row(data, "value", name, prop) for name in (
+            "linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end", "cubic-bezier()", "steps()", "linear()")]
+    for row in easing_rows:
+        check(row is not None, "the native CSS easing row exists")
+        check_eq(row["support"], "native", f"CSS easing: {row}")
+        check("exact" in row["note"] and "nearest" not in row["note"], f"native easing describes its exact evaluation: {row}")
+        check(not row.get("code"), f"native easing has no approximation diagnostic: {row}")
 
 
 

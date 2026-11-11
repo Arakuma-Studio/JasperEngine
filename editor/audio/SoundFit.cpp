@@ -17,7 +17,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-const double PI = 3.14159265358979323846;
+const double SOUND_FIT_PI = 3.14159265358979323846;
 const double FLOOR_DB = -60.0;
 const double ENVELOPE_FRAME_SECONDS = 0.005;
 const double ENVELOPE_RMS_SECONDS = 0.001;
@@ -164,7 +164,7 @@ SoundFit::Measure SoundFit::measure(const AudioAnalysis::Signal& signal) {
     // -- band balance: Hann frames of the active region, zero-padded past its end
     static const std::vector<float> window = []() {
         std::vector<float> w(AudioAnalysis::FFT_SIZE);
-        for (int i = 0; i < AudioAnalysis::FFT_SIZE; i++) w[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2.0 * PI * i / AudioAnalysis::FFT_SIZE));
+        for (int i = 0; i < AudioAnalysis::FFT_SIZE; i++) w[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2.0 * SOUND_FIT_PI * i / AudioAnalysis::FFT_SIZE));
         return w;
     }();
     const int bins = AudioAnalysis::FFT_SIZE / 2;

@@ -7,6 +7,8 @@
 
 #include "settings/SettingsRegistry.h"
 #include "settings/SettingsSearch.h"
+#include "AppSettings.h"
+#include "LogCapture.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -66,6 +68,43 @@ TEST(SettingsRegistry, CoversMcpKeys) {
     if (gravity) {
         EXPECT_EQ(registry.location(*gravity).rfind("Project Settings > ", 0), 0u);
     }
+}
+
+TEST(SettingsRegistry, PixelArtHighlightIsOneWritablePreference) {
+    jasperengine::test::LogCapture log;
+    SettingsRegistry registry;
+    registerBuiltinSettings(registry);
+    EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
+
+    const char* key = "preferences.pixel_art.agent_edit_highlight";
+    const SettingRow* row = registry.find(key);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->scope, SettingsScope::Preference);
+    EXPECT_EQ(row->page, "Pixel Art (Preferences)");
+    EXPECT_EQ(row->label, "Highlight Agent Edits");
+    EXPECT_EQ(row->type, "bool");
+    EXPECT_TRUE(row->mcp);
+    EXPECT_FALSE(row->userOnly);
+    size_t matching = 0;
+    for (const SettingRow& candidate : registry.rows()) matching += candidate.key == key;
+    EXPECT_EQ(matching, 1u);
+    ASSERT_TRUE(row->get);
+    ASSERT_TRUE(row->set);
+    SettingsContext context;
+    const bool original = AppSettings::getPixelArtPreferences().agentEditHighlight;
+    std::string error;
+    EXPECT_TRUE(row->set(context, !original, false, error)) << error;
+    EXPECT_EQ(row->get(context), original) << "validation must leave the preference alone";
+    EXPECT_TRUE(row->set(context, !original, true, error)) << error;
+    EXPECT_EQ(row->get(context), !original);
+    EXPECT_TRUE(row->set(context, original, true, error)) << error;
+    EXPECT_EQ(row->get(context), original);
+
+    // EditorSettingsWindow dispatches its PreferencesCategory enum by this page order.
+    std::vector<std::string> pages;
+    for (const SettingsPage* page : registry.pages(SettingsScope::Preference)) pages.push_back(page->displayName());
+    EXPECT_EQ(pages, (std::vector<std::string>{"General", "Code Editor", "Asset Pipeline", "Scripting", "Undo", "Lattice", "Scene View",
+                                             "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control"}));
 }
 
 TEST(SettingsRegistry, RefusesUnwiredRows) {

@@ -241,7 +241,7 @@ namespace {
         {"chains", U, FF::None, U, false, "none", false, RW::None, "", "template layout (draft) is not supported", "lay out the content with flex or block elements", "css-template-1"},
         {"clear", N, FF::None, N, false, "none", false, RW::None, "", "inline-start/inline-end -> left/right", "", "CSS2.1"},
         {"clip", U, FF::None, U, false, "auto", false, RW::None, "", "CSS 2.1 rect() clipping is never passed through: RmlUi's clip property means something else; clip: auto dropped silently", "use clip-path: inset(...), or overflow: hidden on a wrapper", "css-masking-1"},
-        {"clip-path", E, FF::None, E, false, "none", false, RW::ClipPath, "mask-image: html-shape(...)", "basic shapes exact through the html-shape decorator; url() unsupported; no hit-test clipping", "", "css-masking-1"},
+        {"clip-path", E, FF::None, E, false, "none", false, RW::ClipPath, "mask-image: html-shape(...)", "basic shapes exact through html-shape; inset, circle, ellipse and polygons with the same vertex count interpolate in animations and transitions; url() unsupported; no hit-test clipping", "", "css-masking-1"},
         {"clip-rule", U, FF::None, U, true, "nonzero", false, RW::None, "", "SVG-internal styling is not supported (Info)", "set it as a presentation attribute inside the SVG file", "svg2"},
         {"color", N, FF::None, N, true, "CanvasText", false, RW::ColorValue, "color; --html-current-color", "every CSS Color 4 syntax normalized to hex; the current color companion follows it", "", "css-color-4"},
         {"color-adjust", I, FF::None, I, true, "economy", false, RW::None, "", "legacy alias of print-color-adjust; printing only", "", "css-color-adjust-1"},

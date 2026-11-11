@@ -57,6 +57,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <thread>
 
 using namespace jasperengine;
@@ -818,6 +819,19 @@ Json editor::ProjectChecks::uiSupportJson() {
     namespace codes = compat::codes;
     const compat::ForkFeatures present = compat::ForkFeatures::present();
 
+    const auto timingNote = [&](const char* name, compat::ForkFeature fork, Support support, const char* note) {
+        if (support != Support::Native || !present.has(compat::ForkFeature::TimingFunctions)) return note;
+        if (fork == compat::ForkFeature::TimingFunctions) return "CSS easing evaluated exactly.";
+        if (fork == compat::ForkFeature::AnimationLonghands) {
+            const std::string_view property(name);
+            if (property == "animation") return "CSS animation shorthand; exact easing, times normalized to seconds.";
+            if (property == "transition") return "CSS transition shorthand; exact easing, times normalized to seconds and property names mapped.";
+            if (property == "animation-timing-function" || property == "transition-timing-function")
+                return "CSS easing list evaluated exactly; kept as a longhand.";
+        }
+        return note;
+    };
+
     Json features = Json::array();
     auto add = [&](const char* kind, const std::string& name, Support support, const char* note, const char* suggestion,
                    const RowCode& code, Json extra = Json::object()) {
@@ -872,7 +886,7 @@ Json editor::ProjectChecks::uiSupportJson() {
             case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
             default: break;
         }
-        add("property", row.name, support, row.note, row.suggestion, code);
+        add("property", row.name, support, timingNote(row.name, row.fork, support, row.note), row.suggestion, code);
     }
     for (const compat::ValueSupport& row : compat::valueTable()) {
         const Support support = compat::effectiveSupport(row, present);
@@ -884,7 +898,7 @@ Json editor::ProjectChecks::uiSupportJson() {
             case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
             default: break;
         }
-        add("value", row.value, support, row.note, row.suggestion, code, {{"property", row.property}});
+        add("value", row.value, support, timingNote(row.value, row.fork, support, row.note), row.suggestion, code, {{"property", row.property}});
     }
     for (const compat::FunctionSupport& row : compat::functionTable()) {
         const Support support = compat::effectiveSupport(row, present);
@@ -895,7 +909,7 @@ Json editor::ProjectChecks::uiSupportJson() {
             case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
             default: break;
         }
-        add("function", row.name, support, row.note, row.suggestion, code);
+        add("function", row.name, support, timingNote(row.name, row.fork, support, row.note), row.suggestion, code);
     }
     for (const compat::UnitSupport& row : compat::unitTable()) {
         const Support support = compat::effectiveSupport(row, present);

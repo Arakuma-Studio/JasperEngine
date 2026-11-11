@@ -160,7 +160,7 @@ namespace luabridge
     template<> struct Stack<TextureType> : EnumWrapper<TextureType>{};
     template<> struct Stack<ColorFormat> : EnumWrapper<ColorFormat>{};
     template<> struct Stack<PrimitiveType> : EnumWrapper<PrimitiveType>{};
-    template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
+    template<> struct Stack<jasperengine::CullingMode> : EnumWrapper<jasperengine::CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
     template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
@@ -290,7 +290,7 @@ namespace luabridge
     // ui-components: the Button's Selectable enums
     template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
     template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
-    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<jasperengine::SelectionState> : EnumWrapper<jasperengine::SelectionState>{};
     template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 

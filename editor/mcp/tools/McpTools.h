@@ -80,6 +80,8 @@ namespace jasperengine::editor::mcp {
     void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);
     void registerHtmlUiTools(McpRegistry& registry);
+    void registerUiFrameTools(McpRegistry& registry);
+    void stopUiFramePreviews();
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);

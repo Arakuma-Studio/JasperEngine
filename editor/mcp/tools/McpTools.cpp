@@ -61,6 +61,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerAnimatorTools, "Animator: controllers, masks, montages, live control", "animation"},   // S21
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
+    {registerUiFrameTools, "HTML/CSS UI", "html_ui"},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
     {registerDiagnosticsTools, "Crash and hang diagnostics", "diagnostics"},   // S28

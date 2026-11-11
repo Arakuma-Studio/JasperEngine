@@ -80,6 +80,53 @@ class LuaApiJson(unittest.TestCase):
     def test_nothing_unresolved(self):
         self.assertEqual(api()['unresolved'], [])
 
+    def test_grid_and_title_art_wrappers(self):
+        classes = {c['name']: c for c in api()['classes']}
+        grid = classes['Grid']
+        properties = {p['name']: p for p in grid['properties']}
+        self.assertEqual(properties['layout']['type'], 'TileGridLayout')
+        self.assertFalse(properties['layout']['copy'])
+        for name in ('cellSize', 'cellGap'):
+            self.assertEqual(properties[name]['type'], 'Vector2')
+            self.assertTrue(properties[name]['copy'])
+        for name in ('layout', 'cellSize', 'cellGap'):
+            self.assertFalse(properties[name]['readonly'])
+        component = next(m for m in grid['methods'] if m['name'] == 'getGridComponent')
+        self.assertFalse(component['static'])
+        self.assertEqual(component['overloads'][0]['params'], [])
+        # The raw ECS component has no public Lua class; keep the ordinary opaque type.
+        self.assertEqual(component['overloads'][0]['returns'], ['any'])
+
+        title = classes['TitleArt']
+        overlay = next(m for m in title['methods'] if m['name'] == 'playOverlay')
+        self.assertFalse(overlay['static'])
+        signature = overlay['overloads'][0]
+        self.assertEqual(signature['returns'], ['boolean'])
+        self.assertEqual([(p['name'], p['optional']) for p in signature['params']], [('name', False), ('options', True)])
+        self.assertEqual(signature['params'][0]['type'], 'string')
+        options = signature['params'][1]['type'].replace(' ', '')
+        for field in ('speed?:number', 'loop?:boolean', 'unscaled?:boolean', 'fade?:number', 'time?:number'):
+            self.assertIn(field, options)
+        stop = next(m for m in title['methods'] if m['name'] == 'stop')
+        self.assertFalse(stop['static'])
+        self.assertEqual([(o['params'], o['returns']) for o in stop['overloads']], [
+            ([], []), ([{'name': 'name', 'type': 'string', 'optional': False}], ['boolean'])])
+
+    def test_anime_split_text_shapes(self):
+        classes = {c['name']: c for c in api()['classes']}
+        anime = classes['anime']
+        split = next((m for m in anime['methods'] if m['name'] == 'splitText'), None)
+        self.assertIsNotNone(split)
+        self.assertEqual(split['overloads'][0]['returns'], ['AnimeTextSplitter'])
+        self.assertEqual(split['overloads'][0]['params'][1]['type'], 'AnimeSplitTextParams')
+        splitter = classes['AnimeTextSplitter']
+        properties = {p['name']: p['type'] for p in splitter['properties']}
+        for name in ('chars', 'words', 'lines'):
+            self.assertEqual(properties[name], 'UIElement[]')
+        for name in ('split', 'refresh', 'revert'):
+            method = next(m for m in splitter['methods'] if m['name'] == name)
+            self.assertEqual(method['overloads'][0]['returns'], ['AnimeTextSplitter'])
+
     def test_round_trip_through_a_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'lua-api.json')
@@ -257,6 +304,31 @@ class Emitters(unittest.TestCase):
         self.assertTrue({'load', 'getFrame', 'findFrame'} <= {m['name'] for m in sheet['methods']})
         self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
         self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
+
+    def test_svg_drawable_stub_uses_valid_parameter_names(self):
+        from lua_api import parser
+        signature = parser.Builder.override_sig(None, parser.OVERRIDES[('anime', 'createDrawable')]['overloads'][0])
+        overload = {'params': [{'name': name, 'type': kind, 'optional': optional}
+                               for name, kind, optional in signature.params], 'returns': [signature.ret]}
+        cls = {'name': 'anime', 'base': None, 'doc': [], 'conditions': [], 'eventObject': False,
+               'constructors': [], 'properties': [], 'callOverloads': [], 'operators': [], 'enumTables': [],
+               'methods': [{'name': 'createDrawable', 'static': True, 'doc': [], 'conditions': [],
+                            'unresolved': [], 'overloads': [overload]}]}
+        emitter = stubs.Emitter({'classes': [cls]})
+        emitter.emit_class(cls)
+        self.assertIn('function anime.createDrawable(targets, start, finish) end', emitter.files['anime.lua'])
+
+    def test_svg_api_signatures(self):
+        classes = {c['name']: c for c in api()['classes']}
+        methods = {m['name']: m for m in classes['anime']['methods']}
+        expected = {'createDrawable': 'UIElement[]', 'morphTo': 'AnimeStagger', 'createMotionPath': 'AnimeMotionPath|nil'}
+        for name, result in expected.items():
+            self.assertIn(name, methods)
+            self.assertTrue(methods[name]['static'])
+            overload = methods[name]['overloads'][0]
+            self.assertEqual(overload['returns'], [result])
+            self.assertEqual(overload['params'][0]['type'], 'AnimeTargets')
+            self.assertTrue(all(parameter['optional'] for parameter in overload['params'][1:]))
 
     def test_pixel_particles(self):
         """S49 R40 (AC12): ps.pixelArt, ps.simulationMode, ps:getAnalyticParticle, and setRamp on a

@@ -38,7 +38,7 @@ public:
 
 	/// Evaluate the timing function at input progress t, nominally in [0, 1].
 	float operator()(float t) const;
-	/// Evaluate with the 'before flag' of CSS Easing 2 (steps() only): set while an animation is in its before phase.
+	/// Evaluate with the 'before flag' of CSS Easing 2 (steps() and linear()): set in an animation's before phase.
 	float Evaluate(float t, bool before_flag) const;
 
 	/// Reverse direction of the tweening function: the function f becomes 1 - f(1 - t).

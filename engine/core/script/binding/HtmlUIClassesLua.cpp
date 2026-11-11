@@ -1136,7 +1136,7 @@ bool HtmlUILua::runDocumentScript(UIDocument& document, const htmlui::compat::Do
     // defines stays its own
     lua_newtable(L);
     lua_newtable(L);
-    lua_pushglobaltable(L);
+    if (!LuaBinding::pushPreviewEnvironment(L)) lua_pushglobaltable(L);
     lua_setfield(L, -2, "__index");
     lua_setmetatable(L, -2);
     if (!luabridge::push(L, document))

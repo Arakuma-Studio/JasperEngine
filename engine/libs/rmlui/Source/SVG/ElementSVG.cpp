@@ -11,10 +11,177 @@
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "SVGCache.h"
+#include "../../Include/RmlUi/Core/BaseXMLParser.h"
+#include "../../Include/RmlUi/Core/ElementInstancer.h"
+#include "../../Include/RmlUi/Core/ElementText.h"
+#include "../../Include/RmlUi/Core/Factory.h"
+#include "../../Include/RmlUi/Core/StreamMemory.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/Transform.h"
+#include "../Core/TransformUtilities.h"
 
 namespace Rml {
 
+namespace {
+	void SetSVGContent(Element* element, const String& content);
+
+	void DirtyInlineSVG(Element* element)
+	{
+		for (; element; element = element->GetParentNode())
+			if (auto* svg = rmlui_dynamic_cast<ElementSVG*>(element))
+			{
+				svg->DirtySource();
+				break;
+			}
+	}
+
+	class SVGContentElement : public Element {
+	public:
+		explicit SVGContentElement(const String& tag) : Element(StringUtilities::ToLower(tag)), svg_tag(tag) {}
+		void SetInnerRML(const String& content) override
+		{
+			SetSVGContent(this, content);
+			DirtyInlineSVG(GetParentNode());
+		}
+	protected:
+		void GetRML(String& output) override
+		{
+			output += "<" + svg_tag;
+			String style = GetAttribute<String>("style", "");
+			const PropertyMap& local_properties = GetLocalStyleProperties();
+			const auto transform_property = local_properties.find(PropertyId::Transform);
+			const bool overrides_transform = transform_property != local_properties.end() && transform_property->second.unit == Unit::TRANSFORM;
+			for (const auto& attribute : GetAttributes())
+			{
+				if (attribute.first != "style" && !(overrides_transform && attribute.first == "transform"))
+					output += " " + attribute.first + "=\"" + StringUtilities::EncodeRml(attribute.second.Get<String>()) + "\"";
+			}
+			for (const auto& property : local_properties)
+			{
+				String value = property.second.ToString();
+				if (property.first == PropertyId::Transform && property.second.unit == Unit::TRANSFORM)
+				{
+					const TransformPtr transform = property.second.Get<TransformPtr>();
+					Matrix4f matrix = Matrix4f::Identity();
+					if (transform)
+						for (int i = 0; i < transform->GetNumPrimitives(); ++i)
+						{
+#ifdef RMLUI_MATH_EXPRESSIONS
+							const TransformPrimitive primitive = transform->ResolvePrimitive(i, *this);
+#else
+							const TransformPrimitive& primitive = transform->GetPrimitive(i);
+#endif
+							matrix *= TransformUtilities::ResolveTransform(primitive, *this);
+						}
+					const Matrix4f& resolved = matrix;
+					const auto x = resolved.GetRow(0), y = resolved.GetRow(1);
+					value = CreateString("matrix(%.9g %.9g %.9g %.9g %.9g %.9g)", x[0], y[0], x[1], y[1], x[3], y[3]);
+					// LunaSVG reads transform attributes but not CSS transforms. A local CSS transform
+					// overrides the authored attribute, which stays intact in the editable DOM.
+					output += " transform=\"" + value + "\"";
+					continue;
+				}
+				if (!style.empty() && style.back() != ';') style += ';';
+				style += StyleSheetSpecification::GetPropertyName(property.first) + ":" + value;
+			}
+			if (!style.empty()) output += " style=\"" + StringUtilities::EncodeRml(style) + "\"";
+			if (GetNumChildren() > 0)
+			{
+				output += ">";
+				Element::GetInnerRML(output);
+				output += "</" + svg_tag + ">";
+			}
+			else output += "/>";
+		}
+		void OnAttributeChange(const ElementAttributes& attributes) override
+		{
+			Element::OnAttributeChange(attributes);
+			DirtyInlineSVG(GetParentNode());
+		}
+		void OnPropertyChange(const PropertyIdSet& properties) override
+		{
+			Element::OnPropertyChange(properties);
+			DirtyInlineSVG(GetParentNode());
+		}
+		void OnChildAdd(Element* child) override
+		{
+			Element::OnChildAdd(child);
+			DirtyInlineSVG(GetParentNode());
+		}
+		void OnChildRemove(Element* child) override
+		{
+			Element::OnChildRemove(child);
+			DirtyInlineSVG(GetParentNode());
+		}
+	private:
+		String svg_tag;
+	};
+
+	ElementInstancer* SVGContentInstancer()
+	{
+		static ElementInstancerGeneric<SVGContentElement> instancer;
+		return &instancer;
+	}
+
+	// SVG remains an inert replaced image, but its markup has editable DOM descendants. This
+	// parser deliberately bypasses the HTML node handlers (scripts, links and data bindings).
+	class SVGContentParser : public BaseXMLParser {
+	public:
+		explicit SVGContentParser(Element* root) : root(root)
+		{
+			RegisterCDATATag("style");
+			RegisterCDATATag("script");
+		}
+		void HandleElementStart(const String& name, const XMLAttributes& attributes) override
+		{
+			if (depth++ == 0) return;
+			Element* parent = stack.empty() ? root : stack.back();
+			ElementInstancer* instancer = SVGContentInstancer();
+			ElementPtr child = instancer->InstanceElement(parent, name, attributes);
+			child->SetInstancer(instancer);
+			child->SetAttributes(attributes);
+			stack.push_back(parent->AppendChild(std::move(child)));
+		}
+		void HandleElementEnd(const String&) override
+		{
+			if (--depth > 0 && !stack.empty()) stack.pop_back();
+		}
+		void HandleData(const String& data, XMLDataType type) override
+		{
+			if (stack.empty()) return;
+			ElementPtr text = Factory::InstanceElement(stack.back(), "#text", "#text", XMLAttributes());
+			if (auto* element = rmlui_dynamic_cast<ElementText*>(text.get()))
+				element->SetText(type == XMLDataType::CDATA ? data : StringUtilities::DecodeRml(data));
+			stack.back()->AppendChild(std::move(text));
+		}
+	private:
+		Element* root;
+		Vector<Element*> stack;
+		int depth = 0;
+	};
+
+	void SetSVGContent(Element* element, const String& content)
+	{
+		while (element->GetNumChildren() > 0)
+			element->RemoveChild(element->GetFirstChild());
+		const String wrapped = "<svg-content>" + content + "</svg-content>";
+		StreamMemory stream(reinterpret_cast<const byte*>(wrapped.data()), wrapped.size());
+		SVGContentParser parser(element);
+		parser.Parse(&stream);
+	}
+} // namespace
+
 namespace SVG {
+	void RegisterContentElements()
+	{
+		// Elements created by the public DOM API must invalidate their SVG parent just like
+		// nodes parsed from its inline source. These names are SVG-only, not HTML controls.
+		const char* names[] = {"path", "line", "polyline", "polygon", "circle", "ellipse", "rect", "g", "defs", "use", "symbol", "text", "tspan",
+			"lineargradient", "radialgradient", "linearGradient", "radialGradient", "stop", "clippath", "clipPath", "mask", "pattern", "marker"};
+		for (const char* name : names)
+			Factory::RegisterElementInstancer(name, SVGContentInstancer());
+	}
+
 	static SourceHook* source_hook = nullptr;
 
 	SourceHook::~SourceHook() {}
@@ -120,9 +287,22 @@ void ElementSVG::OnResize()
 	svg_dirty = true;
 }
 
+void ElementSVG::OnChildAdd(Element* child)
+{
+	Element::OnChildAdd(child);
+	DirtySource();
+}
+
+void ElementSVG::OnChildRemove(Element* child)
+{
+	Element::OnChildRemove(child);
+	DirtySource();
+}
+
 void ElementSVG::OnAttributeChange(const ElementAttributes& changed_attributes)
 {
 	Element::OnAttributeChange(changed_attributes);
+	DirtySource();
 
 	if (changed_attributes.count("src") || changed_attributes.count("crop-to-content"))
 	{
@@ -161,7 +341,7 @@ void ElementSVG::GetInnerRML(String& content) const
 	if (!source.empty())
 		return;
 
-	content += svg_data;
+	Element::GetInnerRML(content);
 }
 
 void ElementSVG::SetInnerRML(const String& content)
@@ -176,9 +356,15 @@ void ElementSVG::SetInnerRML(const String& content)
 	if (!HasAttribute("rmlui-svgdata-id"))
 		SetAttribute("rmlui-svgdata-id", "svgdata:" + CreateString("%lu", internal_id_counter++));
 
-	svg_data = "" + content;
-	svg_dirty = true;
+	SetSVGContent(this, content);
+	DirtySource();
 	EnsureSourceLoaded();
+}
+
+void ElementSVG::DirtySource()
+{
+	svg_dirty = true;
+	source_revision++;
 }
 
 void ElementSVG::EnsureSourceLoaded()
@@ -193,7 +379,9 @@ void ElementSVG::EnsureSourceLoaded()
 	picture.Clear();
 	if (source.empty())
 	{
-		const auto source_id = GetAttribute<String>("rmlui-svgdata-id", "svgdata:undefined");
+		const auto source_id = GetAttribute<String>("rmlui-svgdata-id", "svgdata:undefined") + ":" + CreateString("%lu", source_revision);
+		svg_data.clear();
+		Element::GetInnerRML(svg_data);
 
 		// Build an svg wrapper tag, copying all but src attribute (expected attributes could be width, height, viewBox, etc.)
 		String svg_element_source = "<svg ";

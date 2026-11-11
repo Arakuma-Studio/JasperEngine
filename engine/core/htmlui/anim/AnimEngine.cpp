@@ -48,6 +48,19 @@ AnimEngine& AnimEngine::instance(){
     return *engine;
 }
 
+AnimEngine::ScopedTickPause::ScopedTickPause(std::vector<std::shared_ptr<AnimTimer>>* created){
+    AnimEngine& engine = AnimEngine::instance();
+    previousCollector = engine.timerCollector;
+    if (created) engine.timerCollector = created;
+    ++engine.tickPauseDepth;
+}
+
+AnimEngine::ScopedTickPause::~ScopedTickPause(){
+    AnimEngine& engine = AnimEngine::instance();
+    --engine.tickPauseDepth;
+    engine.timerCollector = previousCollector;
+}
+
 void AnimEngine::countTimer(int delta){
     liveTimers = (size_t)((long long)liveTimers + delta);
 }
@@ -65,7 +78,7 @@ void AnimEngine::tick(double uiTimeSeconds, double gameTimeSeconds){
 }
 
 void AnimEngine::tickMilliseconds(double uiTimeMs, double gameTimeMs){
-    if (updating)
+    if (updating || tickPauseDepth != 0)
         return;
     if (ticked && uiTimeMs == uiNow && gameTimeMs == lastGameSource)
         return;
@@ -76,6 +89,21 @@ void AnimEngine::tickMilliseconds(double uiTimeMs, double gameTimeMs){
     uiNow = uiTimeMs;
     ticked = true;
     update();
+}
+
+void AnimEngine::alignClockSources(double uiTimeSeconds, double gameTimeSeconds){
+    const double nextUi = uiTimeSeconds * AnimConst::K;
+    const double shift = nextUi - now(AnimClock::UI);
+    for (AnimTimer* timer = head; timer; timer = timer->next){
+        if (timer->clock == AnimClock::UI){
+            timer->startTime += shift;
+            timer->lastTickTime += shift;
+        }
+    }
+    uiNow = nextUi;
+    lastGameSource = gameTimeSeconds * AnimConst::K;
+    ticked = true;
+    flushValues();
 }
 
 double AnimEngine::now(AnimClock clock) const{
@@ -97,6 +125,28 @@ void AnimEngine::add(AnimTimer& timer){
     timer.running = true;
     timer.engineRef = timer.shared_from_this();
     hasChildren = true;
+    captureTimer(timer);
+}
+
+void AnimEngine::captureTimer(AnimTimer& timer){
+    if (!timerCollector || timer.parent) return;
+    for (const auto& captured : *timerCollector){
+        if (captured.get() == &timer) return;
+    }
+    timerCollector->push_back(timer.shared_from_this());
+}
+
+void AnimEngine::detachRoot(AnimTimer& timer){
+    if (timer.parent || !timer.running) return;
+    std::shared_ptr<AnimTimer> keep = timer.engineRef;
+    if (timer.prev) timer.prev->next = timer.next; else head = timer.next;
+    if (timer.next) timer.next->prev = timer.prev; else tail = timer.prev;
+    timer.prev = nullptr;
+    timer.next = nullptr;
+    timer.running = false;
+    hasChildren = tail != nullptr;
+    timer.engineRef.reset();
+    keep.reset();
 }
 
 void AnimEngine::update(){
@@ -133,9 +183,13 @@ void AnimEngine::update(){
         keepNext.reset();
         keep.reset();
     }
+    flushValues();
+    updating = false;
+}
+
+void AnimEngine::flushValues(){
     AnimComposer::updateAdditive();
     AnimProperty::flush();
-    updating = false;
 }
 
 size_t AnimEngine::getActiveCount() const{

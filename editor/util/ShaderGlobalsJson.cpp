@@ -19,7 +19,7 @@ namespace {
 
     // a float as JSON, without the noise of its double widening (0.1f -> 0.1, not 0.100000001...)
     // the shortest text that reads back as the same float
-    Json number(float value) {
+    Json shaderGlobalsJsonNumber(float value) {
         char text[32];
         for (int digits = 6; digits <= 9; digits++) {
             snprintf(text, sizeof(text), "%.*g", digits, value);
@@ -31,7 +31,7 @@ namespace {
     Json numbers(const Vector4& value, int count) {
         Json list = Json::array();
         const float c[4] = {value.x, value.y, value.z, value.w};
-        for (int i = 0; i < count; i++) list.push_back(number(c[i]));
+        for (int i = 0; i < count; i++) list.push_back(shaderGlobalsJsonNumber(c[i]));
         return list;
     }
 
@@ -123,7 +123,7 @@ bool ShaderGlobalsJson::parseHexColor(const std::string& text, Vector4& srgb) {
 Json ShaderGlobalsJson::valueToJson(ShaderGlobalType type, unsigned int arraySize, const std::vector<Vector4>& values) {
     auto slot = [&values](size_t i) { return i < values.size() ? values[i] : Vector4(0.0f, 0.0f, 0.0f, 0.0f); };
     switch (type) {
-        case ShaderGlobalType::Float: return number(slot(0).x);
+        case ShaderGlobalType::Float: return shaderGlobalsJsonNumber(slot(0).x);
         case ShaderGlobalType::Vector2:
         case ShaderGlobalType::Vector3:
         case ShaderGlobalType::Vector4: return numbers(slot(0), componentsOf(type));
@@ -142,7 +142,7 @@ Json ShaderGlobalsJson::valueToJson(ShaderGlobalType type, unsigned int arraySiz
         }
         case ShaderGlobalType::FloatArray: {
             Json list = Json::array();
-            for (unsigned int i = 0; i < std::max(1u, arraySize); i++) list.push_back(number(slot(i).x));
+            for (unsigned int i = 0; i < std::max(1u, arraySize); i++) list.push_back(shaderGlobalsJsonNumber(slot(i).x));
             return list;
         }
         case ShaderGlobalType::Vector4Array: {

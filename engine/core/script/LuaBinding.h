@@ -163,6 +163,28 @@ namespace jasperengine {
         // in the same process) has a new generation, even at the address of the one it replaces
         static uint64_t getLuaStateGeneration();
 
+        // A private editor preview owns this registry reference until releaseLuaRef(). Its
+        // require() cache starts with engine modules only and persists across preview slices.
+        static int createPreviewModuleCache();
+        class JASPERENGINE_API ScopedModuleCache {
+        public:
+            explicit ScopedModuleCache(int moduleCacheRef);
+            ~ScopedModuleCache();
+            ScopedModuleCache(const ScopedModuleCache&) = delete;
+            ScopedModuleCache& operator=(const ScopedModuleCache&) = delete;
+        private:
+            lua_State* state = nullptr;
+            uint64_t stateGeneration = 0;
+            int previousRegistryRef = 0;
+            int previousPackageRef = 0;
+            int previousPackageLoadedRef = 0;
+            int previousPreviewContextKey = 0;
+        };
+        static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
+        static int getPreviewContextKey(); // its module-cache registry reference; negative outside previews
+        // Push the private globals shared by project chunks in this preview; false outside one.
+        static bool pushPreviewEnvironment(lua_State* L);
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it
         // (onControllerColliderHit after a CharacterController's move)
@@ -289,6 +311,8 @@ namespace jasperengine {
         // The compiled chunk of a script path becomes the function at `index`: instances made
         // from now on run it
         static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // A private preview reads a saved script again without unloading unrelated modules.
+        static void invalidateScriptChunk(const std::string& path);
         // Pushes a script property's value as an instance field gets it at creation (an unset
         // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
         static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);

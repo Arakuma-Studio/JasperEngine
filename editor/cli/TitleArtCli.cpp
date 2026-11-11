@@ -24,12 +24,12 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleArtCliJson = jasperengine::titleart::Json;
 namespace fs = std::filesystem;
 
 namespace {
 
-    constexpr int EXIT_DONE = 0, EXIT_FAILED = 1, EXIT_USAGE = 2;
+    constexpr int EXIT_DONE = 0, EXIT_FAILED = 1, TITLE_ART_EXIT_USAGE = 2;
 
     struct Args {
         std::vector<std::string> inputs;
@@ -172,9 +172,9 @@ namespace {
         return source.stem().string();
     }
 
-    void report(bool json, const std::string& input, bool ok, const std::string& text, const Json& structured) {
+    void report(bool json, const std::string& input, bool ok, const std::string& text, const TitleArtCliJson& structured) {
         if (json) {
-            Json line = Json{{"input", input}, {"ok", ok}, {"text", text}};
+            TitleArtCliJson line = TitleArtCliJson{{"input", input}, {"ok", ok}, {"text", text}};
             if (!structured.is_null()) line["result"] = structured;
             std::cout << line.dump() << std::endl;
         } else {
@@ -185,7 +185,7 @@ namespace {
     // ---- import ----
 
     // a strings file into the documents its rows name (or --title)
-    bool importStrings(const fs::path& file, const fs::path& project, const Args& args, Json& result, std::string& text) {
+    bool importStrings(const fs::path& file, const fs::path& project, const Args& args, TitleArtCliJson& result, std::string& text) {
         std::string body, error;
         if (!readAll(file, body)) {
             text = "cannot read the file";
@@ -208,7 +208,7 @@ namespace {
                 return false;
             }
         }
-        result = Json::array();
+        result = TitleArtCliJson::array();
         bool ok = true;
         for (const std::string& document : documents) {
             const fs::path path = (FileUtils::pathFromUtf8(document).is_absolute() ? FileUtils::pathFromUtf8(document) : project / document).lexically_normal();
@@ -216,7 +216,7 @@ namespace {
             titleart::TitleArtParseResult parsed;
             if (readAll(path, docText)) parsed = titleart::parseTitleArt(docText);
             if (!parsed.ok) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", parsed.error.message.empty() ? "cannot read it" : parsed.error.message}});
+                result.push_back(TitleArtCliJson{{"document", document}, {"ok", false}, {"error", parsed.error.message.empty() ? "cannot read it" : parsed.error.message}});
                 ok = false;
                 continue;
             }
@@ -224,26 +224,26 @@ namespace {
             options.documentPath = path.string();
             options.projectPath = project.string();
             options.assetsPath = assetsOf(project).string();
-            Json op = Json{{"op", "import_strings"}, {"file", file.string()}, {"add_languages", args.flags.count("add-languages") > 0}};
+            TitleArtCliJson op = TitleArtCliJson{{"op", "import_strings"}, {"file", file.string()}, {"add_languages", args.flags.count("add-languages") > 0}};
             // the rows of another document stay out of this one: route by the document's own path
             const TitleOpsResult r = TitleArtOps::apply(parsed.doc, op, options);
             if (!r.ok) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", r.error()}});
+                result.push_back(TitleArtCliJson{{"document", document}, {"ok", false}, {"error", r.error()}});
                 ok = false;
                 continue;
             }
             if (!assetio::writeFile(path, titleart::writeTitleArt(r.doc), assetio::Durability::Document, &error)) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", error}});
+                result.push_back(TitleArtCliJson{{"document", document}, {"ok", false}, {"error", error}});
                 ok = false;
                 continue;
             }
-            result.push_back(Json{{"document", document}, {"ok", true}, {"report", r.reports.value("0", Json::object())}});
+            result.push_back(TitleArtCliJson{{"document", document}, {"ok", true}, {"report", r.reports.value("0", TitleArtCliJson::object())}});
         }
         text = std::to_string(documents.size()) + " document(s)";
         return ok;
     }
 
-    bool importOne(const fs::path& source, const fs::path& project, const fs::path& into, const Args& args, Json& result, std::string& text) {
+    bool importOne(const fs::path& source, const fs::path& project, const fs::path& into, const Args& args, TitleArtCliJson& result, std::string& text) {
         std::string kind = args.values.count("kind") ? args.values.at("kind") : "auto";
         if (kind == "auto") {
             std::string ext = source.extension().string();
@@ -259,7 +259,7 @@ namespace {
         if (kind == "ps_styles") {
             // a library op: the looks it writes are its result
             options.documentPath = (into / (stemOf(source) + ".titleart")).string();
-            Json op = Json{{"op", "import_ps_styles"}, {"file", source.string()}, {"overwrite", args.flags.count("overwrite") > 0}};
+            TitleArtCliJson op = TitleArtCliJson{{"op", "import_ps_styles"}, {"file", source.string()}, {"overwrite", args.flags.count("overwrite") > 0}};
             const TitleOpsResult r = TitleArtOps::apply(titleart::makeNewTitleArt(), op, options);
             if (!r.ok) {
                 text = r.error();
@@ -270,7 +270,7 @@ namespace {
                 text = error;
                 return false;
             }
-            result = r.reports.value("0", Json::object());
+            result = r.reports.value("0", TitleArtCliJson::object());
             text = std::to_string(r.files.size()) + " look(s) written";
             return true;
         }
@@ -313,8 +313,8 @@ namespace {
     // ---- export ----
 
     // the render formats' `options` from the flags (dashes to underscores)
-    bool exportOptions(const Args& args, Json& options, std::string& error) {
-        options = Json::object();
+    bool exportOptions(const Args& args, TitleArtCliJson& options, std::string& error) {
+        options = TitleArtCliJson::object();
         const auto number = [&](const char* flag, const char* key) {
             if (!args.values.count(flag)) return true;
             char* end = nullptr;
@@ -339,11 +339,11 @@ namespace {
         return true;
     }
 
-    Json languagesArg(const Args& args) {
+    TitleArtCliJson languagesArg(const Args& args) {
         if (!args.values.count("languages")) return nullptr;
         const std::string value = args.values.at("languages");
         if (value == "all") return "all";
-        Json list = Json::array();
+        TitleArtCliJson list = TitleArtCliJson::array();
         std::stringstream ss(value);
         std::string code;
         while (std::getline(ss, code, ',')) {
@@ -368,30 +368,30 @@ int TitleArtCli::runImport(int argc, char** argv, const char* executableName) {
         std::cerr << (error.empty() ? "import-title-art needs files and --project <dir>" : error) << "\n"
                   << "Usage: import-title-art <file|glob>... --project <dir> [--into <assets dir>]\n"
                      "    [--kind auto|pachislop|psd|ps_styles|svg|strings] [--title <x.titleart>] [--add-languages] [--overwrite] [--json]\n";
-        return args.flags.count("help") ? EXIT_DONE : EXIT_USAGE;
+        return args.flags.count("help") ? EXIT_DONE : TITLE_ART_EXIT_USAGE;
     }
     const std::string kind = args.values.count("kind") ? args.values.at("kind") : "auto";
     if (!std::set<std::string>{"auto", "pachislop", "psd", "ps_styles", "svg", "strings"}.count(kind)) {
         std::cerr << "--kind is auto, pachislop, psd, ps_styles, svg or strings\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     const fs::path project = absoluteOf(args.values.at("project"));
     std::error_code ec;
     if (!fs::is_regular_file(project / "project.yaml", ec)) {
         std::cerr << project.generic_string() << " is not a project (no project.yaml)\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     const fs::path assets = assetsOf(project);
     const fs::path into = args.values.count("into") ? absoluteOf(args.values.at("into")) : assets;
     if (!inside(assets, into)) {
         std::cerr << "--into must be inside the project's assets (" << assets.generic_string() << ")\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     registerTitleInterchange();
     int failed = 0;
     const std::vector<fs::path> files = expand(args.inputs, "");
     for (const fs::path& file : files) {
-        Json result;
+        TitleArtCliJson result;
         std::string text;
         const bool ok = importOne(file, project, into, args, result, text);
         failed += ok ? 0 : 1;
@@ -416,19 +416,19 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
                      "    [--languages all|en,de] [--out <dir>] [--bit-depth 8|16] [--scale <s>] [--alpha straight|premultiplied] [--no-bleed]\n"
                      "    [--alpha-threshold <n>] [--split-titles] [--parts] [--animation <name>] [--fps <n>] [--family desktop|mobile|web]\n"
                      "    [--zip] [--overwrite] [--json]\n";
-        return args.flags.count("help") ? EXIT_DONE : EXIT_USAGE;
+        return args.flags.count("help") ? EXIT_DONE : TITLE_ART_EXIT_USAGE;
     }
     const std::string format = args.values.at("format");
     static const std::set<std::string> formats = {"png", "psd", "svg", "sheet", "atlas", "sequence", "ktx2", "csv", "xliff"};
     if (!formats.count(format)) {
         std::cerr << "--format is png, psd, svg, sheet, atlas, sequence, ktx2, csv or xliff\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     const fs::path project = absoluteOf(args.values.at("project"));
     std::error_code ec;
     if (!fs::is_regular_file(project / "project.yaml", ec)) {
         std::cerr << project.generic_string() << " is not a project (no project.yaml)\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     const std::vector<fs::path> documents = expand(args.inputs, ".titleart");
     if (documents.empty()) {
@@ -455,8 +455,8 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
         std::vector<TitleStringsDocument> docs;
         for (const auto& [file, doc] : loaded) docs.push_back({file, &doc});
         std::vector<std::string> languages;
-        const Json asked = languagesArg(args);
-        if (asked.is_array()) for (const Json& c : asked) languages.push_back(c.get<std::string>());
+        const TitleArtCliJson asked = languagesArg(args);
+        if (asked.is_array()) for (const TitleArtCliJson& c : asked) languages.push_back(c.get<std::string>());
         const std::string stem = documents.size() == 1 ? documents.front().stem().string() : "strings";
         const fs::path dir = !out.empty() ? out : project / "Recordings" / "Title Art" / (documents.size() == 1 ? stem : std::string());
         std::vector<std::pair<fs::path, std::string>> files;
@@ -469,7 +469,7 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
                 files.emplace_back(dir / (stem + "." + lower + ".xlf"), text);
             }
         }
-        Json written = Json::array();
+        TitleArtCliJson written = TitleArtCliJson::array();
         for (const auto& [path, text] : files) {
             if (fs::exists(path, ec) && !args.flags.count("overwrite")) {
                 report(json, path.generic_string(), false, "output_exists (pass --overwrite)", nullptr);
@@ -482,15 +482,15 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
             }
             written.push_back(path.generic_string());
         }
-        report(json, std::to_string(documents.size()) + " document(s)", true, "wrote " + std::to_string(files.size()) + " file(s)", Json{{"files", written}});
+        report(json, std::to_string(documents.size()) + " document(s)", true, "wrote " + std::to_string(files.size()) + " file(s)", TitleArtCliJson{{"files", written}});
         return EXIT_DONE;
     }
 
     // the render formats: one session of one headless editor for the whole batch
-    Json options;
+    TitleArtCliJson options;
     if (!exportOptions(args, options, error)) {
         std::cerr << error << "\n";
-        return EXIT_USAGE;
+        return TITLE_ART_EXIT_USAGE;
     }
     // MCP writes only inside the project: elsewhere the files are moved there afterwards
     const bool outside = !out.empty() && !inside(project, out);
@@ -498,8 +498,8 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
     for (const fs::path& d : documents) {
         std::error_code rel;
         const std::string relative = fs::relative(d, project, rel).generic_string();
-        Json arguments = Json{{"path", relative}, {"format", format}, {"options", options}, {"wait", true}, {"timeout_seconds", 3600}};
-        const Json languages = languagesArg(args);
+        TitleArtCliJson arguments = TitleArtCliJson{{"path", relative}, {"format", format}, {"options", options}, {"wait", true}, {"timeout_seconds", 3600}};
+        const TitleArtCliJson languages = languagesArg(args);
         if (!languages.is_null()) arguments["languages"] = languages;
         if (!out.empty()) {
             arguments["out"] = outside ? (fs::path("Recordings") / "Title Art" / ".cli" / d.stem()).generic_string()
@@ -517,11 +517,11 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
             continue;
         }
         const cli::CallResult& r = results[i];
-        Json structured = r.structured.is_null() ? Json() : Json::parse(r.structured.dump());
+        TitleArtCliJson structured = r.structured.is_null() ? TitleArtCliJson() : TitleArtCliJson::parse(r.structured.dump());
         bool ok = r.ok;
         if (ok && outside && structured.is_object() && structured.contains("files")) {
-            Json moved = Json::array();
-            for (const Json& f : structured["files"]) {
+            TitleArtCliJson moved = TitleArtCliJson::array();
+            for (const TitleArtCliJson& f : structured["files"]) {
                 const fs::path from = (project / FileUtils::pathFromUtf8(f.get<std::string>())).lexically_normal();
                 const fs::path to = out / from.filename();
                 fs::create_directories(out, ec);

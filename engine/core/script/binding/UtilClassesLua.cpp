@@ -98,6 +98,8 @@ namespace je_lua_timer {
     // scripts: oe-port's {owner, clock, count, catchUp} and upstream's {owner, unscaled, count,
     // delay} (delay: Timer.every only)
     TimerOptions readOptions(lua_State* L, int index, const char* function = "Timer", bool every = false) {
+        if (LuaBinding::isPreviewContext())
+            luaL_error(L, "Timer/Coroutine scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         TimerOptions options;
         if (lua_isnoneornil(L, index)) return options;
         if (!lua_istable(L, index)) {
@@ -597,6 +599,8 @@ namespace je_lua_timer {
     }
 
     int luaTimerWait(lua_State* L) {
+        if (LuaBinding::isPreviewContext())
+            return luaL_error(L, "Timer/Coroutine waits are unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         const double seconds = luaL_checknumber(L, 1);
         CoroutinePtr coroutine = runningCoroutine(L, "Timer.wait");
         coroutine->seconds = seconds;
@@ -607,6 +611,8 @@ namespace je_lua_timer {
     }
 
     int luaTimerWaitRealtime(lua_State* L) {
+        if (LuaBinding::isPreviewContext())
+            return luaL_error(L, "Timer/Coroutine waits are unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         const double seconds = luaL_checknumber(L, 1);
         CoroutinePtr coroutine = runningCoroutine(L, "Timer.waitRealtime");
         coroutine->seconds = seconds;
@@ -617,6 +623,8 @@ namespace je_lua_timer {
     }
 
     int luaTimerWaitFrames(lua_State* L) {
+        if (LuaBinding::isPreviewContext())
+            return luaL_error(L, "Timer/Coroutine waits are unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         const lua_Integer frames = luaL_optinteger(L, 1, 1);
         if (frames < 1) return luaL_error(L, "Timer.waitFrames: frames must be 1 or more");
         CoroutinePtr coroutine = runningCoroutine(L, "Timer.waitFrames");
@@ -627,6 +635,8 @@ namespace je_lua_timer {
     }
 
     int luaTimerWaitFixedStep(lua_State* L) {
+        if (LuaBinding::isPreviewContext())
+            return luaL_error(L, "Timer/Coroutine waits are unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         CoroutinePtr coroutine = runningCoroutine(L, "Timer.waitFixedStep");
         Coroutine& target = *coroutine;
         coroutine.reset();
@@ -634,6 +644,8 @@ namespace je_lua_timer {
     }
 
     int luaTimerWaitUntil(lua_State* L) {
+        if (LuaBinding::isPreviewContext())
+            return luaL_error(L, "Timer/Coroutine waits are unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
         luaL_checktype(L, 1, LUA_TFUNCTION);
         CoroutinePtr coroutine = runningCoroutine(L, "Timer.waitUntil");
         lua_pushvalue(L, 1);

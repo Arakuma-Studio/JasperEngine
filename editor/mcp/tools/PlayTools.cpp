@@ -53,6 +53,7 @@
 #include "audio/LoudnessMonitor.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
+#include "recorder/RecorderSession.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -211,6 +212,7 @@ struct TimeControl {
 struct PlayToolsState {
     McpContext* frameHookCtx = nullptr;  // afterGameFrame's context
     TimeControl time;
+    bool clockSettingsDeferred = false;
     SessionRecord current;
     SessionRecord last;
     uint64_t serialCounter = 0;
@@ -301,7 +303,14 @@ void finishStartWaits(McpContext& ctx);
 
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
-    const TimeControl& t = state().time;
+    // A capture keeps its timestep when the monitor first notices its Play session.
+    PlayToolsState& s = state();
+    if (recorder::RecorderSession::get().recording()) {
+        s.clockSettingsDeferred = true;
+        return;
+    }
+    s.clockSettingsDeferred = false;
+    const TimeControl& t = s.time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
 }
@@ -314,7 +323,10 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame;
+    // A capture owns its load-settling hold and advances independently of MCP auto-pause.
+    const auto& recorderSession = recorder::RecorderSession::get();
+    const bool hold = recorderSession.isHoldingFrame() ||
+        (!recorderSession.recording() && running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame);
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 
@@ -433,6 +445,10 @@ void observeSession(McpContext& ctx) {
         }
     }
 
+    if (s.clockSettingsDeferred && !recorder::RecorderSession::get().recording()) {
+        if (s.current.active) applyTimeSettings();
+        else s.clockSettingsDeferred = false;
+    }
     applyHold(ctx);
     finishStartWaits(ctx);
 }

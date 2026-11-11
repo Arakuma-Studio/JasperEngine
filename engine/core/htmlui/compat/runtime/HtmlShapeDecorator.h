@@ -10,9 +10,11 @@
 #include <RmlUi/Core/Decorator.h>
 
 #include <string>
+#include <memory>
 
 namespace Rml {
     class Element;
+    class PropertyParser;
 }
 
 namespace jasperengine::htmlui::compat {
@@ -35,6 +37,15 @@ namespace jasperengine::htmlui::compat {
         // white, black elsewhere transparent; `resolveLength` resolves lengths other than px and
         // percentages (em, rem, vw ...) for the element. "" when the shape is invalid.
         std::string toSvg(float width, float height, Rml::Element* element = nullptr, std::string* error = nullptr) const;
+
+        // CSS Shapes interpolation keeps unit coefficients until the shape is drawn. Different
+        // shape kinds, reference boxes, polygon fill rules or vertex counts are discrete.
+        bool interpolate(const BasicShape& to, float alpha, BasicShape& result) const;
+        Rml::Units unitDependencies() const;
+
+    private:
+        struct AnimationComponents;
+        std::shared_ptr<const AnimationComponents> animationComponents;
     };
 
     // html-shape("<basic-shape>"): the shape rasterized (LunaSVG) at the reference box's size x
@@ -67,9 +78,11 @@ namespace jasperengine::htmlui::compat {
 
         Rml::SharedPtr<Rml::Decorator> InstanceDecorator(const Rml::String& name, const Rml::PropertyDictionary& properties,
                                                          const Rml::DecoratorInstancerInterface& instancer_interface) override;
+        bool InterpolatesAsImageLayer() const override;
 
     private:
         Rml::PropertyId shapeId = Rml::PropertyId::Invalid;
+        std::unique_ptr<Rml::PropertyParser> shapeParser;
     };
 
 }

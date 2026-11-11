@@ -28,6 +28,18 @@ namespace jasperengine {
     class JASPERENGINE_API AnimEngine {
     public:
         static AnimEngine& instance();
+
+        // Private document previews seek their own timers while updating RmlUi. Their clock
+        // must not tick animations belonging to the editor's other documents.
+        class JASPERENGINE_API ScopedTickPause {
+        public:
+            explicit ScopedTickPause(std::vector<std::shared_ptr<AnimTimer>>* created = nullptr);
+            ~ScopedTickPause();
+            ScopedTickPause(const ScopedTickPause&) = delete;
+            ScopedTickPause& operator=(const ScopedTickPause&) = delete;
+        private:
+            std::vector<std::shared_ptr<AnimTimer>>* previousCollector;
+        };
         // the one engine; not copyable (it owns its tweens: MSVC instantiates the copies of
         // an exported class)
         AnimEngine(const AnimEngine&) = delete;
@@ -40,6 +52,12 @@ namespace jasperengine {
         void tick(double uiTimeSeconds, double gameTimeSeconds);
         // milliseconds, as Anime counts (reference tests)
         void tickMilliseconds(double uiTimeMs, double gameTimeMs);
+
+        // A recorder's first frame starts after asynchronous scene loading. Align the input
+        // clocks without treating that load as animation time; existing progress is preserved.
+        void alignClockSources(double uiTimeSeconds, double gameTimeSeconds);
+        // Manual preview seeks also need additive composition and deferred element writes.
+        void flushValues();
 
         // cancels and drops every timer, the additive state and the element targets' state,
         // and calls the reset listeners (the Lua binding frees its registry refs there)
@@ -58,6 +76,8 @@ namespace jasperengine {
 
         // ---- internal (AnimTimer, AnimComposer) ----
         void add(AnimTimer& timer);          // resume(): into the running list
+        void detachRoot(AnimTimer& timer);  // private preview cleanup, without ticking or callbacks
+        void captureTimer(AnimTimer& timer); // private preview roots, including paused and zero-duration timers
         static void registerAnimation(AnimAnimation* animation, bool alive);
         AnimTimer* head = nullptr;
         AnimTimer* tail = nullptr;
@@ -80,6 +100,8 @@ namespace jasperengine {
         double lastGameSource = 0;
         bool ticked = false;
         bool updating = false;
+        unsigned int tickPauseDepth = 0;
+        std::vector<std::shared_ptr<AnimTimer>>* timerCollector = nullptr;
         uint64_t nextListenerId = 1;
         std::vector<std::pair<uint64_t, std::function<void()>>> resetListeners;
     };

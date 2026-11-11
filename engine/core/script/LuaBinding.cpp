@@ -145,6 +145,9 @@ uint64_t LuaBinding::luastateGeneration = 0;
 
 // modules the engine itself loads, anything after this is project code
 static std::set<std::string> baselineLuaModules;
+static unsigned int luaPreviewDepth = 0;
+static int luaPreviewContextKey = LUA_NOREF;
+static const char luaPreviewEnvironmentKey = 0;
 
 // require() reads this registry table, package.loaded is only an alias to it
 static void collectLoadedModuleNames(lua_State* L, std::set<std::string>& out){
@@ -363,6 +366,179 @@ lua_State* LuaBinding::getLuaState(){
 
 uint64_t LuaBinding::getLuaStateGeneration(){
     return luastateGeneration;
+}
+
+int LuaBinding::createPreviewModuleCache(){
+    lua_State* L = luastate;
+    if (!L) return LUA_NOREF;
+    checkLuaThread();
+    lua_newtable(L);
+    const int fresh = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    for (const std::string& name : baselineLuaModules){
+        lua_pushlstring(L, name.data(), name.size());
+        lua_rawget(L, -2);
+        lua_setfield(L, fresh, name.c_str());
+    }
+    lua_pop(L, 1);
+    return luaL_ref(L, LUA_REGISTRYINDEX);
+}
+
+LuaBinding::ScopedModuleCache::ScopedModuleCache(int moduleCacheRef){
+    lua_State* L = LuaBinding::getLuaState();
+    if (!L) return;
+    checkLuaThread();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, moduleCacheRef);
+    if (!lua_istable(L, -1)){
+        lua_pop(L, 1);
+        Log::error("A Lua preview module cache must be a live table from createPreviewModuleCache()");
+        return;
+    }
+    const int next = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    previousRegistryRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_pushglobaltable(L);
+    lua_pushliteral(L, "package");
+    lua_rawget(L, -2);
+    lua_remove(L, -2);
+    previousPackageLoadedRef = LUA_NOREF;
+    if (lua_istable(L, -1)){
+        lua_pushliteral(L, "loaded");
+        lua_rawget(L, -2);
+        previousPackageLoadedRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        lua_pushliteral(L, "loaded");
+        lua_pushvalue(L, next);
+        lua_rawset(L, -3);
+    }
+    previousPackageRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_pushvalue(L, next);
+    lua_setfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_pop(L, 1);
+    state = L;
+    stateGeneration = LuaBinding::getLuaStateGeneration();
+    previousPreviewContextKey = luaPreviewContextKey;
+    luaPreviewContextKey = moduleCacheRef;
+    ++luaPreviewDepth;
+}
+
+LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
+    if (!state) return;
+    --luaPreviewDepth;
+    luaPreviewContextKey = previousPreviewContextKey;
+    if (state != LuaBinding::getLuaState() || stateGeneration != LuaBinding::getLuaStateGeneration()) return;
+    checkLuaThread();
+    auto pushRef = [&](int ref){
+        if (ref == LUA_NOREF || ref == LUA_REFNIL) lua_pushnil(state);
+        else lua_rawgeti(state, LUA_REGISTRYINDEX, ref);
+    };
+    pushRef(previousRegistryRef);
+    lua_setfield(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    pushRef(previousPackageRef);
+    if (lua_istable(state, -1)){
+        lua_pushliteral(state, "loaded");
+        pushRef(previousPackageLoadedRef);
+        lua_rawset(state, -3);
+    }
+    lua_pushglobaltable(state);
+    lua_pushliteral(state, "package");
+    lua_pushvalue(state, -3);
+    lua_rawset(state, -3);
+    lua_pop(state, 2);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousRegistryRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageLoadedRef);
+}
+
+bool LuaBinding::isPreviewContext(){
+    return luaPreviewDepth != 0;
+}
+
+int LuaBinding::getPreviewContextKey(){
+    return luaPreviewContextKey;
+}
+
+bool LuaBinding::pushPreviewEnvironment(lua_State* L){
+    if (!L || !isPreviewContext()) return false;
+    checkLuaThread();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, luaPreviewContextKey);
+    const int cache = lua_gettop(L);
+    lua_rawgetp(L, cache, &luaPreviewEnvironmentKey);
+    if (lua_istable(L, -1)){
+        lua_remove(L, cache);
+        return true;
+    }
+    lua_pop(L, 1);
+    lua_newtable(L);
+    const int environment = lua_gettop(L);
+    lua_pushglobaltable(L);
+    const int globals = lua_gettop(L);
+    // Engine bindings stay available, while project globals begin fresh for every sample.
+    for (const std::string& name : getEngineGlobalNames()){
+        lua_pushlstring(L, name.data(), name.size());
+        lua_rawget(L, globals);
+        lua_setfield(L, environment, name.c_str());
+    }
+    lua_pop(L, 1);
+    auto copyTable = [L](int source){
+        source = lua_absindex(L, source);
+        lua_newtable(L);
+        const int copy = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, source)){
+            lua_pushvalue(L, -2);
+            lua_pushvalue(L, -2);
+            lua_rawset(L, copy);
+            lua_pop(L, 1);
+        }
+    };
+    lua_getfield(L, environment, "package");
+    if (lua_istable(L, -1)){
+        const int source = lua_gettop(L);
+        copyTable(source);
+        const int package = lua_gettop(L);
+        for (const char* field : {"searchers", "preload"}){
+            lua_getfield(L, source, field);
+            if (lua_istable(L, -1)){
+                copyTable(-1);
+                lua_setfield(L, package, field);
+            }
+            lua_pop(L, 1);
+        }
+        lua_pushvalue(L, cache);
+        lua_setfield(L, package, "loaded");
+        lua_pushvalue(L, package);
+        lua_setfield(L, environment, "package");
+        lua_pushvalue(L, package);
+        lua_setfield(L, cache, "package");
+        lua_getfield(L, environment, "require");
+        const lua_CFunction require = lua_tocfunction(L, -1);
+        lua_pop(L, 1);
+        if (require){
+            // Lua's require closes over its package table, including the searcher list.
+            lua_pushvalue(L, package);
+            lua_pushcclosure(L, require, 1);
+            lua_setfield(L, environment, "require");
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    // A copied math table would still share random/randomseed's mutable C upvalue.
+    luaopen_math(L);
+    lua_getfield(L, -1, "randomseed");
+    lua_pushinteger(L, 0);
+    lua_pushinteger(L, 0);
+    lua_call(L, 2, 0);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, environment, "math");
+    lua_setfield(L, cache, "math");
+    lua_pushvalue(L, environment);
+    lua_setfield(L, environment, "_G");
+    lua_pushvalue(L, environment);
+    lua_setfield(L, cache, "_G");
+    lua_pushvalue(L, environment);
+    lua_rawsetp(L, cache, &luaPreviewEnvironmentKey);
+    lua_remove(L, cache);
+    return true;
 }
 
 lua_State* LuaBinding::mainThread(lua_State* L){
@@ -864,9 +1040,9 @@ int LuaBinding::moduleLoader(lua_State *L) {
         return 1;
     }
     if (filedata.getMemPtr() != NULL) {
-        
-        luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        lua_reload::chunkName(chunkPath).c_str());
+        const int status = luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
+                                          lua_reload::chunkName(chunkPath).c_str());
+        if (status == LUA_OK && pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
         
         return 1;
     }
@@ -878,9 +1054,9 @@ int LuaBinding::moduleLoader(lua_State *L) {
         return 1;
     }
     if (filedata.getMemPtr() != NULL) {
-        
-        luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        lua_reload::chunkName("lua/" + chunkPath).c_str());
+        const int status = luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
+                                          lua_reload::chunkName("lua/" + chunkPath).c_str());
+        if (status == LUA_OK && pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
         
         return 1;
     }
@@ -1500,7 +1676,10 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
         }
     }
 
-    auto chunk = scriptChunks.find(scriptEntry.path);
+    // A cached live chunk shares its _ENV upvalue with functions returned to live scripts.
+    // Preview chunks must never rebind that upvalue or enter the live chunk cache.
+    const bool preview = isPreviewContext();
+    auto chunk = preview ? scriptChunks.end() : scriptChunks.find(scriptEntry.path);
     if (chunk == scriptChunks.end()) {
         std::string luaFile = std::string("lua://") + scriptEntry.path;
         Data filedata;
@@ -1516,9 +1695,13 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
             lua_pop(L, 1);
             return false;
         }
-        chunk = scriptChunks.emplace(scriptEntry.path, luaL_ref(L, LUA_REGISTRYINDEX)).first;
+        if (preview){
+            if (pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
+        }else{
+            chunk = scriptChunks.emplace(scriptEntry.path, luaL_ref(L, LUA_REGISTRYINDEX)).first;
+        }
     }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, chunk->second);
+    if (!preview) lua_rawgeti(L, LUA_REGISTRYINDEX, chunk->second);
 
     int status = pcallWithTraceback(L, 0, 1);
     if (status != LUA_OK) {
@@ -1680,6 +1863,14 @@ void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index
     } else {
         scriptChunks.emplace(path, ref);
     }
+}
+
+void LuaBinding::invalidateScriptChunk(const std::string& path) {
+    checkLuaThread();
+    auto chunk = scriptChunks.find(path);
+    if (chunk == scriptChunks.end()) return;
+    if (luastate) luaL_unref(luastate, LUA_REGISTRYINDEX, chunk->second);
+    scriptChunks.erase(chunk);
 }
 
 void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {

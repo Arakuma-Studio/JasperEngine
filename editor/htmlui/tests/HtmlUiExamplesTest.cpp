@@ -185,6 +185,29 @@ TEST(HtmlUiExamples, InstantiatedTemplatesCompileClean){
     }
 }
 
+TEST(HtmlUiExamples, MotionGraphicsRenamesAndKeepsItsBinaryFont){
+    HtmlUiExamples::Instance instance;
+    std::string error;
+    ASSERT_TRUE(HtmlUiExamples::instantiate("motion_graphics", "assets/ui/portrait.html", "scripts", instance, error)) << error;
+    const auto files = instanceFiles(instance);
+    const HtmlUiExamples::File* font = HtmlUiExamples::find("motion_graphics/assets/motion-roboto.woff2");
+    ASSERT_NE(font, nullptr);
+    ASSERT_GT(font->data.size(), 4u);
+    EXPECT_EQ(font->data.substr(0, 4), "wOF2");
+    EXPECT_NE(font->data.find('\0'), std::string_view::npos);
+    EXPECT_EQ(files.at("assets/ui/portrait_assets/motion-roboto.woff2"), std::string(font->data));
+    const HtmlUiExamples::File* license = HtmlUiExamples::find("motion_graphics/assets/LICENSE-Roboto.txt");
+    ASSERT_NE(license, nullptr);
+    EXPECT_EQ(files.at("assets/ui/portrait_assets/LICENSE-Roboto.txt"),
+              std::string(license->data));
+    EXPECT_NE(files.at("assets/ui/portrait.css").find("url(\"portrait_assets/motion-roboto.woff2\")"), std::string::npos);
+    EXPECT_NE(files.at("assets/ui/portrait.html").find("href=\"portrait.css\""), std::string::npos);
+    EXPECT_EQ(instance.luaClass, "PortraitUI");
+    EXPECT_EQ(instance.luaPath, "scripts/PortraitUI.lua");
+    EXPECT_NE(files.at(instance.luaPath).find("return PortraitUI"), std::string::npos);
+    EXPECT_EQ(files.size(), 5u);
+}
+
 TEST(HtmlUiExamples, InstantiateBlankTakesTheTitle){
     HtmlUiExamples::Instance instance;
     std::string error;

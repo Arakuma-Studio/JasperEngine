@@ -15,6 +15,7 @@
         "bc7enc_rdo": {"dir": "engine/libs/bc7enc_rdo", "when": "editor"},
         "bcdec": {"dir": "engine/libs/bcdec", "when": "always"},
         "box2d": {"dir": "engine/libs/box2d", "when": "physics2d"},
+        "brotli": {"dir": "engine/libs/brotli", "when": "always"},
         "clipper2": {"dir": "engine/libs/clipper2", "when": ["physics2d", "titleart"]},
         "dav1d": {"dir": "engine/libs/dav1d", "when": "video"},
         "earcut": {"dir": "engine/libs/earcut", "when": "titleart"},
@@ -48,6 +49,7 @@
         "tracy": {"dir": "engine/libs/tracy", "when": "tracy"},
         "vhacd": {"dir": "engine/libs/vhacd", "when": "editor"},
         "xxhash": {"dir": "engine/libs/xxhash", "when": "always"},
+        "woff2": {"dir": "engine/libs/woff2", "when": "always"},
         "zstd": {"dir": "engine/libs/zstd", "when": "always"}
     }
 }

@@ -1147,6 +1147,8 @@ endforeach()
 if(JASPERENGINE_PHYSICS_3D)
     jasperengine_vendored_unity_build(joltphysics)
 endif()
+add_subdirectory(libs/brotli)
+add_subdirectory(libs/woff2)
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
@@ -1310,7 +1312,7 @@ if(JASPERENGINE_VIDEO)
 endif()
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_TITLE_ART_LIBS}
+    harfbuzz sheenbidi meshoptimizer lunasvg brotlidec woff2 ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_TITLE_ART_LIBS}
     ${jasperengineQuietVideoLibs} ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -1354,7 +1356,7 @@ if(JASPERENGINE_VIDEO)
 endif()
 jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
-    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+    lunasvg woff2 ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc harfbuzz-subset)
     target_compile_options(harfbuzz-subset PRIVATE ${EXTERNAL_WARNING_FLAG})
@@ -1575,9 +1577,12 @@ set(JASPERENGINE_SRCS
     core/htmlui/anim/AnimProperty.cpp
     core/htmlui/anim/AnimSpring.cpp
     core/htmlui/anim/AnimTargets.cpp
+    core/htmlui/anim/AnimText.cpp
     core/htmlui/anim/AnimTimeline.cpp
     core/htmlui/anim/AnimTimer.cpp
     core/htmlui/anim/AnimUtils.cpp
+    core/htmlui/anim/AnimSvg.cpp
+    core/htmlui/anim/AnimSvgPath.cpp
     core/htmlui/anim/AnimValue.cpp
     core/htmlui/anim/Anime.cpp
     core/htmlui/UIWorldRaycast.cpp
@@ -2394,7 +2399,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg woff2
     ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_VIDEO_LIBS} zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )

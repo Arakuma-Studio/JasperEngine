@@ -111,3 +111,19 @@ TEST(LuaSorting, SortingGroup){
     EXPECT_FALSE(group.enabled);
     lua_pushnil(L); lua_setglobal(L, "sortScene");
 }
+
+TEST(LuaSorting, RawGroupComponentGetterReturnsUserdata){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    Scene scene;
+    Sprite sprite(&scene);
+    luabridge::setGlobal(L, &scene, "sortScene");
+    lua_pushinteger(L, sprite.getEntity());
+    lua_setglobal(L, "SORT_ENTITY");
+    EXPECT_EQ(runSortingLua(L,
+        "local group = SortingGroup(sortScene, SORT_ENTITY)\n"
+        "local component = group:getSortingGroupComponent()\n"
+        "assert(type(component) == 'userdata')\n"
+        "assert(getmetatable(component) ~= nil)\n"), "");
+    lua_pushnil(L); lua_setglobal(L, "sortScene");
+}

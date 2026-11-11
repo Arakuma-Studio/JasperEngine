@@ -26,7 +26,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    bool fail(std::string* error, const std::string& message) {
+    bool soundEventFail(std::string* error, const std::string& message) {
         if (error) *error = message;
         return false;
     }
@@ -42,16 +42,16 @@ namespace {
 
 bool SoundEventDocument::read(const fs::path& file, SoundEventDef& def, std::string* error) {
     std::string text;
-    if (!readText(file, text)) return fail(error, "cannot read " + FileUtils::pathToGenericUtf8(file));
+    if (!readText(file, text)) return soundEventFail(error, "cannot read " + FileUtils::pathToGenericUtf8(file));
     return SoundEventIO::parse(text, def, error);
 }
 
 bool SoundEventDocument::commit(Project* project, const fs::path& file, const SoundEventDef& def, const std::string& undoName,
                                 const std::string& mergeKey, std::string* error) {
-    if (!project) return fail(error, "no project is open");
+    if (!project) return soundEventFail(error, "no project is open");
     // a new event has no clip yet: it is saved, and until it has one it plays nothing
     for (const std::string& problem : SoundEventIO::validate(def)) {
-        if (!def.clips.empty() || problem.rfind("clips:", 0) != 0) return fail(error, problem);
+        if (!def.clips.empty() || problem.rfind("clips:", 0) != 0) return soundEventFail(error, problem);
     }
     const std::string text = SoundEventIO::write(def);
 
@@ -68,7 +68,7 @@ bool SoundEventDocument::commit(Project* project, const fs::path& file, const So
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
     if (!project->getProjectCommandHistory()->addCommand(command)) {
-        return fail(error, "writing " + FileUtils::pathToGenericUtf8(file) + " failed" + (failure->empty() ? "" : ": " + *failure));
+        return soundEventFail(error, "writing " + FileUtils::pathToGenericUtf8(file) + " failed" + (failure->empty() ? "" : ": " + *failure));
     }
     return true;
 }
@@ -110,7 +110,7 @@ AssetRef SoundEventDocument::clipRef(Project* project, const std::string& pathOr
         const Guid guid = Guid::parse(pathOrGuid);
         const fs::path found = project->getAssetDatabase().getPath(guid);
         if (found.empty()) {
-            fail(error, "no asset has the GUID " + pathOrGuid);
+            soundEventFail(error, "no asset has the GUID " + pathOrGuid);
             return ref;
         }
         ref.guid = guid;
@@ -129,7 +129,7 @@ namespace {
     using Json = nlohmann::json;
 
     bool numberValue(const Json& value, const std::string& key, float& out, std::string* error) {
-        if (!value.is_number()) return fail(error, key + ": expected a number");
+        if (!value.is_number()) return soundEventFail(error, key + ": expected a number");
         out = value.get<float>();
         return true;
     }
@@ -140,7 +140,7 @@ namespace {
             return true;
         }
         if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number()) {
-            return fail(error, key + ": expected [min, max]");
+            return soundEventFail(error, key + ": expected [min, max]");
         }
         min = value[0].get<float>();
         max = value[1].get<float>();
@@ -151,25 +151,25 @@ namespace {
         auto ref = [&](const Json& value) {
             std::string why;
             clip.clip = SoundEventDocument::clipRef(project, value.get<std::string>(), &why);
-            if (!why.empty()) return fail(error, path + ": " + why);
+            if (!why.empty()) return soundEventFail(error, path + ": " + why);
             return true;
         };
         if (item.is_string()) return ref(item);
         if (!item.is_object() || !item.contains("clip") || !item["clip"].is_string()) {
-            return fail(error, path + ": expected a path, a GUID or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}");
+            return soundEventFail(error, path + ": expected a path, a GUID or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}");
         }
         if (!ref(item["clip"])) return false;
         for (auto it = item.begin(); it != item.end(); ++it) {
             const std::string key = path + "." + it.key();
             if (it.key() == "clip") continue;
             if (it.key() == "loops") {
-                if (!it.value().is_number_integer()) return fail(error, key + ": expected a whole number (0 = until Audio.advanceMusic)");
+                if (!it.value().is_number_integer()) return soundEventFail(error, key + ": expected a whole number (0 = until Audio.advanceMusic)");
                 clip.loops = (int)std::clamp<int64_t>(it.value().get<int64_t>(), -1, 1001);
                 continue;
             }
             float* field = it.key() == "weight" ? &clip.weight : it.key() == "volume_db" ? &clip.volumeDb
                          : it.key() == "pitch_semitones" ? &clip.pitchSemitones : it.key() == "delay_ms" ? &clip.delayMs : nullptr;
-            if (!field) return fail(error, key + ": unknown (weight, volume_db, pitch_semitones, delay_ms, loops)");
+            if (!field) return soundEventFail(error, key + ": unknown (weight, volume_db, pitch_semitones, delay_ms, loops)");
             if (!numberValue(it.value(), key, *field, error)) return false;
         }
         return true;
@@ -178,7 +178,7 @@ namespace {
 }
 
 bool SoundEventDocument::applyValues(Project* project, SoundEventDef& def, const Json& values, std::string* error) {
-    if (!values.is_object()) return fail(error, "values: expected an object");
+    if (!values.is_object()) return soundEventFail(error, "values: expected an object");
     const SoundEventDef defaults;
     for (auto it = values.begin(); it != values.end(); ++it) {
         const std::string& key = it.key();
@@ -187,10 +187,10 @@ bool SoundEventDocument::applyValues(Project* project, SoundEventDef& def, const
         if (key == "mode") {
             if (reset) def.mode = defaults.mode;
             else if (!value.is_string() || !SoundEventDef::modeFromName(value.get<std::string>(), def.mode)) {
-                return fail(error, "mode: expected random, shuffle, sequence or layer");
+                return soundEventFail(error, "mode: expected random, shuffle, sequence or layer");
             }
         } else if (key == "clips") {
-            if (!value.is_array()) return fail(error, "clips: expected a list of paths, GUIDs or {clip, weight, ...}");
+            if (!value.is_array()) return soundEventFail(error, "clips: expected a list of paths, GUIDs or {clip, weight, ...}");
             def.clips.clear();
             for (size_t i = 0; i < value.size(); i++) {
                 SoundEventClip clip;
@@ -200,7 +200,7 @@ bool SoundEventDocument::applyValues(Project* project, SoundEventDef& def, const
         } else if (key == "avoid_repeat") {
             if (reset) def.avoidRepeat = defaults.avoidRepeat;
             else if (value.is_boolean()) def.avoidRepeat = value.get<bool>();
-            else return fail(error, "avoid_repeat: expected true or false");
+            else return soundEventFail(error, "avoid_repeat: expected true or false");
         } else if (key == "pitch_semitones") {
             if (!rangeValue(value, key, def.pitchMin, def.pitchMax, error)) return false;
         } else if (key == "volume_db") {
@@ -211,18 +211,18 @@ bool SoundEventDocument::applyValues(Project* project, SoundEventDef& def, const
             def.outputGroupId.clear();
             def.outputGroupName.clear();
             if (!reset) {
-                if (!value.is_string()) return fail(error, "output_group: expected a group's name");
+                if (!value.is_string()) return soundEventFail(error, "output_group: expected a group's name");
                 def.outputGroupName = value.get<std::string>();
                 def.outputGroupId = AudioMixer::findGroupId(def.outputGroupName);
             }
         } else if (key == "max_instances") {
             if (reset) def.maxInstances = defaults.maxInstances;
             else if (value.is_number_integer()) def.maxInstances = value.get<int>();
-            else return fail(error, "max_instances: expected a whole number (0 = no limit)");
+            else return soundEventFail(error, "max_instances: expected a whole number (0 = no limit)");
         } else if (key == "steal") {
             if (reset) def.steal = defaults.steal;
             else if (!value.is_string() || !SoundEventDef::stealFromName(value.get<std::string>(), def.steal)) {
-                return fail(error, "steal: expected oldest, quietest, newest or none");
+                return soundEventFail(error, "steal: expected oldest, quietest, newest or none");
             }
         } else if (key == "cooldown_ms") {
             if (reset) def.cooldownMs = defaults.cooldownMs;
@@ -230,38 +230,38 @@ bool SoundEventDocument::applyValues(Project* project, SoundEventDef& def, const
         } else if (key == "priority") {
             if (reset) def.priority = defaults.priority;
             else if (value.is_number_integer()) def.priority = value.get<int>();
-            else return fail(error, "priority: expected a whole number");
+            else return soundEventFail(error, "priority: expected a whole number");
         } else if (key == "loop") {
             if (reset) def.loop = defaults.loop;
             else if (value.is_boolean()) def.loop = value.get<bool>();
-            else return fail(error, "loop: expected true or false");
+            else return soundEventFail(error, "loop: expected true or false");
         } else if (key == "spatial") {
             if (reset) {
                 def.spatial.reset();
                 continue;
             }
-            if (!value.is_object()) return fail(error, "spatial: expected {min_distance, max_distance, attenuation, rolloff, doppler}");
+            if (!value.is_object()) return soundEventFail(error, "spatial: expected {min_distance, max_distance, attenuation, rolloff, doppler}");
             SoundEventSpatial spatial = def.spatial.value_or(SoundEventSpatial());
             for (auto field = value.begin(); field != value.end(); ++field) {
                 const std::string path = "spatial." + field.key();
                 if (field.key() == "attenuation") {
                     if (!field.value().is_string() || !SoundEventDef::attenuationFromName(field.value().get<std::string>(), spatial.attenuation)) {
-                        return fail(error, path + ": expected no_attenuation, inverse_distance, linear_distance or exponential_distance");
+                        return soundEventFail(error, path + ": expected no_attenuation, inverse_distance, linear_distance or exponential_distance");
                     }
                     continue;
                 }
                 float* number = field.key() == "min_distance" ? &spatial.minDistance : field.key() == "max_distance" ? &spatial.maxDistance
                               : field.key() == "rolloff" ? &spatial.rolloff : field.key() == "doppler" ? &spatial.doppler : nullptr;
-                if (!number) return fail(error, path + ": unknown (min_distance, max_distance, attenuation, rolloff, doppler)");
+                if (!number) return soundEventFail(error, path + ": unknown (min_distance, max_distance, attenuation, rolloff, doppler)");
                 if (!numberValue(field.value(), path, *number, error)) return false;
             }
             def.spatial = spatial;
         } else if (key == "type") {
             if (reset) def.type.clear();
             else if (value.is_string()) def.type = value.get<std::string>();
-            else return fail(error, "type: expected a sound type");
+            else return soundEventFail(error, "type: expected a sound type");
         } else {
-            return fail(error, "values." + key + ": unknown. Keys: mode, clips, avoid_repeat, pitch_semitones, volume_db, delay_ms, "
+            return soundEventFail(error, "values." + key + ": unknown. Keys: mode, clips, avoid_repeat, pitch_semitones, volume_db, delay_ms, "
                                "output_group, max_instances, steal, cooldown_ms, priority, loop, spatial, type");
         }
     }

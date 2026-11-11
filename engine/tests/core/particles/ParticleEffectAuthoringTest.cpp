@@ -17,6 +17,7 @@
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleMeshes.h"
 #include "particles/ParticleModules.h"
+#include "render/SystemRender.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 
@@ -390,10 +391,15 @@ TEST(ParticleTriggers, APlayTriggerDrawsASeedAsPlayDoes){
 // ---------------------------------------------------------------- R10: exposed parameters
 
 TEST(ParticleExposed, ChangingAValueEachFrameCompilesNothing){
+    // A previous test may have rendered: exercise the same shared frame counter without a GPU.
+    SystemRender::commit();
+    SystemRender::commit();
     // AC9: a script driving numeric parameters every frame compiles nothing; a structural change compiles
+    // No camera renders this scene: keep simulation independent of visibility culling.
     Scene scene;
     ParticleSystem system(&scene);
     ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "tickRate": 30, "maxParticles": 1000,
+        "cullingMode": "alwaysSimulate",
         "exposed": [{"name": "Rate", "path": "emission.rateOverTime"}, {"name": "Tint", "path": "main.startColor", "type": "color"},
                     {"name": "Gravity", "path": "main.gravityModifier"}],
         "modules": [{"type": "main", "startLifetime": 1, "startSpeed": 1}, {"type": "emission", "rateOverTime": 10}]})"));
