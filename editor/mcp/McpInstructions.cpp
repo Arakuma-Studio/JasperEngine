@@ -69,12 +69,12 @@ R"JE(
 ## Code
 The project is a normal folder (`editor_status`: project.path): read, edit, grep and git its scripts,
 shaders and .material files with your own tools (write_file / read_file are for clients without file
-access). Your edits reload before your next call, whose result lists `external_changes` problems:
+access), but a .tileset's masks or coverage: edit_tileset check, not its JSON. Your edits reload
+before your next call, whose result lists `external_changes` problems:
 fix them first. Open scenes and prefabs never reload from disk. Engine API: .jasperengine/engine-api/
 (C++ headers, lua/ stubs) and search_engine_api. Check without playing: check_script, check_shader,
-compile_scripts (C++). .jasperengine/ and the root CMakeLists.txt are generated: never edit them
-(build settings: ProjectBuild.cmake). A .scene is in the project once project.yaml lists it
-(edit_build_scenes).
+compile_scripts (C++). .jasperengine/ and the root CMakeLists.txt are generated: never edit them.
+A .scene is in the project once project.yaml lists it (edit_build_scenes).
 
 ## Undo
 Edit results carry `undo` {id, name}. undo/redo scope "timeline" = the human's Ctrl+Z; expect_top_id
@@ -122,7 +122,7 @@ main_menu, hud, settings...) writes the files; edit them yourself; inspect_ui / 
 layouts. Read jasper://docs/html-ui first.
 
 ## Other areas
-2D (points, y up), cameras (useTarget ignores rotation), animation (edit_animation),
+2D (points, y up), animation (edit_animation),
 post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_preset), shadows
 (softShadows, shadows_quality), reflections (SSR replaces probe reflections;
 check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
