@@ -12,6 +12,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "graph/GraphDocument.h"
 #include "graph/GraphRegistry.h"
+#include "htmlui/HtmlUIDependencies.h"
 #include "vat/VatDocument.h"
 #include "titleart/TitleArtDocument.h"
 #include "util/FileUtils.h"
@@ -242,9 +243,9 @@ bool McpAutoSync::isUiCodeFile(const std::string& path) {
 }
 
 bool McpAutoSync::isAssetFile(const std::string& path) {
-    if (Util::isImageFile(path)) return true;
+    if (Util::isImageFile(path) || jasperengine::getHtmlUIReferenceKind(path) == jasperengine::HtmlUIReference::FONT) return true;
     const std::string ext = lowerExtension(path);
-    return ext == ".ttf" || ext == ".otf" || ext == ".json" || ext == ".lottie";
+    return ext == ".json" || ext == ".lottie";
 }
 
 bool McpAutoSync::isEditorOwnedFile(const std::string& rel) {
