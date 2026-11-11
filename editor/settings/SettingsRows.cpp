@@ -4505,6 +4505,7 @@ const Placement placements[] = {
     {"preferences.clear_on_play", "General", "Console", "Clear on Play", "console"},
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
+    {"preferences.pixel_art.agent_edit_highlight", "Pixel Art (Preferences)", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels"},
     {"preferences.network.offline", "General", "Network", "Offline", "network internet offline proxy lospec download http"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
@@ -4731,9 +4732,10 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Scene View", SettingsScope::Preference, 6, "picking pick drop surface rulers animation preview particles"},
         {"External Tools", SettingsScope::Preference, 7, "cmake compiler emscripten ffmpeg"},
         {"Logging", SettingsScope::Preference, 8, "log levels"},
-        {"Diagnostics", SettingsScope::Preference, 9, "crash hang watchdog freeze not responding reports"},
-        {"Shader Cache", SettingsScope::Preference, 10, "shaders cache clear"},
-        {"Version Control", SettingsScope::Preference, 11, "git svn subversion lfs lock commit merge"},
+        {"Pixel Art", SettingsScope::Preference, 9, "pixel art sprite preview agent edits highlight"},
+        {"Diagnostics", SettingsScope::Preference, 10, "crash hang watchdog freeze not responding reports"},
+        {"Shader Cache", SettingsScope::Preference, 11, "shaders cache clear"},
+        {"Version Control", SettingsScope::Preference, 12, "git svn subversion lfs lock commit merge"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -4942,9 +4944,6 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     const char* diagnostics = "Diagnostics";
-    addOrAbort(registry, uiRow("preferences.pixel_art.agent_edit_highlight", "Pixel Art", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels",
-        [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); },
-        "The Sprite Preview outlines the pixels an agent changed, fading over 3 s"));
     addOrAbort(registry, uiRow("preferences.diagnostics.hang_watchdog", diagnostics, "", "Hang Watchdog", "hang freeze not responding report",
         [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().hangWatchdog); },
         "Writes a hang report when the editor stops responding (set_hang_watchdog sets it)."));
