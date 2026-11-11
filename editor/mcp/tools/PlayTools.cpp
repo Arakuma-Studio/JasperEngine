@@ -302,6 +302,8 @@ void finishStartWaits(McpContext& ctx);
 
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
+    // A capture keeps its timestep when the monitor first notices its Play session.
+    if (recorder::RecorderSession::get().recording()) return;
     const TimeControl& t = state().time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
@@ -315,9 +317,10 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    // A load-settling hold belongs to the recorder; releasing it skips a capture frame.
-    const bool recorderHold = recorder::RecorderSession::get().isHoldingFrame();
-    const bool hold = recorderHold || (running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame);
+    // A capture owns its load-settling hold and advances independently of MCP auto-pause.
+    const auto& recorderSession = recorder::RecorderSession::get();
+    const bool hold = recorderSession.isHoldingFrame() ||
+        (!recorderSession.recording() && running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame);
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 
