@@ -218,7 +218,7 @@ const std::vector<std::string> CALL_OPTIONS = {"--url", "--port", "--token", "--
 
 // ---------------------------------------------------------------- tool catalogue
 
-struct Catalog {
+struct CallCommandCatalog {
     std::vector<Json> tools;   // tools/list entries
     bool live = false;
 
@@ -236,10 +236,10 @@ struct Catalog {
 };
 
 // The registry the server builds, without an editor (buildToolRegistry needs no App)
-Catalog offlineCatalog() {
+CallCommandCatalog offlineCatalog() {
     mcp::McpRegistry registry;
     mcp::buildToolRegistry(registry);
-    Catalog catalog;
+    CallCommandCatalog catalog;
     for (const mcp::ToolDef& def : registry.tools()) catalog.tools.push_back(mcp::McpRegistry::toolToJson(def));
     return catalog;
 }
@@ -266,7 +266,7 @@ Json closedSchema(const Json& tool) {
     return tool.contains("inputSchema") ? tool["inputSchema"] : Json{{"type", "object"}};
 }
 
-const Json& findToolOrThrow(const Catalog& catalog, const std::string& name) {
+const Json& findToolOrThrow(const CallCommandCatalog& catalog, const std::string& name) {
     if (const Json* tool = catalog.find(name)) return *tool;
     std::string message = "unknown tool " + name;
     const std::vector<std::string> close = closeMatches(name, catalog.names());
@@ -282,7 +282,7 @@ struct Session {
     StdioClient* spawned = nullptr;   // the client, when this call started the editor
     fs::path scratch;
     Json editor;                       // the envelope's editor object
-    Catalog catalog;
+    CallCommandCatalog catalog;
     bool quiet = false;
 
     Session() = default;
@@ -773,7 +773,7 @@ void printToolHelp(const Json& tool, const std::string& exe, bool live) {
               << "editor open on it) closes after the command without saving: save in the same batch.\n";
 }
 
-void printUsage(const std::string& exe, const Catalog& catalog) {
+void printUsage(const std::string& exe, const CallCommandCatalog& catalog) {
     std::cout
         << "Usage:\n"
         << "  " << exe << " call [options] <tool> [--flag value ... | '{json}' | @file.json | @-]\n"
@@ -852,7 +852,7 @@ int runCall(const std::vector<std::string>& args, const char* executableName) {
         parseOptions(args, i, o, CALL_OPTIONS);
         const bool wantsHelp = o.help;
         if (i >= args.size()) {
-            Catalog catalog;
+            CallCommandCatalog catalog;
             if (wantsHelp && o.hasTarget() && !o.dryRun) {
                 Session session;
                 connect(session, o, executableName);
@@ -871,7 +871,7 @@ int runCall(const std::vector<std::string>& args, const char* executableName) {
 
         // help and dry runs need no editor: the registry of this build (live when a target is given)
         if (toolHelp || o.dryRun) {
-            Catalog catalog;
+            CallCommandCatalog catalog;
             std::unique_ptr<Session> session;
             if (toolHelp && o.hasTarget()) {
                 session = std::make_unique<Session>();
@@ -898,7 +898,7 @@ int runCall(const std::vector<std::string>& args, const char* executableName) {
 
         // parse against this build's schema first: a usage error never starts an editor. A tool
         // this build lacks may still exist in an editor named explicitly (another version).
-        const Catalog offline = offlineCatalog();
+        const CallCommandCatalog offline = offlineCatalog();
         const Json* known = offline.find(tool);
         if (!known && !o.hasTarget()) findToolOrThrow(offline, tool);
         if (known) parseToolArgs(closedSchema(*known), tokens);
@@ -988,7 +988,7 @@ int runBatch(const std::vector<std::string>& args, const char* executableName) {
             throw UsageError("--atomic takes at most " + std::to_string(MAX_ATOMIC_LINES) + " lines (one batch call), got " +
                              std::to_string(lines.size()));
         }
-        const Catalog offline = offlineCatalog();
+        const CallCommandCatalog offline = offlineCatalog();
         for (const BatchLine& line : lines) {
             if (!o.dryRun) break;
             const Json& def = findToolOrThrow(offline, line.tool);
@@ -1070,7 +1070,7 @@ int runListTools(const std::vector<std::string>& args, const char* executableNam
             return Ok;
         }
         if (i < args.size()) throw UsageError("unexpected argument " + args[i]);
-        Catalog catalog;
+        CallCommandCatalog catalog;
         std::unique_ptr<Session> session;
         if (o.hasTarget()) {
             session = std::make_unique<Session>();

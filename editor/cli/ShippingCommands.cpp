@@ -47,7 +47,7 @@ using nlohmann::ordered_json;
 namespace {
 
     // the GUI-subsystem editor on Windows gets its parent's console back for a CLI command
-    void attachConsole() {
+    void shippingAttachConsole() {
 #if defined(_WIN32)
         if (AttachConsole(ATTACH_PARENT_PROCESS)) {
             FILE* out = nullptr;
@@ -169,7 +169,7 @@ namespace {
 // ---------------------------------------------------------------- build
 
 int ShippingCommands::runBuild(int argc, char** argv, const char* executableName) {
-    attachConsole();
+    shippingAttachConsole();
     EditorHostOverrideGuard hostOverride(nullptr);
     fs::path projectPath, out, playersDir;
     std::string platformName, backend, method = "auto", androidFormat, startScene;
@@ -355,7 +355,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
 // ---------------------------------------------------------------- players
 
 int ShippingCommands::runPlayers(int argc, char** argv, const char* executableName) {
-    attachConsole();
+    shippingAttachConsole();
     std::string action;
     std::vector<std::string> operands;
     fs::path playersDir;
@@ -424,7 +424,7 @@ int ShippingCommands::runPlayers(int argc, char** argv, const char* executableNa
 // ---------------------------------------------------------------- publish
 
 int ShippingCommands::runPublish(int argc, char** argv, const char* executableName) {
-    attachConsole();
+    shippingAttachConsole();
     std::string action, release, branch, user = envOr("STEAM_BUILD_USER"), executable;
     std::vector<std::string> targets, operands;
     fs::path projectDir = CommandLine::invocationDirectory();
