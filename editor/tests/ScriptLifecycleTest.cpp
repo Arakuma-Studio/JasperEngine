@@ -225,6 +225,71 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewRestoresPackageLoadedAliasIndependentl
     LuaBinding::releaseLuaRef(cache);
 }
 
+TEST_F(ScriptLifecycleTest, PrivatePreviewGlobalsDoNotRebindCachedLiveScripts) {
+    writeScript("PreviewGlobalRequired", "previewRequired = (previewRequired or 0) + 1; return {n = previewRequired}");
+    writeScript("PreviewGlobalState", R"(
+previewCreated = (previewCreated or 0) + 1
+local required = require('PreviewGlobalRequired')
+local M = {}
+function M:init()
+    previewN = (previewN or 0) + 1
+    _G.previewExplicit = (_G.previewExplicit or 0) + 1
+    self.seen = previewN
+    self.created = previewCreated
+    self.explicit = _G.previewExplicit
+    self.required = required.n
+end
+return M
+)");
+    EXPECT_EQ(lua("previewN = 40; previewCreated = 70; previewExplicit = 50; previewRequired = 60"), "");
+    auto observed = [&](Scene* scene, Entity e, const char* field) {
+        const ScriptEntry& entry = scene->getComponent<ScriptComponent>(e).scripts.front();
+        const int top = lua_gettop(L());
+        lua_rawgeti(L(), LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
+        lua_getfield(L(), -1, field);
+        EXPECT_TRUE(lua_isinteger(L(), -1)) << field;
+        const int value = static_cast<int>(lua_tointeger(L(), -1));
+        lua_settop(L(), top);
+        return value;
+    };
+    Scene* live = newScene();
+    const Entity liveEntity = entity(live, "Live");
+    addScript(live, liveEntity, "PreviewGlobalState");
+    LuaBinding::initializeLuaScripts(live);
+    EXPECT_EQ(observed(live, liveEntity, "seen"), 41);
+    EXPECT_EQ(observed(live, liveEntity, "created"), 71);
+    EXPECT_EQ(observed(live, liveEntity, "explicit"), 51);
+    EXPECT_EQ(observed(live, liveEntity, "required"), 61);
+
+    for (int sample = 0; sample < 2; sample++) {
+        Scene* preview = newScene();
+        const Entity e = entity(preview, "Preview");
+        addScript(preview, e, "PreviewGlobalState");
+        const int cache = LuaBinding::createPreviewModuleCache();
+        {
+            LuaBinding::ScopedModuleCache scope(cache);
+            LuaBinding::initializeLuaScripts(preview);
+            EXPECT_EQ(observed(preview, e, "seen"), 1);
+            EXPECT_EQ(observed(preview, e, "created"), 1);
+            EXPECT_EQ(observed(preview, e, "explicit"), 1);
+            EXPECT_EQ(observed(preview, e, "required"), 1);
+            // The ordinary VM and a previously initialized script keep their live state.
+            EXPECT_EQ(lua("return previewN .. ',' .. previewCreated .. ',' .. previewExplicit .. ',' .. previewRequired"), "41,71,51,61");
+            LuaBinding::cleanupLuaScripts(preview);
+        }
+        LuaBinding::releaseLuaRef(cache);
+    }
+    Scene* nextLive = newScene();
+    const Entity nextEntity = entity(nextLive, "NextLive");
+    addScript(nextLive, nextEntity, "PreviewGlobalState");
+    LuaBinding::initializeLuaScripts(nextLive);
+    EXPECT_EQ(observed(nextLive, nextEntity, "seen"), 42);
+    EXPECT_EQ(observed(nextLive, nextEntity, "created"), 72);
+    EXPECT_EQ(observed(nextLive, nextEntity, "explicit"), 52);
+    EXPECT_EQ(observed(nextLive, nextEntity, "required"), 61);
+    EXPECT_EQ(lua("previewN = nil; previewCreated = nil; previewExplicit = nil; previewRequired = nil"), "");
+}
+
 // 2. a disabled script: init runs (Unity Awake), onEnable / start / onUpdate do not until enabled
 TEST_F(ScriptLifecycleTest, DisabledScriptInitsButWaitsForEnabled) {
     writeLogger("L1");

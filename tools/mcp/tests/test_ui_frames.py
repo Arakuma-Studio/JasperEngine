@@ -163,6 +163,62 @@ return ui
                 break
 
 
+async def test_attached_preview_globals_are_private(ed: Editor):
+    await setup(ed)
+    scene = (await ed.call("create_scene", name="Private preview globals", type="UI"))["scene"]["id"]
+    host = (await ed.call("create_entity", scene=scene, type="ui_document", name="Private globals"))["entity_id"]
+    page = '''<!doctype html><html><head><style>
+body {margin:0; width:128px; height:96px; background:#000;}
+#box {position:absolute; left:0; top:0; width:16px; height:16px; background:#ff0000;}
+</style></head><body><div id="box"></div></body></html>'''
+    (ed.project / "assets/ui/private-globals.html").write_text(page, encoding="utf-8")
+    scripts = ed.project / "scripts"
+    scripts.mkdir(exist_ok=True)
+    (scripts / "preview_global_counter.lua").write_text(
+        "previewFrameRequired = (previewFrameRequired or 0) + 1; return previewFrameRequired", encoding="utf-8")
+    await ed.call("sync_files")
+    await ed.call("set_properties", scene=scene, entity=host,
+                  values={"uidocument": {"filename": "assets/ui/private-globals.html"}})
+    await ed.call("create_script", scene=scene, entity=host, kind="lua", name="PrivatePreviewGlobals", content='''
+previewFrameTop = (previewFrameTop or 0) + 1
+local required = require("preview_global_counter")
+local ui = {}
+function ui:init()
+    previewFrameN = (previewFrameN or 0) + 1
+    _G.previewFrameExplicit = (_G.previewFrameExplicit or 0) + 1
+    local doc = UIDocument(self.scene, self.entity)
+    doc:getElementById("box"):setStyle("left", tostring((previewFrameN % 3) * 20) .. "px")
+    if required ~= 1 or previewFrameTop ~= 1 or _G.previewFrameExplicit ~= 1 then
+        doc:getElementById("box"):setStyle("background-color", "#0000ff")
+    end
+end
+return ui
+''')
+    await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code='''
+_G.previewFrameN = 40
+_G.previewFrameExplicit = 50
+_G.previewFrameRequired = 60
+_G.previewFrameTop = 70
+''')
+    try:
+        result = await ed.call_raw("render_ui_frames", {"scene": scene, "times": [0, 0],
+            "width": 128, "height": 96, "layout": "frames", "out": "private-globals"})
+        live = await ed.call("eval_lua", scene=scene, allow_edit_mode=True,
+            code="return previewFrameN, previewFrameExplicit, previewFrameRequired, previewFrameTop")
+        ed.check_eq(live["values"], [40, 50, 60, 70], "preview leaves the live Lua globals unchanged")
+        ed.check(not result.is_error, f"attached script uses a fresh private environment: {result.text}")
+        first = (ed.project / "private-globals/frame_0.png").read_bytes()
+        second = (ed.project / "private-globals/frame_1.png").read_bytes()
+        ed.check_eq(first, second, "duplicate preview times do not share global writes")
+        width, _, rgba = pngdiff.decode(first)
+        ed.check_eq(pixel(rgba, width, 28, 8), (255, 0, 0, 255), "private counters start at one")
+    finally:
+        await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code='''
+_G.previewFrameN = nil; _G.previewFrameExplicit = nil; _G.previewFrameRequired = nil; _G.previewFrameTop = nil
+''')
+        await ed.call("clear_console")
+
+
 async def test_callback_started_css_transition_has_its_frame_history(ed: Editor):
     await setup(ed)
     (ed.project / "assets/ui/mixed.html").write_text('''<!doctype html><html><head><style>
