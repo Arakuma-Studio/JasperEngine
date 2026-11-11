@@ -98,12 +98,18 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         ed.check(started["status"] in ("running", "pending"), "the clock monitor overlaps an active recording")
         await ed.call("wait", frames=3)
         owned_state = await ed.call("get_job", job_id=owned_job)
+        ed.check(owned_state["status"] in ("running", "pending"), "the monitor observes the recorder before it completes")
+        await ed.call("play", action="set", fixed_fps=60, auto_pause=True)
+        capture_state = await ed.call("get_play_state")
+        ed.check_eq(capture_state["state"], "playing", "the auto-pause check overlaps a running capture")
+        ed.check_eq(capture_state["time"]["auto_pause"], True, "MCP auto-pause remains configured during capture")
+        ed.check_eq(capture_state["time"]["fixed_fps"], 60, "the conflicting MCP rate remains configured during capture")
         for _ in range(256):
+            owned_state = await ed.call("get_job", job_id=owned_job)
             if owned_state["status"] not in ("running", "pending"):
                 break
-            await ed.call("wait", frames=1)
-            owned_state = await ed.call("get_job", job_id=owned_job)
-        ed.check_eq(owned_state["status"], "succeeded", "the recorder completes under the MCP clock monitor")
+            await ed.call("get_play_state")
+        ed.check_eq(owned_state["status"], "succeeded", "the recorder completes under MCP auto-pause without advancing calls")
         result = owned_state["result"]
         by_frame = {int(Path(path).stem.rsplit("_", 1)[1]): Path(path).read_bytes() for path in result["files"]}
         first = centre(by_frame[0], 2, 72)
