@@ -290,7 +290,7 @@ namespace luabridge
     // ui-components: the Button's Selectable enums
     template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
     template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
-    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<jasperengine::SelectionState> : EnumWrapper<jasperengine::SelectionState>{};
     template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
