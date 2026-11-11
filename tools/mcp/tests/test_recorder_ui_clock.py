@@ -114,8 +114,10 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         before = await probe_x()
     ed.check(before >= 102, f"the unrelated animation advanced beyond its initial state: {before}")
     await ed.call("select_scene", scene=scene)
-    await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
-                  output=str(ed.scratch.root / "ui-preserves-epoch"), exit_play=True, timeout_seconds=600)
+    result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
+                           output=str(ed.scratch.root / "ui-preserves-epoch"), exit_play=True, timeout_seconds=600)
+    ed.check_eq(result["frames"], 16, "the epoch-preserving take records every requested frame")
+    ed.check_eq(len(result["files"]), 16, "the epoch-preserving take saves every requested frame")
     await ed.call("select_scene", scene=unrelated)
     await ed.call("wait", frames=2)
     after = await probe_x()
@@ -127,8 +129,10 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
     await ed.call("eval_lua", code="recordedUiClockWentBack = false")
     try:
         out = ed.scratch.root / "ui-mid-play"
-        await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
-                      output=str(out), exit_play=False, timeout_seconds=600)
+        result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
+                               output=str(out), exit_play=False, timeout_seconds=600)
+        ed.check_eq(result["frames"], 16, "a mid-Play take records every requested frame")
+        ed.check_eq(len(result["files"]), 16, "a mid-Play take saves every requested frame")
         await ed.call("wait", frames=3)
         state = await ed.call("eval_lua", code="return recordedUiClockWentBack")
         ed.check_eq(state["values"], [False], "CSS time never moves backward when a recording ends without exiting Play")
@@ -141,6 +145,8 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         out = ed.scratch.root / "ui-paused-play"
         result = await ed.call("record_game", frames=16, fps=30, format="png", width=128, height=128,
                                output=str(out), exit_play=False, timeout_seconds=600)
+        ed.check_eq(result["frames"], 16, "a paused-Play take records every requested frame")
+        ed.check_eq(len(result["files"]), 16, "a paused-Play take saves every requested frame")
         frames = [Path(path).read_bytes() for path in result["files"]]
         ed.check(centre(frames[-1], 0, 8) - centre(frames[0], 0, 8) >= 14.0,
                  "paused Play records a moving CSS UI rather than a frozen clock")
