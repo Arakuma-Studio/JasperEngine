@@ -380,3 +380,28 @@ TEST_F(AnimeSvgTest, StyledDrawableOverridesDashStylesAndRestoresItsCap){
     EXPECT_EQ(path.getAttribute("style"), style);
     EXPECT_EQ(path.getStyle("opacity"), "0.25");
 }
+
+TEST_F(AnimeSvgTest, StylesheetTransformDoesNotEraseAuthoredSvgGeometry){
+    context->UnloadAllDocuments();
+    context->Update();
+    document = context->LoadDocumentFromMemory(R"SVG(
+        <rml><head><style>
+        body { width:240px; height:240px; } svg { display:block; width:200px; height:200px; }
+        .rule-transform { transform:translateY(10px); }
+        </style></head><body><svg id="svg" width="200" height="200" viewBox="0 0 100 100">
+        <polyline id="poly" class="rule-transform" transform="translate(0 20)" points="0,20 100,20" fill="none" stroke="green" stroke-width="4"/>
+        </svg></body></rml>)SVG", "p1/vector/svg-rule-transform.rml");
+    ASSERT_NE(document, nullptr);
+    document->Show();
+    render();
+    Rml::Element* poly = UIElementAccess::get(element("poly"));
+    ASSERT_NE(poly, nullptr);
+    ASSERT_NE(poly->GetLocalProperty(Rml::PropertyId::Transform), nullptr);
+    EXPECT_EQ(poly->GetLocalStyleProperties().count(Rml::PropertyId::Transform), 0u);
+    EXPECT_NE(element("svg").getInnerHTML().find("transform=\"translate(0 20)\""), std::string::npos);
+    const auto withRule = pixels();
+    ASSERT_FALSE(withRule.empty());
+    poly->SetClass("rule-transform", false);
+    render();
+    EXPECT_EQ(withRule, pixels());
+}

@@ -48,14 +48,15 @@ namespace {
 		{
 			output += "<" + svg_tag;
 			String style = GetAttribute<String>("style", "");
-			const Property* transform_property = GetLocalProperty(PropertyId::Transform);
-			const bool overrides_transform = transform_property && transform_property->unit == Unit::TRANSFORM;
+			const PropertyMap& local_properties = GetLocalStyleProperties();
+			const auto transform_property = local_properties.find(PropertyId::Transform);
+			const bool overrides_transform = transform_property != local_properties.end() && transform_property->second.unit == Unit::TRANSFORM;
 			for (const auto& attribute : GetAttributes())
 			{
 				if (attribute.first != "style" && !(overrides_transform && attribute.first == "transform"))
 					output += " " + attribute.first + "=\"" + StringUtilities::EncodeRml(attribute.second.Get<String>()) + "\"";
 			}
-			for (const auto& property : GetLocalStyleProperties())
+			for (const auto& property : local_properties)
 			{
 				String value = property.second.ToString();
 				if (property.first == PropertyId::Transform && property.second.unit == Unit::TRANSFORM)
