@@ -53,6 +53,7 @@
 #include "audio/LoudnessMonitor.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
+#include "recorder/RecorderSession.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -314,7 +315,9 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame;
+    // A load-settling hold belongs to the recorder; releasing it skips a capture frame.
+    const bool recorderHold = recorder::RecorderSession::get().isHoldingFrame();
+    const bool hold = recorderHold || (running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame);
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 

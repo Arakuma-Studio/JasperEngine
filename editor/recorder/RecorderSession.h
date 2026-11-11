@@ -125,6 +125,7 @@ namespace jasperengine::editor::recorder {
         State state() const { return currentState; }
         bool active() const { return currentState != State::Idle; }
         bool recording() const { return currentState == State::Arming || currentState == State::Recording; }
+        bool isHoldingFrame() const { return holdingFrame; }
         int64_t framesRecorded() const { return recorded; }
         int64_t gameFrame() const { return frameIndex; }
         const Settings& settings() const { return current; }
