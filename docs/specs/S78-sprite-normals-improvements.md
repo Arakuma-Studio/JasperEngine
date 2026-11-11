@@ -238,3 +238,9 @@ article's *look* and its pitfalls caught early:
   `scriptsSetLight2D`), as Lit Quality does: a sprite made unlit-tinted by a script would otherwise lack its variant
   in a build without the runtime compiler. 'Lst' is also the first bit a build missing a variant gives up
   (`ShaderPool::getFallbackProperties`): the light draws smooth rather than not at all.
+- **R3 (integration):** S50 took MESH bit 54 (`'Tcl'`) and S48/S50 the shader caches v64/v65 on main
+  while S78 was built: `'Lst'` is MESH bit 55 and S78's shader cache is v66.
+- **R23, R25's 2D lighting lines (integration): cut.** Their eval cases passed as often without the text
+  (red controls `guard_light_2d_bright_ambient_next` 2/2, `guard_light_2d_height_large_sprite_guide` 2/2):
+  agents read a white 2D ambient from `get_scene_settings` and darken it, and raise a low light once they
+  see it. AGENTS.md cuts text no case needs; `light_low` (red 0/2 without it) carries the large-sprite advice.

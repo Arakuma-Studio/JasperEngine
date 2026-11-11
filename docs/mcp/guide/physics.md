@@ -692,10 +692,7 @@ that comes meanwhile), without an undo step. With `wait: false` there is no imag
 ## 2D lighting (not physics, but often confused)
 
 A Light 2D (`light_2d`) adds on top of the scene's 2D ambient (`ambient_light_2d_color`,
-`ambient_light_2d_intensity`): dim the ambient to see lights. The ambient tints sprites, tilemaps
-and polygons even when the scene has no Light 2D. Normal maps answer a Light 2D only when its
-`height` is above 0 (new lights get 64); over a large sprite, set it to at least the sprite's larger
-side in world units. A Shadow Caster 2D with shape
+`ambient_light_2d_intensity`): dim the ambient to see lights. A Shadow Caster 2D with shape
 AUTO_QUAD takes its outline from a sibling mesh, POLYGON uses its own points; enable the
 light's `shadows` to cast. Shadow smoothness is per scene: `shadows_quality` (3D) and
 `shadows_2d_quality` (2D), 0 none .. 3 high.

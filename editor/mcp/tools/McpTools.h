@@ -11,10 +11,6 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine {
-    class Scene;
-}
-
 namespace jasperengine::editor {
     class Project;
 }
@@ -34,9 +30,6 @@ namespace jasperengine::editor::mcp {
     // and the next step to text (DocsTools.cpp). The searches agents look in call it.
     void addUnlistedTools(const std::shared_ptr<McpCall>& call, const std::string& query, std::string& text, Json& data);
 
-    // The `next` of a Light 2D made (create_entity) or edited (set_properties) in a scene whose
-    // 2D ambient is bright (util/Ambient2D.h), naming the fix; "" otherwise (ComponentTools.cpp)
-    std::string ambientLight2DNext(const Scene& scene);
     // Grid tilemaps in edit_tilemap and get_tilemap (S50, TilemapGridTools.cpp): true when the call
     // was a Grid, a Tilemap Layer or a new grid tilemap and has been answered
     namespace tilemapgridtools {

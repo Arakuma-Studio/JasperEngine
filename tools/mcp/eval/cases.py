@@ -64,6 +64,11 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
+def real(text, structured):
+    """A result as the editor sends it: a client like Claude Code shows the model only the structuredContent"""
+    return {**ok(text, structured), "real": True}
+
+
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
                  "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
 
@@ -118,34 +123,31 @@ TERRAIN_IMPORT_DRY = {
 }
 
 
-def scene_2d(entities, after=None):
+def scene_2d(entities):
     """S78: the editor's answers about an open 2D scene "Main" holding `entities` [(id, path, components text,
-    components {name: values}, name regex)] (world.py's scene is 3D, without them); `after`: only once that tool
-    succeeded (a GameObject it made)"""
+    components {name: values}, name regex)] (world.py's scene is 3D, without them)"""
     tree = "\n".join(f"{path} [{eid}] {comps}" for eid, path, comps, _, _ in entities)
-    gate = {"after": after} if after else {}
     mocks = [
-        {"tool": "get_scene_tree", **gate, "result": ok(
+        {"tool": "get_scene_tree", "result": ok(
             f"Scene 1 \"Main\" (2D, {len(entities)} GameObjects). Each line: Name [id] components (flags); children indented.\n" + tree,
             {"entity_count": len(entities), "scene_id": 1, "scene_name": "Main", "tree": tree, "truncated": False})},
-        {"tool": "find_entities", **gate, "result": ok(
+        {"tool": "find_entities", "result": ok(
             f"{len(entities)} GameObject(s) match:\n" + tree, {"entities": [{"id": e[0], "path": e[1]} for e in entities]})},
     ]
     for eid, path, comps, values, names in entities:
         # shaped like the real get_entity (world.py's), so it goes out as structuredContent with the values
-        mocks.append({"tool": "get_entity", **gate, "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
+        mocks.append({"tool": "get_entity", "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
             f"{path} [{eid}] components: {comps}\n{json.dumps(values)}",
             {"id": eid, "name": path, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
              "scene_id": 1, "child_count": 0, "components": values}), "real": True}})
-    if not after:
-        mocks += [
-            {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
-                                                 {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
-                                                  "selected_scene_id": 1})},
-            {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
-                                                   {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
-                                                    "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
-        ]
+    mocks += [
+        {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
+                                             {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
+                                              "selected_scene_id": 1})},
+        {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
+                                               {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
+                                                "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
+    ]
     return mocks
 
 
@@ -155,9 +157,7 @@ LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0
                                              "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
                                                          "falloff": 1.0, "height": 64.0, "shadows": False}}, "lamp")
 BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
-CAMPFIRE = (40, "Light 2D", "light2d transform", {"transform": {"position": [120.0, 40.0, 0.0]},
-                                                  "light2d": {"enabled": True, "color": [1.0, 0.55, 0.2], "intensity": 1.0, "range": 200.0,
-                                                              "falloff": 1.0, "height": 64.0}}, r"light 2d|campfire.*|.*light")
+
 
 
 CASES = [
@@ -4913,8 +4913,8 @@ CASES = [
                          "stones or bricks between dark gaps the stones preset (gaps).'",
         "source": "S78 R9, R11, R25 (new preset, guide and fix text); no failure on record",
         "groups_enabled": ["assets_pipeline"],
-        "prompt": "Our floor tile assets/ground/cobbles.png (a seamless 32 px tile of light stones with dark gaps between them) "
-                  "looks flat under the 2D lights. Make it a normal map so each stone catches the light, and write it.",
+        "prompt": "Our seamless 32 px floor tile assets/ground/cobbles.png still looks flat under the 2D lights with the tile "
+                  "preset. Make a normal map where every cobble catches the light on its own, and write it.",
         "mocks": [
             {"tool": "read_file", "args": {"path": "re:sprite-normals"}, "result": ok(
                 "## Stone floors: gaps\nA tile of stones or bricks between dark gaps comes out flat with `tile` (an opaque tile "
@@ -4970,15 +4970,15 @@ CASES = [
                          "arguments plus output (true for ...) to write exactly this.'",
         "source": "S78 R22 (text moved into structuredContent); docs/mcp/conventions.md results rule",
         "groups_enabled": ["assets_pipeline"],
-        "prompt": "Give the sprite image assets/sprites/hero.png a normal map so it reacts to 2D lights. Use the defaults; the "
-                  "map belongs next to the image.",
+        "prompt": "Preview a normal map for the sprite image assets/sprites/hero.png with the defaults. If the preview reports "
+                  "no problem, keep it: the map belongs next to the image.",
         "mocks": [
-            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
                 "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
                 "Wrote assets/sprites/hero_normal.png as one undo step (undo with scope project).",
                 {"written": True, "files": ["assets/sprites/hero_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map hero_normal.png"}],
                  "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": []})},
-            {"tool": "generate_sprite_normals", "result": ok(
+            {"tool": "generate_sprite_normals", "result": real(
                 "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. Hint: Looks fine. "
                 "Preview only, nothing written: call again with the same arguments plus output (true for assets/sprites/hero_normal.png) "
                 "to write exactly this.",
@@ -5002,87 +5002,50 @@ CASES = [
         "text_at_issue": "generate_sprite_normals warning boxy: 'Use preset props, or profile bevel with radius 1.'",
         "source": "S78 R13 (new warning text); no failure on record",
         "groups_enabled": ["assets_pipeline"],
-        "prompt": "Make a normal map for the crate sprite assets/props/crate.png. Fix any problem the tool reports about the "
-                  "map before you write it.",
+        "prompt": "Make a normal map for the sprite assets/sprites/block_07.png and write it. Fix any problem the tool reports "
+                  "about the map before you write it.",
         "mocks": [
             {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
-                "Wrote assets/props/crate_normal.png as one undo step (undo with scope project).",
-                {"written": True, "files": ["assets/props/crate_normal.png"], "settings": {"preset": "props", "profile": "dome"},
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "props", "profile": "dome"},
                  "hint": "Looks fine.", "warnings": []})},
             {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
-                "Wrote assets/props/crate_normal.png as one undo step (undo with scope project).",
-                {"written": True, "files": ["assets/props/crate_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
                  "hint": "Looks fine.", "warnings": []})},
             {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
                 {"written": False, "settings": {"preset": "props", "profile": "dome"}, "hint": "Looks fine.", "warnings": [],
                  "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
-                         "assets/props/crate_normal.png) to write exactly this."})},
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
             {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
                 {"written": False, "settings": {"preset": "default", "profile": "bevel", "radius": 1}, "hint": "Looks fine.", "warnings": [],
                  "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
-                         "assets/props/crate_normal.png) to write exactly this."})},
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
             {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
-                "Wrote assets/props/crate_normal.png as one undo step (undo with scope project).",
-                {"written": True, "files": ["assets/props/crate_normal.png"], "settings": {"preset": "default", "profile": "auto"},
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "auto"},
                  "profile_resolved": ["rounded"], "hint": "Use preset props, or profile bevel with radius 1.",
                  "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
                                "fix": "Use preset props, or profile bevel with radius 1."}]})},
             {"tool": "generate_sprite_normals", "result": ok(
-                "Normal map of assets/props/crate.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
                 {"written": False, "settings": {"preset": "default", "profile": "auto"}, "profile_resolved": ["rounded"],
                  "hint": "Use preset props, or profile bevel with radius 1.",
                  "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
                                "fix": "Use preset props, or profile bevel with radius 1."}],
                  "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
-                         "assets/props/crate_normal.png) to write exactly this."})},
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}}]},
                               {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}}]}]},
         "max_turns": 12,
     },
-    # S78 WP-C: lights. A Light 2D made or edited under a bright 2D ambient says so (next); a light too low over a
-    # large sprite is a generate_sprite_normals warning naming the height
-    {
-        "id": "guard_light_2d_bright_ambient_next",
-        "kind": "guard",
-        "what_happened": "New result text (S78): a Light 2D added to a 2D scene whose Ambient Light 2D is still white at "
-                         "intensity 1 barely shows; create_entity's `next` names set_scene_settings with a dark ambient.",
-        "text_at_issue": "create_entity / set_properties result next: 'The scene's Ambient Light 2D is bright (1), so Light 2Ds "
-                         "barely show: set_scene_settings {settings: {ambient_light_2d_color: [0.24, 0.25, 0.33], "
-                         "ambient_light_2d_intensity: 1}} darkens it.'",
-        "source": "S78 R23 (new result text); no failure on record",
-        "prompt": "In the open 2D scene, add a warm orange Light 2D at [120, 40, 0] for the campfire. The player must clearly "
-                  "see its glow on the ground sprites around it.",
-        "mocks": [
-            {"tool": "create_entity", "result": ok(
-                "Created Light 2D \"Light 2D\" [40] at Light 2D (one undo step). The scene's Ambient Light 2D is bright (1), so "
-                "Light 2Ds barely show: set_scene_settings {settings: {ambient_light_2d_color: [0.24, 0.25, 0.33], "
-                "ambient_light_2d_intensity: 1}} darkens it.",
-                {"entity_id": 40, "scene_id": 1, "entity": {"id": 40, "name": "Light 2D", "path": "Light 2D"}, "type": "light_2d",
-                 "components": ["transform", "light2d"],
-                 "next": "The scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
-                         "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it."})},
-            {"tool": "set_properties", "result": ok(
-                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"light2d\":{\"color\":[1.0,0.55,0.2]}} The "
-                "scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
-                "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it.",
-                {"scene_id": 1, "entities": [{"id": 40, "name": "Light 2D"}], "values": {"light2d": {"color": [1.0, 0.55, 0.2]}},
-                 "next": "The scene's Ambient Light 2D is bright (1), so Light 2Ds barely show: set_scene_settings {settings: "
-                         "{ambient_light_2d_color: [0.24, 0.25, 0.33], ambient_light_2d_intensity: 1}} darkens it."})},
-            {"tool": "set_scene_settings", "result": ok("Set 2 scene setting(s) (one undo step).", {"scene_id": 1})},
-            *scene_2d(SCENE_2D_BASE + [CAMPFIRE], after="create_entity"),
-            *scene_2d(SCENE_2D_BASE),
-        ],
-        "checks": {"any_of": [{"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_color": "*"}}}]},
-                              {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_intensity": "*"}}}]}],
-                   "must_not_call": ["fork_shader"]},
-        "max_turns": 12,
-    },
+    # S78 WP-C: a light too low over a large sprite is a generate_sprite_normals warning naming the height
     {
         "id": "guard_light_low_big_sprite",
         "kind": "guard",
@@ -5127,36 +5090,6 @@ CASES = [
         "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}]},
         "max_turns": 14,
-    },
-    {
-        "id": "guard_light_2d_height_large_sprite_guide",
-        "kind": "guard",
-        "what_happened": "New guide line (S78): a Light 2D at height 64 over a 512 px sprite tilts the light only near its edge; "
-                         "the 2D lighting section says to set the height to at least the sprite's larger side.",
-        "text_at_issue": "jasper://docs/physics, 2D lighting: 'Normal maps answer a Light 2D only when its `height` is above 0 (new "
-                         "lights get 64); over a large sprite, set it to at least the sprite's larger side in world units.'",
-        "source": "S78 R25 (new guide text); no failure on record",
-        "prompt": "The 512x512 sprite \"Boss\" in the open 2D scene has a normal map, but under the Light 2D \"Lamp\" (height 64, "
-                  "range 900, right beside it) only a thin rim near the lamp reacts and the rest of the relief looks flat. Fix the "
-                  "lamp, not the sprite.",
-        "mocks": [
-            {"tool": "get_entity", "args": {"entity": "re:(?i)lamp"}, "result": ok(
-                "GameObject 30 \"Lamp\": Transform, Light 2D (enabled true, color [1,1,1], intensity 1, range 900, falloff 1, "
-                "height 64, shadows false).",
-                {"entity": {"id": 30, "name": "Lamp", "path": "Lamp"},
-                 "components": {"transform": {"position": [300.0, 0.0, 0.0]},
-                                "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
-                                            "falloff": 1.0, "height": 64.0, "shadows": False}}})},
-            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step). New values: "
-                                                    "{\"light2d\":{\"height\":512.0}}",
-                                                    {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
-                                                     "values": {"light2d": {"height": 512.0}}})},
-            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
-        ],
-        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
-                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}],
-                   "must_not_call": ["generate_sprite_normals"]},
-        "max_turns": 12,
     },
     # S78 WP-A
     {

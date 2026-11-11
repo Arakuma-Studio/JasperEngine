@@ -5,9 +5,7 @@ its left, and on its top under one above, with the built-in shader and with libr
 the material's Normal Texture property; a Lua script in play mode assigns the normal map
 (Sprite:setNormalTexture, getNormalTexture) and the sprite lights the same.
 
-S78 (docs/specs/S78-sprite-normals-improvements.md R14, R15, R23): create_entity light_2d and set_properties light2d
-say `next` (set_scene_settings with a dark ambient) while the scene's 2D ambient is bright, by its brightness (intensity
-times its brightest channel), not after it is darkened; generate_sprite_normals warns light_low for a Light 2D under
+S78 (docs/specs/S78-sprite-normals-improvements.md R14): generate_sprite_normals warns light_low for a Light 2D under
 half a 512 px sprite's side, not for a 16 px one, nor once the light is raised."""
 
 from __future__ import annotations
@@ -229,42 +227,6 @@ async def test_lua_assigns_the_normal_map(ed: Editor):
     finally:
         await ed.call("play", action="stop")
     await ed.check_alive()
-
-
-AMBIENT_HINT = ("set_scene_settings", "ambient_light_2d_color", "ambient_light_2d_intensity")
-
-
-def hints_dark_ambient(result: dict) -> bool:
-    return all(word in result.get("next", "") for word in AMBIENT_HINT)
-
-
-async def test_light_2d_next_under_a_bright_ambient(ed: Editor):
-    made = await ed.call("create_scene", name="Ambient Hint", type="2D")
-    sid = made["scene"]["id"]
-    # a new 2D scene's ambient is white at intensity 1
-    raw = await ed.call_raw("create_entity", {"scene": sid, "type": "light_2d", "name": "Lamp"})
-    ed.check(not raw.is_error and hints_dark_ambient(raw.value), f"create_entity light_2d: next names the fix: {raw.value!r}")
-    ed.check("set_scene_settings" in raw.text, f"and its text: {raw.text}")
-    lamp = raw.value["entity_id"]
-    edited = await ed.call("set_properties", scene=sid, entity=lamp, values={"light2d": {"range": 300}})
-    ed.check(hints_dark_ambient(edited), f"set_properties light2d: next: {edited!r}")
-    moved = await ed.call("set_properties", scene=sid, entity=lamp, values={"transform": {"position": [10, 20, 0]}})
-    ed.check("next" not in moved, f"not for another component: {moved!r}")
-    sprite = await ed.call("create_entity", scene=sid, type="sprite", name="Crate")
-    ed.check("next" not in sprite, f"not for another type: {sprite!r}")
-
-    # darkened as the hint says: no next
-    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_color": [0.24, 0.25, 0.33], "ambient_light_2d_intensity": 1})
-    again = await ed.call("create_entity", scene=sid, type="light_2d", name="Lamp 2")
-    ed.check("next" not in again, f"a dark-blue ambient at intensity 1 is not bright: {again!r}")
-    edited = await ed.call("set_properties", scene=sid, entity=lamp, values={"light2d": {"range": 400}})
-    ed.check("next" not in edited, f"set_properties under a dark ambient: {edited!r}")
-    # white at 0.8 is bright, at 0.7 not
-    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_color": [1, 1, 1], "ambient_light_2d_intensity": 0.8})
-    ed.check(hints_dark_ambient(await ed.call("set_properties", scene=sid, entity=lamp, values={"light2d": {"range": 500}})), "white at 0.8")
-    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_intensity": 0.7})
-    ed.check("next" not in await ed.call("set_properties", scene=sid, entity=lamp, values={"light2d": {"range": 600}}), "white at 0.7")
-    await ed.call("close_scene", scene=sid, unsaved="discard")
 
 
 BIG_WHITE = "assets/sprites/white512.png"
