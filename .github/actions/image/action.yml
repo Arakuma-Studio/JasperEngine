@@ -1,0 +1,28 @@
+name: Build image
+description: >
+  Gets the lane's Docker build image: ghcr.io/<owner>/jasperengine-<target>-build:<tools/build.sh image-tag
+  <target>>, pulled when images.yml pushed it, else built here with the registry's layer cache (a PR that
+  changes docker/ before images.yml ran). Never pushes. Sets JASPER_DOCKER_IMAGE (what tools/build.sh and
+  tools/smoke-test.sh run instead of building their own) and JASPER_IMAGE_<TARGET> (e.g. JASPER_IMAGE_RUNTIME,
+  JASPER_IMAGE_LINUX_BACKENDS) for a lane that uses several.
+inputs:
+  target:
+    description: linux, web, android, linux-backends or runtime (docker/<target>.Dockerfile)
+    required: true
+outputs:
+  image:
+    description: The image reference, also in JASPER_DOCKER_IMAGE
+    value: ${{ steps.image.outputs.image }}
+  tag:
+    description: The 12-hex content hash tools/build.sh image-tag prints (the ccache key's toolchain part)
+    value: ${{ steps.image.outputs.tag }}
+runs:
+  using: composite
+  steps:
+    - name: Pull or build the ${{ inputs.target }} image
+      id: image
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        REGISTRY: ghcr.io/${{ github.repository_owner }}
+      run: '"$GITHUB_ACTION_PATH/image.sh" "$TARGET"'

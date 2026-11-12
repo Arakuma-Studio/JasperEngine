@@ -1,0 +1,957 @@
+name: CI
+
+# The gate (docs/superpowers/specs/2026-11-12-ci-design.md). `changes` plans the lanes from the diff
+# (tools/ci/plan_lanes.py over tools/check-changed); each lane runs one repository script, the same command
+# a developer runs (its JASPER_CI_REPRO); `report` writes the PR comment; `Check` is the one required status.
+#
+# - pull_request: the planned lanes. merge_group: every lane, unit and HTML UI unfiltered, MCP planned over
+#   the group's diff. push to main: the build lanes only, to save the caches and plan inputs PRs restore.
+#   workflow_dispatch with full: everything, the whole MCP CI suite included, on any branch.
+# - The test lanes in ADVISORY_LANES report but do not fail Check until main is green through CI (D2, §14.1
+#   phase 7). Lint and every platform build lane block.
+# - Caches (§10.2): PRs and the queue restore; push to main saves, and the caches job keeps one entry each.
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run every lane (the merge queue's set plus the whole MCP CI suite)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number)
+    || github.event_name == 'merge_group' && format('ci-mq-{0}', github.ref)
+    || github.event_name == 'push' && format('ci-main-{0}', github.sha)
+    || format('ci-dispatch-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # the test lanes whose failures Check lists but does not fail on (D2); emptied in phase 7
+  ADVISORY_LANES: unit asan htmlui mcp smoke
+
+defaults:
+  run:
+    # bash -eo pipefail on every OS (Git Bash on Windows)
+    shell: bash
+
+jobs:
+  # ------------------------------------------------------------- Planning ---
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JASPER_CI_REPRO: python3 tools/ci/plan_lanes.py
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      run_lint: ${{ steps.plan.outputs.run_lint }}
+      run_linux: ${{ steps.plan.outputs.run_linux }}
+      run_unit: ${{ steps.plan.outputs.run_unit }}
+      run_asan: ${{ steps.plan.outputs.run_asan }}
+      run_htmlui: ${{ steps.plan.outputs.run_htmlui }}
+      run_mcp: ${{ steps.plan.outputs.run_mcp }}
+      run_smoke: ${{ steps.plan.outputs.run_smoke }}
+      run_web: ${{ steps.plan.outputs.run_web }}
+      run_android: ${{ steps.plan.outputs.run_android }}
+      run_windows: ${{ steps.plan.outputs.run_windows }}
+      run_macos: ${{ steps.plan.outputs.run_macos }}
+      run_ios: ${{ steps.plan.outputs.run_ios }}
+      unit_filter_core: ${{ steps.plan.outputs.unit_filter_core }}
+      unit_filter_editor: ${{ steps.plan.outputs.unit_filter_editor }}
+      htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
+      mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
+    steps:
+      # every commit and tag but no blobs until read: the merge base and the coverage map's commit resolve
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      # plan inputs from main (§10.2): the Ninja deps dumps (push to main), the MCP coverage map and the
+      # per-test seconds (nightly). A missing one widens its lane (fail open).
+      - name: Restore the deps dumps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/ci-inputs/deps
+          key: plan-inputs-${{ github.run_id }}
+          restore-keys: plan-inputs-
+      - name: Restore the MCP coverage map
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/coverage/coverage-map.json
+          key: coverage-map-${{ github.run_id }}
+          restore-keys: coverage-map-
+      - name: Restore the MCP test seconds
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/ci-inputs/mcp-test-seconds.json
+          key: mcp-timings-${{ github.run_id }}
+          restore-keys: mcp-timings-
+
+      - name: Plan the lanes
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL: ${{ inputs.full }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          MQ_HEAD: ${{ github.event.merge_group.head_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+              pull_request) event=pull_request base="$PR_BASE" head="$PR_HEAD" ;;
+              merge_group) event=merge_group base="$MQ_BASE" head="$MQ_HEAD" ;;
+              push) event=push base="$PUSH_BEFORE" head="$GITHUB_SHA" ;;
+              *)
+                  event=workflow_dispatch
+                  [[ "$FULL" == true ]] && event=full
+                  base="$(git merge-base origin/main HEAD)" head="$GITHUB_SHA" ;;
+          esac
+          args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT")
+          [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
+          [[ -f build/coverage/coverage-map.json ]] && args+=(--coverage-map build/coverage/coverage-map.json)
+          [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
+          echo "python3 tools/ci/plan_lanes.py ${args[*]}"
+          python3 tools/ci/plan_lanes.py "${args[@]}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: plan
+          path: build/ci-plan/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: changes
+
+  # ----------------------------------------------------------------- Lint ---
+  lint:
+    name: lint
+    needs: changes
+    if: needs.changes.outputs.run_lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JASPER_CI_REPRO: tools/ci/lint.sh
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          cd "$RUNNER_TEMP/actionlint"
+          curl -fsSLo actionlint.tar.gz \
+              "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+
+      - name: Lints and self-tests
+        run: tools/ci/lint.sh --actionlint "$RUNNER_TEMP/actionlint/actionlint"
+
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: lint
+
+  # ---------------------------------------------------------------- Linux ---
+  # The editor and the engine sample project, warnings as errors; the install is the artifact the mcp
+  # and smoke lanes run.
+  linux:
+    name: linux
+    needs: changes
+    if: needs.changes.outputs.run_linux == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: WERROR=1 tools/build.sh linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 1.5G
+          toolchain: ${{ steps.image.outputs.tag }}
+
+      - name: Build the editor and the engine sample project
+        run: |
+          mkdir -p build/test-results
+          WERROR=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-build.log
+
+      - name: Warnings
+        if: always()
+        run: python3 tools/ci/warning-summary.py build/test-results/linux-build.log >> "$GITHUB_STEP_SUMMARY"
+
+      # tar keeps the executable bits a zipped artifact loses
+      - name: Pack the editor install
+        run: tar -C build/linux --zstd -cf build/editor-install.tar.zst editor-install
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: editor-install
+          path: build/editor-install.tar.zst
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Third-party notices in the install
+        if: github.event_name != 'push'
+        run: python3 tools/ci/check-notices.py --installed build/linux/editor-install/bin
+
+      - name: MCP tool and guide budget
+        if: github.event_name != 'push'
+        run: >-
+          tools/build.sh exec linux dbus-run-session --
+          uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py
+          --check tools/mcp/budget.json
+
+      - name: Cooked-texture runtime size (S14 R21, native Release)
+        if: github.event_name != 'push'
+        run: >-
+          python3 tools/textures/runtime_size.py --binary build/linux/engine/jasperengine-project
+          --json build/test-results/texture-runtime-size.json
+
+      # in the editor tree just built (build/linux/editor); a push builds them for the cache only
+      - name: HTML UI editor tests
+        env:
+          RUN: ${{ github.event_name == 'push' && '0' || '1' }}
+        run: WERROR=1 tools/build.sh htmlui-editor-tests 2>&1 | tee build/test-results/htmlui-editor-build.log
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: linux
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: linux
+
+  # ----------------------------------------------------------------- Unit ---
+  unit:
+    name: unit
+    needs: changes
+    if: needs.changes.outputs.run_unit == 'true' || (github.event_name == 'push' && needs.changes.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_CI_REPRO: WERROR=1 tools/build.sh unit-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: unit
+          max-size: 1.5G
+          toolchain: ${{ steps.image.outputs.tag }}
+
+      - name: CMake presets and option errors
+        if: github.event_name != 'push'
+        run: tools/build.sh exec linux tools/ci/check-presets.sh
+
+      # each suite with its planned filter ('' = all); a push builds both for the cache and the deps dumps
+      - name: jasperengine-core-tests and jasperengine-editor-tests
+        env:
+          FILTER_CORE: ${{ needs.changes.outputs.unit_filter_core }}
+          FILTER_EDITOR: ${{ needs.changes.outputs.unit_filter_editor }}
+          RUN: ${{ github.event_name == 'push' && '0' || '1' }}
+        run: |
+          mkdir -p build/test-results
+          status=0
+          for suite in core editor; do
+              filter="FILTER_${suite^^}"
+              args=""
+              [[ -n "${!filter}" ]] && args="--gtest_filter=${!filter}"
+              echo "::group::UNIT_SUITE=$suite UNIT_TEST_ARGS='$args' WERROR=1 tools/build.sh unit-tests"
+              UNIT_SUITE="$suite" UNIT_TEST_ARGS="$args" WERROR=1 tools/build.sh unit-tests 2>&1 \
+                  | tee -a build/test-results/unit-build.log || status=1
+              echo "::endgroup::"
+          done
+          exit "$status"
+
+      # S26 AC2: the picking suites again on the scalar slab test (the run above took the CPU's AVX2);
+      # its XML goes beside the core run's instead of over it
+      - name: Picking on the scalar path
+        if: ${{ !cancelled() && github.event_name != 'push' }}
+        run: |
+          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core.main.xml
+          status=0
+          JASPER_PICK_SIMD=scalar UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.*:SceneBvh.*:MeshRaycast.*:PickCache.*' \
+              WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-picking-scalar.log || status=1
+          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core-picking-scalar.xml
+          [[ -f build/test-results/core.main.xml ]] && mv build/test-results/core.main.xml build/test-results/core.xml
+          exit "$status"
+
+      - name: Warnings
+        if: always()
+        run: python3 tools/ci/warning-summary.py build/test-results/unit-build.log >> "$GITHUB_STEP_SUMMARY"
+
+      # plan inputs for PRs (tools/ci/plan_lanes.py --deps-from): the caches job saves them
+      - name: Ninja deps dumps
+        if: github.event_name == 'push'
+        run: tools/ci/dump_deps.sh build/ci-deps
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push'
+        with:
+          name: deps-unit
+          path: build/ci-deps/
+          retention-days: 1
+          if-no-files-found: error
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: unit
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: unit
+
+  asan:
+    name: asan
+    needs: changes
+    if: needs.changes.outputs.run_asan == 'true' || (github.event_name == 'push' && needs.changes.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: SANITIZE=address,undefined tools/build.sh unit-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: asan
+          max-size: 1.5G
+          toolchain: ${{ steps.image.outputs.tag }}
+
+      # GPU suites included: they run under Xvfb on Mesa (tools/sanitizers/lsan.supp); the unit lane's filters
+      - name: The unit tests under ASan and UBSan
+        env:
+          FILTER_CORE: ${{ needs.changes.outputs.unit_filter_core }}
+          FILTER_EDITOR: ${{ needs.changes.outputs.unit_filter_editor }}
+          RUN: ${{ github.event_name == 'push' && '0' || '1' }}
+        run: |
+          mkdir -p build/test-results
+          status=0
+          for suite in core editor; do
+              filter="FILTER_${suite^^}"
+              args=""
+              [[ -n "${!filter}" ]] && args="--gtest_filter=${!filter}"
+              echo "::group::SANITIZE=address,undefined UNIT_SUITE=$suite UNIT_TEST_ARGS='$args' tools/build.sh unit-tests"
+              SANITIZE=address,undefined UNIT_SUITE="$suite" UNIT_TEST_ARGS="$args" tools/build.sh unit-tests 2>&1 \
+                  | tee -a build/test-results/asan-build.log || status=1
+              echo "::endgroup::"
+          done
+          exit "$status"
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: asan
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: asan
+
+  htmlui:
+    name: htmlui
+    needs: changes
+    if: needs.changes.outputs.run_htmlui == 'true' || (github.event_name == 'push' && needs.changes.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_CI_REPRO: JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: htmlui
+          max-size: 0.8G
+          toolchain: ${{ steps.image.outputs.tag }}
+
+      # the performance tests' targets on a shared 4-vCPU runner (compat/PerfFixtures.h)
+      - name: jasperengine-htmlui-tests (OpenGL)
+        env:
+          FILTER: ${{ needs.changes.outputs.htmlui_filter }}
+          RUN: ${{ github.event_name == 'push' && '0' || '1' }}
+        run: |
+          mkdir -p build/test-results
+          args=""
+          [[ -n "$FILTER" ]] && args="--gtest_filter=$FILTER"
+          echo "JASPER_HTMLUI_PERF_SLACK=3 HTMLUI_TEST_ARGS='$args' tools/build.sh htmlui-tests"
+          JASPER_HTMLUI_PERF_SLACK=3 HTMLUI_TEST_ARGS="$args" tools/build.sh htmlui-tests 2>&1 \
+              | tee build/test-results/htmlui-build.log
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: golden-diffs-htmlui
+          path: build/linux/htmlui-tests-glcore/tests/htmlui/htmlui-test-output/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Ninja deps dumps
+        if: github.event_name == 'push'
+        run: tools/ci/dump_deps.sh build/ci-deps
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push'
+        with:
+          name: deps-htmlui
+          path: build/ci-deps/
+          retention-days: 1
+          if-no-files-found: error
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: htmlui
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: htmlui
+
+  # ------------------------------------------------------------------ MCP ---
+  # One job per shard of the planned CI-suite files (tools/mcp/shard.py plans, in changes); none planned
+  # skips the job instead of expanding an empty matrix.
+  mcp:
+    name: mcp (${{ matrix.shard }})
+    needs: [changes, linux]
+    if: >-
+      needs.changes.outputs.run_mcp == 'true'
+      && needs.changes.outputs.mcp_shards != ''
+      && needs.changes.outputs.mcp_shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.mcp_shards) }}
+    env:
+      JASPER_CI_REPRO: tools/ci/mcp_shard.sh ${{ matrix.shard }} build/ci-plan
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: editor-install
+          path: build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: build/ci-plan
+      - name: Unpack the editor install
+        run: mkdir -p build/linux && tar -C build/linux --zstd -xf build/editor-install.tar.zst
+
+      - name: MCP shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: tools/ci/mcp_shard.sh "$SHARD" build/ci-plan
+
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: mcp-${{ matrix.shard }}
+
+  # ---------------------------------------------------------------- Smoke ---
+  # Games built end to end (G2): Compile builds of two fixtures, a prebuilt-player build of another, and
+  # a project from each template, exported, run and opened in the editor.
+  smoke:
+    name: smoke
+    needs: [changes, linux]
+    if: needs.changes.outputs.run_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      JASPER_CI_REPRO: SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      # the no-compiler image of the prebuilt builds, then the build image (the last sets JASPER_DOCKER_IMAGE)
+      - uses: ./.github/actions/image
+        with:
+          target: runtime
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      # the linux lane's objects, read only: smoke never saves
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 1.5G
+          toolchain: ${{ steps.image.outputs.tag }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: editor-install
+          path: build
+      - name: Unpack the editor install
+        id: install
+        run: mkdir -p build/linux build/test-results && tar -C build/linux --zstd -xf build/editor-install.tar.zst
+
+      - name: Player runtime (Linux, OpenGL, full, release)
+        id: players
+        run: >-
+          PLAYER_VARIANTS=full PLAYER_BACKENDS=glcore PLAYER_FLAVOURS=release tools/build.sh players 2>&1
+          | tee build/test-results/smoke-players-build.log
+
+      - name: Compile smoke test, post-processing
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          JASPER_DOCKER_IMAGE="$JASPER_IMAGE_LINUX" SMOKE_METHOD=compile SMOKE_DIR=build/smoke-post-processing
+          tools/smoke-test.sh tools/fixtures/post-processing
+
+      # an exported game changing its ECS in contact callbacks
+      - name: Compile smoke test, ecs-collision
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          JASPER_DOCKER_IMAGE="$JASPER_IMAGE_LINUX" SMOKE_METHOD=compile SMOKE_DIR=build/smoke-ecs-collision
+          tools/smoke-test.sh tools/fixtures/ecs-collision
+
+      # no compiler: the editor builds the game from the player runtime in the runtime image (S30 AC1-AC3)
+      - name: Prebuilt smoke test, unified-lighting
+        if: ${{ !cancelled() && steps.players.outcome == 'success' }}
+        run: >-
+          JASPER_DOCKER_IMAGE="$JASPER_IMAGE_RUNTIME" SMOKE_METHOD=prebuilt SMOKE_DIR=build/smoke-unified-lighting
+          tools/smoke-test.sh tools/fixtures/unified-lighting
+
+      - name: Prebuilt smoke test, a project from each template
+        if: ${{ !cancelled() && steps.players.outcome == 'success' }}
+        run: SMOKE_METHOD=prebuilt tools/ci/smoke-templates.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke
+          path: |
+            build/smoke-*/*.png
+            build/smoke-*/*.log
+          retention-days: 14
+          if-no-files-found: ignore
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: smoke
+
+  # ------------------------------------------------------------------ Web ---
+  # The engine sample project for Emscripten in headless Chrome (tools/web/browser_gate.py); the queue and
+  # full runs add the core utilities and cooked texture formats gates.
+  web:
+    name: web
+    needs: changes
+    if: needs.changes.outputs.run_web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_CI_REPRO: tools/build.sh web && tools/build.sh web-gate
+      EXTRA_GATES: ${{ github.event_name == 'merge_group' || needs.changes.outputs.full == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: web
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: web
+          max-size: 0.8G
+          toolchain: ${{ steps.image.outputs.tag }}
+
+      - name: Web presets and option errors
+        if: github.event_name != 'push'
+        run: tools/build.sh exec web tools/ci/check-presets.sh web
+
+      - name: Engine sample project
+        run: |
+          mkdir -p build/test-results
+          tools/build.sh web 2>&1 | tee build/test-results/web-build.log
+
+      - name: Browser gate
+        if: github.event_name != 'push'
+        run: tools/build.sh web-gate
+
+      - name: Core utilities gate project (logger, Lua Timer)
+        if: env.EXTRA_GATES == 'true'
+        run: |
+          WEB_PROJECT=core-utilities tools/build.sh web 2>&1 | tee build/test-results/web-core-utilities-build.log
+          GATE=core-utilities tools/build.sh web-gate
+
+      # the R19 web transcode bench in report mode: its budget is gated on the benchmark server only
+      # (docs/textures.md)
+      - name: Cooked texture formats gate project (Release)
+        if: env.EXTRA_GATES == 'true'
+        run: |
+          BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web 2>&1 | tee build/test-results/web-texture-formats-build.log
+          GATE=texture-formats GATE_ARGS='--query=transcode_bench=report --expect=transcode_web_budgets=report --seconds 10' \
+              tools/build.sh web-gate
+
+      - name: Cooked-texture runtime size (S14 R21, wasm Release)
+        if: env.EXTRA_GATES == 'true'
+        run: |
+          tools/build.sh exec web bash -c "cmake -S engine -B build/web-texture-formats -DCMAKE_EXE_LINKER_FLAGS=-Wl,--Map=/src/build/web-texture-formats.map && cmake --build build/web-texture-formats --target jasperengine-project"
+          python3 tools/textures/runtime_size.py --wasm-map build/web-texture-formats.map --json build/test-results/texture-runtime-size-wasm.json
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: web
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: web
+
+  # -------------------------------------------------------------- Android ---
+  # The engine sample project's APK in the android image. PRs and pushes build arm64-v8a only (what
+  # the push's cache warms for PRs); the queue and full runs build every ABI an export ships.
+  android:
+    name: android
+    needs: changes
+    if: needs.changes.outputs.run_android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_CI_REPRO: tools/build.sh android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: android
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: android
+          max-size: 0.8G
+          toolchain: ${{ steps.image.outputs.tag }}
+      # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle)
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/.cache/gradle/caches
+            build/.cache/gradle/wrapper
+          key: gradle-${{ github.run_id }}
+          restore-keys: gradle-
+
+      - name: APK
+        env:
+          ABIS: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'arm64-v8a' || '' }}
+        run: |
+          mkdir -p build/test-results
+          if [[ -n "$ABIS" ]]; then export ANDROID_ABIS="$ABIS"; fi
+          echo "${ABIS:+ANDROID_ABIS=$ABIS }tools/build.sh android"
+          tools/build.sh android 2>&1 | tee build/test-results/android-build.log
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push'
+        with:
+          path: |
+            build/.cache/gradle/caches
+            build/.cache/gradle/wrapper
+          key: gradle-${{ github.run_id }}
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: android
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: android
+
+  # -------------------------------------------------------------- Windows ---
+  # MSVC through tools/ci/windows.sh: the editor, the engine on each Windows backend with the core
+  # tests, the CPU unit tests, the call CLI, and a Compile build of a fixture (G2).
+  windows:
+    name: windows
+    needs: changes
+    if: needs.changes.outputs.run_windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      JASPER_CI_REPRO: tools/ci/windows.sh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        with:
+          vulkan_version: 1.3.296.0
+          install_runtime: false
+          cache: true
+          cache_save_if: ${{ github.event_name == 'push' }}
+      # Ninja instead of the Visual Studio generator, so ccache can wrap cl.exe
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: windows
+          max-size: 1.2G
+
+      - name: Editor
+        run: tools/ci/windows.sh editor
+      - name: Engine (OpenGL) and the core tests
+        run: tools/ci/windows.sh engine glcore
+      - name: Unit tests (CPU suites)
+        if: github.event_name != 'push'
+        run: tools/ci/windows.sh tests
+      - name: Call CLI without an editor
+        if: github.event_name != 'push'
+        run: tools/ci/windows.sh check-cli
+      - name: Engine (Direct3D 11)
+        if: ${{ !cancelled() }}
+        run: tools/ci/windows.sh engine d3d11
+      - name: Engine (Vulkan)
+        if: ${{ !cancelled() }}
+        run: tools/ci/windows.sh engine vulkan
+      - name: Compile build of post-processing
+        if: ${{ !cancelled() && github.event_name != 'push' }}
+        run: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: windows
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: windows
+
+  # ---------------------------------------------------------------- Apple ---
+  # Two macOS jobs per run at most (5 concurrent macOS jobs per organization): macos is the arm64 editor
+  # and engine through tools/ci/macos.sh, ios the Xcode project for iOS and macOS.
+  macos:
+    name: macos
+    needs: changes
+    if: needs.changes.outputs.run_macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 180
+    env:
+      JASPER_CI_REPRO: tools/ci/macos.sh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Ninja
+        run: command -v ninja > /dev/null || brew install ninja
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: macos
+          max-size: 0.8G
+
+      - name: Editor (arm64)
+        run: tools/ci/macos.sh editor
+      - name: Engine and the core tests
+        run: tools/ci/macos.sh engine
+      - name: Unit tests (CPU suites)
+        if: github.event_name != 'push'
+        run: tools/ci/macos.sh tests
+      - name: Call CLI without an editor
+        if: github.event_name != 'push'
+        run: tools/ci/macos.sh check-cli
+      - name: Compile build of post-processing
+        if: ${{ !cancelled() && github.event_name != 'push' }}
+        run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
+
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: macos
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: macos
+
+  ios:
+    name: ios
+    needs: changes
+    if: needs.changes.outputs.run_ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Xcode project (iOS)
+        run: tools/ci/macos.sh xcode ios
+      - name: Xcode project (macOS)
+        if: ${{ !cancelled() }}
+        run: tools/ci/macos.sh xcode macos
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: ios
+
+  # -------------------------------------------------------------- Caches ---
+  # Push to main: the plan inputs from the unit and htmlui lanes' deps dumps, then one live entry per
+  # cache (§10.2: LRU must never evict one lane for another). Housekeeping, not a lane: Check skips it.
+  caches:
+    name: caches
+    needs: [linux, unit, asan, htmlui, web, android, windows, macos]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.unit.result == 'success' && needs.htmlui.result == 'success'
+        with:
+          pattern: deps-*
+          path: build/ci-inputs/deps
+          merge-multiple: true
+      - name: Save the plan inputs
+        if: needs.unit.result == 'success' && needs.htmlui.result == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/ci-inputs/deps
+          key: plan-inputs-${{ github.run_id }}
+
+      - name: Keep the newest entry of each cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for prefix in plan-inputs- gradle- ccache-linux- ccache-unit- ccache-asan- ccache-htmlui- ccache-web- \
+                        ccache-android- ccache-windows- ccache-macos-; do
+              gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
+                  --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
+                  while read -r id key; do
+                      echo "delete $key"
+                      gh cache delete --repo "$GITHUB_REPOSITORY" "$id"
+                  done
+          done
+          gh cache list --repo "$GITHUB_REPOSITORY" --limit 100
+
+  # --------------------------------------------------------------- Report ---
+  # The PR comment (same-repo PRs; a fork's token is read-only and .github/workflows/ci-report.yml posts
+  # it), the merge queue's "Removed from the merge queue" comment, and main's ci-red issue.
+  report:
+    name: report
+    needs: [changes, lint, linux, unit, asan, htmlui, mcp, smoke, web, android, windows, macos, ios, check]
+    if: always()
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+      CHECK: ${{ needs.check.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ci-report-*
+          path: build/ci-reports
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: plan
+          path: build/ci-plan
+
+      - name: Render
+        run: |
+          python3 tools/ci/report.py render --reports build/ci-reports --lanes build/ci-plan/lanes.json \
+              --run-url "$RUN_URL" --sha "$SHA" --advisory "$ADVISORY_LANES" --out build/comment.md
+          cat build/comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on the PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 tools/ci/report.py post --pr "$PR" --body build/comment.md
+
+      # the queue removes a PR whose group fails: the report goes on each PR of the group (the queue's
+      # branch names the last, gh-readonly-queue/main/pr-<N>-<sha>; its merge commits name the rest)
+      - name: Comment on the PRs the merge queue removed
+        if: github.event_name == 'merge_group' && needs.check.result != 'success'
+        env:
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          { echo "Removed from the merge queue:"; echo; cat build/comment.md; } > build/comment-mq.md
+          prs="$(sed -nE 's|^(refs/heads/)?gh-readonly-queue/[^/]+/pr-([0-9]+)-[0-9a-f]+$|\2|p' <<< "$HEAD_REF")"
+          prs="$prs $(gh api "repos/$GITHUB_REPOSITORY/compare/$BASE_SHA...$HEAD_SHA" --jq '.commits[].commit.message' \
+              | sed -nE 's/^Merge pull request #([0-9]+) .*/\1/p')"
+          for pr in $(tr ' ' '\n' <<< "$prs" | sort -un); do
+              python3 tools/ci/report.py post --pr "$pr" --body build/comment-mq.md
+          done
+
+      - name: Open or update the ci-red issue, and tell the merged PR
+        if: github.event_name == 'push' && needs.check.result != 'success'
+        run: |
+          python3 tools/ci/report.py issue --label ci-red --title "main is red" --body build/comment.md
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')"
+          if [[ -n "$pr" ]]; then
+              gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body \
+                  "main is red after this merge ($GITHUB_SHA): $RUN_URL. The report is in the open issue labelled ci-red: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3Aci-red"
+          fi
+
+  # ---------------------------------------------------------------- Check ---
+  # The one required status: every needed lane succeeded, or was skipped because changes said so, and no
+  # test lane passed by running nothing (tools/ci/check_gate.py). always(): a cancelled run fails it too.
+  check:
+    name: Check
+    needs: [changes, lint, linux, unit, asan, htmlui, mcp, smoke, web, android, windows, macos, ios]
+    if: always()
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ci-report-*
+          path: build/ci-reports
+          merge-multiple: true
+      # a failed changes job leaves no plan: check_gate fails on the missing file
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: plan
+          path: build/ci-plan
+      - name: Gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          mkdir -p build
+          printf '%s\n' "$NEEDS" > build/needs.json
+          python3 tools/ci/check_gate.py --needs build/needs.json --lanes build/ci-plan/lanes.json \
+              --reports build/ci-reports --advisory "$ADVISORY_LANES"

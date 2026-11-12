@@ -1,0 +1,69 @@
+name: Restore ccache
+description: >
+  Restores the newest ccache-<lane>-<toolchain>- entry of the Actions cache into build/.cache/ccache (the
+  directory tools/build.sh and tools/smoke-test.sh mount at /ccache), installs ccache where the lane compiles
+  on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR and CCACHE_MAXSIZE (tools/build.sh forwards
+  CCACHE_MAXSIZE into the image). ccache-save writes the entry back on push to main only
+  (docs/superpowers/specs/2026-11-12-ci-design.md §10.2).
+inputs:
+  lane:
+    description: The cache's lane (linux, unit, asan, htmlui, web, android, windows, macos)
+    required: true
+  max-size:
+    description: CCACHE_MAXSIZE, the lane's cap (§10.2)
+    required: true
+  toolchain:
+    description: >
+      What the objects depend on besides the sources: the image tag on Linux lanes. Empty: the MSVC tools
+      version on Windows, the Xcode version on macOS.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Install ccache
+      if: runner.os != 'Linux'
+      shell: bash
+      run: |
+        if ! command -v ccache > /dev/null; then
+            if [[ "$RUNNER_OS" == Windows ]]; then choco install ccache --no-progress -y; else brew install ccache; fi
+        fi
+        ccache --version | head -1
+
+    - name: Cache key
+      id: key
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+        GIVEN_TOOLCHAIN: ${{ inputs.toolchain }}
+        MAX_SIZE: ${{ inputs.max-size }}
+      run: |
+        toolchain="$GIVEN_TOOLCHAIN"
+        if [[ -z "$toolchain" && "$RUNNER_OS" == Windows ]]; then toolchain="msvc${VCToolsVersion:-unknown}"; fi
+        if [[ -z "$toolchain" && "$RUNNER_OS" == macOS ]]; then toolchain="$(xcodebuild -version | head -1 | tr -cd 'A-Za-z0-9.')"; fi
+        [[ -n "$toolchain" ]] || { echo "::error::ccache-restore: no toolchain for lane $LANE"; exit 1; }
+        prefix="ccache-$LANE-$toolchain-"
+        # absolute (a compiler runs in its build directory); D:/... on Windows
+        dir="$(pwd -W 2> /dev/null || pwd)/build/.cache/ccache"
+        mkdir -p build/.cache/ccache
+        {
+            echo "CCACHE_DIR=$dir"
+            echo "CCACHE_MAXSIZE=$MAX_SIZE"
+            echo "JASPER_CCACHE_LANE=$LANE"
+            echo "JASPER_CCACHE_KEY=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "JASPER_CCACHE_MARKER=$RUNNER_TEMP/ccache-$LANE.marker"
+        } >> "$GITHUB_ENV"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "key=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+    - name: Restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: build/.cache/ccache
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    # what ccache-save compares against: an entry written after this is new
+    - name: Mark the restored state
+      shell: bash
+      run: touch "$JASPER_CCACHE_MARKER"

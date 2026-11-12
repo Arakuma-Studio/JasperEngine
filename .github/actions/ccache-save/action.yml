@@ -1,0 +1,58 @@
+name: Save ccache
+description: >
+  Saves build/.cache/ccache as the lane's entry (the key ccache-restore set), on push to main or a schedule
+  only, and only when the run added objects. ci.yml's caches job then deletes the lane's older entries, so each
+  lane keeps one live copy (docs/superpowers/specs/2026-11-12-ci-design.md §10.2); prune: true does that here
+  instead, for a job that has actions: write.
+inputs:
+  lane:
+    description: The lane ccache-restore was given
+    required: true
+  prune:
+    description: Delete the lane's older entries after the save (needs actions write on the job)
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: New objects
+      id: check
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+        EVENT: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+      run: |
+        save=false
+        if [[ "$JASPER_CCACHE_LANE" != "$LANE" ]]; then
+            echo "::error::ccache-save: lane $LANE, but ccache-restore ran for '${JASPER_CCACHE_LANE:-}'"; exit 1
+        fi
+        if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
+            # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
+            new="$(find build/.cache/ccache -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
+                ! -name ccache.conf ! -path '*/tmp/*' 2> /dev/null | head -1)"
+            if [[ -n "$new" ]]; then save=true; else echo "ccache-save: nothing new since the restore"; fi
+        else
+            echo "ccache-save: $EVENT runs restore only"
+        fi
+        if command -v ccache > /dev/null; then ccache --show-stats -d build/.cache/ccache 2> /dev/null || true; fi
+        du -sh build/.cache/ccache 2> /dev/null || true
+        echo "save=$save" >> "$GITHUB_OUTPUT"
+
+    - name: Save
+      if: steps.check.outputs.save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: build/.cache/ccache
+        key: ${{ env.JASPER_CCACHE_KEY }}
+
+    - name: Delete the older entries
+      if: steps.check.outputs.save == 'true' && inputs.prune == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        LANE: ${{ inputs.lane }}
+      run: |
+        gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "ccache-$LANE-" --limit 100 \
+            --json id,key --jq ".[] | select(.key != \"$JASPER_CCACHE_KEY\") | .id" |
+            while read -r id; do gh cache delete --repo "$GITHUB_REPOSITORY" "$id"; done
