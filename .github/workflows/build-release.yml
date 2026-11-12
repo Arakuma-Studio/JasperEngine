@@ -74,6 +74,8 @@ jobs:
       PLAYER_BACKENDS: ${{ matrix.backend }}
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} PLAYER_FLAVOURS="${{ inputs.channel == 'stable' && 'release development' || 'release' }}" PLAYER_BACKENDS=${{ matrix.backend }} PLAYER_ZIP=1 tools/build.sh players
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -88,9 +90,9 @@ jobs:
           max-size: 2G
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the runtimes
-        run: |
-          mkdir -p build/test-results
-          tools/build.sh players 2>&1 | tee "build/test-results/players-linux-$PLAYER_BACKENDS-build.log"
+        run: >-
+          tools/ci/logged.sh "players-linux-$PLAYER_BACKENDS-build" "JASPERENGINE_VERSION=$JASPERENGINE_VERSION
+          PLAYER_FLAVOURS='$PLAYER_FLAVOURS' PLAYER_BACKENDS=$PLAYER_BACKENDS PLAYER_ZIP=1 tools/build.sh players"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: player-archives-linux-${{ matrix.backend }}
@@ -112,6 +114,8 @@ jobs:
       PLAYER_PLATFORM: web
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} PLAYER_FLAVOURS="${{ inputs.channel == 'stable' && 'release development' || 'release' }}" PLAYER_PLATFORM=web PLAYER_ZIP=1 tools/build.sh players
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -126,9 +130,9 @@ jobs:
           max-size: 2G
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the runtimes (single-thread and pthreads)
-        run: |
-          mkdir -p build/test-results
-          tools/build.sh players 2>&1 | tee build/test-results/players-web-build.log
+        run: >-
+          tools/ci/logged.sh players-web-build "JASPERENGINE_VERSION=$JASPERENGINE_VERSION
+          PLAYER_PLATFORM=web PLAYER_FLAVOURS='$PLAYER_FLAVOURS' PLAYER_ZIP=1 tools/build.sh players"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: player-archives-web
@@ -150,6 +154,8 @@ jobs:
       PLAYER_PLATFORM: android
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} PLAYER_FLAVOURS="${{ inputs.channel == 'stable' && 'release development' || 'release' }}" PLAYER_PLATFORM=android PLAYER_ZIP=1 tools/build.sh players
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -164,9 +170,9 @@ jobs:
           max-size: 2G
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the runtimes (gles3, every ABI)
-        run: |
-          mkdir -p build/test-results
-          tools/build.sh players 2>&1 | tee build/test-results/players-android-build.log
+        run: >-
+          tools/ci/logged.sh players-android-build "JASPERENGINE_VERSION=$JASPERENGINE_VERSION
+          PLAYER_PLATFORM=android PLAYER_FLAVOURS='$PLAYER_FLAVOURS' PLAYER_ZIP=1 tools/build.sh players"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: player-archives-android
@@ -194,6 +200,8 @@ jobs:
     env:
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} tools/ci/players-windows.sh ${{ matrix.backend }} "${{ inputs.channel == 'stable' && 'release development' || 'release' }}"
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -240,6 +248,8 @@ jobs:
     env:
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} tools/ci/players-apple.sh ${{ matrix.target }} "${{ inputs.channel == 'stable' && 'release development' || 'release' }}"
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -293,7 +303,7 @@ jobs:
           path: build/player-archives
           merge-multiple: true
       - name: Write the table
-        run: python3 tools/players/write_hashes.py build/player-archives --version "$JASPERENGINE_VERSION"
+        run: tools/ci/logged.sh player-hashes "python3 tools/players/write_hashes.py build/player-archives --version $JASPERENGINE_VERSION"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: player-hashes
@@ -310,6 +320,8 @@ jobs:
     env:
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} SKIP_ENGINE=1 tools/build.sh linux && tools/ci/package-linux.sh ${{ inputs.version }}
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       # full history and tags: the root CMake asks git describe when no version is given
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -330,9 +342,7 @@ jobs:
           name: player-hashes
           path: editor/players
       - name: Build the editor
-        run: |
-          mkdir -p build/test-results
-          SKIP_ENGINE=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-build.log
+        run: tools/ci/logged.sh linux-build "JASPERENGINE_VERSION=$JASPERENGINE_VERSION SKIP_ENGINE=1 tools/build.sh linux"
       # (and its launch check: the AppImage's call --help, and a one-shot editor_status on a fixture copy)
       - name: Package the AppImage, its zsync and the zip; launch-check the AppImage
         run: tools/ci/package-linux.sh "$JASPERENGINE_VERSION"
@@ -371,6 +381,8 @@ jobs:
     env:
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} tools/ci/windows.sh editor && tools/ci/windows.sh package ${{ inputs.version }}
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -397,10 +409,10 @@ jobs:
       - name: Package the zip
         run: tools/ci/windows.sh package "$JASPERENGINE_VERSION"
       - name: Launch check (the zip's jasperengine-editor-cmd)
-        run: |
-          rm -rf build/launch-check
-          python -m zipfile -e "dist/JasperEngine-$JASPERENGINE_VERSION-windows-x64.zip" build/launch-check
-          python tools/ci/check-call-cli.py build/launch-check
+        run: >-
+          tools/ci/logged.sh windows-launch-check "rm -rf build/launch-check &&
+          python -m zipfile -e dist/JasperEngine-$JASPERENGINE_VERSION-windows-x64.zip build/launch-check &&
+          python tools/ci/check-call-cli.py build/launch-check"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets-windows
@@ -422,6 +434,8 @@ jobs:
       ARCHS: universal
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} ARCHS=universal tools/ci/macos.sh editor && tools/ci/macos.sh package ${{ inputs.version }}
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -441,10 +455,10 @@ jobs:
       - name: Package the zip and the dmg (ad-hoc signed)
         run: tools/ci/macos.sh package "$JASPERENGINE_VERSION"
       - name: Launch check (the zip's editor)
-        run: |
-          rm -rf build/launch-check
-          unzip -q "dist/JasperEngine-$JASPERENGINE_VERSION-macos-universal.zip" -d build/launch-check
-          python3 tools/ci/check-call-cli.py build/launch-check
+        run: >-
+          tools/ci/logged.sh macos-launch-check "rm -rf build/launch-check &&
+          unzip -q dist/JasperEngine-$JASPERENGINE_VERSION-macos-universal.zip -d build/launch-check &&
+          python3 tools/ci/check-call-cli.py build/launch-check"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets-macos
@@ -470,6 +484,8 @@ jobs:
     env:
       JASPER_CI_REPRO: tools/build.sh exec runtime tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players linux- web- && tools/build.sh exec runtime python3 tools/ci/test_player_cli.py && SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -490,14 +506,13 @@ jobs:
       - name: Unpack the release editor
         run: mkdir -p build/linux && tar -C build/linux -xf build/editor-linux-install.tar
       - name: Every archive installed by the release editor; a tampered one refused
-        run: |
-          mkdir -p build/test-results
-          tools/build.sh exec runtime tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players linux- web- \
-            2>&1 | tee build/test-results/release-players.log
+        run: >-
+          tools/ci/logged.sh release-players "tools/build.sh exec runtime tools/ci/release-players.sh
+          $JASPERENGINE_VERSION build/player-archives build/players linux- web-"
       - name: Player CLI in the no-compiler image
-        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py 2>&1 | tee build/test-results/player-cli.log
+        run: tools/ci/logged.sh player-cli 'tools/build.sh exec runtime python3 tools/ci/test_player_cli.py'
       - name: Smoke test of the prebuilt player
-        run: SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting 2>&1 | tee build/test-results/smoke-prebuilt.log
+        run: tools/ci/logged.sh smoke-prebuilt 'SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -525,6 +540,8 @@ jobs:
     env:
       JASPER_CI_REPRO: tools/build.sh exec android tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players android- && tools/ci/android_ac7.sh
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -544,12 +561,11 @@ jobs:
       - name: Unpack the release editor
         run: mkdir -p build/linux && tar -C build/linux -xf build/editor-linux-install.tar
       - name: Install the Android runtimes with the release editor
-        run: |
-          mkdir -p build/test-results
-          tools/build.sh exec android tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players android- \
-            2>&1 | tee build/test-results/release-players-android.log
+        run: >-
+          tools/ci/logged.sh release-players-android "tools/build.sh exec android tools/ci/release-players.sh
+          $JASPERENGINE_VERSION build/player-archives build/players android-"
       - name: AC7
-        run: tools/ci/android_ac7.sh 2>&1 | tee build/test-results/android-ac7.log
+        run: tools/ci/logged.sh android-ac7 tools/ci/android_ac7.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -595,11 +611,9 @@ jobs:
           COMMIT: ${{ inputs.commit }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          dry=()
-          [[ "$DRY_RUN" == true ]] && dry=(--dry-run)
-          mkdir -p build/test-results
-          tools/ci/release.sh publish "$CHANNEL" "$JASPERENGINE_VERSION" "$COMMIT" build/release-assets ${dry[@]+"${dry[@]}"} \
-            2>&1 | tee build/test-results/release-publish.log
+          dry=""
+          [[ "$DRY_RUN" == true ]] && dry=" --dry-run"
+          tools/ci/logged.sh release-publish "tools/ci/release.sh publish $CHANNEL $JASPERENGINE_VERSION $COMMIT build/release-assets$dry"
 
   # AC9: the published AppImage, as a user downloads it, matches SHA256SUMS and downloads its own
   # player runtime from its own release (hash-checked against its table)
@@ -612,6 +626,8 @@ jobs:
     env:
       JASPER_CI_REPRO: tools/ci/check-published.sh ${{ inputs.version }} linux-x64-glcore-release
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
@@ -623,9 +639,7 @@ jobs:
       - name: The published AppImage downloads linux-x64-glcore-release from its release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p build/test-results
-          tools/ci/check-published.sh "$JASPERENGINE_VERSION" linux-x64-glcore-release 2>&1 | tee build/test-results/release-published.log
+        run: tools/ci/logged.sh release-published "tools/ci/check-published.sh $JASPERENGINE_VERSION linux-x64-glcore-release"
       - uses: ./.github/actions/report
         if: always()
         with:

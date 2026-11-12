@@ -83,6 +83,8 @@ jobs:
     env:
       JASPER_CI_REPRO: ${{ matrix.suite.run }}
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -104,9 +106,7 @@ jobs:
         env:
           RUN: ${{ matrix.suite.run }}
           ID: ${{ matrix.suite.id }}
-        run: |
-          mkdir -p build/test-results
-          bash -euo pipefail -c "$RUN" 2>&1 | tee "build/test-results/$ID-build.log"
+        run: tools/ci/logged.sh "$ID" "$RUN"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -129,6 +129,8 @@ jobs:
     env:
       JASPER_CI_REPRO: WEB_THREADS=1 tools/build.sh web && GATE=sample-project-threads tools/build.sh web-gate
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
@@ -141,11 +143,9 @@ jobs:
           max-size: 2G
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the threaded engine sample project
-        run: |
-          mkdir -p build/test-results
-          WEB_THREADS=1 tools/build.sh web 2>&1 | tee build/test-results/web-threads-build.log
+        run: tools/ci/logged.sh web-threads-build 'WEB_THREADS=1 tools/build.sh web'
       - name: Browser gate (cross-origin isolated)
-        run: GATE=sample-project-threads tools/build.sh web-gate 2>&1 | tee build/test-results/web-threads-gate.log
+        run: tools/ci/logged.sh web-threads-gate 'GATE=sample-project-threads tools/build.sh web-gate'
       # the red control: served without COOP/COEP a threaded build cannot start, and the gate must say so
       - name: Browser gate without cross-origin isolation fails
         run: |
@@ -167,6 +167,8 @@ jobs:
     env:
       JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players && tools/ci/parity.sh
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -181,18 +183,17 @@ jobs:
           max-size: 2G
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the editor and the Linux player runtimes
-        run: |
-          mkdir -p build/test-results
-          { SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players; } \
-            2>&1 | tee build/test-results/parity-build.log
+        run: >-
+          tools/ci/logged.sh parity-build 'SKIP_ENGINE=1 tools/build.sh linux &&
+          PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players'
       - name: Compile and prebuilt frames of every Lua-only fixture
-        run: tools/ci/parity.sh 2>&1 | tee build/test-results/parity.log
+        run: tools/ci/logged.sh parity tools/ci/parity.sh
       # (the no-compiler image from here on)
       - uses: ./.github/actions/image
         with:
           target: runtime
       - name: The player CLI on Vulkan (lavapipe)
-        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan 2>&1 | tee build/test-results/player-cli-vulkan.log
+        run: tools/ci/logged.sh player-cli-vulkan 'tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -245,6 +246,8 @@ jobs:
     env:
       JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -260,8 +263,7 @@ jobs:
           toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the editor
         run: |
-          mkdir -p build/test-results
-          SKIP_ENGINE=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-build.log
+          tools/ci/logged.sh linux-build 'SKIP_ENGINE=1 tools/build.sh linux'
           tar -C build/linux -cf build/editor-install.tar editor-install
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -291,6 +293,8 @@ jobs:
       MCP_WEB_BUILD: '1'
       JASPER_CI_REPRO: MCP_WEB_BUILD=1 tools/ci/mcp_shard.sh ${{ matrix.shard }} build/ci-plan
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
@@ -401,6 +405,8 @@ jobs:
     env:
       JASPER_CI_REPRO: COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux
     steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -410,9 +416,7 @@ jobs:
         with:
           target: linux
       - name: Build the editor with --coverage
-        run: |
-          mkdir -p build/test-results
-          COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-coverage-build.log
+        run: tools/ci/logged.sh linux-coverage-build 'COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux'
       # the install, and the build tree's .gcno (where each function is written), not its objects
       - name: Keep the install and the notes files
         run: |
