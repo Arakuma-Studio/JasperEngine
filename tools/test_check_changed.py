@@ -529,7 +529,7 @@ class Runs(unittest.TestCase):
         code, out = self.run_main()
         self.assertEqual(code, 0, out)
         self.assertIn("nothing to build or test", out)
-        self.assertIn("the full gate is still the full suite", out)
+        self.assertIn("the full gate is CI's", out)
         self.assertEqual(self.calls(), [])
 
     def test_dry_run_runs_nothing(self):

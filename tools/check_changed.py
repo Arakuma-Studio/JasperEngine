@@ -1,5 +1,5 @@
 """tools/check-changed: the per-commit gate of a stream. Builds what the change touches and runs the
-unit and MCP tests that can see it; the full suite is for pushes to origin main that need it.
+unit and MCP tests that can see it; the full gate is CI's (the merge queue and the nightly).
 
     tools/check-changed                 # build and test what the change touches
     tools/check-changed --dry-run       # the plan only
@@ -81,8 +81,8 @@ COMMON_SHARE = 0.8      # of the files with an editor: a function that many exec
 COMMON_SAMPLE = 10      # the quickest of those that a change of such a function selects
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
-GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
-       "(before pushing to origin main, when the push needs it)")
+GAP = ("coverage gap: this is the change's own selection; the full gate is CI's: a pull request's Check, "
+       "the merge queue (every build and unit test) and the nightly (the whole MCP CI suite)")
 
 # a change here builds and runs everything
 ALL_TRIGGERS = ("CMakeLists.txt", "CMakePresets.json", "CopyEditorEngine.cmake", "docker/*", "tools/build.sh",
@@ -100,7 +100,8 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
               "tools/ci/test_check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
               "tools/ci/plan_lanes.py": "tools/ci/test_plan_lanes.py", "tools/ci/test_plan_lanes.py": "tools/ci/test_plan_lanes.py",
-              "tools/ci/mcp_gate.py": "tools/ci/test_mcp_gate.py", "tools/ci/test_mcp_gate.py": "tools/ci/test_mcp_gate.py"}
+              "tools/ci/mcp_gate.py": "tools/ci/test_mcp_gate.py", "tools/ci/test_mcp_gate.py": "tools/ci/test_mcp_gate.py",
+              "tools/ci/pr-evidence.sh": "tools/ci/test_pr_evidence.py", "tools/ci/test_pr_evidence.py": "tools/ci/test_pr_evidence.py"}
 # the shader lint, with its own tests, when an engine shader changes (.claude/rules/rendering.md)
 SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
