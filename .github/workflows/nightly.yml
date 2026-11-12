@@ -88,12 +88,18 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: ${{ matrix.suite.image }}
+      # (each slow lane's nearest ccache is a Linux-image lane's, keyed by that image's tag)
+      - name: The Linux image's tag
+        id: linux-tag
+        run: echo "tag=$(tools/build.sh image-tag linux)" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/ccache-restore
         with:
           lane: ${{ matrix.suite.ccache }}
           max-size: 2G
+          toolchain: ${{ steps.linux-tag.outputs.tag }}
       - name: ${{ matrix.suite.name }}
         env:
           RUN: ${{ matrix.suite.run }}
@@ -125,12 +131,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: web
       - uses: ./.github/actions/ccache-restore
         with:
           lane: web
           max-size: 2G
+          toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the threaded engine sample project
         run: |
           mkdir -p build/test-results
@@ -162,12 +170,14 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: linux
       - uses: ./.github/actions/ccache-restore
         with:
           lane: linux
           max-size: 2G
+          toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the editor and the Linux player runtimes
         run: |
           mkdir -p build/test-results
@@ -207,14 +217,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: build/ci-cache/mcp-test-seconds.json
+          path: build/ci-inputs/mcp-test-seconds.json
           key: mcp-timings-${{ github.run_id }}
           restore-keys: mcp-timings-
       - name: Plan
         id: plan
         run: |
           timings=()
-          [[ -f build/ci-cache/mcp-test-seconds.json ]] && timings=(--test-seconds build/ci-cache/mcp-test-seconds.json)
+          [[ -f build/ci-inputs/mcp-test-seconds.json ]] && timings=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
           python3 tools/ci/plan_lanes.py --event nightly --base "$GITHUB_SHA" --head "$GITHUB_SHA" --out-dir build/ci-plan \
             ${timings[@]+"${timings[@]}"} --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -237,12 +247,14 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: linux
       - uses: ./.github/actions/ccache-restore
         with:
           lane: linux
           max-size: 2G
+          toolchain: ${{ steps.image.outputs.tag }}
       - name: Build the editor
         run: |
           mkdir -p build/test-results
@@ -257,7 +269,7 @@ jobs:
       - uses: ./.github/actions/report
         if: always()
         with:
-          lane: mcp-editor
+          lane: nightly-editor
 
   mcp:
     name: MCP shard ${{ matrix.shard }}
@@ -278,12 +290,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: linux
       - uses: ./.github/actions/ccache-restore
         with:
           lane: linux
           max-size: 2G
+          toolchain: ${{ steps.image.outputs.tag }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-editor-install
@@ -326,7 +340,7 @@ jobs:
           path: build/mcp-shards
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: build/ci-cache/mcp-test-seconds.json
+          path: build/ci-inputs/mcp-test-seconds.json
           key: mcp-timings-${{ github.run_id }}
           restore-keys: mcp-timings-
       - name: Merge the test seconds
@@ -335,14 +349,14 @@ jobs:
           new=(build/mcp-shards/*/mcp-test-seconds.json)
           [[ ${#new[@]} -gt 0 ]] || { echo "::error::no shard wrote mcp-test-seconds.json"; exit 1; }
           old=()
-          [[ -f build/ci-cache/mcp-test-seconds.json ]] && old=(build/ci-cache/mcp-test-seconds.json)
+          [[ -f build/ci-inputs/mcp-test-seconds.json ]] && old=(build/ci-inputs/mcp-test-seconds.json)
           jq -s 'add' ${old[@]+"${old[@]}"} "${new[@]}" > build/mcp-test-seconds.json
-          mv build/mcp-test-seconds.json build/ci-cache/mcp-test-seconds.json
-          echo "$(jq length build/ci-cache/mcp-test-seconds.json) tests timed (${#new[@]} shards)"
+          mkdir -p build/ci-inputs && mv build/mcp-test-seconds.json build/ci-inputs/mcp-test-seconds.json
+          echo "$(jq length build/ci-inputs/mcp-test-seconds.json) tests timed (${#new[@]} shards)"
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.ref == 'refs/heads/main'
         with:
-          path: build/ci-cache/mcp-test-seconds.json
+          path: build/ci-inputs/mcp-test-seconds.json
           key: mcp-timings-${{ github.run_id }}
       # one live entry per prefix (§10.2)
       - name: Delete the older mcp-timings entries
@@ -367,7 +381,7 @@ jobs:
           name: nightly-mcp-merged
           path: |
             build/mcp-merged.txt
-            build/ci-cache/mcp-test-seconds.json
+            build/ci-inputs/mcp-test-seconds.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -387,6 +401,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: linux
       - name: Build the editor with --coverage
@@ -427,6 +442,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
+        id: image
         with:
           target: linux
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -487,11 +503,11 @@ jobs:
           maps=(build/coverage/maps/map-*.json)
           [[ ${#maps[@]} -eq $(jq length <<< "$SHARDS") ]] \
             || { echo "::error::${#maps[@]} shard maps for $(jq length <<< "$SHARDS") shards"; exit 1; }
-          python3 tools/mcp/coverage_map.py merge "${maps[@]}" --out build/ci-cache/coverage-map.json
+          python3 tools/mcp/coverage_map.py merge "${maps[@]}" --out build/coverage/coverage-map.json
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.ref == 'refs/heads/main'
         with:
-          path: build/ci-cache/coverage-map.json
+          path: build/coverage/coverage-map.json
           key: coverage-map-${{ github.run_id }}
       - name: Delete the older coverage-map entries
         if: github.ref == 'refs/heads/main'
@@ -504,7 +520,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-coverage-map
-          path: build/ci-cache/coverage-map.json
+          path: build/coverage/coverage-map.json
           if-no-files-found: error
           retention-days: 14
 
@@ -592,22 +608,19 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           mkdir -p build/ci-reports
-          # the lanes are the reports' (one per suite, shard and release job) and every job that failed before reporting
-          jq -n --arg sha "$GITHUB_SHA" --argjson needs "$NEEDS" '
-            {event: "nightly", full: true, base: $sha, head: $sha,
-             lanes: ($needs | with_entries(.value = {run: true, why: "nightly job \(.key): \(.value.result)"}))}' \
-            > build/nightly-lanes.json
-          for report in build/ci-reports/*.json; do
-            [[ -f "$report" ]] || continue
-            lane="$(jq -r .lane "$report")"
-            jq --arg lane "$lane" '.lanes[$lane] = {run: true, why: "nightly"}' build/nightly-lanes.json > build/lanes.tmp
-            mv build/lanes.tmp build/nightly-lanes.json
-          done
+          # the lanes: every job that ran (its result for one that left no report), but the matrix and
+          # reusable ones, whose suites, shards and release jobs report under their own names
+          jq . <<< "$NEEDS" > build/nightly-needs.json
+          jq --arg sha "$GITHUB_SHA" '{event: "nightly", full: true, base: $sha, head: $sha,
+              lanes: (del(.slow, .mcp, .release) | with_entries(select(.value.result != "skipped"))
+                      | map_values({run: true, why: "nightly"}))}' \
+            build/nightly-needs.json > build/nightly-lanes.json
           if ! python3 tools/ci/report.py render --reports build/ci-reports --lanes build/nightly-lanes.json \
-              --run-url "$RUN_URL" --sha "$GITHUB_SHA" --out build/comment.md; then
+              --needs build/nightly-needs.json --run-url "$RUN_URL" --sha "$GITHUB_SHA" --out build/comment.md; then
             echo "::warning::report.py render failed; the issue gets the failing jobs only"
             { echo "The nightly run of $(date -u +%Y-%m-%d) on $GITHUB_SHA failed: $RUN_URL"; echo
-              jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "- \(.key): \(.value.result)"' <<< "$NEEDS"
+              jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "- \(.key): \(.value.result)"' \
+                build/nightly-needs.json
             } > build/comment.md
           fi
       - name: Open or update the nightly issue
