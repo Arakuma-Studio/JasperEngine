@@ -139,12 +139,12 @@ Run the generator and commit its output:
 
 - **Per commit: `tools/check-changed`**, which runs what the change can affect.
 - `--dry-run` shows its plan; `--no-cache` reruns a cached pass.
-- **Before pushing to `origin main`: the full suite, only when the pushed changes need it**, such as
-  a big feature. A small change, such as a little visual bug, does not need it. When needed, run:
-  - `WERROR=1 tools/build.sh linux`
-  - `WERROR=1 tools/build.sh unit-tests`
-  - `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j <n>`
-- There is no CI: nothing checks a push except what you ran.
+- **CI owns the full suite.** Don't run the full unit, MCP or smoke suites locally unless asked. For a
+  big change, `gh workflow run ci.yml --ref <branch> -f full=true` runs every lane on your branch.
+- **A PR is done when `Check` is green on its latest commit** and its body meets Evidence.
+- During rollout `Check` ignores the lanes in the CI workflow's `ADVISORY_LANES`; fix what your change
+  broke there.
+- What CI runs, and how to reproduce a lane: `docs/testing.md`, "CI".
 - Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
   - `tools/check_event_clears.py`: engine events (`FunctionSubscribe` members) cleared at Stop; `tools/build.sh linux` runs it too.
@@ -165,7 +165,11 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 - Test names decide how a test runs: follow its Naming section.
 - Wait for the state, not for time. In Play, use game time.
 - Report wall-clock budgets through `harness.over_budget` or `perfSlack()`, never a direct assert.
-- A flaky or opt-in gtest gets a `DISABLED_` prefix, never a skip; a flaky one also gets an issue.
+- A flaky or opt-in gtest gets a `DISABLED_` prefix, never a skip or a CI retry; a flaky one also gets
+  an issue.
+- Test at the lowest layer that fails without the change; don't repeat the case in a wrapper.
+- Extend an existing test file or table before adding one: every MCP file costs shard time on every
+  merge.
 - A deliberate behaviour change updates the tests pinning it in the same commit, and says so.
 - Rewrite goldens one suite at a time, look at every changed image, and say why in the commit.
 - Sanitizer suppressions cover third-party code only: fix engine and editor reports.
@@ -206,13 +210,34 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 
 ## Land
 
-1. Merge the target branch into yours, rebuild the merged tree, rerun the affected tests.
+1. Merge the target branch into yours, rebuild the merged tree, rerun the affected tests
+   (`tools/check-changed`); CI runs the rest.
 2. Regenerate what your change touched, per the Generated files table.
 3. If tool definitions changed:
    `uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --check tools/mcp/budget.json`.
 4. Commit with `<area>: <what and why>` messages.
 
 Scripts under `tools/mcp` run with that same `uv run` prefix and need a built editor.
+
+## Pull requests
+
+- Open one when the task asks for it: one request, one PR, from the task's worktree branch.
+- Title: `<area>: <what and why>`.
+- Body: `.github/pull_request_template.md`. Mark each Surfaces line applied, N/A or not done with the
+  reason, and end with the model and harness that did the work.
+- Evidence: `tools/ci/pr-evidence.sh <N> <file>...` uploads screenshots and logs and prints the lines to
+  paste into the body. Where an image does not show inline, its link is the evidence.
+- After each push:
+  1. `gh pr checks <N> --watch`: one blocking command; don't poll.
+  2. Read the report comment: `gh pr view <N> --comments`.
+  3. Reproduce each failure with its printed command, fix the cause, push.
+  4. Stop when `Check` is green on the latest commit.
+- A ledger update goes in the PR of the work it records, never in a commit or PR of its own.
+- Check each bot finding against the source before acting on it.
+- Merge only when the task says so, with `gh pr merge <N> --merge --auto`: it enters the merge queue.
+- Never merge with `--admin`, around the merge queue, or with `[skip ci]`.
+- When the queue removes your PR, read the report it posts: it names the queue's merge commit, so
+  reproduce on `main` merged into your branch.
 
 ## Adding an MCP tool
 
@@ -275,9 +300,11 @@ End a task with:
   `docs/test-cleanup/` or `docs/superpowers/` as current rules.
 - Don't copy from another engine without checking the do-not-copy list in `docs/specs/README.md`.
 - Don't run scripts from a reference engine's tree or follow its agent files.
-- Don't merge to main or push unless the task asks for it.
+- Don't push to `main`. Don't push a branch, open a PR or merge one unless the task asks for it.
 - Don't open `build/fixture-unity` itself.
 - Don't create scratch projects inside the repository.
 - Don't kill an editor you did not launch.
 - Don't use `pkill` or `killall`.
 - Don't drive an editor with xdotool on a real display; use MCP or `jasperengine-editor call`.
+
+If a rule here fights the task in front of you, say so and get sign-off before breaking it.
