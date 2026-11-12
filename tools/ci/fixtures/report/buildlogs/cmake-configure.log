@@ -1,0 +1,26 @@
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+CMake Error at CMakeLists.txt:4 (find_package):
+  By not providing "FindNoSuchPackageAnywhere.cmake" in CMAKE_MODULE_PATH
+  this project has asked CMake to find a package configuration file provided
+  by "NoSuchPackageAnywhere", but CMake did not find one.
+
+  Could not find a package configuration file provided by
+  "NoSuchPackageAnywhere" with any of the following names:
+
+    NoSuchPackageAnywhere.cps
+    nosuchpackageanywhere.cps
+    NoSuchPackageAnywhereConfig.cmake
+    nosuchpackageanywhere-config.cmake
+
+  Add the installation prefix of "NoSuchPackageAnywhere" to CMAKE_PREFIX_PATH
+  or set "NoSuchPackageAnywhere_DIR" to a directory containing one of the
+  above files.  If "NoSuchPackageAnywhere" provides a separate development
+  package or SDK, be sure it has been installed.
+
+
+-- Configuring incomplete, errors occurred!
