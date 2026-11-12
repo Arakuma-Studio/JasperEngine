@@ -7,7 +7,7 @@ name: Nightly
 #   builds, the smoke test of every fixture on OpenGL, GLES3 and Vulkan, the threaded web build
 #   through the browser gate, and the prebuilt player's parity with the Compile path;
 # - the whole MCP suite CI can run (tools/ci/plan_lanes.py --event nightly), sharded, with the slow
-#   opt-ins; its per-test seconds become the `mcp-timings` cache PRs plan shards with;
+#   opt-ins, and the two export comparisons that need a smoke run first; its per-test seconds become the `mcp-timings` cache PRs plan shards with;
 # - the coverage map, recorded by a coverage-instrumented editor over the same shards and merged,
 #   saved as the `coverage-map` cache tools/check-changed selects MCP tests with;
 # - a nightly release (build-release.yml) when main moved since the newest nightly-*; 14 are kept.
@@ -224,6 +224,8 @@ jobs:
           path: build/ci-inputs/mcp-test-seconds.json
           key: mcp-timings-${{ github.run_id }}
           restore-keys: mcp-timings-
+      # plan_lanes.py lists the suite with run_tests.py --list, which runs under uv
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Plan
         id: plan
         run: |
@@ -285,6 +287,8 @@ jobs:
     timeout-minutes: 180
     strategy:
       fail-fast: false
+      # ~36 shards: the rest queue, and the other lanes still get runners (20 jobs at once)
+      max-parallel: 16
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
     env:
@@ -324,6 +328,54 @@ jobs:
         if: always()
         with:
           lane: mcp-${{ matrix.shard }}
+          status: ${{ job.status }}
+
+  # the two export comparisons that read a smoke run made first on the same machine
+  # (tools/ci/plan_lanes.py NIGHTLY_LEFT_OUT: an MCP shard does not make one)
+  export-checks:
+    name: Exported pixel fonts and Pixel FX against the Game view
+    needs: mcp-editor
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: tools/ci/nightly-export-checks.sh
+    steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        id: image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 2G
+          toolchain: ${{ steps.image.outputs.tag }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-editor-install
+          path: build
+      - name: Unpack the editor
+        run: mkdir -p build/linux && tar -C build/linux -xf build/editor-install.tar
+      - name: Smoke runs, then the two MCP files
+        run: tools/ci/logged.sh export-checks tools/ci/nightly-export-checks.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-evidence-export-checks
+          path: |
+            build/smoke/*.png
+            build/smoke/*.log
+            build/pfx-opengl/*.png
+            build/pfx-opengl/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: export-checks
           status: ${{ job.status }}
 
   # The shards' union (no planned test lost, none run twice) and their seconds, merged over the last
@@ -441,6 +493,8 @@ jobs:
     timeout-minutes: 300
     strategy:
       fail-fast: false
+      # (behind the MCP shards: together they stay inside the 20 jobs at once with room for the rest)
+      max-parallel: 8
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
     env:
@@ -596,7 +650,7 @@ jobs:
   # ----------------------------------------------------------------- report ---
   report:
     name: Report failures
-    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
+    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, export-checks, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
