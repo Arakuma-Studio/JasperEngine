@@ -26,7 +26,7 @@ FLAVOURS="${2:-release}"
 ci_check_flavours "$FLAVOURS" || ci_usage "flavours: release, development or \"release development\" (got '$FLAVOURS')"
 
 build_players() {
-    command -v cl >/dev/null 2>&1 || { echo "cl is not on PATH: run inside an MSVC developer environment (ilammy/msvc-dev-cmd, arch x64)" >&2; exit 1; }
+    ci_msvc
     local flavour pair variant suffix tree dev
     for flavour in $FLAVOURS; do
         dev=OFF
@@ -35,7 +35,7 @@ build_players() {
             variant="${pair%%:*}" suffix="${pair#*:}"
             tree="build/players-build/windows-x64-$BACKEND-$flavour${suffix:+-$suffix}"
             echo "== player windows-x64-$BACKEND-$flavour${suffix:+-$suffix} ($variant)"
-            cmake -S engine -B "$tree" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl \
+            cmake -S engine -B "$tree" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl "${MSVC_LINKER_ARGS[@]}" \
                 -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND="$BACKEND" -DJASPERENGINE_DEVELOPMENT_BUILD="$dev" \
                 -DJASPERENGINE_PLAYER_VARIANT="$variant" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
             cmake --build "$tree" --target jasperengine-player ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}

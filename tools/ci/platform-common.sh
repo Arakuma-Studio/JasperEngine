@@ -23,6 +23,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 RESULTS=build/test-results
 
+# The command a log starts with ("$ <command>", what tools/ci/report.py takes as the repro): the
+# script as run from the checkout, its arguments, and the variables of this file that change what it
+# does. A script that runs another one for its step exports it, so the log names the outer command.
+if [[ -z "${CI_LOG_COMMAND:-}" ]]; then
+    CI_LOG_COMMAND=""
+    for _name in ARCHS EDITOR_TESTS JASPERENGINE_VERSION WERROR XCODE_JOBS CMAKE_GENERATOR; do
+        [[ -n "${!_name:-}" ]] && CI_LOG_COMMAND+="$_name=$(printf '%q' "${!_name}") "
+    done
+    unset _name
+    CI_LOG_COMMAND+="$(printf '%q ' "tools/ci/$(basename "$0")" "$@")"
+    CI_LOG_COMMAND="${CI_LOG_COMMAND% }"
+fi
+
 # Git Bash on a Windows runner has `python` (python3 there can be the Store's stub that only opens
 # the Store); macOS and Linux have python3
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' >/dev/null 2>&1; then
@@ -66,6 +79,18 @@ cache_has() {
     tr -d '\r' < "$1" | grep -qxF -- "$2"
 }
 
+# MSVC_LINKER_ARGS: CMAKE_LINKER pinned to the link.exe beside cl. Under Git Bash /usr/bin/link (GNU
+# coreutils) is on PATH too; CMake looks beside the compiler first (CMakeFindBinUtils.cmake), so this
+# only makes that choice explicit and checks it
+ci_msvc() {
+    local cl
+    cl="$(command -v cl 2>/dev/null || true)"
+    [[ -n "$cl" ]] || { echo "cl is not on PATH: run inside an MSVC developer environment (ilammy/msvc-dev-cmd, arch x64)" >&2; exit 1; }
+    [[ -f "$(dirname "$cl")/link.exe" ]] || { echo "no link.exe beside $cl" >&2; exit 1; }
+    MSVC_LINKER_ARGS=("-DCMAKE_LINKER=$(ci_native "$(dirname "$cl")/link.exe")")
+    command -v ninja >/dev/null 2>&1 || { echo "ninja is not on PATH (Visual Studio's CMake tools or choco install ninja)" >&2; exit 1; }
+}
+
 ci_native() {
     if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi
 }
@@ -74,10 +99,11 @@ ci_logged() {
     local log="$RESULTS/$1.log"
     shift
     mkdir -p "$RESULTS"
+    echo "\$ $CI_LOG_COMMAND" > "$log"
     echo "log: $log" >&2
     local status=0
     set +e
-    ( set -e; "$@" ) 2>&1 | tee "$log"
+    ( set -e; "$@" ) 2>&1 | tee -a "$log"
     status=${PIPESTATUS[0]}
     set -e
     # the warnings per target of a build log, beside the job's other summaries (docs/testing.md "Warnings")

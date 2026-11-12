@@ -32,22 +32,17 @@ usage() { ci_usage "$(ci_header "${BASH_SOURCE[0]}")"; }
 EDITOR_TREE=build/windows/editor
 INSTALL="$ROOT/instdir"
 
-need_msvc() {
-    command -v cl >/dev/null 2>&1 || { echo "cl is not on PATH: run inside an MSVC developer environment (ilammy/msvc-dev-cmd, arch x64)" >&2; exit 1; }
-    command -v ninja >/dev/null 2>&1 || { echo "ninja is not on PATH (Visual Studio's CMake tools or choco install ninja)" >&2; exit 1; }
-}
-
 check_backend() {
     [[ "$1" =~ ^(d3d11|glcore|vulkan)$ ]] || ci_usage "backend: d3d11, glcore or vulkan (got $1)"
 }
 
 step_editor() {
-    need_msvc
+    ci_msvc
     local targets=(jasperengine-editor jasperengine-editor-cmd) tests=ON
     if [[ "${EDITOR_TESTS:-1}" == 0 ]]; then tests=OFF; else targets+=(jasperengine-editor-tests); fi
     cmake --preset windows-msvc-release -B "$EDITOR_TREE" -DCMAKE_BUILD_TYPE=Release \
         -DJASPERENGINE_TESTS:BOOL="$tests" -DJASPERENGINE_WERROR="$WERROR_VALUE" \
-        "-DCMAKE_INSTALL_PREFIX:PATH=$(ci_native "$INSTALL")" \
+        "-DCMAKE_INSTALL_PREFIX:PATH=$(ci_native "$INSTALL")" "${MSVC_LINKER_ARGS[@]}" \
         ${EDITOR_VERSION_ARGS[@]+"${EDITOR_VERSION_ARGS[@]}"} ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
     cmake --build "$EDITOR_TREE" --target "${targets[@]}" ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
     # (jasperengine-editor-cmd is EXCLUDE_FROM_ALL: installed because it was built above)
@@ -60,11 +55,11 @@ step_editor() {
 
 step_engine() {
     local backend="$1"
-    need_msvc
+    ci_msvc
     # Release, not the preset's RelWithDebInfo: MSVC's /Zi debug information goes to PDBs, which
     # ccache cannot cache
     cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
-        -DGRAPHIC_BACKEND="$backend" -DJASPERENGINE_WERROR="$WERROR_VALUE" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
+        -DGRAPHIC_BACKEND="$backend" -DJASPERENGINE_WERROR="$WERROR_VALUE" "${MSVC_LINKER_ARGS[@]}" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
     cmake --build "build/windows/engine-$backend" --target jasperengine-project jasperengine-core-tests ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
 }
 
@@ -126,7 +121,8 @@ case "$STEP" in
         ci_logged windows-tests step_tests "$backend" ;;
     compile-smoke)
         [[ $# -ge 1 && $# -le 2 ]] || usage
-        need_msvc
+        ci_msvc
+        export CI_LOG_COMMAND
         tools/ci/compile-smoke.sh "$INSTALL/bin/jasperengine-editor-cmd.exe" windows "$@" ;;
     package) [[ $# == 1 ]] || usage; ci_logged windows-package step_package "$1" ;;
     check-cli) [[ $# -le 1 ]] || usage; ci_logged windows-check-cli step_check_cli "${1:-}" ;;

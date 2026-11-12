@@ -175,6 +175,7 @@ case "$STEP" in
     compile-smoke)
         [[ $# -ge 1 && $# -le 2 ]] || usage
         need_ninja
+        export CI_LOG_COMMAND
         tools/ci/compile-smoke.sh "$EDITOR_BIN" macos "$@" ;;
     package) [[ $# == 1 ]] || usage; ci_logged macos-package step_package "$1" ;;
     check-cli) [[ $# -le 1 ]] || usage; ci_logged macos-check-cli step_check_cli "${1:-}" ;;
