@@ -101,6 +101,7 @@ jobs:
         if: always()
         with:
           lane: release-players-linux-${{ matrix.backend }}
+          status: ${{ job.status }}
 
   players-web:
     name: Players (web)
@@ -138,6 +139,7 @@ jobs:
         if: always()
         with:
           lane: release-players-web
+          status: ${{ job.status }}
 
   players-android:
     name: Players (Android)
@@ -175,6 +177,7 @@ jobs:
         if: always()
         with:
           lane: release-players-android
+          status: ${{ job.status }}
 
   players-windows:
     name: Players (Windows ${{ matrix.backend }})
@@ -221,6 +224,7 @@ jobs:
         if: always()
         with:
           lane: release-players-windows-${{ matrix.backend }}
+          status: ${{ job.status }}
 
   players-apple:
     name: Players (${{ matrix.target }})
@@ -259,6 +263,7 @@ jobs:
         if: always()
         with:
           lane: release-players-apple-${{ matrix.target }}
+          status: ${{ job.status }}
 
   # The table the editors compile in (docs/specs/S30-shipping.md D5): no release without every runtime
   player-hashes:
@@ -353,6 +358,7 @@ jobs:
         if: always()
         with:
           lane: release-editor-linux
+          status: ${{ job.status }}
 
   editor-windows:
     name: Editor (Windows)
@@ -405,6 +411,7 @@ jobs:
         if: always()
         with:
           lane: release-editor-windows
+          status: ${{ job.status }}
 
   editor-macos:
     name: Editor (macOS universal)
@@ -450,6 +457,7 @@ jobs:
         if: always()
         with:
           lane: release-editor-macos
+          status: ${{ job.status }}
 
   # ------------------------------------------------- the release editor end to end ---
   # S30 AC1-AC3 (and S06 AC20/AC21's no-COI fallback) with the release's own editor and archives,
@@ -482,11 +490,14 @@ jobs:
       - name: Unpack the release editor
         run: mkdir -p build/linux && tar -C build/linux -xf build/editor-linux-install.tar
       - name: Every archive installed by the release editor; a tampered one refused
-        run: tools/build.sh exec runtime tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players linux- web-
+        run: |
+          mkdir -p build/test-results
+          tools/build.sh exec runtime tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players linux- web- \
+            2>&1 | tee build/test-results/release-players.log
       - name: Player CLI in the no-compiler image
-        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py
+        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py 2>&1 | tee build/test-results/player-cli.log
       - name: Smoke test of the prebuilt player
-        run: SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
+        run: SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting 2>&1 | tee build/test-results/smoke-prebuilt.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -502,6 +513,7 @@ jobs:
         if: always()
         with:
           lane: release-prebuilt
+          status: ${{ job.status }}
 
   # S30 AC7: an Android game from the release's prebuilt player with the SDK's tools alone (no
   # NDK, CMake or Gradle): the App Bundle, one APK per ABI and the universal APK, checked
@@ -532,9 +544,12 @@ jobs:
       - name: Unpack the release editor
         run: mkdir -p build/linux && tar -C build/linux -xf build/editor-linux-install.tar
       - name: Install the Android runtimes with the release editor
-        run: tools/build.sh exec android tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players android-
+        run: |
+          mkdir -p build/test-results
+          tools/build.sh exec android tools/ci/release-players.sh "$JASPERENGINE_VERSION" build/player-archives build/players android- \
+            2>&1 | tee build/test-results/release-players-android.log
       - name: AC7
-        run: tools/ci/android_ac7.sh
+        run: tools/ci/android_ac7.sh 2>&1 | tee build/test-results/android-ac7.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -546,6 +561,7 @@ jobs:
         if: always()
         with:
           lane: release-prebuilt-android
+          status: ${{ job.status }}
 
   # ------------------------------------------------------------------ publish ---
   publish:
@@ -581,7 +597,9 @@ jobs:
         run: |
           dry=()
           [[ "$DRY_RUN" == true ]] && dry=(--dry-run)
-          tools/ci/release.sh publish "$CHANNEL" "$JASPERENGINE_VERSION" "$COMMIT" build/release-assets ${dry[@]+"${dry[@]}"}
+          mkdir -p build/test-results
+          tools/ci/release.sh publish "$CHANNEL" "$JASPERENGINE_VERSION" "$COMMIT" build/release-assets ${dry[@]+"${dry[@]}"} \
+            2>&1 | tee build/test-results/release-publish.log
 
   # AC9: the published AppImage, as a user downloads it, matches SHA256SUMS and downloads its own
   # player runtime from its own release (hash-checked against its table)
@@ -605,8 +623,11 @@ jobs:
       - name: The published AppImage downloads linux-x64-glcore-release from its release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: tools/ci/check-published.sh "$JASPERENGINE_VERSION" linux-x64-glcore-release
+        run: |
+          mkdir -p build/test-results
+          tools/ci/check-published.sh "$JASPERENGINE_VERSION" linux-x64-glcore-release 2>&1 | tee build/test-results/release-published.log
       - uses: ./.github/actions/report
         if: always()
         with:
           lane: release-published
+          status: ${{ job.status }}

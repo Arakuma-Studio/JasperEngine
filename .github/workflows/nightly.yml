@@ -120,6 +120,7 @@ jobs:
         if: always()
         with:
           lane: ${{ matrix.suite.id }}
+          status: ${{ job.status }}
 
   web-threads:
     name: Web with pthreads, browser gate
@@ -144,7 +145,7 @@ jobs:
           mkdir -p build/test-results
           WEB_THREADS=1 tools/build.sh web 2>&1 | tee build/test-results/web-threads-build.log
       - name: Browser gate (cross-origin isolated)
-        run: GATE=sample-project-threads tools/build.sh web-gate
+        run: GATE=sample-project-threads tools/build.sh web-gate 2>&1 | tee build/test-results/web-threads-gate.log
       # the red control: served without COOP/COEP a threaded build cannot start, and the gate must say so
       - name: Browser gate without cross-origin isolation fails
         run: |
@@ -156,6 +157,7 @@ jobs:
         if: always()
         with:
           lane: web-threads
+          status: ${{ job.status }}
 
   # S30 AC5: every Lua-only fixture looks the same built from source and with the prebuilt player
   parity:
@@ -184,13 +186,13 @@ jobs:
           { SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players; } \
             2>&1 | tee build/test-results/parity-build.log
       - name: Compile and prebuilt frames of every Lua-only fixture
-        run: tools/ci/parity.sh
+        run: tools/ci/parity.sh 2>&1 | tee build/test-results/parity.log
       # (the no-compiler image from here on)
       - uses: ./.github/actions/image
         with:
           target: runtime
       - name: The player CLI on Vulkan (lavapipe)
-        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan
+        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan 2>&1 | tee build/test-results/player-cli-vulkan.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -205,6 +207,7 @@ jobs:
         if: always()
         with:
           lane: parity
+          status: ${{ job.status }}
 
   # --------------------------------------------------------- the MCP suite ---
   plan:
@@ -270,6 +273,7 @@ jobs:
         if: always()
         with:
           lane: nightly-editor
+          status: ${{ job.status }}
 
   mcp:
     name: MCP shard ${{ matrix.shard }}
@@ -316,6 +320,7 @@ jobs:
         if: always()
         with:
           lane: mcp-${{ matrix.shard }}
+          status: ${{ job.status }}
 
   # The shards' union (no planned test lost, none run twice) and their seconds, merged over the last
   # ones (a shard that died keeps its tests' earlier times): the `mcp-timings` cache
@@ -422,6 +427,7 @@ jobs:
         if: always()
         with:
           lane: coverage-editor
+          status: ${{ job.status }}
 
   coverage:
     name: Coverage shard ${{ matrix.shard }}
