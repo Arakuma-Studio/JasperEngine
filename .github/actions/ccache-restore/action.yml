@@ -28,7 +28,7 @@ runs:
         if ! command -v ccache > /dev/null; then
             if [[ "$RUNNER_OS" == Windows ]]; then choco install ccache --no-progress -y; else brew install ccache; fi
         fi
-        ccache --version | head -1
+        ccache --version | sed -n 1p
 
     - name: Cache key
       id: key
@@ -40,7 +40,7 @@ runs:
       run: |
         toolchain="$GIVEN_TOOLCHAIN"
         if [[ -z "$toolchain" && "$RUNNER_OS" == Windows ]]; then toolchain="msvc${VCToolsVersion:-unknown}"; fi
-        if [[ -z "$toolchain" && "$RUNNER_OS" == macOS ]]; then toolchain="$(xcodebuild -version | head -1 | tr -cd 'A-Za-z0-9.')"; fi
+        if [[ -z "$toolchain" && "$RUNNER_OS" == macOS ]]; then toolchain="$(xcodebuild -version | sed -n 1p | tr -cd 'A-Za-z0-9.')"; fi
         [[ -n "$toolchain" ]] || { echo "::error::ccache-restore: no toolchain for lane $LANE"; exit 1; }
         prefix="ccache-$LANE-$toolchain-"
         # absolute (a compiler runs in its build directory); D:/... on Windows
