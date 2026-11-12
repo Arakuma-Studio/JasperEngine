@@ -45,12 +45,13 @@ class GtestGateTest(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def gate(self, xml: str | None, min_tests: int = 1, max_skipped: int = 0) -> tuple[int, str]:
+    def gate(self, xml: str | None, min_tests: int = 1, max_skipped: int = 0,
+             allow_reasons: list[str] | None = None) -> tuple[int, str]:
         path = self.root / "results.xml"
         if xml is not None:
             path.write_text(xml)
         out = io.StringIO()
-        return gtest_gate.gate([path], min_tests, max_skipped, out), out.getvalue()
+        return gtest_gate.gate([path], min_tests, max_skipped, out, allow_reasons or []), out.getvalue()
 
     def test_passing_run_passes(self):
         status, out = self.gate(document(PASSED, PASSED))
@@ -87,6 +88,17 @@ class GtestGateTest(unittest.TestCase):
     def test_allowed_skips_pass(self):
         status, out = self.gate(document(PASSED, SKIPPED), max_skipped=1)
         self.assertEqual(status, 0, out)
+
+    def test_skip_with_an_allowed_reason_is_not_counted(self):
+        alloc = case("CountsAllocations", '<skipped message="this binary cannot count allocations"/>', result="skipped")
+        status, out = self.gate(document(PASSED, alloc), max_skipped=0, allow_reasons=["count allocations"])
+        self.assertEqual(status, 0, out)
+        self.assertIn("skipped (allowed: count allocations)", out)
+
+    def test_skip_with_another_reason_still_counts(self):
+        status, out = self.gate(document(PASSED, SKIPPED), max_skipped=0, allow_reasons=["count allocations"])
+        self.assertEqual(status, 1, out)
+        self.assertIn("1 tests skipped, at most 0 allowed", out)
 
     def test_skipped_tests_do_not_count_as_run(self):
         status, out = self.gate(document(SKIPPED), max_skipped=5)

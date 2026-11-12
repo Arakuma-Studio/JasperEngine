@@ -101,8 +101,10 @@ step_tests() {
     # docs/testing.md); minimum counts and skip limit as tools/build.sh unit-tests
     "$core" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/core-macos.xml" || status=1
     "$editor" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/editor-macos.xml" || status=1
-    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/core-macos.xml" --min-tests "$(min_tests CORE_MIN_TESTS)" --max-skipped 0 || status=1
-    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/editor-macos.xml" --min-tests "$(min_tests EDITOR_MIN_TESTS)" --max-skipped 0 || status=1
+    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/core-macos.xml" --min-tests "$(min_tests CORE_MIN_TESTS)" --max-skipped 0 \
+        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
+    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/editor-macos.xml" --min-tests "$(min_tests EDITOR_MIN_TESTS)" --max-skipped 0 \
+        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
     return "$status"
 }
 
