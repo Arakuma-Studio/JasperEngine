@@ -28,15 +28,15 @@ class Gate(unittest.TestCase):
         code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), ("test_web.py::test_latency", "skip", "no web")),
                                 ALLOWED, "mcp")
         self.assertEqual(code, 0, lines)
-        self.assertIn("allowed skip test_web.py::test_latency", "\n".join(lines))
+        self.assertIn("mcp_gate: allowed skip test_web.py::test_latency", "\n".join(lines))
         self.assertIn("2 ran: 1 passed, 0 failed, 1 skipped (1 allowed)", lines[-1])
 
     def test_each_failure(self):
         cases = {
-            "FAIL test_a.py::test_x: AssertionError: 3 != 4": results(("test_a.py::test_x", "fail", "Traceback\nAssertionError: 3 != 4")),
-            "CRASH test_b.py (worker exit 1)": results(("test_a.py::test_x", "pass", ""), crashed=["test_b.py (worker exit 1)"]),
-            "no test ran": results(),
-            "is not in the allow list": results(("test_a.py::test_y", "skip", "needs xdotool")),
+            "mcp_gate: FAIL: test_a.py::test_x failed: AssertionError: 3 != 4": results(("test_a.py::test_x", "fail", "Traceback\nAssertionError: 3 != 4")),
+            "mcp_gate: FAIL: worker crashed: test_b.py (worker exit 1)": results(("test_a.py::test_x", "pass", ""), crashed=["test_b.py (worker exit 1)"]),
+            "mcp_gate: FAIL: no test ran": results(),
+            "mcp_gate: FAIL: test_a.py::test_y skipped, and the allow list": results(("test_a.py::test_y", "skip", "needs xdotool")),
         }
         for needle, res in cases.items():
             code, lines = gate.gate(res, ALLOWED, "mcp")
@@ -45,19 +45,24 @@ class Gate(unittest.TestCase):
         # an allowed skip in the lane the list says it runs in: it must run there
         code, lines = gate.gate(results(("test_web.py::test_latency", "skip", "no web")), ALLOWED, "nightly")
         self.assertEqual(code, 1)
-        self.assertIn("which is this lane", "\n".join(lines))
+        self.assertIn("mcp_gate: FAIL: test_web.py::test_latency skipped, but", "\n".join(lines))
         # no results at all
         self.assertEqual(gate.gate(None, ALLOWED, "mcp")[0], 1)
+        # every failure is its own line, and none reads as a count
+        code, lines = gate.gate(results(("test_a.py::test_x", "fail", "e"), ("test_a.py::test_y", "fail", "e")), ALLOWED, "mcp")
+        fails = [line for line in lines if line.startswith("mcp_gate: FAIL: ")]
+        self.assertEqual(len(fails), 2)
+        self.assertFalse([line for line in fails if line[len("mcp_gate: FAIL: "):][:1].isdigit()])
 
     def test_the_plan_union(self):
         plan = {"chunks": [{"file": "test_a.py", "tests": ["test_x", "test_y"]}]}
         code, lines = gate.gate(results(("test_a.py::test_x", "pass", "")), ALLOWED, "mcp", plan)
         self.assertEqual(code, 1)
-        self.assertIn("MISSING test_a.py::test_y", "\n".join(lines))
+        self.assertIn("mcp_gate: FAIL: test_a.py::test_y was planned and not reported", "\n".join(lines))
         code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), ("test_a.py::test_y", "pass", ""),
                                         ("test_a.py::test_y", "pass", ""), ("test_b.py::test_z", "pass", "")), ALLOWED, "mcp", plan)
-        self.assertIn("DUPLICATE test_a.py::test_y", "\n".join(lines))
-        self.assertIn("UNKNOWN test_b.py::test_z", "\n".join(lines))
+        self.assertIn("mcp_gate: FAIL: test_a.py::test_y was reported 2 times", "\n".join(lines))
+        self.assertIn("mcp_gate: FAIL: test_b.py::test_z was reported and not planned", "\n".join(lines))
         code, _ = gate.gate(results(("test_a.py::test_x", "pass", ""), ("test_a.py::test_y", "pass", "")), ALLOWED, "mcp", plan)
         self.assertEqual(code, 0)
 
