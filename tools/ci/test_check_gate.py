@@ -145,6 +145,13 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+FAIL: 0 tests ran$")
 
+    def test_push_build_only_lanes_need_no_tests(self):
+        # push to main builds the test trees (RUN=0) to warm caches; the queue already ran the tests
+        p = plan(event="push", off=("mcp", "smoke"))
+        status, out = self.gate(needs_for(p), p, reports_for(p, ran={"unit": 0, "asan": 0, "htmlui": 0}))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(build only on push\)$")
+
     def test_zero_test_mcp_shard_fails(self):
         p = plan()
         status, out = self.gate(needs_for(p), p, reports_for(p, ran={"mcp-2": 0}))

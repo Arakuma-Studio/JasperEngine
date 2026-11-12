@@ -65,6 +65,10 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
 
     def tests_verdict(job: str, result: str, lane_name: str) -> None:
         is_advisory = lane_name in advisory_set
+        if event == "push" and lane_name != "mcp":
+            # push to main only builds the test trees to warm caches (design §7.2); the queue ran them
+            row(job, result, "ok (build only on push)", False)
+            return
         r = reports.get(job)
         if r is None:
             problem = "no report, so no proof tests ran"
