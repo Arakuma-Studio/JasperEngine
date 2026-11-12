@@ -24,13 +24,16 @@ runs:
         REF: ${{ github.ref }}
       run: |
         save=false
+        if [[ -z "${JASPER_CCACHE_LANE:-}" ]]; then
+            echo "ccache-save: ccache-restore did not run"; echo "save=false" >> "$GITHUB_OUTPUT"; exit 0
+        fi
         if [[ "$JASPER_CCACHE_LANE" != "$LANE" ]]; then
             echo "::error::ccache-save: lane $LANE, but ccache-restore ran for '${JASPER_CCACHE_LANE:-}'"; exit 1
         fi
         if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
             # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
             new="$(find build/.cache/ccache -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
-                ! -name ccache.conf ! -path '*/tmp/*' 2> /dev/null | head -1)"
+                ! -name ccache.conf ! -path '*/tmp/*' -print -quit 2> /dev/null || true)"
             if [[ -n "$new" ]]; then save=true; else echo "ccache-save: nothing new since the restore"; fi
         else
             echo "ccache-save: $EVENT runs restore only"
