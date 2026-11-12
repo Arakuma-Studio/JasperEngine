@@ -1,0 +1,42 @@
+{
+ "suite": "ci",
+ "files": [
+  "test_crashes.py",
+  "test_tileset.py"
+ ],
+ "chunks": 2,
+ "plan": null,
+ "left_out": [
+  {
+   "file": "test_ecs.py",
+   "reason": "long-running: the nightly full suite runs it"
+  }
+ ],
+ "passed": 1,
+ "failed": 1,
+ "skipped": 1,
+ "crashed": [
+  "test_crashes.py (worker exit 3)"
+ ],
+ "seconds": 2.4,
+ "results": [
+  {
+   "name": "test_tileset.py::test_paint",
+   "status": "pass",
+   "detail": "",
+   "seconds": 0.0
+  },
+  {
+   "name": "test_tileset.py::test_undo_paint",
+   "status": "fail",
+   "detail": "Traceback (most recent call last):\n  File \"/src/tools/mcp/run_tests.py\", line 160, in _run_file\n    await asyncio.wait_for(fn(), timeout)\n  File \"/usr/lib/python3.13/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/src/tools/mcp/tests/test_tileset.py\", line 9, in test_undo_paint\n    assert tiles == 3, f\"expected 3 tiles after undo, got {tiles}\"\n           ^^^^^^^^^^\nAssertionError: expected 3 tiles after undo, got 4",
+   "seconds": 0.0
+  },
+  {
+   "name": "test_tileset.py::test_web_latency",
+   "status": "skip",
+   "detail": "needs the mesh-raycast web build",
+   "seconds": 0.0
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+> Task :app:configureCMakeDebug[arm64-v8a]
+> Task :app:buildCMakeDebug[arm64-v8a] FAILED
+C/C++: ninja: Entering directory `/src/engine/workspaces/android/app/.cxx/Debug/4x1b3j6n/arm64-v8a'
+C/C++: /src/engine/platform/android/AndroidMain.cpp:42:5: error: use of undeclared identifier 'ANativeActivity_noSuch'
+C/C++:    42 |     ANativeActivity_noSuch(activity);
+C/C++:       |     ^
+C/C++: 1 error generated.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:buildCMakeDebug[arm64-v8a]'.
+> com.android.ide.common.process.ProcessException: ninja: Entering directory `/src/engine/workspaces/android/app/.cxx/Debug/4x1b3j6n/arm64-v8a'
+  [1/412] Building CXX object CMakeFiles/jasperengine.dir/src/engine/platform/android/AndroidMain.cpp.o
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+
+BUILD FAILED in 1m 12s
