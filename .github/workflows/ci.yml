@@ -102,19 +102,22 @@ jobs:
           key: mcp-timings-${{ github.run_id }}
           restore-keys: mcp-timings-
 
+      # plan_lanes.py lists the MCP suite with run_tests.py --list, which runs under uv (64 tests are made at run time)
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
       - name: Plan the lanes
         id: plan
         env:
           EVENT: ${{ github.event_name }}
           FULL: ${{ inputs.full }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
           MQ_HEAD: ${{ github.event.merge_group.head_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           case "$EVENT" in
-              pull_request) event=pull_request base="$PR_BASE" head="$PR_HEAD" ;;
+              # the checked-out merge commit: base..HEAD is exactly the PR, and no scratch checkout is needed
+              pull_request) event=pull_request base="$PR_BASE" head="$(git rev-parse HEAD)" ;;
               merge_group) event=merge_group base="$MQ_BASE" head="$MQ_HEAD" ;;
               push) event=push base="$PUSH_BEFORE" head="$GITHUB_SHA" ;;
               *)
