@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # The lint lane of .github/workflows/ci.yml: every source lint and every self-test of the repository's
-# own tooling, plain python3 and bash on the host (no image, no build). Runs every check, prints each
-# failure as `lint: FAILED <command>` and exits 1 when one failed. Output also goes to
-# build/test-results/lint.log.
+# own tooling, plain python3 and bash on the host (no image, no build). Runs every check, prints a
+# failing one's output and `lint: FAILED <command>`, and exits 1 when one failed.
 #
 #   tools/ci/lint.sh [--actionlint <path>]
 #
@@ -17,26 +16,21 @@ ACTIONLINT="$(command -v actionlint || true)"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --actionlint) ACTIONLINT="${2:?--actionlint <path>}"; shift 2 ;;
-        *) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        *) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
     esac
 done
-mkdir -p build/test-results
-LOG=build/test-results/lint.log
-: > "$LOG"
 FAILED=()
 
 OUT="$(mktemp)"
 trap 'rm -f "$OUT"' EXIT
 check() {
-    echo "lint: $*" | tee -a "$LOG"
+    echo "lint: $*"
     local status=0
     "$@" > "$OUT" 2>&1 || status=$?
-    cat "$OUT" >> "$LOG"
     [[ $status == 0 ]] && return
     FAILED+=("$*")
-    # the failing check's output, on the console too
-    tail -n 40 "$OUT"
-    echo "lint: FAILED $*" | tee -a "$LOG"
+    tail -n 200 "$OUT"
+    echo "lint: FAILED $*"
 }
 
 # every `uses:` outside the repository's own actions names a 40-hex commit (AC11; a tag can move)
@@ -101,12 +95,12 @@ check pinned_uses
 if [[ -n "$ACTIONLINT" ]]; then
     check "$ACTIONLINT" -no-color
 else
-    echo "lint: NOT RUN actionlint (not on PATH; pass --actionlint <path>)" | tee -a "$LOG"
+    echo "lint: NOT RUN actionlint (not on PATH; pass --actionlint <path>)"
 fi
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
-    echo "lint: ${#FAILED[@]} check(s) failed:" | tee -a "$LOG"
-    printf '  %s\n' "${FAILED[@]}" | tee -a "$LOG"
+    echo "lint: ${#FAILED[@]} check(s) failed:"
+    printf '  %s\n' "${FAILED[@]}"
     exit 1
 fi
-echo "lint: every check passed" | tee -a "$LOG"
+echo "lint: every check passed"
