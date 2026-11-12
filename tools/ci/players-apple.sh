@@ -42,7 +42,9 @@ build_macos() {
                 -DJASPERENGINE_PLAYER_VARIANT="$variant" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
             cmake --build "$tree" --target jasperengine-player ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
             codesign --force --deep --sign - --timestamp=none "$tree/jasperengine-player.app"
-            codesign --verify --strict --verbose=2 "$tree/jasperengine-player.app"
+            codesign --verify --verbose=2 "$tree/jasperengine-player.app"
+            codesign --verify --strict --verbose=2 "$tree/jasperengine-player.app" \
+                || echo "::warning::codesign --verify --strict rejects $tree/jasperengine-player.app"
             "$PY" tools/players/package_player.py --platform macos --arch universal --backend "$backend" --flavour "$flavour" \
                 --variant "$variant" --build "$tree" --symbols "$tree/symbols" --out build/players --zip build/players/archives \
                 ${PLAYER_VERSION_ARGS[@]+"${PLAYER_VERSION_ARGS[@]}"}

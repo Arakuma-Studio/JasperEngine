@@ -11,6 +11,9 @@
 #   ci_usage <text>                     prints the usage and exits 2 (bad arguments)
 #   ci_native <path>                    the path as native tools take it (C:/... under Git Bash)
 #   ci_zip_dir <dir> <zip>              zips the contents of dir (mode bits kept: a Unix executable stays one)
+#   cache_has <CMakeCache.txt> <line>   whether a build tree was configured with that cache entry
+#   ci_player_variants <flavour>        the player variants a flavour builds, as name:suffix pairs
+#   ci_check_flavours "<flavours>"      whether that is a list of release and development
 #
 # Environment: JASPERENGINE_VERSION (the version stamped into editors and players; default git describe,
 # as CMakeLists.txt asks), JOBS (build parallelism), WERROR=1 (warnings of our targets are errors),
