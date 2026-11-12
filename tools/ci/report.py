@@ -336,6 +336,45 @@ GATE_REPEATS_RE = re.compile(r"^\d+ (?:tests? )?(?:failed|crashed)\b")
 RUN_RE = re.compile(r"^\[ RUN      \] (\S+)$")
 END_RE = re.compile(r"^\[ +(?:OK|FAILED|SKIPPED) +\] (\S+)")
 SMOKE_STEP_RE = re.compile(r"^== (.+)$")
+SANITIZER_RE = re.compile(r"^==\d+==ERROR: (?P<san>\w+Sanitizer): (?P<msg>.+)$|^WARNING: (?P<tsan>ThreadSanitizer): (?P<tmsg>.+?)(?: \(pid=\d+\))?$")
+UBSAN_RE = re.compile(r"^(?P<file>[^\s:][^:]*?):(?P<line>\d+):(?:\d+:)? runtime error: (?P<msg>.+)$")
+FRAME_RE = re.compile(r"^\s+#\d+ 0x[0-9a-f]+ in (?P<fn>.+?) (?P<file>[^\s()]+):(?P<line>\d+)(?::\d+)?$")
+TESTBODY_RE = re.compile(r"\b([A-Za-z0-9]+)_([A-Za-z0-9]+)_Test::TestBody\(\)")
+
+
+def repo_frame(lines: list[str]) -> tuple[str, str]:
+    """The first stack frame in this repository's code (location), and the googletest test it is in."""
+    location, test = "", ""
+    for line in lines:
+        m = FRAME_RE.match(line)
+        if not m:
+            continue
+        path = relative_path(m.group("file"))
+        if not location and not path.startswith(("/", "../", "libs/")):
+            location = f"{path}:{m.group('line')}"
+        t = TESTBODY_RE.search(m.group("fn"))
+        if t and not test:
+            test = f"{t.group(1)}.{t.group(2)}"
+        if location and test:
+            break
+    return location, test
+
+
+def sanitizer_block(lines: list[str], i: int) -> list[str]:
+    block = []
+    for line in lines[i:i + 80]:
+        block.append(line)
+        if line.startswith("SUMMARY: ") or re.match(r"^==\d+==ABORTING", line):
+            break
+    return block
+
+
+def next_result_stem(lines: list[str], i: int) -> str:
+    for later in lines[i:]:
+        m = re.match(r"^gtest-gate: (\S+?)\.xml", later)
+        if m:
+            return Path(m.group(1)).name
+    return ""
 
 
 def diagnostic_at(lines: list[str], i: int) -> tuple[str, str, bool] | None:
@@ -429,7 +468,9 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list
     failures: list[dict] = []
     # googletest console: a test that started and never ended crashed the binary
     running, crashed_at = None, []
+    running_at: list[str] = []
     for i, line in enumerate(lines):
+        running_at.append(running[0] if running else "")
         m = RUN_RE.match(line)
         if m:
             if running:
@@ -443,19 +484,46 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list
             running = None
     if running:
         crashed_at.append(running)
+    consumed: set[int] = set()
     for name, i in crashed_at:
-        after = []
-        stem = ""
-        for later in lines[i + 1:]:
-            m = re.match(r"^gtest-gate: (\S+?)\.xml", later)
-            if m:
-                stem = Path(m.group(1)).name
-                break
-            if RUN_RE.match(later):
-                break
-            after.append(later)
-        failures.append(make_failure("test", f"{name} crashed", "", relative_text(tail(after, EXCERPT_LINES)) or "(no output)",
-                                     narrow_gtest(repro, stem, name)))
+        end = next((j for j in range(i + 1, len(lines)) if RUN_RE.match(lines[j]) or lines[j].startswith(("[==========]", "gtest-gate: "))),
+                   len(lines))
+        after = lines[i + 1:end]
+        consumed.update(range(i + 1, end))
+        title, location = f"{name} crashed", ""
+        start = next((k for k, l in enumerate(after) if SANITIZER_RE.match(l)), None)
+        if start is not None:
+            m = SANITIZER_RE.match(after[start])
+            what = re.sub(r" on (?:address|unknown address) 0x[0-9a-f]+.*$", "", m.group("msg") or m.group("tmsg"))
+            title = f"{name} crashed: {m.group('san') or m.group('tsan')}: {what}"
+            after = after[start:]
+            location = repo_frame(after)[0]
+        failures.append(make_failure("test", title, location, relative_text("\n".join(after[:EXCERPT_LINES])) or "(no output)",
+                                     narrow_gtest(repro, next_result_stem(lines, end), name)))
+
+    # sanitizer reports outside a crashed test: UBSan's runtime errors, a leak at exit, a data race
+    for i, line in enumerate(lines):
+        if i in consumed:
+            continue
+        m = UBSAN_RE.match(line)
+        if m:
+            frames = [l for l in lines[i + 1:i + 6] if FRAME_RE.match(l)]
+            test = running_at[i] or repo_frame(lines[i + 1:i + 30])[1]
+            failures.append(make_failure("test", f"runtime error: {m.group('msg')}", f"{relative_path(m.group('file'))}:{m.group('line')}",
+                                         relative_text("\n".join([line] + frames[:4])),
+                                         narrow_gtest(repro, next_result_stem(lines, i), test) if test else repro))
+            continue
+        m = SANITIZER_RE.match(line)
+        if m:
+            block = sanitizer_block(lines, i)
+            consumed.update(range(i, i + len(block)))
+            location, test = repo_frame(block)
+            test = test or running_at[i]
+            what = re.sub(r" on (?:address|unknown address) 0x[0-9a-f]+.*$", "", m.group("msg") or m.group("tmsg"))
+            excerpt = block[:EXCERPT_LINES - 1] + ([block[-1]] if len(block) >= EXCERPT_LINES else [])
+            failures.append(make_failure("test", f"{m.group('san') or m.group('tsan')}: {what}", location,
+                                         relative_text("\n".join(excerpt)),
+                                         narrow_gtest(repro, next_result_stem(lines, i), test) if test else repro))
 
     # gate verdicts
     for i, line in enumerate(lines):

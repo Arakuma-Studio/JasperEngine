@@ -10,6 +10,8 @@ Fixtures in tools/ci/fixtures/report/, and where each comes from:
   gtest/core.xml, unit.log  a real googletest run (libs/googletest) with two failures, a skip and a
                             disabled test, plus tools/ci/gtest-gate.py's verdict
   gtest/crash.log           the same binary segfaulting inside a test: no XML, the gate's message
+  gtest/asan-*.log          the same googletest built with -fsanitize=address,undefined: a UBSan runtime
+                            error and a LeakSanitizer report after a green run; a heap-use-after-free abort
   mcp/mcp.json, mcp-run.log a real tools/mcp/run_tests.py --suite ci --json run of scratch test files
                             (one failure, one skip, one worker crash, one left-out file); the host's
                             checkout prefix was rewritten to /src/
@@ -101,6 +103,26 @@ class GtestTest(unittest.TestCase):
                                               "UNIT_TEST_ARGS=--gtest_filter=Crash.Segfaults tools/build.sh unit-tests")
         # the gate's "missing" line says the same thing: it is not repeated
         self.assertFalse([f for f in failures if "missing" in f["title"]], titles(failures))
+
+    def test_asan_abort_names_the_test_and_the_frame(self):
+        failures = report.parse_log(FIXTURES / "gtest" / "asan-uaf.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(titles(failures), ["UseAfterFree.Reads crashed: AddressSanitizer: heap-use-after-free"])
+        self.assertEqual(locations(failures), ["engine/tests/core/SanitizerFixtureTest.cpp:6"])
+        self.assertTrue(failures[0]["excerpt"].startswith("==22==ERROR: AddressSanitizer: heap-use-after-free"))
+        self.assertEqual(failures[0]["repro"], "SANITIZE=address,undefined UNIT_SUITE=editor "
+                                               "UNIT_TEST_ARGS=--gtest_filter=UseAfterFree.Reads tools/build.sh unit-tests")
+
+    def test_ubsan_and_leak_after_a_green_run(self):
+        failures = report.parse_log(FIXTURES / "gtest" / "asan-leak.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(titles(failures), ["runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'",
+                                            "LeakSanitizer: detected memory leaks"])
+        self.assertEqual(locations(failures), ["engine/tests/core/SanitizerFixtureTest.cpp:4",
+                                               "engine/tests/core/SanitizerFixtureTest.cpp:5"])
+        self.assertEqual([f["kind"] for f in failures], ["test", "test"])
+        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Overflow.Adds", failures[0]["repro"])
+        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Leaks.Allocates", failures[1]["repro"])
+        self.assertIn("UNIT_SUITE=core", failures[1]["repro"])
+        self.assertIn("SUMMARY: AddressSanitizer: 64 byte(s) leaked", failures[1]["excerpt"])
 
     def test_gate_line_without_xml_failures(self):
         failures = report.parse_log(FIXTURES / "gtest" / "unit.log", UNIT_REPRO)
