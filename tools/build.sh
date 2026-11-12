@@ -22,6 +22,8 @@
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
 #                                      (target runtime: the no-compiler image, docker/runtime.Dockerfile:
 #                                      exec runtime python3 tools/ci/test_player_cli.py runs the S30 player CLI test)
+#   tools/build.sh image-tag <target>  the content hash the target's image is tagged with, which CI's GHCR
+#                                      images share (linux, web, android, linux-backends, runtime)
 #
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
@@ -36,7 +38,8 @@
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
-# instead of building docker/<target>.Dockerfile (CI's prebuilt images).
+# instead of building docker/<target>.Dockerfile (CI pulls ghcr.io/<owner>/jasperengine-<target>-build:
+# <image-tag> and passes it, .github/actions/image).
 # unit-tests: UNIT_TEST_ARGS goes to both test binaries (e.g. --gtest_filter=Vector3.*), RUN=0
 # builds only, UNIT_SUITE=core or editor builds and runs one of the two; JASPER_TEST_UPDATE_GOLDEN=1
 # rewrites the core goldens (glcore only) and the reflection snapshot; JASPER_REFLECT_WRITE_FIXTURE=1
@@ -91,12 +94,35 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,78p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
+}
+
+# The tag of a target's image: a hash of its Dockerfile and of what that COPYs or ADDs from docker/
+# (12 hex). linux-backends is built FROM the linux image of that image's hash (its BASE argument),
+# so the linux image's hash is part of its own. CI's GHCR images carry the same tags (image-tag).
+image_hash() {
+    local file="$ROOT/docker/$1.Dockerfile"
+    {
+        cat "$file"
+        # the build-context sources of COPY and ADD (not a --from stage's)
+        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
+                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
+                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
+             }' "$file" | while read -r source; do
+            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
+        done
+        if [[ "$1" == linux-backends ]]; then echo "FROM linux $(image_hash linux)"; fi
+    } | sha256sum | cut -c1-12
 }
 
 [[ $# -ge 1 ]] || usage
 TARGET="$1"; shift
+if [[ "$TARGET" == image-tag ]]; then
+    [[ $# -eq 1 && "$1" =~ ^[a-z0-9-]+$ && -f "$ROOT/docker/$1.Dockerfile" ]] || usage
+    image_hash "$1"
+    exit 0
+fi
 CLEAN=0
 SHELL_MODE=0
 EXEC_MODE=0
@@ -157,23 +183,10 @@ if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUI
         || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
-# a hash of its Dockerfile and of what that COPYs or ADDs from docker/ (jasperengine/<target>-build:
-# <12 hex>), and :latest names the newest build (for people): worktrees with different Dockerfiles
-# each keep theirs, instead of retagging one name back and forth and leaving the other image
-# untagged, for a prune to delete under a job that still runs it. The containers run it by id.
-image_hash() {
-    local file="$ROOT/docker/$1.Dockerfile"
-    {
-        cat "$file"
-        # the build-context sources of COPY and ADD (not a --from stage's)
-        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
-                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
-                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
-             }' "$file" | while read -r source; do
-            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
-        done
-    } | sha256sum | cut -c1-12
-}
+# image_hash (above, jasperengine/<target>-build:<12 hex>), and :latest names the newest build (for
+# people): worktrees with different Dockerfiles each keep theirs, instead of retagging one name back and
+# forth and leaving the other image untagged, for a prune to delete under a job that still runs it. The
+# containers run it by id.
 # Already inside the Linux build image (rb.sh --img, tools/check-changed there): no Docker; the
 # targets of that image run here directly, with the same environment (IN_IMAGE=1)
 IN_IMAGE=0
@@ -205,7 +218,8 @@ fi
 # headers and library of docker/linux-backends.Dockerfile (built on this image, as
 # tools/smoke-test.sh does)
 if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" == gles3 && $IN_IMAGE == 0 && -z "${JASPER_DOCKER_IMAGE:-}" ]]; then
-    IMAGE_ID="$(docker build -q -t jasperengine/linux-backends -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
+    IMAGE_ID="$(docker build -q -t "jasperengine/linux-backends:$(image_hash linux-backends)" -t jasperengine/linux-backends:latest \
+        --build-arg "BASE=$IMAGE:$(image_hash linux)" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
 fi
 
 # SANITIZE=address,undefined | thread: the CMake list, and the suffix of the build directories
