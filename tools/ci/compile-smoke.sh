@@ -45,9 +45,12 @@ smoke() {
     [[ -n "$BACKEND" ]] && args+=(--backend "$BACKEND")
     echo "== $EDITOR ${args[*]} (in $scratch; CMAKE_GENERATOR=$CMAKE_GENERATOR)"
     local status=0
-    # the working directory holds what the editor writes beside it (settings.yaml, editor.log)
-    (cd "$scratch" && "$EDITOR" "${args[@]}") > "$scratch/build.log" 2>&1 || status=$?
-    cat "$scratch/build.log"
+    # the working directory holds what the editor writes beside it (settings.yaml, editor.log); the
+    # output streams as it comes (an engine compile is the step's half hour)
+    set +e
+    (cd "$scratch" && "$EDITOR" "${args[@]}") 2>&1 | tee "$scratch/build.log"
+    status=${PIPESTATUS[0]}
+    set -e
     [[ $status == 0 ]] || { echo "FAIL: the Compile build exited $status"; return 1; }
 
     grep -q '^method: compile' "$scratch/build.log" || { echo "FAIL: the build did not compile (no 'method: compile' line)"; return 1; }
