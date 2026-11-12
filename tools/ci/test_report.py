@@ -70,6 +70,11 @@ class PathTest(unittest.TestCase):
         for raw, want in cases.items():
             self.assertEqual(report.relative_path(raw), want, raw)
 
+    def test_a_root_of_slash_strips_nothing(self):
+        # report.py copied to /tmp/ci/ makes its "repository root" /: no root may eat every slash
+        self.assertEqual(report.relative_text("run tools/build.sh linux", roots=["/", ""]), "run tools/build.sh linux")
+        self.assertEqual(report.relative_path("/usr/include/x.h", roots=["/", ""]), "/usr/include/x.h")
+
     def test_workspace_root_is_stripped(self):
         self.assertEqual(report.relative_path("/opt/ws/repo/tools/x.py", roots=["/opt/ws/repo"]), "tools/x.py")
 
@@ -417,6 +422,9 @@ class RenderTest(unittest.TestCase):
         path = self.write(*reports, nested=True, lanes=lanes_json(htmlui=(False, "no HTML UI change")))
         body = self.render(path)
         self.assertIn("No report from: macos", body)
+        # nothing failed, but a lane left no report: not a pass the comment can claim
+        self.assertIn("CI finished on `3f2c1ab`: 13 jobs, 1 without a report (the `Check` status decides)", body.splitlines()[1])
+        self.assertNotIn("CI passed", body)
         needs = {"macos": {"result": "failure"}}
         body = self.render(path, needs=needs)
         self.assertIn("CI failed on", body)

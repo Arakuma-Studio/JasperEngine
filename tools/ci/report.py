@@ -90,17 +90,26 @@ TEXT_PREFIXES = re.compile(r"(?<![\w./\\-])(?:/src/|/(?:home/runner|Users/runner
                            r"[A-Za-z]:\\a\\[^\\\s]+\\[^\\\s]+\\|[A-Za-z]:/a/[^/\s]+/[^/\s]+/)")
 
 
+def usable_roots(roots: list[str]) -> list[str]:
+    """Absolute checkout roots, at least two levels deep: a root of / (report.py copied to /tmp/x/)
+    must not strip every slash."""
+    out = []
+    for root in roots:
+        root = root.replace("\\", "/").rstrip("/")
+        if len([part for part in root.split("/") if part and not part.endswith(":")]) >= 2:
+            out.append(root)
+    return out
+
+
 def workspace_roots() -> list[str]:
-    roots = [os.environ.get("GITHUB_WORKSPACE", ""), str(Path(__file__).resolve().parents[2])]
-    return [r.replace("\\", "/").rstrip("/") for r in roots if r]
+    return usable_roots([os.environ.get("GITHUB_WORKSPACE", ""), str(Path(__file__).resolve().parents[2])])
 
 
 def relative_path(raw: str, roots: list[str] | None = None) -> str:
     """A path as the repository names it: no Docker mount, runner workspace or ../ from a build dir."""
     path = raw.strip().replace("\\", "/")
-    for root in (roots if roots is not None else workspace_roots()):
-        root = root.replace("\\", "/").rstrip("/")
-        if root and path.startswith(root + "/"):
+    for root in (usable_roots(roots) if roots is not None else workspace_roots()):
+        if path.startswith(root + "/"):
             return path[len(root) + 1:]
     for prefix in RUNNER_PREFIXES:
         if prefix.match(path):
@@ -113,9 +122,9 @@ def relative_path(raw: str, roots: list[str] | None = None) -> str:
     return path
 
 
-def relative_text(text: str) -> str:
+def relative_text(text: str, roots: list[str] | None = None) -> str:
     out = TEXT_PREFIXES.sub("", text)
-    for root in workspace_roots():
+    for root in (usable_roots(roots) if roots is not None else workspace_roots()):
         out = out.replace(root + "/", "")
     return out
 
@@ -928,8 +937,9 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
                   + " (shown, not counted: `ADVISORY_LANES`)", ""]
 
     if not red:
-        head = [COMMENT_MARKER,
-                f"{lead}✅ CI passed on `{sha_short}`: {jobs} jobs, {minutes(seconds)} · {run_link}", ""]
+        verdict = f"✅ CI passed on `{sha_short}`: {jobs} jobs" if not missing else \
+            f"⚠️ CI finished on `{sha_short}`: {jobs} jobs, {len(missing)} without a report (the `Check` status decides)"
+        head = [COMMENT_MARKER, f"{lead}{verdict}, {minutes(seconds)} · {run_link}", ""]
         details = ["<details><summary>Lanes</summary>", ""]
         for name, lane in lanes["lanes"].items():
             if name in ("report", "check"):
