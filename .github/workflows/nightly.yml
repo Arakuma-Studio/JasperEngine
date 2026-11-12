@@ -282,10 +282,10 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
     env:
-      # the whole suite: the files that build games and the long tests skip without these
-      JASPER_SLOW_BUILD: '1'
-      JASPER_SLOW_TESTS: '1'
-      JASPER_CI_REPRO: JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/ci/mcp_shard.sh ${{ matrix.shard }} build/ci-plan
+      # the nightly lane: the web project test_mesh_raycast.py loads is built, and the skips the allow
+      # list says run in the nightly must run (mcp_shard.sh turns the slow opt-ins on itself)
+      MCP_WEB_BUILD: '1'
+      JASPER_CI_REPRO: MCP_WEB_BUILD=1 tools/ci/mcp_shard.sh ${{ matrix.shard }} build/ci-plan
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
@@ -434,9 +434,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
     env:
-      # (as docs/testing.md records it: the long tests, not the game builds, whose code is not the editor's)
-      JASPER_SLOW_TESTS: '1'
-      # where run_tests.py points each file's GCOV_PREFIX, in the image
+      # where run_tests.py points each file's GCOV_PREFIX, in the image (tools/build.sh forwards JASPER_MCP_*)
       JASPER_MCP_COVERAGE_DIR: /src/build/coverage/runs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
