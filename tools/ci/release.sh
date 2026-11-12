@@ -8,19 +8,22 @@
 #       writes <asset dir>/SHA256SUMS from the files there, creates the release as a draft (or takes
 #       the draft a failed run left), uploads every file with --clobber, checks the draft holds each
 #       one at its size, then publishes it (a nightly as a prerelease, never "latest"; a stable as
-#       "latest"). --dry-run stops at the complete draft. The body: GitHub's generated notes and
+#       "latest"). Refused when an editor package of §12.3 or every player archive is missing.
+#       --dry-run stops at the complete draft. The body: GitHub's generated notes and
 #       "Opening unsigned builds". A release already published for another commit is refused.
+#   tools/ci/release.sh check <nightly|stable> <version> <commit>
+#       exits 2 unless the version suits the channel (nightly-YYYYMMDD, vX.Y.Z) and the commit is a full SHA
 #   tools/ci/release.sh prune <keep> [<current version>]
 #       deletes the published nightlies past the newest <keep> (release and tag), and nightly drafts
 #       other than <current version>'s
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY (owner/name) names the repository}"
+REPO="${GITHUB_REPOSITORY:-}"
 NIGHTLY='^nightly-[0-9]{8}$'
 STABLE='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
 usage() {
-    echo "usage: tools/ci/release.sh newest-nightly | publish <nightly|stable> <version> <commit> <asset dir> [--dry-run] | prune <keep> [<current version>]" >&2
+    echo "usage: tools/ci/release.sh check <nightly|stable> <version> <commit> | newest-nightly | publish <nightly|stable> <version> <commit> <asset dir> [--dry-run] | prune <keep> [<current version>]" >&2
     exit 2
 }
 
@@ -56,17 +59,31 @@ These builds are not code-signed or notarized.
 EOF
 }
 
+check() {
+    [[ $# -eq 3 ]] || usage
+    local channel="$1" version="$2" commit="$3"
+    case "$channel" in
+        nightly) [[ "$version" =~ $NIGHTLY ]] || { echo "release: a nightly is nightly-YYYYMMDD (got $version)" >&2; exit 2; } ;;
+        # three parts: an editor stamped vX.Y is a development editor and downloads no players
+        stable) [[ "$version" =~ $STABLE ]] || { echo "release: a stable release is vX.Y.Z (got $version)" >&2; exit 2; } ;;
+        *) echo "release: the channel is nightly or stable (got $channel)" >&2; exit 2 ;;
+    esac
+    [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "release: the commit is a full 40-hex SHA (got $commit)" >&2; exit 2; }
+}
+
 publish() {
     [[ $# -ge 4 && $# -le 5 ]] || usage
     local channel="$1" version="$2" commit="$3" dir="$4" dry_run=0
     [[ $# -eq 5 ]] && { [[ "$5" == --dry-run ]] || usage; dry_run=1; }
-    case "$channel" in
-        nightly) [[ "$version" =~ $NIGHTLY ]] || { echo "release: a nightly is nightly-YYYYMMDD (got $version)" >&2; exit 2; } ;;
-        stable) [[ "$version" =~ $STABLE ]] || { echo "release: a stable release is vX.Y.Z (got $version)" >&2; exit 2; } ;;
-        *) usage ;;
-    esac
-    [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "release: the commit is a full SHA (got $commit)" >&2; exit 2; }
+    check "$channel" "$version" "$commit"
     [[ -d "$dir" ]] || { echo "release: no asset directory $dir" >&2; exit 2; }
+    local expected missing=0
+    for expected in windows-x64.zip linux-x86_64.AppImage linux-x86_64.AppImage.zsync linux-x86_64.zip \
+                    macos-universal.zip macos-universal.dmg; do
+        [[ -f "$dir/JasperEngine-$version-$expected" ]] || { echo "release: no JasperEngine-$version-$expected" >&2; missing=1; }
+    done
+    compgen -G "$dir/jasperengine-player-*-$version.zip" > /dev/null || { echo "release: no player archive of $version" >&2; missing=1; }
+    [[ $missing -eq 0 ]] || exit 1
 
     rm -f "$dir/SHA256SUMS"
     local files=()
@@ -104,7 +121,7 @@ publish() {
     (cd "$dir" && gh release upload "$version" --repo "$REPO" --clobber -- "${files[@]}")
 
     # every file at its size: a release is a draft until all of it is there
-    local listed missing=0 f size
+    local listed f size
     listed="$(gh release view "$version" --repo "$REPO" --json assets --jq '.assets[] | "\(.name) \(.size)"')"
     for f in "${files[@]}"; do
         size="$(stat -c %s "$dir/$f")"
@@ -145,7 +162,9 @@ prune() {
 cd "$ROOT"
 [[ $# -ge 1 ]] || usage
 command="$1"; shift
+[[ "$command" == check || -n "$REPO" ]] || { echo "release: GITHUB_REPOSITORY (owner/name) names the repository" >&2; exit 2; }
 case "$command" in
+    check) check "$@" ;;
     newest-nightly) [[ $# -eq 0 ]] || usage; newest_nightly ;;
     publish) publish "$@" ;;
     prune) prune "$@" ;;
