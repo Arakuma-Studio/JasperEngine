@@ -1,0 +1,616 @@
+name: Nightly
+
+# Once a day on main (or on demand for the chosen branch), docs/superpowers/specs/2026-11-12-ci-design.md
+# §7.2, §10.2, §12.1:
+# - the suites too slow or too heavy for every PR (docs/testing.md): the HTML UI suite on Vulkan and
+#   under ASan + UBSan, the unit tests under TSan, the cooked texture formats on lavapipe, the unity
+#   builds, the smoke test of every fixture on OpenGL, GLES3 and Vulkan, the threaded web build
+#   through the browser gate, and the prebuilt player's parity with the Compile path;
+# - the whole MCP suite CI can run (tools/ci/plan_lanes.py --event nightly), sharded, with the slow
+#   opt-ins; its per-test seconds become the `mcp-timings` cache PRs plan shards with;
+# - the coverage map, recorded by a coverage-instrumented editor over the same shards and merged,
+#   saved as the `coverage-map` cache tools/check-changed selects MCP tests with;
+# - a nightly release (build-release.yml) when main moved since the newest nightly-*; 14 are kept.
+# Every other cache is only restored. A failure opens (or comments on) the issue labelled "nightly".
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a nightly release when main moved (main only)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ------------------------------------------------------------- slow suites ---
+  slow:
+    name: ${{ matrix.suite.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: HTML UI tests (Vulkan)
+            id: htmlui-vulkan
+            image: linux
+            ccache: htmlui
+            run: HTMLUI_BACKEND=vulkan JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests
+          - name: HTML UI tests (ASan + UBSan)
+            id: htmlui-asan
+            image: linux
+            ccache: asan
+            run: SANITIZE=address,undefined JASPER_HTMLUI_PERF_SLACK=10 HTMLUI_TEST_ARGS='--gtest_filter=-*Golden*' tools/build.sh htmlui-tests
+          - name: Unit tests (TSan)
+            id: tsan
+            image: linux
+            ccache: unit
+            run: SANITIZE=thread UNIT_TEST_ARGS='--gtest_filter=-*Gpu*' tools/build.sh unit-tests
+          - name: Cooked texture formats (Vulkan, lavapipe)
+            id: texture-formats-vulkan
+            image: linux
+            ccache: unit
+            run: GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=TextureFormatsGpu*:TextureFallback*:TextureBudget*' tools/build.sh unit-tests
+          - name: Unity builds (editor and engine)
+            id: unity
+            image: linux
+            ccache: linux
+            run: UNITY=1 tools/build.sh linux
+          - name: Smoke tests (OpenGL, every fixture)
+            id: smoke-opengl
+            image: linux
+            ccache: linux
+            run: tools/build.sh linux && tools/ci/nightly-smoke.sh opengl
+          # the backends image is FROM the Linux one, so it builds the editor too
+          - name: Smoke tests (GLES3)
+            id: smoke-gles3
+            image: linux-backends
+            ccache: linux
+            run: SKIP_ENGINE=1 tools/build.sh linux && tools/ci/nightly-smoke.sh gles3
+          - name: Smoke tests (Vulkan)
+            id: smoke-vulkan
+            image: linux-backends
+            ccache: linux
+            run: SKIP_ENGINE=1 tools/build.sh linux && tools/ci/nightly-smoke.sh vulkan
+    env:
+      JASPER_CI_REPRO: ${{ matrix.suite.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: ${{ matrix.suite.image }}
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: ${{ matrix.suite.ccache }}
+          max-size: 2G
+      - name: ${{ matrix.suite.name }}
+        env:
+          RUN: ${{ matrix.suite.run }}
+          ID: ${{ matrix.suite.id }}
+        run: |
+          mkdir -p build/test-results
+          bash -euo pipefail -c "$RUN" 2>&1 | tee "build/test-results/$ID-build.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-evidence-${{ matrix.suite.id }}
+          path: |
+            build/smoke*/*.png
+            build/smoke*/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: ${{ matrix.suite.id }}
+
+  web-threads:
+    name: Web with pthreads, browser gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_CI_REPRO: WEB_THREADS=1 tools/build.sh web && GATE=sample-project-threads tools/build.sh web-gate
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: web
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: web
+          max-size: 2G
+      - name: Build the threaded engine sample project
+        run: |
+          mkdir -p build/test-results
+          WEB_THREADS=1 tools/build.sh web 2>&1 | tee build/test-results/web-threads-build.log
+      - name: Browser gate (cross-origin isolated)
+        run: GATE=sample-project-threads tools/build.sh web-gate
+      # the red control: served without COOP/COEP a threaded build cannot start, and the gate must say so
+      - name: Browser gate without cross-origin isolation fails
+        run: |
+          if GATE=sample-project-threads GATE_ARGS=--no-isolation tools/build.sh web-gate; then
+            echo "::error::the browser gate passed a threaded build served without COOP/COEP"
+            exit 1
+          fi
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: web-threads
+
+  # S30 AC5: every Lua-only fixture looks the same built from source and with the prebuilt player
+  parity:
+    name: Prebuilt player parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players && tools/ci/parity.sh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 2G
+      - name: Build the editor and the Linux player runtimes
+        run: |
+          mkdir -p build/test-results
+          { SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players; } \
+            2>&1 | tee build/test-results/parity-build.log
+      - name: Compile and prebuilt frames of every Lua-only fixture
+        run: tools/ci/parity.sh
+      # (the no-compiler image from here on)
+      - uses: ./.github/actions/image
+        with:
+          target: runtime
+      - name: The player CLI on Vulkan (lavapipe)
+        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-evidence-parity
+          path: |
+            build/parity/**
+            build/player-cli/**/*.png
+            build/player-cli/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: parity
+
+  # --------------------------------------------------------- the MCP suite ---
+  plan:
+    name: MCP shards (the whole suite CI can run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/ci-cache/mcp-test-seconds.json
+          key: mcp-timings-${{ github.run_id }}
+          restore-keys: mcp-timings-
+      - name: Plan
+        id: plan
+        run: |
+          timings=()
+          [[ -f build/ci-cache/mcp-test-seconds.json ]] && timings=(--test-seconds build/ci-cache/mcp-test-seconds.json)
+          python3 tools/ci/plan_lanes.py --event nightly --base "$GITHUB_SHA" --head "$GITHUB_SHA" --out-dir build/ci-plan \
+            ${timings[@]+"${timings[@]}"} --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-plan
+          path: build/ci-plan
+          if-no-files-found: error
+          retention-days: 14
+
+  # one editor for every shard
+  mcp-editor:
+    name: Editor for the MCP shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 2G
+      - name: Build the editor
+        run: |
+          mkdir -p build/test-results
+          SKIP_ENGINE=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-build.log
+          tar -C build/linux -cf build/editor-install.tar editor-install
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-editor-install
+          path: build/editor-install.tar
+          if-no-files-found: error
+          retention-days: 3
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: mcp-editor
+
+  mcp:
+    name: MCP shard ${{ matrix.shard }}
+    needs: [plan, mcp-editor]
+    if: ${{ needs.plan.outputs.mcp_shards != '[]' && needs.plan.outputs.mcp_shards != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
+    env:
+      # the whole suite: the files that build games and the long tests skip without these
+      JASPER_SLOW_BUILD: '1'
+      JASPER_SLOW_TESTS: '1'
+      JASPER_CI_REPRO: JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/ci/mcp_shard.sh ${{ matrix.shard }} build/ci-plan
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: linux
+          max-size: 2G
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-editor-install
+          path: build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-plan
+          path: build/ci-plan
+      - name: Unpack the editor
+        run: mkdir -p build/linux && tar -C build/linux -xf build/editor-install.tar
+      - name: MCP shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: tools/ci/mcp_shard.sh "$SHARD" build/ci-plan
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: mcp-${{ matrix.shard }}
+
+  # The shards' union (no planned test lost, none run twice) and their seconds, merged over the last
+  # ones (a shard that died keeps its tests' earlier times): the `mcp-timings` cache
+  mcp-timings:
+    name: MCP timings and the shards' union
+    needs: [plan, mcp]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.mcp_shards != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-plan
+          path: build/ci-plan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: test-results-mcp-*
+          path: build/mcp-shards
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/ci-cache/mcp-test-seconds.json
+          key: mcp-timings-${{ github.run_id }}
+          restore-keys: mcp-timings-
+      - name: Merge the test seconds
+        run: |
+          shopt -s nullglob
+          new=(build/mcp-shards/*/mcp-test-seconds.json)
+          [[ ${#new[@]} -gt 0 ]] || { echo "::error::no shard wrote mcp-test-seconds.json"; exit 1; }
+          old=()
+          [[ -f build/ci-cache/mcp-test-seconds.json ]] && old=(build/ci-cache/mcp-test-seconds.json)
+          jq -s 'add' ${old[@]+"${old[@]}"} "${new[@]}" > build/mcp-test-seconds.json
+          mv build/mcp-test-seconds.json build/ci-cache/mcp-test-seconds.json
+          echo "$(jq length build/ci-cache/mcp-test-seconds.json) tests timed (${#new[@]} shards)"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: build/ci-cache/mcp-test-seconds.json
+          key: mcp-timings-${{ github.run_id }}
+      # one live entry per prefix (§10.2)
+      - name: Delete the older mcp-timings entries
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: mcp-timings-${{ github.run_id }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --key mcp-timings- --limit 100 --json id,key \
+            --jq ".[] | select(.key != \"$KEY\") | .id" | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY"
+      - name: Every planned test reported once
+        run: |
+          shopt -s nullglob
+          allow=()
+          while read -r name; do allow+=(--allow-skip "$name"); done \
+            < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^[[:space:]]*$/d' tools/ci/mcp-allowed-skips.txt)
+          python3 tools/mcp/shard.py merge --plan build/ci-plan/mcp-plan/plan.json ${allow[@]+"${allow[@]}"} \
+            build/mcp-shards/*/mcp.json | tee build/mcp-merged.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-mcp-merged
+          path: |
+            build/mcp-merged.txt
+            build/ci-cache/mcp-test-seconds.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ------------------------------------------------------- the coverage map ---
+  # docs/testing.md "The coverage map": a coverage-instrumented editor over the whole suite. One run
+  # takes longer than a runner job may (6 h), so it runs the nightly's shards and each collects its
+  # own map; coverage-map merges them (tools/mcp/coverage_map.py merge).
+  coverage-editor:
+    name: Coverage-instrumented editor
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      JASPER_CI_REPRO: COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - name: Build the editor with --coverage
+        run: |
+          mkdir -p build/test-results
+          COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-coverage-build.log
+      # the install, and the build tree's .gcno (where each function is written), not its objects
+      - name: Keep the install and the notes files
+        run: |
+          (cd build/linux && find editor-coverage -name '*.gcno' -print0 | tar --null -T - -cf ../editor-coverage.tar editor-coverage-install)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-coverage-editor
+          path: build/editor-coverage.tar
+          if-no-files-found: error
+          retention-days: 3
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: coverage-editor
+
+  coverage:
+    name: Coverage shard ${{ matrix.shard }}
+    needs: [plan, coverage-editor]
+    if: ${{ needs.plan.outputs.mcp_shards != '[]' && needs.plan.outputs.mcp_shards != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.mcp_shards) }}
+    env:
+      # (as docs/testing.md records it: the long tests, not the game builds, whose code is not the editor's)
+      JASPER_SLOW_TESTS: '1'
+      # where run_tests.py points each file's GCOV_PREFIX, in the image
+      JASPER_MCP_COVERAGE_DIR: /src/build/coverage/runs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk
+      - uses: ./.github/actions/image
+        with:
+          target: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-coverage-editor
+          path: build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-plan
+          path: build/ci-plan
+      # the shard runner runs build/linux/editor-install: the instrumented one, here
+      - name: Unpack the instrumented editor
+        run: |
+          mkdir -p build/linux
+          tar -C build/linux -xf build/editor-coverage.tar
+          mv build/linux/editor-coverage-install build/linux/editor-install
+      # its verdict is the mcp shard's: this run only records what each test file executed
+      - name: MCP shard ${{ matrix.shard }} on the instrumented editor
+        continue-on-error: true
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: tools/ci/mcp_shard.sh "$SHARD" build/ci-plan
+      - name: Collect the shard's map
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          tools/build.sh exec linux python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \
+            --commit "$GITHUB_SHA" --results build/test-results/mcp.json --out "build/coverage/map-$SHARD.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-coverage-map-${{ matrix.shard }}
+          path: build/coverage/map-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 3
+
+  # saved only when every shard's map is in: a map missing test files would leave them unplanned
+  coverage-map:
+    name: Coverage map
+    needs: [plan, coverage]
+    if: ${{ !cancelled() && needs.coverage.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: nightly-coverage-map-*
+          path: build/coverage/maps
+          merge-multiple: true
+      - name: Merge the shards' maps
+        env:
+          SHARDS: ${{ needs.plan.outputs.mcp_shards }}
+        run: |
+          shopt -s nullglob
+          maps=(build/coverage/maps/map-*.json)
+          [[ ${#maps[@]} -eq $(jq length <<< "$SHARDS") ]] \
+            || { echo "::error::${#maps[@]} shard maps for $(jq length <<< "$SHARDS") shards"; exit 1; }
+          python3 tools/mcp/coverage_map.py merge "${maps[@]}" --out build/ci-cache/coverage-map.json
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: build/ci-cache/coverage-map.json
+          key: coverage-map-${{ github.run_id }}
+      - name: Delete the older coverage-map entries
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: coverage-map-${{ github.run_id }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --key coverage-map- --limit 100 --json id,key \
+            --jq ".[] | select(.key != \"$KEY\") | .id" | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-coverage-map
+          path: build/ci-cache/coverage-map.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------- nightly release ---
+  # Only when main's head is not the newest nightly's commit; no other gate (§12.1): every commit on
+  # main passed the merge queue, and the slow lanes' failures go to the issue
+  decide:
+    name: Nightly release needed?
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare main with the newest nightly
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="nightly-$(date -u +%Y%m%d)"
+          newest="" commit=""
+          found="$(tools/ci/release.sh newest-nightly)"
+          [[ -z "$found" ]] || read -r newest commit <<< "$found"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$commit" == "$GITHUB_SHA" ]]; then
+            echo "main is still $GITHUB_SHA, the commit of $newest: no nightly release" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$newest" == "$version" ]]; then
+            echo "::warning::$version is published already (at $commit): main's $GITHUB_SHA waits for tomorrow's"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved to $GITHUB_SHA since ${newest:-no nightly}: publishing $version" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Nightly release
+    needs: decide
+    if: needs.decide.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-release.yml
+    with:
+      channel: nightly
+      version: ${{ needs.decide.outputs.version }}
+      commit: ${{ github.sha }}
+
+  prune:
+    name: Keep the newest 14 nightlies
+    needs: [decide, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Delete the older nightly releases and their tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: tools/ci/release.sh prune 14 "$VERSION"
+
+  # ----------------------------------------------------------------- report ---
+  report:
+    name: Report failures
+    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ci-report-*
+          path: build/ci-reports
+          merge-multiple: true
+      - name: Render the report
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p build/ci-reports
+          # the lanes are the reports' (one per suite, shard and release job) and every job that failed before reporting
+          jq -n --arg sha "$GITHUB_SHA" --argjson needs "$NEEDS" '
+            {event: "nightly", full: true, base: $sha, head: $sha,
+             lanes: ($needs | with_entries(.value = {run: true, why: "nightly job \(.key): \(.value.result)"}))}' \
+            > build/nightly-lanes.json
+          for report in build/ci-reports/*.json; do
+            [[ -f "$report" ]] || continue
+            lane="$(jq -r .lane "$report")"
+            jq --arg lane "$lane" '.lanes[$lane] = {run: true, why: "nightly"}' build/nightly-lanes.json > build/lanes.tmp
+            mv build/lanes.tmp build/nightly-lanes.json
+          done
+          if ! python3 tools/ci/report.py render --reports build/ci-reports --lanes build/nightly-lanes.json \
+              --run-url "$RUN_URL" --sha "$GITHUB_SHA" --out build/comment.md; then
+            echo "::warning::report.py render failed; the issue gets the failing jobs only"
+            { echo "The nightly run of $(date -u +%Y-%m-%d) on $GITHUB_SHA failed: $RUN_URL"; echo
+              jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "- \(.key): \(.value.result)"' <<< "$NEEDS"
+            } > build/comment.md
+          fi
+      - name: Open or update the nightly issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci/report.py issue --label nightly --title "Nightly failures" --body build/comment.md
