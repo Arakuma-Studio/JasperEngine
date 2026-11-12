@@ -384,7 +384,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn("windows", body)
         self.assertIn("Windows MSVC", body)
         self.assertIn("`editor/window/InspectorTerrain.cpp:412`", body)
-        self.assertIn("Reproduce: `tools/ci/windows.sh editor`", body)
+        self.assertIn("Reproduce (Windows, x64 Native Tools shell): `tools/ci/windows.sh editor`", body)
         self.assertIn("mcp (2/2)", body)
         self.assertIn("1 failed, 214 passed, 0 skipped", body)
         self.assertIn("Evidence: artifact `test-results-windows`", body)

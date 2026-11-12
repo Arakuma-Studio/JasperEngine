@@ -77,6 +77,10 @@ LANE_TITLES = {
 }
 
 
+# where a lane's repro runs, when that is not the Linux images
+REPRO_WHERE = {"windows": " (Windows, x64 Native Tools shell)", "macos": " (macOS, Xcode)", "ios": " (macOS, Xcode)"}
+
+
 # ---------------------------------------------------------------------------
 # Paths
 
@@ -767,7 +771,7 @@ def count_note(report: dict) -> str:
     return f", {t['ran']} tests" + (f" ({', '.join(extra)})" if extra else "")
 
 
-def render_failure(f: dict, run_url: str) -> list[str]:
+def render_failure(f: dict, run_url: str, where: str = "") -> list[str]:
     head = f"**{code(f['title'] or f['kind'])}**" + (f" · {code(f['location'])}" if f["location"] else "")
     out = [head]
     excerpt = [clip(l) for l in f["excerpt"].splitlines()]
@@ -782,7 +786,7 @@ def render_failure(f: dict, run_url: str) -> list[str]:
             out.append(f"… {cut} more lines in the [run's logs]({run_url})")
         else:
             out += fence(excerpt)
-    out.append(f"Reproduce: {code(f['repro'])}" if f["repro"] else "Reproduce: see the job's log")
+    out.append(f"Reproduce{where}: {code(f['repro'])}" if f["repro"] else "Reproduce: see the job's log")
     return out
 
 
@@ -800,7 +804,8 @@ def lane_parts(report: dict, label: str, run_url: str, title: str = "") -> tuple
     head = [f"### {title}{label} — {summary}", ""]
     if not report["failures"] and report["status"] != "cancelled":
         head += ["No details were collected: see the job's log.", ""]
-    units = [render_failure(f, run_url) + [""] for f in report["failures"][:FAILURES_PER_LANE]]
+    where = REPRO_WHERE.get(lane_base(report["lane"]), "")
+    units = [render_failure(f, run_url, where) + [""] for f in report["failures"][:FAILURES_PER_LANE]]
     logs = [a for a in report["artifacts"] if a.endswith((".log", ".png", ".xml", ".json"))][:6]
     evidence = f"Evidence: artifact `test-results-{report['lane']}`"
     if logs:
