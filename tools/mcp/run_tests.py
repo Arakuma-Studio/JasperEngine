@@ -30,7 +30,7 @@ or TESTS_INDEPENDENT = ("why", ["test_x_*"]) for some of its tests, can be split
 gives chunks of about N seconds, by the earlier runs' test times, a worker and editor each. --plan
 FILE runs the chunks tools/mcp/shard.py planned for one server of a run across servers.
 
-A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
+A file joins the CI suite (--suite ci, CI's mcp shards) by declaring CI = True at module
 level. A file that is not CI = True is left out for a reason the run prints: it needs the default
 fixture (below), or it declares CI_EXCLUDED = "why" (e.g. long-running, in the nightly full suite);
 a file left out for no reason stops --suite ci (exit 2). CI has no copy of the default fixture (harness.default_fixture(): JASPER_FIXTURE, else
