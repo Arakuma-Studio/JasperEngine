@@ -1,0 +1,4 @@
+# The MCP tests a CI shard may skip (tools/ci/mcp_gate.py; CI design §9 "Skipped tests").
+# Any other skip fails the shard. One test a line:
+#   <file>::<test>  # <why it cannot run in the mcp lane>; runs in <lane>
+# An entry is added in a reviewed PR, with the lane where the test does run.
