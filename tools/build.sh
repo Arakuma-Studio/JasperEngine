@@ -25,6 +25,7 @@
 #   tools/build.sh image-tag <target>  the content hash the target's image is tagged with, which CI's GHCR
 #                                      images share (linux, web, android, linux-backends, runtime)
 #
+# JASPERENGINE_EDITOR_VERSION (or JASPERENGINE_VERSION) stamps the build with that version instead of git describe.
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
@@ -94,7 +95,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,78p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -412,6 +413,13 @@ if [[ -n "${CXX_STANDARD:-}" ]]; then
     CXX_SUFFIX="-cxx$CXX_STANDARD"
 fi
 OPTION_FLAGS="$OPTION_FLAGS $CXX_STANDARD_FLAGS"
+# A release's version stamp (CI: nightly-YYYYMMDD or vX.Y.Z); without it CMake asks git describe.
+# Checked here because the flags are expanded inside the container's bash -c.
+STAMP="${JASPERENGINE_EDITOR_VERSION:-${JASPERENGINE_VERSION:-}}"
+if [[ -n "$STAMP" ]]; then
+    [[ "$STAMP" =~ ^[A-Za-z0-9._+-]+$ ]] || { echo "build.sh: JASPERENGINE_EDITOR_VERSION must match [A-Za-z0-9._+-]+, got '$STAMP'" >&2; exit 2; }
+    OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_EDITOR_VERSION=$STAMP"
+fi
 # the standalone engine tree's development and test builds (linux's sample project, unit-tests,
 # htmlui-tests) with precompiled headers; exports, web, Android and players keep it off
 DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=ON"
