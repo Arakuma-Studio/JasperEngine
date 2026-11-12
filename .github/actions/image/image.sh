@@ -24,14 +24,11 @@ builder() {
         || docker buildx create --name jasper-ci --driver docker-container > /dev/null
 }
 
-# ensure <target>: a local image of the target's tag, pulled or built, into ENSURED; BUILT_HERE=1
-# when it was built (a chained image's base is then on this machine only)
+# ensure <target>: a local image of the target's tag, pulled or else built, into ENSURED
 ENSURED=""
-BUILT_HERE=0
 ensure() {
     local target="$1" ref
     ref="$(ref_of "$target")"
-    BUILT_HERE=0
     if docker image inspect "$ref" > /dev/null 2>&1 || pull "$ref"; then
         echo "image: $ref" >&2
         ENSURED="$ref"
@@ -39,26 +36,16 @@ ensure() {
     fi
     echo "image: $ref is not in the registry; building it (docker/$target.Dockerfile)" >&2
     if [[ "$target" == linux-backends ]]; then
-        # FROM the linux image by its hash (docker/linux-backends.Dockerfile's BASE)
-        local base
+        # FROM the linux image of its hash (docker/linux-backends.Dockerfile's BASE): the docker driver's
+        # build, which sees that image when it was built here too (a few apt packages, no cache needed)
         ensure linux
-        base="$ENSURED"
-        if [[ $BUILT_HERE == 1 ]]; then
-            # a base only this machine has: the docker driver's build, which sees local images
-            docker build -q --build-arg "BASE=$base" -t "$ref" -f "docker/$target.Dockerfile" docker > /dev/null
-        else
-            builder
-            docker buildx build --builder jasper-ci --load --build-arg "BASE=$base" -t "$ref" \
-                --cache-from "type=registry,ref=$REGISTRY/jasperengine-$target-build:buildcache" \
-                -f "docker/$target.Dockerfile" docker >&2
-        fi
+        docker build --build-arg "BASE=$ENSURED" -t "$ref" -f "docker/$target.Dockerfile" docker >&2
     else
         builder
         docker buildx build --builder jasper-ci --load -t "$ref" \
             --cache-from "type=registry,ref=$REGISTRY/jasperengine-$target-build:buildcache" \
             -f "docker/$target.Dockerfile" docker >&2
     fi
-    BUILT_HERE=1
     ENSURED="$ref"
 }
 

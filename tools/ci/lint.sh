@@ -44,7 +44,7 @@ pinned_uses() {
     local bad
     bad="$(grep -rnE '^[[:space:]-]*uses:' .github --include='*.yml' --include='*.yaml' \
         | grep -vE 'uses:[[:space:]]*["'\'']?\./' \
-        | grep -vE 'uses:[[:space:]]*["'\'']?[^@[:space:]]+@[0-9a-f]{40}([[:space:]]|$)')"
+        | grep -vE 'uses:[[:space:]]*["'\'']?[^@[:space:]]+@[0-9a-f]{40}["'\'']?([[:space:]]|$)')"
     [[ -z "$bad" ]] && return 0
     echo "not pinned to a full commit SHA:"
     echo "$bad"
