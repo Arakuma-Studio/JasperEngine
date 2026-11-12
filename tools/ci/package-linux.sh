@@ -183,10 +183,12 @@ launch_check() {
     (cd "$scratch" && APPIMAGE_EXTRACT_AND_RUN=1 tools_xvfb "$appimage" call --project project editor_status) > "$scratch/status.log" 2>&1 \
         || { cat "$scratch/status.log"; echo "FAIL: editor_status through a one-shot headless editor" >&2; return 1; }
     cat "$scratch/status.log"
-    grep -q 'post-processing\|project' "$scratch/status.log" || { echo "FAIL: editor_status names no project" >&2; return 1; }
+    grep -q '^Project "PostProcessing"' "$scratch/status.log" || { echo "FAIL: editor_status names no project" >&2; return 1; }
     echo "ok: the AppImage's editor starts and opens a project"
 }
 
-tools_xvfb() { env -u DISPLAY "$ROOT/tools/with-xvfb.sh" "$@"; }
+# the editor's file dialogs need a session bus (NFD_Init), which a container has none of, as
+# tools/smoke-test.sh runs it
+tools_xvfb() { env -u DISPLAY dbus-run-session -- "$ROOT/tools/with-xvfb.sh" "$@"; }
 
 ci_logged linux-package package
