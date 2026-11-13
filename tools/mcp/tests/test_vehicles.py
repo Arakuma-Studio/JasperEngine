@@ -69,7 +69,7 @@ async def test_add_wheels_with_undo(ed: Editor):
         got = await ed.call("get_entity", scene=s["scene"], entity=wheel, components=["WheelCollider"])
         values = got["components"]["wheelcollider"]
         ed.check(abs(values["radius"] - 0.5) < 1e-6 and abs(values["suspensionDistance"] - 0.3) < 1e-6, f"Unity's defaults: {values}")
-        ed.check(abs(values["suspensionSpring"]["spring"] - 35000) < 1e-3, f"spring: {values}")
+        ed.check(abs(values["suspensionSpring.spring"] - 35000) < 1e-3, f"spring: {values}")
         await ed.call("undo", scene=s["scene"])
         got = await ed.call("get_entity", scene=s["scene"], entity=wheel, detail="summary")
         ed.check("wheelcollider" not in str(got).lower(), f"{name}: undone: {got}")
@@ -86,7 +86,7 @@ async def test_add_wheels_with_undo(ed: Editor):
     await ed.call("set_properties", scene=s["scene"], entity=s["wheels"]["WheelFL"],
                   values={"WheelCollider": {"sidewaysFriction.stiffness": 1.2}})
     got = await ed.call("get_entity", scene=s["scene"], entity=s["wheels"]["WheelFL"], components=["WheelCollider"])
-    ed.check(abs(got["components"]["wheelcollider"]["sidewaysFriction"]["stiffness"] - 1.2) < 1e-6, f"{got}")
+    ed.check(abs(got["components"]["wheelcollider"]["sidewaysFriction.stiffness"] - 1.2) < 1e-6, f"{got}")
     await ed.call("create_script", kind="lua", name="Driver", content=DRIVER, scene=s["scene"], entity=s["car"])
     await ed.call("save_scene", scene=s["scene"])
     await ed.call("save_project")
@@ -128,7 +128,7 @@ async def test_vehicle_menu_one_undo_step(ed: Editor):
     cube = await ed.call("create_entity", scene=s["scene"], type="cube", name="Kart", position=[10, 1, 0], scale=[2, 1, 4])
     kart = cube["entity_id"]
     await ed.call("select_entities", scene=s["scene"], entities=[kart])
-    await ed.call("run_command", id="gameobject.create.3dObject.vehicle")
+    await ed.call("run_command", id="gameobject.create.3DObject.vehicle")
     wheels = await ed.call("find_entities", scene=s["scene"], under=kart, component="WheelCollider")
     ids = [e["id"] for e in wheels["entities"]]
     ed.check_eq(len(ids), 4, f"four wheels under the kart: {wheels}")

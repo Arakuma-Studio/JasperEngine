@@ -39,6 +39,7 @@
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
 #include "component/WheelColliderComponent.h"
+#include "Engine.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
@@ -671,7 +672,8 @@ void editor::SceneRender3D::createOrUpdateWheelLines(Entity entity, const Transf
     const Vector4 travelColor = wheel.enabled ? Vector4(1.0f, 0.75f, 0.25f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
     const float radius = std::max(0.0f, wheel.radius);
     const float travel = std::max(0.0f, wheel.suspensionDistance);
-    const bool running = wheel.wheelIndex >= 0;
+    // the read-outs are the last step's: after Stop they are left from Play
+    const bool running = wheel.wheelIndex >= 0 && Engine::isSceneRunning(scene);
 
     Vector3 center;
     Vector3 wheelUp = up;

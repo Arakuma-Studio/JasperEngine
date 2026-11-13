@@ -570,7 +570,7 @@ dynamic body it stands on (`movingPlatforms`) and pushes dynamic bodies it walks
 
 A drivable car is a dynamic Rigidbody (its colliders are the chassis) with a Wheel Collider
 (`WheelColliderComponent`, Unity's) on a child GameObject at each wheel: not four bodies on hinge
-joints. GameObject > 3D Object > Vehicle... (`run_command` `gameobject.create.3dObject.vehicle`)
+joints. GameObject > 3D Object > Vehicle... (`run_command` `gameobject.create.3DObject.vehicle`)
 makes one on the selected mesh, or a new 2 x 1 x 4 m car, in one undo step.
 - The wheels under one dynamic body (its nearest Rigidbody above them) make one vehicle on Jolt's
   vehicle constraint, built again at the next step when a wheel, the drivetrain or the body

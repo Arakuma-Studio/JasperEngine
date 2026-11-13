@@ -5270,11 +5270,11 @@ CASES = [
                                                    {"entity_id": 30, "entity": {"id": 30}})},
             {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
                 "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
-            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3dObject.vehicle"})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3DObject.vehicle"})},
             {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
-                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3dObject.vehicle"}}]}],
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
                    "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
         "max_turns": 16,
     },

@@ -117,11 +117,46 @@ namespace {
             out += ind + ctx.variable + ".sidewaysFriction = " + curveLiteral(wheel.sidewaysFriction) + ";\n";
     }
 
+    // the inputs and read-outs are runtime: a decoded wheel (a scene loaded, Play stopped) starts
+    // afresh, its rest pose read again from its Transform
+    void wheelColliderPostDecode(void* comp, const DecodeContext&){
+        WheelColliderComponent& wheel = *static_cast<WheelColliderComponent*>(comp);
+        const WheelColliderComponent defaults;
+        wheel.motorTorque = defaults.motorTorque;
+        wheel.brakeTorque = defaults.brakeTorque;
+        wheel.steerAngle = defaults.steerAngle;
+        wheel.isGrounded = defaults.isGrounded;
+        wheel.rpm = defaults.rpm;
+        wheel.sprungMass = defaults.sprungMass;
+        wheel.suspensionCompression = defaults.suspensionCompression;
+        wheel.hit = defaults.hit;
+        wheel.worldPosePosition = defaults.worldPosePosition;
+        wheel.worldPoseRotation = defaults.worldPoseRotation;
+        wheel.vehicleBody = defaults.vehicleBody;
+        wheel.wheelIndex = defaults.wheelIndex;
+        wheel.hasRestPose = defaults.hasRestPose;
+        wheel.hasWrittenPose = defaults.hasWrittenPose;
+    }
+
     // ---------------------------------------------------------------- Vehicle Drivetrain
 
     constexpr TypeOps kRatiosOps = ops::PushBackListCleared<float>;
     constexpr TypeOps kDifferentialListOps = detail::withStatements(ops::Array<VehicleDifferential>, &detail::structPushBackStatements);
     constexpr TypeOps kAntiRollBarListOps = detail::withStatements(ops::Array<VehicleAntiRollBar>, &detail::structPushBackStatements);
+
+    void vehicleDrivetrainPostDecode(void* comp, const DecodeContext&){
+        VehicleDrivetrainComponent& drivetrain = *static_cast<VehicleDrivetrainComponent*>(comp);
+        const VehicleDrivetrainComponent defaults;
+        drivetrain.throttle = defaults.throttle;
+        drivetrain.steer = defaults.steer;
+        drivetrain.brake = defaults.brake;
+        drivetrain.handBrake = defaults.handBrake;
+        drivetrain.requestedGear = defaults.requestedGear;
+        drivetrain.gearRequested = defaults.gearRequested;
+        drivetrain.rpm = defaults.rpm;
+        drivetrain.gear = defaults.gear;
+        drivetrain.speed = defaults.speed;
+    }
 
     constexpr FieldDesc kVehicleDrivetrainFields[] = {
         JE_FIELD(VehicleDrivetrainComponent, enabled),
@@ -162,6 +197,7 @@ const ComponentDesc kWheelColliderDesc{
     .displayName = "Wheel Collider", .icon = ICON_FA_CIRCLE_NOTCH,
     .body = JE_STRUCT_DESC(WheelColliderComponent, "WheelColliderComponent", kWheelColliderFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WheelColliderComponent),
+    .postDecode = &wheelColliderPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
     .codegenVar = "wheelCollider",
     .codegenExtra = &wheelColliderCodegen,
@@ -173,6 +209,7 @@ const ComponentDesc kVehicleDrivetrainDesc{
     .displayName = "Vehicle Drivetrain", .icon = ICON_FA_GEARS,
     .body = JE_STRUCT_DESC(VehicleDrivetrainComponent, "VehicleDrivetrainComponent", kVehicleDrivetrainFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VehicleDrivetrainComponent),
+    .postDecode = &vehicleDrivetrainPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
     .codegenVar = "vehicleDrivetrain",
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
