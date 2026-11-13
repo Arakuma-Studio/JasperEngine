@@ -54,6 +54,10 @@
 #endif
 
 #if defined(SOKOL_VULKAN)
+    // (vulkan_win32.h includes <windows.h>)
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <vulkan/vulkan.h>
 #endif
 
