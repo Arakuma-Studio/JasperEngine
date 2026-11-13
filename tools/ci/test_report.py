@@ -12,6 +12,10 @@ Fixtures in tools/ci/fixtures/report/, and where each comes from:
   gtest/crash.log           the same binary segfaulting inside a test: no XML, the gate's message
   gtest/asan-*.log          the same googletest built with -fsanitize=address,undefined: a UBSan runtime
                             error and a LeakSanitizer report after a green run; a heap-use-after-free abort
+  gtest/unit-cancelled.log, gtest/asan-cancelled.log
+                            trimmed from CI run 43357218922's unit and asan lanes, both cancelled by their
+                            timeout mid-test: stdout and stderr interleaved mid-line, and CrashGuard's child
+                            process SEGVing under ASan inside a passing test
   mcp/mcp.json, mcp-run.log a real tools/mcp/run_tests.py --suite ci --json run of scratch test files
                             (one failure, one skip, one worker crash, one left-out file); the host's
                             checkout prefix was rewritten to /src/
@@ -36,6 +40,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from pathlib import Path
 
@@ -112,17 +117,36 @@ class GtestTest(unittest.TestCase):
         self.assertEqual(failures[0]["repro"], "SANITIZE=address,undefined UNIT_SUITE=editor "
                                                "UNIT_TEST_ARGS=--gtest_filter=UseAfterFree.Reads tools/build.sh unit-tests")
 
-    def test_ubsan_and_leak_after_a_green_run(self):
+    def test_leak_at_exit_counts_and_a_passing_tests_report_does_not(self):
+        # (changed: a UBSan report inside a test that passed was a failure; it is not one now: tools/build.sh
+        # halts on UBSan, so a real one kills the binary, and a passing test's report is a child's or expected)
         failures = report.parse_log(FIXTURES / "gtest" / "asan-leak.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
-        self.assertEqual(titles(failures), ["runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'",
-                                            "LeakSanitizer: detected memory leaks"])
-        self.assertEqual(locations(failures), ["engine/tests/core/SanitizerFixtureTest.cpp:4",
-                                               "engine/tests/core/SanitizerFixtureTest.cpp:5"])
-        self.assertEqual([f["kind"] for f in failures], ["test", "test"])
-        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Overflow.Adds", failures[0]["repro"])
-        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Leaks.Allocates", failures[1]["repro"])
-        self.assertIn("UNIT_SUITE=core", failures[1]["repro"])
-        self.assertIn("SUMMARY: AddressSanitizer: 64 byte(s) leaked", failures[1]["excerpt"])
+        self.assertEqual(titles(failures), ["LeakSanitizer: detected memory leaks"])
+        self.assertEqual(locations(failures), ["engine/tests/core/SanitizerFixtureTest.cpp:5"])
+        self.assertEqual(failures[0]["kind"], "test")
+        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Leaks.Allocates", failures[0]["repro"])
+        self.assertIn("UNIT_SUITE=core", failures[0]["repro"])
+        self.assertIn("SUMMARY: AddressSanitizer: 64 byte(s) leaked", failures[0]["excerpt"])
+
+    def test_interleaved_output_is_no_crash(self):
+        # run 43357218922's unit lane: stderr split "[       OK ] " from the test's name, and the job timed out
+        # inside the last test; neither is a crash
+        self.assertEqual(report.parse_log(FIXTURES / "gtest" / "unit-cancelled.log", UNIT_REPRO), [])
+
+    def test_a_childs_sanitizer_report_in_a_passing_test_is_ignored(self):
+        # CrashGuard.WorkerCrashReachesHandler starts jasperengine-crash-test, which SEGVs on purpose under ASan
+        failures = report.parse_log(FIXTURES / "gtest" / "asan-cancelled.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(failures, [])
+
+    def test_a_sanitizer_report_in_a_failed_test_counts(self):
+        text = (FIXTURES / "gtest" / "asan-cancelled.log").read_text().replace(
+            "[       OK ] CrashGuard.WorkerCrashReachesHandler", "[  FAILED  ] CrashGuard.WorkerCrashReachesHandler")
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "asan-core.log"
+            log.write_text(text)
+            failures = report.parse_log(log, "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(titles(failures), ["AddressSanitizer: SEGV"])
+        self.assertIn("--gtest_filter=CrashGuard.WorkerCrashReachesHandler", failures[0]["repro"])
 
     def test_gate_line_without_xml_failures(self):
         failures = report.parse_log(FIXTURES / "gtest" / "unit.log", UNIT_REPRO)
@@ -303,6 +327,30 @@ class CollectTest(unittest.TestCase):
         self.assertEqual(len(data["failures"]), 1)
         self.assertEqual(data["failures"][0]["kind"], "smoke")
         self.assertIn("No editor at build/linux/editor-install", data["failures"][0]["excerpt"])
+
+    def test_cancelled_lane_names_what_it_was_running(self):
+        shutil.copy(FIXTURES / "gtest" / "unit-cancelled.log", self.results / "unit-core.log")
+        env = self.env("cancelled", UNIT_REPRO) | {"JASPER_CI_STARTED": str(int(time.time()) - 5412)}
+        data = report.collect("unit", self.results, self.results / "ci-report" / "unit.json", env)
+        self.assertEqual(titles(data["failures"]), [
+            "cancelled after 90 min (a job timeout, or the run was cancelled) while running: "
+            "TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram"])
+        self.assertEqual(data["failures"][0]["kind"], "infra")
+        self.assertEqual(data["failures"][0]["repro"], "UNIT_TEST_ARGS=--gtest_filter=TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram "
+                         "WERROR=1 UNIT_SUITE=core tools/build.sh unit-tests")
+        self.assertIn("[ RUN      ] TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram", data["failures"][0]["excerpt"])
+
+    def test_cancelled_asan_lane(self):
+        shutil.copy(FIXTURES / "gtest" / "asan-cancelled.log", self.results / "asan-core.log")
+        env = self.env("cancelled", "SANITIZE=address,undefined tools/build.sh unit-tests") | {"JASPER_CI_STARTED": str(int(time.time()) - 7213)}
+        data = report.collect("asan", self.results, self.results / "ci-report" / "asan.json", env)
+        self.assertEqual(titles(data["failures"]), [
+            "cancelled after 120 min (a job timeout, or the run was cancelled) while running: "
+            "ProcMatNodeImageGpuSlow.EveryShippedNodeDrawsWhatTheInterpreterDraws"])
+
+    def test_cancelled_before_any_test(self):
+        data = report.collect("unit", self.results, self.results / "ci-report" / "unit.json", self.env("cancelled", UNIT_REPRO))
+        self.assertEqual(titles(data["failures"]), ["cancelled (a job timeout, or the run was cancelled) before any test ran"])
 
     def test_failure_with_nothing_is_infra(self):
         data = report.collect("windows", self.results, self.results / "ci-report" / "windows.json",

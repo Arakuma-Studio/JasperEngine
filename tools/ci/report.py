@@ -333,8 +333,13 @@ NOISE_RE = re.compile(r"ld returned \d+ exit status|linker command failed with e
 BOUNDARY_RE = re.compile(r"^(?:\[\d+/\d+\] |FAILED: |ninja: |> Task |\*\* BUILD |== )")
 GATE_RE = re.compile(r"^(?P<gate>[A-Za-z0-9_.-]*gate[A-Za-z0-9_.-]*): FAIL: (?P<msg>.+)$")
 GATE_REPEATS_RE = re.compile(r"^\d+ (?:tests? )?(?:failed|crashed)\b")
-RUN_RE = re.compile(r"^\[ RUN      \] (\S+)$")
-END_RE = re.compile(r"^\[ +(?:OK|FAILED|SKIPPED) +\] (\S+)")
+RUN_RE = re.compile(r"\[ RUN      \] (\S+)")
+END_RE = re.compile(r"\[ {2}(?: {5}OK|FAILED|SKIPPED) {1,2}\](?: (\S+))?")
+SEGMENT_END_RE = re.compile(r"^(?:\[==========\]|gtest-gate: )")
+# what a test binary dying prints: the shell's signal report, a sanitizer's abort, std::terminate
+DEATH_RE = re.compile(r"Segmentation fault|Aborted|core dumped|Illegal instruction|Floating point exception|Bus error|"
+                      r"^Killed$|terminate called|==\d+==ABORTING|exit (?:1[2-9]\d|[1-9]\d?)$|"
+                      r"missing \(the test binary crashed, or never ran\)")
 SMOKE_STEP_RE = re.compile(r"^== (.+)$")
 SANITIZER_RE = re.compile(r"^==\d+==ERROR: (?P<san>\w+Sanitizer): (?P<msg>.+)$|^WARNING: (?P<tsan>ThreadSanitizer): (?P<tmsg>.+?)(?: \(pid=\d+\))?$")
 UBSAN_RE = re.compile(r"^(?P<file>[^\s:][^:]*?):(?P<line>\d+):(?:\d+:)? runtime error: (?P<msg>.+)$")
@@ -456,8 +461,44 @@ def parse_smoke(lines: list[str], repro: str) -> list[dict]:
     return failures
 
 
-def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list[dict]:
-    """The failures one log shows: smoke steps, gate verdicts, crashed gtests, then build diagnostics."""
+def gtest_runs(lines: list[str]) -> list[dict]:
+    """Every googletest test the console started: its name, the line it started on, the line its
+    output ends before, and its outcome (ok, failed, skipped, ended: another test started after it,
+    unfinished: its binary's output stops inside it) with died: the log then shows the binary died."""
+    runs: list[dict] = []
+    current = None
+
+    def close(end: int, outcome: str) -> None:
+        nonlocal current
+        if current is not None:
+            current.update(end=end, outcome=outcome)
+            runs.append(current)
+            current = None
+
+    for i, line in enumerate(lines):
+        end = END_RE.search(line)
+        if end and current is not None and end.group(1) in (None, current["name"]):
+            close(i, "failed" if "FAILED" in end.group(0) else "skipped" if "SKIPPED" in end.group(0) else "ok")
+        run = RUN_RE.search(line)
+        if run:
+            close(i, "ended")
+            current = {"name": run.group(1), "start": i, "end": len(lines), "outcome": "unfinished", "died": False}
+            continue
+        if current is not None and SEGMENT_END_RE.match(line):
+            close(i, "unfinished")
+    close(len(lines), "unfinished")
+    for run in runs:
+        if run["outcome"] == "unfinished":
+            tail_lines = lines[run["start"] + 1:min(len(lines), run["end"] + 3)]
+            run["died"] = any(DEATH_RE.search(l) for l in tail_lines)
+    return runs
+
+
+def parse_log(path: Path, repro_base: str, transcripts: list[Path] = (), cancelled: bool = False,
+              failed_tests: set[str] | frozenset = frozenset()) -> list[dict]:
+    """The failures one log shows: smoke steps, crashed gtests and sanitizer reports, gate verdicts,
+    then build diagnostics. cancelled: the job was cancelled, so an unfinished test is where it
+    stopped, not a crash. failed_tests: the tests the XML says failed."""
     lines = read_lines(path)
     repro = repro_base
     if lines and lines[0].startswith("$ "):
@@ -466,28 +507,19 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list
         return parse_smoke(lines, repro)
 
     failures: list[dict] = []
-    # googletest console: a test that started and never ended crashed the binary
-    running, crashed_at = None, []
-    running_at: list[str] = []
-    for i, line in enumerate(lines):
-        running_at.append(running[0] if running else "")
-        m = RUN_RE.match(line)
-        if m:
-            if running:
-                crashed_at.append(running)
-            running = (m.group(1), i)
-            continue
-        if running and (END_RE.match(line) or line.startswith("[==========]")):
-            running = None
-        elif running and GATE_RE.match(line) or running and line.startswith("gtest-gate: "):
-            crashed_at.append(running)
-            running = None
-    if running:
-        crashed_at.append(running)
+    # googletest console: who ran where, how each ended (stdout and stderr interleave mid-line, so a
+    # marker is found anywhere in a line), and which unfinished test the binary died in
+    runs = gtest_runs(lines)
+    owner_at = [""] * len(lines)
+    for run in runs:
+        for k in range(run["start"] + 1, run["end"]):
+            owner_at[k] = run["name"]
+    failed = set(failed_tests) | {r["name"] for r in runs if r["outcome"] == "failed"}
     consumed: set[int] = set()
-    for name, i in crashed_at:
-        end = next((j for j in range(i + 1, len(lines)) if RUN_RE.match(lines[j]) or lines[j].startswith(("[==========]", "gtest-gate: "))),
-                   len(lines))
+    for run in runs:
+        if cancelled or run["outcome"] != "unfinished" or not run["died"]:
+            continue
+        name, i, end = run["name"], run["start"], run["end"]
         after = lines[i + 1:end]
         consumed.update(range(i + 1, end))
         title, location = f"{name} crashed", ""
@@ -501,29 +533,35 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list
         failures.append(make_failure("test", title, location, relative_text("\n".join(after[:EXCERPT_LINES])) or "(no output)",
                                      narrow_gtest(repro, next_result_stem(lines, end), name)))
 
-    # sanitizer reports outside a crashed test: UBSan's runtime errors, a leak at exit, a data race
+    # sanitizer reports outside a crashed test count only where nothing else explains them: in a test
+    # that failed, or outside every test (a leak at exit). A passing test's report is its own child's
+    # deliberate crash (CrashGuard runs jasperengine-crash-test), and an unfinished one's is above.
     for i, line in enumerate(lines):
         if i in consumed:
             continue
-        m = UBSAN_RE.match(line)
-        if m:
+        ubsan, san = UBSAN_RE.match(line), SANITIZER_RE.match(line)
+        if not ubsan and not san:
+            continue
+        owner = owner_at[i]
+        if owner and owner not in failed:
+            continue
+        if ubsan:
             frames = [l for l in lines[i + 1:i + 6] if FRAME_RE.match(l)]
-            test = running_at[i] or repo_frame(lines[i + 1:i + 30])[1]
-            failures.append(make_failure("test", f"runtime error: {m.group('msg')}", f"{relative_path(m.group('file'))}:{m.group('line')}",
+            test = owner or repo_frame(lines[i + 1:i + 30])[1]
+            failures.append(make_failure("test", f"runtime error: {ubsan.group('msg')}",
+                                         f"{relative_path(ubsan.group('file'))}:{ubsan.group('line')}",
                                          relative_text("\n".join([line] + frames[:4])),
                                          narrow_gtest(repro, next_result_stem(lines, i), test) if test else repro))
             continue
-        m = SANITIZER_RE.match(line)
-        if m:
-            block = sanitizer_block(lines, i)
-            consumed.update(range(i, i + len(block)))
-            location, test = repo_frame(block)
-            test = test or running_at[i]
-            what = re.sub(r" on (?:address|unknown address) 0x[0-9a-f]+.*$", "", m.group("msg") or m.group("tmsg"))
-            excerpt = block[:EXCERPT_LINES - 1] + ([block[-1]] if len(block) >= EXCERPT_LINES else [])
-            failures.append(make_failure("test", f"{m.group('san') or m.group('tsan')}: {what}", location,
-                                         relative_text("\n".join(excerpt)),
-                                         narrow_gtest(repro, next_result_stem(lines, i), test) if test else repro))
+        block = sanitizer_block(lines, i)
+        consumed.update(range(i, i + len(block)))
+        location, test = repo_frame(block)
+        test = owner or test
+        what = re.sub(r" on (?:address|unknown address) 0x[0-9a-f]+.*$", "", san.group("msg") or san.group("tmsg"))
+        excerpt = block[:EXCERPT_LINES - 1] + ([block[-1]] if len(block) >= EXCERPT_LINES else [])
+        failures.append(make_failure("test", f"{san.group('san') or san.group('tsan')}: {what}", location,
+                                     relative_text("\n".join(excerpt)),
+                                     narrow_gtest(repro, next_result_stem(lines, i), test) if test else repro))
 
     # gate verdicts
     for i, line in enumerate(lines):
@@ -531,7 +569,8 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = ()) -> list
         if not m:
             continue
         msg = m.group("msg")
-        if GATE_REPEATS_RE.match(msg) or crashed_at and "crashed, or never ran" in msg:
+        if GATE_REPEATS_RE.match(msg) or "crashed, or never ran" in msg and any(
+                r["outcome"] == "unfinished" and (r["died"] or cancelled) for r in runs):
             continue
         gate = m.group("gate")
         start = i
@@ -601,6 +640,26 @@ def disk_line(path: Path) -> str:
         return ""
 
 
+def cancelled_failure(logs: list[Path], repro: str, seconds: int) -> dict:
+    """A cancelled job's one failure: how long it ran and the tests it was inside, which a job
+    timeout points at (a hang, or a suite past its budget); never a crash."""
+    unfinished, excerpt, stem, any_run = [], [], "", False
+    for path in logs:
+        lines = read_lines(path)
+        for run in gtest_runs(lines):
+            any_run = True
+            if run["outcome"] == "unfinished":
+                unfinished.append(run["name"])
+                stem = stem or next_result_stem(lines, run["end"]) or path.stem.rsplit("-", 1)[-1]
+                excerpt += [f"{path.name}:", lines[run["start"]]] + lines[run["start"] + 1:run["end"]][-5:]
+    when = f"cancelled after {minutes(seconds)}" if seconds else "cancelled"
+    where = f"while running: {', '.join(unfinished[:5])}" if unfinished else \
+        "between tests" if any_run else "before any test ran"
+    narrowed = narrow_gtest(repro, stem, ":".join(unfinished[:5])) if unfinished and repro else repro
+    return make_failure("infra", f"{when} (a job timeout, or the run was cancelled) {where}", "",
+                        relative_text("\n".join(excerpt)), narrowed)
+
+
 def collect(lane: str, results: Path, out: Path, env: dict | None = None) -> dict:
     env = os.environ if env is None else env
     status = env.get("JASPER_CI_STATUS", "failure") or "failure"
@@ -641,10 +700,15 @@ def collect(lane: str, results: Path, out: Path, env: dict | None = None) -> dic
         except Exception as error:  # noqa: BLE001  (a parser bug must not lose the rest of the report)
             failures.append(make_failure("infra", f"report.py could not read {path.name}", "", repr(error), repro))
 
+    started = env.get("JASPER_CI_STARTED", "")
+    seconds = int(time.time() - int(started)) if started.isdigit() else 0
+    if status == "cancelled":
+        failures.insert(0, cancelled_failure(logs, repro, seconds))
     if status != "success":
+        failed_tests = {f["title"] for f in failures if f["kind"] == "test"}
         for path in logs:
             try:
-                failures += parse_log(path, repro, transcripts)
+                failures += parse_log(path, repro, transcripts, cancelled=status == "cancelled", failed_tests=failed_tests)
             except Exception as error:  # noqa: BLE001
                 failures.append(make_failure("infra", f"report.py could not read {path.name}", "", repr(error), repro))
         if status == "failure" and not failures:
@@ -662,8 +726,6 @@ def collect(lane: str, results: Path, out: Path, env: dict | None = None) -> dic
         dropped = len(failures) - MAX_REPORT_FAILURES
         failures = failures[:MAX_REPORT_FAILURES] + [make_failure("infra", f"{dropped} more failures not kept", "", "", repro)]
 
-    started = env.get("JASPER_CI_STARTED", "")
-    seconds = int(time.time() - int(started)) if started.isdigit() else 0
     data = {
         "lane": lane,
         "status": status,
