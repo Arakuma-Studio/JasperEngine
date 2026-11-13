@@ -15,6 +15,7 @@
 #include "htmlui/compat/html/HtmlParser.h"
 #include "htmlui/compat/html/HtmlTransform.h"
 #include "htmlui/compat/html/RmlSerializer.h"
+#include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include "htmlui/HtmlUI.h"
@@ -836,6 +837,8 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     const std::vector<Diagnostic> registration =
         CompatAtProperty::registerFor(binding->propertyOwner, compiled->sourcePath, compiled->registeredProperties, compiled->files);
 
+    // clip-path (written as html-shape() masks) clips the context's hit testing (S93 R7)
+    context->SetHitTestShape(&clipPathHitTest);
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
     if (!document){
         CompatAtProperty::release(binding->propertyOwner);
