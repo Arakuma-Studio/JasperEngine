@@ -806,11 +806,13 @@ jobs:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # NASM: dav1d's x86-64 asm (the x86_64 slices of universal and simulator builds)
-      - name: Ninja and NASM
+      # NASM: dav1d's x86-64 asm (the x86_64 slices of universal and simulator builds); Subversion:
+      # the version control tests' svn and svnadmin (the Linux image has them)
+      - name: Ninja, NASM and Subversion
         run: |
           command -v ninja > /dev/null || brew install ninja
           command -v nasm > /dev/null || brew install nasm
+          command -v svnadmin > /dev/null || brew install subversion
       - uses: ./.github/actions/ccache-restore
         with:
           lane: macos
