@@ -3151,6 +3151,42 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(std::move(s));
         }
+        add(boolSetting("input.simulate_touch_from_mouse",
+                        "The mouse also acts as finger 0 (onTouchStart/Move/End with the mouse events; Engine.callTouchInMouseEvent) "
+                        "in Play and in desktop and web builds. The Game view's Simulate Touch preference is per user.",
+                        [](Project& p) { return p.isSimulateTouchFromMouse(); },
+                        [](Project& p, bool v) { p.setSimulateTouchFromMouse(v); }));
+
+        // ---- time (Unity's Project Settings > Time, S95 REQ-13)
+        {
+            Setting s;
+            s.key = "time.fixed_timestep";
+            s.type = "number";
+            s.description = "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and at Play "
+                            "start; a scene's fixed_timestep overrides it while that scene is the main scene.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getFixedTimestep()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setFixedTimestep(v);
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "time.maximum_delta_time";
+            s.type = "number";
+            s.description = "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getMaximumDeltaTime()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setMaximumDeltaTime(v);
+                return true;
+            };
+            add(std::move(s));
+        }
 
         // ---- audio (Project Settings > Audio)
         {
@@ -4420,6 +4456,9 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.simulate_touch_from_mouse", "Input", "", "Simulate Touch From Mouse", "input touch mouse finger emulate simulate mobile"},
+    {"time.fixed_timestep", "Time", "", "Fixed Timestep", "time fixed step fixeddeltatime physics hz rate onfixedupdate"},
+    {"time.maximum_delta_time", "Time", "", "Maximum Allowed Timestep", "time maximum delta frame cap clamp spiral"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
@@ -4723,6 +4762,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
         {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
         {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
+        {"Time", SettingsScope::Project, 21, "time fixed timestep step physics rate maximum delta"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

@@ -286,6 +286,10 @@ namespace jasperengine::editor {
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Project Settings > Time and Input > Simulate Touch From Mouse (S95)
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
+        bool simulateTouchFromMouse = false;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
         std::string voxelSettingsCode;
@@ -433,6 +437,9 @@ namespace jasperengine::editor {
         void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
         void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
+        // main.cpp's init lines of Project Settings > Time and Simulate Touch From Mouse, before
+        // the first scene's init ("" at the engine's defaults)
+        static std::string timeAndTouchInitSource(double fixedTimestep, double maximumDeltaTime, bool simulateTouchFromMouse);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none
         static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
@@ -455,6 +462,10 @@ namespace jasperengine::editor {
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
+        // the fixed step, frame delta cap and mouse-as-touch the game starts with; set before configure()
+        void setTimeAndTouchSettings(double fixedStep, double maxDelta, bool touchFromMouse) {
+            fixedTimestep = fixedStep; maximumDeltaTime = maxDelta; simulateTouchFromMouse = touchFromMouse;
+        }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
         // what Project Settings > Voxels lowers (generateVoxelSettingsCode); set before configure()

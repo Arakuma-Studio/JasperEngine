@@ -2759,6 +2759,18 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     // Project Settings > Pixel Art (S42), omitted at its defaults
     if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
         root["pixelArt"] = pixelArt;
+    // Project Settings > Input > Simulate Touch From Mouse and Project Settings > Time, omitted at
+    // their defaults
+    if (project->isSimulateTouchFromMouse())
+        root["simulateTouchFromMouse"] = true;
+    if (project->getFixedTimestep() != Project::defaultFixedTimestep || project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime) {
+        YAML::Node time;
+        if (project->getFixedTimestep() != Project::defaultFixedTimestep)
+            time["fixedTimestep"] = project->getFixedTimestep();
+        if (project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime)
+            time["maximumDeltaTime"] = project->getMaximumDeltaTime();
+        root["time"] = time;
+    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -3549,6 +3561,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 scale[i] = decodeFinite(scaleNode[keys[i]], scale[i]);
         }
         project->setFoliageDistanceScale(scale);
+    }
+
+    {
+        project->setSimulateTouchFromMouse(node["simulateTouchFromMouse"].IsDefined() && node["simulateTouchFromMouse"].as<bool>(false));
+        const YAML::Node time = node["time"];
+        const bool timeMap = time.IsDefined() && time.IsMap();
+        // out of range (a hand edit): the default, as Project Settings > Time accepts no other
+        auto timeValue = [&](const char* key, double fallback) {
+            const double value = timeMap ? decodeFiniteDouble(time[key], fallback) : fallback;
+            return (value >= Project::minFixedTimestep && value <= Project::maxFixedTimestep) ? value : fallback;
+        };
+        project->setFixedTimestep(timeValue("fixedTimestep", Project::defaultFixedTimestep));
+        project->setMaximumDeltaTime(timeValue("maximumDeltaTime", Project::defaultMaximumDeltaTime));
     }
 
     {
@@ -5102,6 +5127,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    if (scene->getFixedTimestep() != SceneSettings().fixedTimestep)
+        sceneNode["fixedTimestep"] = scene->getFixedTimestep();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -5295,6 +5322,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    scene->setFixedTimestep(decodeFinite(node["fixedTimestep"], SceneSettings().fixedTimestep));
 
     // absent restores the defaults, so decoding into a reused scene (play restore) is exact
     scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));

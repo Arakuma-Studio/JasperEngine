@@ -641,6 +641,9 @@ bool editor::Exporter::writeGameConfig() {
     game.foliageQualityUncapped = !project->isFoliageQualityDeclared();
     game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
+    game.simulateTouchFromMouse = project->isSimulateTouchFromMouse();
+    game.fixedTimestep = project->getFixedTimestep();
+    game.maximumDeltaTime = project->getMaximumDeltaTime();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
     game.voxelMaxDimension = project->getVoxelSettings().maxDimension;

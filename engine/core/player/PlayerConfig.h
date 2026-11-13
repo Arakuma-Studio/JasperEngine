@@ -95,6 +95,11 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // Input > Simulate Touch From Mouse (Engine::callTouchInMouseEvent)
+        bool simulateTouchFromMouse = false;
+        // Project Settings > Time, seconds: the fixed step and the frame delta cap
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;

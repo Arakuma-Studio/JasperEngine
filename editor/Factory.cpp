@@ -3290,6 +3290,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
+    if (scene->getFixedTimestep() != SceneSettings().fixedTimestep) {
+        // all of the float's digits: the step a 1/120 scene runs at is the stored one
+        std::ostringstream step;
+        step << std::showpoint << std::setprecision(9) << scene->getFixedTimestep();
+        out << ind2 << "scene->setFixedTimestep(" << step.str() << "f);\n";
+    }
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";
