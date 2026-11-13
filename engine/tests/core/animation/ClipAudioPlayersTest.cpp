@@ -33,6 +33,13 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>    // GetThreadTimes: the thread's CPU time (POSIX: CLOCK_THREAD_CPUTIME_ID)
+#endif
+
 using namespace jasperengine;
 
 namespace {
@@ -250,11 +257,23 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
         for (int i = 0; i < 5; i++) scene.getSystem<ActionSystem>()->update(kDt);
         std::vector<double> ms;
         for (int i = 0; i < 300; i++){
+#ifdef _WIN32
+            FILETIME created, exited, kernel, user;
+            auto cpuTicks = [&](){
+                GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user);
+                return (((uint64_t)kernel.dwHighDateTime << 32) | kernel.dwLowDateTime) + (((uint64_t)user.dwHighDateTime << 32) | user.dwLowDateTime);
+            };
+            const uint64_t a = cpuTicks();
+            scene.getSystem<ActionSystem>()->update(kDt);
+            const uint64_t b = cpuTicks();
+            ms.push_back((double)(b - a) * 1e-4);
+#else
             timespec a, b;
             clock_gettime(CLOCK_THREAD_CPUTIME_ID, &a);
             scene.getSystem<ActionSystem>()->update(kDt);
             clock_gettime(CLOCK_THREAD_CPUTIME_ID, &b);
             ms.push_back((double)(b.tv_sec - a.tv_sec) * 1e3 + (double)(b.tv_nsec - a.tv_nsec) * 1e-6);
+#endif
         }
         std::sort(ms.begin(), ms.end());
         AnimationClipPool::clear();

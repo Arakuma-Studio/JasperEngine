@@ -40,6 +40,13 @@
 #include <mutex>
 #include <thread>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>    // GetThreadTimes: the thread's CPU time (POSIX: CLOCK_THREAD_CPUTIME_ID)
+#endif
+
 using namespace jasperengine;
 
 namespace {
@@ -1250,9 +1257,16 @@ TEST_F(Player, PerformanceBudget){
     struct clock{
         using time_point = std::chrono::duration<double>;
         static time_point now(){
+#ifdef _WIN32
+            FILETIME created, exited, kernel, user;
+            GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user);
+            auto ticks = [](const FILETIME& t){ return ((uint64_t)t.dwHighDateTime << 32) | t.dwLowDateTime; };
+            return time_point((double)(ticks(kernel) + ticks(user)) * 1e-7);
+#else
             timespec spec;
             clock_gettime(CLOCK_THREAD_CPUTIME_ID, &spec);
             return time_point((double)spec.tv_sec + (double)spec.tv_nsec * 1e-9);
+#endif
         }
     };
     std::vector<Quaternion> from(400), to(400);
