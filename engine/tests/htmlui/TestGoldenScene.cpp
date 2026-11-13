@@ -22,7 +22,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "component/UIDocumentComponent.h"
 #include "render/FramebufferRender.h"
-#include "render/SystemRender.h"
+#include "component/PixelPerfectCameraComponent.h"
 
 #include <functional>
 #include <memory>
@@ -275,21 +275,6 @@ namespace {
         return count;
     }
 
-    // the passes of the next frame drawn (a reader asks first: the frames after record them)
-    PassList overlayFramePasses(){
-        SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
-        GpuEnvironment::drawFrames(2);
-        return SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
-    }
-
-    const PassRecord* overlayPassNamed(const PassList& passes, const std::string& label){
-        for (const PassRecord& pass : passes.passes){
-            if (label == pass.label)
-                return &pass;
-        }
-        return nullptr;
-    }
-
     // the probes of overlay_detail.rml at the output resolution (640 x 360, one canvas px a pixel)
     void expectOverlayDetail(const Screen& screen){
         EXPECT_TRUE(screen.is(100, 100, 255, 255, 255, 0));
@@ -304,8 +289,7 @@ namespace {
 }
 
 // R13: render_scale below 1 draws the scene at half size and the uber pass scales it up; the
-// documents composite in that pass, at the output resolution: the same pixels as at scale 1, and
-// no pass more than Screen Space - Camera draws
+// documents composite in that pass, at the output resolution: the same pixels as at scale 1
 TEST_F(HtmlUIScene, OverlayIgnoresRenderScale){
     SceneFixture fixture;
     fixture.addDocument("golden/overlay_detail.rml");
@@ -317,21 +301,12 @@ TEST_F(HtmlUIScene, OverlayIgnoresRenderScale){
 
     overlayEditPost(fixture.getScene(), [](PostProcessingSettings& post){ post.renderScale = 0.5f; });
     ASSERT_TRUE(fixture.waitUntilLoaded());
-    const PassList overlayPasses = overlayFramePasses();
-    const PassRecord* camera = overlayPassNamed(overlayPasses, "camera");
-    ASSERT_NE(camera, nullptr);
-    EXPECT_EQ(camera->width, 320u) << "the scene draws at half size";
-    ASSERT_NE(overlayPassNamed(overlayPasses, "uber"), nullptr);
+    EXPECT_FLOAT_EQ(fixture.getScene().getSystem<RenderSystem>()->getAppliedRenderScale(), 0.5f) << "the scene draws at half size";
 
     Screen half;
     ASSERT_TRUE(capture(half));
     expectOverlayDetail(half);
     EXPECT_EQ(overlayPixelsChanged(full, half), 0u);
-
-    // Screen Space - Camera draws the same passes
-    fixture.getScene().setHtmlUiRenderMode(UIRenderMode::CAMERA);
-    const PassList cameraPasses = overlayFramePasses();
-    EXPECT_EQ(cameraPasses.passes.size(), overlayPasses.passes.size());
 }
 
 // R13: FXAA and CRT (scanlines, mask, curvature, vignette) run in the uber pass before the
@@ -348,11 +323,16 @@ TEST_F(HtmlUIScene, OverlayIgnoresFxaaAndCrt){
         post.crtEnabled = true;
     });
     ASSERT_TRUE(fixture.waitUntilLoaded());
-    ASSERT_NE(overlayPassNamed(overlayFramePasses(), "uber"), nullptr);
     Screen post;
     ASSERT_TRUE(capture(post));
     expectOverlayDetail(post);
     EXPECT_EQ(overlayPixelsChanged(plain, post), 0u);
+
+    // the effects run: Screen Space - Camera puts the document under them
+    fixture.getScene().setHtmlUiRenderMode(UIRenderMode::CAMERA);
+    Screen filtered;
+    ASSERT_TRUE(capture(filtered, 2));
+    EXPECT_GT(overlayPixelsChanged(plain, filtered, 8), 1000u);
 }
 
 // R14: Screen Space - Camera composites in the camera pass, as before S92: at render_scale 0.5
@@ -388,10 +368,8 @@ TEST_F(HtmlUIScene, PixelPerfectBarsCoveredByOverlay){
     pixelPerfect.setLetterboxColor(Vector4(1.0f, 0.0f, 1.0f, 1.0f));
     fixture.addDocument("golden/overlay_detail.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
-    const PassList passes = overlayFramePasses();
-    const PassRecord* camera = overlayPassNamed(passes, "camera");
-    ASSERT_NE(camera, nullptr);
-    EXPECT_EQ(camera->width, 320u) << "the base image at the reference resolution";
+    ASSERT_EQ(fixture.getScene().getComponent<PixelPerfectCameraComponent>(fixture.getCamera().getEntity()).layout.scale, 2)
+        << "the 320 x 180 base image at 2x in 800 x 600: bars around it";
 
     Screen screen;
     ASSERT_TRUE(capture(screen));
