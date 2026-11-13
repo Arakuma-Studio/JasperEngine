@@ -87,7 +87,15 @@ namespace jasperengine::anim{
         AnimatorAssetRef clip;
         std::vector<BlendTreeDef> tree;     // 0 or 1 element (a value-semantic optional of an incomplete type)
 
-        // defined below, where BlendTreeDef is complete
+        // defined below, where BlendTreeDef is complete (MSVC defines a dllexport class's implicit
+        // members where the class ends, which would need it complete here)
+        MotionDef();
+        MotionDef(const MotionDef& other);
+        MotionDef(MotionDef&& other) noexcept;
+        MotionDef& operator=(const MotionDef& other);
+        MotionDef& operator=(MotionDef&& other) noexcept;
+        ~MotionDef();
+
         bool isTree() const;
         bool empty() const;
     };
@@ -110,6 +118,12 @@ namespace jasperengine::anim{
         AnimatorUnknownKeys unknownKeys;
     };
 
+    inline MotionDef::MotionDef() = default;
+    inline MotionDef::MotionDef(const MotionDef& other) = default;
+    inline MotionDef::MotionDef(MotionDef&& other) noexcept = default;
+    inline MotionDef& MotionDef::operator=(const MotionDef& other) = default;
+    inline MotionDef& MotionDef::operator=(MotionDef&& other) noexcept = default;
+    inline MotionDef::~MotionDef() = default;
     inline bool MotionDef::isTree() const { return !tree.empty(); }
     inline bool MotionDef::empty() const { return clip.empty() && tree.empty(); }
 

@@ -18,6 +18,10 @@ namespace jasperengine::terraincore {
     class JASPERENGINE_API RawMapStore : public TerrainMapStore {
     public:
         RawMapStore(float terrainSize, float maxHeight);
+        RawMapStore(const RawMapStore&) = delete;
+        RawMapStore& operator=(const RawMapStore&) = delete;
+        RawMapStore(RawMapStore&&) = default;
+        RawMapStore& operator=(RawMapStore&&) = default;
 
         // A map over its own buffer, zeroed when no bytes are given
         void addMap(MapId map, int width, int height, int channels, int bitsPerChannel, std::vector<uint8_t> bytes = {});

@@ -44,6 +44,8 @@ namespace jasperengine::titleart {
     class JASPERENGINE_API TitleJobState {
     public:
         TitleJobState(TitleRenderServices& services, std::shared_ptr<const TitleArtDoc> doc);
+        TitleJobState(const TitleJobState&) = delete;
+        TitleJobState& operator=(const TitleJobState&) = delete;
 
         struct Slot {
             TargetKey key;
@@ -91,6 +93,8 @@ namespace jasperengine::titleart {
     class JASPERENGINE_API TitlePlanner {
     public:
         TitlePlanner(TitleRenderServices& services, const RenderRequest& request, std::shared_ptr<const TitleArtDoc> doc);
+        TitlePlanner(const TitlePlanner&) = delete;
+        TitlePlanner& operator=(const TitlePlanner&) = delete;
 
         // the whole request as a step list (the job wires itself into state() before running)
         TitleStepList plan();
