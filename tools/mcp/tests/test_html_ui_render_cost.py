@@ -6,7 +6,7 @@
   scene's count (render_stats samples), Auto (the project default) is 4 on desktop;
 - a texture-mode document's msaaSamples drives its own target; the same edit on a screen document
   returns a `next` naming the scene setting;
-- Lua's scene.htmlUiMsaaSamples and scene.htmlUiRenderMode in Play, read back through the Console;
+- Lua's scene.htmlUiMsaaSamples and scene.htmlUiRenderMode in Play, printed back and seen in render_stats;
 - the editor's Scene view keeps drawing a 2D scene's documents as the world-space canvas (it scales
   with the Scene view's zoom), while game views fill the viewport (HtmlUIScene.* in the htmlui suite).
 """
@@ -136,10 +136,12 @@ async def test_document_msaa(ed: Editor):
 async def test_lua_scene_settings(ed: Editor):
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60)
     try:
-        await ed.call("eval_lua", code="local s = getScene(); s.htmlUiMsaaSamples = 1; s.htmlUiRenderMode = UIRenderMode.CAMERA; "
-                                       "print('s92 msaa=' .. s.htmlUiMsaaSamples .. ' camera=' .. tostring(s.htmlUiRenderMode == UIRenderMode.CAMERA))")
-        console = await ed.call("read_console", contains="s92 msaa=")
-        ed.check_in("s92 msaa=1 camera=true", str(console), "Lua sets and reads the scene's HTML UI settings")
+        got = await ed.call("eval_lua", code="local s = getScene(); s.htmlUiMsaaSamples = 1; s.htmlUiRenderMode = UIRenderMode.CAMERA; "
+                                             "print('s92 msaa=' .. s.htmlUiMsaaSamples .. ' camera=' .. tostring(s.htmlUiRenderMode == UIRenderMode.CAMERA))")
+        ed.check_in("s92 msaa=1 camera=true", str(got.get("printed")), "Lua sets and reads the scene's HTML UI settings")
+        # the next frame draws the screen document with the scene's count
+        await ed.call("wait", frames=3)
+        ed.check_eq((await stats(ed, S["screen"]))["samples"], 1, "Lua's count reaches the document target")
     finally:
         await ed.call("play", action="stop")
     # Play's changes stay in Play
