@@ -6911,6 +6911,80 @@ int invoke_proxy_destructor(lua_State* L)
     return 1;
 }
 
+// Pre-check of an overload: can its arguments possibly decode? A false means Stack<T>::get would fail for
+// certain, so the call would only raise (through luaL_argerror for a userdata parameter: lua_getinfo plus a walk of
+// package.loaded in pushglobalfuncname, about 100 microseconds per miss) and the dispatcher can skip it without
+// running it. A true says nothing: the overload still runs under lua_pcall as it always did. This is deliberately
+// NOT Stack<T>::isInstance for every type: get is what decides a call, and it is laxer than isInstance for bool
+// (anything converts), std::string (numbers convert), pointers (nil) and enums (EnumWrapper takes anything). A type
+// not listed here answers true, the old behaviour. Never raises, leaves the stack balanced.
+using overload_check_t = bool (*)(lua_State*);
+
+template <class T>
+inline bool overload_arg_may_decode([[maybe_unused]] lua_State* L, [[maybe_unused]] int index)
+{
+    using U = remove_cvref_t<T>;
+    using C = std::remove_cv_t<std::remove_pointer_t<U>>;
+
+    if constexpr (std::is_same_v<U, bool> || std::is_same_v<U, lua_State*>)
+    {
+        return true;
+    }
+    else if constexpr (std::is_arithmetic_v<U> || std::is_same_v<U, const char*>)
+    {
+        return static_cast<bool>(Stack<U>::get(L, index));
+    }
+    else if constexpr (std::is_same_v<U, std::string>)
+    {
+        const int type = lua_type(L, index);
+        return type == LUA_TSTRING || type == LUA_TNUMBER;
+    }
+    else if constexpr (std::is_class_v<C> && IsUserdata<C>::value && !IsContainer<C>::value)
+    {
+        // nil: a pointer takes it, a reference fails with its own message: leave that to the real decoder
+        return lua_isnil(L, index) || Userdata::isInstance<C>(L, index);
+    }
+    else
+    {
+        return true;
+    }
+}
+
+template <class ArgsPack, std::size_t Start, std::size_t... Indices>
+inline bool overload_args_may_decode_impl([[maybe_unused]] lua_State* L, std::index_sequence<Indices...>)
+{
+    return (overload_arg_may_decode<std::tuple_element_t<Indices, ArgsPack>>(L, static_cast<int>(Indices + Start)) && ...);
+}
+
+// Same pack and same Start as the make_arguments_list<ArgsPack, Start> of the overload it guards
+template <class ArgsPack, std::size_t Start>
+inline bool overload_args_may_decode(lua_State* L)
+{
+    return overload_args_may_decode_impl<ArgsPack, Start>(L, std::make_index_sequence<std::tuple_size_v<ArgsPack>>());
+}
+
+// Sets entry[3] of the overload entry on the top of the stack (no entry[3]: always tried, as before)
+template <class ArgsPack, std::size_t Start>
+inline void set_overload_check(lua_State* L)
+{
+    lua_pushlightuserdata(L, reinterpret_cast<void*>(static_cast<overload_check_t>(&overload_args_may_decode<ArgsPack, Start>)));
+    lua_rawseti(L, -2, 3);
+}
+
+template <class T, class F>
+inline void set_member_overload_check(lua_State* L)
+{
+    if constexpr (! is_any_cfunction_pointer_v<F>)
+        set_overload_check<function_arguments_t<F>, (std::is_member_function_pointer_v<F> ? 2 : 1)>(L);
+}
+
+template <class F>
+inline void set_function_overload_check(lua_State* L)
+{
+    if constexpr (! is_any_cfunction_pointer_v<F>)
+        set_overload_check<function_arguments_t<F>, 1>(L);
+}
+
 template <bool Member>
 inline int try_overload_functions(lua_State* L)
 {
@@ -6922,33 +6996,39 @@ inline int try_overload_functions(lua_State* L)
     const int idx_overloads = nargs + 1;
     const int num_overloads = get_length(L, idx_overloads);
 
-    lua_createtable(L, num_overloads, 0);
-    const int idx_errors = nargs + 2;
-    int nerrors = 0;
+    // error messages of overloads that really ran and failed; a table only once one has
+    lua_pushnil(L);
+    const int idx_raised = nargs + 2;
 
-    lua_pushnil(L);  
-    while (lua_next(L, idx_overloads) != 0)
+    // First pass: nothing is built for the overloads a call cannot match
+    for (int overload = 1; overload <= num_overloads; ++overload)
     {
+        lua_rawgeti(L, idx_overloads, overload);
         LUABRIDGE_ASSERT(lua_istable(L, -1));
 
         lua_rawgeti(L, -1, 1);
         LUABRIDGE_ASSERT(lua_isnumber(L, -1));
-
         const int overload_arity = static_cast<int>(lua_tointeger(L, -1));
+        lua_pop(L, 1);
+
         if (overload_arity >= 0 && overload_arity != effective_args)
         {
-            
-            lua_pushfstring(L, "Skipped overload #%d with unmatched arity of %d instead of %d", nerrors, overload_arity, effective_args);
-            lua_rawseti(L, idx_errors, ++nerrors);
-
-            lua_pop(L, 2); 
+            lua_pop(L, 1);
             continue;
         }
 
-        lua_pop(L, 1); 
+        lua_rawgeti(L, -1, 3);
+        const auto check = reinterpret_cast<overload_check_t>(lua_touserdata(L, -1));
+        lua_pop(L, 1);
 
-        lua_pushnumber(L, 2);
-        lua_gettable(L, -2);
+        if (check != nullptr && ! check(L))
+        {
+            lua_pop(L, 1);
+            continue;
+        }
+
+        lua_rawgeti(L, -1, 2);
+        lua_remove(L, -2);
         LUABRIDGE_ASSERT(lua_isfunction(L, -1));
 
         for (int i = 1; i <= nargs; ++i)
@@ -6956,21 +7036,68 @@ inline int try_overload_functions(lua_State* L)
 
         const int err = lua_pcall(L, nargs, LUA_MULTRET, 0);
         if (err == LUABRIDGE_LUA_OK)
+            return lua_gettop(L) - idx_raised;
+
+        if (err != LUA_ERRRUN)
+            return lua_error_x(L);
+
+        if (lua_isnil(L, idx_raised))
         {
-            
-            return lua_gettop(L) - nargs - 4; 
-        }
-        else if (err == LUA_ERRRUN)
-        {
-            
-            lua_rawseti(L, idx_errors, ++nerrors);
-        }
-        else
-        {
-            return lua_error_x(L);  
+            lua_createtable(L, 0, 1);
+            lua_replace(L, idx_raised);
         }
 
-        lua_pop(L, 1); 
+        lua_rawseti(L, idx_raised, overload);
+    }
+
+    // Every overload failed: this is a wrong call, an error is raised either way, so now pay for the message. An
+    // overload the check skipped runs to produce its own error text, so the message is the same as ever.
+    lua_createtable(L, num_overloads, 0);
+    const int idx_errors = nargs + 3;
+    int nerrors = 0;
+
+    for (int overload = 1; overload <= num_overloads; ++overload)
+    {
+        lua_rawgeti(L, idx_overloads, overload);
+
+        lua_rawgeti(L, -1, 1);
+        const int overload_arity = static_cast<int>(lua_tointeger(L, -1));
+        lua_pop(L, 1);
+
+        if (overload_arity >= 0 && overload_arity != effective_args)
+        {
+            lua_pushfstring(L, "Skipped overload #%d with unmatched arity of %d instead of %d", nerrors, overload_arity, effective_args);
+            lua_rawseti(L, idx_errors, ++nerrors);
+            lua_pop(L, 1);
+            continue;
+        }
+
+        if (lua_istable(L, idx_raised))
+        {
+            lua_rawgeti(L, idx_raised, overload);
+            if (! lua_isnil(L, -1))
+            {
+                lua_rawseti(L, idx_errors, ++nerrors);
+                lua_pop(L, 1);
+                continue;
+            }
+            lua_pop(L, 1);
+        }
+
+        lua_rawgeti(L, -1, 2);
+        lua_remove(L, -2);
+
+        for (int i = 1; i <= nargs; ++i)
+            lua_pushvalue(L, i);
+
+        const int err = lua_pcall(L, nargs, LUA_MULTRET, 0);
+        if (err == LUABRIDGE_LUA_OK)
+            return lua_gettop(L) - idx_errors;  // only if a check said no for a call that decodes: never drop the call
+
+        if (err != LUA_ERRRUN)
+            return lua_error_x(L);
+
+        lua_rawseti(L, idx_errors, ++nerrors);
     }
 
     lua_Debug debug;
@@ -6984,7 +7111,7 @@ inline int try_overload_functions(lua_State* L)
     }
     lua_concat(L, nerrors * 2 + 1);
 
-    return lua_error_x(L); 
+    return lua_error_x(L);
 }
 
 inline void push_function(lua_State* L, lua_CFunction fp, const char* debugname)
@@ -9464,6 +9591,7 @@ class Namespace : public detail::Registrar
                     lua_pushinteger(L, 2);
                     detail::push_function(L, std::move(functions), name);
                     lua_settable(L, -3);
+                    detail::set_function_overload_check<Functions>(L);
 
                     lua_rawseti(L, -2, idx);
                     ++idx;
@@ -9571,6 +9699,7 @@ class Namespace : public detail::Registrar
                         lua_pushinteger(L, 2);
                         detail::push_member_function<T>(L, std::move(functions), name);
                         lua_settable(L, -3);
+                        detail::set_member_overload_check<T, Functions>(L);
 
                         lua_rawseti(L, -2, idx);
                         ++idx;
@@ -9606,6 +9735,7 @@ class Namespace : public detail::Registrar
                         lua_pushinteger(L, 2);
                         detail::push_member_function<T>(L, std::move(functions), name);
                         lua_settable(L, -3);
+                        detail::set_member_overload_check<T, Functions>(L);
 
                         lua_rawseti(L, -2, idx);
                         ++idx;
@@ -9652,6 +9782,7 @@ class Namespace : public detail::Registrar
                     lua_pushinteger(L, 2);
                     lua_pushcclosure_x(L, &detail::constructor_placement_proxy<T, detail::function_arguments_t<Functions>>, className, 0);
                     lua_settable(L, -3);
+                    detail::set_overload_check<detail::function_arguments_t<Functions>, 2>(L);
                     lua_rawseti(L, -2, idx);
                     ++idx;
 
@@ -9707,6 +9838,8 @@ class Namespace : public detail::Registrar
                     lua_newuserdata_aligned<F>(L, F(std::move(functions)));
                     lua_pushcclosure_x(L, &detail::invoke_proxy_constructor<F>, className, 1);
                     lua_settable(L, -3);
+                    if constexpr (! detail::is_any_cfunction_pointer_v<Functions>)
+                        detail::set_overload_check<detail::remove_first_type_t<detail::function_arguments_t<Functions>>, 2>(L);
                     lua_rawseti(L, -2, idx);
                     ++idx;
 
@@ -10223,6 +10356,7 @@ public:
                 lua_pushinteger(L, 2);
                 detail::push_function(L, std::move(functions), name);
                 lua_settable(L, -3);
+                detail::set_function_overload_check<Functions>(L);
 
                 lua_rawseti(L, -2, idx);
                 ++idx;
