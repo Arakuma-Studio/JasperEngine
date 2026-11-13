@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -30,8 +31,25 @@ namespace mac_native_sdk_test {
 
     const char* const root = "${PROJECT_ROOT}/plugins/native";
 
-    // a Mach-O's first bytes (not "!<arch>\n": a dynamic library)
-    const char* const dynamicBinary = "\xcf\xfa\xed\xfe dynamic";
+    // a dynamic library: a Mach-O's first bytes (not "!<arch>\n"). On macOS the export signs what
+    // it carries (codesign), which takes only real code: a copy of a system executable there
+    std::string dynamicBinaryBytes() {
+#ifdef __APPLE__
+        std::ifstream in("/usr/bin/true", std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+#else
+        return "\xcf\xfa\xed\xfe dynamic";
+#endif
+    }
+    const std::string dynamicBinary = dynamicBinaryBytes();
+
+    // a framework's Info.plist: codesign finds the bundle's code by its CFBundleExecutable
+    std::string frameworkPlist(const std::string& name) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n"
+               "<key>CFBundleExecutable</key><string>" + name + "</string>\n"
+               "<key>CFBundleIdentifier</key><string>com.example." + name + "</string>\n"
+               "<key>CFBundlePackageType</key><string>FMWK</string>\n</dict>\n</plist>\n";
+    }
     const char* const staticBinary = "!<arch>\nstatic";
 
     std::string xcframeworkPlist(const std::string& libraries) {
@@ -60,7 +78,8 @@ namespace mac_native_sdk_test {
         fs::create_directory_symlink("A", native / "macos/Dyn.framework/Versions/Current");
         fs::create_symlink("Versions/Current/Dyn", native / "macos/Dyn.framework/Dyn");
         fs::create_directory_symlink("Versions/Current/Headers", native / "macos/Dyn.framework/Headers");
-        TestTempDir::write(native / "macos/Dyn.framework/Versions/A/Resources/Info.plist", "<plist/>\n");
+        fs::create_directory_symlink("Versions/Current/Resources", native / "macos/Dyn.framework/Resources");
+        TestTempDir::write(native / "macos/Dyn.framework/Versions/A/Resources/Info.plist", frameworkPlist("Dyn"));
         TestTempDir::write(native / "macos/Static.framework/Static", staticBinary);
         TestTempDir::write(native / "macos/libZip.a", staticBinary);
         TestTempDir::write(native / "apple/Res.bundle/Contents/Info.plist", "<plist/>\n");
@@ -71,6 +90,7 @@ namespace mac_native_sdk_test {
                                             plistLibrary("macos-arm64_x86_64", "Ads.framework", "macos")));
         TestTempDir::write(native / "apple/Ads.xcframework/ios-arm64/Ads.framework/Ads", dynamicBinary);
         TestTempDir::write(native / "apple/Ads.xcframework/macos-arm64_x86_64/Ads.framework/Ads", dynamicBinary);
+        TestTempDir::write(native / "apple/Ads.xcframework/macos-arm64_x86_64/Ads.framework/Info.plist", frameworkPlist("Ads"));
         TestTempDir::write(native / "apple/Zip2.xcframework/Info.plist",
                            xcframeworkPlist(plistLibrary("macos-arm64", "libzip2.a", "macos", "", "Headers")));
         TestTempDir::write(native / "apple/Zip2.xcframework/macos-arm64/libzip2.a", staticBinary);
