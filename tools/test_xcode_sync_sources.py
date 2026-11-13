@@ -310,6 +310,37 @@ class CompareAndSync(Fixture):
         # the edits keep Xcode's layout: one object per line in the flat sections
         self.assertRegex(text, r"\n\t\t4A534E53[0-9A-F]{16} /\* M1.cpp \*/ = \{isa = PBXFileReference; [^\n]*\};\n")
 
+    def test_header_paths_join_each_configuration_lacking_them_once(self):
+        text = PBXPROJ.replace('\t\t\tname = "jasperengine-macos";',
+                               '\t\t\tbuildConfigurationList = 700000000000000000000001;\n\t\t\tname = "jasperengine-macos";')
+        text = text.replace('\t\t\tname = "jasperengine-ios";',
+                            '\t\t\tbuildConfigurationList = 700000000000000000000002;\n\t\t\tname = "jasperengine-ios";')
+        configurations = ""
+        for oid, name, extra in (("600000000000000000000001", "Debug", '\t\t\t\t\t"$(SRCROOT)/../../libs/x/include",\n'),
+                                 ("600000000000000000000002", "Release", ""), ("600000000000000000000003", "Debug", "")):
+            configurations += ('\t\t%s /* %s */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n'
+                               '\t\t\t\tHEADER_SEARCH_PATHS = (\n\t\t\t\t\t"$(SRCROOT)/../../core",\n%s\t\t\t\t);\n'
+                               '\t\t\t};\n\t\t\tname = %s;\n\t\t};\n' % (oid, name, extra, name))
+        text = text.replace("/* End PBXSourcesBuildPhase section */\n", "/* End PBXSourcesBuildPhase section */\n\n"
+                            "/* Begin XCBuildConfiguration section */\n" + configurations +
+                            "/* End XCBuildConfiguration section */\n\n/* Begin XCConfigurationList section */\n"
+                            "\t\t700000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = ("
+                            "600000000000000000000001, 600000000000000000000002, ); };\n"
+                            "\t\t700000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = ("
+                            "600000000000000000000003, ); };\n/* End XCConfigurationList section */\n")
+        gaps = xs.header_path_gaps(xs.parse_pbxproj(text), TARGETS, ["libs/x/include"])
+        self.assertEqual(xs.header_report(gaps), [
+            "  $(SRCROOT)/../../libs/x/include: not on the header search paths of jasperengine-macos (Release)",
+            "  $(SRCROOT)/../../libs/x/include: not on the header search paths of jasperengine-ios (Debug)"])
+        synced = xs.add_header_paths(text, gaps)
+        root = xs.parse_pbxproj(synced)
+        self.assertEqual(xs.structure_errors(root), [])
+        self.assertEqual(xs.header_path_gaps(root, TARGETS, ["libs/x/include"]), [])
+        for oid in ("600000000000000000000001", "600000000000000000000002", "600000000000000000000003"):
+            self.assertEqual(root["objects"][oid]["buildSettings"]["HEADER_SEARCH_PATHS"],
+                             ["$(SRCROOT)/../../core", "$(SRCROOT)/../../libs/x/include"])
+        self.assertIn('\t\t\t\t\t"$(SRCROOT)/../../libs/x/include",\n\t\t\t\t);', synced)
+
 
 class Repository(unittest.TestCase):
     def test_apple_choices_of_the_engine_cmake(self):
@@ -318,7 +349,8 @@ class Repository(unittest.TestCase):
             for wanted in ("platform/apple/HttpBackendApple.mm", "platform/apple/NativePlatformApple.mm",
                            "core/subsystem/TitleArtRuntimeNone.cpp", "core/tilemap/TileCells.cpp",
                            "core/object/sound/SoundHandle.cpp", "libs/recastnavigation/Detour/Source/DetourNavMesh.cpp",
-                           "libs/msdfgen/core/msdfgen.cpp"):
+                           "libs/msdfgen/core/msdfgen.cpp", "core/tilemap/TileColliderBuilder.cpp",
+                           "libs/clipper2/src/clipper.engine.cpp"):
                 self.assertIn(wanted, sources, target)
             for unwanted in ("core/net/HttpBackendCurl.cpp", "core/native/NativePlatformNone.cpp",
                              "platform/linux/FFmpegBackend.cpp", "platform/win/HttpBackendWin.cpp"):
