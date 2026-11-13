@@ -8,6 +8,7 @@ import io
 import json
 import sys
 import tempfile
+import re
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -99,7 +100,9 @@ class AllowList(unittest.TestCase):
         for name in allowed:
             file, test = name.split("::")
             source = (HERE.parent / "mcp" / "tests" / file).read_text()
-            self.assertIn(f"def {test}(", source, name)
+            # a def, or a name the file makes at load time from a "test_..._" prefix (test_reflection.py)
+            prefixes = re.findall(r'"(test_[a-z0-9_]*_)"', source)
+            self.assertTrue(f"def {test}(" in source or any(test.startswith(p) for p in prefixes), name)
 
 
 if __name__ == "__main__":
