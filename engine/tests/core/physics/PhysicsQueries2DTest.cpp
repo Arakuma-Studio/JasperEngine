@@ -154,7 +154,10 @@ TEST_P(PhysicsQueries2DTest, CastsAndOverlaps){
     // the same thin box turned 90 degrees lies between them
     EXPECT_EQ(PhysicsQueries2D::overlapBoxAll(s, at(5, 1), at(0.5f, 3), Angle::degToDefault(90.0f), colliders), 0u);
     EXPECT_TRUE(PhysicsQueries2D::overlapCapsule(s, at(5, 1), at(0.5f, 3), CapsuleDirection2D::VERTICAL, 0.0f, first));
-    EXPECT_EQ(PhysicsQueries2D::overlapCapsuleAll(s, at(5, 1), at(0.5f, 3), CapsuleDirection2D::HORIZONTAL, 0.0f, colliders), 0u);
+    // HORIZONTAL: the round ends left and right, so the same size is a circle of radius 1.5 m
+    // (Unity's CapsuleCollider2D) and 3 x 0.5 m lies between them
+    EXPECT_EQ(PhysicsQueries2D::overlapCapsuleAll(s, at(5, 1), at(0.5f, 3), CapsuleDirection2D::HORIZONTAL, 0.0f, colliders), 2u);
+    EXPECT_EQ(PhysicsQueries2D::overlapCapsuleAll(s, at(5, 1), at(3, 0.5f), CapsuleDirection2D::HORIZONTAL, 0.0f, colliders), 0u);
     ASSERT_TRUE(PhysicsQueries2D::overlapPoint(s, at(5.25f, 2.25f), first));
     EXPECT_EQ(first.entity, crate);
     EXPECT_FALSE(PhysicsQueries2D::overlapPoint(s, at(5, 1), first));

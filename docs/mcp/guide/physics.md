@@ -555,6 +555,11 @@ Unity's queries, on the playing scene's colliders (bodies exist only in Play), a
 - An agent asks the same of a running game with `query_physics` (`physics` group; `draw: true` shows
   the shape and hits for 3 s in the Game view's physics lines): "is anything within 2 m of the
   player" is `query_physics {shape: "sphere", mode: "overlap", origin, radius: 2}`, not a fan of rays.
+  Its arguments per shape: `origin` (`[x, y]` in 2D), casts `direction` + `max_distance`; sphere
+  `radius`; 3D box `half_extents` + `rotation`, 2D box `size` + `angle` or the corners `point_a` +
+  `point_b` (overlap, check); 3D capsule `point_a` + `point_b` + `radius`, 2D capsule `size` +
+  `angle`. `layer_mask` takes a number or layer names; `hit_from_inside` is 2D's
+  `startInColliders` too. It hits colliders; `raycast_meshes` hits drawn triangles.
 
 ## Character controllers
 

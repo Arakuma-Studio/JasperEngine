@@ -124,6 +124,9 @@ namespace {
             component.maxHeight = 255.0f / 128.0f;  // the level byte 128: 1 m
             component.heightMap.setData(std::string("physics-queries-") + ::testing::UnitTest::GetInstance()->current_test_info()->name(),
                                         TextureData(MAP, MAP, (unsigned int)heights.size(), ColorFormat::RED, 1, heights.data()));
+            // built: the collider reads the map, not a node tree this scene has no system to make
+            component.needUpdateTerrain = false;
+            component.heightMapLoaded = true;
             scene->addComponent<TerrainComponent>(entity, component);
             Collider3D collider;
             collider.type = Collider3DType::HEIGHTFIELD;

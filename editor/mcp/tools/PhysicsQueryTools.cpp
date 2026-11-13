@@ -471,32 +471,32 @@ void queryPhysicsTool(const CallPtr& call) {
 
 void registerPhysicsQueryTools(McpRegistry& registry) {
     using namespace schema;
-    const Json vector = Json{{"type", "array"}, {"items", Json{{"type", "number"}}}, {"minItems", 2}, {"maxItems", 3}};
+    // [x, y] in 2D, [x, y, z] in 3D (the handler checks the length)
+    const Json vector = array(Json{{"type", "number"}}, "");
     ToolDef tool;
     tool.name = "query_physics";
     tool.title = "Query Physics";
     tool.description =
-        "Ask the running game's colliders (Play only): ray/sphere/box/capsule/point cast, cast_all, overlap or check, 3D or 2D "
-        "(points; sphere = circle). Lua's Physics queries with their options. Hits: entity, collider, point, normal, distance. "
-        "draw: shown 3 s in the Game view. Not raycast_meshes (drawn triangles).";
+        "The running game's colliders (Play only), as Lua's Physics queries: ray/sphere/box/capsule/point cast, cast_all, "
+        "overlap or check; 2D in points (sphere = circle). draw: shows it 3 s in the Game view.";
     tool.inputSchema = object({
         {"scene", sceneRef()},
-        {"dimension", stringEnum("Default: the scene's.", {"2d", "3d"})},
+        {"dimension", stringEnum("", {"2d", "3d"})},
         {"shape", stringEnum("", {"ray", "sphere", "box", "capsule", "point"})},
         {"mode", withDefault(stringEnum("", {"cast", "cast_all", "overlap", "check"}), "cast")},
         {"origin", vector},
         {"direction", vector},
         {"max_distance", number("")},
         {"radius", number("")},
-        {"half_extents", vec3("3D box.")},
-        {"size", vec2("2D box, capsule.")},
-        {"angle", number("2D.")},
-        {"rotation", quat("3D box.")},
+        {"half_extents", vec3("")},
+        {"size", vec2("")},
+        {"angle", number("")},
+        {"rotation", quat()},
         {"point_a", vector},
         {"point_b", vector},
-        {"layer_mask", any("Number, layer names or numbers.")},
+        {"layer_mask", any("")},
         {"ignore", entities()},
-        {"triggers", withDefault(stringEnum("", {"use_global", "ignore", "collide"}), "use_global")},
+        {"triggers", stringEnum("", {"use_global", "ignore", "collide"})},
         {"hit_from_inside", boolean("")},
         {"draw", boolean("")}
     }, {"shape"});
