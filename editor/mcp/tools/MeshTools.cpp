@@ -537,6 +537,14 @@ SceneGeometry measureScene(Project* project, SceneProject* sceneProject) {
     return out;
 }
 
+// a model's share of a scene's budget (here, not in the tool's lambda: MSVC took the lambda's
+// std::function<double(const Offender&)> for std::function<double()> with a lambda-local type)
+struct BudgetOffender {
+    std::string path;
+    long long triangles = 0, drawCalls = 0;
+    uint64_t memory = 0, download = 0;
+};
+
 void checkRenderBudgetsTool(const CallPtr& call) {
     meshesWhenIndexed(call, [call] {
         Project* project = call->ctx().project();
@@ -568,11 +576,7 @@ void checkRenderBudgetsTool(const CallPtr& call) {
         JobPtr job = call->ctx().jobs().create("render-budget", "Check " + scene->name + " against the " + platformName + " budget");
         const std::string sceneName = scene->name;
         finishWhenCooked(job, paths, {family}, [project, geometry, paths, family, budget, sceneName, platformName](const JobPtr& job) {
-            struct Offender {
-                std::string path;
-                long long triangles = 0, drawCalls = 0;
-                uint64_t memory = 0, download = 0;
-            };
+            using Offender = BudgetOffender;
             std::vector<Offender> offenders;
             uint64_t memory = geometry->otherMeshBytes, download = 0;
             for (const auto& [path, model] : geometry->models) {
