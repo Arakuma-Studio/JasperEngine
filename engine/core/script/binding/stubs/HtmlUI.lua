@@ -54,3 +54,13 @@ function UIDataModel:get(path) end
 ---@param path string
 ---@param value any
 function UIDataModel:set(path, value) end
+
+---What HtmlUI.prewarmText makes ready: the font as CSS names it, and its font-effect.
+---@class UIPrewarmTextOptions
+---@field family string|nil a font-family list (default "sans-serif")
+---@field size number|nil px (default 16)
+---@field weight number|"normal"|"bold"|nil (default 400)
+---@field style "normal"|"italic"|nil
+---@field effect string|nil a font-effect value: "outline(15px #000)", "glow(4px 12px 0px 8px #000)"
+---@field text string the characters to make ready
+

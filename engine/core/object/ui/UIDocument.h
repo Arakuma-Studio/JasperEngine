@@ -8,6 +8,7 @@
 #include "UIElement.h"
 #include "UIEvent.h"
 #include "UIDataModel.h"
+#include "UIPrewarm.h"
 #include "UIReloadReport.h"
 #include "UIValue.h"
 #include "htmlui/HtmlUIRenderStats.h"
@@ -130,6 +131,11 @@ namespace jasperengine{
         void hideTooltip();
         // Markdown to the HTML <markdown> and setMarkdown show (div.markdown-body; HTML in it is text)
         static std::string markdownToHtml(const std::string& markdown);
+
+        // --- S93 ---
+        // R15: the glyphs of every text of the document, hidden and display: none parts too, and of its data-warm
+        // attributes, made before they are shown (UIPrewarm); done at once when the document is not loaded
+        UIPrewarm prewarm() const;
     };
 
 }

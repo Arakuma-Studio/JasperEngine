@@ -37,6 +37,9 @@ namespace jasperengine {
         static std::string normalizeFamily(const std::string& family);
         // faces registered with fallback = true, in registration order
         static const std::vector<std::shared_ptr<FontFace>>& getFallbackFaces();
+        // the same chain for a text of that weight and style (S93 R16): each fallback face's family matched as find()
+        // does, so a bold text falls back to the family's bold face when it has one
+        static std::vector<std::shared_ptr<FontFace>> getFallbackFaces(int weight, bool italic);
         static std::shared_ptr<FontFace> getBuiltInLatin();    // Roboto, family "Roboto"
         static std::shared_ptr<FontFace> getBuiltInArabic();   // Noto Sans Arabic
         // cache for STBText: the same file parsed once while someone holds it. On failure

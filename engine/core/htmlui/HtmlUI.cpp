@@ -65,7 +65,8 @@ namespace {
         // phase 6: the stateful effects' images (their simulations restart when drawn next)
         htmlui::EffectStatePool::get().destroyAll();
 
-        Rml::ReleaseFontResources();
+        // S93 R14: the glyph cache keeps its pages' texels; releaseGpuResources gave back the contexts'
+        // textures of them (Rml::ReleaseTextures), made and uploaded again when text draws next
     }
 
     void subscribeViewDestroyed(){

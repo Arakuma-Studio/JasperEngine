@@ -67,6 +67,12 @@ MANUAL_SYMBOLS = [
      'UIDocument:getDiagnostics() -> {{severity, code, name, message, suggestion, file, line, column, text}, ...}'),
     ('UIDocument', 'getTargetTexture', 'Method', 'UIDocument:getTargetTexture() -> Framebuffer or nil (TEXTURE render mode)'),
     ('UIDocument', 'getLiveLuaRefCount', 'StaticMethod', 'UIDocument.getLiveLuaRefCount() -> integer'),
+    ('UIDocument', 'prewarm', 'Method',
+     'UIDocument:prewarm() -> UIPrewarm (the glyphs of every text, hidden ones too, and data-warm attributes, made before they show)'),
+    ('HtmlUI', 'prewarmText', 'StaticMethod',
+     'HtmlUI.prewarmText({family = "LINESeedSans", size = 324, weight = 700, style = "normal", effect = "outline(15px #000)", '
+     'text = "GO!0123456789"}) -> UIPrewarm'),
+    ('UIPrewarm', 'onDone', 'Property', 'UIPrewarm.onDone = function() end (called once when done; the next frame if it already is)'),
     ('UIClassList', 'add', 'Method', 'UIClassList:add(name, ...) (el.classList:add("open"))'),
     ('UIClassList', 'remove', 'Method', 'UIClassList:remove(name, ...)'),
     ('UIClassList', 'toggle', 'Method', 'UIClassList:toggle(name, force) -> bool'),

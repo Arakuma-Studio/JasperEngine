@@ -18,6 +18,8 @@
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "htmlui/HtmlUIFontDiagnostics.h"
+#include "htmlui/HtmlUIPrewarm.h"
 
 #include <atomic>
 
@@ -273,6 +275,9 @@ void UIDocumentSystem::update(double dt){
 
     // anime on the UI clock, before RmlUi's update (idempotent per frame: every scene calls it)
     AnimEngine::instance().tick(HtmlUIClock::now());
+    // S93: prewarmed glyphs placed within their budget, fallback glyphs reported (once per frame)
+    HtmlUIPrewarm::update();
+    HtmlUIFontDiagnostics::update();
 
     // runs paused too: the editor shows documents of a stopped scene
     if (!Engine::isViewLoaded())
