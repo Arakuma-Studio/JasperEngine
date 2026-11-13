@@ -1024,11 +1024,25 @@ gh run download <run> -p 'ci-report-*'         # its JSON, per lane
 
 ### Measured lane times
 
-Not yet measured: the first CI runs fill this table, warm cache, and set each job's
-`timeout-minutes` to about 1.5 times its p95.
+Warm-cache times are not measured yet: the first runs after CI lands on `main` fill this table, and
+set each job's `timeout-minutes` to about 1.5 times its p95.
 
 | Lane | p50 | p95 | Runs |
 |---|---|---|---|
+
+Cold builds on a GitHub-hosted `ubuntu-latest` runner (4 vCPU), ccache off, 2026-11-13 (one run each):
+
+| Build | Minutes |
+|---|---|
+| `UNIT_SUITE=core RUN=0 tools/build.sh unit-tests` | 43 |
+| `UNIT_SUITE=editor RUN=0 tools/build.sh unit-tests` | 111 |
+| `SKIP_ENGINE=1 tools/build.sh linux` | 73 |
+| the same three with `UNITY=1` | do not compile (a file-scope `lower` defined twice in one unit, `LuaBridgeAddon.h` and `GradientField.cpp` broken by a neighbour's macros); the nightly's unity job builds them |
+
+From the first PR runs (cold): the core tests ran in 65 min on llvmpipe, the editor tests' share is
+in the editor leg; under ASan the `*GpuSlow` suites took 135 of 167 test minutes (hence their
+nightly job); an MCP shard of about 330 tests took 24 to 86 min without the game builds, and four
+game-building tests took 18 to 91 min each, cold.
 
 ### Pins
 
