@@ -32,6 +32,17 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+HUD_HTML = """<!DOCTYPE html>
+<html>
+<head><link rel="stylesheet" href="hud.css"></head>
+<body><div id="panel"><span id="score">0</span></div></body>
+</html>
+"""
+
+HUD_CSS = """#panel { position: absolute; left: 20px; top: 20px; width: 240px; height: 80px; }
+#score { color: #ffffff; font-size: 32px; }
+"""
+
 # a shell command that writes project.yaml (reading it is fine)
 YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml|open\([^)]*project\.yaml[^)]*['\"]w)"
 
@@ -1285,6 +1296,24 @@ CASES = [
         ],
         "checks": {"calls": ["list_shaders"], "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 14,
+    },
+    {
+        "id": "bad_ui_atlas_frame_cut_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port cut every 9-slice and icon it needed out of its atlases into separate PNGs "
+                         "(ENGINE_LIMITATIONS U16): HTML UI URLs could not address a region. S93 R20 added #xywh= and "
+                         "#sprite= fragments, which the guide's Images table names.",
+        "text_at_issue": "Guide html-ui 'Images and SVG': 'url(\"ui/atlas.png#sprite=coin\")': the frame of the texture's "
+                         "Sprite Mode sheet",
+        "source": "JasperArcade port ENGINE_LIMITATIONS U16; S93 R20",
+        "files": {"assets/ui/atlas.png": "binary placeholder", "assets/ui/hud.html": HUD_HTML, "assets/ui/hud.css": HUD_CSS},
+        "prompt": "The HUD panel's frame should come from the 'panel' frame of assets/ui/atlas.png (it has a Sprite Mode "
+                  "sheet), drawn as a 24 px 9-slice. Set it in assets/ui/hud.css.",
+        "checks": {"file_must": {"assets/ui/hud.css": [r"atlas\.png#sprite=panel"]},
+                   "file_must_not": {"assets/ui/hud.css": [r"panel\.png|frame\.png"]},
+                   "shell_must_not": [r"convert\s|magick|PIL|Image\.open|crop"],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 12,
     },
     {
         "id": "guard_html_ui_template",
