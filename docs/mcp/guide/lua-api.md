@@ -2651,7 +2651,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); TMP alignment in the fixed box: `horizontalAlignment` (`TextHorizontalAlignment`), `verticalAlignment` (`TextVerticalAlignment`); TMP Auto Size: `autoSize`, `fontSizeMin`, `fontSizeMax` (a vector font: the largest whole size that fits the fixed width and height); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` (the size drawn: Auto Size's fit, a bitmap font's multiple) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
@@ -3248,7 +3248,8 @@ makes a GameObject with one.
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 - `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
-  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`, `documentElement` (the
+  rw `filename`, `title`, `visible`, `sortOrder`, `updateMode` (`UIDocumentUpdateMode.UNSCALED_TIME`/`GAME_TIME`:
+  the clock of its animations, applied at once); ro `loaded`, `body`, `documentElement` (the
   `<html>`); `getDiagnostics()` (what the engine does not draw like a browser: a list of
   `{severity, code, name, message, suggestion, file, line, column, text}`),
   `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
@@ -3259,8 +3260,9 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
   `removeDataModel(name)`, `getTargetTexture()` (TEXTURE mode: a `Framebuffer`, else nil),
   `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
-  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
+  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`/`WORLD`, applied at the next load: set
   `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
+  `updateMode`, `pixelsPerUnit`, `billboard` (WORLD mode's quad),
   `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`,
   `onReload` (after an in-place patch, with the report); ro `lastReloadReport` (`{mode, file,
   kept, updated, inserted, removed, replaced, runtimeKept, scriptsRerun, fallbackReason, ms,
@@ -3535,7 +3537,10 @@ gate.area = 0 ; gate:remove()
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
 | `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
 | `LogLevel` | `INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` |
-| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
+| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE`, `WORLD` |
+| `UIDocumentUpdateMode` | `UNSCALED_TIME`, `GAME_TIME` |
+| `TextHorizontalAlignment` | `LEFT`, `CENTER`, `RIGHT`, `JUSTIFIED` |
+| `TextVerticalAlignment` | `TOP`, `MIDDLE`, `BOTTOM`, `BASELINE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
