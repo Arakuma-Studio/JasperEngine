@@ -406,6 +406,11 @@ namespace jasperengine{
         void setPhysics2DSubSteps(int subSteps);
         int getPhysics2DSubSteps() const;
 
+        // Fixed Timestep override while this is the main scene (seconds; 0 = the project's).
+        // Applied when a load makes it the main scene, not by this setter
+        void setFixedTimestep(float seconds);
+        float getFixedTimestep() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 
