@@ -19,7 +19,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #include <vector>
 
 namespace jasperengine {

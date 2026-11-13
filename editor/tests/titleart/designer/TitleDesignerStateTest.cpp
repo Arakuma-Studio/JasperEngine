@@ -24,7 +24,7 @@
 #include "titleart/designer/TitleRows.h"
 #include "widget/DocRow.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

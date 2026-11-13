@@ -20,7 +20,7 @@
 #include "util/ImageDiff.h"
 #include "util/FontFace.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cmath>
 #include <filesystem>

@@ -22,7 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;

@@ -54,7 +54,7 @@
 #include "json.hpp"
 #include "tiny_gltf.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cmath>
 #include <cstdlib>

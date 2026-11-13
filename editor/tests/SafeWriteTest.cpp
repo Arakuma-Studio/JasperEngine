@@ -28,7 +28,7 @@
 #include "SymlinkSupport.h"
 
 #include <sys/stat.h>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>
@@ -127,7 +127,11 @@ TEST(SafeWrite, ReadOnlyFilesAreRefused) {
     writeText(d.root / "ro.txt", "keep");
     fs::permissions(d.root / "ro.txt", fs::perms::owner_read, fs::perm_options::replace);
     std::string error;
+#ifdef _WIN32
+    const bool root = false;   // the read-only attribute holds for administrators too
+#else
     const bool root = ::geteuid() == 0;
+#endif
 #if defined(__linux__)
     {
         // root ignores file permissions (the build containers run the tests as root): the write is

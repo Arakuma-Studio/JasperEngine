@@ -120,6 +120,8 @@ function(jasperengine_add_test_target name)
         target_include_directories(${name}-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR} ${arg_INCLUDES})
         target_include_directories(${name}-objects SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/${IMGUI_DIR} ${CMAKE_SOURCE_DIR}/${IMGUI_DIR}/backends)
         target_compile_definitions(${name}-objects PRIVATE ${testDefinitions})
+        # sources are UTF-8 whatever the code page
+        target_compile_options(${name}-objects PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8 /bigobj>)
         set_target_properties(${name}-objects PROPERTIES
             CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
             CXX_STANDARD_REQUIRED ON

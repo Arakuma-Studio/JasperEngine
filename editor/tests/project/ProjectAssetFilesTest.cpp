@@ -15,7 +15,7 @@
 #include "texture/Material.h"
 #include "texture/TextureCookQueue.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <filesystem>
