@@ -768,19 +768,21 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
 }
 
-// What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them)
+// What a 1.4 editor cooked loads: the file as its writer laid it out (1.6's without the Water Wakes
+// and Fixed Timestep values that end the settings record, the record's length and the string table
+// offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.6's without its Water Wakes and Fixed Timestep values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
+    scene->setFixedTimestep(0.01f);
     const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
     auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
-    const size_t cut = waterWakeTailBytes(*scene);
+    const size_t cut = waterWakeTailBytes(*scene) + fixedTimestepTailBytes(*scene);
     const uint32_t settingsLength = le32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
 
@@ -805,6 +807,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     EXPECT_FLOAT_EQ(loaded.scene->scene->getPlanarReflectionFarClip(), 60.0f);
     EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_EQ(loaded.scene->scene->getFixedTimestep(), defaults.fixedTimestep);
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 
