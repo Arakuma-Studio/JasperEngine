@@ -21,6 +21,7 @@
 #include "component/TextEffectComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "localization/Localization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2753,6 +2754,17 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
         // Texts
         if (signature.test(scene->getComponentId<TextComponent>())){
             TextComponent& text = scene->getComponent<TextComponent>(entity);
+
+            // S95 REQ-28: a Localization Key's value replaces the text when the key, the language
+            // or the tables change (an edit of the key marks the text for update)
+            if (!text.localizationKey.empty() && (text.needUpdateText || text.localizedGeneration != Localization::generation())){
+                text.localizedGeneration = Localization::generation();
+                std::string localized = Localization::get(text.localizationKey);
+                if (localized != text.text){
+                    text.text = std::move(localized);
+                    text.needUpdateText = true;
+                }
+            }
 
             if (noGeometry) text.needUpdateText = true;
 

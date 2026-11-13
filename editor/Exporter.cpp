@@ -55,6 +55,7 @@
 #include "util/CubeLut.h"
 #include "pixelart/BitmapFont.h"
 #include "tilemap/Tileset.h"
+#include "localization/StringTable.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -3834,6 +3835,18 @@ bool editor::Exporter::copyAssets() {
         // A bitmap font ships cooked (S51 R34): <name>.jfont next to where it was, which the game
         // loads in its place; one that does not load ships as it is (the game logs its error)
         if (Util::isBitmapFontFile(entry.path().string()) && cookBitmapFont(relPath, destPath)) return TreeStep::Skip;
+
+        // A String Table ships with the project's languages only (S95 REQ-30); one that does not
+        // parse ships as it is, so the game logs the same error the editor does
+        if (Util::isStringTableFile(entry.path().string())) {
+            std::ifstream in(entry.path(), std::ios::binary);
+            std::ostringstream text;
+            text << in.rdbuf();
+            StringTable table;
+            if (StringTable::parse(text.str(), table, nullptr)) {
+                return writeOrFail(destPath, table.onlyLanguages(project->getLocalizationSettings().languages).write()) ? TreeStep::Skip : stop();
+            }
+        }
 
         // A .tileset ships with its images' current paths (S50): their GUIDs follow a move in the
         // editor, a game loads by path

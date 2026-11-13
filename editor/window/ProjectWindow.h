@@ -633,6 +633,7 @@ namespace jasperengine::editor {
         // the Create list's Noise Graph entry: a submenu of Blank and the presets
         void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
+        void assetsCreateStringTable(const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;

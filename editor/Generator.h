@@ -6,6 +6,7 @@
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include "registry/SortingLayers.h"
+#include "localization/Localization.h"
 #include <array>
 #include <functional>
 #include <string>
@@ -265,6 +266,8 @@ namespace jasperengine::editor {
         bool dynamicBatching = true;
         // Project Settings > Localization > Default Language, its fallbacks applied (S87 R64)
         std::string defaultLanguage = "en";
+        // ... its languages, Remember Language Choice and the String Tables (S95 REQ-27)
+        LocalizationConfig localization;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;

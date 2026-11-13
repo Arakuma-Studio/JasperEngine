@@ -2740,6 +2740,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
         // Project Settings > Localization > Default Language (S87 R12 step 4)
         mainContent += "    TitleArtLanguage::setProjectDefault(" + Factory::formatString(playerSettings.defaultLanguage) + ");\n";
+        // ... and its String Tables, the remembered language applied before any script (S95 REQ-27)
+        {
+            auto list = [](const std::vector<std::string>& values) {
+                std::string out = "{";
+                for (size_t i = 0; i < values.size(); i++) out += (i ? ", " : "") + Factory::formatString(values[i]);
+                return out + "}";
+            };
+            const LocalizationConfig& localization = playerSettings.localization;
+            mainContent += "    Localization::configure({" + list(localization.languages) + ", " + (localization.rememberLanguage ? "true" : "false") +
+                ", " + list(localization.tables) + "});\n";
+            mainContent += "    Localization::start();\n";
+        }
         // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
         if (!playerSettings.dynamicBatching)
             mainContent += "    Engine::setDynamicBatchingDefault(false);\n";

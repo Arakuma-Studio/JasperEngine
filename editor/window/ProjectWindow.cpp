@@ -84,6 +84,8 @@
 #include "util/PhysicsMaterialAssets.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
+#include "window/StringTablesWindow.h"
+#include "localization/StringTables.h"
 #include "tilemap/TilesetEdit.h"
 #include "tilemap/TilesetEditorWindow.h"
 #include "tilemap/TilesetPool.h"
@@ -5359,6 +5361,17 @@ void editor::ProjectWindow::assetsCreateNoiseGraph(const std::string& presetId, 
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreateStringTable(const fs::path& directory) {
+    focusProjectPanel(this);
+    std::string error;
+    const fs::path created = stringtables::createNew(project, directory, error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create String Table", error);
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateSoundEvent(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5712,6 +5725,9 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
     } else if (file.type == FileType::TILESET) {
         if (tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow()) editorWindow->open(filePath);
+    } else if (Util::isStringTableFile(filePath.string()) && project->isInsideAssetsPath(filePath)) {
+        // Window > Localization > String Tables on it (S95 REQ-29)
+        if (StringTablesWindow* strings = Backend::getApp().getStringTablesWindow()) strings->open(filePath);
     } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
         // a graph kind's file: the window of its kind (S90 R26)
     } else {
@@ -5841,6 +5857,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
         case AssetCreateKind::NoiseGraph: assetsCreateNoiseGraph(std::string(), directory); break;
         case AssetCreateKind::Tileset: assetsCreateTileset(directory); break;
+        case AssetCreateKind::StringTable: assetsCreateStringTable(directory); break;
         default: break;
     }
 }
