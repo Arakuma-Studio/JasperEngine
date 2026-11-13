@@ -31,6 +31,15 @@ class Gate(unittest.TestCase):
         self.assertIn("mcp_gate: allowed skip test_web.py::test_latency", "\n".join(lines))
         self.assertIn("2 ran: 1 passed, 0 failed, 1 skipped (1 allowed)", lines[-1])
 
+    def test_a_slow_build_skip_is_allowed_outside_the_nightly_only(self):
+        # PR and merge-queue shards run without JASPER_SLOW_BUILD; the nightly builds the games
+        slow = ("test_build.py::test_desktop", "skip", "set JASPER_SLOW_BUILD=1 to build and run a real Desktop player")
+        code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), slow), {}, "mcp")
+        self.assertEqual(code, 0, lines)
+        self.assertIn("allowed skip test_build.py::test_desktop: a slow game build; runs in nightly", "\n".join(lines))
+        code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), slow), {}, "nightly")
+        self.assertEqual(code, 1, lines)
+
     def test_each_failure(self):
         cases = {
             "mcp_gate: FAIL: test_a.py::test_x failed: AssertionError: 3 != 4": results(("test_a.py::test_x", "fail", "Traceback\nAssertionError: 3 != 4")),

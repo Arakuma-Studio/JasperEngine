@@ -940,6 +940,9 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 that ran no test, an MCP shard that ran no file, or a merge-queue or full run that skipped a lane
 turns it red. A skipped MCP test fails its shard unless `tools/ci/mcp-allowed-skips.txt` lists it
 with the reason and the lane where it does run; a new entry is reviewed like any change.
+PR and merge-queue shards run without `JASPER_SLOW_BUILD`: the tests that build a real game (an hour
+or more each, cold) skip there and run in the nightly, and the smoke lane builds and launches games
+on every change a game's build reads.
 
 **Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
 until `main` is green through CI: `Check` ignores their failures, and the report shows them first,
