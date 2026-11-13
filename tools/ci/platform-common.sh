@@ -51,6 +51,8 @@ fi
 
 JOBS_ARGS=()
 [[ -n "${JOBS:-}" ]] && JOBS_ARGS=(-j "$JOBS")
+# KEEP_GOING=1, as tools/build.sh: Ninja builds on past a failure, so one run shows every error
+[[ "${KEEP_GOING:-0}" == 1 ]] && JOBS_ARGS+=(-- -k 0)
 
 WERROR_VALUE=OFF
 [[ "${WERROR:-0}" == 1 ]] && WERROR_VALUE=ON

@@ -38,6 +38,8 @@ concurrency:
 env:
   # the test lanes whose failures Check lists but does not fail on (D2); emptied in phase 7
   ADVISORY_LANES: "unit asan htmlui mcp smoke"
+  # every compile error of a run, not the first one (tools/build.sh and tools/ci/platform-common.sh)
+  KEEP_GOING: 1
 
 defaults:
   run:
