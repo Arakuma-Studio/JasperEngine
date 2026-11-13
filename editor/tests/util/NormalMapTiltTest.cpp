@@ -291,9 +291,12 @@ TEST(NormalMapTiltCache, ChangedFileDoesNotWaitForTheOldMeasure) {
     const fs::path file = dir.path / "rock_normal.png";
     writeFile(file, "slow 20");
 
-    // the old version is being measured (held at the gate)
-    EXPECT_FALSE(NormalMapTilt::request(file).ready);
+    // the old version is being measured (held at the gate), on a thread of its own: on the
+    // Background lane it could hold the lane's only slot (a machine of few cores), and the new
+    // version's measure would wait for it
+    slow.start([file]() { NormalMapTilt::measure(file); });
     ASSERT_TRUE(slow.waitForSlow(std::chrono::seconds(5)));
+    EXPECT_FALSE(NormalMapTilt::request(file).ready);
 
     // the file changes: the next lookups return at once, and measure the new version
     writeFile(file, "4.25", 2);

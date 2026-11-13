@@ -17,7 +17,8 @@
 # The result is compared with the Sources phases of jasperengine-macos and jasperengine-ios: a
 # missing source, one CMake does not compile, one listed twice, and one CMake builds with
 # -ffp-contract=off (the bit-identical modules) without that flag, or the other way round. Other
-# per-source flags (-Os, -mavx2) are not compared: the project has never carried them.
+# per-source flags (-Os, -mavx2) are not compared: the project has never carried them. Every
+# configuration of both targets must also have ENGINE_HEADER_PATHS on its header search paths.
 #
 # The sync adds a missing source as a file reference (in the group of its directory, made when
 # missing, or beside the other files of that directory) and one PBXBuildFile per target, and removes
@@ -67,7 +68,11 @@ TARGETS = [("jasperengine-macos", {"CMAKE_SYSTEM_NAME": "Darwin"}),
            ("jasperengine-ios", {"CMAKE_SYSTEM_NAME": "iOS", "IOS": "1"})]
 # libraries CMake builds as their own targets (jasperengine links them) and the project compiles
 # in its engine targets: (directory under engine/, CMake target)
-ENGINE_LIBRARIES = [("libs/msdfgen", "msdfgen"), ("libs/recastnavigation", "recastnavigation")]
+ENGINE_LIBRARIES = [("libs/msdfgen", "msdfgen"), ("libs/recastnavigation", "recastnavigation"),
+                    ("libs/clipper2", "clipper2")]
+# include directories (under engine/) those libraries' users need on the engine targets' header search
+# paths in every configuration; Recast/Detour's are tools/xcode_sync_navigation.py's
+ENGINE_HEADER_PATHS = ["libs/clipper2/include"]
 
 CONTRACT_FLAG = "-ffp-contract=off"
 COMPILED = (".c", ".cc", ".cpp", ".cxx", ".m", ".mm")
@@ -1038,6 +1043,46 @@ class Editor:
         return text
 
 
+def header_path_gaps(root, targets, wanted=ENGINE_HEADER_PATHS):
+    """[(target, configuration name, its HEADER_SEARCH_PATHS list, the wanted paths it lacks)]"""
+    objects = root["objects"]
+    paths = ["$(SRCROOT)/../../" + p for p in wanted]
+    out = []
+    for target, _ in targets:
+        native = [o for o in objects.values() if isinstance(o, dict) and o.get("isa") == "PBXNativeTarget"
+                  and o.get("name") == target]
+        if len(native) != 1:
+            raise SyncError("project.pbxproj has %d targets named %s" % (len(native), target))
+        for config in objects[native[0]["buildConfigurationList"]]["buildConfigurations"]:
+            name = objects[config].get("name", config)
+            present = objects[config].get("buildSettings", {}).get("HEADER_SEARCH_PATHS")
+            if not isinstance(present, PList):
+                raise SyncError("%s (%s) has no HEADER_SEARCH_PATHS list" % (target, name))
+            lacking = [p for p in paths if p not in present]
+            if lacking:
+                out.append((target, name, present, lacking))
+    return out
+
+
+def add_header_paths(text, gaps):
+    edits = []
+    for _, _, present, lacking in gaps:
+        close = present.end - 1
+        line_start = text.rfind("\n", 0, close) + 1
+        if text[line_start:close].strip():
+            raise SyncError("a HEADER_SEARCH_PATHS list is written on one line: not supported")
+        indent = re.match(r"[ \t]*", text[line_start:]).group(0)
+        edits.append((line_start, "".join("%s\t%s,\n" % (indent, quote(p)) for p in lacking)))
+    for at, insertion in sorted(edits, reverse=True):
+        text = text[:at] + insertion + text[at:]
+    return text
+
+
+def header_report(gaps):
+    return ["  %s: not on the header search paths of %s (%s)" % (p, target, name)
+            for target, name, _, lacking in gaps for p in lacking]
+
+
 def analyse(text, project_dir, source_dir, targets, variables, libraries=ENGINE_LIBRARIES):
     """the parsed project and [(target, Sources phase id, cmake sources, contracted, xcode list, diff)]"""
     root = parse_pbxproj(text)
@@ -1108,7 +1153,12 @@ def main(argv):
         print("project.pbxproj is not consistent (fix it first):")
         print("\n".join("  " + e for e in errors))
         return 1
-    differences = report(results)
+    try:
+        gaps = header_path_gaps(root, TARGETS)
+    except SyncError as e:
+        print("xcode_sync_sources: %s" % e)
+        return 1
+    differences = report(results) + header_report(gaps)
     counts = ", ".join("%s %d" % (target, len(sources)) for target, _, sources, _, _, _ in results)
     if not differences:
         print("Xcode engine targets compile what CMake compiles for Apple (%s sources)" % counts)
@@ -1119,8 +1169,9 @@ def main(argv):
         return 1
     try:
         text = sync(text, project_dir, ENGINE, results)
+        text = add_header_paths(text, header_path_gaps(parse_pbxproj(text), TARGETS))
         root, results = analyse(text, project_dir, ENGINE, TARGETS, variables)
-        errors = structure_errors(root) + report(results)
+        errors = structure_errors(root) + report(results) + header_report(header_path_gaps(root, TARGETS))
     except SyncError as e:
         print("xcode_sync_sources: %s (nothing written)" % e)
         return 1

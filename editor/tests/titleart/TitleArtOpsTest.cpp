@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <filesystem>
 #include <fstream>
 
@@ -373,7 +375,13 @@ TEST_F(TitleArtOpsTest, ReservedOpsNameTheirOwner) {
         EXPECT_EQ(failure(r)->code, "not_available") << reserved.name;
         EXPECT_NE(failure(r)->message.find(reserved.owner), std::string::npos) << reserved.name;
     }
-    EXPECT_EQ(TitleArtOps::pendingOwner("apply_look"), "S84");
+    // the table's owner, whether or not a test before this one ran S84's registration (the
+    // order of the suites differs between platforms)
+    const std::vector<ReservedTitleOp>& reserved = TitleArtOps::reservedOps();
+    const auto look = std::find_if(reserved.begin(), reserved.end(),
+                                   [](const ReservedTitleOp& op) { return std::string(op.name) == "apply_look"; });
+    ASSERT_NE(look, reserved.end());
+    EXPECT_STREQ(look->owner, "S84");
 }
 
 // S87's create.from importers register by kind and are chosen by the file's content
@@ -419,24 +427,30 @@ TEST_F(TitleArtOpsTest, CreateFromPicksTheImporterByContent) {
     std::filesystem::remove_all(dir);
 }
 
+// (an op of its own: a reserved one's owner may have registered it in an earlier test)
 TEST_F(TitleArtOpsTest, ARegisteredOpRunsInTheBatch) {
-    ASSERT_TRUE(TitleArtOps::registerOp("apply_look", [](TitleOpContext& ctx, const Json& op) {
+    const std::string name = "test_fill_color";
+    const TitleOpsResult before = apply(Json{{"op", name}, {"layer", "Title"}});
+    ASSERT_TRUE(failure(before));
+    EXPECT_EQ(failure(before)->code, "bad_op");
+    ASSERT_TRUE(TitleArtOps::registerOp(name, [](TitleOpContext& ctx, const Json& op) {
         Json* layer = ctx.layer(op);
         if (!layer) return false;
         return ctx.set(layer, "face.fill.color", op.value("color", std::string("#c0a040")));
     }));
     EXPECT_FALSE(TitleArtOps::registerOp("set", [](TitleOpContext&, const Json&) { return true; })) << "S80's ops are S80's";
-    EXPECT_FALSE(TitleArtOps::registerOp("apply_look", [](TitleOpContext&, const Json&) { return true; })) << "one handler";
-    EXPECT_EQ(TitleArtOps::pendingOwner("apply_look"), "");
-    const TitleOpsResult r = apply(Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"color", "#123456"}},
-                                                Json{{"op", "apply_look"}, {"layer", "Nope"}}}));
+    EXPECT_FALSE(TitleArtOps::registerOp(name, [](TitleOpContext&, const Json&) { return true; })) << "one handler";
+    const TitleOpsResult r = apply(Json::array({Json{{"op", name}, {"layer", "Title"}, {"color", "#123456"}},
+                                                Json{{"op", name}, {"layer", "Nope"}}}));
     EXPECT_FALSE(r.ok) << "all or nothing for registered ops too";
     EXPECT_EQ(failure(r)->code, "bad_layer");
-    const TitleOpsResult ok = apply(Json{{"op", "apply_look"}, {"layer", "Title"}, {"color", "#123456"}});
+    const TitleOpsResult ok = apply(Json{{"op", name}, {"layer", "Title"}, {"color", "#123456"}});
     ASSERT_TRUE(ok.ok) << ok.error();
     EXPECT_EQ(ok.doc.layers()[0]["style"]["face"]["fill"]["color"], "#123456");
-    EXPECT_TRUE(TitleArtOps::unregisterOp("apply_look"));
-    EXPECT_EQ(TitleArtOps::pendingOwner("apply_look"), "S84");
+    EXPECT_TRUE(TitleArtOps::unregisterOp(name));
+    const TitleOpsResult after = apply(Json{{"op", name}, {"layer", "Title"}});
+    ASSERT_TRUE(failure(after));
+    EXPECT_EQ(failure(after)->code, "bad_op");
 }
 
 TEST_F(TitleArtOpsTest, CommitInvariantsClearAClipWithoutABase) {

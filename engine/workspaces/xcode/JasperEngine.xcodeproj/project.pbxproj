@@ -4942,7 +4942,7 @@
 		4A534E53891A179E1FB6051A /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
 		4A534E53E02D4F6BD72BB70E /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
 		4A534E53E94F7A6369A305A2 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
-		4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; };
+		4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E53A0A54789548D2DA1 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
 		4A534E537457DACB3B82B77D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
 		4A534E5389E89E6D01D2EB92 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
@@ -4978,11 +4978,19 @@
 		4A534E5352E3A58794CE2A69 /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
 		4A534E531988399AB65AFFDF /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
 		4A534E53EBFC087919224442 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
-		4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; };
+		4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E53AF7B08FE79344324 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
 		4A534E530AFE29037462431D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
 		4A534E53977C8FADAFA962D4 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
 		4A534E5391DDC952FAC38CAF /* TilesetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */; };
+		4A534E53B8A4C9B9417B549E /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53855F80AC031EA979 /* clipper.engine.cpp */; };
+		4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
+		4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
+		4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
+		4A534E53FA0D88F9BD42D0DD /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53855F80AC031EA979 /* clipper.engine.cpp */; };
+		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
+		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
+		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9596,6 +9604,10 @@
 		4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapMeshAccess.cpp; sourceTree = "<group>"; };
 		4A534E5345C30F4A0E857488 /* Tileset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Tileset.cpp; sourceTree = "<group>"; };
 		4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilesetPool.cpp; sourceTree = "<group>"; };
+		4A534E53855F80AC031EA979 /* clipper.engine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.engine.cpp; sourceTree = "<group>"; };
+		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
+		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
+		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -12555,6 +12567,7 @@
 				71393ED328F8EF200074442E /* tinyxml2 */,
 				53313658205D4C7B978283CB /* msdfgen */,
 				5458545227649E7756DFE7F0 /* zstd */,
+				4A534E53D6BD09E6C1121274 /* clipper2 */,
 			);
 			path = libs;
 			sourceTree = "<group>";
@@ -16053,6 +16066,25 @@
 				4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */,
 			);
 			path = tilemap;
+			sourceTree = "<group>";
+		};
+		4A534E539F0EB07C07419E7B /* src */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53855F80AC031EA979 /* clipper.engine.cpp */,
+				4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */,
+				4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */,
+				4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		4A534E53D6BD09E6C1121274 /* clipper2 */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E539F0EB07C07419E7B /* src */,
+			);
+			path = clipper2;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -19687,6 +19719,10 @@
 				4A534E530AFE29037462431D /* TilemapMeshAccess.cpp in Sources */,
 				4A534E53977C8FADAFA962D4 /* Tileset.cpp in Sources */,
 				4A534E5391DDC952FAC38CAF /* TilesetPool.cpp in Sources */,
+				4A534E53FA0D88F9BD42D0DD /* clipper.engine.cpp in Sources */,
+				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
+				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
+				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20678,6 +20714,10 @@
 				4A534E537457DACB3B82B77D /* TilemapMeshAccess.cpp in Sources */,
 				4A534E5389E89E6D01D2EB92 /* Tileset.cpp in Sources */,
 				4A534E53E072E18B2EF1E1A7 /* TilesetPool.cpp in Sources */,
+				4A534E53B8A4C9B9417B549E /* clipper.engine.cpp in Sources */,
+				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
+				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
+				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -23100,6 +23140,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -23157,6 +23198,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -23637,6 +23679,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -23697,6 +23740,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";

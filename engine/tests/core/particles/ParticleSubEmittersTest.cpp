@@ -173,7 +173,7 @@ TEST(ParticleSubEmitters, ProbabilityThinsTheSpawns){
 
 TEST(ParticleSubEmitters, PooledChildrenAllocateNothingWhenWarm){
     if (!testsupport::countsAllocations())
-        GTEST_SKIP() << "no allocation counting on this platform";
+        GTEST_SKIP() << "no allocation counter on this platform";
     ParticleEffectDocument d = parent(SubEmitterTrigger::Death, 2);
     d.looping = true;
     d.emission.bursts.clear();
