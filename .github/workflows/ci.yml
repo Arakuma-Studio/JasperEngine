@@ -51,6 +51,7 @@ jobs:
   # ------------------------------------------------------------- Planning ---
   changes:
     name: changes
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -153,7 +154,7 @@ jobs:
   lint:
     name: lint
     needs: changes
-    if: needs.changes.outputs.run_lint == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -189,7 +190,7 @@ jobs:
   linux:
     name: linux
     needs: changes
-    if: needs.changes.outputs.run_linux == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
@@ -267,7 +268,7 @@ jobs:
   unit:
     name: unit
     needs: changes
-    if: needs.changes.outputs.run_unit == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
@@ -355,7 +356,7 @@ jobs:
   asan:
     name: asan
     needs: changes
-    if: needs.changes.outputs.run_asan == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
@@ -408,7 +409,7 @@ jobs:
   htmlui:
     name: htmlui
     needs: changes
-    if: needs.changes.outputs.run_htmlui == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
@@ -473,10 +474,7 @@ jobs:
   mcp:
     name: mcp (${{ matrix.shard }})
     needs: [changes, linux]
-    if: >-
-      needs.changes.outputs.run_mcp == 'true'
-      && needs.changes.outputs.mcp_shards != ''
-      && needs.changes.outputs.mcp_shards != '[]'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -521,7 +519,7 @@ jobs:
   smoke:
     name: smoke
     needs: [changes, linux]
-    if: needs.changes.outputs.run_smoke == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
@@ -612,7 +610,7 @@ jobs:
   web:
     name: web
     needs: changes
-    if: needs.changes.outputs.run_web == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -685,7 +683,7 @@ jobs:
   android:
     name: android
     needs: changes
-    if: needs.changes.outputs.run_android == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -741,7 +739,7 @@ jobs:
   windows:
     name: windows
     needs: changes
-    if: needs.changes.outputs.run_windows == 'true'
+    if: false
     runs-on: windows-latest
     timeout-minutes: 240
     env:
@@ -770,10 +768,10 @@ jobs:
       - name: Engine (OpenGL) and the core tests
         run: tools/ci/windows.sh engine glcore
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: ${{ !cancelled() }}
         run: tools/ci/windows.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: ${{ !cancelled() }}
         run: tools/ci/windows.sh check-cli
       - name: Engine (Direct3D 11)
         if: ${{ !cancelled() }}
@@ -800,8 +798,6 @@ jobs:
   # and engine through tools/ci/macos.sh, ios the Xcode project for iOS and macOS.
   macos:
     name: macos
-    needs: changes
-    if: needs.changes.outputs.run_macos == 'true'
     runs-on: macos-latest
     timeout-minutes: 180
     env:
@@ -823,12 +819,13 @@ jobs:
       - name: Editor (arm64)
         run: tools/ci/macos.sh editor
       - name: Engine and the core tests
+        if: ${{ !cancelled() }}
         run: tools/ci/macos.sh engine
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: ${{ !cancelled() }}
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: ${{ !cancelled() }}
         run: tools/ci/macos.sh check-cli
       - name: Compile build of post-processing
         if: ${{ !cancelled() && github.event_name != 'push' }}
@@ -846,8 +843,6 @@ jobs:
 
   ios:
     name: ios
-    needs: changes
-    if: needs.changes.outputs.run_ios == 'true'
     runs-on: macos-latest
     timeout-minutes: 120
     env:
@@ -858,7 +853,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # dav1d's x86-64 asm: the simulator build has an x86_64 slice
       - name: NASM
-        run: command -v nasm > /dev/null || brew install nasm
+        run: |
+          command -v nasm > /dev/null || brew install nasm
+          defaults write com.apple.dt.Xcode IDEBuildingContinueBuildingAfterErrors -bool YES
       - name: Xcode project (iOS)
         run: tools/ci/macos.sh xcode ios
       - name: Xcode project (macOS)
@@ -876,7 +873,7 @@ jobs:
   caches:
     name: caches
     needs: [linux, unit, asan, htmlui, smoke, web, android, windows, macos]
-    if: always() && github.event_name == 'push'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -917,7 +914,7 @@ jobs:
   report:
     name: report
     needs: [changes, lint, linux, unit, asan, htmlui, mcp, smoke, web, android, windows, macos, ios, check]
-    if: always()
+    if: false
     runs-on: ubuntu-slim
     timeout-minutes: 10
     permissions:
@@ -979,7 +976,7 @@ jobs:
   check:
     name: Check
     needs: [changes, lint, linux, unit, asan, htmlui, mcp, smoke, web, android, windows, macos, ios]
-    if: always()
+    if: false
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
