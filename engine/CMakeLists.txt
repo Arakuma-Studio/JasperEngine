@@ -1293,10 +1293,11 @@ if(JASPERENGINE_RUNTIME_SHADERS)
 endif()
 
 # Set again here because standalone builds skip the root CMakeLists
+# C and C++ only: an assembler handed /w takes it for a second input file (dav1d's NASM on MSVC)
 if(MSVC)
-    set(EXTERNAL_WARNING_FLAG /w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG -w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-w>)
 endif()
 
 set(JASPERENGINE_TEXTURE_LIBS zstd_decompress zstd basisu_transcoder)

@@ -152,10 +152,11 @@ include(${JASPERENGINE_ROOT}/cmake/JasperEngineToolchain.cmake)
 jasperengine_check_cxx_toolchain()
 
 # Warnings from vendored code are not ours to fix and only hide our own
+# C and C++ only: an assembler handed /w takes it for a second input file (dav1d's NASM on MSVC)
 if(MSVC)
-    set(EXTERNAL_WARNING_FLAG /w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG -w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-w>)
 endif()
 
 # Icon and version resource for one binary. Each target needs its own so
