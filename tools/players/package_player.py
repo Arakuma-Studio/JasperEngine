@@ -89,7 +89,12 @@ def model_cook_formats() -> list:
 
 def engine_version() -> str:
     """The version the editor of this tree reports (CMakeLists.txt's JASPERENGINE_EDITOR_VERSION):
-    a runtime is locked to it (R10)."""
+    a runtime is locked to it (R10). JASPERENGINE_EDITOR_VERSION, else JASPERENGINE_VERSION, names it
+    as tools/build.sh stamps a release's editor with it (a nightly's nightly-YYYYMMDD, which git
+    describe cannot give)."""
+    stamp = os.environ.get("JASPERENGINE_EDITOR_VERSION") or os.environ.get("JASPERENGINE_VERSION")
+    if stamp:
+        return re.sub(r"[^A-Za-z0-9._+-]", "", stamp) or "unknown"
     try:
         described = subprocess.run(["git", "-C", str(REPO), "describe", "--tags", "--match", "v[0-9]*", "--always", "--dirty"],
                                    check=True, capture_output=True, text=True).stdout.strip()
@@ -294,7 +299,7 @@ def main() -> int:
                                            "runtime's symbols/, archived on their own (-symbols.zip)")
     parser.add_argument("--out", required=True, help="the players directory the runtime goes into")
     parser.add_argument("--zip", help="also write the runtime's archive into this directory")
-    parser.add_argument("--engine-version", help="default: git describe")
+    parser.add_argument("--engine-version", help="default: JASPERENGINE_EDITOR_VERSION, JASPERENGINE_VERSION, else git describe")
     args = parser.parse_args()
     if args.platform in ("linux", "windows", "macos", "web") and not args.build:
         parser.error(f"--build is required for {args.platform}")

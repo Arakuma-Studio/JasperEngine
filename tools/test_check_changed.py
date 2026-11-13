@@ -470,6 +470,7 @@ class Coverage(unittest.TestCase):
             data = coverage_map.collect(runs_dir, tree, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
             self.assertEqual(data["tests"], ["test_nothing.py", "test_x.py", "test_y.py"])
             self.assertEqual(data["editor_tests"], 2)
+            self.assertEqual(data["editor_test_names"], ["test_x.py", "test_y.py"])
             self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"]])
             self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"], [5, 6, "0"]])
             self.assertEqual(data["sources"]["engine/core/Inl.h"]["functions"], [[5, 6, "2"]])
@@ -478,8 +479,28 @@ class Coverage(unittest.TestCase):
             coverage_map.MIN_EDITOR_FUNCTIONS = old
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_merge(self):
+        # the maps of a run split across machines (the nightly's coverage shards): one test's
+        # chunks on two shards count once; each mask is renumbered onto the joined test list
+        a = {"version": 2, "commit": "c1", "created": 5.0, "tests": ["test_a.py", "test_x.py"], "editor_tests": 2,
+             "editor_test_names": ["test_a.py", "test_x.py"], "seconds": {"test_a.py": 1.0, "test_x.py": 2.0},
+             "sources": {"engine/core/A.cpp": {"functions": [[1, 2, "1"], [3, 4, "2"], [5, 6, "0"]]}}}
+        b = {"version": 2, "commit": "c1", "created": 7.0, "tests": ["test_b.py", "test_x.py"], "editor_tests": 1,
+             "editor_test_names": ["test_x.py"], "seconds": {"test_x.py": 3.0},
+             "sources": {"engine/core/A.cpp": {"functions": [[1, 2, "2"], [5, 6, "1"]]},
+                         "engine/core/B.cpp": {"functions": [[9, 9, "3"]]}}}
+        data = coverage_map.merge([a, b])
+        self.assertEqual(data["tests"], ["test_a.py", "test_b.py", "test_x.py"])
+        self.assertEqual((data["commit"], data["created"], data["version"]), ("c1", 7.0, 2))
+        self.assertEqual(data["editor_tests"], 2)
+        self.assertEqual(data["seconds"], {"test_a.py": 1.0, "test_x.py": 5.0})
+        self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "5"], [3, 4, "4"], [5, 6, "2"]])
+        self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[9, 9, "6"]])
+        with self.assertRaises(ValueError):
+            coverage_map.merge([a, dict(b, commit="c2")])
 
-FAKE_BUILD = """#!/usr/bin/env bash
+
+FAKE_BUILD ="""#!/usr/bin/env bash
 echo "$* RUN=${RUN:-} UNIT_SUITE=${UNIT_SUITE:-} UNIT_TEST_ARGS=${UNIT_TEST_ARGS:-}" >> "$CALLS"
 [[ "$1" == "${FAIL_TARGET:-none}" ]] && exit 1
 if [[ "$1" == mcp-tests ]]; then

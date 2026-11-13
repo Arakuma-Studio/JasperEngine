@@ -39,10 +39,10 @@
     <keyword>editor</keyword>
   </keywords>
 
-  <url type="homepage">https://github.com/JasperRaccoon/JasperEngine</url>
-  <url type="help">https://github.com/JasperRaccoon/JasperEngine</url>
-  <url type="bugtracker">https://github.com/JasperRaccoon/JasperEngine/issues</url>
-  <url type="vcs-browser">https://github.com/JasperRaccoon/JasperEngine</url>
+  <url type="homepage">https://github.com/Arakuma-Studio/JasperEngine</url>
+  <url type="help">https://github.com/Arakuma-Studio/JasperEngine</url>
+  <url type="bugtracker">https://github.com/Arakuma-Studio/JasperEngine/issues</url>
+  <url type="vcs-browser">https://github.com/Arakuma-Studio/JasperEngine</url>
 
 
   <content_rating type="oars-1.1"/>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ParticleModuleRows.h"
+#include "RepositoryUrl.h"
 
 #include "particles/ParticleEffectCodec.h"
 
@@ -14,7 +15,7 @@ using Json = nlohmann::ordered_json;
 namespace {
 
     constexpr const char* kClipboardKey = "particleModule";
-    constexpr const char* kDocsUrl = "https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/particle-effect.md#";
+    constexpr const char* kDocsPage = "/blob/main/docs/editor/particle-effect.md#";
 
     // the keyed form's own keys that are not the effect's fields
     bool documentField(const std::string& key) {
@@ -180,5 +181,5 @@ std::string editor::particlerows::moduleHelpUrl(const ModuleDesc& module) {
         if (std::isalnum(ch)) anchor += (char)std::tolower(ch);
         else if (ch == ' ' || ch == '-') anchor += '-';
     }
-    return std::string(kDocsUrl) + anchor;
+    return std::string(REPOSITORY_URL) + kDocsPage + anchor;
 }
