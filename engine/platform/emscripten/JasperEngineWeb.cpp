@@ -25,6 +25,7 @@
 #include "util/PlatformRules.h"
 
 #include <algorithm>
+#include <sstream>
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -53,6 +54,7 @@ bool JasperEngineWeb::quitRequested = false;
 bool JasperEngineWeb::pageHidden = false;
 bool JasperEngineWeb::adPlaying = false;
 bool JasperEngineWeb::contextLost = false;
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE JasperEngineWeb::glContext = 0;
 bool JasperEngineWeb::windowFocused = true;
 double JasperEngineWeb::lastFrameTime = 0.0;
 std::vector<double> JasperEngineWeb::frameIntervals;
@@ -555,9 +557,9 @@ int JasperEngineWeb::init(int argc, char **argv){
     attr.premultipliedAlpha = true;
     attr.majorVersion = 2;
     attr.minorVersion = 0;
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(canvas.c_str(), &attr);
-    
-    emscripten_webgl_make_context_current(ctx);
+    glContext = emscripten_webgl_create_context(canvas.c_str(), &attr);
+
+    emscripten_webgl_make_context_current(glContext);
 
     // the view is loaded once the project has started (renderLoop): the order of the other
     // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game
@@ -609,8 +611,33 @@ void JasperEngineWeb::setAdPlaying(bool playing){
 }
 
 void JasperEngineWeb::setContextLost(bool lost){
+    if (lost == contextLost) return;
     contextLost = lost;
-    updatePause();
+    // the paused game first (onApplicationPause(true)), as a phone that loses its view
+    if (lost) updatePause();
+    // Every GPU object went with the context (the calls on a lost one do nothing): released now and
+    // made again in the restored one; the scenes keep their CPU state, the HTML UI its documents
+    // (Scene::releaseGpu). Before the start the first view is loaded in the restored context
+    if (projectStarted){
+        if (lost){
+            jasperengine::Engine::systemViewDestroyed();
+        }else{
+            // a restored context has no extensions enabled (enableExtensionsByDefault did it once)
+            emscripten_webgl_make_context_current(glContext);
+            if (char* extensions = emscripten_webgl_get_supported_extensions()){
+                std::istringstream names(extensions);
+                std::string name;
+                while (names >> name){
+                    if (name.find("lose_context") == std::string::npos && name.find("debug") == std::string::npos)
+                        emscripten_webgl_enable_extension(glContext, name.c_str());
+                }
+                free(extensions);
+            }
+            jasperengine::Engine::systemViewLoaded();
+            jasperengine::Engine::systemViewChanged();
+        }
+    }
+    if (!lost) updatePause();
 }
 
 EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
@@ -918,6 +945,10 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         std::fflush(stdout);
         return EM_FALSE;
     }
+
+    // no context to draw in: nothing runs (on a phone nothing runs without a window either)
+    if (contextLost)
+        return EM_TRUE;
 
     if (!projectStarted){
         // IndexedDB answers in a few milliseconds; a browser that never does (storage
@@ -1298,7 +1329,8 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
 
 EM_BOOL JasperEngineWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
     switch (emsc_type) {
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); break;
+        // the default action of webglcontextlost is to never restore the context: prevented
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); return EM_TRUE;
         case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: setContextLost(false); break;
         default:                                    break;
     }

@@ -1112,6 +1112,24 @@ void Scene::destroy(){
     }
 }
 
+void Scene::releaseGpu(){
+    for (auto const& pair : systems){
+        pair.second->releaseGpu();
+    }
+}
+
+void Scene::restoreGpu(){
+    if (camera == NULL_ENTITY){
+        camera = createDefaultCamera();
+    }
+
+    for (auto const& pair : systems){
+        if (Engine::isViewLoaded()){
+            pair.second->restoreGpu();
+        }
+    }
+}
+
 void Scene::scheduleSubSystem(const std::string& name, SubSystem* system, const SystemDescriptor& descriptor){
     SystemDescriptor entry = descriptor;
     entry.name = name;

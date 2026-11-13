@@ -670,6 +670,32 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_app_view_lost",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "An Android return after the GPU context went rebuilt every HTML UI document from its file; in "
+                         "editor Play agents could only pause and resume or send low_memory, which keep the context, so "
+                         "the reset never showed before a device test.",
+        "text_at_issue": "send_input description: 'app: action ...|low_memory|hide|show|view_lost|view_restored|orientation'",
+        "source": "JasperArcade port ledger S30; docs/specs/S95-lua-runtime-gaps.md REQ-18",
+        "prompt": "The game is playing. On Android, after the app sits in the background, the system sometimes drops the "
+                  "game's OpenGL context and the app makes it again on return. Reproduce that GPU context loss and "
+                  "return here in Play, then check the HUD's state.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}, "result": ok(
+                "Sent 3 events over 5 frames; playing.", {"frames": 5, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_restored"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"paused": False, "lifecycle": {
+                                                         "view_lost": 1, "view_restored": 1, "view": "loaded"}}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}}],
+                   "shell_must_not": [r"adb|xdotool"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "

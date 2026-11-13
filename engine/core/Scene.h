@@ -159,6 +159,11 @@ namespace jasperengine{
 
         void load();
         void destroy();
+        // A view loss (Engine::systemViewDestroyed / systemViewLoaded): every system releases
+        // (restores) its GPU objects and keeps its CPU state (SubSystem::releaseGpu); destroy()
+        // is the real teardown
+        void releaseGpu();
+        void restoreGpu();
         void draw();
         void update(double dt);
         void fixedUpdate(double dt);

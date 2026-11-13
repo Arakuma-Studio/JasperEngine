@@ -94,6 +94,12 @@ void UIDocumentSystem::destroy(){
     }
 }
 
+void UIDocumentSystem::releaseGpu(){
+    if (context)
+        context->releaseGpuResources();
+    textureReleaseGpu();
+}
+
 bool UIDocumentSystem::ensureContext(){
     if (context)
         return true;

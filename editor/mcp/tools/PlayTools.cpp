@@ -729,7 +729,10 @@ Json platformJson() {
         {"device", simulation.device ? Json(simulation.device->id) : Json()},
         {"opened_urls", urls},
         {"vibrations", Platform::getVibrationCount()},
-        {"haptics", Platform::getHapticCount()}
+        {"haptics", Platform::getHapticCount()},
+        // send_input app view_lost / view_restored of this Play
+        {"lifecycle", {{"view_lost", Platform::getViewLostCount()}, {"view_restored", Platform::getViewRestoredCount()},
+                       {"view", Platform::isViewLostSimulated() ? "lost" : "loaded"}}}
     };
     if (Platform::getOpenedUrlCount() > (int)urls.size()) out["opened_url_count"] = Platform::getOpenedUrlCount();
     return out;
@@ -3603,6 +3606,35 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "app " + action);
             return true;
         }
+        // the running scenes' view lost and loaded again (an Android window, a lost WebGL
+        // context): their GPU objects go and come back, what the game made stays. A device loses
+        // it only in the background, so a playing app is paused through the loss
+        if (action == "view_lost" || action == "view_restored") {
+            add([c, action]() {
+                const bool lost = action == "view_lost";
+                if (lost == Platform::isViewLostSimulated())
+                    return std::string(lost ? "the view is already lost: send {type: \"app\", action: \"view_restored\"}"
+                                            : "the view is not lost: send {type: \"app\", action: \"view_lost\"} first");
+                std::vector<Scene*> scenes;
+                if (!c->project()) return std::string("No project is open.");
+                for (SceneProject* sp : runningScenes(c->project())) {
+                    if (sp->scene) scenes.push_back(sp->scene);
+                }
+                if (lost) {
+                    const bool pause = !Engine::isPaused();
+                    if (pause) Engine::systemPause();
+                    Engine::releaseScenesGpu(scenes);
+                    Platform::setViewLostSimulated(true, pause);
+                } else {
+                    const bool resume = Platform::isViewLossPaused();
+                    Engine::restoreScenesGpu(scenes);
+                    Platform::setViewLostSimulated(false);
+                    if (resume) Engine::systemResume();
+                }
+                return std::string();
+            }, gapFrames, 0, "app " + action);
+            return true;
+        }
         if (action == "orientation") {
             ScreenOrientation orientation;
             if (!PlatformRules::parseOrientationName(event.value("orientation", ""), orientation) ||
@@ -3628,7 +3660,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "app orientation");
             return true;
         }
-        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
+        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, view_lost, view_restored or orientation";
         return false;
     }
 
@@ -4142,8 +4174,9 @@ void waitTool(const CallPtr& call) {
         } else if (ws->reason == "stalled") {
             text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
                    " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; " +
-                   (Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
-                                       : "is it rendering, or the time scale 0?") + ").";
+                   (Platform::isViewLostSimulated() ? "the view is lost: send_input {type: \"app\", action: \"view_restored\"}"
+                    : Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
+                                         : "is it rendering, or the time scale 0?") + ").";
             isError = true;
         } else if (ws->reason == "timeout") {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
@@ -4523,7 +4556,7 @@ void registerPlayTools(McpRegistry& registry) {
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
             "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
-            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|view_lost|view_restored|orientation "
             "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
             "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
             "frames_after only).";

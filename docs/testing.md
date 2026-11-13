@@ -297,6 +297,12 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   $EMULATOR_GPU`: see "The emulator's GPU" below),
   installs the APK with every permission granted, clears logcat, launches the app and polls
   logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
+- `--view-loss` sends the app to the background once it is ready (Home), calls `am send-trim-memory
+  <package> COMPLETE` (APP_CMD_LOW_MEMORY without a window drops the EGL context) and launches it
+  again; the run needs a new view and its expectations from both sides of the return. `--once TEXT`
+  fails on a second line containing TEXT. `tools/test-projects/app-lifecycle` uses both (S95 AC-17:
+  an HTML UI document keeps its DOM through the loss); `GATE=app-lifecycle` checks the same
+  project in a browser through `WEBGL_lose_context`.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
   the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
   `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the

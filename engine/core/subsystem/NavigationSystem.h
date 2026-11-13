@@ -109,6 +109,9 @@ namespace jasperengine{
 
         void load() override;
         void destroy() override;
+        // no GPU objects: the baked surfaces and script volumes stay through a view loss
+        void releaseGpu() override {}
+        void restoreGpu() override {}
         void draw() override;
         void update(double dt) override;
         void fixedUpdate(double dt) override;

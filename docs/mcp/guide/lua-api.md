@@ -248,8 +248,8 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onDraw` | none | every frame before drawing |
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
-| `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onViewDestroyed` | none | view destroyed: the GPU context went (Android in the background, a lost WebGL context). Scenes, scripts and HTML UI documents stay; their GPU objects are made again after `onViewLoaded` |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent). The first frame after a resume or a view restore gets a delta of at most `Engine.updateTime`: no clock jumps by the time away |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onVisibilityChanged` | `visible` | the window was hidden or shown again (minimized, unmapped, fully covered on macOS; a hidden web page): a hidden desktop game updates without drawing ([platform-services.md](platform-services.md)) |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |

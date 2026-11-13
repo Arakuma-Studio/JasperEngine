@@ -1026,14 +1026,15 @@ void RenderSystem::destroy(){
     // The static textures are shared by every scene's RenderSystem, whose bindings hold their
     // handles: a scene going while others draw keeps them. With the view (every scene reloads)
     // or the last RenderSystem they are destroyed, and the next load makes them again (before,
-    // only the flag was reset and the next load made new images over the old handles).
+    // only the flag was reset and the next load made new images over the old handles). A view
+    // loss of some scenes only (Engine::releaseScenesGpu) keeps them for the others.
     {
         std::lock_guard<std::mutex> lock(emptyTexturesMutex());
         if (usesEmptyTextures){
             usesEmptyTextures = false;
             emptyTextureUsers--;
         }
-        if (reloadView || emptyTextureUsers <= 0){
+        if ((reloadView && !Engine::isReleasingScenesGpu()) || emptyTextureUsers <= 0){
             destroyEmptyTextures();
         }
     }

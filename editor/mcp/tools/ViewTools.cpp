@@ -853,6 +853,11 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
                   "window, or run the editor with mcp --headless.");
         return;
     }
+    if (request.view == "game" && Platform::isViewLostSimulated() && call->ctx().project()->isPlaySessionActive()) {
+        job->fail("The game's view is lost (send_input app view_lost): nothing draws. Send {type: \"app\", action: "
+                  "\"view_restored\"} first.");
+        return;
+    }
     if (request.view == "game" && Platform::isGameHiddenSimulated() && call->ctx().project()->isPlaySessionActive()) {
         job->fail("The game is hidden (send_input app hide): it updates without drawing. Send {type: \"app\", action: "
                   "\"show\"} first.");
