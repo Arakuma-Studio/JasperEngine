@@ -113,6 +113,10 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
             if job == "mcp" and plan["shards"]:
                 for shard in plan["shards"]:
                     tests_verdict(f"mcp-{shard}", result, job)
+            elif job == "unit" and plan["unit_suites"]:
+                # one job per test binary (the unit matrix): each suite's report counts on its own
+                for suite in plan["unit_suites"]:
+                    tests_verdict(f"unit-{suite}", result, job)
             else:
                 tests_verdict(job, result, job)
         else:

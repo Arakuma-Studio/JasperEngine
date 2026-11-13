@@ -71,6 +71,7 @@ jobs:
       run_ios: ${{ steps.plan.outputs.run_ios }}
       unit_run_core: ${{ steps.plan.outputs.unit_run_core }}
       unit_run_editor: ${{ steps.plan.outputs.unit_run_editor }}
+      unit_suites: ${{ steps.plan.outputs.unit_suites }}
       unit_filter_core: ${{ steps.plan.outputs.unit_filter_core }}
       unit_filter_editor: ${{ steps.plan.outputs.unit_filter_editor }}
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
@@ -264,14 +265,19 @@ jobs:
           status: ${{ job.status }}
 
   # ----------------------------------------------------------------- Unit ---
+  # one job per test binary (core, editor), side by side: built cold, the two trees took 3.5 h in one job
   unit:
-    name: unit
+    name: unit (${{ matrix.suite }})
     needs: changes
     if: needs.changes.outputs.run_unit == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.changes.outputs.unit_suites) }}
     env:
-      JASPER_CI_REPRO: WERROR=1 tools/build.sh unit-tests
+      JASPER_CI_REPRO: UNIT_SUITE=${{ matrix.suite }} WERROR=1 tools/build.sh unit-tests
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -283,38 +289,29 @@ jobs:
           target: linux
       - uses: ./.github/actions/ccache-restore
         with:
-          lane: unit
-          max-size: 1.3G
+          lane: unit-${{ matrix.suite }}
+          max-size: ${{ matrix.suite == 'core' && '0.6G' || '0.9G' }}
           toolchain: ${{ steps.image.outputs.tag }}
 
       - name: CMake presets and option errors
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' && matrix.suite == 'core'
         run: tools/ci/logged.sh unit-presets 'tools/build.sh exec linux tools/ci/check-presets.sh'
 
-      # each planned suite with its filter ('' = all); a push builds both for the cache and the deps dumps
-      - name: jasperengine-core-tests and jasperengine-editor-tests
+      # the planned suites with their filter ('' = all); a push builds the tree for the cache and the deps dumps
+      - name: jasperengine-${{ matrix.suite }}-tests
         env:
-          RUN_CORE: ${{ needs.changes.outputs.unit_run_core }}
-          RUN_EDITOR: ${{ needs.changes.outputs.unit_run_editor }}
-          FILTER_CORE: ${{ needs.changes.outputs.unit_filter_core }}
-          FILTER_EDITOR: ${{ needs.changes.outputs.unit_filter_editor }}
+          SUITE: ${{ matrix.suite }}
+          FILTER: ${{ matrix.suite == 'core' && needs.changes.outputs.unit_filter_core || needs.changes.outputs.unit_filter_editor }}
           BUILD_ONLY: ${{ github.event_name == 'push' && 'RUN=0 ' || '' }}
         run: |
-          status=0
-          for suite in core editor; do
-              planned="RUN_${suite^^}"
-              [[ "${!planned}" == true ]] || { echo "$suite: not planned"; continue; }
-              filter="FILTER_${suite^^}"
-              args=""
-              [[ -n "${!filter}" ]] && args="UNIT_TEST_ARGS=$(printf %q "--gtest_filter=${!filter}") "
-              tools/ci/logged.sh "unit-$suite" "${BUILD_ONLY}UNIT_SUITE=$suite ${args}WERROR=1 tools/build.sh unit-tests" || status=1
-          done
-          exit "$status"
+          args=""
+          [[ -n "$FILTER" ]] && args="UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$FILTER") "
+          tools/ci/logged.sh "unit-$SUITE" "${BUILD_ONLY}UNIT_SUITE=$SUITE ${args}WERROR=1 tools/build.sh unit-tests"
 
       # S26 AC2: the picking suites again on the scalar slab test (the run above took the CPU's AVX2);
       # its XML goes beside the core run's instead of over it
       - name: Picking on the scalar path
-        if: ${{ !cancelled() && github.event_name != 'push' && needs.changes.outputs.unit_run_core == 'true' }}
+        if: ${{ !cancelled() && github.event_name != 'push' && matrix.suite == 'core' }}
         run: |
           [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core.main.xml
           status=0
@@ -326,8 +323,8 @@ jobs:
       - name: Warnings
         if: always()
         run: |
-          logs=(build/test-results/unit-core.log build/test-results/unit-editor.log)
-          for log in "${logs[@]}"; do [[ -f "$log" ]] && python3 tools/ci/warning-summary.py "$log" >> "$GITHUB_STEP_SUMMARY"; done
+          log="build/test-results/unit-${{ matrix.suite }}.log"
+          [[ -f "$log" ]] && python3 tools/ci/warning-summary.py "$log" >> "$GITHUB_STEP_SUMMARY"
           true
 
       # plan inputs for PRs (tools/ci/plan_lanes.py --deps-from): the caches job saves them
@@ -337,7 +334,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'push'
         with:
-          name: deps-unit
+          name: deps-unit-${{ matrix.suite }}
           path: build/ci-deps/
           retention-days: 1
           if-no-files-found: error
@@ -345,11 +342,11 @@ jobs:
       - uses: ./.github/actions/ccache-save
         if: always()
         with:
-          lane: unit
+          lane: unit-${{ matrix.suite }}
       - uses: ./.github/actions/report
         if: always()
         with:
-          lane: unit
+          lane: unit-${{ matrix.suite }}
           status: ${{ job.status }}
 
   asan:
@@ -903,8 +900,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for prefix in plan-inputs- gradle- ccache-linux- ccache-unit- ccache-asan- ccache-htmlui- ccache-web- \
-                        ccache-android- ccache-windows- ccache-macos- ccache-smoke-; do
+          for prefix in plan-inputs- gradle- ccache-linux- ccache-asan- ccache-htmlui- ccache-web- \
+                        ccache-android- ccache-windows- ccache-macos- ccache-smoke- ccache-unit-core- ccache-unit-editor-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do

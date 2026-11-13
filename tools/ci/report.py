@@ -820,7 +820,7 @@ def load_reports(directory: Path) -> dict[str, dict]:
 def load_lanes(path: Path | None) -> dict:
     """lanes.json (tools/ci/plan_lanes.py), reduced to what render and check_gate read."""
     data = load_json(path) if path else None
-    out = {"ok": False, "event": "", "full": False, "lanes": {}, "shards": [], "not_in_ci": []}
+    out = {"ok": False, "event": "", "full": False, "lanes": {}, "shards": [], "not_in_ci": [], "unit_suites": []}
     if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
         return out
     out["ok"] = True
@@ -829,6 +829,8 @@ def load_lanes(path: Path | None) -> dict:
     for name, lane in list(data["lanes"].items())[:60]:
         if isinstance(name, str) and LANE_RE.match(name) and isinstance(lane, dict):
             out["lanes"][name] = {"run": lane.get("run") is True, "why": text_field(lane.get("why"), 300)}
+    unit_run = data.get("unit_run") if isinstance(data.get("unit_run"), dict) else {}
+    out["unit_suites"] = [s for s in ("core", "editor") if unit_run.get(s) is True]
     mcp = data.get("mcp") if isinstance(data.get("mcp"), dict) else {}
     out["shards"] = [s for s in (mcp.get("shards") or [])[:100] if isinstance(s, str) and re.match(r"^[0-9A-Za-z_-]{1,20}$", s)] \
         if isinstance(mcp.get("shards"), list) else []
@@ -886,11 +888,16 @@ def lane_label(lane: str, shards: list[str]) -> str:
     m = re.match(r"^mcp-(.+)$", lane)
     if m:
         return f"mcp ({m.group(1)}/{len(shards)})" if m.group(1) in shards and shards else f"mcp ({m.group(1)})"
+    m = re.match(r"^unit-(core|editor)$", lane)
+    if m:
+        return f"unit ({m.group(1)})"
     return lane
 
 
 def lane_base(lane: str) -> str:
-    return "mcp" if lane.startswith("mcp-") else lane
+    if lane.startswith("mcp-"):
+        return "mcp"
+    return "unit" if lane in ("unit-core", "unit-editor") else lane
 
 
 def count_note(report: dict) -> str:

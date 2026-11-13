@@ -152,6 +152,18 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(build only on push\)$")
 
+    def test_zero_test_unit_suite_fails(self):
+        p = plan()
+        p["unit_run"] = {"core": True, "editor": True}
+        reps = [r for r in reports_for(p) if r["lane"] != "unit"]
+        for suite, n in (("core", 40), ("editor", 0)):
+            reps.append({"lane": f"unit-{suite}", "status": "success", "sha": "", "commands": [], "failures": [],
+                         "artifacts": [], "tests": {"ran": n, "failed": 0, "skipped": 0, "disabled": 0}})
+        status, out = self.gate(needs_for(p), p, reps)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^unit-core\s+success\s+ok \(40 tests\)$")
+        self.assertRegex(out, r"(?m)^unit-editor\s+success\s+FAIL: 0 tests ran$")
+
     def test_zero_test_mcp_shard_fails(self):
         p = plan()
         status, out = self.gate(needs_for(p), p, reports_for(p, ran={"mcp-2": 0}))

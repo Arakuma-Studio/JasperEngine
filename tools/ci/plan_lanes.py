@@ -338,6 +338,8 @@ def github_output(doc: dict, unit_run: dict) -> str:
     lines += [f"unit_filter_core={doc['unit_filter']['core']}", f"unit_filter_editor={doc['unit_filter']['editor']}",
               f"unit_run_core={'true' if unit_run['core'] else 'false'}",
               f"unit_run_editor={'true' if unit_run['editor'] else 'false'}",
+              # the unit lane's matrix: one job per planned test binary, side by side
+              f"unit_suites={json.dumps([s for s in ('core', 'editor') if unit_run[s]], separators=(',', ':'))}",
               f"htmlui_filter={doc['htmlui_filter']}", f"mcp_shards={json.dumps(doc['mcp']['shards'], separators=(',', ':'))}"]
     return "\n".join(lines) + "\n"
 

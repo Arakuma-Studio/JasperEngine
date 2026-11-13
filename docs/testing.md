@@ -924,7 +924,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `changes` | `tools/ci/plan_lanes.py`: `tools/check-changed`'s plan for the diff, widened by CI's rules below; uploads it as the artifact `plan` |
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
-| `unit` | `UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun |
+| `unit` (one job per test binary: `core`, `editor`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core) |
 | `asan` | `SANITIZE=address,undefined tools/build.sh unit-tests` |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |

@@ -57,12 +57,12 @@ jobs:
           - name: Unit tests (TSan)
             id: tsan
             image: linux
-            ccache: unit
+            ccache: unit-core
             run: SANITIZE=thread UNIT_TEST_ARGS='--gtest_filter=-*Gpu*' tools/build.sh unit-tests
           - name: Cooked texture formats (Vulkan, lavapipe)
             id: texture-formats-vulkan
             image: linux
-            ccache: unit
+            ccache: unit-core
             run: GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=TextureFormatsGpu*:TextureFallback*:TextureBudget*' tools/build.sh unit-tests
           - name: Unity builds (editor and engine)
             id: unity
