@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -189,8 +190,20 @@ namespace jasperengine {
         void RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture) override;
         void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override;
         // phase-2 hook H7: "@htmlui/..." sources are compat's virtual files; the query parameter
-        // htmlui-filter=nearest gives the texture nearest sampling (image-rendering: pixelated)
+        // htmlui-filter=nearest gives the texture nearest sampling (image-rendering: pixelated).
+        // S93: a handle onto HtmlUIImageCache's shared image (read the header now, decoded on the
+        // Background lane, drawn once uploaded; htmlui-decoding=sync decodes at once); a fragment
+        // #xywh=... or #sprite=... is a region of the file (HtmlUIImageRegion)
         Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
+        // a texture source split into the file and what the engine reads from its query and fragment
+        struct TextureSource {
+            std::string path;           // without htmlui-filter, rmlui-wrap, htmlui-decoding and the fragment
+            bool nearest = false;
+            bool repeatX = false, repeatY = false;
+            bool syncDecode = false;    // htmlui-decoding=sync (<img decoding="sync">)
+            std::string fragment;       // "#..." as written, "" for none
+        };
+        static TextureSource parseTextureSource(const std::string& source);
         // the source without its htmlui-filter=nearest query parameter (other parameters stay)
         static std::string stripTextureFilter(const std::string& source, bool& nearest);
         // also without the fork's rmlui-wrap=repeat|repeat-x|repeat-y (phase 3, p3-paint: a background or mask image
@@ -418,6 +431,9 @@ namespace jasperengine {
         static void unbindContext(const Rml::Context* context);
         // the renderer of a bound context's render manager (the font engine's atlas textures)
         static RmlRenderer* forRenderManager(const Rml::RenderManager* renderManager);
+        // the render manager this renderer is bound to (nullptr when none): an image still decoding
+        // asks it for another frame
+        Rml::RenderManager* getRenderManager() const;
 
         // <video> (phase 6): a frame's Y, U and V planes (target->planes, uploaded) are converted
         // into target, a 1-sample RGBA8 RENDER_TARGET texture, by one HTMLUI_POST Yuv pass;
@@ -899,6 +915,11 @@ namespace jasperengine {
         size_t lastFrameDrawCount = 0;
         uint64_t gpuCreateCount = 0;
         bool texturesWithoutView = false;
+        // S93: shared images whose decode is not uploaded yet (stats.imagesPending), and image
+        // decodes and cache hits of LoadTexture calls outside a frame (added to the next one)
+        std::unordered_set<HtmlUITexture*> pendingImages;
+        uint32_t imagesDecodedBetweenFrames = 0;
+        uint32_t imageCacheHitsBetweenFrames = 0;
 
         // GPU objects
         std::shared_ptr<ShaderRender> geometryShader;     // HTMLUI Tex (untextured draws bind white)

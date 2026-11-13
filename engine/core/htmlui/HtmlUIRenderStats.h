@@ -41,6 +41,10 @@ namespace jasperengine {
         uint32_t textEffectFallbacks = 0;   // text effects drawn on the CPU or layer path
         uint32_t atlasBytes = 0;            // glyph atlas pages (base and MSDF), one copy each
         uint32_t atlasEvictions = 0;        // atlas pages cleared to make room, this frame
+        // S93: images (HtmlUIImageCache)
+        uint32_t imagesDecoded = 0;         // image files whose decode LoadTexture started (or ran) this frame
+        uint32_t imageCacheHits = 0;        // LoadTexture calls that reused a cached image this frame
+        uint32_t imagesPending = 0;         // images drawn by the context whose decode is not uploaded yet
 
         // every field by its name (the MCP render_stats, Lua's UIDocument:getRenderStats, the
         // benchmark's --ui-stats): fn(const char* name, uint32_t value)
@@ -74,6 +78,9 @@ namespace jasperengine {
             fn("textEffectFallbacks", textEffectFallbacks);
             fn("atlasBytes", atlasBytes);
             fn("atlasEvictions", atlasEvictions);
+            fn("imagesDecoded", imagesDecoded);
+            fn("imageCacheHits", imageCacheHits);
+            fn("imagesPending", imagesPending);
         }
 
         // another context's stats added: its frame counters when it rendered in this frame, the
@@ -105,7 +112,10 @@ namespace jasperengine {
                 textRegenerations += other.textRegenerations;
                 textEffectFallbacks += other.textEffectFallbacks;
                 atlasEvictions += other.atlasEvictions;
+                imagesDecoded += other.imagesDecoded;
+                imageCacheHits += other.imageCacheHits;
             }
+            imagesPending += other.imagesPending;
             geometryLive += other.geometryLive;
             geometryBytes += other.geometryBytes;
             boxShadowTextures += other.boxShadowTextures;

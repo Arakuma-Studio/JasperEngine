@@ -6,6 +6,7 @@
 #include "HtmlUI.h"
 
 #include "HtmlUIContext.h"
+#include "HtmlUIImageCache.h"
 #include "RmlFile.h"
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
@@ -64,6 +65,8 @@ namespace {
         }
         // phase 6: the stateful effects' images (their simulations restart when drawn next)
         htmlui::EffectStatePool::get().destroyAll();
+        // S93: the shared images (after the contexts gave their handles back)
+        HtmlUIImageCache::get().releaseGpuResources();
 
         Rml::ReleaseFontResources();
     }

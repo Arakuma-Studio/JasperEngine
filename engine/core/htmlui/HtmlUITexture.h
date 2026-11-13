@@ -5,6 +5,7 @@
 #define HTMLUITEXTURE_H
 
 #include "Export.h"
+#include "HtmlUIImageCache.h"
 #include "render/Render.h"
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
@@ -22,7 +23,9 @@ namespace jasperengine {
     // RGBA8 (or R8 coverage): each upload path premultiplies, the shaders never do.
     // RmlRenderer::ReleaseTexture deletes the struct, which destroys what it owns.
     struct JASPERENGINE_API HtmlUITexture {
-        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
+        // SHARED (S93 D9): a renderer's handle onto an image of HtmlUIImageCache, which owns the
+        // GPU texture (no renderer destroys it); `render` is set once the image is uploaded
+        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL, SHARED };
         // how draws read it (S16): premultiplied RGBA; R8 coverage whose .r tints every channel
         // (glyph atlas pages); an MTSDF glyph page (RGBA8 distances, the HTMLUI_PRIM glyph mode)
         enum class Sample : uint8_t { RGBA, COVERAGE, MSDF };
@@ -52,6 +55,7 @@ namespace jasperengine {
         TextureRender* render = nullptr;            // sampled texture
         std::unique_ptr<TextureRender> ownedRender; // STATIC/DYNAMIC created by the UI code
         std::unique_ptr<Framebuffer> ownedTarget;   // RENDER_TARGET (SaveLayerAsTexture)
+        std::shared_ptr<HtmlUIImageCache::Reference> image;   // SHARED
         int width = 0, height = 0;
         bool dead = false;                          // GPU object dropped by view loss (phase-0 releaseGpuResources)
         uint64_t lastUpdateFrame = UINT64_MAX;      // DYNAMIC: one sg_update_image per frame
