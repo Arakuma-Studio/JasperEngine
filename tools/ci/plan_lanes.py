@@ -13,7 +13,8 @@ applies CI's stricter rules:
 - MCP runs the planned files that are in the CI suite (run_tests.ci_files()); the rest are listed
   under not_in_ci with their reason. A planned whole suite is the CI suite;
 - merge_group: every lane, unit and HTML UI unfiltered, MCP planned over the group's diff (D1);
-- push: the build lanes only (caches and plan inputs; the tests ran in the merge queue);
+- push: the build lanes only (caches and plan inputs; the tests ran in the merge queue), and smoke when
+  a game's export reads the change, so its Compile builds' ccache stays warm;
 - full (workflow_dispatch with full: true): every lane, the whole MCP CI suite;
 - nightly: as full, and MCP also runs the CI_EXCLUDED files CI can run (NIGHTLY_LEFT_OUT says which
   it cannot);
@@ -254,8 +255,12 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
             lane(name, True, f"push to main: the build keeps the caches warm ({first} changed)")
         for name in ("unit", "asan", "htmlui"):
             lane(name, True, "push to main: build only (the caches and the deps dumps); its tests ran in the merge queue")
-        for name in ("lint", "mcp", "smoke"):
+        for name in ("lint", "mcp"):
             lane(name, False, "push to main: its tests ran in the merge queue")
+        # only main saves caches: the games' Compile builds would otherwise never find a warm ccache
+        smoke = [f for f in files if cc.match(f, SMOKE_PATHS)] if files is not None else ["(no diff)"]
+        lane("smoke", bool(smoke), f"push to main: the games' builds keep the smoke cache warm ({smoke[0]} changed)"
+             if smoke else "push to main: no path a game's export reads changed")
         result["unit_run"] = {"core": True, "editor": True}
         return result
     github = [f for f in files if f.startswith(".github/")] if files is not None else []

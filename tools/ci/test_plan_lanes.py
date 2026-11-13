@@ -132,9 +132,17 @@ class Rules(unittest.TestCase):
 
     def test_push_runs_the_builds_only(self):
         r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
-        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "smoke", *pl.PLATFORM_LANES})
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         self.assertEqual(r["mcp"]["mode"], "none")
+
+    def test_push_warms_the_smoke_cache_when_an_export_reads_the_change(self):
+        # only main saves caches, so a smoke lane that never runs on push never warms its ccache
+        r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
+        self.assertTrue(r["lanes"]["smoke"]["run"], r["lanes"]["smoke"])
+        self.assertIn("cache", r["lanes"]["smoke"]["why"])
+        r = decide("push", plan(["editor/window/InspectorX.cpp"], mcp=["test_a.py"]))
+        self.assertFalse(r["lanes"]["smoke"]["run"], r["lanes"]["smoke"])
 
     def test_full_and_nightly(self):
         r = decide("full", None)

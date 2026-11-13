@@ -130,6 +130,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     -e GRAPHIC_BACKEND="$GRAPHIC_BACKEND" \
     -e GAME_FLAGS="$GAME_FLAGS" \
     -e CCACHE_DIR=/ccache \
+    -e CMAKE_C_COMPILER_LAUNCHER=ccache -e CMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -e EDITOR="/src/$EDITOR" \
     -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \
     -e SMOKE_EXPORT_ARGS="${SMOKE_EXPORT_ARGS:-}" \
