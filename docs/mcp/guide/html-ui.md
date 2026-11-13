@@ -1979,11 +1979,18 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `font-size`): transforms and opacity change one value per frame, layout properties lay the
   document out again. For a bar animated every frame, `transform: scaleX()` beats `width`; a
   width set once per event (the HUD above) is fine.
-- **Layers cost passes.** A static document without filters or masks is one offscreen pass and
-  uploads nothing per frame. Every `filter`, `backdrop-filter` and `mask-image` draws through
-  extra offscreen passes (a blur 4 to 6, a backdrop blur a few more), and `opacity` below 1 on an
-  element with several children draws it into a layer: keep them on the few elements that need
-  them. Box shadows, blurred `text-shadow`s and `font-effect`s do not need layers (below).
+- **A document that does not change costs nothing.** A frame that records what the last one
+  drew is not drawn again: 0 passes, 0 draws (`render_stats` `framesKept` 1), and only the
+  64-px tiles that hold content are composited (`compositePixels`). A change draws the whole
+  document again in one pass, plus its uncached layers; video, a camera's texture, time-based
+  effects, `<particle-system>` and glyphs still being made draw every frame (`liveSources`).
+- **Layers cost passes, once.** `filter`, `mask-image`, `clip-path: polygon()`/`path()` and
+  `text-shadow` blurs draw through layers the size of their element; the result is kept while the
+  element's content does not change (`layerCacheHits`), also while it moves or fades its
+  `opacity`. `backdrop-filter` and a layer reading a live source draw every frame. Gradients
+  (up to 16 stops, linear, radial, conic, repeating) on square and rounded boxes and
+  `clip-path: inset()`/`circle()`/`ellipse()` need no layer. Box shadows, blurred
+  `text-shadow`s and `font-effect`s do not need layers (below).
 - **Draws are batched.** Consecutive boxes and text of the same clip and transform are one draw:
   a list of 500 cards with rounded borders, box shadows and two labels each is a handful of draws.
   Solid backgrounds, `solid` borders (one colour per rounded corner), `solid` and `auto` outlines
