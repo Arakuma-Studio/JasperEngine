@@ -259,8 +259,10 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
-      - name: Install Ninja and ccache
-        run: brew install ninja ccache
+      # (nasm: dav1d's x86-64 assembly of the universal and simulator slices)
+      - name: Install Ninja, ccache and NASM
+        run: |
+          for tool in ninja ccache nasm; do command -v "$tool" > /dev/null || brew install "$tool"; done
       - uses: ./.github/actions/ccache-restore
         with:
           lane: macos
@@ -445,8 +447,10 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
-      - name: Install Ninja and ccache
-        run: brew install ninja ccache
+      # (nasm: dav1d's x86-64 assembly of the universal and simulator slices)
+      - name: Install Ninja, ccache and NASM
+        run: |
+          for tool in ninja ccache nasm; do command -v "$tool" > /dev/null || brew install "$tool"; done
       - uses: ./.github/actions/ccache-restore
         with:
           lane: macos
