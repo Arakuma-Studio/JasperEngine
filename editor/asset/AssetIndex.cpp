@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cctype>
 #include <deque>
+#include <functional>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -174,6 +175,8 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::AnimatorController: case AssetType::AnimationMontage:
         case AssetType::TitleArt:
         case AssetType::SoundEvent:
+        // its values' references (S95 REQ-22): textures, prefabs, other Data Assets
+        case AssetType::DataAsset:
         // its audio cues' sounds (S40 R3)
         case AssetType::AnimationClip:
         // its source textures, sheets and Aseprite files (S50), so exports keep them
@@ -452,6 +455,37 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     if (resolution.found()) edge.target = resolution.guid;
                     if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
                 }
+                break;
+            }
+            case AssetType::DataAsset: {
+                // one edge per reference among its values ({guid, path}, the path in its type's hint form)
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                const Json root = Json::parse(text, nullptr, false);
+                if (!root.is_object() || !root.contains("values") || !root["values"].is_object()) break;
+                std::function<void(const Json&, const std::string&)> walk = [&](const Json& value, const std::string& field) {
+                    if (value.is_array()) {
+                        for (size_t i = 0; i < value.size(); i++) walk(value[i], field + "[" + std::to_string(i) + "]");
+                        return;
+                    }
+                    if (!value.is_object()) return;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = field;
+                    edge.expected = AssetType::Unknown;
+                    const std::string guid = value.value("guid", std::string());
+                    if (Guid::isValidText(guid)) edge.target = Guid::parse(guid);
+                    const std::string path = value.value("path", std::string());
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, path);
+                    if (!path.empty() && !database.lookupPath(edge.targetPath).found() && database.lookupPath(path).found()) edge.targetPath = path;
+                    if (edge.target.isNull() && !path.empty()) {
+                        const AssetDatabase::Resolution resolution = database.lookupPath(edge.targetPath);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                };
+                for (auto it = root["values"].begin(); it != root["values"].end(); ++it) walk(it.value(), "values." + it.key());
                 break;
             }
             case AssetType::SoundEvent: {

@@ -915,6 +915,13 @@ void getAssetInfoTool(const CallPtr& call) {
                  " clip(s), " + std::to_string(problems.size()) + " problem(s).", data);
         return;
     }
+    if (Util::isDataAssetFile(rel)) {
+        // S95 REQ-24: its class and values
+        data["data_asset"] = dataAssetInfo(project, file);
+        const Json& block = data["data_asset"];
+        text += ": " + (block["class"].is_string() ? block["class"].get<std::string>() : std::string("unreadable")) + ", " +
+                std::to_string(block.value("problems", Json::array()).size()) + " problem(s)";
+    }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
         if (!project->isInsideAssetsPath(file)) {

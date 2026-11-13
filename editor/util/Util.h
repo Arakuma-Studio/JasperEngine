@@ -203,6 +203,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".soundevent";
         }
 
+        // Data Assets (S95)
+        inline static bool isDataAssetFile(const std::string& path) {
+            return fileExtension(path) == ".dataasset";
+        }
+
         // The Animator's assets (S21): controllers, avatar masks, montages
         inline static bool isAnimatorControllerFile(const std::string& path) {
             return fileExtension(path) == ".controller";

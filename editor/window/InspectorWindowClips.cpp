@@ -1590,6 +1590,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawSoundEventAsset(asset);
         return true;
     }
+    // a .dataasset: its fields (InspectorDataAsset.cpp)
+    if (Util::isDataAssetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawDataAssetAsset(asset);
+        return true;
+    }
     // a .mixer: its summary (audio-mixer spec 9)
     if (asset.extension() == AudioMixerIO::EXTENSION){
         std::error_code ec;

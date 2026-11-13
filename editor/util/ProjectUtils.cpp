@@ -36,6 +36,8 @@
 #include "texture/TextureData.h"
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
+#include "script/DataAsset.h"
+#include "dataasset/DataAssets.h"
 #include "System.h"
 #include "pool/TextureDataPool.h"
 
@@ -1535,6 +1537,10 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
         // a default path ("textures/hero.png"), else None
         return ScriptPropertyValue(AssetRef(lua_isstring(L, idx) ? std::string(lua_tostring(L, idx)) : std::string()));
     }
+
+    case ScriptPropertyType::List:
+        // its elements are read by the caller, which knows their type
+        return ScriptPropertyValue(ScriptPropertyList());
     }
 
     return ScriptPropertyValue{};
@@ -1643,6 +1649,20 @@ static bool parseLuaPropertiesTableProtected(lua_State* L, ScriptEntry& entry, s
     return ok;
 }
 
+// A `type` (or a list's `of`) string: a built-in type, a data class of the project (a Data Asset
+// reference: S95 REQ-22), else a wrapper or script class name (an entity reference of that class)
+static void readLuaPropertyType(const std::string& typeName, ScriptPropertyType& type, std::string& ptrTypeName, std::string& assetType) {
+    if (scriptPropertyTypeFromName(typeName, type)) return;
+    editor::DataAssets::Class dataClass;
+    if (editor::DataAssets::findClass(std::filesystem::path(System::instance().getLuaPath()), typeName, dataClass)) {
+        type = ScriptPropertyType::Asset;
+        assetType = DataAsset::ASSET_TYPE;
+    } else {
+        type = ScriptPropertyType::EntityReference;
+    }
+    ptrTypeName = typeName;
+}
+
 static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
 
     lua_getfield(L, -1, "properties");  // Stack: script_table, properties_table
@@ -1665,50 +1685,56 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
 
                 lua_getfield(L, -1, "type");
                 if (lua_isstring(L, -1)) {
-                    std::string typeStr = lua_tostring(L, -1);
-                    std::string typeLower = typeStr;
-                    std::transform(typeLower.begin(), typeLower.end(), typeLower.begin(), 
-                                [](unsigned char c){ return (char)std::tolower(c); });
-
-                    if (typeLower == "bool" || typeLower == "boolean"){
-                        prop.type = ScriptPropertyType::Bool;
-                    }else if (typeLower == "int"  || typeLower == "integer"){
-                        prop.type = ScriptPropertyType::Int;
-                    }else if (typeLower == "float" || typeLower == "number"){
-                        prop.type = ScriptPropertyType::Float;
-                    }else if (typeLower == "string"){
-                        prop.type = ScriptPropertyType::String;
-                    }else if (typeLower == "vector2" || typeLower == "vec2"){
-                        prop.type = ScriptPropertyType::Vector2;
-                    }else if (typeLower == "vector3" || typeLower == "vec3"){
-                        prop.type = ScriptPropertyType::Vector3;
-                    }else if (typeLower == "vector4" || typeLower == "vec4"){
-                        prop.type = ScriptPropertyType::Vector4;
-                    }else if (typeLower == "color3"){
-                        prop.type = ScriptPropertyType::Color3;
-                    }else if (typeLower == "color4"){
-                        prop.type = ScriptPropertyType::Color4;
-                    }else if (typeLower == "prefab" || typeLower == "prefabasset"){
-                        prop.type = ScriptPropertyType::Prefab;
-                    }else if (typeLower == "asset" || typeLower == "assetref"){
-                        prop.type = ScriptPropertyType::Asset;
-                    }else if (typeLower == "entity" || typeLower == "entitypointer" || typeLower == "pointer"){
-                        prop.type = ScriptPropertyType::EntityReference;
-                    }else{
-                        prop.type = ScriptPropertyType::EntityReference;
-                        prop.ptrTypeName = typeStr;
-                    }
+                    readLuaPropertyType(lua_tostring(L, -1), prop.type, prop.ptrTypeName, prop.assetType);
                 } else {
                     prop.type = ScriptPropertyType::Float;
                 }
                 lua_pop(L, 1);
 
-                // Asset properties: the asset type they take (assetType = "texture", ...)
+                // a list (S95 REQ-20): `of` is the type of its elements, any type but a list
+                if (prop.type == ScriptPropertyType::List) {
+                    lua_getfield(L, -1, "of");
+                    if (!lua_isstring(L, -1)) {
+                        luaL_error(L, "property '%s' (list): `of` names the type of its elements (of = \"int\", \"ItemData\", ...)", prop.name.c_str());
+                    }
+                    std::string elementAssetType;
+                    readLuaPropertyType(lua_tostring(L, -1), prop.elementType, prop.ptrTypeName, elementAssetType);
+                    if (prop.elementType == ScriptPropertyType::List) {
+                        luaL_error(L, "property '%s': a list cannot hold lists", prop.name.c_str());
+                    }
+                    if (!elementAssetType.empty()) prop.assetType = elementAssetType;
+                    lua_pop(L, 1);
+                }
+
+                // Asset properties: the asset type they take (assetType = "texture", ...; "dataasset")
                 lua_getfield(L, -1, "assetType");
-                if (prop.type == ScriptPropertyType::Asset && lua_isstring(L, -1)) {
-                    prop.assetType = lua_tostring(L, -1);
+                const bool assetValues = prop.type == ScriptPropertyType::Asset ||
+                                         (prop.type == ScriptPropertyType::List && prop.elementType == ScriptPropertyType::Asset);
+                if (assetValues && prop.assetType.empty() && lua_isstring(L, -1)) {
+                    prop.assetType = DataAsset::normalizedAssetType(lua_tostring(L, -1));
                 }
                 lua_pop(L, 1);
+
+                if (prop.type == ScriptPropertyType::List) {
+                    lua_getfield(L, -1, "default");
+                    const int defaultIndex = lua_gettop(L);
+                    ScriptPropertyList list;
+                    if (lua_istable(L, defaultIndex)) {
+                        const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, defaultIndex));
+                        for (lua_Integer i = 1; i <= count; i++) {
+                            lua_rawgeti(L, defaultIndex, i);
+                            list.items.push_back(scriptPropertyElementOf(
+                                editor::ProjectUtils::luaValueToScriptPropertyValue(L, -1, prop.elementType)));
+                            lua_pop(L, 1);
+                        }
+                    }
+                    prop.defaultValue = list;
+                    prop.value = prop.defaultValue;
+                    lua_pop(L, 1);
+                    entry.properties.push_back(std::move(prop));
+                    lua_pop(L, 1);  // pop value, keep key
+                    continue;
+                }
 
                 lua_getfield(L, -1, "default");
                 if (!lua_isnoneornil(L, -1) && (prop.type == ScriptPropertyType::Int || prop.type == ScriptPropertyType::Float)) {

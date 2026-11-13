@@ -69,6 +69,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
+    {registerDataAssetTools, "Data Assets", "scripting"},   // S95
     {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
     {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
     {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2

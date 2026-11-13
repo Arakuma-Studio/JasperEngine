@@ -176,7 +176,8 @@ namespace jasperengine::editor {
         ToggleTilesetEditor,
         AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
-        TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
+        TitleArtBakeAll,              // the command palette's "Title Art: Bake All" (S80 §6.13)
+        AssetsCreateDataAsset         // Assets > Create > Data Asset > <class> (S95; payload: the class)
     };
 
 }
