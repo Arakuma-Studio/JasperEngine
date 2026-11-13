@@ -8,12 +8,18 @@
 #include "TestDocumentCommon.h"
 
 #include "Engine.h"
+#include "HtmlTextEffects.h"
 #include "HtmlUIClock.h"
 #include "RmlSystem.h"
+#include "component/UIDocumentComponent.h"
+#include "htmlui/anim/Anime.h"
+#include "object/ui/UIDocument.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementText.h>
 
 #include <gtest/gtest.h>
 
@@ -40,6 +46,24 @@ namespace {
             HtmlUIClock::reset();
         }
     };
+
+    Rml::Element* documentElement(Scene& scene, const UIDocument& document, const char* id){
+        Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+        return rml ? rml->GetElementById(id) : nullptr;
+    }
+
+    // the cycle time of the text effect over an element's first text
+    double textEffectTime(Rml::Element* element){
+        for (int i = 0; element && i < element->GetNumChildren(); i++){
+            if (Rml::ElementText* text = rmlui_dynamic_cast<Rml::ElementText*>(element->GetChild(i))){
+                int first = 0;
+                if (!HtmlTextEffects::get().GetTextEffect(*text, first))
+                    return -1.0;
+                return HtmlTextEffects::get().lastGlyphs()->cycleTime;
+            }
+        }
+        return -1.0;
+    }
 
     float opacityOf(Scene& scene, const char* id){
         Rml::Context* context = rmlContext(scene);
@@ -213,4 +237,136 @@ TEST_F(HtmlUIClockTest, RmlUiAnimationsFollowTheClock){
     GpuEnvironment::drawFrames(3);
     EXPECT_NEAR(HtmlUIClock::now(), 17.0, 1e-9);
     EXPECT_NEAR(opacityOf(scene, "box"), 0.7f, 2e-3f);
+}
+
+// S93 R35 / AC39: a Game Time document's CSS transitions, @keyframes, anime and text effects follow
+// Engine.timeScale and stop at 0; an Unscaled Time document's do not
+TEST_F(HtmlUIClockTest, GameTimeDocumentFollowsTimeScale){
+    JASPER_REQUIRE_GPU();
+
+    // every frame 50 ms; the game at half speed (from the documents' first frame)
+    Engine::setFixedDeltatime(0.05);
+    Engine::setTimeScale(0.5f);
+
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument unscaled = fixture.addDocument("p1/clock_update_mode.rml");
+    UIDocument game = fixture.addDocument("p1/clock_update_mode.rml");
+    game.getComponent<UIDocumentComponent>().updateMode = UIDocumentUpdateMode::GAME_TIME;
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    EXPECT_EQ(unscaled.getUpdateMode(), UIDocumentUpdateMode::UNSCALED_TIME);
+    EXPECT_EQ(game.getUpdateMode(), UIDocumentUpdateMode::GAME_TIME);
+
+    Rml::Element* unscaledSlide = documentElement(scene, unscaled, "slide");
+    Rml::Element* gameSlide = documentElement(scene, game, "slide");
+    ASSERT_NE(unscaledSlide, nullptr);
+    ASSERT_NE(gameSlide, nullptr);
+
+    // anime without a clock takes its targets' document's
+    auto unscaledMove = Anime::animate({AnimTargets::fromElement(unscaled.getElementById("move"))},
+                                       AnimParam::object({{"left", 100}, {"duration", 1000}, {"ease", "linear"}}));
+    auto gameMove = Anime::animate({AnimTargets::fromElement(game.getElementById("move"))},
+                                   AnimParam::object({{"left", 100}, {"duration", 1000}, {"ease", "linear"}}));
+    EXPECT_EQ(unscaledMove->getClock(), AnimClock::UI);
+    EXPECT_EQ(gameMove->getClock(), AnimClock::GAME);
+    // a timeline takes its first animated targets' document's; a given clock wins
+    auto timeline = Anime::createTimeline();
+    timeline->add({AnimTargets::fromElement(game.getElementById("line"))}, AnimParam::object({{"opacity", 0.5}, {"duration", 100}}));
+    EXPECT_EQ(timeline->getClock(), AnimClock::GAME);
+    auto given = Anime::animate({AnimTargets::fromElement(game.getElementById("keys"))},
+                                AnimParam::object({{"opacity", 0.5}, {"duration", 100}, {"clock", "ui"}}));
+    EXPECT_EQ(given->getClock(), AnimClock::UI);
+
+    // a 1 s transition, started in both documents in the same frame
+    unscaledSlide->SetProperty("left", "100px");
+    gameSlide->SetProperty("left", "100px");
+    GpuEnvironment::drawFrames(11);
+    const float unscaledHalf = unscaledSlide->GetOffsetLeft();
+    EXPECT_NEAR(unscaledHalf, 50.0f, 6.0f);
+    EXPECT_NEAR(gameSlide->GetOffsetLeft(), unscaledHalf * 0.5f, 1.5f) << "half the time scale, half the way";
+    EXPECT_NEAR(documentElement(scene, game, "move")->GetOffsetLeft(), documentElement(scene, unscaled, "move")->GetOffsetLeft() * 0.5f, 1.5f);
+
+    // after 1 s the unscaled one is done, the game one half way; after 2 s both are done
+    GpuEnvironment::drawFrames(10);
+    EXPECT_FLOAT_EQ(unscaledSlide->GetOffsetLeft(), 100.0f);
+    EXPECT_NEAR(gameSlide->GetOffsetLeft(), 50.0f, 3.5f);
+    GpuEnvironment::drawFrames(21);
+    EXPECT_FLOAT_EQ(gameSlide->GetOffsetLeft(), 100.0f);
+    EXPECT_FLOAT_EQ(documentElement(scene, game, "move")->GetOffsetLeft(), 100.0f);
+
+    // the @keyframes and the text effect ran at half the time too
+    const float unscaledKeys = documentElement(scene, unscaled, "keys")->GetOffsetLeft();
+    const float gameKeys = documentElement(scene, game, "keys")->GetOffsetLeft();
+    EXPECT_GT(unscaledKeys, 0.0f);
+    EXPECT_NEAR(gameKeys, unscaledKeys * 0.5f, 8.0f);
+    const double unscaledWave = textEffectTime(documentElement(scene, unscaled, "line"));
+    const double gameWave = textEffectTime(documentElement(scene, game, "line"));
+    ASSERT_GT(unscaledWave, 0.0);
+    EXPECT_NEAR(gameWave, unscaledWave * 0.5, 0.06) << "text-effect-time: auto follows the document";
+
+    // time scale 0: the game document holds, the other runs on
+    Engine::setTimeScale(0.0f);
+    gameSlide->SetProperty("left", "0px");
+    unscaledSlide->SetProperty("left", "0px");
+    GpuEnvironment::drawFrames(10);
+    EXPECT_FLOAT_EQ(gameSlide->GetOffsetLeft(), 100.0f) << "a Game Time transition does not start running at time scale 0";
+    EXPECT_FLOAT_EQ(documentElement(scene, game, "keys")->GetOffsetLeft(), gameKeys);
+    EXPECT_LT(unscaledSlide->GetOffsetLeft(), 60.0f);
+    EXPECT_GT(documentElement(scene, unscaled, "keys")->GetOffsetLeft(), unscaledKeys);
+}
+
+// S93 R35: switching a document's Update Mode keeps its running animations' progress
+TEST_F(HtmlUIClockTest, UpdateModeChangeKeepsProgress){
+    JASPER_REQUIRE_GPU();
+
+    Engine::setFixedDeltatime(0.05);
+    Engine::setTimeScale(1.0f);
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument("p1/clock_update_mode.rml");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    // the clocks far apart: the UI clock ran while the game one was held
+    Engine::setTimeScale(0.0f);
+    GpuEnvironment::drawFrames(20);
+    Engine::setTimeScale(1.0f);
+
+    Rml::Element* slide = documentElement(scene, document, "slide");
+    ASSERT_NE(slide, nullptr);
+    slide->SetProperty("left", "100px");
+    GpuEnvironment::drawFrames(5);
+    const float before = slide->GetOffsetLeft();
+    EXPECT_GT(before, 0.0f);
+    EXPECT_LT(before, 100.0f);
+
+    document.setUpdateMode(UIDocumentUpdateMode::GAME_TIME);
+    EXPECT_EQ(document.getComponent<UIDocumentComponent>().appliedUpdateMode, UIDocumentUpdateMode::GAME_TIME);
+    updateDocuments(scene);
+    EXPECT_NEAR(slide->GetOffsetLeft(), before, 0.5f) << "no jump onto the other clock";
+    GpuEnvironment::drawFrames(2);
+    EXPECT_NEAR(slide->GetOffsetLeft(), before + 10.0f, 1.0f) << "and it runs on it";
+}
+
+// S93 R35: the game clock stops while the game events are paused (the editor outside Play and
+// in its Pause) and while a fixed UI time pins the UI
+TEST_F(HtmlUIClockTest, GameClockStopsWithTheGameEvents){
+    JASPER_REQUIRE_GPU();
+
+    Engine::setFixedDeltatime(0.02);
+    Engine::setTimeScale(1.0f);
+    const double start = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
+    GpuEnvironment::drawFrames(5);
+    EXPECT_NEAR(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME) - start, 0.1, 1e-9);
+
+    Engine::pauseGameEvents(true);
+    const double paused = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
+    const double unscaled = HtmlUIClock::now();
+    GpuEnvironment::drawFrames(3);
+    Engine::pauseGameEvents(false);
+    EXPECT_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), paused);
+    EXPECT_NEAR(HtmlUIClock::now() - unscaled, 0.06, 1e-9) << "the UI clock runs on (documents animate in edit mode)";
+
+    HtmlUIClock::setFixedTime(3.0);
+    GpuEnvironment::drawFrames(3);
+    EXPECT_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), paused) << "a fixed UI time holds the game clock too";
+    HtmlUIClock::setFixedTime(std::nullopt);
 }

@@ -645,8 +645,8 @@ void jasperengine::htmlui::compat::rewriteTextEffect(DeclContext& context){
         if (!valid) error = "use infinite or a whole number from 1";
     }else if (context.name == "text-effect-time"){
         const std::string time = value;
-        valid = time == "ui" || time == "game";
-        if (!valid) error = "use ui (unscaled) or game";
+        valid = time == "auto" || time == "ui" || time == "game";
+        if (!valid) error = "use auto (the document's Update Mode), ui (unscaled) or game";
     }
     if (!valid){
         context.report(codes::UnsupportedValue, context.name + ": " + error + "; the declaration is dropped",
