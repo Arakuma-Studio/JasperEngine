@@ -200,6 +200,47 @@ namespace jasperengine::cook {
         }
     };
 
+    // a list element: the variant's index, then its value (the same indices as ScriptPropertyValue)
+    template<>
+    struct Codec<ScriptPropertyElement> {
+        static void write(Writer& w, const ScriptPropertyElement& v) {
+            w.u8(static_cast<uint8_t>(v.index()));
+            std::visit([&w](const auto& value) {
+                using V = std::decay_t<decltype(value)>;
+                if constexpr (!std::is_same_v<V, std::monostate>) Codec<V>::write(w, value);
+            }, v);
+        }
+        static void read(Reader& r, ScriptPropertyElement& v) {
+            const uint8_t index = r.u8();
+            switch (index) {
+                case 0: v = std::monostate{}; break;
+                case 1: { bool x = false; Codec<bool>::read(r, x); v = x; break; }
+                case 2: { int x = 0; Codec<int>::read(r, x); v = x; break; }
+                case 3: { float x = 0; Codec<float>::read(r, x); v = x; break; }
+                case 4: { std::string x; Codec<std::string>::read(r, x); v = x; break; }
+                case 5: { Vector2 x; Codec<Vector2>::read(r, x); v = x; break; }
+                case 6: { Vector3 x; Codec<Vector3>::read(r, x); v = x; break; }
+                case 7: { Vector4 x; Codec<Vector4>::read(r, x); v = x; break; }
+                case 8: { EntityReference x; Codec<EntityReference>::read(r, x); v = x; break; }
+                case 9: { PrefabAsset x; Codec<PrefabAsset>::read(r, x); v = x; break; }
+                case 10: { AssetRef x; Codec<AssetRef>::read(r, x); v = x; break; }
+                default: r.fail("a script list element of kind " + std::to_string(index)); break;
+            }
+        }
+    };
+    static_assert(std::variant_size_v<ScriptPropertyElement> == 11, "a new ScriptPropertyElement kind needs its cooked encoding");
+
+    // a list property's value (S95): its elements
+    template<>
+    struct Codec<ScriptPropertyList> {
+        static void write(Writer& w, const ScriptPropertyList& list) {
+            Codec<std::vector<ScriptPropertyElement>>::write(w, list.items);
+        }
+        static void read(Reader& r, ScriptPropertyList& list) {
+            Codec<std::vector<ScriptPropertyElement>>::read(r, list.items);
+        }
+    };
+
     // the variant's index, then its value
     template<>
     struct Codec<ScriptPropertyValue> {
@@ -224,11 +265,12 @@ namespace jasperengine::cook {
                 case 8: { EntityReference x; Codec<EntityReference>::read(r, x); v = x; break; }
                 case 9: { PrefabAsset x; Codec<PrefabAsset>::read(r, x); v = x; break; }
                 case 10: { AssetRef x; Codec<AssetRef>::read(r, x); v = x; break; }
+                case 11: { ScriptPropertyList x; Codec<ScriptPropertyList>::read(r, x); v = std::move(x); break; }
                 default: r.fail("a script property value of kind " + std::to_string(index)); break;
             }
         }
     };
-    static_assert(std::variant_size_v<ScriptPropertyValue> == 11, "a new ScriptPropertyValue kind needs its cooked encoding");
+    static_assert(std::variant_size_v<ScriptPropertyValue> == 12, "a new ScriptPropertyValue kind needs its cooked encoding");
 
     template<>
     struct Codec<ScriptProperty> {
@@ -240,6 +282,7 @@ namespace jasperengine::cook {
             Codec<ScriptPropertyValue>::write(w, p.defaultValue);
             w.string(p.ptrTypeName);
             w.string(p.assetType);
+            Codec<ScriptPropertyType>::write(w, p.elementType);
         }
         static void read(Reader& r, ScriptProperty& p) {
             p.name = r.string();
@@ -249,6 +292,7 @@ namespace jasperengine::cook {
             Codec<ScriptPropertyValue>::read(r, p.defaultValue);
             p.ptrTypeName = r.string();
             p.assetType = r.string();
+            Codec<ScriptPropertyType>::read(r, p.elementType);
         }
     };
 
