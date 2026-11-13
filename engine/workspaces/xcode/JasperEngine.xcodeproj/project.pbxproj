@@ -4942,7 +4942,7 @@
 		4A534E53891A179E1FB6051A /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
 		4A534E53E02D4F6BD72BB70E /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
 		4A534E53E94F7A6369A305A2 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
-		4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; };
+		4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E53A0A54789548D2DA1 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
 		4A534E537457DACB3B82B77D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
 		4A534E5389E89E6D01D2EB92 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
@@ -4978,7 +4978,7 @@
 		4A534E5352E3A58794CE2A69 /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
 		4A534E531988399AB65AFFDF /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
 		4A534E53EBFC087919224442 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
-		4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; };
+		4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E53AF7B08FE79344324 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
 		4A534E530AFE29037462431D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
 		4A534E53977C8FADAFA962D4 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
