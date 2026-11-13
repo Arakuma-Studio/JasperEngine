@@ -5,7 +5,7 @@
 #include "FileWatchService.h"
 #include "../common/PlatformDefaults.h"
 #include "io/ResourcePack.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 
 #include <emscripten.h>
 

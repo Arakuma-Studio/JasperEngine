@@ -3,8 +3,9 @@
 # software Vulkan driver (lavapipe, which implements the VK_EXT_descriptor_buffer
 # sokol_gfx needs) and the OpenGL ES headers and library (Mesa's llvmpipe gives
 # GLX an ES 3.2 context). Build docker/linux.Dockerfile as jasperengine/linux-build
-# first.
-FROM jasperengine/linux-build
+# first. BASE names that image: tools/build.sh passes its hash tag, CI its GHCR image (images.yml).
+ARG BASE=jasperengine/linux-build
+FROM ${BASE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 

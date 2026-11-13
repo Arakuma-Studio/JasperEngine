@@ -8,7 +8,9 @@ Fails (exit 1) when, over all the given files together:
   - no test ran (a --gtest_filter that matches nothing is not a pass),
   - fewer than --min-tests tests ran,
   - any test failed or errored,
-  - more than --max-skipped tests were skipped (GTEST_SKIP).
+  - more than --max-skipped tests were skipped (GTEST_SKIP). A skip whose message matches an
+    --allow-skip-reason regex (e.g. a platform whose test binary cannot count allocations) is listed
+    and not counted; any other skip still is.
 It also lists the disabled tests (DISABLED_ prefix), so a quarantine is visible, never silent.
 Standard library only.
 """
@@ -16,6 +18,7 @@ Standard library only.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -29,9 +32,10 @@ class Totals:
     failed: list[str] = field(default_factory=list)
     disabled: list[str] = field(default_factory=list)
     skipped_names: list[str] = field(default_factory=list)
+    allowed_skips: list[tuple[str, str]] = field(default_factory=list)
 
 
-def read_results(path: Path, totals: Totals) -> str | None:
+def read_results(path: Path, totals: Totals, allow_reasons: list[str] = ()) -> str | None:
     """Adds one file's test cases to totals; returns an error message instead when unreadable."""
     if not path.is_file():
         return f"{path}: missing (the test binary crashed, or never ran)"
@@ -48,6 +52,12 @@ def read_results(path: Path, totals: Totals) -> str | None:
                 totals.disabled.append(name)
                 continue
             if case.get("result") == "skipped" or case.find("skipped") is not None:
+                skip = case.find("skipped")
+                message = (skip.get("message", "") if skip is not None else "") or ""
+                reason = next((r for r in allow_reasons if re.search(r, message)), None)
+                if reason is not None:
+                    totals.allowed_skips.append((name, reason))
+                    continue
                 totals.skipped += 1
                 totals.skipped_names.append(name)
                 continue
@@ -57,11 +67,12 @@ def read_results(path: Path, totals: Totals) -> str | None:
     return None
 
 
-def gate(files: list[Path], min_tests: int, max_skipped: int, out=sys.stdout) -> int:
+def gate(files: list[Path], min_tests: int, max_skipped: int, out=sys.stdout,
+         allow_reasons: list[str] = ()) -> int:
     totals = Totals()
     errors = []
     for path in files:
-        error = read_results(path, totals)
+        error = read_results(path, totals, allow_reasons)
         if error:
             errors.append(error)
 
@@ -72,6 +83,8 @@ def gate(files: list[Path], min_tests: int, max_skipped: int, out=sys.stdout) ->
         print(f"  disabled: {name}", file=out)
     for name in totals.skipped_names:
         print(f"  skipped:  {name}", file=out)
+    for name, reason in totals.allowed_skips:
+        print(f"  skipped (allowed: {reason}): {name}", file=out)
     for name in totals.failed:
         print(f"  FAILED:   {name}", file=out)
 
@@ -94,8 +107,10 @@ def main() -> int:
     parser.add_argument("--xml", action="append", required=True, type=Path, help="googletest XML file (repeatable)")
     parser.add_argument("--min-tests", type=int, default=1, help="tests that must have run (default 1)")
     parser.add_argument("--max-skipped", type=int, default=0, help="skipped tests allowed (default 0)")
+    parser.add_argument("--allow-skip-reason", action="append", default=[], metavar="REGEX",
+                        help="a skip whose message matches is listed, not counted (repeatable)")
     args = parser.parse_args()
-    return gate(args.xml, max(1, args.min_tests), args.max_skipped)
+    return gate(args.xml, max(1, args.min_tests), args.max_skipped, allow_reasons=args.allow_skip_reason)
 
 
 if __name__ == "__main__":

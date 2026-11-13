@@ -2,6 +2,9 @@
 build
 build-rel
 build-release
+# the editor install and the packages of tools/ci/{windows,macos,package-linux}.sh
+/instdir/
+/dist/
 settings.yaml
 /settings.yaml.lock
 editor_layout.ini

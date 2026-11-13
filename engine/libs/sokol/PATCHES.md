@@ -120,3 +120,16 @@ pixels of `InstancingGoldenGpu.ShadowAndDepthPassesBatch`, none with it.
   stays on. Marked `JasperEngine: invariant position`.
 
 Status: to be offered upstream (any sokol user with `invariant` positions has the same problem).
+
+## GL 1.1 calls for the Jasper add-ons on Windows
+
+`sokol_gpu_timer_impl.h` and `sokol_async_impl.h` call `glFlush` and `glGetString(GL_RENDERER /
+GL_VERSION)`. On Windows with `SOKOL_GLCORE`, sokol_gfx declares GL through its own loader
+(`_SOKOL_USE_WIN32_GL_LOADER`), which knows only the functions and enums sokol_gfx itself uses, so
+the add-ons did not compile with MSVC.
+
+- The loader's X-macro list gains `glFlush` and `glGetString`; both are GL 1.1, so
+  `_sg_gl_getprocaddr` finds them through its `GetProcAddress(opengl32.dll)` fallback.
+- The loader's enum block gains `GL_VERSION` and `GL_RENDERER`.
+
+Status: local; upstream has no use for them. Every sokol update re-applies it.

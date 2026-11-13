@@ -59,9 +59,9 @@
 # more than its variant caches hold (~1000 pipelines: the whole shader-library fixture
 # takes minutes per frame there), so run such a project a few groups at a time.
 # SMOKE_DIR=build/<name> writes there instead of build/smoke, so several smoke tests
-# can run at once from one checkout. JASPER_DOCKER_IMAGE=<id|tag> runs that image (built from
-# docker/linux.Dockerfile, or linux-backends for SMOKE_BACKEND=vulkan|gles3) instead of building
-# it (CI's prebuilt images).
+# can run at once from one checkout. JASPER_DOCKER_IMAGE=<id|tag> runs that image instead of building
+# it: docker/runtime.Dockerfile's for prebuilt, else linux's (linux-backends' for SMOKE_BACKEND=vulkan
+# or gles3); CI passes its GHCR images there (.github/actions/image).
 # The exported project must configure as a user's game does: without the repository's presets,
 # warnings as errors or sanitizers (docs/testing.md); the test fails otherwise.
 set -euo pipefail

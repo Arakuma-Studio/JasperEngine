@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 #include "player/LaunchOptions.h"
 #include "player/RunControl.h"
 #include "PlatformConfig.h"

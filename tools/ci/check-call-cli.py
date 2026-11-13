@@ -43,7 +43,8 @@ def run(editor: Path, *args: str) -> subprocess.CompletedProcess:
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
-    editor = find_editor(Path(sys.argv[1]))
+    # absolute: each call runs in its own temporary working directory
+    editor = find_editor(Path(sys.argv[1]).resolve())
     problems = []
     help_out = run(editor, "call", "create_entity", "--help")
     if help_out.returncode != 0 or "--name" not in help_out.stdout or "call create_entity '{" not in help_out.stdout:

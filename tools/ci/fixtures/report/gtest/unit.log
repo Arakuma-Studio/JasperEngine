@@ -1,0 +1,58 @@
+Running main() from /gtest/src/gtest_main.cc
+[==========] Running 5 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 3 tests from MeshBvh
+[ RUN      ] MeshBvh.Refit
+engine/tests/core/ReportFixtureTest.cpp:3: Failure
+Expected equality of these values:
+  3
+  got
+    Which is: 4
+expected 3 tiles after undo
+
+[  FAILED  ] MeshBvh.Refit (0 ms)
+[ RUN      ] MeshBvh.Builds
+[       OK ] MeshBvh.Builds (0 ms)
+[ RUN      ] MeshBvh.NeedsGpu
+engine/tests/core/ReportFixtureTest.cpp:5: Skipped
+no GPU
+
+[  SKIPPED ] MeshBvh.NeedsGpu (0 ms)
+[ DISABLED ] MeshBvh.DISABLED_Quarantined
+[----------] 3 tests from MeshBvh (0 ms total)
+
+[----------] 1 test from Vector3
+[ RUN      ] Vector3.Normalise
+engine/tests/core/ReportFixtureTest.cpp:7: Failure
+Value of: false
+  Actual: false
+Expected: true
+length was 0
+
+[  FAILED  ] Vector3.Normalise (0 ms)
+[----------] 1 test from Vector3 (0 ms total)
+
+[----------] 1 test from Crash
+[ RUN      ] Crash.Segfaults
+[       OK ] Crash.Segfaults (0 ms)
+[----------] 1 test from Crash (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 3 test suites ran. (0 ms total)
+[  PASSED  ] 2 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] MeshBvh.NeedsGpu
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] MeshBvh.Refit
+[  FAILED  ] Vector3.Normalise
+
+ 2 FAILED TESTS
+  YOU HAVE 1 DISABLED TEST
+
+gtest-gate: /src/core.xml: 4 ran, 2 failed, 1 skipped, 1 disabled
+  disabled: MeshBvh.DISABLED_Quarantined
+  skipped:  MeshBvh.NeedsGpu
+  FAILED:   MeshBvh.Refit
+  FAILED:   Vector3.Normalise
+gtest-gate: FAIL: 2 tests failed
+gtest-gate: FAIL: 1 tests skipped, at most 0 allowed

@@ -3,7 +3,7 @@
         "The prebuilt release player variants (docs/specs/S34-player-size.md R4, D2): each a set of the optional",
         "engine modules (core/player/PlayerModules.h). CMake builds one with -DJASPERENGINE_PLAYER_VARIANT=<name>",
         "(engine/cmake/JasperPlayerVariants.cmake); its runtime id is <platform>-<arch>-<backend>-release-<suffix>,",
-        "the full player's the plain one. tools/build.sh players and CI build every variant of the release flavour;",
+        "the full player's the plain one. tools/build.sh players and the release workflow build every variant of the release flavour;",
         "the development flavour is the full player. A build uses the smallest installed variant whose modules hold",
         "every module its project needs (editor/players/ModuleUsage). Listed from the largest to the smallest: of two",
         "variants with as many modules, the later one is the smaller (the measurements of the S34 spec, M8)."
