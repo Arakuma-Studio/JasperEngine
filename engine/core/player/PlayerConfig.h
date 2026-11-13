@@ -103,6 +103,7 @@ namespace jasperengine::player {
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
         int htmlUiMsaa = 4;
         int glyphAtlasMiB = 0;
+        int imageCacheMiB = -1;   // S93: -1 the platform's default
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;

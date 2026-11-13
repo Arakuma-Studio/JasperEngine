@@ -2806,6 +2806,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
+        root["htmlUiImageCacheMiB"] = htmlUiRender.imageCacheMiB;
     }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier,
     // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off
@@ -3634,6 +3635,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             htmlUiRender.sdfPrimitives = YamlNumbers::as<bool>(node["htmlUiSdfPrimitives"]);
         if (node["htmlUiTransformAwareText"].IsDefined())
             htmlUiRender.transformAwareText = YamlNumbers::as<bool>(node["htmlUiTransformAwareText"]);
+        if (node["htmlUiImageCacheMiB"].IsDefined())
+            htmlUiRender.imageCacheMiB = YamlNumbers::as<int>(node["htmlUiImageCacheMiB"]);
         project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
