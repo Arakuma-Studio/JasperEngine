@@ -437,6 +437,29 @@ namespace jasperengine {
         int runVideoConversions();
         uint64_t getVideoConversionCount() const;   // passes run over the renderer's life
 
+        // S92 frame reuse (RmlRendererFrame.cpp). Why a frame is drawn whatever it recorded (R2):
+        // it reads something its signature cannot version (stats.liveSources)
+        enum LiveSource : uint32_t {
+            LIVE_VIDEO = 1u << 0,           // a <video>'s texture (HtmlUITexture::liveContent)
+            LIVE_RENDER_TARGET = 1u << 1,   // a texture on an image the UI does not write (an engine render target)
+            LIVE_EFFECT = 1u << 2,          // a phase-5 effect on a running clock, or a stateful one
+            LIVE_PARTICLES = 1u << 3,       // a <particle-system> that drew particles
+            LIVE_MSDF_PENDING = 1u << 4,    // distance glyphs asked for and not made yet
+            LIVE_TEXT_SETTLE = 1u << 5,     // transform-aware text settling at its scale (RenderManager::RequestRender)
+            LIVE_REQUESTED = 1u << 6,       // HtmlUIContext::requestRedraw (custom native content, settings)
+        };
+        // a live source of the frame being recorded; outside a recording, of the next frame
+        void addLiveSource(uint32_t reasons);
+        // The signature of the recorded commands [first, end) and of the state in effect at first
+        // (transform, scissor, clip mask): geometry and textures by serial and content version,
+        // compiled filters, shaders and effects by their parameters, everything else by value.
+        // With an origin (target px), translations, scissors and region layers are taken relative
+        // to it, unless a transform other than the identity is in effect (a layer scope's key: an
+        // element that moves keeps it). live receives the live sources the commands read
+        uint64_t signatureOf(size_t first, size_t end, Rml::Vector2i origin, uint32_t& live);
+        // the commands recorded so far in this frame (a range's end)
+        size_t getRecordedCommandCount() const { return commands.size(); }
+
     private:
         friend class RmlFilterContext;
         // phase 5: the UI effects draw with the renderer's passes, geometry and state
@@ -933,6 +956,13 @@ namespace jasperengine {
         TextureRender placeholderWhite;
         // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
         std::unique_ptr<htmlui::EffectRenderer> effects;
+
+        // S92 frame reuse
+        uint32_t frameLiveSources = 0;       // the frame being recorded's (addLiveSource)
+        uint32_t pendingLiveSources = 0;     // asked for between frames: the next frame's
+        uint64_t textureSignature(const HtmlUITexture* texture, uint32_t& live) const;
+        uint64_t filterSignature(Rml::CompiledFilterHandle filter, uint32_t& live) const;
+        uint64_t shaderSignature(Rml::CompiledShaderHandle shader, uint32_t& live) const;
     };
 
 }
