@@ -135,6 +135,20 @@ public:
 	/// touches, drag hover) uses it. An empty filter (the default) passes through nothing.
 	/// @param[in] filter The test, called with an element the point is within.
 	void SetPointerPassThrough(Function<bool(Element*)> filter);
+	/// Fork (S93 R7): shapes that clip hit testing (CSS clip-path). Every hit test asks the hook about the hit element and
+	/// each of its ancestors that has a mask image, with the point in that element's local (untransformed document) space;
+	/// false clips the point out. Masks themselves do not clip hit testing (CSS Masking 1). An empty hook (the default) clips
+	/// nothing.
+	void SetHitTestShape(Function<bool(Element*, Vector2f)> hook);
+
+	/// Fork (S93 R10): the scrolling velocity of a scroll container (px/s; positive scrolls towards the end): its
+	/// inertia, or the velocity of a pan dragging it; 0 when it is not moving.
+	Vector2f GetScrollVelocity(Element* element) const;
+	/// Fork (S93 R10): flings a scroll container at a velocity (px/s), with its scroll physics (ScrollPhysics).
+	void SetScrollVelocity(Element* element, Vector2f velocity);
+	/// Fork (S93 R10): stops the inertia and smooth scrolling of a scroll container (uGUI StopMovement); an elastic
+	/// overscroll still springs back.
+	void StopScrolling(Element* element);
 
 	/// Brings the document to the front of the document stack.
 	/// @param[in] document The document to pull to the front of the stack.
@@ -392,6 +406,8 @@ private:
 
 	// Fork (phase 4): SetPointerPassThrough.
 	Function<bool(Element*)> pointer_pass_through;
+	// Fork (S93 R7): SetHitTestShape.
+	Function<bool(Element*, Vector2f)> hit_test_shape;
 
 	// The scrolling state of a touch pointer, required to implement proper inertia scrolling (PointerState::scroll).
 	struct TouchState {
@@ -409,6 +425,11 @@ private:
 		ObserverPtr<Element> drag_candidate;
 		bool drag_candidate_verbose = false;
 		double start_time = 0;
+		// Fork (S93 R8, R9): the container's physics, read at the press, and where the pan began (the pointer and the
+		// container's scroll offset plus overscroll): an elastic or unrestricted pan follows the pointer from there.
+		ScrollPhysics physics;
+		Vector2f pan_origin_position;
+		Vector2f pan_origin_offset;
 	};
 
 	// Fork (engine-gaps G5): the touch and pen pointers (the mouse keeps the members above).
@@ -444,6 +465,11 @@ private:
 		Vector2f position;
 	};
 	SmallUnorderedMap<PointerId, PointerClick> pointer_clicks;
+	// Fork (S93 R9): the mouse's pan of a 'scroll-drag: pointer' container (scroll_container null: none), what
+	// 'touch-action' lets it pan, and whether it started (its press was cancelled)
+	TouchState mouse_pan;
+	bool mouse_pan_x = true, mouse_pan_y = true;
+	bool mouse_panning = false;
 	// the mouse's capture and buttons (G5-3)
 	Element* mouse_capture = nullptr;
 	Element* mouse_pending_capture = nullptr;
@@ -550,6 +576,17 @@ private:
 	void EndPointer(PointerId id, bool released, Vector2f position, int key_modifier_state);
 	void CancelPointerPan(PointerId id, PointerState& state, int key_modifier_state);
 	void ComputeTouchAction(PointerState& state, Element* target);
+	// Fork (S93 R9): the pan of a press that drags its scroll container (a touch or pen pointer's, or the mouse's): its
+	// start (the pointer was cancelled), each move, and the release (inertia, an elastic return)
+	void BeginPan(TouchState& pan, Vector2f position);
+	void UpdatePan(TouchState& pan, bool pan_x, bool pan_y, Vector2f position, double now);
+	void EndPan(TouchState& pan, bool pan_x, bool pan_y, Vector2f position, double now);
+	// Fork (S93 R9): the mouse pans a 'scroll-drag: pointer' container: the press may pan (PrepareMousePan), a move past the
+	// slop cancels the press (pointercancel, no click) and pans (UpdateMousePan: true when the move was the pan's), the
+	// release ends it (EndMousePan: true when it had started)
+	void PrepareMousePan();
+	bool UpdateMousePan(int key_modifier_state);
+	bool EndMousePan();
 	void DetachFromPointers(Element* element);
 	void PositionPointerDragClones();
 

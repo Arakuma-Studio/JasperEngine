@@ -2248,6 +2248,13 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	// -- Pointer Events (fork, engine-gaps G5-4): read by the context, no computed value --
 	case PropertyId::TouchAction:
 		break;
+	// -- Scroll physics (fork, S93 R8): read by the context when a press may pan, no computed value --
+	case PropertyId::ScrollDrag:
+	case PropertyId::ScrollMovement:
+	case PropertyId::ScrollElasticity:
+	case PropertyId::ScrollInertia:
+	case PropertyId::ScrollDecelerationRate:
+		break;
 
 	// Invalid properties
 	case PropertyId::Invalid:
