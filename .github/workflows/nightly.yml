@@ -49,6 +49,11 @@ jobs:
             image: linux
             ccache: asan
             run: SANITIZE=address,undefined JASPER_HTMLUI_PERF_SLACK=10 HTMLUI_TEST_ARGS='--gtest_filter=-*Golden*' tools/build.sh htmlui-tests
+          - name: Slow GPU unit suites (ASan + UBSan)
+            id: asan-gpu-slow
+            image: linux
+            ccache: asan
+            run: SANITIZE=address,undefined UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=*GpuSlow*' tools/build.sh unit-tests
           - name: Unit tests (TSan)
             id: tsan
             image: linux

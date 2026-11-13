@@ -389,8 +389,12 @@ jobs:
               planned="RUN_${suite^^}"
               [[ "${!planned}" == true ]] || { echo "$suite: not planned"; continue; }
               filter="FILTER_${suite^^}"
-              args=""
-              [[ -n "${!filter}" ]] && args="UNIT_TEST_ARGS=$(printf %q "--gtest_filter=${!filter}") "
+              # the *GpuSlow suites draw every node through llvmpipe: 135 of 167 test minutes under ASan; the
+              # unit lane runs them as they are and the nightly under ASan
+              f="${!filter}"
+              [[ -n "$f" ]] || f="*"
+              if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
+              args="UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") "
               tools/ci/logged.sh "asan-$suite" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$suite ${args}tools/build.sh unit-tests" || status=1
           done
           exit "$status"
