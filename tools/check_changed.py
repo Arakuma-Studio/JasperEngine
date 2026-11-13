@@ -97,6 +97,8 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
               "tools/check_fanout.py": "tools/test_check_fanout.py", "tools/test_check_fanout.py": "tools/test_check_fanout.py",
+              "tools/xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
+              "tools/test_xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
               "tools/check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
               "tools/players/write_hashes.py": "tools/players/test_write_hashes.py",
               "tools/players/test_write_hashes.py": "tools/players/test_write_hashes.py",

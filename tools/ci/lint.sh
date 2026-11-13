@@ -73,6 +73,7 @@ done
 # the tooling's own tests (python3 -I, as tools/check-changed runs them)
 check python3 -I tools/test_check_changed.py
 check python3 -I tools/test_check_fanout.py
+check python3 -I tools/test_xcode_sync_sources.py
 check python3 -I tools/mcp/test_shard.py
 check python3 -I tools/mcp/test_build_cache.py
 check python3 -I tools/mcp/eval/test_grade.py
