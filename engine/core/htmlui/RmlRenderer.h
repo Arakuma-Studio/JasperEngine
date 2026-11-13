@@ -921,7 +921,7 @@ namespace jasperengine {
         std::pair<int, int> geometryTextureSlot{-1, -1};
         int gradientParamsSlot = -1;
         int gradientFsSlot = -1;
-        static constexpr int POST_PROGRAM_COUNT = 7;   // ShaderPool's HTMLUI_POST_VARIANT_COUNT
+        static constexpr int POST_PROGRAM_COUNT = 8;   // ShaderPool's HTMLUI_POST_VARIANT_COUNT
         PostProgram postPrograms[POST_PROGRAM_COUNT];
         // the composite quad, also the layout template of the dynamic geometry objects
         BufferRender compositeVertexBuffer;

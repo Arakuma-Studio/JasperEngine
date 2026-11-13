@@ -18,7 +18,7 @@ async def test_shaders_cross_compile(ed: Editor):
     """Every HTML UI variant for every graphics API generate_shaders accepts."""
     # by spec, not by ShaderKey number (the ShaderType values of the HTML UI's types moved by one
     # when origin/main's BLOOM came before them)
-    posts = ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv")
+    posts = ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv", "Bmd")
     specs = ["htmlui", "htmlui:Tex", "htmluigradient", "htmluiprim"] + [f"htmluipost:{name}" for name in posts]
     out = ed.scratch.root / "htmlui-shaders"
     r = await ed.call("generate_shaders", output_dir=str(out), backends="all", format="binary",
@@ -28,7 +28,7 @@ async def test_shaders_cross_compile(ed: Editor):
     # every variant for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 (macOS, iOS) and SPIR-V
     languages = ("glsl410", "glsl300es", "hlsl5", "msl21macos", "msl21ios", "spirv10")
     # S16: the instanced primitives (htmlui_prim.vert/.frag) too
-    stems = ["htmlui", "htmlui_Tex", "htmluigradient", "htmluiprim"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv")]
+    stems = ["htmlui", "htmlui_Tex", "htmluigradient", "htmluiprim"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv", "Bmd")]
     for stem in stems:
         for language in languages:
             ed.check(f"{stem}_{language}.sdat" in files, f"{stem}_{language}.sdat not generated: {sorted(files)}")

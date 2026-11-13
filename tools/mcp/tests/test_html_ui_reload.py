@@ -293,7 +293,7 @@ async def test_html_error_reported(ed: Editor):
 
 async def test_orphan_css_checked(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { mix-blend-mode: multiply; }\n")
+    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { background-blend-mode: multiply; }\n")
     r = await status(ed)
     ext = ext_of(r)
     ed.check(ext is not None, "reported")
@@ -402,7 +402,7 @@ async def test_image_dependency_reload(ed: Editor):
 
 async def test_sync_files_reports_ui(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { mix-blend-mode: screen; }\n")
+    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { background-blend-mode: screen; }\n")
     r = await ed.call("sync_files", paths=[PANEL_CSS])
     ed.check(reloaded_htmls({"ui_reloaded": r.get("ui_reloaded", [])}) == [PANEL] or r.get("ui_current") == 1,
              f"sync_files reloads the document: {r}")

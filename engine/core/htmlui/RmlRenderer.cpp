@@ -2296,7 +2296,30 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
         draw.uvTransform[2] = (float)(destinationFrame.Left() - sourceFrame.Left()) / sourceSize.x;
         draw.uvTransform[3] = (float)(destinationFrame.Top() - sourceFrame.Top()) / sourceSize.y;
     }
-    // Plus (the fork's cross-fade of background images): the premultiplied colours added
+    // S93 R30: a CSS blend mode reads the destination, which it cannot while drawing into it: the destination's
+    // pixels under the composite are copied into a free post-process target first (the backdrop), and the blend
+    // program writes source-over-backdrop in place of them. Between layers of the same frame only (a region layer's
+    // composite blends as normal)
+    if ((int)blendMode >= (int)Rml::BlendMode::Multiply && ordinary && postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) &&
+        postTargetIn(context.postSet, 2)){
+        ensureLayerCleared(destination);
+        ensureResolved(*destinationLayer);
+        Framebuffer& backdrop = context.secondary();
+        PostDraw copy;
+        copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+        copy.source = &destinationLayer->getRender().getColorTexture();
+        copy.scissor = destinationScissor;
+        drawPost(backdrop, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
+        stats.blendBackdropCopies++;
+        draw.variant = (int)HtmlUIPostVariant::BLEND_MODE;
+        draw.mask = &backdrop.getRender().getColorTexture();
+        draw.params.params[0] = (float)((int)blendMode - (int)Rml::BlendMode::Multiply + 1);
+        if (clipMaskEnabled)
+            ensureMask(destination);
+        drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::NONE));
+        return;
+    }
+    // Plus (the fork's cross-fade of background images, CSS plus-lighter): the premultiplied colours added
     const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
                             : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
                                                                     : BlendMode::PREMULTIPLIED;

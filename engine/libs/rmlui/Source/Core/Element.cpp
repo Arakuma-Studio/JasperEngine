@@ -281,7 +281,7 @@ void Element::Render()
 	// whose paint bounds lie wholly outside the scissor its clipping region sets (kept by SetClippingRegion for the other
 	// elements of its key) is passed over before any state is set: a long scrolled list's hidden rows cost a few tests
 	if (!transform_state && !dirty_transform && !dirty_perspective && stacking_context.empty() && !local_stacking_context &&
-		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 	{
 		RenderManager* render_manager = GetRenderManager();
 		if (render_manager && render_manager->PaintShortcuts())
@@ -302,7 +302,7 @@ void Element::Render()
 	ElementUtilities::ApplyTransform(*this);
 
 	// The effects are asked at each stage (rendering may change them), and skipped when they have nothing to do.
-	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 		effects.RenderEffects(RenderStage::Enter);
 
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
@@ -324,7 +324,7 @@ void Element::Render()
 		if (!outside)
 		{
 			meta->background_border.Render(this);
-			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 				effects.RenderEffects(RenderStage::Decoration);
 			meta->background_border.RenderBorder(this);
 		}
@@ -338,7 +338,7 @@ void Element::Render()
 	RenderStackingContextChildren();
 
 	ElementUtilities::ApplyTransform(*this);
-	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 		effects.RenderEffects(RenderStage::Exit);
 }
 
@@ -981,7 +981,7 @@ void Element::UpdateLocalStackingContext()
 	const bool enable_local_stacking_context = (z_index_applies || local_stacking_context_forced || computed.has_filter() ||
 		computed.has_backdrop_filter() || computed.has_mask_image() || computed.has_local_transform() || computed.has_local_perspective() ||
 		computed.opacity() < 1.f || position == Position::Fixed || position == Position::Sticky || computed.isolation() == Isolation::Isolate ||
-		will_change);
+		computed.mix_blend_mode() != MixBlendMode::Normal || will_change);
 
 	if (z_index != new_z_index || local_stacking_context != enable_local_stacking_context)
 	{
@@ -2500,7 +2500,8 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// Update the z-index and stacking context.
 	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed ||
 		changed_properties.Contains(PropertyId::Opacity) || changed_properties.Contains(PropertyId::Position) ||
-		changed_properties.Contains(PropertyId::Isolation) || changed_properties.Contains(PropertyId::WillChange))
+		changed_properties.Contains(PropertyId::Isolation) || changed_properties.Contains(PropertyId::WillChange) ||
+		changed_properties.Contains(PropertyId::MixBlendMode))
 	{
 		UpdateLocalStackingContext();
 	}

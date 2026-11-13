@@ -24,8 +24,8 @@ namespace jasperengine{
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
     // YUV: <video> frames (phase 6), appended
-    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
-    static const int HTMLUI_POST_VARIANT_COUNT = 7;
+    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV, BLEND_MODE };
+    static const int HTMLUI_POST_VARIANT_COUNT = 8;
 
     // what a particle system draw needs of its variant (ShaderType::PARTICLES)
     struct ParticlesShaderFlags {

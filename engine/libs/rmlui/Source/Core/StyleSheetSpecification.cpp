@@ -1064,6 +1064,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// the context reads it from a touch's target up to its scroll container when the touch starts.
 	RegisterProperty(PropertyId::TouchAction, "touch-action", "auto", false, false).AddParser("string");
 	// Fork (S93 R31): none | <length> <length>, read by the document's fit (ElementDocument::FitTextAutosize)
+	// Fork (S93 R30): Compositing and Blending 1
+	RegisterProperty(PropertyId::MixBlendMode, "mix-blend-mode", "normal", false, false)
+		.AddParser("keyword", "normal, multiply, screen, overlay, darken, lighten, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color, luminosity, plus-lighter");
 	RegisterProperty(PropertyId::TextAutosize, "text-autosize", "none", false, true).AddParser("keyword", "none").AddParser("string");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of

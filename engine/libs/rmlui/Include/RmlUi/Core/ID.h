@@ -383,6 +383,8 @@ enum class PropertyId : uint16_t {
 	TouchAction,
 	// Fork (S93 R31): 'text-autosize' (engine extension): 'none' or the two lengths the element's font size is fitted between.
 	TextAutosize,
+	// Fork (S93 R30): 'mix-blend-mode' (Compositing and Blending 1): the element drawn as a layer, blended with its backdrop.
+	MixBlendMode,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,

@@ -526,6 +526,7 @@ void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& def
     if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
     if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_BLEND_MODE", "1"});           // 'Bmd'
 }
 
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

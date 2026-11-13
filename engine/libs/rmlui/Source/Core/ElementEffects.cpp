@@ -305,7 +305,9 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	}
 	// Masks: mask-image layers (ElementBackgroundLayers, phase 3 p3-paint).
 	const bool has_mask = element->GetComputedValues().has_mask_image();
-	const bool layer = (!filters.empty() || has_mask || (group && group_opacity));
+	// Fork (S93 R30): a blend mode draws the element into a layer too, blended with its backdrop when composited.
+	const Style::MixBlendMode blend = element->GetComputedValues().mix_blend_mode();
+	const bool layer = (!filters.empty() || has_mask || (group && group_opacity) || blend != Style::MixBlendMode::Normal);
 
 	if (!decorators.empty())
 	{
@@ -507,7 +509,10 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 			if (group && group_opacity)
 				group_opacity.AddHandleTo(filter_handles);
 
-			render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), BlendMode::Blend, filter_handles);
+			const BlendMode composite = (blend == Style::MixBlendMode::Normal) ? BlendMode::Blend
+				: (blend == Style::MixBlendMode::PlusLighter)                 ? BlendMode::Plus
+																			   : BlendMode((int)BlendMode::Multiply + (int)blend - 1);
+			render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), composite, filter_handles);
 			render_manager->PopLayer();
 			render_manager->SetScissorRegion(initial_scissor_region);
 		}

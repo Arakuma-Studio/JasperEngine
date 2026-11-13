@@ -526,7 +526,7 @@ namespace {
         {"min-intrinsic-sizing", U, FF::None, U, false, "legacy", false, RW::None, "", "not supported", "set min-width / min-height explicitly", "css-sizing-4"},
         {"min-size", U, FF::None, U, false, "auto", false, RW::None, "", "not supported (draft)", "use min-width and min-height", "css-sizing-4"},
         {"min-width", N, FF::None, N, false, "auto", false, RW::Sizing, "", "auto (the automatic minimum size) and sizing keywords as in CSS (BoxParity)", "", "css-sizing-3"},
-        {"mix-blend-mode", U, FF::None, U, false, "normal", false, RW::None, "", "blend modes are not supported", "use opacity, or pre-blended images", "compositing-1"},
+        {"mix-blend-mode", N, FF::None, N, false, "normal", false, RW::None, "", "the 16 blend modes and plus-lighter, with what the document drew below the element (the document is isolated from the 3D scene)", "", "compositing-1"},
         {"nav", N, FF::None, N, false, "none", false, RW::TabIndexLike, "", "RmlUi engine extension (keyboard / gamepad navigation)", "", "rmlui"},
         {"nav-down", N, FF::None, N, false, "none", false, RW::TabIndexLike, "", "RmlUi engine extension (keyboard / gamepad navigation)", "", "rmlui"},
         {"nav-left", N, FF::None, N, false, "none", false, RW::TabIndexLike, "", "RmlUi engine extension (keyboard / gamepad navigation)", "", "rmlui"},

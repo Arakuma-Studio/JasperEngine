@@ -271,6 +271,26 @@ namespace Style {
 		return style != BorderStyle::None && style != BorderStyle::Hidden;
 	}
 	enum class Isolation : uint8_t { Auto, Isolate };
+	// Fork (S93 R30): 'mix-blend-mode', in the order of its keywords
+	enum class MixBlendMode : uint8_t {
+		Normal,
+		Multiply,
+		Screen,
+		Overlay,
+		Darken,
+		Lighten,
+		ColorDodge,
+		ColorBurn,
+		HardLight,
+		SoftLight,
+		Difference,
+		Exclusion,
+		Hue,
+		Saturation,
+		Color,
+		Luminosity,
+		PlusLighter
+	};
 	enum class ObjectFit : uint8_t { Fill, Contain, Cover, None, ScaleDown };
 
 	// -- Text (p3-text) --

@@ -2130,6 +2130,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::OutlineOffset:
 		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.outline_offset(value); }
 		break;
+	case PropertyId::MixBlendMode:
+		values.mix_blend_mode((MixBlendMode)p->Get<int>());
+		break;
 	case PropertyId::Isolation:
 		values.isolation((Isolation)p->Get<int>());
 		break;

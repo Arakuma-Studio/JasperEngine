@@ -138,6 +138,7 @@ namespace jasperengine::editor {
         "max-width",
         "min-height",
         "min-width",
+        "mix-blend-mode",
         "nav",
         "nav-down",
         "nav-left",

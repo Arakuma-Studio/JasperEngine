@@ -123,6 +123,8 @@ namespace {
         {"max-width", "kw:none|length_percent"},
         {"min-height", "length_percent"},
         {"min-width", "length_percent"},
+        // the fork's (S93 R30)
+        {"mix-blend-mode", "kw:normal,multiply,screen,overlay,darken,lighten,color-dodge,color-burn,hard-light,soft-light,difference,exclusion,hue,saturation,color,luminosity,plus-lighter"},
         {"nav", "box:kw:none,auto,horizontal,vertical,tree-order|string"},
         {"nav-down", "kw:none,auto,horizontal,vertical,tree-order|string"},
         {"nav-left", "kw:none,auto,horizontal,vertical,tree-order|string"},

@@ -78,7 +78,7 @@ Parity stops at:
   Lua's `Http` makes requests, `jasper://docs/networking`).
   `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
-- **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
+- **The unsupported CSS** listed under "CSS that differs": container queries, `background-blend-mode`,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
 - **Small differences without a diagnostic**, also listed there: whole-pixel font sizes,
   table column sizing, no built-in monospace or serif face.
@@ -395,7 +395,9 @@ Native or exactly rewritten, as in Chrome:
   several, blurred; a zero-offset blur is a glow); `outline` with every style and
   `outline-offset`; `opacity` as a group (the subtree fades as one image); `filter`
   (`blur`, `drop-shadow`, `brightness`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
-  `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mask-image`/`mask` layers;
+  `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mix-blend-mode` (all 16 modes and
+  `plus-lighter`, with what the document drew below the element: a document never blends with
+  the 3D scene behind it); `mask-image`/`mask` layers;
   `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`);
   `object-fit`; `image-rendering: pixelated`; `accent-color` and `appearance: none` on form
   controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default). Filters apply
@@ -453,8 +455,8 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **Container queries** (`@container`, `container-type`, `cqw` units: `HTMLUI-AT-0001`,
   `HTMLUI-CSS-0002`, `HTMLUI-CSS-0014`): use `@media` on the canvas size, or toggle a class
   from Lua on the component that changes size.
-- **Blend modes** (`mix-blend-mode`, `background-blend-mode`: `HTMLUI-CSS-0002`): use `opacity`,
-  or blend the image beforehand.
+- **Background blend modes** (`background-blend-mode`: `HTMLUI-CSS-0002`, effect layers apart): put
+  the image in a child with `mix-blend-mode`, or blend the image beforehand.
 - **Vertical text** (`writing-mode`: `HTMLUI-CSS-0002`): rotate the element with
   `transform: rotate(90deg)`, or stack the characters in a column.
 - **Multi-column layout** (`columns`, `column-count`: `HTMLUI-CSS-0002`): grid or
@@ -1937,7 +1939,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | remote `<img src="https://...">`, CDN CSS | keep it and import it, or put the file in `assets/ui/<name>_assets/` | `HTMLUI-IMP-0001` until imported |
 | WOFF/WOFF2 `@font-face` | TTF or OTF | `HTMLUI-CSS-0022` |
 | `@container`, `container-type` | `@media` on the canvas size, or classes set from Lua | `HTMLUI-AT-0001`, `HTMLUI-CSS-0002` |
-| `mix-blend-mode`, `background-blend-mode` | `opacity`, or a pre-blended image | `HTMLUI-CSS-0002` |
+| `background-blend-mode` | a child with `mix-blend-mode`, or a pre-blended image | `HTMLUI-CSS-0002` |
 | `writing-mode: vertical-rl` | `transform: rotate(90deg)` | `HTMLUI-CSS-0002` |
 | `columns: 2` | grid or `flex-wrap` | `HTMLUI-CSS-0002` |
 | `line-clamp: 2` (the standard shorthand) | `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden` | `HTMLUI-CSS-0002` |
