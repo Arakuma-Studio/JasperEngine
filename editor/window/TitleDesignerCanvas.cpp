@@ -1106,7 +1106,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         const fs::path png = titleArtOutputPath(doc.document()->absolutePath(), shown.root.value("outputs", ta::Json::array()).empty() ? ta::Json{{"id", "main"}}
                                                                                                                              : shown.root["outputs"][0]);
         std::error_code ec;
-        const std::string key = png.generic_string() + ":" + std::to_string(fs::exists(png, ec) ? fs::last_write_time(png, ec).time_since_epoch().count() : 0);
+        const std::string key = png.generic_string() + ":" + std::to_string(fs::exists(png, ec) ? static_cast<long long>(fs::last_write_time(png, ec).time_since_epoch().count()) : 0LL);
         if (key != bakedKey) {
             bakedKey = key;
             bakedTexture.destroy();

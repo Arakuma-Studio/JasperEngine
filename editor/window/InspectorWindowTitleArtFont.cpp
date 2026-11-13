@@ -46,7 +46,7 @@ namespace {
         std::error_code ec;
         const auto size = fs::file_size(file, ec);
         const auto time = fs::last_write_time(file, ec);
-        return ec ? std::string() : std::to_string(size) + ":" + std::to_string(time.time_since_epoch().count());
+        return ec ? std::string() : std::to_string(size) + ":" + std::to_string(static_cast<long long>(time.time_since_epoch().count()));
     }
 
     void row(const char* label, const std::string& value) {

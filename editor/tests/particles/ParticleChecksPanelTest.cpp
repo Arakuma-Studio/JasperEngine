@@ -116,8 +116,9 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     const std::vector<ParticleChecksPanel::Row> rows = ParticleChecksPanel::rowsOf(windowReport);
     ASSERT_EQ(rows.size(), toolReport["checks"].size());
     for (size_t k = 0; k < rows.size(); k++){
-        EXPECT_EQ(rows[k].id, toolReport["checks"][k]["id"]);
-        EXPECT_EQ(rows[k].status, toolReport["checks"][k]["status"]);
+        // as strings: libc++ has no std::string == json overload gtest can use
+        EXPECT_EQ(rows[k].id, toolReport["checks"][k]["id"].get<std::string>());
+        EXPECT_EQ(rows[k].status, toolReport["checks"][k]["status"].get<std::string>());
     }
     EXPECT_EQ(rows[0].id, "capacity_hit");
     EXPECT_EQ(rows[0].status, "FAIL");
