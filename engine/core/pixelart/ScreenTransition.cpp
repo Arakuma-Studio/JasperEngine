@@ -580,9 +580,9 @@ namespace jasperengine::pixelart {
         t = clamp01(t);
         switch (ease){
             case TransitionEase::LINEAR: return t;
-            case TransitionEase::IN: return t * t * t;
-            case TransitionEase::OUT: { const float r = 1.0f - t; return 1.0f - r * r * r; }
-            case TransitionEase::IN_OUT:
+            case TransitionEase::CUBIC_IN: return t * t * t;
+            case TransitionEase::CUBIC_OUT: { const float r = 1.0f - t; return 1.0f - r * r * r; }
+            case TransitionEase::CUBIC_IN_OUT:
             default:
                 if (t < 0.5f) return 4.0f * t * t * t;
                 { const float r = -2.0f * t + 2.0f; return 1.0f - r * r * r * 0.5f; }

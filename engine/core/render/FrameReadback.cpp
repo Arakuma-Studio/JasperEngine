@@ -15,6 +15,9 @@
     #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
     #endif
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <windows.h>
     #include <d3d11.h>
 #elif defined(SOKOL_GLCORE)
@@ -24,6 +27,9 @@
         #endif
         #include <OpenGL/gl3.h>
     #elif defined(_WIN32)
+        #ifndef NOMINMAX
+        #define NOMINMAX
+        #endif
         #include <windows.h>
         #include <GL/gl.h>
     #else

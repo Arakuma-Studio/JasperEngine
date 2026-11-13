@@ -22,6 +22,9 @@
 # A mix flushes denormals only while it runs (src/core/soloud.cpp mix_internal: flush-to-zero and
 # denormals-are-zero were turned on once per process in the first thread that mixed and never restored,
 # so a main thread that mixed, on the null or deterministic driver, flushed denormals from then on).
+# soloud.h declares OutputDebugStringA, which SOLOUD_ASSERT calls on MSVC, instead of including
+# <windows.h> (include/soloud.h): the engine's public headers include soloud.h, and windows.h's macros
+# (near, far, min, max, ERROR, TRANSPARENT...) broke the engine sources that include them.
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

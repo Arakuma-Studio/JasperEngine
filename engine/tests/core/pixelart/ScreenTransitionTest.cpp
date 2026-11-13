@@ -208,8 +208,8 @@ TEST(ScreenTransitionNames, RoundTrip){
     }
     TransitionKind kind;
     EXPECT_FALSE(transitionKindFromName("swirl", kind));
-    EXPECT_EQ(applyTransitionEase(TransitionEase::IN_OUT, 0.5f), 0.5f);
-    EXPECT_EQ(applyTransitionEase(TransitionEase::IN, 1.0f), 1.0f);
+    EXPECT_EQ(applyTransitionEase(TransitionEase::CUBIC_IN_OUT, 0.5f), 0.5f);
+    EXPECT_EQ(applyTransitionEase(TransitionEase::CUBIC_IN, 1.0f), 1.0f);
 }
 
 // R13's GameObject centre: the iris stays on the point it last saw once the GameObject's scene

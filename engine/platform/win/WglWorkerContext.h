@@ -12,6 +12,9 @@
 
 #include "render/GpuWorkerContext.h"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 
 #include <cstdio>

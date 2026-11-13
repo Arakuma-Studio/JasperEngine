@@ -460,7 +460,7 @@ namespace {
         }
         fs::create_directories(directory, ec);
         if (ec)
-            return failure(WriteError::CreateDirectory, ec, "create directory", directory);
+            return failure(WriteError::CreateDirectories, ec, "create directory", directory);
         return {};
     }
 
@@ -720,7 +720,7 @@ const char* writeErrorName(WriteError error){
     switch (error){
         case WriteError::None: return "none";
         case WriteError::Unchanged: return "unchanged";
-        case WriteError::CreateDirectory: return "create_directory";
+        case WriteError::CreateDirectories: return "create_directory";
         case WriteError::MissingDirectory: return "missing_directory";
         case WriteError::OpenTemp: return "open_temp";
         case WriteError::WriteTemp: return "write_temp";
@@ -744,7 +744,7 @@ std::string describeWriteError(const WriteResult& result){
     if (result.code == std::errc::no_space_on_device)
         return "the disk is full";
     switch (result.error){
-        case WriteError::CreateDirectory: return "could not create its folder (" + result.code.message() + ")";
+        case WriteError::CreateDirectories: return "could not create its folder (" + result.code.message() + ")";
         case WriteError::OpenTemp: return "could not create a file next to it (" + result.code.message() + ")";
         case WriteError::WriteTemp: return "could not write the data (" + result.code.message() + ")";
         case WriteError::SyncTemp: return "could not flush the data to the disk (" + result.code.message() + ")";
