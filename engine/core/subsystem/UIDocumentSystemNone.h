@@ -14,6 +14,7 @@
 
 #include "ecs/SubSystem.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
@@ -65,6 +66,8 @@ namespace jasperengine{
         bool eventOnGamepadKeyUp(int, GamepadUIKey) { return false; }
         bool hasGamepadFocus() const { return false; }
         bool dispatchWorldPointer(int, int, float, float, int, PointerPhase, bool, bool = false) { return false; }
+        bool hasWorldDocuments() const { return false; }
+        void drawWorldDocument(Entity, CameraComponent&, const RenderTargetFormat&, bool) {}
 
         void startDocumentScripts() {}
         void releaseScriptState() {}
