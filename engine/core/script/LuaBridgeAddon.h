@@ -8,6 +8,7 @@
 #include "LuaBridge.h"
 #include "Scene.h"
 #include "util/CanvasScaler.h"
+#include "util/TextAlignment.h"
 #include "util/TextEffects.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -305,6 +306,9 @@ namespace luabridge
     template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
     template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
+    template<> struct Stack<UIDocumentUpdateMode> : EnumWrapper<UIDocumentUpdateMode>{};
+    template<> struct Stack<TextHorizontalAlignment> : EnumWrapper<TextHorizontalAlignment>{};
+    template<> struct Stack<TextVerticalAlignment> : EnumWrapper<TextVerticalAlignment>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
     template<> struct Stack<VideoPlayerSource> : EnumWrapper<VideoPlayerSource>{};
     template<> struct Stack<VideoTimeUpdateMode> : EnumWrapper<VideoTimeUpdateMode>{};

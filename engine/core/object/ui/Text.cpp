@@ -352,6 +352,77 @@ bool Text::isPivotCentered() const{
     return textcomp.pivotCentered;
 }
 
+void Text::setHorizontalAlignment(TextHorizontalAlignment alignment){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (textcomp.horizontalAlignment != alignment){
+        textcomp.horizontalAlignment = alignment;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+TextHorizontalAlignment Text::getHorizontalAlignment() const{
+    return getComponent<TextComponent>().horizontalAlignment;
+}
+
+void Text::setVerticalAlignment(TextVerticalAlignment alignment){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (textcomp.verticalAlignment != alignment){
+        textcomp.verticalAlignment = alignment;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+TextVerticalAlignment Text::getVerticalAlignment() const{
+    return getComponent<TextComponent>().verticalAlignment;
+}
+
+void Text::setAutoSize(bool autoSize){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    // (the fit, or leaving it, changes the atlas: the system reloads it then)
+    if (textcomp.autoSize != autoSize){
+        textcomp.autoSize = autoSize;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+bool Text::isAutoSize() const{
+    return getComponent<TextComponent>().autoSize;
+}
+
+void Text::setFontSizeMin(unsigned int size){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (textcomp.fontSizeMin != size){
+        textcomp.fontSizeMin = size;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+unsigned int Text::getFontSizeMin() const{
+    return getComponent<TextComponent>().fontSizeMin;
+}
+
+void Text::setFontSizeMax(unsigned int size){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (textcomp.fontSizeMax != size){
+        textcomp.fontSizeMax = size;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+unsigned int Text::getFontSizeMax() const{
+    return getComponent<TextComponent>().fontSizeMax;
+}
+
 AABB Text::getAABB() const{
     UIComponent& ui = getComponent<UIComponent>();
 
@@ -556,8 +627,9 @@ int Text::getPixelScale() const{
 unsigned int Text::getEffectiveFontSize() const{
     const TextComponent& textcomp = getComponent<TextComponent>();
     const int k = getPixelScale();
+    // a vector font: the size Auto Size fitted, else fontSize
     if (k == 0)
-        return textcomp.fontSize;
+        return effectiveFontSize(textcomp);
     std::shared_ptr<pixelart::BitmapFont> font = textcomp.bitmapText ? textcomp.bitmapText->getFont() : pixelart::BitmapFontPool::get(textcomp.font[0]);
     return font ? (unsigned int)(k * font->getNativeSize()) : textcomp.fontSize;
 }
