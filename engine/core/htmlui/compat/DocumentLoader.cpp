@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <list>
 #include <mutex>
@@ -151,6 +152,11 @@ namespace {
                 hash = hashString(hash, attribute.first);
                 hash = hashString(hash, attribute.second);
             }
+        }
+        for (const InjectedStyleSheet& sheet : options.injectedSheets){
+            hash = hashString(hash, sheet.name);
+            hash = hashString(hash, sheet.css);
+            hash = hashString(hash, sheet.path);
         }
         const uint32_t version = DocumentLoader::kVersion;
         return fnv1a64(std::string_view(reinterpret_cast<const char*>(&version), sizeof(version)), hash);
@@ -328,6 +334,43 @@ namespace {
             inputs.push_back(input);
             sheetOfInput.push_back(i);
         }
+        // the sheets a script added (S93 R29), after the document's own: each its own source file
+        for (const InjectedStyleSheet& injected : options.injectedSheets){
+            std::string css;
+            std::string source;
+            if (!injected.path.empty()){
+                source = normalizePath(injected.path);
+                if (!readAssetFile(access, source, css)){
+                    Diagnostic missing;
+                    missing.code = codes::FileNotFound;
+                    missing.severity = Severity::Error;
+                    missing.message = "injected stylesheet '" + source + "' not found";
+                    missing.suggestion = "pass an asset path of a .css file to addStyleSheetFile";
+                    missing.file = source;
+                    missing.subject = source;
+                    sink.report(missing);
+                    document->dependencyStamps.push_back({source, 0, true});
+                    addDependency(*document, source);
+                    continue;
+                }
+                stripUtf8Bom(css);
+                sanitizeUtf8(css);
+            }else{
+                source = "injected:" + injected.name;
+                css = injected.css;
+            }
+            const uint32_t cssFile = files.add(source, std::move(css));
+            if (!injected.path.empty()){
+                document->dependencyStamps.push_back({source, contentHash(files.text(cssFile)) | 1ull, true});
+                addDependency(*document, source);
+            }
+            StylesheetInput input;
+            input.kind = StylesheetInput::Kind::Inline;
+            input.file = cssFile;
+            input.text = files.text(cssFile);
+            inputs.push_back(input);
+            sheetOfInput.push_back(SIZE_MAX);
+        }
         const size_t authorInputs = inputs.size();
         std::vector<HtmlNode*> styledElements;
         for (const StyleAttributeSource& attribute : context.styleAttributes){
@@ -415,7 +458,8 @@ namespace {
         for (size_t i = 0; i < document->stylesheets.size(); i++){
             const StylesheetOutput& sheet = document->stylesheets[i];
             RmlSerializer::HeadItem item;
-            item.ref = context.stylesheets[sheetOfInput[i]].ref;
+            if (sheetOfInput[i] != SIZE_MAX)
+                item.ref = context.stylesheets[sheetOfInput[i]].ref;
             if (sheet.kind == StylesheetInput::Kind::File){
                 item.kind = RmlSerializer::HeadItem::Kind::Link;
                 item.href = "/" + VirtualFiles::normalize(sheet.virtualPath);

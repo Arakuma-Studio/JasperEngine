@@ -158,6 +158,8 @@ namespace {
         {"stroke-width", "number_length_percent"},
         {"tab-index", "kw:none,auto"},
         {"text-align", "kw:left,right,center,justify"},
+        // the fork's (S93 R31): none | <length> <length>
+        {"text-autosize", "string"},
         {"text-decoration", "kw:none,underline,overline,line-through"},
         {"text-overflow", "kw:clip,ellipsis|string"},
         // fork S16-F3

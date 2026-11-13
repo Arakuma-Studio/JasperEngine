@@ -116,7 +116,8 @@ std::string viewportText(double width, double height) {
 
 // An asset-relative engine path shown project-relative ("ui/menu.css" -> "assets/ui/menu.css")
 std::string assetToProject(Project* project, const std::string& assetPath) {
-    if (assetPath.empty()) return assetPath;
+    // a style sheet a script added (S93 R29) has no file: "injected:<name>"
+    if (assetPath.empty() || assetPath.rfind("injected:", 0) == 0) return assetPath;
     return w4::projectRelative(project, (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
 }
 

@@ -381,6 +381,8 @@ enum class PropertyId : uint16_t {
 	TextRendering,
 	// Pointer Events (fork, engine-gaps G5-4): what a touch on the element may pan (read when a touch starts).
 	TouchAction,
+	// Fork (S93 R31): 'text-autosize' (engine extension): 'none' or the two lengths the element's font size is fitted between.
+	TextAutosize,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,

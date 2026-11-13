@@ -138,3 +138,39 @@ async def test_lottie_control_and_events(ed: Editor):
     finally:
         # (the clock options outlive a stop: back to the measured clock for the tests after)
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+
+
+LINKS_DOC = "assets/ui/links.html"
+LINKS_HTML = """<html>
+<head><title>links</title></head>
+<body>
+    <a id="ext" href="https://example.com/page">out</a>
+    <a id="kept" href="https://example.com/kept">kept</a>
+</body>
+</html>
+"""
+
+
+async def test_external_link_opens_url(ed: Editor):
+    """S93 R32 (AC36): a click on a remote <a href> opens it with System.openURL (recorded; a headless editor opens
+    nothing); an htmlnavigate listener that calls preventDefault() keeps it in the game."""
+    try:
+        made = await ed.call("create_scene", name="HtmlUiLinks", type="UI")
+        scene = made["scene"]["id"]
+        await ed.call("write_file", path=LINKS_DOC, content=LINKS_HTML)
+        ent = await ed.call("create_entity", scene=scene, type="empty", name="LinkDoc")
+        await ed.call("add_component", scene=scene, entity=ent["entity_id"], component="UIDocument",
+                      values={"uidocument": {"filename": LINKS_DOC}})
+        await ed.call("save_scene", scene=scene, path="scenes/HtmlUiLinks")
+        await ed.call("play", action="start", scene=scene)
+        await ed.call("wait", frames=3)
+        await lua(ed, "object('LinkDoc', 'UIDocument'):getElementById('ext'):click()")
+        await lua(ed, """
+            local doc = object('LinkDoc', 'UIDocument')
+            doc:addEventListener('htmlnavigate', function(event) event:preventDefault() end)
+            doc:getElementById('kept'):click()
+        """)
+        urls = (await ed.call("get_play_state"))["platform"]["opened_urls"]
+        ed.check_eq([u["url"] for u in urls], ["https://example.com/page"])
+    finally:
+        await ed.call("play", action="stop")

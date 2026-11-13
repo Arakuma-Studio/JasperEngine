@@ -1063,6 +1063,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// Pointer Events (fork, engine-gaps G5-4): 'auto | none | pan-x | pan-y | pan-x pan-y | manipulation', not inherited;
 	// the context reads it from a touch's target up to its scroll container when the touch starts.
 	RegisterProperty(PropertyId::TouchAction, "touch-action", "auto", false, false).AddParser("string");
+	// Fork (S93 R31): none | <length> <length>, read by the document's fit (ElementDocument::FitTextAutosize)
+	RegisterProperty(PropertyId::TextAutosize, "text-autosize", "none", false, true).AddParser("keyword", "none").AddParser("string");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --

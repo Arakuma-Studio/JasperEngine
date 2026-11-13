@@ -2399,6 +2399,12 @@ void Element::OnAttributeChange(const ElementAttributes& changed_attributes)
 void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	RMLUI_ZoneScoped;
+	// Fork (S93 R31): the document fits the font size of its 'text-autosize' elements after each layout
+	if (changed_properties.Contains(PropertyId::TextAutosize) && owner_document)
+	{
+		const Property* autosize = GetProperty(PropertyId::TextAutosize);
+		owner_document->SetTextAutosize(this, autosize && autosize->unit != Unit::KEYWORD);
+	}
 	const bool top_right_bottom_left_changed = (           //
 		changed_properties.Contains(PropertyId::Top) ||    //
 		changed_properties.Contains(PropertyId::Right) ||  //
@@ -2698,6 +2704,11 @@ void Element::SetLayoutBoundary(bool boundary)
 bool Element::IsLayoutBoundary() const
 {
 	return layout_boundary;
+}
+
+float Element::GetTextAutosizeFontSize() const
+{
+	return meta->style.GetFontSizeOverride();
 }
 
 bool Element::IsLayoutDirty()

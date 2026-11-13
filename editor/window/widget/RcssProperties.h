@@ -184,6 +184,7 @@ namespace jasperengine::editor {
         "tab-index",
         "text-align",
         "text-align-last",
+        "text-autosize",
         "text-decoration",
         "text-decoration-color",
         "text-decoration-line",

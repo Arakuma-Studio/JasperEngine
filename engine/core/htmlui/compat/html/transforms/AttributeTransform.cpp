@@ -268,8 +268,8 @@ namespace {
         const UrlKind kind = UrlResolver::classify(value);
         if (kind == UrlKind::Remote || kind == UrlKind::OtherScheme){
             context.sink.report(codes::LinkNotNavigable, where,
-                                "link '" + value + "' only dispatches the htmlnavigate event (there is no browser to open it)",
-                                "handle htmlnavigate in Lua (System:openURL is not available)", "", value);
+                                "link '" + value + "' opens outside the game (System.openURL) after the htmlnavigate event",
+                                "to keep it in the game, call event:preventDefault() in an htmlnavigate listener", "", value);
         }else if (kind == UrlKind::Relative || kind == UrlKind::RootRelative){
             std::string path = value;
             const size_t cut = path.find_first_of("?#");

@@ -291,7 +291,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<input>` | `text`, `password` (shows `*`), `search`, `email`, `url`, `tel`; `number` (filters typing, Up/Down step by `step` within `min`/`max`, clamps on blur/Enter); `range` (a slider), `checkbox`, `radio` (Space toggles); `date`, `time`, `datetime-local`, `month`, `week` and `color` are text fields showing the format or value (no picker, no `::before`/`::after`, `HTMLUI-HTML-0008`); `image` submits and shows `src`; `file` is a disabled button; Enter in a text field submits its form; `autofocus` |
 | `<select>`, `<textarea>`, `<progress>`, `<meter>` | a drop-down, a multi-line field, a bar (`meter` drawn as `progress`) |
 | `<label>` | a click activates its control (`for="id"`, or the control inside it) |
-| `<a href>` | Enter activates; `#id` scrolls to the element; another link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component unless a listener calls `preventDefault()`; external links only notify |
+| `<a href>` | Enter activates; `#id` scrolls to the element; another link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component and an external link opens in the system browser (`System.openURL`), unless a listener calls `preventDefault()` |
 | `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`, then a `toggle` event; details with the same `name` form an accordion |
 | `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal one (`cancel`, then `close`). No backdrop and no focus trap: add a backdrop element |
 | `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated`; SVG files drawn as vectors at their size; `srcset`/`<picture>` resolved once at load |
@@ -530,6 +530,22 @@ any other `display` it does nothing (info `HTMLUI-CSS-0003`). In a transition it
 once (with `transition-behavior: allow-discrete`, at half the duration); transition the width
 or `max-height` instead.
 
+### Fitting text to its box: `text-autosize`
+
+A title, a score or a button label that must fill its box without overflowing (TextMeshPro's
+Auto Size) takes the engine's `text-autosize: <min> <max>` (two lengths; `none` is the default):
+
+```css
+.title { width: 300px; height: 80px; font-size: 40px; text-autosize: 18px 80px; }
+```
+
+The font size is the largest whole px between the two at which the text fits the content box,
+wrapped as it is laid out: across, and down too when the box's `height` is set (a box whose height
+follows its text grows with the size). It is fitted in the update that lays the text out, so no
+frame shows another size, and again only when the text, the box or the font change. Children
+sized in `em` follow it. Chrome ignores the property: the authored `font-size` is what a browser
+preview shows. From Lua, `el.style.fontSize` reads the fitted size (`"34px"`).
+
 ### Text effects
 
 `text-shadow` (hard shadows, glows with a blur radius, several shadows) and
@@ -733,6 +749,22 @@ element and why). `inspect_ui {"reload": true}` reports it too.
 - When play stops, everything scripts made in documents goes (listeners, data models, DOM
   changes, animations; `UIDocument.getLiveLuaRefCount()` is 0) and the documents load again as
   they are on disk.
+
+### Adding style sheets from Lua
+
+`doc:addStyleSheet(css[, name])` adds CSS to an `.html` document, and `doc:addStyleSheetFile(path)`
+a `.css` file of the project: a theme, a pressed tint, a per-level skin. The sheet goes through the
+same translation and diagnostics as the document's own (`doc:getDiagnostics()`, the Console), cascades
+after them (so it wins at equal specificity), can style `::before` and `::after`, and stays with the
+UI Document over reloads and live patches. It returns a handle: `sheet.enabled = false` takes it out
+of the cascade and `true` back, `sheet:remove()` drops it (`sheet.valid` is then false). `inspect_ui`
+`detail` names a rule of a text sheet `injected:<name>:<line>` (`sheetN` without a name), and a file's
+by its path.
+
+```lua
+local pressed = doc:addStyleSheet(".btn::before { content: '>'; } .btn { color: #ffd040; }", "press-tint")
+pressed.enabled = false
+```
 
 ### Scripts inside a document: `<script type="text/lua">`
 

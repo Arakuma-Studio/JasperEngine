@@ -1492,6 +1492,16 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
 
+    // S93 R29: a style sheet doc:addStyleSheet / doc:addStyleSheetFile added (a weak handle)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIStyleSheet>("UIStyleSheet")
+        .addProperty("valid", &UIStyleSheet::isValid)
+        .addProperty("name", &UIStyleSheet::getName)
+        .addProperty("enabled", &UIStyleSheet::isEnabled, &UIStyleSheet::setEnabled)
+        .addFunction("remove", &UIStyleSheet::remove)
+        .endClass();
+    guardClass<UIStyleSheet>(L);
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<UIDocument, GameObject>("UIDocument")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
@@ -1566,6 +1576,11 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         })
         .addFunction("setColorScheme", &UIDocument::setColorScheme)
         .addFunction("setReducedMotion", &UIDocument::setReducedMotion)
+        // S93 R29: CSS cascading after the document's own sheets
+        .addFunction("addStyleSheet", [](UIDocument* self, const std::string& css, std::optional<std::string> name) -> UIStyleSheet {
+            return self->addStyleSheet(css, name.value_or(std::string()));
+        })
+        .addFunction("addStyleSheetFile", &UIDocument::addStyleSheetFile)
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
         .endClass();

@@ -58,6 +58,7 @@ namespace jasperengine{
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
     struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
+    struct HtmlUIStyleSheetState;   // S93 R29 (UIDocumentSystemStyle.cpp)
 
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
@@ -265,6 +266,15 @@ namespace jasperengine{
         // the scene's Lua scripts started (LuaBinding::initializeLuaScripts): the documents'
         // <script type="text/lua"> run now and after every later (re)load, until the play stops
         void startDocumentScripts();
+        // --- S93 R29 (UIDocumentSystemStyle.cpp): style sheets a script adds to an .html document ---
+        // CSS text (its source "injected:<name>") or an asset .css file (path set, css ignored), compiled
+        // with the document's sheets and cascading after them; kept with the component over reloads, live
+        // patches and other files it loads. The id names it (never 0).
+        uint64_t addStyleSheet(Entity entity, const std::string& css, const std::string& name, const std::string& path);
+        bool removeStyleSheet(Entity entity, uint64_t id);   // false: no such sheet
+        bool setStyleSheetEnabled(Entity entity, uint64_t id, bool enabled);
+        // false when the sheet is not there (removed, or its component)
+        bool getStyleSheet(Entity entity, uint64_t id, bool* enabled, std::string* name) const;
         // ---- phase 2 ----
         // --- p2-importers: the editor's AppSettings::htmlUiVerboseDiagnostics; document loads
         // build CompatOptions::verboseDiagnostics from it (Info diagnostics logged one by one) ---
@@ -408,6 +418,13 @@ namespace jasperengine{
         bool compatScriptsRun() const;
         // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
+
+        // --- S93 R29 ---
+        std::shared_ptr<HtmlUIStyleSheetState> styleSheetState;
+        // the entity's enabled sheets compiled into its loaded document (a restyle) when they differ from
+        // what it has; compatDocumentLoaded (every load) and every change
+        void applyStyleSheets(Entity entity);
+        void styleSheetsComponentRemoved(Entity entity);
 
         // --- S17 (UIDocumentSystemPatch.cpp) ---
         std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)

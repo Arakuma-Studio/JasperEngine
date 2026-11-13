@@ -76,16 +76,17 @@ static void ReleaseHandle(BoxShadowRenderable* handle)
 	handles.erase(it_handle);
 }
 
-SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const ComputedValues& computed, bool include_border)
+SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const ComputedValues& computed, bool include_border,
+	BoxShadowPart part)
 {
 	RenderManager* render_manager = element->GetRenderManager();
 	if (!render_manager)
 		return {};
 
-	ColourbPremultiplied background_color = computed.background_color().ToPremultiplied();
 	const ColourbPremultiplied transparent(0, 0);
+	ColourbPremultiplied background_color = (part == BoxShadowPart::Inset ? transparent : computed.background_color().ToPremultiplied());
 	Array<ColourbPremultiplied, 4> border_colors = {transparent, transparent, transparent, transparent};
-	if (include_border)
+	if (include_border && part != BoxShadowPart::Inset)
 	{
 		border_colors = {
 			computed.border_top_color().ToPremultiplied(),
@@ -94,7 +95,8 @@ SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const
 			computed.border_left_color().ToPremultiplied(),
 		};
 	}
-	BoxShadowGeometryInfo geom_info = GeometryBoxShadow::Resolve(element, background_color, border_colors, element->GetDrawOpacity());
+	BoxShadowGeometryInfo geom_info = GeometryBoxShadow::Resolve(element, background_color, border_colors, element->GetDrawOpacity(), part);
+	geom_info.render_manager = render_manager;
 	return GetOrCreateBoxShadow(*render_manager, geom_info);
 }
 

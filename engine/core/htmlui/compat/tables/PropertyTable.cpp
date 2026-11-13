@@ -744,6 +744,7 @@ namespace {
         {"text-align-all", U, FF::None, U, true, "start", false, RW::None, "", "draft longhand of text-align; not supported", "use text-align", "css-text-4"},
         {"text-align-last", I, FF::Justify, N, true, "auto", false, RW::None, "", "the alignment of the last line and of lines before a forced break; native with the fork (Justify): auto, start, end, left, right, center, justify (match-parent is not parsed, as in Chromium); ignored without it", "", "css-text-3"},
         {"text-anchor", U, FF::None, U, true, "start", false, RW::None, "", "SVG-internal styling is not supported (Info)", "set it as a presentation attribute inside the SVG file", "svg2"},
+        {"text-autosize", N, FF::None, N, false, "none", false, RW::None, "", "engine extension: none, or the two lengths (min max) the font size is fitted between: the largest whole px at which the text fits the box (Chromium ignores it: the authored font-size is the preview)", "", "jasperengine"},
         {"text-autospace", I, FF::None, I, true, "normal", false, RW::None, "", "typographic refinement; ignored (Info)", "", "css-text-4"},
         {"text-box", U, FF::None, U, false, "normal", false, RW::None, "", "leading trimming is not supported", "adjust line-height or padding", "css-inline-3"},
         {"text-box-edge", U, FF::None, U, true, "auto", false, RW::None, "", "leading trimming is not supported", "adjust line-height or padding", "css-inline-3"},
