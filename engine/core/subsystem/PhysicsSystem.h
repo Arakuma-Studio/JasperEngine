@@ -9,6 +9,7 @@
 #include "component/PhysicsCommon.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "math/Vector4.h"
 #include "math/Quaternion.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Contact2D.h"
@@ -265,6 +266,18 @@ namespace jasperengine{
 		std::mutex debugContactsMutex3D;
 		std::vector<std::pair<Vector3, Vector3>> debugContacts3D;
 #endif
+
+		// S96 WP-B: lines shown with the debug lines until a time (query_physics draw), whether
+		// Physics.debugDraw is on or not
+		struct TimedDebugLine{
+			Vector3 from;
+			Vector3 to;
+			Vector4 color;
+			double until = 0.0;
+		};
+		std::vector<TimedDebugLine> timedDebugLines;
+		// drops the lines whose time is up; true when some are left
+		bool pruneTimedDebugLines();
 
 		// a script that defines a contact message appeared or went: the listener masks of the
 		// bodies are computed again before the next step
@@ -709,6 +722,9 @@ namespace jasperengine{
 
 		// Physics.debugDraw: the runtime collider lines of this scene (3D and 2D), drawn while on
 		size_t getDebugLineCount() const;
+		// S96 WP-B: lines (world space, 2D in points at z 0) drawn with them for `seconds` of
+		// wall time, Physics.debugDraw on or off (query_physics draw: true)
+		void addTimedDebugLines(const std::vector<std::pair<Vector3, Vector3>>& lines, const Vector4& color, float seconds);
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
 
 		// Told by ScriptMessages: a script defining contact messages appeared or went

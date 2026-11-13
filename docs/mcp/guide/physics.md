@@ -497,11 +497,13 @@ Inspector shows the same under each body in Play.
   bodies of one scene): those two bodies never collide, at run time (Unity
   `Physics.IgnoreCollision`); `getIgnoreCollision(a, b)`. Resting pairs are woken. The replacement
   for a Lua `shouldCollide3D` filter.
-- Ray casts: `Physics.raycast(scene, ray [, layerMask])`,
-  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask])`, `raycastAll`, and the
-  `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
+- Ray casts: `Physics.raycast(scene, ray [, layerMask [, options]])`,
+  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])`, `raycastAll`,
+  and the `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
-  `ray.direction`; with origin/direction/distance it is in world units.
+  `ray.direction`; with origin/direction/distance it is in world units. A 3D ray that starts inside
+  a collider does not hit it (Unity); `{hitFromInside = true}` reports it at distance 0.
+  `Ray:intersects(scene, ...)` keeps its old rule (the start's collider at 0).
 - What the player sees, not its colliders: `MeshRaycast.raycast` / `raycastAll` take the same
   arguments (plus an options table) and hit the triangles of meshes, instances, terrains and UI
   rects, no body needed, also in the editor (`raycast_meshes`). Use Physics for gameplay against
@@ -521,6 +523,38 @@ Inspector shows the same under each body in Play.
   (conveyor-belt friction): `PhysicsSystem::onContactModify3D`, on Jolt's job threads.
 - 2D limitation (Box2D): a kinematic sensor never pairs with static or kinematic bodies, and two
   sensors never pair; make the other body dynamic (gravity scale 0) to detect it.
+
+### Shape casts and overlaps
+
+Unity's queries, on the playing scene's colliders (bodies exist only in Play), all with
+`[, layerMask [, options]]` last:
+
+| 3D (`Physics`) | 2D (`Physics2D`, points, angles in the engine's unit) | Returns |
+|---|---|---|
+| `sphereCast(scene, origin, radius, direction, maxDistance)` | `circleCast(scene, origin, radius, direction, distance)` | the nearest `RaycastHit` or nil |
+| `boxCast(scene, center, halfExtents, direction, orientation, maxDistance)` | `boxCast(scene, origin, size, angle, direction, distance)` | " |
+| `capsuleCast(scene, point1, point2, radius, direction, maxDistance)` | `capsuleCast(scene, origin, size, CapsuleDirection2D.VERTICAL, angle, direction, distance)` | " |
+| `...CastAll` | `...CastAll` | every collider hit once, nearest first |
+| `overlapSphere(scene, center, radius)`, `overlapBox(scene, center, halfExtents [, orientation])`, `overlapCapsule(scene, point1, point2, radius)` | `overlapCircle`, `overlapBox(scene, point, size, angle)`, `overlapCapsule`, `overlapPoint(scene, point)`, `overlapArea(scene, pointA, pointB)` | 3D: every `Collider`; 2D: the first `Collider2D` (nil), `...All` every one |
+| `checkSphere`, `checkBox`, `checkCapsule` (the overlap's arguments) | | boolean |
+| `closestPoint(scene, point, collider)` (convex colliders) | | Vector3 |
+| `rigidbody:sweepTest(direction, maxDistance [, options])`, `sweepTestAll` | `rigidbody2d:cast(direction, distance [, options])`, `castAll` | the body's own colliders moved, never hitting itself |
+
+- options: `ignore` (GameObjects, bodies or entities: a caster's own body), `triggers`
+  (`QueryTriggerInteraction.USE_GLOBAL` = `Physics.queriesHitTriggers` / `Physics2D.queriesHitTriggers`,
+  true; `IGNORE`; `COLLIDE`), 3D `hitFromInside` and `hitBackfaces` (`Physics.queriesHitBackfaces`,
+  false), 2D `startInColliders` (`Physics2D.queriesStartInColliders`, false: unlike Unity's default
+  true, a ground check from inside the player's own collider does not hit the player), `maxHits` (256).
+- A cast that starts in a collider skips it, or with `hitFromInside` / `startInColliders` reports it
+  at distance 0 with `point` = the start and `normal` = -direction.
+- A hit (`RayReturn`, Unity's `RaycastHit`) has `hit`, `distance`, `point`, `normal`, `body`,
+  `colliderIndex`, and `collider` (`Collider` / `Collider2D`), `gameObject`, `rigidbody`, `transform`
+  (the GameObject); a CharacterController is hit as its GameObject with `rigidbody` nil (2D
+  controllers have no body and are never hit).
+- Zero, negative or non-finite sizes, distances and directions raise an error naming the argument.
+- An agent asks the same of a running game with `query_physics` (`physics` group; `draw: true` shows
+  the shape and hits for 3 s in the Game view's physics lines): "is anything within 2 m of the
+  player" is `query_physics {shape: "sphere", mode: "overlap", origin, radius: 2}`, not a fan of rays.
 
 ## Character controllers
 

@@ -378,6 +378,8 @@ namespace jasperengine{
 	private:
 		bool onlyStatic;
 		const std::vector<Entity>* ignoreEntities = nullptr;
+		// S96 queries: trigger colliders live on sensor bodies (their own or a companion)
+		bool skipSensors = false;
 
 		bool isIgnored(Entity entity) const{
 			if (!ignoreEntities){
@@ -392,13 +394,17 @@ namespace jasperengine{
 		}
 
 	public:
-		explicit OnlyStaticBodyFilter(const bool onlyStatic, const std::vector<Entity>* ignoreEntities = nullptr){
+		explicit OnlyStaticBodyFilter(const bool onlyStatic, const std::vector<Entity>* ignoreEntities = nullptr, const bool skipSensors = false){
 			this->onlyStatic = onlyStatic;
 			this->ignoreEntities = ignoreEntities;
+			this->skipSensors = skipSensors;
 		}
 
 		virtual bool ShouldCollideLocked(const JPH::Body &inBody) const override{
 			if (onlyStatic && inBody.GetMotionType() != JPH::EMotionType::Static){
+				return false;
+			}
+			if (skipSensors && inBody.IsSensor()){
 				return false;
 			}
 			if (isIgnored(PhysicsCallbacks::bodyEntity(inBody.GetUserData()))){

@@ -47,6 +47,7 @@
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
+#include "script/binding/PhysicsQueriesLua.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Contact2D.h"
@@ -885,8 +886,9 @@ namespace{
         }
     }
 
-    // Physics.raycast(scene, ray [, layerMask]) or (scene, origin, direction, maxDistance [, layerMask]),
-    // and the 2D versions with Vector2 origin and direction
+    // Physics.raycast(scene, ray [, layerMask [, options]]) or (scene, origin, direction, maxDistance
+    // [, layerMask [, options]]), and the 2D versions with Vector2 origin and direction. options:
+    // luaphysics::readQueryOptions (S96 REQ-12)
     template<typename VectorT, bool all, bool is2D>
     int luaRaycast(lua_State* L){
         const char* function = is2D ? (all ? "Physics2D.raycastAll" : "Physics2D.raycast")
@@ -894,37 +896,40 @@ namespace{
         Scene* scene = luaSceneArg(L, function);
 
         Ray ray;
-        uint32_t layerMask;
+        QueryOptions options;
+        std::vector<Entity> ignore;
         if (luaRayArg(L, 2, ray)){
-            layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 4, function, is2D, options, ignore);
         }else{
             if (!luabridge::isInstance<VectorT>(L, 2) || !luabridge::isInstance<VectorT>(L, 3)){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             auto origin = luabridge::get<VectorT>(L, 2);
             auto direction = luabridge::get<VectorT>(L, 3);
             if (!origin || !direction){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             const float maxDistance = (float)luaL_checknumber(L, 4);
-            layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 6, function, is2D, options, ignore);
 
             const VectorT originValue = origin.value();
             const VectorT directionValue = direction.value();
             if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
                 if (all){
-                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }else{
 #ifdef JASPERENGINE_PHYSICS_3D
                 if (all){
-                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }
@@ -934,17 +939,17 @@ namespace{
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             if (all){
-                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics2D::raycast(scene, ray, options));
             }
 #endif
         }else{
 #ifdef JASPERENGINE_PHYSICS_3D
             if (all){
-                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics::raycast(scene, ray, options));
             }
 #endif
         }

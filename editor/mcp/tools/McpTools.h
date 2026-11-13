@@ -83,6 +83,7 @@ namespace jasperengine::editor::mcp {
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
+    void registerPhysicsQueryTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
     void registerAnimationQualityTools(McpRegistry& registry);   // S77: check_animation, optimize_animation
     void registerSpriteNormalsTools(McpRegistry& registry);

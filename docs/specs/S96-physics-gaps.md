@@ -664,4 +664,21 @@ Per-package done: its ACs green (targeted: `UNIT_TEST_ARGS=--gtest_filter=...`,
 
 ## Deviations
 
-(none yet)
+WP-B (queries):
+- `QueryOptions` and its enums live in `engine/core/physics/PhysicsQueryOptions.h` (included by
+  `PhysicsLayers.h`, `Ray.cpp` and both query modules, which would otherwise include each other),
+  and `engine/core/script/binding/PhysicsQueriesLua.h` shares the options parser with
+  `CoreClassesLua.cpp`'s ray casts. `layerMask` is a field of `QueryOptions`.
+- AC-15's bench is `engine/tests/core/physics/PhysicsQueriesBenchTest.cpp` (suite
+  `PhysicsQueriesBench`): the core test target globs `*Test.cpp`. It measures the C++ budgets; the
+  Lua budget of REQ-41 is not measured by a test.
+- One rule for every 3D cast: a collider the shape starts in is reported (distance 0) only with
+  `hitFromInside`, `...All` included (Unity's `SphereCastAll` always reports them).
+- The engine's own rays (particle world collision, Foot IK) pass `hitFromInside = true`, so
+  REQ-14 changes only what scripts and agents ask.
+- `PhysicsQueries3D::overlapPoint` / `checkPoint` (C++ only) serve `query_physics` `shape: point`
+  in 3D; `query_physics` `hit_from_inside` also sets 2D `startInColliders`.
+- `Rigidbody2D:cast` returns the nearest hit or nil and `castAll` every one (Unity's `Cast` fills
+  an array), matching `sweepTest` / `sweepTestAll`.
+- 2D `Overlap*` (first) returns the collider of the lowest GameObject then collider index, so the
+  answer is deterministic.

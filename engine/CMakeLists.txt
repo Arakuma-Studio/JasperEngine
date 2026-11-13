@@ -1772,6 +1772,8 @@ set(JASPERENGINE_SRCS
     core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/PhysicsQueries2D.cpp
+    core/physics/PhysicsQueries3D.cpp
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
@@ -1837,6 +1839,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/PhysicsQueriesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp

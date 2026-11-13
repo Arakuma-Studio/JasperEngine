@@ -14,6 +14,9 @@
 #include "physics/PhysicsDebugLines.h"
 #include "registry/PhysicsLayers.h"
 
+#include <algorithm>
+#include <chrono>
+
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
 #endif
@@ -145,9 +148,34 @@ void PhysicsSystem::recordDebugContact3D(const JPH::ContactManifold& manifold){
 }
 #endif
 
+namespace {
+    double debugLinesClock(){
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+}
+
+void PhysicsSystem::addTimedDebugLines(const std::vector<std::pair<Vector3, Vector3>>& lines, const Vector4& color, float seconds){
+    const double until = debugLinesClock() + (double)seconds;
+    for (const auto& line : lines){
+        timedDebugLines.push_back({line.first, line.second, color, until});
+    }
+}
+
+bool PhysicsSystem::pruneTimedDebugLines(){
+    if (timedDebugLines.empty()){
+        return false;
+    }
+    const double now = debugLinesClock();
+    timedDebugLines.erase(std::remove_if(timedDebugLines.begin(), timedDebugLines.end(),
+                                         [now](const TimedDebugLine& line){ return line.until <= now; }),
+                          timedDebugLines.end());
+    return !timedDebugLines.empty();
+}
+
 void PhysicsSystem::updateDebugLines(){
     const bool on = Physics::isDebugDraw();
-    if (!on){
+    const bool timed = pruneTimedDebugLines();
+    if (!on && !timed){
         if (debugLinesShown && debugLinesEntity != NULL_ENTITY && scene->isEntityCreated(debugLinesEntity)){
             LineRenderer lines(scene, debugLinesEntity);
             lines.clearLines();
@@ -174,8 +202,12 @@ void PhysicsSystem::updateDebugLines(){
     lines.setVisible(true);
     debugLinesShown = true;
 
+    for (const TimedDebugLine& line : timedDebugLines){
+        lines.addLine(line.from, line.to, line.color);
+    }
+
 #ifdef JASPERENGINE_PHYSICS_3D
-    if (world3DReady){
+    if (on && world3DReady){
         JPH::BodyInterface& bodyInterface = getBodyInterface3D();
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
         for (size_t i = 0; i < bodies3d->size(); i++){
@@ -251,7 +283,7 @@ void PhysicsSystem::updateDebugLines(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-    if (b2World_IsValid(world2D)){
+    if (on && b2World_IsValid(world2D)){
         Draw2DContext context{&lines, pointsToMeterScale2D};
         b2DebugDraw draw = b2DefaultDebugDraw();
         draw.DrawPolygon = drawPolygon2D;

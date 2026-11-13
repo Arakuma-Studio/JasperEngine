@@ -149,6 +149,9 @@ Projects made before the rename are migrated once with
 | `Collision2D.otherCollider` / `otherRigidbody` (Unity: **this** side) -> the same (this side), plus the plain `thisCollider` / `thisRigidbody`; `collider` / `rigidbody` / `gameObject` are the other side's | none (new) |
 | A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
+| `Physics.SphereCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapSphere`, `OverlapBox`, `OverlapCapsule`, `CheckSphere`, `CheckBox`, `CheckCapsule`, `ClosestPoint`, `Rigidbody.SweepTest` / `SweepTestAll`, `QueryTriggerInteraction`, `Physics.queriesHitTriggers`, `queriesHitBackfaces` -> the same names lowerCamelCase; casts return the hit or nil (no `out` argument), every query takes an options table last (`ignore`, `triggers`, `hitFromInside`, `hitBackfaces`) | none (new) |
+| `Physics2D.CircleCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapCircle`, `OverlapBox`, `OverlapCapsule`, `OverlapPoint`, `OverlapArea` (and `...All`), `Rigidbody2D.Cast`, `CapsuleDirection2D`, `Physics2D.queriesHitTriggers`, `queriesStartInColliders` -> the same names lowerCamelCase (`rigidbody2d:cast` / `castAll` return hits); `queriesStartInColliders` defaults to **false** (Unity: true), so a ray or cast from inside a collider (a player's ground check) does not hit it | none (new) |
+| `RaycastHit` / `RaycastHit2D` (`point`, `normal`, `distance`, `collider`, `rigidbody`, `transform`) | `RayReturn` (alias `RaycastHit`): the same fields plus `gameObject`, `body` (entity), `colliderIndex`, `hit`; `transform` is the GameObject |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | none: Unity has no per-scene shader property defaults (closest: `Shader.SetGlobal*`, applied when the material leaves the property undefined) | none (new): Scene > Default Shaders > <Shader> Properties, the values every object drawn with the scene's default shader inherits (Revert to Scene Default on an override); Lua `scene:setDefaultShaderUniform(ShaderType.MESH, name, value)`; `set_shader_uniform` `shader_type` |
@@ -446,9 +449,10 @@ the `Physics2D` one change it at runtime; in the editor that lasts until Play st
 Changing a GameObject's layer re-filters its Rigidbody (2D) before the next step.
 
 Ray casts take a layer mask (`LayerMask.getMask(...)`, `Physics.ALL_LAYERS`):
-`Physics.raycast(scene, ray [, layerMask])`,
-`Physics.raycast(scene, origin, direction, maxDistance [, layerMask])` and `raycastAll`,
-and the `Physics2D` ones with `Vector2` origin and direction. Without a mask they use
+`Physics.raycast(scene, ray [, layerMask [, options]])`,
+`Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])` and `raycastAll`,
+and the `Physics2D` ones with `Vector2` origin and direction. As in Unity, a 3D ray that starts
+inside a collider does not hit it (`options.hitFromInside` reports it at 0). Without a mask they use
 `DEFAULT_RAYCAST_LAYERS`, every layer but Ignore Raycast; so do the scene queries of
 `Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
 origin, a direction and a distance it is in world units (scene units in 2D).
