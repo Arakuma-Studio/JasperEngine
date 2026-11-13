@@ -47,6 +47,7 @@ defaults:
     shell: bash
 
 jobs:
+  # timeouts fit a cold build (an image change or an evicted ccache) on a 4-vCPU runner, not a warm one
   # ------------------------------------------------------------- Planning ---
   changes:
     name: changes
@@ -190,7 +191,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_linux == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     env:
       JASPER_CI_REPRO: WERROR=1 tools/build.sh linux
     steps:
@@ -268,7 +269,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_unit == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 300
     env:
       JASPER_CI_REPRO: WERROR=1 tools/build.sh unit-tests
     steps:
@@ -356,7 +357,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_asan == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     env:
       JASPER_CI_REPRO: SANITIZE=address,undefined tools/build.sh unit-tests
     steps:
@@ -409,7 +410,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_htmlui == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 240
     env:
       JASPER_CI_REPRO: JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests
     steps:
@@ -477,7 +478,7 @@ jobs:
       && needs.changes.outputs.mcp_shards != ''
       && needs.changes.outputs.mcp_shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -522,7 +523,7 @@ jobs:
     needs: [changes, linux]
     if: needs.changes.outputs.run_smoke == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 300
     env:
       JASPER_CI_REPRO: |-
         SMOKE_METHOD=compile SMOKE_DIR=build/smoke-post-processing tools/smoke-test.sh tools/fixtures/post-processing
@@ -608,7 +609,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       JASPER_CI_REPRO: |-
         tools/build.sh web
@@ -681,7 +682,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_android == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       JASPER_CI_REPRO: tools/build.sh android
     steps:
