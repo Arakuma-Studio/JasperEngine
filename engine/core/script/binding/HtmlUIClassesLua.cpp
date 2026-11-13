@@ -1254,6 +1254,10 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("disabled", &UIElement::getDisabled, &UIElement::setDisabled)
         .addProperty("scrollTop", &UIElement::getScrollTop, &UIElement::setScrollTop)
         .addProperty("scrollLeft", &UIElement::getScrollLeft, &UIElement::setScrollLeft)
+        // the scroll container's velocity in px/s, positive towards the end (its inertia, or the drag panning it); set it to fling
+        .addProperty("scrollVelocity", &UIElement::getScrollVelocity, &UIElement::setScrollVelocity)
+        // stops the container's inertia and smooth scroll (an elastic overscroll still springs back)
+        .addFunction("stopScrolling", &UIElement::stopScrolling)
         .addProperty("scrollWidth", &UIElement::getScrollWidth)
         .addProperty("scrollHeight", &UIElement::getScrollHeight)
         .addProperty("clientWidth", &UIElement::getClientWidth)

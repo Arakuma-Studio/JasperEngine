@@ -149,6 +149,12 @@ namespace {
         {"quotes", "string"},
         {"right", "kw:auto|length_percent"},
         {"row-gap", "length_percent"},
+        // engine extensions (S93 R8): drag scrolling physics; scroll-elasticity is a <time> the fork reads from its text
+        {"scroll-deceleration-rate", "kw:auto|number"},
+        {"scroll-drag", "kw:touch,pointer"},
+        {"scroll-elasticity", "string"},
+        {"scroll-inertia", "kw:auto,none"},
+        {"scroll-movement", "kw:clamped,elastic,unrestricted"},
         {"scrollbar-margin", "length"},
         {"stroke", "kw:none,currentcolor|color"},
         {"stroke-dasharray", "string"},

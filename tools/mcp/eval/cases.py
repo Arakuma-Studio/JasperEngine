@@ -5242,4 +5242,27 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_html_ui_drag_scroll_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port re-implemented uGUI's ScrollRect in Lua (ScrollView.lua: pointer tracking, "
+                         "elasticity, deceleration) because the mouse never drag-scrolled an HTML list; S93 adds scroll-drag, "
+                         "scroll-movement and the other scroll physics properties instead.",
+        "text_at_issue": "html-ui.md 'Drag scrolling (uGUI ScrollRect)'",
+        "source": "docs/specs/S93-htmlui-gaps.md R8 (ledger U12)",
+        "files": {"assets/ui/shop.html": "<html>\n<head>\n<title>shop</title>\n<style>\n"
+                                         "  #items { position: absolute; left: 40px; top: 80px; width: 400px; height: 500px; overflow-y: auto; }\n"
+                                         "  .item { height: 80px; }\n</style>\n</head>\n<body>\n"
+                                         "  <div id=\"items\"><div class=\"item\">Sword</div><div class=\"item\">Shield</div></div>\n"
+                                         "</body>\n</html>\n"},
+        "prompt": "In assets/ui/shop.html, PC players must be able to drag the #items list with the mouse like a phone list, and it "
+                  "should bounce back when dragged past its ends.",
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("shop: #items (div, overflow-y auto, 2 children), no diagnostics.",
+                                               {"elements": [{"ref": "#items"}], "diagnostics": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/shop.html": [r"scroll-drag\s*:\s*pointer", r"scroll-movement\s*:\s*elastic"]},
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 14,
+    },
 ]

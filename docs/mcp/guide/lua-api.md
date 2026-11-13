@@ -3276,7 +3276,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `el.style.textEffect = "wave(0.15em 1.5s)"`, `el:restartTextEffect()`, event `texteffectend`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an
-  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`
+  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`, `scrollVelocity`
+  (Vector2 px/s: the drag scroll's inertia or pan, set to fling); ro `tagName`
   (`DIV` in an `.html` document, as in the DOM; lower case in `.rml`), `localName`, `content`
   (a `<template>`'s fragment), `parentElement`, `children`,
   `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
@@ -3286,7 +3287,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
   `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
   `blur`, `click`, `insertAdjacentHTML(position, html)`, `show()`, `showModal()`,
-  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`,
+  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`, `stopScrolling`,
   `getBoundingClientRect` (UIRect),
   `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
   `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,

@@ -45,6 +45,11 @@ HTML = """<html>
         #touchA { left: 600px; top: 300px; width: 150px; height: 80px; background-color: #a0a0a0; }
         #touchB { left: 800px; top: 300px; width: 150px; height: 80px; background-color: #a0a0a0; }
         #touchA:active, #touchB:active { background-color: #ff00ff; }
+        #draglist { left: 850px; top: 40px; width: 200px; height: 100px; overflow-y: auto; background-color: #000000;
+                    scroll-drag: pointer; }
+        .dstripe { position: relative; width: 180px; height: 100px; background-color: #404040; }
+        #clipview { left: 40px; top: 420px; width: 300px; height: 150px; overflow: hidden; background-color: #202020; }
+        #clipbtn { left: 20px; top: 160px; width: 100px; height: 60px; transform: translateY(-120px); background-color: #ff8000; }
     </style>
 </head>
 <body>
@@ -54,6 +59,8 @@ HTML = """<html>
     <div id="scroller"><div class="stripe" id="s1"></div><div class="stripe" id="s2"></div><div class="stripe" id="s3"></div></div>
     <div id="touchA"></div>
     <div id="touchB"></div>
+    <div id="draglist"><div class="dstripe"></div><div class="dstripe"></div><div class="dstripe"></div></div>
+    <div id="clipview"><div id="clipbtn"></div></div>
 </body>
 </html>
 """
@@ -70,6 +77,7 @@ local InputProbe = {
         { name = "clicks", type = "int", default = 0 },
         { name = "touchClicks", type = "int", default = 0 },
         { name = "touchPointers", type = "string", default = "" },
+        { name = "dragClicks", type = "int", default = 0 },
     }
 }
 
@@ -83,7 +91,9 @@ end
 
 function InputProbe:attach()
     local doc = UIDocument(self.scene, self.entity)
+    self.doc = doc
     doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
+    doc:getElementById("draglist"):addEventListener("click", function(event) self.dragClicks = self.dragClicks + 1 end)
     -- ui-multitouch: a click per finger, with its pointer (DOM pointerId = fingerId + 2)
     for _, id in ipairs({"touchA", "touchB"}) do
         doc:getElementById(id):addEventListener("click", function(event)
@@ -310,3 +320,34 @@ async def test_mouse_leave_clears_hover(ed: Editor):
     await ed.call("play", action="stop")
     errors = await html_ui_errors(ed)
     ed.check(not errors, f"[HTML UI] errors: {errors}")
+
+
+# -- S93 P2: hit testing through transforms, drag scrolling -----------------------------------------
+
+
+P_DRAGLIST = (950, 120)
+P_CLIPBTN = (90, 490)          # #clipbtn where it is drawn; its layout box is below #clipview's clip
+
+
+async def test_hit_follows_transform_in_clip(ed: Editor):
+    """S93 R6/R51 (AC7): inspect_ui's hit test finds a button translated into view inside an
+    `overflow: hidden` box where it is drawn, not the box (6.3 tested its layout position)."""
+    r = await ed.call("inspect_ui", at=list(P_CLIPBTN))
+    ed.check_eq(r["hit"][0]["ref"], "#clipbtn", f"the translated button is hit where it is drawn: {r['hit']}")
+    r = await ed.call("inspect_ui", at=[P_CLIPBTN[0], 555])
+    ed.check_eq(r["hit"][0]["ref"], "#clipview", f"the box under the button's layout area: {r['hit']}")
+
+
+async def test_scroll_drag_pointer(ed: Editor):
+    """S93 R8/R9 (AC12): a mouse drag on a list with `scroll-drag: pointer` scrolls it and clicks
+    nothing; a still click on it clicks."""
+    top = "return script('Menu', 'InputProbe').doc:getElementById('draglist').scrollTop"
+    ed.check_eq((await ed.call("eval_lua", code=top))["values"][0], 0, "the list starts at the top")
+    await send(ed, {"type": "mouse", "action": "drag", "x": P_DRAGLIST[0], "y": P_DRAGLIST[1],
+                    "to": [P_DRAGLIST[0], P_DRAGLIST[1] - 70], "steps": 7}, frames_after=3)
+    scrolled = (await ed.call("eval_lua", code=top))["values"][0]
+    ed.check(scrolled >= 50, f"the mouse drag scrolled the list: scrollTop {scrolled}")
+    ed.check_eq(await probe(ed, "dragClicks"), 0, "the panned press clicked nothing")
+    await send(ed, {"type": "mouse", "action": "click", "x": P_DRAGLIST[0], "y": P_DRAGLIST[1]})
+    ed.check_eq(await probe(ed, "dragClicks"), 1, "a still click on the list clicks")
+
