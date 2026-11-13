@@ -988,6 +988,10 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+#ifdef JASPERENGINE_PHYSICS_3D
+    // after the GameObject classes, which it reopens for getWheelCollider
+    registerVehicleClasses(L);
+#endif
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);

@@ -71,6 +71,8 @@
 #include "component/Joint2DComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterWakeComponent.h"
@@ -243,6 +245,8 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
+#include "object/physics/WheelCollider.h"
+#include "object/physics/VehicleDrivetrain.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/Joint3D.h"

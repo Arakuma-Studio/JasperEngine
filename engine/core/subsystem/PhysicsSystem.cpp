@@ -31,6 +31,7 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "subsystem/CharacterControllerSystem.h"
+#include "subsystem/VehicleSystem.h"
 #include "util/JoltPhysicsAux.h"
 #include "util/MeshTriangles.h"
 #include "component/RagdollComponent.h"
@@ -350,6 +351,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     lock3DBodies = true;
 
     characters3D = std::make_unique<CharacterControllerSystem>(scene, this);
+    vehicles3D = std::make_unique<VehicleSystem>(scene, this);
     // the Jolt world itself: ensureWorld3D, when a body, a query or a CharacterController
     // first needs it
 #endif
@@ -430,6 +432,7 @@ PhysicsSystem::~PhysicsSystem(){
 #ifdef JASPERENGINE_PHYSICS_3D
     // the characters release their object layers and inner bodies while both still exist
     characters3D.reset();
+    vehicles3D.reset();
     flushPendingDestroys3D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -4406,6 +4409,7 @@ void PhysicsSystem::fixedUpdate(double dt){
         ensureWorld3D();
     }
     characters3D->preStep();
+    vehicles3D->preStep();
 
     // the world steps for the characters too (their platforms, root motion, inner bodies)
     if ((bodies3d->size() > 0 || characters3D->count() > 0) && world3DReady){
@@ -4485,6 +4489,7 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     // the characters ride what moved, see what is under them now and take their root motion
     characters3D->postStep(fixedStep);
+    vehicles3D->postStep(fixedStep);
 #endif
 }
 
