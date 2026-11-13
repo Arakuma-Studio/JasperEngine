@@ -167,8 +167,9 @@ RMLUICORE_API void ReleaseCompiledGeometry(RenderInterface* render_interface = n
 /// @note Invalidates all existing FontFaceHandles returned from the font engine.
 RMLUICORE_API void ReleaseFontResources();
 /// Releases render managers that are not used by any contexts.
-/// @note Any resources referring to the render manager in user space must be cleared first, including callback textures and compiled geometry.
-/// @note Also releases font resources, which invalidates all existing FontFaceHandles returned from the font engine.
+/// @note Any resources referring to the render manager in user space must be cleared first, including compiled geometry.
+/// @note Fork (S93 R13): font resources stay; each released render manager's textures of every CallbackTextureSource are
+/// released and FontEngineInterface::ReleaseRenderManager is called first.
 RMLUICORE_API void ReleaseRenderManagers();
 
 } // namespace Rml
