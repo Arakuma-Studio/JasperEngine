@@ -2354,6 +2354,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
 endif()
 
+# M_PI and the other <cmath> constants, which the Windows CRT declares only with _USE_MATH_DEFINES
+# set before its first include: for every source of the engine and of the targets linking it
+if(WIN32)
+    target_compile_definitions(jasperengine PUBLIC _USE_MATH_DEFINES)
+endif()
+
 # the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
 if(WIN32)
     target_link_libraries(jasperengine PRIVATE dbghelp)
