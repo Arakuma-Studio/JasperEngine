@@ -1,0 +1,787 @@
+# S92 — HTML UI render cost, output-resolution UI, Lua overload dispatch
+
+Arcade engine-gaps program (S92-S98), the owner's top priority. Source: the "Priority engine work"
+section and items U27, U34, U35, U36, U37, R57, R66 and S33 of
+`JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md` (the ledger). The port was built against
+engine `7f48d7e8d` (2026-10-30). Paths are relative to the repository root. Every claim in §3 was
+checked by reading current main (`82ccd7c6a`) at the cited lines. "Inferred" means read from the
+code and not run; nothing in this spec was built or run.
+
+## 1. Goal
+
+A game HUD made of ordinary CSS costs more GPU time than the 3D world on a phone. The port measured
+67 to 206 offscreen passes per frame from the UI alone in its game M. A document that did not change
+is drawn again every frame. Gradients on rounded boxes, `clip-path` and `filter` each go through
+full-target layers every frame. The UI renders into a 4x MSAA target by default and cannot be
+switched per scene or from Lua. It is blended over the whole screen. It is scaled down with
+`render_scale` and smeared by FXAA. Under an orthographic camera it is not on the screen at all.
+
+S92 fixes these costs at the engine level:
+- An unchanged document draws nothing.
+- Only what was drawn is composited.
+- Rounded gradients and simple clip shapes need no layer.
+- Filter and mask results are reused while the element does not change.
+- The layers left are sized to their element.
+- The UI composites after post-processing, at output resolution and in screen space under any camera.
+- MSAA has a mobile default and can be set per scene, per document and from Lua.
+
+S92 also makes a Lua call that reaches a later overload as cheap as one that hits the first. It does
+this without the hidden `pcall` and error string per miss, and without the leak on clang.
+
+## 2. Scope
+
+**In scope**
+- Frame reuse:
+  - The kept document target, decided by a frame signature (R1-R3).
+  - Tile-limited composite (R4).
+  - Depth-stencil discard (R5).
+  - New statistics (R6).
+- Layer cost:
+  - Gradient primitives extended to 16 stops, conic and repeating gradients (R7).
+  - Analytic `clip-path` basic shapes (R8).
+  - A layer result cache (R9).
+  - Element-sized layers (R10).
+- U27:
+  - Scissor clips under axis-aligned transforms (R11).
+  - Stencil bookkeeping per attachment (R12).
+- Composite placement:
+  - Screen Space - Overlay after post at output resolution, and Screen Space - Camera (R13, R14).
+  - Screen-space composite under every camera type in game views (R15).
+- MSAA:
+  - Auto project default (R16).
+  - Per-scene override (R17).
+  - Per texture-mode document (R18).
+  - Per-context resolution (R19).
+- Editor, MCP, Lua and docs for all of the above (R20-R23).
+- LuaBridge overload dispatch: adopt the port's patch, fix the remaining leak paths, add a ledger and
+  tests (R24-R28).
+- Performance budgets and their measurement (R29-R34).
+
+**Out of scope**
+- **U30, U31** (first-draw glyph-effect and image-decode hitches) belong to S93. What S92 does for
+  them:
+  - S92 makes nothing about the first draw cheaper. The convolution in `RmlFontEngine::getEffectGlyph`
+    and the decode in `RmlRenderer::LoadTexture` (`engine/core/htmlui/RmlRenderer.cpp:994-1070`) are
+    untouched.
+  - Once the new content is drawn, R1 keeps the document target and R9 keeps the layer results. The
+    hitch frame is then followed by frames that cost nothing, not by full redraws.
+  - When S93 regenerates text (a font `version` bump), R1's signature sees new geometry and redraws
+    once. This is correct, and costs no more than today.
+- **S32** (the ledger's `Quaternion(nil)` crash, `Quaternion(Vector3)` over-read and
+  `tostring(debug.getmetatable(Vector3()))` crash) and **S1** (an enum taken as a number) belong to
+  S95. S92 changes the dispatch mechanism in `LuaBridge.h` only, not the bindings in
+  `engine/core/script/binding/`.
+- Partial (damage-rectangle) redraw of a changed document. A document that changes is redrawn whole,
+  in one pass (D15).
+- A CPU-side "context is clean" flag that skips RmlUi's render traversal (D1, D14).
+- `EXT_multisampled_render_to_texture` on GLES. sokol does not expose it, and Auto makes 1 sample the
+  mobile default (D7).
+- Converting `drop-shadow()` to an analytic shadow primitive (D16).
+- No OpenEngine code is involved. Nothing on the README do-not-copy list is touched. The game stays
+  on our RmlUi fork.
+
+## 3. Current state
+
+### 3.1 What the port measured, and what changed since
+
+The ledger's pass counts (M: beach 136, swim 67-85, power-up cards 206, upgrades 111, shop 96,
+results 160; one `.btn` 33) were taken on `7f48d7e8d`. **S16 (HTML UI rendering cost and text)
+landed after that commit.**
+- `engine/core/htmlui/RmlRendererBatch.cpp` did not exist at `7f48d7e8d`. It was added by `d1a4e869f`.
+- The S16-F5 gradient primitives (`5201522c7`, `2e03eb094`) are not ancestors of `7f48d7e8d`
+  (checked with `git merge-base --is-ancestor`).
+- S16 brought several things: batching, SDF box primitives (S16-F1), analytic and elided clip masks
+  (S16-F2), off-screen culling (S16-F4), and gradient primitives of at most four stops (S16-F5).
+
+The port's counts are therefore an upper bound. **The current-main numbers for the same patterns are
+unverified.** AC10 measures them on current main first; that run is the red control.
+
+### 3.2 Every frame is drawn again (U36)
+
+- `HtmlUIContext::update` calls `markUpdated()` unconditionally (`engine/core/htmlui/HtmlUIContext.cpp:339-350`).
+  The scene's screen context is updated every frame (`engine/core/subsystem/UIDocumentSystem.cpp:305`).
+- The "nothing changed" exit of `HtmlUIContext::render` is therefore reached only when `render` is
+  called twice in one frame (`engine/core/htmlui/HtmlUIContextRender.cpp:143-145`). That happens in
+  the editor's Game view (`:81-86`).
+- Every frame runs `context->Render()` and replays the commands. The pass count is at least 1
+  (`RmlRenderer::beginPass`, `stats.passes++`, `RmlRenderer.cpp:1404-1424`).
+- S16's run cache (`RmlRendererBatch.cpp:830-891`) saves CPU gathering only. The GPU passes and draws
+  still run.
+- The composite is one full-screen blended quad (`RmlRenderer::drawComposite`,
+  `RmlRenderer.cpp:3454-3481`: `object->draw(0, 6, 1)`). It is drawn even where the document is empty.
+- Every pass stores colour and depth-stencil (`RmlRenderer.cpp:1410-1412`, `StoreAction::STORE`). The
+  depth-stencil is stored at the end of the frame too, when nothing reads it again.
+- `docs/mcp/guide/html-ui.md:1972-1974` says "A static document without filters or masks is one
+  offscreen pass and uploads nothing per frame". That is true of uploads. It is false of passes once a
+  second frame passes, because the pass runs anyway.
+
+### 3.3 Layers: gradients, masks, filters, clip-path (U35)
+
+**Gradients on rounded boxes: partly fixed by S16-F5.**
+- `MakeGradientTiles` (`engine/libs/rmlui/Source/Core/ElementBackgroundLayers.cpp:582-590, 651-734`)
+  emits one gradient primitive over the clip box's fill area with its radii, and no mask layer, when
+  `RmlRenderer::SupportsGradientPrimitive` says yes.
+- It says yes only for `LINEAR` and `RADIAL` with at most `HtmlUIPrimitive::GRADIENT_STOPS` = 4 stops
+  (`engine/core/htmlui/RmlRendererBatch.cpp:400-406`, `engine/core/htmlui/HtmlUIPrimitive.h:16`).
+- Everything else takes the mesh path: a mask made by `MakeClipMask` (`ElementBackgroundLayers.cpp:437, 640`),
+  then two layers and a mask composite (`:765-808`). That covers:
+  - five or more stops, and conic and repeating gradients (`RmlCompiledShader::Function` has all six,
+    `engine/core/htmlui/RmlRenderer.h:166`);
+  - a border with gaps around the curve (`:711-719`);
+  - inline fragments (`num_boxes != 1`);
+  - `background-attachment` canvas.
+- The port's Button01 body gradient has 7 stops with hard px stops
+  (`JasperArcade-Ported/tools/gen/uisprites.py:497-499`), so it still takes the mask path.
+
+**Filters**:
+- `ElementEffects` pushes a layer for the element's content (`ElementEffects.cpp:405`). It draws the
+  content into it and composites through the filter list (`:510-511`) at every render.
+- The renderer runs each filter into post-process targets (`RmlRenderer::compositeLayersNow`,
+  `:2193-2308`; `applyFilter` `:2309-2393`).
+- Nothing is kept between frames: there is no cache in `RmlRenderer` for a layer's result.
+- `BoxShadowCache` keeps box-shadow textures only (S16 §3).
+- The port's `.btn::before` carries `filter: drop-shadow(0px 8px 0px rgba(0,0,0,.2))`
+  (`JasperArcade-Ported/assets/ui/shared/widgets.css:56`), so every button is a filter layer every
+  frame.
+
+**`clip-path`** becomes `mask-image: html-shape(...)` (`engine/core/htmlui/compat/tables/PropertyTable.cpp:244`).
+It then takes the mask path of `ElementEffects` (`:496-503`: a layer, the mask layer and a
+`SaveLayerAsMaskImage`) for every basic shape, including `inset()`, `circle()` and `ellipse()`,
+which are rounded rectangles.
+
+**Layer size**:
+- P7-F2 region layers (`RmlRenderer::PushLayerRegion`, `:2060-2090`; pool and 64-px granules,
+  `regionFrame`, `:2014-2058`) are used only for a window that extends beyond the viewport.
+- A window inside the viewport is "an ordinary layer" (`:2070-2073`), the size of the whole target.
+- `ElementBackgroundLayers` masks (`:768, 801`), `ElementEffects` masks (`:496`) and the `text-shadow`
+  blur layer (`ElementText.cpp:417`) call `PushLayer()` without a region at all.
+- On a tiler, each such pass loads and stores the full target.
+
+### 3.4 MSAA (U37)
+
+- The sample count is one process-wide static, default 4 (`HtmlUIContextRender.cpp:40`), set from the
+  project setting only:
+  - `htmlUiMsaaSamples` in `project.yaml` (`editor/Stream.cpp:2797, 3611-3612`);
+  - Project Settings > Graphics > HTML UI MSAA (`editor/settings/SettingsRows.cpp:2171`);
+  - the generated `main.cpp` (`editor/Generator.cpp:2636`) and the prebuilt player's config
+    (`engine/core/player/PlayerConfig.h:104`, `editor/ExporterPrebuilt.cpp:652`).
+- `UIDocumentSystem::setPreferredSampleCount` (`engine/core/subsystem/UIDocumentSystemRender.cpp:44-46`)
+  is C++ only. No Lua binding names it (grep of `engine/core/script/binding/`).
+- A texture-mode document uses the same static.
+- S16 decided to keep the default at 4 and called lowering it "a separate decision with its own golden
+  pass" (`docs/specs/S16-ui-render-text.md:392-394`, D7).
+- At one sample the fork feathers mesh edges (`HtmlUIContextRender.cpp:121`). SDF primitives
+  (S16-F1, on by default: `editor/Generator.h:161`) and analytic clips antialias at any count.
+- The target is RGBA8 colour plus D24S8 (`RmlRenderer.cpp:238`).
+
+### 3.5 Where the UI is composited (U34, R57)
+
+- The scene's screen documents composite inside the main camera's colour pass
+  (`engine/core/subsystem/RenderSystem.cpp:20159-20172`). That happens before SSR, the post chain and
+  the uber pass (`:20186-20262`).
+- With `render_scale` below 1, the camera pass target is smaller (`:15485-15487`). The document,
+  rendered at the output size (`renderOffscreen(targetViewRect())`, `:18668`; `targetViewRect`
+  `:16947-16952`), is therefore scaled down into it. The uber pass then scales it up again, and FXAA,
+  CRT, VHS, glitch and pixelate run over it.
+- `drawComposite` fills the viewport only for `CAMERA_PERSPECTIVE`
+  (`engine/core/subsystem/UIDocumentSystemRender.cpp:103-107`). For `CAMERA_UI` and `CAMERA_ORTHO`
+  it draws the canvas rectangle (0,0)-(w,h) of world space through the camera (`:109-131`). This
+  happens in game views too, not only in the editor's Scene view, which the comment names. A game
+  ortho camera of 22 world units shows no UI at all (R57).
+
+### 3.6 Clips under transforms (U27)
+
+- An overflow clip whose clipping element has a transform is always a stencil clip mask, with the
+  scissor disabled (`engine/libs/rmlui/Source/Core/ElementUtilities.cpp:191-215`).
+- Text lines are not culled under a transform (`ElementText.cpp:324-329`).
+- S16 can elide the mask (a scissor) or clip analytically (`RmlRendererBatch.cpp:645-800`).
+  - It does neither for a scope that contains a layer: `PUSH_LAYER`, `COMPOSITE` and `SHADER` set
+    `analytic = false` (`:736-760`).
+  - It does not elide when a draw is not admitted by the shape (`:686-690`). A scrolled list's clipped
+    rows are exactly such draws.
+- The port's lists are a scaled panel holding filtered tiles and text, so they take the stencil path.
+- Every non-region layer shares layer 0's depth-stencil. It is loaded and stored at each pass
+  (`bindLayer`, `RmlRenderer.cpp:1534-1571`).
+- The mask is redrawn when `maskVersionOf(index)` is stale (`ensureMask`, `:1942-1990`). Region layers
+  keep their own version. The shared one is a single `sharedMaskVersion` for all full-size layers
+  (`:1936-1940`).
+- The ledger's fault (text escaping the viewport on a phone, but not on llvmpipe or SwiftShader) is
+  **unverified**. Nothing in the code read shows a wrong mask version, so the cause on a tile GPU is
+  unknown. R11 takes the port's case off the stencil path. R12 makes the stencil path's bookkeeping
+  per attachment and checkable.
+
+### 3.7 Lua overload dispatch (R66, S33)
+
+- `luabridge::detail::try_overload_functions` (`engine/libs/luabridge3/LuaBridge.h:6914-6982`):
+  - It makes an error table on every call.
+  - For every overload of matching arity, it `lua_pcall`s the overload.
+  - A userdata mismatch raises through `luaL_argerror`, whose `pushglobalfuncname` walks
+    `package.loaded`.
+- Since `7f48d7e8d` only S34 (`2a032453b`: failure paths out of line, registration cold) and
+  `583652b17` (`raise_exception_error` recursion) touched the header. The dispatch is unchanged.
+  Its lines moved by +43.
+- `engine/libs/luabridge3/` has no patch ledger (only `LICENSE.txt`, `README.md`). The local changes
+  are inline `// JasperEngine` comments (`LuaBridge.h:90, 619, 6455`). This is against AGENTS.md
+  ("A patch to vendored code follows that library's patch ledger beside it").
+- Lua is compiled as C (`engine/libs/lua/CMakeLists.txt:48-54`, no C++ language override), so
+  `lua_error` is a `longjmp`. A decoded `std::string` argument on the C++ frame is not destroyed when
+  a later argument fails. That is S33 (measured by the port with clang; g++ decodes right to left).
+- The port's patch (`JasperArcade-Ported/docs/port/engine-patches/luabridge-overload-dispatch.patch`,
+  271 lines) adds a no-raise check per overload.
+  - `git apply --check` succeeds on a copy of the current header (run by this spec's research step in
+    `/tmp`, not in the worktree). Its 10 hunks shift by +43.
+  - The bodies of the overloads are unchanged.
+  - Leak paths it leaves (inferred): calls where every overload fails (the second pass reruns the
+    skipped ones); overloads the check let through that still fail to decode; every wrong call of a
+    non-overloaded function (`tupleize`, `LuaBridge.h:5988`); and `raise_exception_error` called inside
+    `catch` blocks (`:6554, 6627, 6669`), a `longjmp` out of a handler.
+- Scale: 746 `luabridge::overload<` uses in 7 binding files, forming 280 overload sets (200 in
+  `engine/core/script/binding/GameObjectClassesLua.cpp`), plus 81 `addConstructor` lists with two or
+  more signatures.
+- Engine tests drive the Lua state through gtest (`engine/tests/core/script/LuaMathBindingTest.cpp:20-28`).
+  `LuaBindingBench.CallsAndProperties` (`engine/tests/core/script/LuaBindingBenchTest.cpp:57-67`)
+  prints medians. `engine/tests/core/support/AllocationCounter.h` counts allocations on Linux.
+
+### 3.8 What the games do instead
+
+- **`.lite`** (`JasperArcade-Ported/assets/ui/shared/minigame.css:76-91`,
+  `tools/gen/uisprites.py:386-470`): no `clip-path`, no `filter`, no gradient on a rounded box.
+  - Plain colour plus hard inset shadows, and the gradient moved onto a square inner box.
+  - M uses it. The other games keep the costly look by the owner's decision ("the games keep their
+    exact gradient look; the cost gets fixed at engine level").
+  - S92's bar: every game can drop `.lite` and pay what `.lite` pays.
+- **`htmlUiMsaaSamples: 1`** in `JasperArcade-Ported/project.yaml:7`, the only arcade-wide change.
+- **`shared.ui.ScrollView`** draws every item of a scaled list as `filter: opacity(1)`, so the text
+  goes through the composite path that clipped correctly on the phone (U27).
+- **A perspective camera at 100 units with `yfov = 2 atan(size/100)`** instead of an ortho camera
+  (R57). Its side effect: shakes with x/y rotation move the picture by a third of the screen.
+- **`shared.Uniform`, `shared.Rot.apply`, `tools/je/lint_lua_perf.py` and an editor-only
+  `LuaOverloadGuard`** (R66).
+
+## 4. Triage
+
+| Ledger item | Verdict | Evidence (current main) | What S92 does |
+|---|---|---|---|
+| Priority 1a: gradient on a rounded box as rounded geometry | PARTIAL | S16-F5 `5201522c7`/`2e03eb094` (after the port): `ElementBackgroundLayers.cpp:582-590, 651-734`; at most 4 stops, linear/radial only (`RmlRendererBatch.cpp:400-406`); mask path otherwise (`:765-808`) | R7: 16 stops, conic and repeating, every layer of a rounded box |
+| Priority 1b: cache filter and mask results | MISSING | `ElementEffects.cpp:405-511` redraws every render; no result cache in `RmlRenderer` (`compositeLayersNow` `:2193`) | R9 |
+| Priority 1c: scissor and size passes to the element | PARTIAL | region layers only beyond the viewport (`RmlRenderer.cpp:2070-2073`); masks and the text-shadow layer push full-target layers (`ElementBackgroundLayers.cpp:768, 801`, `ElementEffects.cpp:496`, `ElementText.cpp:417`) | R10 |
+| Priority 1d: keep the target, composite only what was drawn | MISSING | `HtmlUIContext.cpp:349`, `UIDocumentSystem.cpp:305`; full quad `RmlRenderer.cpp:3454-3481` | R1-R5 |
+| Priority 1e: MSAA per scene or from Lua | MISSING | static `HtmlUIContextRender.cpp:40`; project-only (`Stream.cpp:2797`, `Generator.cpp:2636`); no Lua binding | R16-R19, R22 |
+| Priority 2: Lua overload dispatch | MISSING | `LuaBridge.h:6914-6982` unchanged since the port; only `2a032453b`, `583652b17` touched the header | R24-R28 |
+| U35 | PARTIAL | as 1a-1c | R7-R10, budgets R29-R30 |
+| U36 | MISSING | as 1d; depth-stencil stored, `RmlRenderer.cpp:1412` | R1-R6, R31 |
+| U37 | MISSING | as 1e; S16 D7 kept 4 (`S16-ui-render-text.md:392`) | R16-R19, R32 |
+| U27 | MISSING (fault unverified) | stencil under any transform `ElementUtilities.cpp:191-215`; no text culling `ElementText.cpp:324-329`; S16 elision/analytic off with layers `RmlRendererBatch.cpp:736-760`; shared depth-stencil bookkeeping `RmlRenderer.cpp:1534-1571, 1936-1990` | R11, R12, AC11 |
+| U34 | MISSING | composite in the camera pass `RenderSystem.cpp:20159-20172`, before the uber pass `:20218-20262` | R13, R14 |
+| R57 | MISSING | world-space canvas for every non-perspective camera, game views included: `UIDocumentSystemRender.cpp:103-131` | R15 |
+| R66 | MISSING | as Priority 2 | R24-R27, R34 |
+| S33 | MISSING | Lua built as C (`engine/libs/lua/CMakeLists.txt:48-54`): `longjmp` over decoded arguments; extra paths in §3.7 | R26 |
+| U30, U31 | S93 | — | §2: kept target and cached layers after the first draw only |
+
+## 5. Reference
+
+- **The port's LuaBridge patch** (`JasperArcade-Ported/docs/port/engine-patches/`: `README.md`, the
+  patch, `overload_dispatch_test.cpp`, `wrong_calls.lua`, `run_standalone.sh`):
+  - Take the patch as the base of R24 and R25.
+  - Port its cases into an engine gtest. The standalone harness compares two checkouts and is not
+    vendored.
+  - Its measurements are the R34 reference: `setShaderUniform(name, float)` 526 → 4.6 µs,
+    `Quaternion * Vector3` 91 → 4.6 µs, on the port's dev host.
+- **The port's workarounds** (§3.8), as the API shape games want: a document that costs nothing when
+  idle, UI at output resolution, MSAA 1 on phones.
+- **Unity**, for names and behaviour:
+  - Canvas Render Mode "Screen Space - Overlay": drawn after the camera stack, unaffected by
+    post-processing and render scale.
+  - "Screen Space - Camera": drawn by the camera, post applies.
+  - The URP asset's "Anti Aliasing (MSAA)" options: Disabled, 2x, 4x, 8x.
+- **Browsers**, for the cache: Chromium's render surfaces for filters and its raster invalidation keep
+  an element's filtered result until its content changes. R9 has the same semantics, keyed by what
+  was recorded rather than by a DOM invalidation.
+- No OpenEngine files. Nothing on the do-not-copy list.
+
+## 6. Requirements
+
+### Functional: frame reuse (U36)
+
+- **R1 Kept target.** After `context->Render()` records a frame, the renderer computes the frame's
+  signature over every recorded command and its parameters:
+  - geometry by a serial number given at `CompileGeometry` and never reused, not by pointer;
+  - a texture by its serial and content version, bumped by every upload: atlas pages, video frames,
+    dynamic and render-to-texture textures, `SaveLayerAsTexture`;
+  - compiled filters and shaders by a hash of their parameters;
+  - transforms, scissors, clip operations and clip shapes by value;
+  - the target size, the sample count and the pixel ratio.
+  When the signature equals the last drawn frame's and nothing in R2 made the frame live, nothing is
+  replayed: no pass, no draw, no upload. The target keeps its content and its composite tiles (R4).
+  - `HtmlUIContext::update` no longer forces a redraw (`HtmlUIContext.cpp:349` goes).
+  - A new size, sample count, view loss (`releaseGpuResources`), settings change
+    (`UIDocumentSystem::setHtmlUiRenderOptions`) or texture recreation still forces one.
+  - This applies to screen and texture-mode contexts alike.
+- **R2 Live frames.** A frame is drawn whatever its signature when it reads something the signature
+  cannot version. Each source reports itself to the renderer with a reason bit:
+  - a video texture;
+  - a texture backed by an engine render target (a camera's);
+  - a phase-5 effect shader that reads time or keeps state (`EffectRuntime` knows);
+  - a `<particle-system>` element;
+  - pending MSDF glyphs;
+  - a transform-aware text settle (`RenderManager::RequestRender`).
+  A C++ entry point (`HtmlUIContext::requestRedraw()`) lets custom native content ask for one frame.
+- **R3 Verification mode.** With `JASPER_HTMLUI_VERIFY_KEPT=1` (tests only), a frame R1 would keep
+  is drawn anyway into a scratch target and compared with the kept target, byte for byte. A mismatch
+  logs `[HTML UI] kept frame differs` with the first command whose source was not versioned, and
+  counts in `keptMismatches`.
+- **R4 Composite what was drawn.**
+  - The renderer marks the 64x64-pixel tiles of layer 0 that received a colour write this frame: each
+    draw's bounds after its transform and scissor, and a layer composite's window.
+  - The composite draws only those tiles, merged into horizontal runs, in one draw.
+  - A frame that drew nothing composites nothing.
+  - A kept frame keeps its tile set.
+  - The image equals the full-quad composite.
+- **R5 Depth-stencil discard.**
+  - In a recorded frame whose plan has no stencil use (every clip elided or analytic, no mask), the
+    depth-stencil is loaded and stored `DONTCARE`.
+  - In a frame that uses it, the last pass binding each depth-stencil attachment stores `DONTCARE`.
+  - The plan is known before the replay (`executePlan`), so the last pass is known.
+- **R6 Statistics.** `HtmlUIRenderStats` (`engine/core/htmlui/HtmlUIRenderStats.h`) gains:
+  - `framesKept` (1 when R1 kept the frame), `liveSources` (R2's reason bits) and `keptMismatches`;
+  - `compositeTiles` and `compositePixels`;
+  - `layerPixels` (the render area of every layer and post-process pass, in target pixels);
+  - `layerCacheHits`, `layerCacheMisses` and `layerCacheBytes`;
+  - `samples` and `targetBytes`;
+  - `depthStencilStores`.
+  They reach MCP `inspect_ui render_stats`, `get_render_stats`, Lua `UIDocument:getRenderStats()`
+  and the benchmark through `forEachField` and `add`, which are extended.
+
+### Functional: layer cost (U35)
+
+- **R7 Gradient primitives (extends S16-F5).**
+  - Linear, radial and conic gradients and their repeating forms draw as `HTMLUI_PRIM` gradient
+    primitives on square and rounded boxes, with up to 16 stops (px, %, hard and transparent stops).
+  - So do the decorators (`DecoratorGradient.cpp`) and every `background-image` layer of a rounded
+    box (`MakeGradientTiles`).
+  - These draw with no layer and no mask.
+  - Still on the mesh-and-mask path, with R9 and R10 applied: more than 16 stops, a non-solid border
+    around a curve (browser parity, `ElementBackgroundLayers.cpp:711-719`), inline fragments,
+    `background-attachment` canvas, and `cross-fade()`.
+- **R8 Analytic `clip-path` shapes.** `clip-path: inset(... [round ...])`, `circle()` and `ellipse()`
+  clip analytically as an S16-F2 shape (a rectangle with elliptical radii) in the content's shaders.
+  This holds on an element without `mask-image` and with no layer inside the clipped content. No layer
+  is pushed. `polygon()`, `path()`, a shape with a reference box other than `border-box`, and shapes
+  with content holding layers keep the mask path with R9 and R10.
+- **R9 Layer result cache.**
+  - A layer scope's result is kept as a texture of the layer's window. A scope is everything between
+    a `PUSH_LAYER` and its `COMPOSITE`: filters, `mask-image`, a `clip-path` mask, a mesh-path
+    rounded-gradient mask, a `text-shadow` blur, `backdrop-filter` excluded.
+  - The key is the scope's signature (R1's, translations relative to the window's origin), its
+    filters' parameter hashes, the window size, the sample count and the pixel ratio.
+  - A hit draws the cached texture with the composite's blend, scissor and clip mask: one draw, no
+    pass, no filter.
+  - A trailing group opacity is applied at the composite, outside the cached image, so an opacity
+    fade hits.
+  - A scope that reads a live source (R2) is not cached.
+  - A cached result equals the uncached one byte for byte.
+  - Budget per renderer: 8 MiB on Android, iOS and HTML5, 32 MiB on desktop, least recently used
+    first. An entry unused for 120 frames is freed, and so is everything at `releaseGpuResources`
+    and context destruction.
+- **R10 Element-sized layers.**
+  - Every layer pushed for an element (a filter's content, `mask-image` and `clip-path` masks,
+    mesh-path rounded-gradient masks, a `text-shadow` blur, opacity groups) is a region layer that
+    covers its window, from the P7-F2 pool in 64-px granules.
+  - Fork side: `ElementBackgroundLayers::Render` (`:768, 801`), the `ElementEffects` mask and
+    opacity path (`:496`) and `ElementText`'s shadow layer (`:417`) pass their window to
+    `RenderManager::PushLayer(region)`.
+  - Renderer side: `PushLayerRegion` makes a region layer for windows inside the viewport too. The
+    early return at `RmlRenderer.cpp:2070-2073` goes.
+  - The post-process targets of its filters have the window's size (the existing `RegionPost` sets).
+  - Layers the size of the whole target remain only for windows that cover it.
+
+### Functional: clips under transforms (U27)
+
+- **R11 Scissor for axis-aligned clips.**
+  - Applies to an overflow clip with no border radius whose clipping element's transform is a scale
+    plus translation (S16's `axisMapOf` valid, no rotation, skew or perspective).
+  - It clips with its projected rectangle as a scissor, edges rounded to the nearest target pixel,
+    whatever the content holds (layers, filters and text included). No stencil mask is drawn.
+  - The projected rectangle also culls text lines (`ElementText.cpp:324-329`) and S16-F4's element
+    culling.
+  - Rotated, skewed, perspective and rounded clips keep the stencil mask, or S16's analytic clip.
+- **R12 Stencil bookkeeping per attachment.**
+  - The mask version is tracked per depth-stencil attachment: layer 0's shared one, and each region
+    layer's own.
+  - A stencil-tested draw runs only on an attachment whose version is the current mask's; otherwise
+    `ensureMask` redraws it first.
+  - R5's `DONTCARE` store resets that attachment's version to "none".
+  - An assertion hook (`RmlRenderer::setStencilAuditForTesting`) records every stencil-tested draw
+    with its attachment and version, so a test can prove the invariant on any backend.
+
+### Functional: where documents composite (U34, R57)
+
+- **R13 Screen Space - Overlay (default).**
+  - The scene's screen documents composite in the last pass that writes the main camera's output:
+    the uber pass (after its full-screen draw, `RenderSystem::renderUber`, `:5357-5466`), the
+    fixed-resolution blit, the Pixel Perfect Camera blit, or the scene-colour or MSAA redirect blits
+    (`:20264-20283`).
+  - They composite at output resolution, over the whole output viewport, Pixel Perfect bars included.
+  - No pass is added.
+  - `render_scale`, dynamic resolution, FXAA, CRT, VHS, glitch, pixelate and the other uber effects
+    do not touch them.
+  - With no post pass the camera pass is the output, and they composite there as today.
+  - Layer scenes draw after it, as today.
+- **R14 Screen Space - Camera.** A scene set to it composites in the camera pass before post, as
+  today: the UI scales with `render_scale` and post applies to it.
+- **R15 Screen space under every camera.**
+  - In game views (exported games, Play, the Game view, Game-view screenshots), screen documents fill
+    the camera's viewport for `CAMERA_PERSPECTIVE`, `CAMERA_ORTHO` and `CAMERA_UI` alike.
+  - The editor's Scene view keeps today's world-space canvas for UI and 2D scenes
+    (`UIDocumentSystemRender.cpp:109-131`).
+
+### Functional: MSAA (U37)
+
+- **R16 Auto.**
+  - The project setting accepts 0 = Auto: 1 sample on Android, iOS and HTML5, 4 on Windows, Linux
+    and macOS.
+  - New projects (the `Project` default, `editor/resources/templates/`) are Auto.
+  - A `project.yaml` without the key decodes as 4, its meaning before.
+  - 1, 2, 4 and 8 keep their meaning.
+  - The prebuilt player's default becomes 0 (`PlayerConfig.h:104`).
+- **R17 Per scene.**
+  - Scene setting `htmlUiMsaaSamples`: 0 = Project Default, or 1, 2, 4, 8. It drives the scene's
+    screen context.
+  - It is settable at runtime; the next frame recreates the target and draws once.
+- **R18 Per document.**
+  - `UIDocumentComponent::msaaSamples`: 0 = the scene's, or 1, 2, 4, 8. It is used by texture-mode
+    documents, which have their own context.
+  - Screen-mode documents share the scene's context, and the field has no effect there. The
+    Inspector hides it in screen mode, and an MCP edit of it on a screen document returns a `next`
+    saying the scene setting decides.
+- **R19 Resolution per context.**
+  - The static `preferredSampleCount` (`HtmlUIContextRender.cpp:40`) becomes a per-context value:
+    the component's, else the scene's, else the project's (Auto resolved for the running platform),
+    clamped to the device (`FramebufferRender::getMaxMsaaSamples`).
+  - `UIDocumentSystem::setPreferredSampleCount` stays as the project-level setter.
+
+### Editor UX (human)
+
+- **R20** Settings and the overlay:
+  - The scene Inspector (`editor/window/InspectorWindow.cpp`, where the scene settings live) gets an
+    "HTML UI" group:
+    - **Render Mode** (Screen Space - Overlay / Screen Space - Camera);
+    - **Anti-aliasing (MSAA)** (Project Default / Disabled / 2x / 4x / 8x).
+  - Edits are undoable through `ScenePropertyCmd`.
+  - The UIDocument Inspector shows **Anti-aliasing (MSAA)** (Scene Default / Disabled / 2x / 4x / 8x)
+    in Texture mode.
+  - Project Settings > Graphics > HTML UI MSAA gains **Auto**, with the hint "1 sample on phones and
+    the web, 4 on desktop".
+  - The Game view's UI stats overlay shows kept frames, passes, layer cache hits and bytes, and
+    composite pixels.
+
+### Agent UX (MCP, Lua, CLI)
+
+- **R21** MCP: no new tool.
+  - `set_scene_settings` and `get_scene_settings` carry `htmlUiRenderMode` and `htmlUiMsaaSamples`
+    through the scene-property catalog (`editor/mcp/tools/SceneTools.cpp`, as `sceneColorScale`).
+  - Component edits carry `msaaSamples`.
+  - `inspect_ui render_stats` and `get_render_stats` return R6's fields.
+- **R22** Lua:
+  - `Scene.htmlUiMsaaSamples`, and `Scene.htmlUiRenderMode` with `UIRenderMode.OVERLAY` /
+    `UIRenderMode.CAMERA`, as properties beside `Scene.sceneColorScale`
+    (`engine/core/script/binding/CoreClassesLua.cpp:3461`).
+  - `UIDocumentComponent.msaaSamples`.
+  - `getRenderStats()` returns the new fields.
+  - Stub fragments go in `engine/core/script/binding/stubs/`, and `docs/mcp/guide/lua-api.md` is
+    updated.
+- **R23** Docs:
+  - The cost paragraph of `docs/mcp/guide/html-ui.md` (`:1972-1976`) states S92's costs: idle 0
+    passes; a change is 1 pass plus uncached layers; which constructs still layer.
+  - Update `:401` (MSAA default) and `:2002` (the settings).
+  - Update the render-mode and camera text of `html-ui.md`.
+  - The fork ledger `docs/html-ui/FORK.md` gets an "S92 patches" table.
+  - Regenerate `docs/mcp/guide/html-ui-support.md` if the support table's `clip-path` note changes.
+
+### Functional: Lua overload dispatch (R66, S33)
+
+- **R24 No pcall or string per miss.**
+  - Each overload entry carries a no-raise argument check built from what `Stack<T>::get` accepts
+    (the port's patch):
+    - numbers and `const char*` through `Stack<T>::get`;
+    - string-or-number for `std::string`;
+    - `Userdata::isInstance<T>` or nil for a bound class;
+    - "can't tell" for `bool`, enums, `LuaRef`, containers, `std::optional`, `std::string_view`,
+      `lua_CFunction` overloads and the engine's own `Stack` specialisations.
+  - An overload whose check says no is skipped without a call.
+  - No error table and no string is made unless every overload fails.
+- **R25 Same choice, same message.**
+  - Every call picks the overload stock LuaBridge picks.
+  - When every overload fails, the message is byte-identical to stock. A second pass keeps the order,
+    the `#%d` numbering and the stored body errors.
+- **R26 No leak.** No C++ object with a non-trivial destructor is live in any frame `lua_error`
+  `longjmp`s over in LuaBridge's call paths: overloaded misses, all-fail calls, wrong calls of
+  non-overloaded functions (`tupleize`), and `raise_exception_error` inside `catch`
+  (`LuaBridge.h:6554, 6627, 6669`). Arguments decode into a result. The raise happens after the
+  decoded values are destroyed and outside any handler.
+- **R27 Guard.** In debug builds, `LUABRIDGE_ASSERT` checks that an overload a check rejected does
+  fail to decode, and that the second pass never reaches a success.
+- **R28 Ledger.** `engine/libs/luabridge3/PATCHES.md` lists S34 D6 (`2a032453b`), `583652b17` and the
+  S92 changes, with what each changes and its test.
+
+### Performance (concrete budgets)
+
+- **R29 Passes per frame** (`HtmlUIRenderStats::passes` of the context, one document at 1280x720,
+  pixel ratio 1, 4 samples unless said). The fixtures are `engine/tests/htmlui/fixtures/s92/`; each
+  reproduces an M pattern with the port's constructs.
+
+  | Fixture / state | Cold (first frame) | Warm (another element changed) | Idle (nothing changed) |
+  |---|---|---|---|
+  | `static.html`: boxes, text, no layer | 1 | 1 | **0** (0 draws, `framesKept` 1) |
+  | `rounded-gradient.html`: rounded box, 7-stop px gradient, 4 layers | 1 (0 layers) | 1 | 0 |
+  | `btn.html`: `.btn` (border, radius, 4 gradient layers, outer box-shadow, `drop-shadow` filter) | ≤ 4 | 1 (1 cache hit) | 0 |
+  | `card.html`: octagon `clip-path` card, conic band, `drop-shadow` glow, text | ≤ 7 | 1 | 0 |
+  | `inset-clip.html`: `clip-path: inset(... round ...)` and `circle()` | 1 (0 layers) | 1 | 0 |
+  | `cards4.html`: 4 power-up cards and a timer label changing each frame (port: 206 at `7f48d7e8d`) | ≤ 1 + 4 x 6 | **1** | 0 |
+  | `o2-frame.html`: 5 gradients on rounded boxes (port: 30) | 1 | 1 | 0 |
+
+- **R30 Layer area.** In every fixture, `layerPixels` ≤ 1.5 x the sum of the layers' windows rounded
+  up to 64-px granules. A layer whose window lies inside the viewport is never the size of the whole
+  target.
+- **R31 Composite area.**
+  - `compositePixels` ≤ the area of the tiles with content.
+  - `hud.html` (content on about 10 % of the view): ≤ 20 % of the view.
+  - An empty visible document: 0 composite draws.
+- **R32 Memory.**
+  - At Auto on a phone (1 sample), a 2.6 MP document target is about 21 MB (RGBA8 + D24S8), against
+    83 MB plus the resolve at 4 samples. `targetBytes` reports it.
+  - The layer cache stays within R9's budget (`layerCacheBytes`).
+- **R33 CPU.**
+  - The signature (R1) costs ≤ 5 % of the record-and-plan CPU time in `HtmlUIRenderPerf.B1Examples`
+    and `B2List500`. This is reported through `perfSlack()`, not a direct wall-clock assert.
+  - A kept frame's CPU time ≤ that of the same frame drawn.
+- **R34 Lua calls** (`LuaBindingBench`, dev host, through `perfSlack()`):
+  - A call reaching overload k through misses costs ≤ 2x + 1 µs a call of overload 1 of the same
+    set. Forms: `setShaderUniform(name, float)`, `Quaternion * Vector3`, `Vector3(Vector4)`.
+  - A first-overload call costs ≤ 1.1x stock.
+  - A wrong call costs ≤ 1.1x stock.
+
+### Platform and backends
+
+- **R35** Every requirement works on GL 4.1, GLES3/WebGL2, Metal, D3D11 and Vulkan through
+  sokol-gfx, with no compute, SSBO or indirect draw.
+  - Tiles are a small dynamic vertex buffer.
+  - Cached results and region layers are RGBA8 textures.
+  - R7's stop table is an RGBA8 texture read with `texelFetch` (no filtering; GLES3 and WebGL2 have it).
+  - `DONTCARE` actions are what sokol maps per backend.
+- **R36** Disabled is free:
+  - no visible document: nothing is drawn or allocated;
+  - no layer: the cache allocates nothing;
+  - Screen Space - Camera: no change to the uber pass.
+
+### Data and compatibility
+
+- **R37** New fields are optional with defaults and no version bump:
+  - scene `htmlUiRenderMode` (default `overlay`) and `htmlUiMsaaSamples` (default 0);
+  - component `msaaSamples` (default 0);
+  - the project's `htmlUiMsaaSamples` accepts 0 (a missing key decodes as 4).
+  Lists to update:
+  - `editor/StreamSchema.cpp` (scene, component and project key lists);
+  - `RuntimeFields.gen.inc` and the reflection parity goldens, regenerated;
+  - the templates in `editor/resources/templates/`, regenerated.
+  `tools/test-projects/upgrade-from-main/` must load unchanged.
+
+## 7. Design constraints and decisions
+
+- **D1 A frame signature, not dirty tracking.**
+  - Whether a frame changed is decided from what RmlUi recorded, which is correct by construction.
+  - The alternative was a fork-wide "render dirty" flag set by every style, layout, scroll, animation,
+    data-view and decorator change. It is unsafe to complete, and a missed hook shows stale UI.
+  - The price is that RmlUi's render traversal still runs on the CPU every frame. S16-F4 culling and
+    S16-F6 clip memos make it cheap.
+  - R33 measures it.
+- **D2 Serials, not pointers.** Geometry and textures get 64-bit serials at creation. An address
+  reused after a release can never make a stale match.
+- **D3 64-px tiles, runs, one draw.** The tile size matches the region granule. Runs keep the vertex
+  count small (≤ 2 x rows of tiles). A dense document degenerates to one quad per row, not to
+  thousands.
+- **D4 Overlay is the default for every scene, old ones too.**
+  - This is Unity's default, and it is the owner's requested U34 behaviour.
+  - It is a deliberate rendering change for scenes with `render_scale` < 1 or uber effects: their UI
+    becomes crisp and unaffected. It changes no stored value's meaning, so there is no migration.
+  - A scene that wants its UI under CRT or VHS sets Screen Space - Camera.
+  - The tests pinning today's placement are updated in the same commit and say so.
+- **D5 R57 in game views only.** The Scene view's world-space canvas is a feature: it is how a UI
+  scene is edited in place. Game views follow Unity's overlay canvas, which ignores the camera.
+- **D6 MSAA Auto: 1 on phones and the web, 4 on desktop.**
+  - SDF primitives and analytic clips antialias at any count.
+  - The port compared 1 and 4 on five games: the mean difference was at most 0.077 of 255, all of it
+    moving content.
+  - Old projects keep their stored value; a missing key stays 4.
+  - This supersedes S16 D7 for Auto only, with its own golden pass: the htmlui suite at one sample,
+    as S16's `HtmlUIRenderPerf.OneSampleReport`.
+- **D7 No `EXT_multisampled_render_to_texture`.** sokol-gfx does not expose it, and Auto makes it
+  moot for the default. A project that asks for 4 samples on a phone pays for them.
+- **D8 Per-document MSAA for texture-mode documents only.** Screen documents of a scene share one
+  context and one target. Per-document counts there would need one context per document, which costs
+  more than it saves.
+- **D9 Gradient stops in a table texture.**
+  - Up to 16 stops per gradient live in a per-renderer RGBA8 table: one row per compiled gradient,
+    each stop a colour texel and a 16-bit position split over two channels.
+  - The `HTMLUI_PRIM` instance carries the row.
+  - The shader loops over the row's stops with `texelFetch`. There are no implicit derivatives in
+    the loop (`tools/check_shader_lod.py`).
+  - The four-stop instance path of S16-F5 stays for gradients that fit it. The table serves the rest.
+- **D10 Cache by signature, not by element.**
+  - The cache does not need element identity across frames. An element that moves keeps its
+    window-relative signature and hits.
+  - Two identical buttons share one entry.
+  - The opacity of a fade is applied at the composite (R9), the most common animation over a filter.
+- **D11 Rounded scissors.** R11 rounds the projected rectangle's edges to the nearest pixel. Where an
+  edge falls inside a pixel, the 4-sample stencil gave partial coverage. The difference is at most
+  half a pixel of one edge. The goldens that change are reviewed one by one (AGENTS.md).
+- **D12 LuaBridge: the port's patch, then the root fix.**
+  - The patch applies cleanly. It is taken as is for R24 and R25, then R26 and R27 are added on top.
+  - Its standalone harness is not vendored. Its cases become `LuaOverloadDispatch.*`.
+- **D13 Bindings are not touched.** `Quaternion(nil)`, `Quaternion(Vector3)` and the `__tostring`
+  crash (ledger S32) are binding bugs owned by S95. S92 changes only `LuaBridge.h`.
+- **D14 No CPU skip of `context->Render()`.** See D1. It is a follow-up if R33 shows that a static
+  M-like HUD's traversal costs more than 0.3 ms on the reference host.
+- **D15 No damage-rectangle redraw.** A changed document is one pass. A partial redraw saves fill
+  inside that pass, but it needs per-command diffing across layers. Recorded as a follow-up.
+- **D16 `drop-shadow()` is not converted to a shadow primitive.** R9 makes it free after the first
+  frame for every content, not only for a single box.
+
+**API sketch**
+
+```cpp
+// engine/core/htmlui/HtmlUIContext.h
+void setSampleCountOverride(int samples);   // 0: the scene's / project's (R19)
+void requestRedraw();                       // R2: custom native content changed
+
+// engine/core/Scene.h (scene settings)
+enum class UIRenderMode { OVERLAY, CAMERA };
+void setHtmlUiRenderMode(UIRenderMode mode);  UIRenderMode getHtmlUiRenderMode() const;
+void setHtmlUiMsaaSamples(int samples);       int getHtmlUiMsaaSamples() const;   // 0: project
+
+// engine/core/component/UIDocumentComponent.h
+int msaaSamples = 0;   // TEXTURE mode: 0 = the scene's
+```
+
+```lua
+scene.htmlUiMsaaSamples = 1
+scene.htmlUiRenderMode = UIRenderMode.OVERLAY
+local s = doc:getRenderStats()   -- s.framesKept, s.passes, s.layerCacheHits, s.samples ...
+```
+
+## 8. Acceptance criteria
+
+Rendering tests run with `tools/build.sh htmlui-tests` (glcore and `HTMLUI_BACKEND=vulkan`), with a
+`--gtest_filter` per suite (the program's rule: no full suites). Suite names follow
+`docs/testing.md` "Naming". Every behaviour change below has a test that fails on current main: that
+run is the red control, recorded in the Deviations section at implementation.
+
+| AC | Requirement | Verification |
+|---|---|---|
+| AC1 | R1 | `RenderFrameReuse.StaticDocumentDrawsNothing`: `s92/static.html`, 3 frames. Frames 2 and 3 have `passes` 0, `drawCalls` 0, `framesKept` 1, and the composited image equals frame 1's. Red: main gives `passes` 1 |
+| AC2 | R1, R2 | `RenderFrameReuse.EveryChangeRedraws`: one case per change: text, class, style property, transform animation, scroll, image load, data-model value, hover, focus caret, video frame, time-based effect, `<particle-system>`, glyph page growth, resize, sample count. The frame after each has `framesKept` 0, and the image matches a freshly loaded document in that state. Cases that settle return to `framesKept` 1 |
+| AC3 | R3 | The golden suites (`*Golden*`, `RenderP1Test.*`, `RenderPrimitive.*`, `RenderClip.*`, `RenderFilter*`, effects goldens) run with `JASPER_HTMLUI_VERIFY_KEPT=1` and two frames per golden: `keptMismatches` 0 and no `kept frame differs` line, on glcore and Vulkan |
+| AC4 | R4, R31 | `RenderFrameReuse.CompositesOnlyDrawnTiles`: `s92/hud.html` gives `compositePixels` ≤ 0.2 x the view; an empty document gives 0 composite draws; the scene image equals the full-quad composite (`HtmlUIScene` golden, unchanged) |
+| AC5 | R5 | `RenderFrameReuse.DepthStencilDiscarded`: a frame without stencil use has `depthStencilStores` 0; a frame with a rotated rounded clip has `depthStencilStores` ≤ the passes that wrote the mask minus 1; goldens unchanged |
+| AC6 | R6, R21, R22 | MCP `tools/mcp/tests/test_html_ui_render_cost.py` (`CI = True`): `inspect_ui render_stats` and `get_render_stats` list every new field. A Lua case reads `doc:getRenderStats().framesKept` in Play through the Console |
+| AC7 | R7 | `RenderPrimitive.GradientsWithManyStops`, `.ConicAndRepeating`, `.EveryLayerOfARoundedBox`: `layersPushed` 0 and `passes` 1. New browser-parity fixtures `p3/paint/gradient-rounded-16-stops`, `gradient-conic-rounded` and `gradient-hard-px-stops` against Chromium references (`tools/htmlui/render-reference.mjs`); the existing `p3/paint/gradient-*` fixtures pass unchanged |
+| AC8 | R8 | `RenderClip.ClipPathBasicShapesAreAnalytic`: `inset() round`, `circle()`, `ellipse()` give `layersPushed` 0. Browser-parity fixture `p3/paint/clip-path-basic-shapes`; `polygon()` still layers, golden unchanged |
+| AC9 | R9 | `RenderLayerCost.CacheHitsWhileUnchanged`: the frame-1 miss and frame-2 hit (another element changed) are byte-identical; an opacity fade 1 → 0 over 10 frames gives 10 hits; a moving element hits; a changed child misses once; a live effect inside is never cached. `RenderLayerCost.CacheBudget`: a fixture over 8 MiB evicts LRU and stays ≤ the budget. The leak test counts (`TestRenderRenderer` live-texture counts) return to 0 after unload |
+| AC10 | R29 | `RenderLayerCost.ArcadePatterns`: every row of R29's table at its budget, at 4 samples and at 1. The first commit runs it on main and records the numbers in Deviations (the red control; main is expected over budget on `btn`, `card` and `cards4`) |
+| AC11 | R10, R30 | `RenderLayerCost.LayersSizedToTheirElement`: `layerPixels` within R30's bound in every s92 fixture. `TestRenderFilterRegion.*` and `TestRenderFilterClip.*` goldens unchanged; RmlUi's `EffectHooks.*` unit tests pass |
+| AC12 | R11, R12 | `RenderClip.TextInScaledScrollWithFilterLayers`: the U27 layout (scaled panel, `overflow: hidden` scroll viewport, items with `filter`, text in clipped rows) gives text clipped (golden), `stencilDraws` 0, and lines culled. `RenderClip.RotatedClipKeepsStencil`: a golden. `TestRenderRecord`'s `StencilAuditHoldsAcrossPassBreaks`: every audited draw's attachment version equals the mask version, with filter layers interleaved. The U27 layout is added to the Android render gate (`tools/android-emulator-test.sh --scene`). On a real Mali or Adreno device, "unverified" unless one is available (risk 4) |
+| AC13 | R13, R14 | Scene composite tests in `engine/tests/htmlui/TestGoldenScene.cpp`: `HtmlUIScene.OverlayIgnoresRenderScale` gives UI pixels identical at `render_scale` 0.5 and 1.0 over a flat background (red on main). `.OverlayIgnoresFxaaAndCrt` likewise. `.CameraModeKeepsOldPlacement` reproduces main's scaled image. `.PixelPerfectBarsCoveredByOverlay` puts the UI over the bars. Run with `UNIT_TEST_ARGS`/`--gtest_filter` on glcore, Vulkan and `GRAPHIC_BACKEND=gles3` where the scene suites run |
+| AC14 | R15 | `HtmlUIScene.OrthoCameraFillsViewport` (camera size 22, the R57 case) and `.UiCameraPannedFillsViewport` show the document at screen pixels (red on main). MCP `test_html_ui_render_cost.py::test_scene_view_keeps_world_canvas` takes a Scene-view screenshot of a 2D scene and matches the canvas position |
+| AC15 | R16-R19, R37 | Editor unit tests in `editor/tests/stream/StreamProjectHtmlUiRenderTest.cpp`: a missing key gives 4, 0 round-trips, and the generated `main.cpp` and prebuilt config carry 0. Scene and component key round trips are in their stream tests. `HtmlUIContext.AutoSampleCountPerPlatform` checks the platform table. The upgrade-from-main project loads (`tools/check-changed` picks it) |
+| AC16 | R17, R18, R20, R21, R22 | MCP `test_html_ui_render_cost.py`: `set_scene_settings htmlUiMsaaSamples=1` gives `samples` 1 in `inspect_ui render_stats`, and undo restores 4. A texture-mode component with `msaaSamples` 2 gives 2. A screen-mode edit returns the `next` hint. `htmlUiRenderMode` round-trips with undo. Lua: `scene.htmlUiMsaaSamples = 1` in Play is seen through the Console. The scene Inspector edit is undoable (editor test on `ScenePropertyCmd`) |
+| AC17 | R24, R25 | `engine/tests/core/script/LuaOverloadDispatchTest.cpp`: the port's cases (`overload_dispatch_test.cpp`: 32 Lua values against sets of every parameter kind, wrong `self`, bodies that raise or throw, C-function overloads, constructors, a coroutine, arity skips) with messages pinned to the strings stock LuaBridge gives, captured before the change. `LuaOverloadDispatch.LaterOverloadBuildsNoErrorString` counts the Lua allocator's string allocations for `setShaderUniform(name, float)` on a test class: stock > 0 (red), patched 0 |
+| AC18 | R26 | `LuaOverloadDispatch.NoLeakOnMiss`, `.NoLeakWhenEveryOverloadFails`, `.NoLeakOnWrongCallWithoutOverloads` (`AllocationCounter`, 2000 calls, a 64-character `std::string` placed after the failing parameter so g++ shows it): net 0; red on main for the second and third |
+| AC19 | R27, R28 | A debug-build run of AC17 trips no assert. `PATCHES.md` exists and names every local change (review) |
+| AC20 | R34 | `LuaBindingBench.OverloadMisses` prints stock-relative ratios. The ratio checks go through `perfSlack()`; the numbers go in Deviations |
+| AC21 | R33 | `HtmlUIRenderPerf.B1Examples`/`B2List500` report the signature's share through `perfSlack()`; numbers in Deviations |
+| AC22 | R35 | `tools/build.sh web` and `tools/build.sh android` build. `tools/build.sh web-gate` loads an HTML UI page with a kept frame and a cached filter. `python3 tools/check_shader_lod.py` passes. `tools/check-changed` passes |
+| AC23 | R23 | Docs updated. `tools/mcp/gen_tool_docs.py` and `gen_html_ui_support.py` rerun, with no diff unless text changed. `tool_budget.py --check tools/mcp/budget.json` passes. If any tool or guide text is added, a case in `tools/mcp/eval/cases.py` fails without it (AGENTS.md "MCP text") |
+
+## 9. Work packages
+
+Five packages, each in its own worktree and branch. Shared files have one owner per region, named
+below; anything else in a shared file is a two-line hook that the owner reviews at merge.
+
+| WP | Name | R | Owns | Shares (and how) | Size | Order |
+|---|---|---|---|---|---|---|
+| A | Frame reuse and tile composite | R1-R6, R29 (`static`, idle column), R31, R33 | `engine/core/htmlui/HtmlUIContext.cpp` (`update`), `HtmlUIContextRender.cpp` `render()` body (`:77-170`), new `engine/core/htmlui/RmlRendererFrame.cpp` (signature, live sources, tiles, verify mode), `HtmlUITexture.h` (serial, content version), `RmlRenderer.cpp` `beginFrame`/`endFrame`/`beginPass`/`endPass`/`drawComposite` (`:1382-1424`, `:3293-3481`); tests `TestRenderFrameReuse.cpp` | `HtmlUIRenderStats.h`: **A adds every R6 field in its first commit** (B2 and C only fill them); `RmlRenderer.h`: A's members in a block marked `// S92 frame reuse`; `RmlRendererBatch.cpp`: one call in `executePlan` (A) | L | First. Its first commit (signature over a command range, serials, R6 fields) is what B2 builds on |
+| B1 | Gradients and clips | R7, R8, R11, R12 | fork `DecoratorGradient.cpp`, `ElementBackgroundLayers.cpp` `MakeGradientTiles` (`:651-734`) and `Generate` (`:575-595`), `ElementUtilities.cpp` (`:150-215`), `ElementText.cpp` culling (`:320-340`), the compat `clip-path` lowering (`compat/css/props/Background.cpp` `clip-path` branch); `HtmlUIPrimitive.h`; `RmlRendererBatch.cpp` `toInstance`, `SupportsGradientPrimitive`, `planClipScopes` (`:330-410`, `:600-800`); the `HTMLUI_PRIM` GLSL in `engine/shaderlib/`; `RmlRenderer.cpp` `ensureMask`/`maskVersionOf`/`bindLayer` (`:1534-1571`, `:1936-1990`); tests in `TestRenderPrimitive.cpp`, `TestRenderClip.cpp`, `TestRenderRecord.cpp`, the p3 parity fixtures | `FORK.md` "S92 patches": B1 uses ids S92-F1..F3, B2 S92-F4..F6; `ElementText.cpp`: B1 owns `:320-340`, B2 owns `:410-430` | L | Any time; independent of A |
+| B2 | Sized layers and result cache | R9, R10, R29 (cold and warm columns), R30 | new `engine/core/htmlui/RmlRendererLayerCache.cpp`; `RmlRenderer.cpp` `PushLayerRegion`/`pushLayerNow`/`PopLayer`/`compositeLayersNow`/`applyFilter` (`:2060-2393`); fork `ElementEffects.cpp` (`:380-515`), `ElementBackgroundLayers.cpp` `Render` (`:747-810`), `ElementText.cpp` shadow layer (`:410-430`); tests `TestRenderLayerCost.cpp`, fixtures `engine/tests/htmlui/fixtures/s92/` | `RmlRenderer.h`: block `// S92 layer cache`; uses A's signature helper | L | After A's first commit (branch from it or rebase onto it) |
+| C | Composite stage and MSAA settings | R13-R23, R32, R37 | `engine/core/subsystem/RenderSystem.cpp` (document composite placement at `:5357-5466`, `:20159-20283`), `UIDocumentSystemRender.cpp`, `UIDocumentSystem.{h,cpp}` (sample settings), `HtmlUIContextRender.cpp` `:40-71` and `HtmlUIContext.h` (per-context samples), `Scene.{h,cpp}`, `UIDocumentComponent.h`, `editor/Stream.cpp`, `StreamSchema.cpp`, `Project.cpp`, `settings/SettingsRows.cpp`, `Generator.cpp`, `ExporterPrebuilt.cpp`, `PlayerConfig.{h,cpp}`, `InspectorWindow.cpp` and the UIDocument Inspector, `SceneTools.cpp` catalog, `CoreClassesLua.cpp`/`HtmlUIClassesLua.cpp` and stub fragments, `docs/mcp/guide/html-ui.md` and `lua-api.md`, regenerated templates and `RuntimeFields.gen.inc`; tests `TestGoldenScene.cpp`, stream tests, `test_html_ui_render_cost.py` | `HtmlUIContextRender.cpp`: C owns `:40-71`, A owns `render()`; the guide's cost paragraph is written by C from A and B2's numbers | L | Any time; the docs paragraph last |
+| D | Lua overload dispatch | R24-R28, R34 | `engine/libs/luabridge3/LuaBridge.h`, new `engine/libs/luabridge3/PATCHES.md`, `engine/tests/core/script/LuaOverloadDispatchTest.cpp`, `LuaBindingBenchTest.cpp` | none in S92 | M | Any time; fully independent |
+
+Merge order: A, then B1, B2, C and D in any order. Run `tools/check-changed` after each merge, and
+the R29 table (AC10) after A, B1 and B2 are all in.
+
+## 10. Dependencies and conflicts
+
+- **Builds on S16** (`docs/specs/S16-ui-render-text.md`) and the fork patches S16-F1..F6, P7-F1 and
+  P7-F2 (`docs/html-ui/FORK.md:721-763`). S92 changes S16 D7 for Auto only (D6).
+- **S93 (UI)**:
+  - U30 and U31 touch `RmlFontEngine.cpp` and `RmlRenderer::LoadTexture` (`RmlRenderer.cpp:994-1070`).
+    A's texture content version is bumped in the upload paths S93 may move: whoever lands second
+    keeps the bump.
+  - U22 (inset shadows under gradients: `ElementBackgroundBorder`, S16-F1) and U23 (`calc()` in
+    gradient stops: compat `Background.cpp`, `DecoratorGradient.cpp`) overlap B1's files.
+  - U10, U11 and U14 (filters on border images, `mix-blend-mode`, tint) overlap B2's composite and
+    cache: a new blend mode must be part of the cache key.
+  - U26 (caches keyed per render manager) agrees with R9, whose cache is per renderer.
+  - U2 and U13 (hit tests under transforms) are input-only, with no conflict with R11.
+  - U3 (the animation clock): animations change recorded geometry or transforms, so R1 redraws. S93
+    should rerun AC2 after its change.
+  - U9 (headless labels changing each frame) should be retested after A.
+- **S94 (rendering)**: `RenderSystem.cpp` is a hotspot. C moves the document composite into the
+  uber, fixed-resolution and redirect passes (`:5357-5466`, `:20159-20283`). S94's `render_scale`,
+  post and camera items must not move it back. Merge C early, or coordinate on those line ranges.
+- **S95 (Lua)**:
+  - S32 and S1 change `engine/core/script/binding/MathClassesLua.cpp`; D changes only `LuaBridge.h`.
+    S1's enum ambiguity stays "can't tell" in R24's checks, so S95's fix (a distinct factory) is
+    needed regardless.
+  - S28 (`renderOffscreen` outside a frame) and S30 (Android background rebuild: `HtmlUIContext::destroy`,
+    `HtmlUIContext.cpp:219-242`) touch the lifetimes of A's kept target and B2's cache: both must be
+    dropped at `releaseGpuResources` and destroy (R9).
+  - C adds properties to `CoreClassesLua.cpp` and `HtmlUIClassesLua.cpp`: append only.
+- **S98 (editor, MCP)**: the Game view stats overlay (R20) and `SceneTools.cpp` (R21) may be touched
+  by E items. Append only.
+- Generated files touched: `RuntimeFields.gen.inc`, `editor/resources/templates/`, and possibly
+  `docs/mcp/TOOLS.md` and `html-ui-support.md`. Regenerate them, never edit them by hand.
+
+## 11. Risks and defaults
+
+1. **A live source the signature misses shows a stale frame.**
+   - Default: R2's list plus `requestRedraw()`.
+   - AC3's verify mode over every golden is the net.
+   - The test toggle `RmlRenderer::setFrameReuseForTesting(false)` turns R1 off. It is not a user
+     setting: a stale frame is a bug to fix, not an option.
+2. **Signature cost on huge documents.** Hashing is linear in commands. The B2List500 and B7 virtual
+   list benchmarks bound it (R33). If it exceeds 5 %, hash per S16 run chunk and reuse the run
+   cache's hashes.
+3. **Cache memory on phones.** The default is 8 MiB with LRU eviction; `layerCacheBytes` is visible.
+   A project setting is added only if a game needs it (not now).
+4. **The U27 root cause on tile GPUs is unconfirmed.**
+   - R11 removes the stencil path for the port's case. R12 makes the rest auditable.
+   - The Android emulator does not reproduce it. Without a real Mali or Adreno device, the real-device
+     check stays "unverified" in the report.
+5. **Overlay by default changes the look of scenes whose UI went through post** (CRT, VHS,
+   `render_scale` < 1). This is deliberate (D4). Release notes and the guide name Screen Space -
+   Camera as the way back.
+6. **R11's rounded scissor changes goldens with fractional clip edges under scale.** Every changed
+   image is reviewed, and the commit says why (AGENTS.md "Rewrite goldens one suite at a time").
+7. **Gradient table precision.** A 16-bit position gives 1/65536 of the gradient line: under 0.01 px
+   for lines up to 600 px. Hard px stops stay hard. AC7's parity fixtures check it.
+8. **More region framebuffers.** Every element layer now comes from the pool. `trimRegions` frees
+   unused sizes; `regionTargetsCreated` is watched in AC11, steady at 0 after warm-up.
+9. **Lua: a check that says no wrongly would skip a valid overload.** R27's debug assert, and AC17's
+   cases covering every parameter kind, guard it. The default for a type the check cannot judge is
+   "can't tell" (run it).
+10. **Vendored LuaBridge drifting from upstream.** `PATCHES.md` makes a future upgrade reapply three
+    named changes.
+
+## Deviations (implementation record)
+
+(empty: filled while implementing, with the red-control numbers of AC10, AC20 and AC21)
