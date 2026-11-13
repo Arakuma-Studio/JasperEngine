@@ -4,6 +4,7 @@
 #include "SafeWrite.h"
 #include "buffer/Buffer.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
+#include "io/AtomicFile.h"
 #include "io/File.h"
 #include "net/CurlApi.h"
 
@@ -354,8 +355,10 @@ namespace jasperengine::editor::safewrite {
             std::memcpy(info->FileName, name.data(), name.size() * sizeof(WCHAR));
             // FileRenameInfoEx: FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS
             info->Flags = replace ? (0x1 | 0x2) : 0;
-            for (int attempt = 0; attempt < FileUtils::renameAttempts; attempt++) {
-                if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs));
+            // the publish retry policy of io::renameWithRetry (FileUtils::renameWithRetry)
+            const io::AtomicWriteOptions retry;
+            for (int attempt = 0; attempt < retry.attempts; attempt++) {
+                if (attempt > 0) std::this_thread::sleep_for(retry.retryDelay);
                 if (a.setInfo(handle, kFileRenameInfoEx, info, static_cast<DWORD>(buffer.size()))) return true;
                 code = GetLastError();
                 if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {

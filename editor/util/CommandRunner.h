@@ -11,9 +11,7 @@
 #include <atomic>
 #include <mutex>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <sys/types.h>  // pid_t
 #endif
 
@@ -139,10 +137,11 @@ namespace jasperengine::editor {
         int lastExitCode = -1;   // the last run()'s exit code (-1: not run, cancelled, a signal)
 
 #ifdef _WIN32
-        HANDLE currentProcessHandle = NULL;
+        // HANDLEs (void*: <windows.h> stays out of the sources including this header)
+        void* currentProcessHandle = nullptr;
         // Job object the child is assigned to, so termination kills the whole
         // process tree (cmake and the compilers it spawns), not just cmake.
-        HANDLE currentJobHandle = NULL;
+        void* currentJobHandle = nullptr;
         std::mutex processHandleMutex;
 #else
         pid_t currentProcessPid = 0;
