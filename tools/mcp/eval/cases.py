@@ -5242,4 +5242,40 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_drivable_car_wheel_colliders",
+        "kind": "guard",
+        "what_happened": "A drivable car is a dynamic body with a Wheel Collider on a child at each wheel (suspension and "
+                         "tire friction on Jolt's vehicle constraint), not four wheel bodies on hinge joints, which bounce and "
+                         "slide sideways.",
+        "text_at_issue": "component Wheel Collider 'A car wheel with suspension and tire friction, below a dynamic Rigidbody'; "
+                         "physics guide 'Vehicles (Wheel Collider)': 'A drivable car is a dynamic Rigidbody ... with a Wheel "
+                         "Collider ... on a child GameObject at each wheel: not four bodies on hinge joints'",
+        "source": "S96 REQ-47 (WP-A); no failure on record",
+        "prompt": "The Kart in the current scene is just a box mesh. Make it a drivable car with four wheels.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 21 Kart (mesh)", {"entities": [{"id": 21, "path": "Kart"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 21 \"Kart\": transform, mesh (cube, scale 2 1 4).", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Rigidbody (rigidbody): Rigidbody with colliders, simulated by Jolt; Joint 3D (joint3d): Connects two "
+                "Rigidbodies; Character Controller (charactercontroller): A capsule moved by script that climbs steps and "
+                "slopes; Wheel Collider (wheelcollider): A car wheel with suspension and tire friction, below a dynamic "
+                "Rigidbody; Vehicle Drivetrain (vehicledrivetrain): An engine, gear box and differentials driving the body's "
+                "Wheel Colliders ...",
+                {"components": [{"key": "rigidbody", "name": "Rigidbody"}, {"key": "joint3d", "name": "Joint 3D"},
+                                {"key": "wheelcollider", "name": "Wheel Collider"},
+                                {"key": "vehicledrivetrain", "name": "Vehicle Drivetrain"}]})},
+            {"tool": "edit_colliders", "result": ok("Kart: dynamic body, 1 collider (box 2 x 1 x 4).", {"entity": {"id": 21}})},
+            {"tool": "create_entity", "result": ok("Created GameObject 30 \"Wheel\" under 21 \"Kart\".",
+                                                   {"entity_id": 30, "entity": {"id": 30}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
+                "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3dObject.vehicle"})},
+            {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3dObject.vehicle"}}]}],
+                   "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
+        "max_turns": 16,
+    },
 ]

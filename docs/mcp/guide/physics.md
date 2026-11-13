@@ -566,6 +566,49 @@ dynamic body it stands on (`movingPlatforms`) and pushes dynamic bodies it walks
 - Its layer, the 2D Layer Collision Matrix and `categoryBits`/`maskBits` filter what it hits.
 - `get_runtime_entity` shows `isGrounded`, `collisionFlags`, `velocity`, `groundEntity`, ...
 
+## Vehicles (Wheel Collider)
+
+A drivable car is a dynamic Rigidbody (its colliders are the chassis) with a Wheel Collider
+(`WheelColliderComponent`, Unity's) on a child GameObject at each wheel: not four bodies on hinge
+joints. GameObject > 3D Object > Vehicle... (`run_command` `gameobject.create.3dObject.vehicle`)
+makes one on the selected mesh, or a new 2 x 1 x 4 m car, in one undo step.
+- The wheels under one dynamic body (its nearest Rigidbody above them) make one vehicle on Jolt's
+  vehicle constraint, built again at the next step when a wheel, the drivetrain or the body
+  changes. A Wheel Collider on a GameObject with a Rigidbody, or with no dynamic body above it,
+  does nothing and logs once.
+- The suspension hangs from the GameObject's position + `center` down the body's down axis by
+  `suspensionDistance`; the wheel rolls along the GameObject's forward (+Z). It is not a collider:
+  a cylinder cast finds the ground through the body's layer and the Layer Collision Matrix, and
+  never hits the body or the bodies below it. Wheels send no contact callbacks.
+- Unity's fields and defaults (metres, kg, N, N m): `radius` 0.5, `mass` 20, `wheelDampingRate`
+  0.25, `suspensionDistance` 0.3, `forceAppPointDistance` 0, `suspensionSpring` {`spring` 35000,
+  `damper` 4500, `targetPosition` 0.5: where it rests under the car's weight},
+  `forwardFriction` / `sidewaysFriction` (WheelFrictionCurve: extremum, asymptote, `stiffness`;
+  forward slip is the slip ratio, sideways slip the slip angle in radians). The grip is the
+  curve's on default surfaces; the body's and the ground's friction scale it as any contact
+  combines them (relative to the default 0.2). Jolt's tire model is not PhysX's: a car tuned in
+  Unity may need its friction `stiffness` changed by about 30%.
+- Without a Vehicle Drivetrain each wheel takes its own `motorTorque` (N m), `brakeTorque` (N m)
+  and `steerAngle` (positive right), set by a script every frame or with `set_runtime_property`.
+  Read-outs of the last step: `isGrounded`, `rpm`, `sprungMass`, `suspensionCompression`,
+  `wc:getGroundHit()` (a WheelHit or nil: `point`, `normal`, `forwardDir`, `sidewaysDir`, `force`,
+  `forwardSlip`, `sidewaysSlip`, `collider`) and `wc:getWorldPose()` (position, rotation).
+- `driveTransform` (on by default) puts the wheel's GameObject at `getWorldPose()` after each
+  step (suspension, steer, spin), so the wheel mesh goes on a child of it and follows,
+  interpolated with the body. Turn it off to place a mesh yourself.
+- A Vehicle Drivetrain (`VehicleDrivetrainComponent`, on the body; beyond Unity) drives the wheels
+  with an engine (`maxTorque`, `minRPM`, `maxRPM`, `torqueCurve`), a gear box (`transmission`
+  AUTO or MANUAL with `setGear(n)`, `gearRatios`, `reverseGearRatios`, shift RPMs,
+  `clutchStrength`), `differentials` (wheel pairs; none: every axle driven) and `antiRollBars`.
+  Its inputs `throttle` (-1..1; AUTO reverses below 0), `steer` (-1..1), `brake`, `handBrake`
+  (0..1) act within each wheel's `maxSteerAngle`, `maxBrakeTorque` and `maxHandBrakeTorque`; the
+  wheels' `motorTorque`, `brakeTorque` and `steerAngle` then read what it applied. Read-outs:
+  `rpm`, `gear`, `speed` (m/s along the body's forward).
+- At rest with no input the car sleeps; any changed input wakes it. A wheel in the air keeps it
+  awake. Moving the body (`body.position`, its Transform) takes the wheels with it.
+- `Physics.debugDraw` draws each wheel's circle and travel; the Scene view gizmo shows the circle,
+  the travel and, in Play, the contact and its force.
+
 ## Placing objects with physics (`place_with_physics`)
 
 Edit-time placement, like the Scene view's Physics tool (G): a private simulation moves the
