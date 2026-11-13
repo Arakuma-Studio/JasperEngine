@@ -7,7 +7,16 @@
 #include "Log.h"
 #include "render/SystemRender.h"
 
+#include <atomic>
+
 using namespace jasperengine;
+
+uint64_t HtmlUITexture::nextSerial(){
+    // textures are made on the main thread and by RmlUi's callback textures there; atomic anyway
+    // (a counter is all it costs)
+    static std::atomic<uint64_t> serials{0};
+    return ++serials;
+}
 
 HtmlUITexture::~HtmlUITexture(){
     if (ownedRender && !dead){
@@ -47,5 +56,6 @@ bool HtmlUITexture::update(const void* data, size_t size){
     if (!render->updateTexture(data, size))
         return false;
     lastUpdateFrame = SystemRender::getFrameCount();
+    contentVersion++;
     return true;
 }

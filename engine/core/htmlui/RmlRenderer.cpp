@@ -946,6 +946,8 @@ Rml::TextureHandle RmlRenderer::createTextureVariant(Rml::TextureHandle baseHand
     texture->height = base->height;
     texture->dead = base->dead;
     texture->distanceRange = base->distanceRange;
+    // the page's texels: a frame signature reads the page's generation through it (S92 R1)
+    texture->atlasGeneration = base->atlasGeneration;
     for (int i = 0; i < 3; i++)
         texture->textEffect[i] = textEffect[i];
     texture->drawFrame = std::move(drawFrame);
@@ -2578,6 +2580,8 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
         if (!texture)
             return 0;
         recordCommand(CommandType::SAVE_TEXTURE).a = reinterpret_cast<uintptr_t>(texture);
+        // (filled at replay; the frame's signature sees it change now: S92 R1)
+        texture->contentVersion++;
         return reinterpret_cast<Rml::TextureHandle>(texture);
     }
 
@@ -2588,6 +2592,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     if (!texture)
         return 0;
     copyLayerInto(*layer, *texture, bounds, false, Rml::Vector2i(0, 0), LoadAction::CLEAR);
+    texture->contentVersion++;
     return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
@@ -2635,6 +2640,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
         command.flag = SAVE_TILED | (load == LoadAction::LOAD ? SAVE_LOAD : 0);
         command.i[0] = scaledOffset.x;
         command.i[1] = scaledOffset.y;
+        texture->contentVersion++;
         return reinterpret_cast<Rml::TextureHandle>(texture);
     }
     copyLayerInto(*layer, *texture, bounds, true, scaledOffset, load);
@@ -3313,6 +3319,9 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     stats.geometryBytes = geometryBytes;
     stats.boxShadowTextures = savedLayers;
     lastFrameDrawCount = 0;
+    // live sources asked for since the last frame are this one's (S92 R2)
+    frameLiveSources = pendingLiveSources;
+    pendingLiveSources = 0;
 
     // shaders still compiling, or no target: the frame is dropped
     frameState = FrameState::DROPPED;
@@ -3435,6 +3444,7 @@ bool RmlRenderer::endFrame(){
     const RmlFontEngine& fonts = HtmlUI::getFontEngine();
     stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
     stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
+    stats.liveSources = frameLiveSources;
 
     frameState = FrameState::NONE;
     target = nullptr;
@@ -3791,6 +3801,7 @@ int RmlRenderer::runVideoConversions(){
             program.object.applyUniformBlock(program.fsSlot, sizeof(PostParams), &fs);
             program.object.draw(0, 3, 1);
             drawn++;
+            target->contentVersion++;
         }
         pass.endRenderPass();
     }
