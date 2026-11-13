@@ -303,13 +303,15 @@ for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_U
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
             JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
             JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
-            JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN; do
+            JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN \
+            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
     # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
     # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins;
-    # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image)
+    # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image;
+    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)

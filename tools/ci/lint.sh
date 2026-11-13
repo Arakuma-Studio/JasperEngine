@@ -76,6 +76,7 @@ check python3 -I tools/test_check_fanout.py
 check python3 -I tools/mcp/test_shard.py
 check python3 -I tools/mcp/test_build_cache.py
 check python3 -I tools/mcp/eval/test_grade.py
+check python3 -I tools/players/test_write_hashes.py
 for test in tools/ci/test_*.py; do
     case "$test" in
         # needs a built editor and the runtime image: the smoke lane's business
