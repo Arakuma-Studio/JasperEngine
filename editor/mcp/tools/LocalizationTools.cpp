@@ -221,8 +221,14 @@ void locSet(const CallPtr& call, Project* project, const fs::path& file, StringT
         return;
     }
     if ((changedKeys > 0 || created) && !locWrite(call, project, file, table, (created ? "Create String Table " : "Edit String Table ") + StringTable::nameOfPath(rel))) return;
+    Json data = Json::object();
+    if (created) {
+        // a new file has no entry until the database next looks, and the reply names its GUID
+        project->refreshAssetDatabase(true);
+        data["guid"] = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(file)).str();
+    }
     locReply(call, project, file, table, std::string(created ? "Created " : changedKeys ? "Changed " : "Unchanged ") + rel + ": " +
-             std::to_string(changedKeys) + " key(s) set" + (changedKeys || created ? ", one undo step." : "."), Json::object());
+             std::to_string(changedKeys) + " key(s) set" + (changedKeys || created ? ", one undo step." : "."), data);
 }
 
 void editStringTableTool(const CallPtr& call) {

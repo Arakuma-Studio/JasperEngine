@@ -57,23 +57,13 @@ namespace {
         return 0;
     }
 
-    int localizationLanguages(lua_State* L){
-        const std::vector<std::string> languages = Localization::getLanguages();
-        lua_createtable(L, (int)languages.size(), 0);
-        for (size_t i = 0; i < languages.size(); i++){
-            lua_pushlstring(L, languages[i].data(), languages[i].size());
-            lua_rawseti(L, -2, (lua_Integer)i + 1);
-        }
-        return 1;
-    }
-
 }
 
 void LuaBinding::registerLocalizationClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Localization>("Localization")
         .addStaticProperty("language", &Localization::getLanguage, &localizationSetLanguage)
-        .addStaticProperty("languages", &localizationLanguages)
+        .addStaticProperty("languages", &Localization::getLanguages)
         .addStaticProperty("onLanguageChanged", +[]() { return &TitleArt::getOnLanguageChanged(); })
         .addStaticFunction("get", &localizationGet)
         .addStaticFunction("has", &Localization::has)

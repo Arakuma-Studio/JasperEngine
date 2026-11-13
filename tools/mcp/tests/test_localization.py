@@ -21,9 +21,10 @@ async def setup(ed: Editor) -> dict:
     if S.get("ed") is ed:
         return S
     S.clear()
-    S["ed"] = ed
     await ed.call("tool_groups", enable=["localization"])
     await ed.call("set_project_settings", values={"localization.languages": ["en", "es"]})
+    # only once both took: a test that failed here sets them up again
+    S["ed"] = ed
     return S
 
 
@@ -48,7 +49,8 @@ async def test_create_set_missing_and_undo(ed: Editor):
     ed.check_eq(r["missing"]["en"], [], "English has both")
     ed.check_in("es misses 2 key(s)", r.get("next", ""))
     ed.check((ed.project / UI).exists(), "the file is written")
-    ed.check((ed.project / (UI + ".meta")).exists(), "it gets a GUID (.meta)")
+    ed.check(len(r.get("guid", "")) > 0, "it gets a GUID (.meta)")
+    ed.check((ed.project / (UI + ".meta")).exists(), "its .meta is written")
 
     r = await ed.call("edit_string_table", action="set", path=UI, entries={
         "menu.play": {"es": "Jugar"},
