@@ -357,16 +357,17 @@ TEST_F(HtmlUIScene, CameraModeKeepsOldPlacement){
     EXPECT_GT(overlayPixelsChanged(scaled, overlay, 8), 100u);
 }
 
-// R13: a Pixel Perfect Camera draws its base image into the fixed-resolution target and its bars
-// in the letterbox colour in the blit; the documents composite in that blit, over the whole
-// output viewport, the bars included
+// R13: a Pixel Perfect Camera draws its base image into the fixed-resolution target, and its blit
+// scales it up by a whole number and draws the bars; the documents composite in that blit, at the
+// screen's resolution over the image's viewport (before S92 they were drawn into the base image and
+// scaled up with it: every 2 x 2 block of screen pixels one colour)
 TEST_F(HtmlUIScene, PixelPerfectBarsCoveredByOverlay){
     GpuEnvironment::setView(800, 600, 320, 180, Scaling::LETTERBOX);
     SceneFixture fixture;
     PixelPerfectCamera pixelPerfect(&fixture.getScene(), fixture.getCamera().getEntity());
     pixelPerfect.setReferenceResolution(Vector2(320.0f, 180.0f));
     pixelPerfect.setLetterboxColor(Vector4(1.0f, 0.0f, 1.0f, 1.0f));
-    fixture.addDocument("golden/overlay_detail.rml");
+    fixture.addDocument("golden/pixel_perfect_ui.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
     ASSERT_EQ(fixture.getScene().getComponent<PixelPerfectCameraComponent>(fixture.getCamera().getEntity()).layout.scale, 2)
         << "the 320 x 180 base image at 2x in 800 x 600: bars around it";
@@ -376,11 +377,27 @@ TEST_F(HtmlUIScene, PixelPerfectBarsCoveredByOverlay){
     const Rect view = Engine::getViewRect();
     const int x0 = (int)view.getX(), y0 = (int)view.getY();
     const int x1 = (int)(view.getX() + view.getWidth()) - 1, y1 = (int)(view.getY() + view.getHeight()) - 1;
-    // the document's body over the whole viewport: its red and green corner marks at the corners,
-    // no letterbox magenta anywhere inside
+    EXPECT_EQ(x1 - x0 + 1, 640);
+    EXPECT_EQ(y1 - y0 + 1, 360);
+    // the document over the whole viewport, the bars in the letterbox colour around it
     EXPECT_TRUE(screen.is(x0, y0, 255, 0, 0, 0));
     EXPECT_TRUE(screen.is(x1, y1, 0, 255, 0, 0));
+    EXPECT_TRUE(screen.is(x0 - 1, y0 + 100, 255, 0, 255, 0));
     EXPECT_EQ(screen.countColor({x0, y0, x1 + 1, y1 + 1}, 255, 0, 255, 8), 0u);
+    // the text and the rotated edge at the screen's resolution: 2 x 2 blocks that are not one colour
+    size_t mixed = 0;
+    for (int y = y0; y + 1 <= y1; y += 2){
+        for (int x = x0; x + 1 <= x1; x += 2){
+            const uint8_t* a = screen.at(x, y);
+            for (const uint8_t* b : {screen.at(x + 1, y), screen.at(x, y + 1), screen.at(x + 1, y + 1)}){
+                if (std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]) + std::abs(a[2] - b[2]) > 24){
+                    mixed++;
+                    break;
+                }
+            }
+        }
+    }
+    EXPECT_GT(mixed, 200u);
 }
 
 // R15 (ledger R57): a game's orthographic camera 22 world units high shows the documents in
