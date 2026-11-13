@@ -6,7 +6,9 @@
 // findChild("a/b"), and the parents a GameObject refuses.
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "object/Camera.h"
 #include "object/GameObject.h"
 #include "subsystem/RenderSystem.h"
 #include "script/LuaBinding.h"
@@ -137,4 +139,51 @@ TEST(LuaHierarchy, SetParentRefusesCycleAndOtherScene){
     const GameObject strangerObject(&other, stranger);
     GameObject(&scene, child).setParent(&strangerObject);
     EXPECT_EQ(scene.getComponent<Transform>(child).parent, parent);  // another scene: refused
+}
+
+// S95 REQ-11: Camera(scene) aims with its Transform rotation, as the editor's GameObject > Camera;
+// setTarget and assigning target turn target mode on, useTarget switches it either way
+TEST(LuaHierarchy, CameraConstructorUsesRotation){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    Scene scene;
+    luabridge::setGlobal(L, &scene, "cameraTestScene");
+    ASSERT_EQ(runLua(L, R"(
+        cameraTest = Camera(cameraTestScene)
+        assert(cameraTest.useTarget == false, "a new camera aims with its rotation")
+        assert(cameraTest:isUsingTarget() == false)
+        cameraTest.position = Vector3(0, 0, 5)
+        cameraTest.rotation = Quaternion(90, Vector3(0, 1, 0))
+        cameraTestEntity = cameraTest.entity
+    )"), "");
+
+    lua_getglobal(L, "cameraTestEntity");
+    const Entity entity = static_cast<Entity>(lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    ASSERT_TRUE(scene.findComponent<CameraComponent>(entity));
+    Camera camera(&scene, entity);
+    camera.updateTransform();
+    camera.updateCamera();
+    // the point one unit ahead along rotation * -Z is straight ahead in view space (a look-at of
+    // the origin from (0, 0, 5) would put it to the side)
+    const Transform& transform = scene.getComponent<Transform>(camera.getEntity());
+    const Vector3 ahead = camera.getViewMatrix() * (transform.worldPosition + transform.worldRotation * Vector3(0, 0, -1));
+    EXPECT_NEAR(ahead.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.y, 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.z, -1.0f, 1e-4f);
+
+    EXPECT_EQ(runLua(L, R"(
+        cameraTest:setTarget(0, 0, 0)
+        assert(cameraTest.useTarget == true, "setTarget turns target mode on")
+        cameraTest.useTarget = false
+        assert(cameraTest.useTarget == false)
+        cameraTest.target = Vector3(1, 2, 3)
+        assert(cameraTest.useTarget == true, "assigning target turns it on")
+        cameraTest = nil
+        cameraTestEntity = nil
+        cameraTestScene = nil
+    )"), "");
+    camera.updateCamera();
+    EXPECT_EQ(camera.getViewMatrix(), Matrix4::lookAtMatrix(transform.worldPosition, Vector3(1, 2, 3), Vector3(0, 1, 0)));
 }
