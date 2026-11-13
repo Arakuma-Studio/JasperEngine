@@ -104,7 +104,8 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/particles/PixelPresetCreate.cpp
 )
 
-# the colour decisions give the same bits on every platform, as engine/core/pixelart's
+# the colour decisions give the same bits on every platform, as engine/core/pixelart's, and the
+# blend modes' HSL doubles give Aseprite's own pixels
 if(MSVC)
     set(JASPERENGINE_EDITOR_PIXELART_FLAGS /fp:precise)
 else()
@@ -114,6 +115,7 @@ set_source_files_properties(
     ${EDITOR_DIR}/pixelart/ApplyPalette.cpp
     ${EDITOR_DIR}/pixelart/PaletteUsage.cpp
     ${EDITOR_DIR}/pixelart/RampGenerator.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteBlend.cpp
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
 
 # inspectors and checks (S43 M4, M6): the Palette Swap checks, using a named palette, the
