@@ -3,7 +3,7 @@
 
 #include "JasperEngineLinux.h"
 #include "../common/PlatformDefaults.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 
 #include <cstdio>
 

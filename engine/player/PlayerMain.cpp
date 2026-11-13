@@ -17,7 +17,7 @@
 #include "io/ResourcePack.h"
 #include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 #include "player/PlayerConfig.h"
 #include "player/RunControl.h"
 #include "serialization/CookedScene.h"
@@ -153,7 +153,7 @@ namespace {
         return EXIT_CONTENT_MISMATCH;
     }
 
-    // the player's step before the window (Launch.h)
+    // the player's step before the window (PlayerLaunch.h)
     int configure(const LaunchOptions& options) {
         PlatformConfig& platform = platformConfig();
         if (platform.contentRoot.empty()) platform.contentRoot = defaultContentRoot();

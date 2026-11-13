@@ -4196,7 +4196,7 @@
 		4A534E477188C51A65C11B7D /* PlatformConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472E000F3F6C5FD5DB /* PlatformConfig.h */; };
 		4A534E475A9C597275C3E4BB /* JPak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477327188402907BEC /* JPak.h */; };
 		4A534E479A258BC931183744 /* ContentManifest.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BBC061D558A1BEAA /* ContentManifest.h */; };
-		4A534E47F446F90181305FB9 /* Launch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4711CCFCC38C29F349 /* Launch.h */; };
+		4A534E47F446F90181305FB9 /* PlayerLaunch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4711CCFCC38C29F349 /* PlayerLaunch.h */; };
 		4A534E47D8C8930C399C7C40 /* LaunchOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */; };
 		4A534E47FC186D22BB2313BB /* PlayerConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */; };
 		4A534E47A61EB369AD208C05 /* RunControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C484ACD2846CB3C2 /* RunControl.h */; };
@@ -8994,7 +8994,7 @@
 		4A534E472E000F3F6C5FD5DB /* PlatformConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformConfig.h; sourceTree = "<group>"; };
 		4A534E477327188402907BEC /* JPak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JPak.h; sourceTree = "<group>"; };
 		4A534E47BBC061D558A1BEAA /* ContentManifest.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentManifest.h; sourceTree = "<group>"; };
-		4A534E4711CCFCC38C29F349 /* Launch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Launch.h; sourceTree = "<group>"; };
+		4A534E4711CCFCC38C29F349 /* PlayerLaunch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerLaunch.h; sourceTree = "<group>"; };
 		4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LaunchOptions.h; sourceTree = "<group>"; };
 		4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerConfig.h; sourceTree = "<group>"; };
 		4A534E47C484ACD2846CB3C2 /* RunControl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunControl.h; sourceTree = "<group>"; };
@@ -11170,7 +11170,7 @@
 				4A534E47DA38129196F7DFE9 /* PlayerConfig.cpp */,
 				4A534E474C3FBAD503D651B9 /* RunControl.cpp */,
 				4A534E47BBC061D558A1BEAA /* ContentManifest.h */,
-				4A534E4711CCFCC38C29F349 /* Launch.h */,
+				4A534E4711CCFCC38C29F349 /* PlayerLaunch.h */,
 				4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */,
 				4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */,
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
@@ -16568,7 +16568,7 @@
 				4A534E477188C51A65C11B7D /* PlatformConfig.h in Headers */,
 				4A534E475A9C597275C3E4BB /* JPak.h in Headers */,
 				4A534E479A258BC931183744 /* ContentManifest.h in Headers */,
-				4A534E47F446F90181305FB9 /* Launch.h in Headers */,
+				4A534E47F446F90181305FB9 /* PlayerLaunch.h in Headers */,
 				4A534E47D8C8930C399C7C40 /* LaunchOptions.h in Headers */,
 				4A534E47FC186D22BB2313BB /* PlayerConfig.h in Headers */,
 				4A534E47A61EB369AD208C05 /* RunControl.h in Headers */,
