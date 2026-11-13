@@ -1,6 +1,8 @@
 #include "FontEffectGlow.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
-#include "Memory.h"
+#include "GlyphFilters.h"
+#include <functional>
+#include <vector>
 
 namespace Rml {
 
@@ -9,6 +11,7 @@ FontEffectGlow::FontEffectGlow()
 	width_blur = 0;
 	width_outline = 0;
 	combined_width = 0;
+	std_dev = 1.f;
 	SetLayer(Layer::Back);
 }
 
@@ -29,51 +32,8 @@ bool FontEffectGlow::Initialise(int _width_outline, int _width_blur, Vector2i _o
 	combined_width = width_blur + width_outline;
 	offset = _offset;
 
-	// Outline filter.
-	filter_outline.Initialise(width_outline, FilterOperation::Dilation);
-	for (int x = -width_outline; x <= width_outline; ++x)
-	{
-		for (int y = -width_outline; y <= width_outline; ++y)
-		{
-			float weight = 1;
-
-			float distance = Math::SquareRoot(float(x * x + y * y));
-			if (distance > width_outline)
-			{
-				weight = (width_outline + 1) - distance;
-				weight = Math::Max(weight, 0.0f);
-			}
-
-			filter_outline[x + width_outline][y + width_outline] = weight;
-		}
-	}
-
-	// Gaussian blur filter
-	const float std_dev = (width_blur == 0 ? 1.f : .4f * float(width_blur));
-	const float two_variance = 2.f * std_dev * std_dev;
-	const float gain = 1.f / Math::SquareRoot(Math::RMLUI_PI * two_variance);
-
-	float sum_weight = 0.f;
-
-	// We separate the blur filter into two passes, horizontal and vertical, for performance reasons.
-	filter_blur_x.Initialise(Vector2i(width_blur, 0), FilterOperation::Sum);
-	filter_blur_y.Initialise(Vector2i(0, width_blur), FilterOperation::Sum);
-
-	for (int x = -width_blur; x <= width_blur; ++x)
-	{
-		float weight = gain * Math::Exp(-Math::SquareRoot(float(x * x) / two_variance));
-
-		filter_blur_x[0][x + width_blur] = weight;
-		filter_blur_y[x + width_blur][0] = weight;
-		sum_weight += weight;
-	}
-
-	// Normalize the kernels
-	for (int x = -width_blur; x <= width_blur; ++x)
-	{
-		filter_blur_x[0][x + width_blur] /= sum_weight;
-		filter_blur_y[x + width_blur][0] /= sum_weight;
-	}
+	// the Gaussian of RmlUi's blur kernel
+	std_dev = (width_blur == 0 ? 1.f : .4f * float(width_blur));
 
 	return true;
 }
@@ -84,6 +44,16 @@ bool FontEffectGlow::GetDistanceEffect(DistanceEffect& effect) const
 	effect.dilation = (width_outline > 0 ? float(width_outline) + 0.5f : 0.f);
 	effect.sigma = (width_blur == 0 ? 0.f : .4f * float(width_blur));
 	effect.offset = Vector2f(offset);
+	return true;
+}
+
+bool FontEffectGlow::GetBitmapKey(BitmapKey& key) const
+{
+	// the offset moves the quad, not the bitmap: an outline of width_outline is a glow without blur, a blur one without outline
+	key.shape = (width_blur == 0) ? std::hash<int>()(width_outline) * 31u + 1u
+	            : (width_outline == 0) ? std::hash<int>()(width_blur) * 31u + 2u
+	                                   : (std::hash<int>()(width_outline) * 31u + std::hash<int>()(width_blur)) * 31u + 3u;
+	key.offset = offset;
 	return true;
 }
 
@@ -106,23 +76,15 @@ bool FontEffectGlow::GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, con
 void FontEffectGlow::GenerateGlyphTexture(byte* destination_data, const Vector2i destination_dimensions, int destination_stride,
 	const FontGlyph& glyph) const
 {
-	const Vector2i buf_dimensions = destination_dimensions;
-	const int buf_stride = buf_dimensions.x;
-	const int buf_size = buf_dimensions.x * buf_dimensions.y;
-
-	DynamicArray<byte, GlobalStackAllocator<byte>> outline_output(buf_size);
-	DynamicArray<byte, GlobalStackAllocator<byte>> blur_x_output(buf_size);
-
-	filter_outline.Run(outline_output.data(), buf_dimensions, buf_stride, ColorFormat::A8, glyph.bitmap_data, glyph.bitmap_dimensions,
-		Vector2i(combined_width), glyph.color_format);
-
-	filter_blur_x.Run(blur_x_output.data(), buf_dimensions, buf_stride, ColorFormat::A8, outline_output.data(), buf_dimensions, Vector2i(0),
-		ColorFormat::A8);
-
-	filter_blur_y.Run(destination_data, destination_dimensions, destination_stride, ColorFormat::RGBA8, blur_x_output.data(), buf_dimensions,
-		Vector2i(0), ColorFormat::A8);
-
-	FillColorValuesFromAlpha(destination_data, destination_dimensions, destination_stride);
+	// Fork (S93 R11): the outline pass as a distance-transform dilation, the blur as recursive passes (no dense kernel; heap
+	// buffers, so effect glyphs can be made off the main thread)
+	const size_t area = (size_t)destination_dimensions.x * (size_t)destination_dimensions.y;
+	std::vector<byte> placed(area), glow(area);
+	GlyphFilters::Place(placed.data(), destination_dimensions, glyph.bitmap_data, glyph.bitmap_dimensions, Vector2i(combined_width),
+		glyph.color_format);
+	GlyphFilters::Dilate(glow.data(), placed.data(), destination_dimensions, width_outline);
+	GlyphFilters::Blur(glow.data(), destination_dimensions, width_blur, std_dev);
+	GlyphFilters::WriteWhite(destination_data, destination_dimensions, destination_stride, glow.data());
 }
 
 FontEffectGlowInstancer::FontEffectGlowInstancer() :
