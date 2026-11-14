@@ -5242,4 +5242,57 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 F48, F49: layered PSD/PSB import and 2D skinning
+    {
+        "id": "guard_psd_layers_import_mode",
+        "kind": "guard",
+        "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
+                         "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
+                         "exporting PNGs per layer by hand.",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers makes a PSD/PSB's layers sprites and a prefab'",
+        "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
+        "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
+                  "in the document.",
+        "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset: assets/art/truck.psb (texture)", {"assets": [{"path": "assets/art/truck.psb", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/art/truck.psb: texture 512x256 (PSB).", {"path": "assets/art/truck.psb", "kind": "texture"})},
+            {"tool": "get_texture_import_settings", "result": ok("assets/art/truck.psb: type default, max_size 2048.", {"path": "assets/art/truck.psb"})},
+            {"tool": "set_texture_import_settings", "result": ok(
+                "Updated the import settings of 1 texture(s); their cooks are queued. Undo with scope project.",
+                {"updated": ["assets/art/truck.psb"], "unchanged": 0,
+                 "layers": [{"path": "assets/art/truck.psb", "prefab": "assets/art/truck.psb.prefab",
+                             "sprites": [{"name": "Body", "key": "layer:1"}, {"name": "Wheel", "key": "layer:2"}]}],
+                 "next": "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name."})},
+            {"tool": "instantiate_prefab", "result": ok("Instantiated assets/art/truck.psb.prefab as \"truck\" [20].", {"root": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "set_texture_import_settings", "args": {"settings": {"import_mode": "layers"}}}],
+                   "must_not_call": ["create_sprite", "edit_sprite"], "edits_must_not": [r"\.png$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_skin_bones",
+        "kind": "guard",
+        "what_happened": "New tool (S94 F49): edit_sprite_skin makes a Sprite's bones, mesh and weights; an agent asked to make "
+                         "a sprite arm bend at the elbow skins it instead of cutting the sprite into two GameObjects.",
+        "text_at_issue": "edit_sprite_skin: '2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, "
+                         "auto_geometry, auto_weights, set_weights ...'",
+        "source": "S94 F49 (new tool); the JasperArcade port rebuilt its rig as parent/child GameObjects (ledger R45)",
+        "prompt": "The Arm sprite (a 16x64 vertical arm, shoulder at the bottom) should bend smoothly at the elbow halfway up. "
+                  "Set that up so I can animate the bend.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nArm [12] sprite transform", {"entities": [{"id": 12, "path": "Arm"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Arm\": transform, sprite (sheet assets/skin/arm.png, frame arm).", {"id": 12})},
+            {"tool": "edit_sprite_skin", "result": ok(
+                "Edited the skin of 'arm' (assets/skin/arm.png): 2 bones, 27 vertices. One undo step (scope timeline).",
+                {"bones": [{"name": "upper_arm", "parent": None, "head": [8, 64], "tail": [8, 32], "vertices": 15, "gameobject": {"id": 30}},
+                           {"name": "forearm", "parent": "upper_arm", "head": [8, 32], "tail": [8, 0], "vertices": 15, "gameobject": {"id": 31}}],
+                 "vertices": 27, "triangles": 32, "weighted": True, "source": "assets/skin/arm.png", "frame": "arm", "changed": True,
+                 "next": "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"forearm\".", {"entity": {"id": 31}})},
+            {"tool": "screenshot", "result": ok("Game view, 640x360.", {"width": 640, "height": 360})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_skin", "args": {"entity": "re:(?i)^(12|Arm)$"}}],
+                   "must_not_call": ["create_entity", "duplicate_entities", "edit_sprite"]},
+        "max_turns": 10,
+    },
 ]
