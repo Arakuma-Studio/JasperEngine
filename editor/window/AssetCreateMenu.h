@@ -35,14 +35,16 @@ namespace jasperengine::editor {
         SpriteAtlas,    // S45 (the main menu's Create > 2D)
         Palette,        // a .palette (S43; the main menu's Create > 2D)
         NoiseGraph,
-        Tileset         // a .tileset (S50; the main menu's Create > 2D)
+        Tileset,        // a .tileset (S50; the main menu's Create > 2D)
+        StringTable,    // a .stringtable (S95)
+        DataAsset       // a .dataasset of a data class (S95): a submenu of the project's data classes
     };
 
     struct AssetCreateItem {
         AssetCreateKind kind;
         const char* label;        // "Lua Script" (Unity's names, no "Create")
         const char* icon;
-        const char* commandId;    // the catalog command of Assets > Create
+        const char* commandId;    // the catalog command of Assets > Create ("": a submenu of the project's items)
         bool separatorBefore;
         // asks for its name first (the name is the class, module or folder) instead of being made
         // at once and renamed in place

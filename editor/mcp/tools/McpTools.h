@@ -65,6 +65,10 @@ namespace jasperengine::editor::mcp {
     void registerSoundEventTools(McpRegistry& registry);
     // get_asset_info's block of a .soundevent
     nlohmann::json soundEventInfo(Project* project, const std::filesystem::path& file);
+    // DataAssetTools.cpp: edit_data_asset (Data Assets, docs/specs/S95-lua-runtime-gaps.md REQ-24)
+    void registerDataAssetTools(McpRegistry& registry);
+    // get_asset_info's block of a .dataasset: its class, values and problems
+    nlohmann::json dataAssetInfo(Project* project, const std::filesystem::path& file);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
@@ -128,6 +132,8 @@ namespace jasperengine::editor::mcp {
     // S80: diff_images (editor_tools) and the title_art group
     void registerImageDiffTools(McpRegistry& registry);
     void registerTitleArtTools(McpRegistry& registry);
+    // S95: edit_string_table (group localization)
+    void registerLocalizationTools(McpRegistry& registry);
     void registerHubTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);

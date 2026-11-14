@@ -58,6 +58,10 @@ namespace jasperengine{
         float shadowDilate = 0.0f;
         // TMP maxVisibleCharacters: characters past it are not drawn (-1 all)
         int visibleCharacters = -1;
+        // Localization Key (S95 REQ-28): a String Tables key whose value in the game's language
+        // is the text ("" none); `localizedGeneration` is the Localization::generation() it shows
+        std::string localizationKey;
+        uint64_t localizedGeneration = 0;
 
         // runtime: each glyph quad's character (cluster) and line, the atlas options it was
         // built with, and whether its buffer carries a vertex colour (a Text Effect)

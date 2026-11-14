@@ -952,3 +952,34 @@ TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
     ScriptRuntime::unloadScenes({scene});
     deleteCppScripts(scene);
 }
+
+// S95 AC-7 (ledger S27, "a later instance read a stale class-table field"): fields a script sets
+// on its table at the top level are per instance, for two instances of the file and for one
+// GameObject.instantiate makes later, even after another instance changed its own
+TEST_F(ScriptLifecycleTest, TopLevelClassFieldsPerInstance) {
+    writeScript("Limits",
+        "local M = {}\n"
+        "M.LIMIT = 5\n"
+        "M.cache = {}\n"
+        "function M:init()\n"
+        "    log[#log + 1] = self.gameObject.name .. ':' .. tostring(M.LIMIT) .. ',' .. tostring(self.LIMIT) .. ','\n"
+        "        .. tostring(next(self.cache) == nil) .. ',' .. tostring(rawequal(self.cache, M.cache))\n"
+        "    M.LIMIT = M.LIMIT + 1\n"
+        "    self.cache[self.gameObject.name] = true\n"
+        "end\n"
+        "function M:start()\n"
+        "    if self.gameObject.name == 'A' then GameObject.instantiate(self) end\n"
+        "end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity a = entity(scene, "A");
+    const Entity b = entity(scene, "B");
+    addScript(scene, a, "Limits");
+    addScript(scene, b, "Limits");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(takeLog(), "A:5,5,true,true B:5,5,true,true") << "each instance runs the chunk: its own LIMIT and cache";
+    frame();
+    EXPECT_EQ(takeLog(), "A(Clone):5,5,true,true") << "a copy made after A changed its fields starts from the file's values";
+    EXPECT_EQ(lua("return GameObject(testScene, " + std::to_string(a) + "):getScript('Limits').LIMIT"), "6");
+}

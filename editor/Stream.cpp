@@ -3078,6 +3078,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             localizationNode["languages"] = list;
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        if (!localization.rememberLanguage) localizationNode["rememberLanguage"] = false;
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
@@ -4077,6 +4078,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
         }
+        if (localizationNode["rememberLanguage"]) localization.rememberLanguage = localizationNode["rememberLanguage"].as<bool>(true);
     }
 
     if (node["application"] && node["application"].IsMap()) {
@@ -5558,14 +5560,64 @@ void editor::Stream::decodeEntityState(Entity entity, EntityRegistry* registry, 
     registry->setEntityLayer(entity, entityNode["layer"] ? YamlNumbers::as<int>(entityNode["layer"]) : 0);
 }
 
+// an entity reference element is {entity, sceneId} when it names another scene
+YAML::Node editor::Stream::encodeScriptList(ScriptPropertyType elementType, const ScriptPropertyValue& value) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    const ScriptPropertyList* items = std::get_if<ScriptPropertyList>(&value);
+    if (!items) return list;
+    for (const ScriptPropertyElement& item : items->items) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            const EntityReference* ref = std::get_if<EntityReference>(&item);
+            const EntityReference reference = ref ? *ref : EntityReference{};
+            if (reference.sceneId == 0) {
+                list.push_back(YAML::Node(reference.entity));
+                continue;
+            }
+            YAML::Node node(YAML::NodeType::Map);
+            node["entity"] = reference.entity;
+            node["sceneId"] = reference.sceneId;
+            list.push_back(node);
+            continue;
+        }
+        ScriptProperty single;
+        single.type = elementType;
+        single.value = scriptPropertyValueOf(item);
+        single.defaultValue = single.value;
+        list.push_back(YAML::Clone(encodeScriptProperty(single)["value"]));
+    }
+    return list;
+}
+
+ScriptPropertyList editor::Stream::decodeScriptList(ScriptPropertyType elementType, const YAML::Node& value) {
+    ScriptPropertyList list;
+    if (!value || !value.IsSequence()) return list;
+    for (const YAML::Node& item : value) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            if (item.IsMap()) {
+                list.items.push_back(EntityReference{item["entity"] ? item["entity"].as<Entity>(NULL_ENTITY) : Entity(NULL_ENTITY),
+                                                     item["sceneId"] ? item["sceneId"].as<uint32_t>(0) : 0u});
+            } else {
+                list.items.push_back(EntityReference{item.as<Entity>(NULL_ENTITY), 0});
+            }
+            continue;
+        }
+        YAML::Node node(YAML::NodeType::Map);
+        node["type"] = scriptPropertyTypeToString(elementType);
+        node["value"] = item;
+        list.items.push_back(scriptPropertyElementOf(decodeScriptProperty(node).value));
+    }
+    return list;
+}
+
 YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
     YAML::Node node;
     node["name"] = prop.name;
     node["displayName"] = prop.displayName;
     node["type"] = scriptPropertyTypeToString(prop.type);
 
-    // Store ptrTypeName if it's a pointer type
-    if (prop.type == ScriptPropertyType::EntityReference && !prop.ptrTypeName.empty()) {
+    // Store ptrTypeName if it's a pointer type, or the data class of a Data Asset reference
+    if (!prop.ptrTypeName.empty() && (prop.type == ScriptPropertyType::EntityReference || prop.type == ScriptPropertyType::Asset ||
+                                      prop.type == ScriptPropertyType::List)) {
         node["ptrTypeName"] = prop.ptrTypeName;
     }
 
@@ -5635,6 +5687,12 @@ YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
             node["defaultValue"] = encodeAsset(prop.getDefaultValue<AssetRef>());
             break;
         }
+        case ScriptPropertyType::List:
+            node["elementType"] = scriptPropertyTypeToString(prop.elementType);
+            if (!prop.assetType.empty()) node["assetType"] = prop.assetType;
+            node["value"] = encodeScriptList(prop.elementType, prop.value);
+            node["defaultValue"] = encodeScriptList(prop.elementType, prop.defaultValue);
+            break;
     }
 
     return node;
@@ -5654,6 +5712,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     if (node["assetType"]) {
         prop.assetType = node["assetType"].as<std::string>();
     }
+    if (node["elementType"]) prop.elementType = decodeEnum(node, "elementType", StreamSchema::scriptPropertyType());
 
     if (node["value"]) {
         switch (prop.type) {
@@ -5717,6 +5776,10 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = decodeAsset(node["defaultValue"]);
                 break;
             }
+            case ScriptPropertyType::List:
+                prop.value = decodeScriptList(prop.elementType, node["value"]);
+                prop.defaultValue = decodeScriptList(prop.elementType, node["defaultValue"]);
+                break;
         }
     } else {
         // Initialize with default values if no value is provided
@@ -5733,6 +5796,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
             case ScriptPropertyType::EntityReference: prop.value = EntityReference{NULL_ENTITY, 0}; prop.defaultValue = EntityReference{NULL_ENTITY, 0}; break;
             case ScriptPropertyType::Prefab: prop.value = PrefabAsset(); prop.defaultValue = PrefabAsset(); break;
             case ScriptPropertyType::Asset: prop.value = AssetRef(); prop.defaultValue = AssetRef(); break;
+            case ScriptPropertyType::List: prop.value = ScriptPropertyList(); prop.defaultValue = ScriptPropertyList(); break;
         }
     }
 

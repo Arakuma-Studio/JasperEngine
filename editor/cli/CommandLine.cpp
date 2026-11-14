@@ -58,6 +58,7 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "localization/StringTables.h"
 #include "titleart/TitleArtProjectCheck.h"
 #include "util/QaChecks.h"
 #include "particles/ParticleEffectPreview.h"
@@ -2183,7 +2184,8 @@ void printCheckUsage(const std::string& commandName) {
         << "  -p, --project <path>     Project directory or project.yaml file (absolute, or relative to the\n"
         << "                           current directory).\n"
         << "      --lua                Lua scripts: syntax, and the top level run in an isolated Lua state\n"
-        << "                           (as the editor reads script properties).\n"
+        << "                           (as the editor reads script properties), and the String Tables (a table\n"
+        << "                           that does not load, a key two tables define).\n"
         << "      --shaders            Shader forks: compiled as the editor compiles them.\n"
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
         << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
@@ -3616,6 +3618,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> particleFiles;
     std::vector<fs::path> materialFiles;    // .procmat files and PNGs (baked ones)
     bool cppFiles = false;
+    bool stringTableFiles = false;   // a .stringtable given: the tables are checked (all of them)
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
     if (fileMode) {
@@ -3652,6 +3655,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 if (textures) textureFiles.push_back(name);
             } else if (Util::isParticleEffectFile(name)) {
                 if (particles) particleFiles.push_back(path);
+            } else if (Util::isStringTableFile(name)) {
+                if (lua) stringTableFiles = true;
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
@@ -3735,6 +3740,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
+    }
+    // S95 REQ-26: the String Tables (JSON, no engine), with Lua's: a key two tables define needs them all
+    if (fileMode ? stringTableFiles : lua) {
+        const fs::path assetsRoot = ProjectChecks::assetsRootFromProjectFile(root);
+        const std::vector<ProjectChecks::Finding> strings = stringtables::check(root, assetsRoot);
+        run.findings.insert(run.findings.end(), strings.begin(), strings.end());
+        run.checked.push_back({"strings", ProjectChecks::findProjectFiles(assetsRoot, {StringTable::EXTENSION}).size()});
     }
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());

@@ -121,11 +121,16 @@ bool editor::DuplicateEntityCmd::execute(){
 
     lastSelected = project->getSelectedEntities(sceneId);
 
-    std::unordered_set<std::string> existingNames;
-    for (Entity e : sceneProject->entities) {
-        existingNames.insert(scene->getEntityName(e));
-    }
-    UniqueEntityNames uniqueNames(std::move(existingNames));
+    // A copy is numbered only when a sibling has its name (Unity's): one name set per parent
+    const std::unordered_set<Entity> copies(createdTopLevel.begin(), createdTopLevel.end());
+    std::unordered_map<Entity, UniqueEntityNames> namesUnder;
+    auto namesFor = [&](Entity parent) -> UniqueEntityNames& {
+        auto names = namesUnder.find(parent);
+        if (names == namesUnder.end()) {
+            names = namesUnder.emplace(parent, UniqueEntityNames(ProjectUtils::siblingNames(scene, sceneProject->entities, parent, copies))).first;
+        }
+        return names->second;
+    };
 
     // Re-parent, rename, and select top-level duplicates
     const size_t pairs = std::min(topLevel.size(), createdTopLevel.size());
@@ -144,7 +149,9 @@ bool editor::DuplicateEntityCmd::execute(){
             scene->moveChildToIndex(duplicated, scene->findBranchLastIndex(topLevel[i]) + 1);
         }
 
-        scene->setEntityName(duplicated, uniqueNames.make(scene->getEntityName(topLevel[i])));
+        const Transform* copyTransform = scene->findComponent<Transform>(duplicated);
+        const Entity copyParent = copyTransform ? copyTransform->parent : ProjectUtils::getVirtualParent(scene, duplicated);
+        scene->setEntityName(duplicated, namesFor(copyParent).make(scene->getEntityName(topLevel[i])));
         // Distinct copies of top-level sources: none holds another, so none drops out of
         // the selection as a selected child would
         if (selected.insert(duplicated).second)

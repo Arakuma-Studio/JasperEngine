@@ -494,6 +494,8 @@ namespace jasperengine::editor{
         void drawAudioMixerAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
+        // a selected .dataasset: its class's fields, undoable, and its problems (InspectorDataAsset.cpp)
+        void drawDataAssetAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
         void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // an audio file: its measurements, import settings, provenance and audition (InspectorAudioClip.cpp)

@@ -69,6 +69,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
+    {registerDataAssetTools, "Data Assets", "scripting"},   // S95
     {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
     {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
     {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2
@@ -88,6 +89,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
+    {registerLocalizationTools, "Localization: String Tables", "localization"},   // S95
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
 };

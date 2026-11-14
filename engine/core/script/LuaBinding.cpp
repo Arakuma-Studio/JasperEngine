@@ -28,6 +28,7 @@
 #include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
+#include "DataAsset.h"
 #include "LuaReload.h"
 #include "ScriptScheduler.h"
 #include "ScriptEvent.h"
@@ -1046,6 +1047,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerTitleArtClasses(L);
+    // after TitleArt: Localization.onLanguageChanged is its event
+    registerLocalizationClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
 #if JASPERENGINE_NOISE
@@ -1067,6 +1070,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+    registerDataAssetClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
@@ -1348,6 +1352,8 @@ void LuaBinding::clearLoadedProjectModules() {
     lua_State* L = luastate;
     // scripts may have changed since: compiled again
     clearScriptChunks(L);
+    // a new run: Data Assets and their classes are read again (what the last run changed is gone)
+    DataAsset::clear(L);
     lua_reload::clearGenerations();
     if (!L) return;
 
@@ -1572,6 +1578,14 @@ int LuaBinding::luaInstanceNewIndex(lua_State* L) {
     return 0;
 }
 
+namespace {
+    // a value made of GameObject references: resolved once every entity of the scene exists
+    bool holdsEntityReferences(const ScriptProperty& prop) {
+        return prop.type == ScriptPropertyType::EntityReference ||
+               (prop.type == ScriptPropertyType::List && prop.elementType == ScriptPropertyType::EntityReference);
+    }
+}
+
 bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity entity, ScriptEntry& scriptEntry) {
     for (const auto& prop : scriptEntry.properties) {
         if (isReservedMember(prop.name.c_str())) {
@@ -1631,9 +1645,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
     lua_pushinteger(L, static_cast<lua_Integer>(entity));
     lua_setfield(L, -2, "entity");
 
-    // Set script properties (EntityReference ones are resolved in a second pass)
+    // Set script properties (EntityReference ones, and lists of them, are resolved in a second pass)
     for (auto& prop : scriptEntry.properties) {
-        if (prop.type == ScriptPropertyType::EntityReference) {
+        if (holdsEntityReferences(prop)) {
             lua_pushnil(L);
         } else {
             pushScriptPropertyValue(L, scene, prop);
@@ -1764,41 +1778,74 @@ void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index
     }
 }
 
-void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
-    const ScriptPropertyValue& value = prop.value;
-    if (prop.type == ScriptPropertyType::EntityReference) {
-        bool found = false;
+namespace {
+    // one value of a script property (or of its list) pushed; a reference left at None is nil, in
+    // a list false (an array keeps its length)
+    void pushScriptValue(lua_State* L, Scene* scene, const ScriptProperty& prop, const ScriptPropertyValue& value, bool element) {
+        const auto pushNone = [L, element]() {
+            if (element) lua_pushboolean(L, 0);
+            else lua_pushnil(L);
+        };
         if (std::holds_alternative<EntityReference>(value)) {
             const EntityReference& entRef = std::get<EntityReference>(value);
+            bool found = false;
             if (entRef.entity != NULL_ENTITY) {
                 Scene* targetScene = entRef.sceneId != 0 ? SceneManager::getScenePtr(entRef.sceneId) : scene;
-                found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
+                found = LuaBinding::pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
             }
+            if (!found) pushNone();
+        } else if (std::holds_alternative<bool>(value)) {
+            lua_pushboolean(L, std::get<bool>(value));
+        } else if (std::holds_alternative<int>(value)) {
+            lua_pushinteger(L, std::get<int>(value));
+        } else if (std::holds_alternative<float>(value)) {
+            lua_pushnumber(L, std::get<float>(value));
+        } else if (std::holds_alternative<std::string>(value)) {
+            lua_pushstring(L, std::get<std::string>(value).c_str());
+        } else if (std::holds_alternative<Vector2>(value)) {
+            if (!luabridge::push<Vector2>(L, std::get<Vector2>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector3>(value)) {
+            if (!luabridge::push<Vector3>(L, std::get<Vector3>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector4>(value)) {
+            if (!luabridge::push<Vector4>(L, std::get<Vector4>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
+            // a prefab property left at None stays nil
+            if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(value))) pushNone();
+        } else if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
+            const AssetRef& ref = std::get<AssetRef>(value);
+            if (prop.assetType == DataAsset::ASSET_TYPE) {
+                // the asset's shared table (S95 REQ-22): by its GUID, else by its path
+                std::string error;
+                if (!DataAsset::push(L, ref.guid.isNull() ? ref.path : ref.guid.str(), &error) &&
+                        (ref.guid.isNull() || ref.path.empty() || !DataAsset::push(L, ref.path, &error))) {
+                    Log::warn("Script property '%s': the Data Asset %s does not load: %s", prop.name.c_str(), ref.path.c_str(), error.c_str());
+                    pushNone();
+                }
+            } else if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(ref))) {
+                pushNone();
+            }
+        } else if (std::holds_alternative<ScriptPropertyList>(value)) {
+            const ScriptPropertyList& list = std::get<ScriptPropertyList>(value);
+            lua_createtable(L, static_cast<int>(list.items.size()), 0);
+            for (size_t i = 0; i < list.items.size(); i++) {
+                pushScriptValue(L, scene, prop, scriptPropertyValueOf(list.items[i]), true);
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+        } else if (prop.type == ScriptPropertyType::List) {
+            lua_newtable(L);
+        } else {
+            pushNone();
         }
-        if (!found) lua_pushnil(L);
-    } else if (std::holds_alternative<bool>(value)) {
-        lua_pushboolean(L, std::get<bool>(value));
-    } else if (std::holds_alternative<int>(value)) {
-        lua_pushinteger(L, std::get<int>(value));
-    } else if (std::holds_alternative<float>(value)) {
-        lua_pushnumber(L, std::get<float>(value));
-    } else if (std::holds_alternative<std::string>(value)) {
-        lua_pushstring(L, std::get<std::string>(value).c_str());
-    } else if (std::holds_alternative<Vector2>(value)) {
-        if (!luabridge::push<Vector2>(L, std::get<Vector2>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<Vector3>(value)) {
-        if (!luabridge::push<Vector3>(L, std::get<Vector3>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<Vector4>(value)) {
-        if (!luabridge::push<Vector4>(L, std::get<Vector4>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
-        // a prefab property left at None stays nil
-        if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
-        // an asset property left at None stays nil
-        if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(std::get<AssetRef>(value)))) lua_pushnil(L);
-    } else {
-        lua_pushnil(L);
     }
+
+}
+
+void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
+    if (prop.type == ScriptPropertyType::EntityReference && !std::holds_alternative<EntityReference>(prop.value)) {
+        lua_pushnil(L);
+        return;
+    }
+    pushScriptValue(L, scene, prop, prop.value, false);
 }
 
 bool LuaBinding::pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className) {
@@ -1824,25 +1871,8 @@ void LuaBinding::resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEn
     lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
 
     for (auto& prop : scriptEntry.properties) {
-        if (prop.type != ScriptPropertyType::EntityReference) continue;
-
-        if (!std::holds_alternative<EntityReference>(prop.value)) {
-            lua_pushnil(L);
-            lua_setfield(L, -2, prop.name.c_str());
-            continue;
-        }
-
-        const auto& entRef = std::get<EntityReference>(prop.value);
-        bool found = false;
-        if (entRef.entity != NULL_ENTITY) {
-            Scene* targetScene = scene;
-            if (entRef.sceneId != 0) {
-                targetScene = SceneManager::getScenePtr(entRef.sceneId);
-            }
-            found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
-        }
-
-        if (!found) lua_pushnil(L);
+        if (!holdsEntityReferences(prop)) continue;
+        pushScriptPropertyValue(L, scene, prop);
         lua_setfield(L, -2, prop.name.c_str());
     }
 
