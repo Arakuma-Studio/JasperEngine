@@ -159,4 +159,5 @@ async def test_pending_import_logs_no_error():
         ed.check_in(f"Importing {len(MODELS)} models (first open): they appear when ready", lines[0]["message"] if lines else "")
         ed.check(jobs, "editor_status listed the model_import job while it ran")
         ed.check(all(0 <= job["done"] <= job["total"] for job in jobs), f"done/total: {jobs}")
-        ed.check_eq(max((job["total"] for job in jobs), default=0), len(MODELS), f"the job counts the scene's imports: {jobs}")
+        # (the model cook queue's import of the unused d.fbx can join the batch)
+        ed.check(max((job["total"] for job in jobs), default=0) >= len(MODELS), f"the job counts the scene's imports: {jobs}")
