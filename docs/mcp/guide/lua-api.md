@@ -2046,7 +2046,7 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `spriteSortPoint` | rw `SpriteSortPoint.CENTER` or `PIVOT`: what Custom Axis sorting measures |
 | `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
-| frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
+| frames: `addFrame(...)` (rects in texture pixels; `Points:addSpriteFrame` takes UV units), `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
@@ -3170,6 +3170,8 @@ makes a GameObject with one.
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
+  `addSpriteFrame([id,] [name,] rect)` takes the rect in UV units (0..1), not pixels as
+  `Sprite:addFrame` does; a rect outside them logs one warning per Points.
 - `LineRenderer` (Unity's LineRenderer, jasper://docs/lines-trails): the polyline:
   rw `positionCount` (growing repeats the last point), `setPosition(index, V3)` /
   `getPosition(index)` (**0-based** like Unity; out of range is an error naming the count;
