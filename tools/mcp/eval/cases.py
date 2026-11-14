@@ -5242,6 +5242,26 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
     # ---- S94 F23: an outline on a model root (the ledger's R32)
     {
         "id": "bad_outline_preset_on_model_root",

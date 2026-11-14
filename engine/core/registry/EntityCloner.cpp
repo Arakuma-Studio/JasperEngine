@@ -791,6 +791,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
         for (Entity& plane : particles.collisionPlanes) {
             plane = ctx.remap(plane);
         }
+        particles.legacyFrom = ctx.remap(particles.legacyFrom);
         return;
     }
     // the copy simulates on its own (its runtime is made at its first update)
@@ -799,6 +800,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
     for (Entity& plane : particles.collisionPlanes) {
         plane = ctx.remap(plane);
     }
+    particles.legacyFrom = ctx.remap(particles.legacyFrom);
     particles.onCollision.clear();
     particles.onParticleDeath.clear();
     particles.onSubEmit.clear();
