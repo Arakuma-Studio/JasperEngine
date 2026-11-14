@@ -1527,16 +1527,29 @@ void RmlRenderer::flushDeferredComposite(){
         return;
     const DeferredComposite d = deferred;
     deferred = DeferredComposite();
-    Framebuffer* layer = target ? target->getLayer(d.layer) : nullptr;
-    Framebuffer* post = target ? target->postprocess[d.post].get() : nullptr;
-    if (!layer || !post || d.layer >= layersSize)
+    Framebuffer* layer = (d.layer < layersSize) ? currentLayerAt(d.layer) : nullptr;
+    Framebuffer* post = d.postImage;
+    if (!layer || !post)
         return;
     // what CompositeLayers would have drawn
     PostDraw draw;
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &post->getRender().getColorTexture();
     draw.scissor = d.scissor;
+    placeByFrames(draw, d.postFrame, d.layerFrame);
     drawPost(*layer, LoadAction::LOAD, draw, d.state);
+}
+
+void RmlRenderer::placeByFrames(PostDraw& draw, Rml::Rectanglei from, Rml::Rectanglei to){
+    // P7-F2: a destination pixel p shows the source's pixel p + to.p0 - from.p0 (the identity
+    // between two ordinary layers)
+    if (from == to)
+        return;
+    const Rml::Vector2f sourceSize(from.Size()), destinationSize(to.Size());
+    draw.uvTransform[0] = destinationSize.x / sourceSize.x;
+    draw.uvTransform[1] = destinationSize.y / sourceSize.y;
+    draw.uvTransform[2] = (float)(to.Left() - from.Left()) / sourceSize.x;
+    draw.uvTransform[3] = (float)(to.Top() - from.Top()) / sourceSize.y;
 }
 
 bool RmlRenderer::bindLayer(int index){
@@ -2245,20 +2258,27 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     // P7-F2: the layers' parts of the target plane (the viewport's, or a region layer's)
     const Rml::Rectanglei sourceFrame = frameRectOf(source);
     const Rml::Rectanglei destinationFrame = frameRectOf(destination);
-    const bool ordinary = !isRegionLayer(source) && !isRegionLayer(destination);
 
     // the second composite of a backdrop: the filter output straight into the destination,
     // within both composites' scissors (the layer is transparent beyond the first's)
-    if (!scope && deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend && ordinary){
-        Framebuffer* post = postTarget(deferred.post);
-        Framebuffer* destinationLayer = target->ensureLayer(destination);
-        const Rml::Rectanglei scissor = intersect(deferred.scissor, currentScissorTarget());
+    // (S92 R10: between region layers too, placed by their frames)
+    if (!scope && deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend){
+        Framebuffer* post = deferred.postImage;
+        Framebuffer* destinationLayer = layerAt(destination);
+        // both scissors in the pushed layer's pixels, then in the destination's
+        Rml::Rectanglei scissor = intersect(deferred.scissor, currentScissorTarget());
+        if (!isEmpty(scissor)){
+            const Rml::Vector2i shift = deferred.layerFrame.p0 - destinationFrame.p0;
+            scissor = intersect(Rml::Rectanglei::FromCorners(scissor.p0 + shift, scissor.p1 + shift),
+                                Rml::Rectanglei::FromSize(destinationFrame.Size()));
+        }
         if (post && destinationLayer){
             if (!isEmpty(scissor)){
                 PostDraw draw;
                 draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
                 draw.source = &post->getRender().getColorTexture();
                 draw.scissor = scissor;
+                placeByFrames(draw, deferred.postFrame, destinationFrame);
                 fusingDeferred = true;
                 if (clipMaskEnabled)
                     ensureMask(destination);
@@ -2331,12 +2351,15 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     const Rml::Rectanglei destinationScissor = scissorIn(destinationFrame);
     // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
     if (!scope && compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !compositeClipActive() && !context.isPrimaryLayer() &&
-        destination == layersSize - 1 && ordinary &&
+        destination == layersSize - 1 &&
         destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(destinationScissor)){
         deferred.layer = destination;
         deferred.post = context.primaryIndex;
         deferred.scissor = destinationScissor;
         deferred.state = getGeometryState(BlendMode::PREMULTIPLIED);
+        deferred.postImage = &context.primary();
+        deferred.postFrame = sourceFrame;
+        deferred.layerFrame = destinationFrame;
         return;
     }
     PostDraw draw;

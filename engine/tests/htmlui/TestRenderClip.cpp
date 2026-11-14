@@ -358,15 +358,22 @@ TEST(RenderClip, DropShadowTilesAcrossScaledClip){
             EXPECT_EQ(frame.stats.stencilDraws, 0u) << label;
             EXPECT_GT(frame.stats.analyticClips, 0u) << label;
             PixelProbe probe{frame.screen, width};
+            // the rows TextInScaledScrollWithFilterLayers probes (the viewport's own edges are a
+            // rounded scissor's), and below the bottom edge where a cut row's shadow falls
             int strays = 0;
-            for (int y : {40, 42, 43, 44, 133, 134, 136, 140}){
+            std::string rows;
+            for (int y : {36, 38, 40, 42, 136, 137, 138, 140, 150}){
+                int row = 0;
                 for (int x = 50; x < 215; x++){
                     const uint8_t* p = probe.at(x, y);
                     if (std::abs(p[0] - 0x28) > 4 || std::abs(p[1] - 0x30) > 4 || std::abs(p[2] - 0x40) > 4)
-                        strays++;
+                        row++;
                 }
+                if (row > 0)
+                    rows += " " + std::to_string(y) + ":" + std::to_string(row);
+                strays += row;
             }
-            EXPECT_EQ(strays, 0) << label;
+            EXPECT_EQ(strays, 0) << label << ", rows" << rows;
             // the tiles and their shadows inside
             EXPECT_GT(paintedPixels(frame.screen, 48, 50, 215, 128), 500) << label;
         }

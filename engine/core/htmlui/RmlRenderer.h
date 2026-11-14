@@ -564,9 +564,15 @@ namespace jasperengine {
         struct DeferredComposite {
             int layer = -1;                  // the pushed layer; -1: none
             int post = -1;                   // the post target holding the filter output
-            Rml::Rectanglei scissor;         // the first composite's
+            Rml::Rectanglei scissor;         // the first composite's (the pushed layer's px)
             PipelineState state;             // the first composite's (no clip mask)
+            // S92 R10: the post target (of the source layer's frame, a region layer's set too) and
+            // the frames it and the pushed layer cover (target px)
+            Framebuffer* postImage = nullptr;
+            Rml::Rectanglei postFrame, layerFrame;
         };
+        // a post draw's source of frame `from` placed by the target plane into a target of frame `to`
+        static void placeByFrames(PostDraw& draw, Rml::Rectanglei from, Rml::Rectanglei to);
         DeferredComposite deferred;
         bool fusingDeferred = false;
         void flushDeferredComposite();
