@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "Export.h"
 #include "titleart/TitleArtDoc.h"
 #include "titleart/geometry/Path.h"
 
@@ -32,8 +33,8 @@ namespace jasperengine::titleart::geometry {
         double tailWidth = 20.0;        // %
     };
     // a shape layer's or a shape mask's geometry members
-    ShapeParams decodeShape(const Json& object);
-    Path shapePath(const ShapeParams& shape);
+    JASPERENGINE_API ShapeParams decodeShape(const Json& object);
+    JASPERENGINE_API Path shapePath(const ShapeParams& shape);
 
     // mulberry32: small, fast, deterministic per seed (Pachislop's, for burst / shout jitter)
     class Mulberry32 {

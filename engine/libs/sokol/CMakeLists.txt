@@ -31,6 +31,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
                 vulkan-1
             )
         endif()
+    elseif(GRAPHIC_BACKEND STREQUAL "glcore")
+        # wglGetProcAddress (sokol_async_impl.h) and the GL 1.1 calls of whatever links sokol
+        # (FrameReadback): a shared jasperengine links them itself
+        list(APPEND SOKOL_LINK_LIBRARIES
+            opengl32
+        )
     endif()
 endif()
 

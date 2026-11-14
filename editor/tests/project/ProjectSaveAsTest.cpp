@@ -73,8 +73,9 @@ TEST_F(ProjectSaveAsTest, SaveAsLeavesTheTrashBehind) {
     EXPECT_TRUE(exists(".trash/old.png"));
 }
 
+#ifndef _WIN32
 TEST_F(ProjectSaveAsTest, FailedSaveAsKeepsTheProjectWhereItWas) {
-    // a FIFO is no file a copy can make: the copy fails half way (as root too)
+    // a FIFO (POSIX) is no file a copy can make: the copy fails half way (as root too)
     jasperengine::test::TempDir other;
     const fs::path target = other.path() / "Copy";
     fs::create_directories(abs("assets/zz"));
@@ -84,6 +85,7 @@ TEST_F(ProjectSaveAsTest, FailedSaveAsKeepsTheProjectWhereItWas) {
     EXPECT_FALSE(fs::exists(target)) << "what the copy made is gone";
     EXPECT_TRUE(exists("assets/hero.png"));
 }
+#endif
 
 TEST_F(ProjectSaveAsTest, SaveAsIntoTheProjectIsRefused) {
     EXPECT_FALSE(project->saveProjectToPath(abs("assets/Copy")));
@@ -101,7 +103,9 @@ TEST_F(ProjectSaveAsTest, SaveAsIntoANonEmptyFolderIsRefused) {
     EXPECT_FALSE(fs::exists(other.path() / "project.yaml"));
 }
 
-// A failed Save As keeps the temporary project's lock: no other editor takes that folder
+// A failed Save As keeps the temporary project's lock: no other editor takes that folder (a FIFO
+// fails the copy: POSIX)
+#ifndef _WIN32
 TEST(ProjectSaveAsTemp, FailedSaveAsFromTheTemporaryProjectKeepsItsLock) {
     jasperengine::test::TempDir temp;
     const char* previous = std::getenv("TMPDIR");
@@ -122,6 +126,7 @@ TEST(ProjectSaveAsTemp, FailedSaveAsFromTheTemporaryProjectKeepsItsLock) {
     if (previous) setenv("TMPDIR", saved.c_str(), 1);
     else unsetenv("TMPDIR");
 }
+#endif
 
 TEST(ProjectTempDir, SkipsBusyFolders) {
     const fs::path root = "/tmp/jasper-root";

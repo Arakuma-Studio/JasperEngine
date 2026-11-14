@@ -261,7 +261,7 @@ namespace {
                             return Step::AGAIN;
                         interrupted = false;
                         error = restartError;
-                        return Step::ERROR;
+                        return Step::FAILURE;
                     }
                     interrupted = false;
                 }
@@ -280,7 +280,7 @@ namespace {
                         error.code = isCodecFailure(failure) ? MediaErrorCode::SRC_NOT_SUPPORTED : MediaErrorCode::DECODE;
                         error.message = isCodecFailure(failure) ? "this device has no " + codecLabel(codecName) + " decoder (" + utf8(failure.localizedDescription) + ")"
                                                                 : "AVFoundation stopped decoding (" + utf8(failure.localizedDescription) + ")";
-                        return Step::ERROR;
+                        return Step::FAILURE;
                     }
                     return Step::END;
                 }

@@ -4,7 +4,6 @@
 #ifndef EASE_H
 #define EASE_H
 
-#define _USE_MATH_DEFINES
 #include <math.h>
 
 #include "util/FunctionSubscribe.h"

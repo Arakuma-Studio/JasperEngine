@@ -12,7 +12,7 @@
 #include "htmlui/HttpClient.h"
 #include "util/CommandRunner.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdlib>

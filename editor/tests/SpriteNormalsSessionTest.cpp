@@ -34,8 +34,10 @@
 
 #include "json.hpp"
 
+#ifndef _WIN32
 #include <sys/resource.h>
-#include <unistd.h>
+#endif
+#include "support/PosixCompat.h"
 
 #include <csignal>
 
@@ -1659,8 +1661,9 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         EXPECT_TRUE(warning.empty()) << warning;
         EXPECT_TRUE(fs::is_directory(dir / "folder.png"));
     }
+#ifndef _WIN32
     {
-        // the sheet's write fails half way (past a 4 KiB file-size limit): the 8 KiB file it would
+        // the sheet's write fails half way (past a 4 KiB file-size limit, POSIX's RLIMIT_FSIZE): the 8 KiB file it would
         // replace is whole, no temporary file is left, nothing to warn about
         struct rlimit saved{};
         ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &saved), 0);
@@ -1695,5 +1698,6 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         EXPECT_EQ(std::distance(fs::directory_iterator(dir / "shots"), fs::directory_iterator()), 1) << "no temporary file left";
         EXPECT_TRUE(write.rollback()) << "rolled back once only";
     }
+#endif
     fs::remove_all(dir);
 }

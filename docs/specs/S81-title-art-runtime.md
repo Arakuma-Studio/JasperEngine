@@ -1465,7 +1465,7 @@ rest of S82 lands in 6B.
     (.ttc/.otc) ships whole (W-TITLEART-FONT-COLLECTION): its subset would be one face and the
     documents' face indices would change. An Exposed parameter of type `font` overridden on an
     instance is not followed: only the fonts the document names are subset.
-28. **Implementation: the AC17 bench** is the core test `TitleArtRuntimeBench.HostNumbers`
+28. **Implementation: the AC17 bench** is the core test `TitleArtRuntimeBenchGpu.HostNumbers`
     (5 warm-ups, then median and p90 of 30 text changes), not `tools/perf/title_art_bench.py` with
     `bench-thresholds.json`; there is no WebGL2 timing through `browser_gate.py`. It prints
     wall-clock frame times on whatever device runs it and checks only what holds on any device (a

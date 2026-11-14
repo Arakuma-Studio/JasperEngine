@@ -432,7 +432,7 @@ namespace {
                 release(sample);
                 error.code = byteStream && byteStream->readFailed() ? MediaErrorCode::NETWORK : MediaErrorCode::DECODE;
                 error.message = "Media Foundation stopped decoding (" + hresultText(hr) + ")";
-                return Step::ERROR;
+                return Step::FAILURE;
             }
             if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
                 readCurrentType();
@@ -440,7 +440,7 @@ namespace {
                 release(sample);
                 error.code = MediaErrorCode::DECODE;
                 error.message = "Media Foundation stopped decoding";
-                return Step::ERROR;
+                return Step::FAILURE;
             }
             if (flags & MF_SOURCE_READERF_ENDOFSTREAM){
                 release(sample);

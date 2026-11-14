@@ -102,10 +102,10 @@ TEST(ParticleModuleRows, CopyAndPasteAModule) {
 TEST(ParticleModuleRows, EveryModuleHasAHelpLink) {
     for (const ModuleDesc& module : ParticleModules::all()) {
         const std::string url = particlerows::moduleHelpUrl(module);
-        EXPECT_EQ(url.rfind("https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/particle-effect.md#", 0), 0u) << url;
+        EXPECT_EQ(url.rfind("https://github.com/Arakuma-Studio/JasperEngine/blob/main/docs/editor/particle-effect.md#", 0), 0u) << url;
     }
     EXPECT_EQ(particlerows::moduleHelpUrl(ParticleModules::get(ModuleId::LimitVelocity)),
-              "https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/particle-effect.md#limit-velocity-over-lifetime");
+              "https://github.com/Arakuma-Studio/JasperEngine/blob/main/docs/editor/particle-effect.md#limit-velocity-over-lifetime");
 }
 
 // review fix round 1 (M8, M9)

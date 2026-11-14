@@ -16,7 +16,8 @@
 
 #include <gtest/gtest.h>
 
-#if defined(SOKOL_GLCORE)
+// (not on Windows, whose GL headers declare GL 1.1 alone: sokol loads the rest itself)
+#if defined(SOKOL_GLCORE) && !defined(_WIN32)
     #define GL_GLEXT_PROTOTYPES
     #include <GL/gl.h>
     #include <GL/glext.h>
@@ -24,7 +25,7 @@
 
 // GL program state: a Vulkan or Metal build of the tests has no such test (a skip fails the unit
 // gate, which allows none)
-#if defined(SOKOL_GLCORE)
+#if defined(SOKOL_GLCORE) && !defined(_WIN32)
 TEST(SokolGlUniformArray, AFlattenedArrayWithAnUnusedTailUploadsWhatTheDriverKeeps){
     JASPER_REQUIRE_GPU();
     sg_shader_desc desc = {};

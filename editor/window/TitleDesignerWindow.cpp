@@ -7,6 +7,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Project.h"
+#include "RepositoryUrl.h"
 #include "command/CommandHistory.h"
 #include "command/UndoTimeline.h"
 #include "external/IconsFontAwesome6.h"
@@ -1390,7 +1391,7 @@ namespace {
     // dismissed: not said again this session
     bool cjkFontNoticeDismissed = false;
 
-    const char* const CJK_FONT_DOCS = "https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/text-and-languages.md#fonts-in-the-editor";
+    const std::string CJK_FONT_DOCS = std::string(REPOSITORY_URL) + "/blob/main/docs/editor/text-and-languages.md#fonts-in-the-editor";
 
 }
 
@@ -1436,9 +1437,9 @@ void TitleDesignerWindow::drawCjkFontNotice() {
     ImGui::SameLine();
     if (ImGui::SmallButton("Docs###cjkdocs")) {
         auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
-        if (!openInShell || !openInShell(ImGui::GetCurrentContext(), CJK_FONT_DOCS)) reportError(std::string("Could not open your browser: ") + CJK_FONT_DOCS);
+        if (!openInShell || !openInShell(ImGui::GetCurrentContext(), CJK_FONT_DOCS.c_str())) reportError("Could not open your browser: " + CJK_FONT_DOCS);
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", CJK_FONT_DOCS);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", CJK_FONT_DOCS.c_str());
     ImGui::SameLine();
     if (ImGui::SmallButton(ICON_FA_XMARK "###cjkdismiss")) cjkFontNoticeDismissed = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Do not say this again this session");

@@ -1,0 +1,14 @@
+Running main() from /gtest/src/gtest_main.cc
+Note: Google Test filter = Crash.*:MeshBvh.Builds
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from MeshBvh
+[ RUN      ] MeshBvh.Builds
+[       OK ] MeshBvh.Builds (0 ms)
+[----------] 1 test from MeshBvh (0 ms total)
+
+[----------] 1 test from Crash
+[ RUN      ] Crash.Segfaults
+crash exit 139
+gtest-gate: /src/editor.xml: 0 ran, 0 failed, 0 skipped, 0 disabled
+gtest-gate: FAIL: /src/editor.xml: missing (the test binary crashed, or never ran)

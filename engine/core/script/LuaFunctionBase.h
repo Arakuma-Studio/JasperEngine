@@ -4,6 +4,8 @@
 #ifndef LUA_FUNCTIONBASE_H
 #define LUA_FUNCTIONBASE_H
 
+#include "Export.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -38,7 +40,7 @@ namespace jasperengine{
     namespace lua_reload { struct CallbackRecord; }
 
     // the base function wrapper class
-    class LuaFunctionBase{
+    class JASPERENGINE_API LuaFunctionBase{
 
     private:
 

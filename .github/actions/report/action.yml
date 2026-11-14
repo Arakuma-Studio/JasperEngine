@@ -1,0 +1,50 @@
+name: Lane report
+description: >-
+  Collects the lane's failures and test counts (tools/ci/report.py collect) into
+  build/test-results/ci-report/<lane>.json and the job summary, and uploads it as ci-report-<lane>
+  with build/test-results as test-results-<lane> (14 days). Call it as the lane's last step with
+  `if: always()`; the lane's env holds JASPER_CI_REPRO (its command, as run).
+inputs:
+  lane:
+    description: The lane's report name (the job id; mcp-<shard> for an MCP shard).
+    required: true
+  status:
+    description: The job's status so far (success, failure or cancelled).
+    default: ${{ job.status }}
+  results:
+    description: The results folder it collects and uploads (a step of its own reported apart).
+    default: build/test-results
+runs:
+  using: composite
+  steps:
+    - name: Collect the report
+      if: always()
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+        RESULTS: ${{ inputs.results }}
+        JASPER_CI_STATUS: ${{ inputs.status }}
+      run: |
+        set -euo pipefail
+        [[ "$LANE" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] || { echo "::error::report: lane '$LANE' is not a lane name"; exit 1; }
+        # (python3 on Windows runners can be the Store's alias stub)
+        if [[ "$RUNNER_OS" == Windows ]]; then PY=python; else PY=python3; fi
+        "$PY" -I tools/ci/report.py collect --lane "$LANE" --results "$RESULTS" --out "build/test-results/ci-report/$LANE.json"
+    - name: Upload the report
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ci-report-${{ inputs.lane }}
+        path: build/test-results/ci-report/${{ inputs.lane }}.json
+        if-no-files-found: warn
+        retention-days: 14
+        overwrite: true
+    - name: Upload the test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: test-results-${{ inputs.lane }}
+        path: ${{ inputs.results }}/
+        if-no-files-found: ignore
+        retention-days: 14
+        overwrite: true

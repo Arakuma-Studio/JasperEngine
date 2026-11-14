@@ -63,13 +63,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
 endif()
 
 # The terrain goldens hash what TerrainGoldenSequences.h computes in the test's own unit: no
-# contraction there either, or arm64 would seed its maps differently (docs/specs/T1-terrain-authoring.md R8)
+# contraction there either, or arm64 would seed its maps differently (docs/specs/T1-terrain-authoring.md R8).
+# Likewise the references other tests compare bit for bit with uncontracted engine code: the
+# forward-difference normal and the pixel kick's countdown
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainSurfaceTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/camera/CameraShakePixelTest.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 

@@ -104,7 +104,8 @@ TEST(HtmlUiExamples, WriteToMakesAndKeepsTheProjectCopy){
     fs::last_write_time(css, fs::file_time_type::clock::now() - std::chrono::hours(24));
     const auto before = fs::last_write_time(css);
     ASSERT_TRUE(HtmlUiExamples::writeTo(dir, error)) << error;
-    EXPECT_EQ(fs::last_write_time(css), before);
+    // ticks: a failing time_point would print through libc++'s chrono formatter (macOS 13.3+ only)
+    EXPECT_EQ(fs::last_write_time(css).time_since_epoch().count(), before.time_since_epoch().count());
 
     // a newer editor: an edited file is restored, a file and a folder it no longer has go
     writeAll(css, "/* edited */");

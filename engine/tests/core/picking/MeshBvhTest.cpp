@@ -196,13 +196,13 @@ TEST(MeshBvh, Avx2UnavailableWhenCpuidMasked){
     masked.avx = false;
     EXPECT_FALSE(picking::avx2Usable(masked));
     // what this host reports agrees with whether the path can be chosen
-    EXPECT_EQ(isPickSimdPathAvailable(PickSimdPath::AVX2),
+    // (not an #if inside the macro's arguments: MSVC refuses directives there)
 #if defined(__x86_64__) || defined(_M_X64)
-              picking::avx2Usable(picking::queryCpuFeatures())
+    const bool expectedAvx2 = picking::avx2Usable(picking::queryCpuFeatures());
 #else
-              false
+    const bool expectedAvx2 = false;
 #endif
-    );
+    EXPECT_EQ(isPickSimdPathAvailable(PickSimdPath::AVX2), expectedAvx2);
     EXPECT_TRUE(isPickSimdPathAvailable(PickSimdPath::SCALAR));
 }
 

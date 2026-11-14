@@ -29,7 +29,7 @@
 #include "util/ScriptPropertyCache.h"
 #include "window/CodeEditor.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdlib>

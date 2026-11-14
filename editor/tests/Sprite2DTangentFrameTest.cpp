@@ -30,7 +30,7 @@
 #include "util/ProjectUtils.h"
 #include "yaml-cpp/yaml.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdlib>

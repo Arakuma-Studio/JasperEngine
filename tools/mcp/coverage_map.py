@@ -12,12 +12,17 @@ landing's run, a quiet server):
     python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \\
       --commit $(git rev-parse HEAD) --results build/coverage/mcp.json --out build/coverage/coverage-map.json
 
+A run split across machines (the nightly's shards, .github/workflows/nightly.yml) collects each
+machine's runs on its own and joins the maps (all of one commit):
+
+    python3 tools/mcp/coverage_map.py merge map-1.json map-2.json ... --out coverage-map.json
+
 A function counts for a test file when one of its objects' .gcda has a counter above zero in it. The
 object's .gcno says where each function is written: its file (a header's for an inline function) and
 lines, which is what lets check-changed go from a diff's hunks to the functions they touch.
 
 The map: {"version": 2, "commit", "created", "tests": [names], "editor_tests": N (those that started an
-editor), "seconds": {test: s}, "sources": {file: {"functions": [[first line, last line, hex mask of the
+editor), "editor_test_names" (those, by name), "seconds": {test: s}, "sources": {file: {"functions": [[first line, last line, hex mask of the
 tests that executed it], ...]}}}.
 """
 
@@ -175,8 +180,51 @@ def collect(runs: Path, tree: Path, read_gcno=None) -> dict:
     for (file, first, last), mask in sorted(masks.items()):
         entry = sources.setdefault(file, {"functions": []})
         entry["functions"].append([first, last, format(mask, "x")])
-    return {"version": 2, "tests": tests, "editor_tests": sum(1 for n in executed if n >= MIN_EDITOR_FUNCTIONS),
+    editor_tests = [t for t, n in zip(tests, executed) if n >= MIN_EDITOR_FUNCTIONS]
+    return {"version": 2, "tests": tests, "editor_tests": len(editor_tests), "editor_test_names": editor_tests,
             "sources": sources}
+
+
+def merge(maps: list[dict]) -> dict:
+    """One map of several runs' maps of one commit (a run split across machines): the tests joined,
+    each function's mask renumbered onto them; a test in more than one (its chunks ran apart) adds
+    its seconds and counts once."""
+    if len({m.get("commit") for m in maps}) != 1 or len({m.get("version") for m in maps}) != 1:
+        raise ValueError("the maps are of different commits or versions: "
+                         + ", ".join(f"{m.get('commit')} v{m.get('version')}" for m in maps))
+    tests = sorted({t for m in maps for t in m["tests"]})
+    index = {t: i for i, t in enumerate(tests)}
+    masks: dict[tuple[str, int, int], int] = {}
+    seconds: dict[str, float] = {}
+    editor_tests: set[str] = set()
+    for m in maps:
+        bits = [1 << index[t] for t in m["tests"]]
+        for file, entry in m["sources"].items():
+            for first, last, mask in entry["functions"]:
+                value, joined = int(mask, 16), 0
+                for i, bit in enumerate(bits):
+                    if value >> i & 1:
+                        joined |= bit
+                masks[(file, first, last)] = masks.get((file, first, last), 0) | joined
+        for test, s in m.get("seconds", {}).items():
+            seconds[test] = round(seconds.get(test, 0.0) + s, 1)
+        editor_tests.update(m.get("editor_test_names", []))
+    sources: dict[str, dict] = {}
+    for (file, first, last), mask in sorted(masks.items()):
+        sources.setdefault(file, {"functions": []})["functions"].append([first, last, format(mask, "x")])
+    return {"version": maps[0]["version"], "commit": maps[0]["commit"], "created": max(m.get("created", 0) for m in maps),
+            "tests": tests, "editor_tests": len(editor_tests), "editor_test_names": sorted(editor_tests),
+            "seconds": seconds, "sources": sources}
+
+
+def write(data: dict, out: Path) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, out)
+    n = sum(len(e["functions"]) for e in data["sources"].values())
+    print(f"coverage map: {len(data['tests'])} test files, {data['editor_tests']} with an editor, {len(data['sources'])} "
+          f"sources, {n} functions, {out.stat().st_size // 1024} KiB; {out}")
 
 
 def main(argv: list[str]) -> int:
@@ -188,7 +236,21 @@ def main(argv: list[str]) -> int:
     c.add_argument("--commit", required=True)
     c.add_argument("--results", type=Path, help="the run's --json results: each test file's time (the map's seconds)")
     c.add_argument("--out", type=Path, required=True)
+    m = sub.add_parser("merge", help="one map of a split run's maps (each a collect of its own runs)")
+    m.add_argument("maps", type=Path, nargs="+")
+    m.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
+    if args.cmd == "merge":
+        try:
+            data = merge([json.loads(p.read_text()) for p in args.maps])
+        except (OSError, ValueError, KeyError) as e:
+            print(f"coverage_map: cannot merge: {e}", file=sys.stderr)
+            return 1
+        if not data["editor_tests"]:
+            print("coverage_map: no test file of the maps executed anything", file=sys.stderr)
+            return 1
+        write(data, args.out)
+        return 0
     tree = args.tree.resolve()
     data = collect(args.runs, tree)
     if not data["editor_tests"]:
@@ -199,13 +261,7 @@ def main(argv: list[str]) -> int:
         for r in json.loads(args.results.read_text()).get("results", []):
             file = r["name"].split("::")[0]
             data["seconds"][file] = round(data["seconds"].get(file, 0.0) + r["seconds"], 1)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = args.out.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, args.out)
-    n = sum(len(e["functions"]) for e in data["sources"].values())
-    print(f"coverage map: {len(data['tests'])} test files, {data['editor_tests']} with an editor, {len(data['sources'])} "
-          f"sources, {n} functions, {args.out.stat().st_size // 1024} KiB; {args.out}")
+    write(data, args.out)
     return 0
 
 

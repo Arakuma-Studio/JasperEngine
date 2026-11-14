@@ -1,0 +1,16 @@
+# The pinned actions of .github/workflows and .github/actions (full commit SHAs with their version in a
+# comment, docs/superpowers/specs/2026-11-12-ci-design.md §7.3): one grouped PR a week, which CI checks.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: ci

@@ -35,7 +35,7 @@ namespace jasperengine::titleart {
     JASPERENGINE_API ToneMapping3D toneMappingFromName(const std::string& name);
     JASPERENGINE_API const char* toneMappingName(ToneMapping3D tone);
 
-    struct TitleMaterial3D {
+    struct JASPERENGINE_API TitleMaterial3D {
         std::string preset = "custom";
         TitleColor color{1, 1, 1};
         std::optional<TitleGradient> gradient;

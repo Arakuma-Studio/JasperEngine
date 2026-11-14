@@ -66,8 +66,12 @@ TEST(AtomicFileBench, CacheWriteNearPlainWrite) {
         if (atomic <= plain * 1.5 + 0.05) break;
     }
     std::printf("[ bench    ] 64 KB: ofstream %.3f ms, Cache atomic %.3f ms\n", plain, atomic);
-    // 0.05 ms of slack: at these sizes a single syscall is the difference
-    EXPECT_LE(atomic, plain * 1.5 + 0.05);
+    // 0.05 ms of slack: at these sizes a single syscall is the difference. A wall-clock budget,
+    // enforced where perfSlack() says (the benchmark run), as DocumentWriteOverhead's
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LE(atomic, (plain * 1.5 + 0.05) * slack);
+    }
 }
 
 TEST(AtomicFileBench, DocumentWriteOverhead) {

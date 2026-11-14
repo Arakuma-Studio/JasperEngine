@@ -26,7 +26,7 @@
 #include "object/Terrain.h"
 #include "texture/Texture.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include "Scene.h"
 #include "component/CanvasGroupComponent.h"

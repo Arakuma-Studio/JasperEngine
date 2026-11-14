@@ -44,7 +44,7 @@
 #include "stb_image_write.h"
 #include "tiny_gltf.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <chrono>
 #include <cmath>

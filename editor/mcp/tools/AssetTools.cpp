@@ -5106,7 +5106,8 @@ void reimportTexturesTool(const CallPtr& call) {
             const std::vector<std::string> problems = TextureCookReport::problems(rows);
             int failed = 0;
             for (const TextureReportRow& row : rows)
-                for (const auto& [family, state] : row.families) failed += state.status == TextureCookStatus::Failed ? 1 : 0;
+                // (no structured binding: MSVC took the inner `state` for a capture of this lambda, C3493)
+                for (const auto& entry : row.families) failed += entry.second.status == TextureCookStatus::Failed ? 1 : 0;
             const std::string text = timedOut ? "Some cooks are still running (timed_out); get_texture_cook_report shows them later."
                                               : "Reimported " + std::to_string(rows.size()) + " texture(s)" +
                                                     (failed ? ", " + std::to_string(failed) + " cook(s) failed." : ".");

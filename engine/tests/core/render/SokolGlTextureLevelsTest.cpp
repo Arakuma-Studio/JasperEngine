@@ -17,14 +17,15 @@
 
 #include <vector>
 
-#if defined(SOKOL_GLCORE)
+// (not on Windows, whose GL headers declare GL 1.1 alone: sokol loads the rest itself)
+#if defined(SOKOL_GLCORE) && !defined(_WIN32)
     #define GL_GLEXT_PROTOTYPES
     #include <GL/gl.h>
 #endif
 
 namespace {
 
-#if defined(SOKOL_GLCORE)
+#if defined(SOKOL_GLCORE) && !defined(_WIN32)
     // the GL_TEXTURE_MAX_LEVEL of an image's GL texture
     GLint maxLevelOf(sg_image image){
         const sg_gl_image_info info = sg_gl_query_image_info(image);
@@ -44,7 +45,7 @@ namespace {
 
 // GL texture state: a Vulkan or Metal build of the tests has no such test (a skip fails the unit gate,
 // which allows none)
-#if defined(SOKOL_GLCORE)
+#if defined(SOKOL_GLCORE) && !defined(_WIN32)
 TEST(SokolGlTextureLevels, OneLevelTexturesStateTheirMaxLevel){
     JASPER_REQUIRE_GPU();
     // a font atlas: R8, one level, with data

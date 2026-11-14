@@ -329,7 +329,7 @@ namespace FFMPEG_NAMESPACE {
                     if (result != AVERROR(EAGAIN)){
                         error.code = MediaErrorCode::DECODE;
                         error.message = "the decoder failed (" + errorText(a, result) + ")";
-                        return Step::ERROR;
+                        return Step::FAILURE;
                     }
                     if (draining)
                         return Step::END;
@@ -338,12 +338,12 @@ namespace FFMPEG_NAMESPACE {
                         if (readFailed && source->isGrowing()){
                             error.code = MediaErrorCode::NETWORK;
                             error.message = "the download stopped";
-                            return Step::ERROR;
+                            return Step::FAILURE;
                         }
                         if (readFailed){
                             error.code = MediaErrorCode::NETWORK;
                             error.message = "the file could not be read any more";
-                            return Step::ERROR;
+                            return Step::FAILURE;
                         }
                         // the end (or damage past which nothing is readable): the decoder drains
                         draining = true;
@@ -356,7 +356,7 @@ namespace FFMPEG_NAMESPACE {
                     if (result < 0 && result != AVERROR(EAGAIN) && result != AVERROR_INVALIDDATA){
                         error.code = MediaErrorCode::DECODE;
                         error.message = "the decoder refused a packet (" + errorText(a, result) + ")";
-                        return Step::ERROR;
+                        return Step::FAILURE;
                     }
                 }
                 return Step::AGAIN;
@@ -497,7 +497,7 @@ namespace FFMPEG_NAMESPACE {
                             error.code = MediaErrorCode::SRC_NOT_SUPPORTED;
                             error.message = std::string("its pixel format ") + (name ? name : std::to_string(frame->format).c_str()) +
                                             " needs libswscale (install it with FFmpeg, or convert the video to WebM AV1)";
-                            return Step::ERROR;
+                            return Step::FAILURE;
                         }
                         break;
                 }
@@ -578,7 +578,7 @@ namespace FFMPEG_NAMESPACE {
                 if (!ensureResampler()){
                     error.code = MediaErrorCode::DECODE;
                     error.message = "FFmpeg could not convert the audio to 48 kHz stereo";
-                    return Step::ERROR;
+                    return Step::FAILURE;
                 }
                 const int capacity = (int)((int64_t)frame->nb_samples * VideoAudioRing::SAMPLE_RATE / std::max(resamplerRate, 1)) + 256;
                 pcm.resize((size_t)capacity * 2);
@@ -587,7 +587,7 @@ namespace FFMPEG_NAMESPACE {
                 if (converted < 0){
                     error.code = MediaErrorCode::DECODE;
                     error.message = "FFmpeg could not convert the audio";
-                    return Step::ERROR;
+                    return Step::FAILURE;
                 }
                 pcm.resize((size_t)converted * 2);
                 pcmStart = (double)toNs(framePts()) / 1e9;

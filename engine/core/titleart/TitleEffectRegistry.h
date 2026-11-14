@@ -264,6 +264,8 @@ namespace jasperengine::titleart {
 
     private:
         TitleEffectRegistry() = default;
+        TitleEffectRegistry(const TitleEffectRegistry&) = delete;
+        TitleEffectRegistry& operator=(const TitleEffectRegistry&) = delete;
         std::vector<std::unique_ptr<EffectDef>> effectDefs;
         std::vector<std::unique_ptr<GeneratorDef>> generatorDefs;
         uint64_t changes = 0;

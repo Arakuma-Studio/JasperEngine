@@ -121,7 +121,7 @@ HF_HOSTS = ("huggingface.co", ".huggingface.co", ".hf.co")
 SEMANTIC_LABELS = ("ok", "weak", "review")
 ROBOTS_URL = "https://freesound.org/robots.txt"
 ROBOTS_AGENT = "JasperEngine-sound-library"
-USER_AGENT = ROBOTS_AGENT + "/1 (tools/sound-library/build_library.py; +https://github.com/JasperRaccoon/JasperEngine)"
+USER_AGENT = ROBOTS_AGENT + "/1 (tools/sound-library/build_library.py; +https://github.com/Arakuma-Studio/JasperEngine)"
 REQUEST_INTERVAL_S = 1.0
 
 HARD_CAP_BYTES = 37748736  # §2.3.1: 36 MiB for the whole library/ tree

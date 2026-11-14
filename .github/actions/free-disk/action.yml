@@ -1,0 +1,21 @@
+name: Free disk
+description: >
+  Linux runners: removes the preinstalled Android SDK, .NET, GHC, the CodeQL bundle and every Docker
+  image, which a lane's build image and build tree need the room of (docs/superpowers/specs/2026-11-12-ci-design.md
+  §10.3). Prints df -h before and after. Does nothing on Windows and macOS.
+runs:
+  using: composite
+  steps:
+    - name: Free disk
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        df -h /
+        # in parallel: each removal is a few GB of small files
+        for dir in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL; do
+            sudo rm -rf "$dir" &
+        done
+        # no container runs yet, so every image is unused
+        docker image prune --all --force > /dev/null &
+        wait
+        df -h /

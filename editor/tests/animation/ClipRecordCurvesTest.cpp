@@ -43,7 +43,7 @@
 #include "window/AnimationWindowClipCurves.h"
 #include "window/AnimationWindowClipUtil.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cmath>
 #include <cstdlib>

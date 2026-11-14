@@ -116,7 +116,7 @@ namespace je_crash_test {
     }
 
     void appendLine(const std::filesystem::path& file, const std::string& line) {
-        std::ofstream out(file, std::ios::app);
+        std::ofstream out(file, std::ios::app | std::ios::binary);
         out << line << "\n";
     }
 
@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
 #if !defined(_WIN32)
         CrashInfo info{};
         if (callWithCrashGuard([] { raise(SIGSEGV); }, &info)) return 1;
-        std::ofstream(root / "ring.txt") << diag::crash::ringContents();
+        std::ofstream(root / "ring.txt", std::ios::binary) << diag::crash::ringContents();
         diag::crash::shutdown();
         Logger::shutdown();
         return 0;
@@ -260,7 +260,7 @@ int main(int argc, char** argv) {
             std::_Exit(3);
         }
     } else if (name == "list") {
-        std::ofstream file(root / "reports.txt");
+        std::ofstream file(root / "reports.txt", std::ios::binary);
         file << "abnormal " << (diag::crash::lastSessionEndedAbnormally() ? 1 : 0) << "\n";
         const auto last = diag::crash::lastSessionReport();
         file << "last " << (last ? last->id : std::string("-")) << "\n";
@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
             file << report.id << " " << report.kind << " " << (report.handled ? 1 : 0) << "\n";
         }
     } else if (name == "where") {
-        std::ofstream(root / "where.txt") << diag::crash::reportsDirectory().string() << "\n";
+        std::ofstream(root / "where.txt", std::ios::binary) << diag::crash::reportsDirectory().string() << "\n";
     } else if (name == "ring") {
         for (int i = 1; i <= 300; i++) log("ring line " + std::to_string(i));
         std::ofstream(root / "ring.txt", std::ios::binary) << diag::crash::ringContents();

@@ -66,7 +66,7 @@ namespace jasperengine {
     };
 
     // The levels before encoding: per face, level 0 first, in the layout `layout` says
-    struct PreparedTexture {
+    struct JASPERENGINE_API PreparedTexture {
         enum class Layout : uint8_t {
             RGBA8,      // colour (srgb says how it is encoded), alpha straight
             RG8,        // normal XY, 0.5 = 0

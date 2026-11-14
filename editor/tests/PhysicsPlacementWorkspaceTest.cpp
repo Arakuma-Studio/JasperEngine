@@ -13,7 +13,7 @@
 
 #include "yaml-cpp/yaml.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

@@ -24,7 +24,7 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "util/AssetDatabase.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

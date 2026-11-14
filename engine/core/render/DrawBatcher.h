@@ -224,6 +224,8 @@ namespace jasperengine{
         typedef void (*RequestFlush)();
 
         DrawBatcher();
+        DrawBatcher(const DrawBatcher&) = delete;
+        DrawBatcher& operator=(const DrawBatcher&) = delete;
 
         void setCallbacks(DrawRun drawRun, RequestFlush requestFlush, void* owner);
 

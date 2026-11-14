@@ -32,6 +32,9 @@ namespace jasperengine {
         // an exported class)
         AnimEngine(const AnimEngine&) = delete;
         AnimEngine& operator=(const AnimEngine&) = delete;
+        // in AnimEngine.cpp, where AnimTween is complete (the same reason; the constructor
+        // destroys the members it made when one throws)
+        ~AnimEngine();
 
         // once per frame (idempotent while the times do not change): the UI clock time in
         // seconds; the game clock follows Engine::getGameTime()
@@ -72,7 +75,7 @@ namespace jasperengine {
         static void countTimer(int delta);
 
     private:
-        AnimEngine() = default;
+        AnimEngine();
         void update();
 
         double uiNow = 0;

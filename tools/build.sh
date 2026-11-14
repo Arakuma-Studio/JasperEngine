@@ -22,7 +22,10 @@
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
 #                                      (target runtime: the no-compiler image, docker/runtime.Dockerfile:
 #                                      exec runtime python3 tools/ci/test_player_cli.py runs the S30 player CLI test)
+#   tools/build.sh image-tag <target>  the content hash the target's image is tagged with, which CI's GHCR
+#                                      images share (linux, web, android, linux-backends, runtime)
 #
+# JASPERENGINE_EDITOR_VERSION (or JASPERENGINE_VERSION) stamps the build with that version instead of git describe.
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
@@ -36,7 +39,8 @@
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
-# instead of building docker/<target>.Dockerfile (CI's prebuilt images).
+# instead of building docker/<target>.Dockerfile (CI pulls ghcr.io/<owner>/jasperengine-<target>-build:
+# <image-tag> and passes it, .github/actions/image).
 # unit-tests: UNIT_TEST_ARGS goes to both test binaries (e.g. --gtest_filter=Vector3.*), RUN=0
 # builds only, UNIT_SUITE=core or editor builds and runs one of the two; JASPER_TEST_UPDATE_GOLDEN=1
 # rewrites the core goldens (glcore only) and the reflection snapshot; JASPER_REFLECT_WRITE_FIXTURE=1
@@ -91,12 +95,35 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
+}
+
+# The tag of a target's image: a hash of its Dockerfile and of what that COPYs or ADDs from docker/
+# (12 hex). linux-backends is built FROM the linux image of that image's hash (its BASE argument),
+# so the linux image's hash is part of its own. CI's GHCR images carry the same tags (image-tag).
+image_hash() {
+    local file="$ROOT/docker/$1.Dockerfile"
+    {
+        cat "$file"
+        # the build-context sources of COPY and ADD (not a --from stage's)
+        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
+                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
+                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
+             }' "$file" | while read -r source; do
+            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
+        done
+        if [[ "$1" == linux-backends ]]; then echo "FROM linux $(image_hash linux)"; fi
+    } | sha256sum | cut -c1-12
 }
 
 [[ $# -ge 1 ]] || usage
 TARGET="$1"; shift
+if [[ "$TARGET" == image-tag ]]; then
+    [[ $# -eq 1 && "$1" =~ ^[a-z0-9-]+$ && -f "$ROOT/docker/$1.Dockerfile" ]] || usage
+    image_hash "$1"
+    exit 0
+fi
 CLEAN=0
 SHELL_MODE=0
 EXEC_MODE=0
@@ -157,23 +184,10 @@ if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUI
         || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
-# a hash of its Dockerfile and of what that COPYs or ADDs from docker/ (jasperengine/<target>-build:
-# <12 hex>), and :latest names the newest build (for people): worktrees with different Dockerfiles
-# each keep theirs, instead of retagging one name back and forth and leaving the other image
-# untagged, for a prune to delete under a job that still runs it. The containers run it by id.
-image_hash() {
-    local file="$ROOT/docker/$1.Dockerfile"
-    {
-        cat "$file"
-        # the build-context sources of COPY and ADD (not a --from stage's)
-        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
-                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
-                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
-             }' "$file" | while read -r source; do
-            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
-        done
-    } | sha256sum | cut -c1-12
-}
+# image_hash (above, jasperengine/<target>-build:<12 hex>), and :latest names the newest build (for
+# people): worktrees with different Dockerfiles each keep theirs, instead of retagging one name back and
+# forth and leaving the other image untagged, for a prune to delete under a job that still runs it. The
+# containers run it by id.
 # Already inside the Linux build image (rb.sh --img, tools/check-changed there): no Docker; the
 # targets of that image run here directly, with the same environment (IN_IMAGE=1)
 IN_IMAGE=0
@@ -205,7 +219,8 @@ fi
 # headers and library of docker/linux-backends.Dockerfile (built on this image, as
 # tools/smoke-test.sh does)
 if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" == gles3 && $IN_IMAGE == 0 && -z "${JASPER_DOCKER_IMAGE:-}" ]]; then
-    IMAGE_ID="$(docker build -q -t jasperengine/linux-backends -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
+    IMAGE_ID="$(docker build -q -t "jasperengine/linux-backends:$(image_hash linux-backends)" -t jasperengine/linux-backends:latest \
+        --build-arg "BASE=$IMAGE:$(image_hash linux)" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
 fi
 
 # SANITIZE=address,undefined | thread: the CMake list, and the suffix of the build directories
@@ -288,13 +303,15 @@ for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_U
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
             JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
             JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
-            JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN; do
+            JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN \
+            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
     # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
     # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins;
-    # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image)
+    # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image;
+    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)
@@ -398,6 +415,13 @@ if [[ -n "${CXX_STANDARD:-}" ]]; then
     CXX_SUFFIX="-cxx$CXX_STANDARD"
 fi
 OPTION_FLAGS="$OPTION_FLAGS $CXX_STANDARD_FLAGS"
+# A release's version stamp (CI: nightly-YYYYMMDD or vX.Y.Z); without it CMake asks git describe.
+# Checked here because the flags are expanded inside the container's bash -c.
+STAMP="${JASPERENGINE_EDITOR_VERSION:-${JASPERENGINE_VERSION:-}}"
+if [[ -n "$STAMP" ]]; then
+    [[ "$STAMP" =~ ^[A-Za-z0-9._+-]+$ ]] || { echo "build.sh: JASPERENGINE_EDITOR_VERSION must match [A-Za-z0-9._+-]+, got '$STAMP'" >&2; exit 2; }
+    OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_EDITOR_VERSION=$STAMP"
+fi
 # the standalone engine tree's development and test builds (linux's sample project, unit-tests,
 # htmlui-tests) with precompiled headers; exports, web, Android and players keep it off
 DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=ON"

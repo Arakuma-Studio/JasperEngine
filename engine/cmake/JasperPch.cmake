@@ -4,9 +4,8 @@
 #
 # JASPERENGINE_PCH is ON by default in the editor tree and OFF when engine/ is the top level (every
 # exported game, web, Android and player build configures as it always did; tools/build.sh turns
-# it on for its Linux development and test trees). GCC and Clang with Ninja or Makefiles only: on
-# MSVC a precompiled <cmath> would come before the _USE_MATH_DEFINES that four of our sources set,
-# and the Xcode generator is not used for our development builds.
+# it on for its Linux development and test trees). GCC and Clang with Ninja or Makefiles only: MSVC
+# builds have never used them, and the Xcode generator is not used for our development builds.
 #
 # Only our own C++ sources get it: C, Objective-C(++) and the vendored sources compiled inside our
 # targets (ImGui, the platform backends under libs/) are compiled as before.

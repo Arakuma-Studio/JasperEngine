@@ -38,7 +38,7 @@ namespace jasperengine::io {
         None,
         // skipIfUnchanged and the target already held the bytes: nothing was touched
         Unchanged,
-        CreateDirectory,
+        CreateDirectories,
         // createDirectories is false and the target's folder does not exist: nothing was touched
         MissingDirectory,
         OpenTemp,

@@ -164,3 +164,20 @@ TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "major.zip", BINARY, otherMajor), dir / "major", installed, warnings, error, &none)) << error;
     EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "major", true, error).has_value());
 }
+
+// A nightly (nightly-YYYYMMDD, .github/workflows/build-release.yml) is a release like a stable
+// v<major>.<minor>.<patch>: its editor downloads the players of its own tag, hash-checked; a
+// git describe stamp or a two-part tag is a development editor
+TEST(PlayerInstall, StableAndNightlyEditorsDownloadFromTheirOwnRelease) {
+    EXPECT_TRUE(PlayerRuntimes::isReleaseVersion("v1.2.3"));
+    EXPECT_TRUE(PlayerRuntimes::isReleaseVersion("nightly-20261112"));
+    for (const char* development : {"v1.2", "v1.2.3-4-gabc1234", "v1.2.3-dirty", "nightly-2026111", "nightly-20261112-dirty",
+                                    "nightly-2026-11-12", "abc1234", "unknown", ""})
+        EXPECT_FALSE(PlayerRuntimes::isReleaseVersion(development)) << development;
+
+    EXPECT_EQ(PlayerRuntimes::releaseUrl(ID, "nightly-20261112"),
+              "https://github.com/Arakuma-Studio/JasperEngine/releases/download/nightly-20261112/"
+              "jasperengine-player-linux-x64-glcore-release-nightly-20261112.zip");
+    EXPECT_EQ(PlayerRuntimes::releaseUrl(ID, "v1.2.3"),
+              "https://github.com/Arakuma-Studio/JasperEngine/releases/download/v1.2.3/jasperengine-player-linux-x64-glcore-release-v1.2.3.zip");
+}

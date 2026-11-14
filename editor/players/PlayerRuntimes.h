@@ -82,9 +82,11 @@ namespace jasperengine::editor {
         // The release variant a project needing these modules ships with: the one of fewest
         // modules holding all of them (the full player always does), of those the last listed
         static const PlayerVariant& variantFor(const std::vector<std::string>& modules);
-        // the editor's version, and whether it is a release (an exact v<major>.<minor>.<patch>)
+        // the editor's version, and whether it is a release (an exact v<major>.<minor>.<patch>, or a
+        // nightly-YYYYMMDD)
         static std::string editorVersion();
         static bool isReleaseEditor();
+        static bool isReleaseVersion(const std::string& version);
 
         // where runtimes are looked for, in order; `override` (--players-dir) first
         static std::vector<std::filesystem::path> searchDirs(const std::filesystem::path& override = {});
@@ -115,6 +117,8 @@ namespace jasperengine::editor {
         // the release's archive of that id from the editor's GitHub release (R9); a development
         // editor cannot download (it trusts only local players)
         static std::string downloadUrl(const std::string& id);
+        // that version's archive of that id on the repository's GitHub release (no mirror)
+        static std::string releaseUrl(const std::string& id, const std::string& version);
         // cancel stops the transfer itself; received (when given) follows the bytes that arrived
         static bool download(const std::string& id, const std::filesystem::path& override, const std::atomic<bool>* cancel,
                              std::string& installedId, std::vector<std::string>& warnings, std::string& error,

@@ -1070,7 +1070,10 @@ option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-
 option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
 if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
     if(MSVC)
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        # /Z7: each object carries its own debug information, which the link gathers into the PDB as
+        # before; /Zi's shared compiler PDB made every object uncacheable (ccache: the player
+        # runtimes and Compile builds of CI)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
@@ -1293,10 +1296,11 @@ if(JASPERENGINE_RUNTIME_SHADERS)
 endif()
 
 # Set again here because standalone builds skip the root CMakeLists
+# C and C++ only: an assembler handed /w takes it for a second input file (dav1d's NASM on MSVC)
 if(MSVC)
-    set(EXTERNAL_WARNING_FLAG /w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG -w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-w>)
 endif()
 
 set(JASPERENGINE_TEXTURE_LIBS zstd_decompress zstd basisu_transcoder)
@@ -2353,6 +2357,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
 endif()
 
+# M_PI and the other <cmath> constants, which the Windows CRT declares only with _USE_MATH_DEFINES
+# set before its first include: for every source of the engine and of the targets linking it
+if(WIN32)
+    target_compile_definitions(jasperengine PUBLIC _USE_MATH_DEFINES)
+endif()
+# Sources are UTF-8 whatever the code page, as the editor's, the tests' and a game's own: MSVC read
+# the engine's in the system code page (TitleFit's kinsoku sets of U"..." literals came out wrong)
+target_compile_options(jasperengine PRIVATE $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<COMPILE_LANGUAGE:C,CXX>>:/utf-8>)
+
 # the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
 if(WIN32)
     target_link_libraries(jasperengine PRIVATE dbghelp)
@@ -2456,6 +2469,11 @@ jasperengine_skip_unity_build(
 if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# the grid layouts (S50): the cell of a cell's own point is that cell only without fused
+# multiply-adds (arm64 Clang fuses them by default), so painting and picking agree on every CPU
+if(NOT MSVC)
+    set_source_files_properties(core/tilemap/TileGridLayout.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 # Every player links the limiter (S38 6.6), and most run it on one bus, with room to spare in its budget
 # (R17): it is built for size. Its result does not depend on it: no fast-math, no contraction here.

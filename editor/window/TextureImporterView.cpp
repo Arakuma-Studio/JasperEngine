@@ -856,7 +856,7 @@ void TextureImporterView::reloadCleanupSection(const std::string& assetPath){
     const fs::path absolute = project->getAssetsPath() / fs::path(assetPath);
     std::error_code ec;
     const fs::file_time_type time = fs::last_write_time(SetAssetMetaCmd::metaPathOf(absolute), ec);
-    const std::string key = assetPath + "|" + (ec ? std::string() : std::to_string(time.time_since_epoch().count()));
+    const std::string key = assetPath + "|" + (ec ? std::string() : std::to_string(static_cast<long long>(time.time_since_epoch().count())));
     if (key == cleanupSectionKey)
         return;
     cleanupSectionKey = key;

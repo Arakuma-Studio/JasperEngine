@@ -189,7 +189,8 @@ TEST_F(AsepriteLocatorTest, WindowsLocationsInOrderWithSteamLibraries) {
     EXPECT_EQ(found[2].executable, localAppData);
     EXPECT_EQ(found[3].executable, steamRoot);
     EXPECT_EQ(found[4].executable, library);
-    EXPECT_EQ(found[5].executable, onPath);
+    // (the name tried first, Aseprite.exe, is that file on a case-insensitive file system)
+    EXPECT_TRUE(fs::equivalent(found[5].executable, onPath)) << found[5].executable;
 }
 
 TEST_F(AsepriteLocatorTest, SteamLibraryOnlyFromVdf) {

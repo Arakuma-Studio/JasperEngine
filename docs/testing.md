@@ -24,7 +24,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh`, `python3 tools/procmat/test_import_mm_nodes.py` (S90's node importer: licences, the deny-list, what is data) | stdout |
+| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 -I tools/ci/test_pr_evidence.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh`, `python3 tools/procmat/test_import_mm_nodes.py` (S90's node importer: licences, the deny-list, what is data) | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -389,7 +389,7 @@ The opt-in flag requires the engine report **and** a matching debuggerd tombston
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
 
-## Gates: per commit, before pushing to main
+## Gates: per commit, then CI
 
 - **Per commit of a stream: `tools/check-changed`**. It builds and runs what the change can affect: the Linux editor and the
   unit test binaries for C++ under `engine/` or `editor/` (web for the engine, Android for its own
@@ -401,11 +401,11 @@ continue to fail on any native crash.
   `engine/CMakeLists.txt` also builds the engine with every optional module off
   (`tools/check-physics-off.sh all-off`): the editor's engine has every module, so only this shows a
   source that got a header through a module's code, which breaks Compile builds and the smaller players.
-- **Before pushing to `origin main`, only when the pushed changes need it (a big feature, not a
-  small fix): the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
-  JASPER_SLOW_TESTS=1`), plus the WERROR Linux
-  build (with the engine sample project's LTO link) and every unit test. check-changed is a
-  selection and says so in every summary.
+- **CI owns the full suite** (below, "CI"): a PR runs the lanes its diff needs, the merge queue
+  every build and unit test plus the planned MCP files, the nightly the whole MCP CI suite;
+  `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
+  a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
+  run only where someone runs them.
 - **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
   `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
   conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
@@ -787,7 +787,7 @@ not errors), builds `jasperengine-core-tests`, runs `NavStubTest.*:NavGridTest.*
 no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (a tree that still
 compiles navigation in runs none). The first run builds the whole engine (the switch is a public
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
-change; nothing else runs it (there is no CI).
+change; nothing else runs it, CI included.
 
 ### Sanitizers
 
@@ -845,7 +845,7 @@ executable and the test targets; `JASPERENGINE_WERROR` adds `-Werror -Wno-error=
 (MSVC `/WX`). Vendored libraries keep `-w`/`/w` and `SYSTEM` includes. `tools/ci/warning-summary.py` counts
 a build log's warnings per target.
 
-Werror is enforced with GCC in the `unit` and `e2e` jobs (`WERROR=1`). It is never enforced on
+Werror is enforced with GCC in CI's `linux` and `unit` lanes (`WERROR=1`). It is never enforced on
 Emscripten, the Android NDK, the Xcode workspace or exported projects: those compilers move under
 us and compile user code. Code from any stream must build warning-free with GCC.
 
@@ -908,18 +908,157 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
   logging, crash options) are definitions of its executable only and reach the engine through
   `PlatformConfig`, so changing them recompiles a few units.
 
-## No CI
+## CI
 
-Nothing runs on a push: a check counts only when someone ran it. `tools/ci/nightly-smoke.sh` is the
-smoke test of every fixture project, and `tools/ci/check-release-tag.sh` a release tag's check.
+GitHub Actions (`.github/workflows/`) runs on every pull request to `main`, in the merge queue, on
+every push to `main`, every night and for a release. Each step is a one-line call to a script in this
+repository, in the same Docker images `tools/build.sh` builds, so every lane reproduces locally with
+the command its report prints. The design is `docs/superpowers/specs/2026-11-12-ci-design.md`.
+
+### Lanes
+
+Jobs of `ci.yml`; a lane's command is also its repro.
+
+| Lane | Runs |
+|---|---|
+| `changes` | `tools/ci/plan_lanes.py`: `tools/check-changed`'s plan for the diff, widened by CI's rules below; uploads it as the artifact `plan` |
+| `lint` | the repository's and the workflows' lints |
+| `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
+| `unit` (one job per test binary: `core`, `editor`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core) |
+| `asan` | `SANITIZE=address,undefined tools/build.sh unit-tests` |
+| `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
+| `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
+| `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
+| `web` | `tools/build.sh web && tools/build.sh web-gate` |
+| `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install |
+| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
+| `report` | writes the PR comment (below) |
+| `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
+
+`Check` treats a skipped lane as passed only when `changes` said the lane was not needed. A test lane
+that ran no test, an MCP shard that ran no file, or a merge-queue or full run that skipped a lane
+turns it red. A skipped MCP test fails its shard unless `tools/ci/mcp-allowed-skips.txt` lists it
+with the reason and the lane where it does run; a new entry is reviewed like any change.
+PR and merge-queue shards run without `JASPER_SLOW_BUILD`: the tests that build a real game (an hour
+or more each, cold) skip there and run in the nightly, and the smoke lane builds and launches games
+on every change a game's build reads.
+
+**Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
+until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
+reported apart from the job, until the suite passes on Windows): `Check` ignores their failures, and
+the report shows them first, marked advisory. Lint and the platform builds always block, the
+Windows jobs' builds and the core tests' run included.
+
+### What each event runs
+
+| | PR push | merge queue | push to `main` | `full=true` dispatch |
+|---|---|---|---|---|
+| `changes`, `Check` | yes | yes | yes | yes |
+| `lint` | unless every path is one nothing reads | same | no | yes |
+| platform builds | when anything that builds changed | yes | yes, to warm the caches | yes |
+| `unit`, `asan`, `htmlui` | the suites the plan selects | all, unfiltered | no | all |
+| `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main` | no | the whole CI suite |
+| `smoke` | when a game-building path changed | yes | no | yes |
+
+- **Nothing reads it**: a change only under `docs/specs/`, `docs/superpowers/`, `docs/engine-gaps/`,
+  `docs/openengine-analysis/`, `docs/test-cleanup/`, `.claude/`, a root `*-LEDGER.md` or `README.md`
+  runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
+  the editor embeds the MCP guide, and tests read other docs.
+- **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
+- **Stricter than check-changed**: any building change runs every platform lane, Web and Android
+  included; a `.github/` change runs everything; a plan error, a missing deps dump or a missing or
+  stale coverage map widens that lane to everything, and the report says why.
+- **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
+  map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
+  project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
+- **Push to `main`** builds only: its tests ran in the queue. It saves the caches (ccache per lane,
+  the deps dumps `changes` plans from): a PR restores what `main` saved, never what the queue did.
+  The caps (`max-size` in `ci.yml`) share GitHub's 10 GB per repository: of the Windows jobs only the
+  editor's (1.2 GB, a full editor and tests build) and OpenGL's (0.15 GB) keep one; D3D11 and Vulkan
+  build cold within the editor job's time.
+- **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
+
+### The nightly and releases
+
+- **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
+  and under ASan, TSan, texture formats on lavapipe, the unity build, every fixture's smoke on
+  OpenGL, GLES3 and Vulkan through `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt
+  player parity) and the whole MCP CI suite, which also refreshes the coverage map and the shard
+  timings. A failure opens or updates the issue
+  labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
+  are kept); the slow lanes do not hold it back.
+- **Stable** (`release.yml`, dispatched with a `vX.Y.Z` version, an optional commit that defaults to
+  the newest nightly's, and `dry_run`): tags the commit, checks the tag
+  (`tools/ci/check-release-tag.sh`) and builds it.
+- Both build through `build-release.yml`: every player variant of `engine/player/variants.json`, then
+  the editors embedding their hashes, launch checks, `SHA256SUMS`, and a draft release that is
+  published once every asset is attached. Everything is unsigned.
+
+### The report
+
+- **On a PR**: one comment, marked `<!-- jasper-ci-report -->` and updated by every run. It names the
+  commit, every failed lane with its failing build lines or tests, the repro command, the evidence,
+  and what did not run and why; when green it is one line. `report` in `ci.yml` writes it;
+  `ci-report.yml` writes it for a pull request from a fork, whose run cannot.
+- **Merge queue**: a group that fails removes the PR and posts the same report on it, prefixed
+  "Removed from the merge queue". The commit it names is the queue's merge commit.
+- **`main`**: a failed push opens or updates the issue labelled `ci-red`, and comments on the PR that
+  made the commit.
+- **Each run**: the same text in the job summaries; per lane the artifacts `ci-report-<lane>` (JSON:
+  failures, test counts, commands, timings, disk) and `test-results-<lane>`, kept 14 days.
+
+```sh
+gh pr checks <N> --watch                       # wait for Check
+gh pr view <N> --comments                      # the report
+gh run download <run> -p 'ci-report-*'         # its JSON, per lane
+```
+
+### Reproducing a lane
+
+- Run the printed command. It is the lane's command narrowed to the failure, for example
+  `UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.Refit' WERROR=1 tools/build.sh unit-tests`
+  or `MCP_TEST_ARGS='-k test_undo_paint' tools/build.sh mcp-tests tools/mcp/tests/test_tileset.py`.
+- Linux, Web and Android lanes run `ghcr.io/<owner>/jasperengine-<target>-build:<hash>`, where
+  `<hash>` is `tools/build.sh image-tag <target>`, the hash a local build tags its own image with;
+  `JASPER_DOCKER_IMAGE=<that name>` runs CI's copy.
+- An MCP shard: `tools/build.sh linux`, download the run's `plan` artifact into `build/ci-plan`, then
+  `tools/ci/mcp_shard.sh <k> build/ci-plan`.
+- Windows: `tools/ci/windows.sh <step>` in Git Bash inside an x64 Native Tools prompt. macOS:
+  `tools/ci/macos.sh <step>` with Xcode.
+
+### Measured lane times
+
+Warm-cache times are not measured yet: the first runs after CI lands on `main` fill this table, and
+set each job's `timeout-minutes` to about 1.5 times its p95.
+
+| Lane | p50 | p95 | Runs |
+|---|---|---|---|
+
+Cold builds on a GitHub-hosted `ubuntu-latest` runner (4 vCPU), ccache off, 2026-11-13 (one run each):
+
+| Build | Minutes |
+|---|---|
+| `UNIT_SUITE=core RUN=0 tools/build.sh unit-tests` | 43 |
+| `UNIT_SUITE=editor RUN=0 tools/build.sh unit-tests` | 111 |
+| `SKIP_ENGINE=1 tools/build.sh linux` | 73 |
+| the same three with `UNITY=1` | do not compile (a file-scope `lower` defined twice in one unit, `LuaBridgeAddon.h` and `GradientField.cpp` broken by a neighbour's macros); the nightly's unity job builds them |
+
+From the first PR runs (cold): the core tests ran in 65 min on llvmpipe, the editor tests' share is
+in the editor leg; under ASan the `*GpuSlow` suites took 135 of 167 test minutes (hence their
+nightly job); an MCP shard of about 330 tests took 24 to 86 min without the game builds, and four
+game-building tests took 18 to 91 min each, cold.
+
+### Pins
 
 Third-party notices are credits, not a gate: `tools/ci/check-notices.py` stages whatever licence
 files and `NOTICE.md` rows exist into the editor install and exported games; CI does not fail on a
 library without them.
 
-The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
-`docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
-harness's packages (`tools/mcp/requirements.txt`).
+The Chrome for Testing headless shell in `docker/web.Dockerfile`, and `uv` and Kitware's CMake in
+`docker/linux.Dockerfile`, are pinned by version and sha256 and bumped by hand, as are the MCP
+harness's packages (`tools/mcp/requirements.txt`). Every workflow action is pinned by its full commit
+SHA, with its version in a comment.
 
 ## Known gaps
 
@@ -928,8 +1067,7 @@ device or a decision; recorded by BF23 (`docs/specs/BF23-authoring-audit-fixes.m
 
 | Gap | Evidence | What it would take |
 |---|---|---|
-| No native compile check for generated HLSL and MSL | There is no CI, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A check someone runs on a Windows and a macOS machine |
-| Nothing runs on Windows or macOS unless a person does | `AGENTS.md`: there is no CI | A machine for each, or accepting it |
+| No native compile check for generated HLSL and MSL | The `windows` and `macos` CI lanes build and run CPU tests only, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A step in those lanes that compiles them |
 | Particle goldens run on glcore and Vulkan only | `docs/specs/S20-particles.md`, "Goldens" under Deviations | Devices for Metal, D3D11 and GLES3 |
 | Mobile particle performance rows are unmeasured | `docs/perf/particles.md`, "Not measured here" | A person with reference phones |
 | S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S91's `cost` table |

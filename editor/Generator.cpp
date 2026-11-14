@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "RepositoryUrl.h"
 #include "object/FluidSimulation.h"
 #include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
@@ -48,6 +49,9 @@
 #include <set>
 
 #ifdef _WIN32
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <windows.h>
     #include <io.h>
 #else
@@ -1267,7 +1271,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})\n";
     cmakeContent += "set(INTERNAL_DIR ${PROJECT_ROOT}/.jasperengine)\n\n";
     cmakeContent += "# JasperEngine runtime API headers for this project come from ${INTERNAL_DIR}/engine-api.\n";
-    cmakeContent += "# Full engine + editor source (including YAML serialization for *.scene/*.prefab/project.yaml): https://github.com/JasperRaccoon/JasperEngine\n\n";
+    cmakeContent += std::string("# Full engine + editor source (including YAML serialization for *.scene/*.prefab/project.yaml): ") + REPOSITORY_URL + "\n\n";
 
     cmakeContent += "set(JASPERENGINE_API_DIR " + engineApiPathStr + ")\n\n";
 
@@ -1748,7 +1752,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`assets/ui/`; `check --ui` reports what the engine drops or rewrites. Supported CSS: `jasper://docs/html-ui-support`; "
                      "guide: `jasper://docs/html-ui`; examples: `" + api + "/html-ui-examples/`.\n\n";
     agentsContent += "## Source\n\n";
-    agentsContent += "Engine and editor: https://github.com/JasperRaccoon/JasperEngine at the editor version above; its `editor/` "
+    agentsContent += std::string("Engine and editor: ") + REPOSITORY_URL + " at the editor version above; its `editor/` "
                      "defines the `.scene`, `.prefab` and `project.yaml` formats.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "Regenerated on play and build, never edited: the root `CMakeLists.txt`, `" + internal + "/LocalPaths.cmake`, `" +

@@ -18,6 +18,8 @@
 #include <limits>
 #include <string>
 
+#include "support/PosixCompat.h"
+
 using namespace jasperengine;
 using scriptdata::ScriptDataTest;
 namespace fs = std::filesystem;

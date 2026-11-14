@@ -191,6 +191,8 @@ namespace jasperengine::titleart {
 
     private:
         TitleArtSchema() = default;
+        TitleArtSchema(const TitleArtSchema&) = delete;
+        TitleArtSchema& operator=(const TitleArtSchema&) = delete;
         std::vector<std::unique_ptr<SchemaKind>> kinds;
         std::vector<SchemaReservation> reserved;
         // lookups rebuilt after every registration (normalize reads them for every object)

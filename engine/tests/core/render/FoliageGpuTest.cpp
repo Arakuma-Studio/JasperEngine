@@ -567,9 +567,9 @@ TEST_F(FoliageGpu, DisabledTerrainDrawsNothing){
 }
 
 // AC27: picking, with no leaves of its own in the BVH
-class MeshRaycastFoliage : public FoliageGpu {};
+class MeshRaycastFoliageGpu : public FoliageGpu {};
 
-TEST_F(MeshRaycastFoliage, HitsATreeAndReportsItsId){
+TEST_F(MeshRaycastFoliageGpu, HitsATreeAndReportsItsId){
     addPrototype();
     plant(1, {{0.0f, 0.0f}, {20.0f, 0.0f}});
     look(Vector3(0.0f, 8.0f, 30.0f), Vector3(0.0f, 4.0f, 0.0f));
@@ -590,7 +590,7 @@ TEST_F(MeshRaycastFoliage, HitsATreeAndReportsItsId){
     EXPECT_FALSE(miss.hit && miss.foliageId != 0);
 }
 
-TEST_F(MeshRaycastFoliage, GrassIsOptIn){
+TEST_F(MeshRaycastFoliageGpu, GrassIsOptIn){
     addGrass(4.0f, 60.0f);
     look(Vector3(0.0f, 8.0f, 20.0f), Vector3(0.0f, 0.0f, 0.0f));
     ASSERT_TRUE(render());
@@ -608,7 +608,7 @@ TEST_F(MeshRaycastFoliage, GrassIsOptIn){
     EXPECT_TRUE(found) << "asked for, a ray through grass finds one";
 }
 
-TEST_F(MeshRaycastFoliage, MatchesDrawnTriangles){
+TEST_F(MeshRaycastFoliageGpu, MatchesDrawnTriangles){
     addPrototype();
     plant(1, {{0.0f, 0.0f}});
     component().maxMeshTrees = 10;
