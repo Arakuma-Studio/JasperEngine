@@ -467,7 +467,9 @@ async def test_check_shader_reports_globals(ed: Editor):
     ed.check_eq(codes.count("global-undeclared"), 1, f"NotDeclared: {r['findings']}")
     ed.check_eq(codes.count("global-type-mismatch"), 2, f"vec3 TestColor, vec2 _LightRadius: {r['findings']}")
     ed.check(any("NotDeclared" in f["message"] for f in r["findings"]), f"named: {r['findings']}")
-    r = await ed.call("check_shader", shader="shaders/huge_globals", shader_type="mesh", timeout=300)
+    raw = await ed.call_raw("check_shader", {"shader": "shaders/huge_globals", "shader_type": "mesh"}, timeout=300)
+    ed.check(raw.is_error, f"a failed check is an error: {raw.text[:500]}")
+    r = raw.value
     ed.check_eq(r["failed"], 1, f"a block over 1024 bytes fails: {r}")
     ed.check(any(f.get("code") == "globals-block-too-large" for f in r["findings"]), f"{r['findings']}")
     # the forks of the fixture are clean

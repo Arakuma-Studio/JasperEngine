@@ -1673,6 +1673,9 @@ namespace jasperengine::editor{
         static constexpr const char* defaultWindowTitle = "";
         static constexpr const char* defaultAssetsDir = ".";
         static constexpr const char* defaultLuaDir = ".";
+        // what a project created now gets (S98 REQ-36); the defaults above are an absent key's
+        static constexpr const char* newProjectAssetsDir = "assets";
+        static constexpr const char* newProjectLuaDir = "scripts";
         static constexpr bool defaultPackNativeResources = false;
         static constexpr bool defaultVersionControlMetadata = true;
         static constexpr bool defaultPhysics2DEnabled = true;
@@ -2953,8 +2956,20 @@ namespace jasperengine::editor{
         // Missing Prefabs, after a change made outside the import paths
         void refreshScenePrefabList(uint32_t sceneId);
 
-        // guid: the asset GUID to give the new file (a redo), empty for a new one
-        bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid = std::string());
+        // guid: the asset GUID to give the new file (a redo), empty for a new one. registryIds:
+        // the registry id each scene GameObject of the node takes (overwritePrefab), else new ones;
+        // nextEntity: the lowest id the prefab may hand out next
+        bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid = std::string(),
+            const std::unordered_map<Entity, Entity>* registryIds = nullptr, Entity nextEntity = NULL_ENTITY);
+        // Unity's SaveAsPrefabAsset over an existing prefab (create_prefab overwrite): the file
+        // takes the GameObject's content and keeps its GUID. A GameObject at the same name path
+        // from the root as one of the old content keeps that one's registry id, so the instances'
+        // overrides on it stay. The GameObject becomes an instance root, as createPrefab makes
+        // it, and every open instance is re-imported. The root must not be part of an instance.
+        // knownIds: scene GameObject -> registry id it keeps whatever its name (the members of an
+        // instance of this prefab, taken before its unpack)
+        bool overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode,
+            const std::unordered_map<Entity, Entity>& knownIds = {});
         bool removePrefab(const std::filesystem::path& filepath);
 
         const std::vector<std::filesystem::path>& getStandalonePrefabs() const;
@@ -3423,6 +3438,8 @@ namespace jasperengine::editor{
         //=== end Prefab part ===
 
         YAML::Node clearEntitiesNode(YAML::Node node);
+        // The entity ids of a node (members, children) replaced by `ids`, the others cleared
+        YAML::Node assignEntitiesNode(YAML::Node node, const std::unordered_map<Entity, Entity>& ids);
         YAML::Node changeEntitiesNode(Entity& firstEntity, YAML::Node node);
 
         // ---- C++ scripts reloaded during Play (S23 R10-R13; ScriptReloadService drives it)

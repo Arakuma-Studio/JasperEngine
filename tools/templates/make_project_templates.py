@@ -30,6 +30,9 @@ import pngdiff  # noqa: E402
 from harness import Editor  # noqa: E402
 
 THUMB_W, THUMB_H = 480, 270
+# a new project's folders (S98 REQ-36: assetsDir and luaDir), as the editor creates it; MCP paths are
+# project-relative
+ASSETS = "assets/"
 # a template takes the project, never the editor's per-user state or build output (TemplateCatalog.cpp),
 # nor the files the editor generates into every project it opens or builds (Generator.cpp: the
 # editor-integration files, written when missing with this editor's version, and the root
@@ -115,7 +118,7 @@ def nodes_of(tree: dict) -> list[dict]:
 
 async def main_scene(ed: Editor, type_: str) -> int:
     """A scene "Main" saved as Main.scene, the project's only scene."""
-    made = await ed.call("create_scene", name="Main", type=type_, path="Main", close_previous=True, unsaved="discard")
+    made = await ed.call("create_scene", name="Main", type=type_, path=ASSETS + "scenes/Main", close_previous=True, unsaved="discard")
     sid = made["scene"]["id"]
     scenes = await ed.call("list_scenes")
     for scene in scenes.get("scenes", []):
@@ -136,7 +139,7 @@ async def build_empty(ed: Editor) -> None:
 async def build_3d(ed: Editor) -> None:
     sid = await main_scene(ed, "3D")
     ground = (await ed.call("create_entity", scene=sid, type="plane", name="Ground", scale=[2, 1, 2]))["entity_id"]
-    await ed.call("create_material", path="materials/Ground", scene=sid, entity=ground,
+    await ed.call("create_material", path=ASSETS + "materials/Ground", scene=sid, entity=ground,
                   values={"baseColorFactor": [0.42, 0.45, 0.4, 1.0], "roughnessFactor": 0.9})
     cube = (await ed.call("create_entity", scene=sid, type="cube", name="Cube", position=[0, 0.5, 0]))["entity_id"]
     await ed.call("create_script", kind="lua", name="Rotator", directory="scripts", content=ROTATOR, scene=sid, entity=cube)
@@ -146,7 +149,7 @@ async def build_2d(ed: Editor) -> None:
     await ed.call("set_project_settings", values={"graphics.canvas_width": 1280, "graphics.canvas_height": 720,
                                                    "graphics.scaling_mode": "letterbox"})
     sid = await main_scene(ed, "2D")
-    art = await ed.call("generate_placeholder_art", path="sprites/player.png", width=64, height=64, shape="rounded_rect",
+    art = await ed.call("generate_placeholder_art", path=ASSETS + "sprites/player.png", width=64, height=64, shape="rounded_rect",
                         corner_radius=12, color="#F2B33D", outline_color="#5C3B0A", outline_width=3)
     player = (await ed.call("create_entity", scene=sid, type="sprite", name="Player", position=[608, 328, 0],
                             values={"sprite": {"width": 64, "height": 64},
@@ -165,7 +168,7 @@ async def build_2d_pixel_art(ed: Editor) -> None:
     await ed.call("set_project_settings", values={f"quality.device_tiers.{group}.{tier}": {"render_scale": 1}
                                                    for group in ("desktop", "mobile", "web") for tier in ("low", "medium")})
     sid = await main_scene(ed, "2D")
-    art = await ed.call("generate_placeholder_art", path="sprites/player.png", width=16, height=16, shape="rounded_rect",
+    art = await ed.call("generate_placeholder_art", path=ASSETS + "sprites/player.png", width=16, height=16, shape="rounded_rect",
                         corner_radius=3, color="#F2B33D", outline_color="#5C3B0A", outline_width=1)
     player = (await ed.call("create_entity", scene=sid, type="sprite", name="Player", position=[152, 82, 0],
                             values={"sprite": {"width": 16, "height": 16},
@@ -173,7 +176,7 @@ async def build_2d_pixel_art(ed: Editor) -> None:
     await ed.call("create_script", kind="lua", name="PlayerMove", directory="scripts", content=PLAYER_MOVE, scene=sid, entity=player)
     # the art's import settings are written by the first cook: wait for them before the copy
     for _ in range(100):
-        meta = (ed.project / "sprites" / "player.png.meta")
+        meta = (ed.project / ASSETS / "sprites" / "player.png.meta")
         if meta.exists() and "pixelArt" in meta.read_text():
             break
         await ed.call("wait", frames=10)
@@ -185,7 +188,7 @@ async def build_2d_pixel_art(ed: Editor) -> None:
 async def build_ui(ed: Editor) -> None:
     await ed.call("set_project_settings", values={"graphics.canvas_width": 1920, "graphics.canvas_height": 1080})
     sid = await main_scene(ed, "UI")
-    await ed.call("create_ui_document", scene=sid, html="ui/main_menu.html", name="Main Menu", template="main_menu", script=True)
+    await ed.call("create_ui_document", scene=sid, html=ASSETS + "ui/main_menu.html", name="Main Menu", template="main_menu", script=True)
 
 
 BUILDERS = {"empty": build_empty, "3d": build_3d, "2d": build_2d, "2d-pixel-art": build_2d_pixel_art, "ui": build_ui}
@@ -228,7 +231,8 @@ def copy_project(src: Path, dst: Path) -> None:
 
 async def make(template_id: str, out_dir: Path) -> None:
     info = INFO[template_id]
-    async with Editor(create=True, name=info["name"], label=f"template-{template_id}") as ed:
+    # the layout a user's new project gets, not the harness's flat one
+    async with Editor(create=True, name=info["name"], label=f"template-{template_id}", env={"JASPER_TEST_FLAT_NEW_PROJECT": "0"}) as ed:
         await BUILDERS[template_id](ed)
         await ed.call("save_project")
         await ed.call("configure_game_view", aspect="16:9")

@@ -1489,7 +1489,9 @@ Profiler.endSample()
 local path = Profiler.sample("Pathfind", function() return self:findPath() end)   -- fn's results
 Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
 Profiler.enabled = true                      -- start recording (read it to know whether it records)
-local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?, gpuPasses?}
+Profiler.gpuTiming = true                    -- time every render pass on the GPU (false again: the timers stop)
+for _, pass in ipairs(Profiler.frameStats().gpuPasses or {}) do Log.info(pass.name .. " " .. pass.ms) end
 local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDrawCalls, mainTriangles, instancedDraws...
 ```
 
@@ -1499,9 +1501,12 @@ local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDr
   (the Profiler's toolbar, `capture_profile deep_lua`) each callback gets a scope of its own,
   named by its chunk and line.
 - `frameStats().gpuMs` is there only while GPU timing runs (the Profiler records, an agent called
-  `get_gpu_passes`); GPU times arrive a few frames late.
-- In a release game (no profiler) the functions do nothing, `enabled` stays false, and
-  `frameStats()` still works.
+  `get_gpu_passes`, `Profiler.gpuTiming` is true); GPU times arrive a few frames late.
+- `Profiler.gpuTiming = true` keeps GPU timing on until it is set false or the game stops; while it
+  is on, `frameStats().gpuPasses` lists `{name, ms}` per pass of the newest timed frame (the names
+  `get_gpu_passes` gives). Where the backend has no GPU timer it stays false, with one warning.
+- In a release game (no profiler) the functions do nothing, `enabled` and `gpuTiming` stay false,
+  and `frameStats()` still works.
 
 ### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
 
