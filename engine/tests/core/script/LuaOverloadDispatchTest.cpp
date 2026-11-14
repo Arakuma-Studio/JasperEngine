@@ -9,7 +9,8 @@
 //   (the header before S92) built by g++ 13 and clang++ 18. A message naming one of several failing
 //   arguments depends on the compiler's order of evaluating a call's arguments (g++ right to left,
 //   clang left to right): those lines carry a [gcc] and a [clang] variant. The file is not
-//   regenerated: it is what stock did.
+//   regenerated: it is what stock did, except the 22 "nil self" calls, which stock ran on a null
+//   object and which now raise the bad-self error (PATCHES.md, change 6).
 // - LaterOverloadBuildsNoErrorString: a call reaching a later overload makes no Lua string.
 // - NoLeak*: no C++ argument is left undestroyed by an error (lua_error is a longjmp). The argument
 //   type counts its live instances; a 64-character text is decoded on each side of the failing

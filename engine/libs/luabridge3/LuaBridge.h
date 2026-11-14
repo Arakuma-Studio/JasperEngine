@@ -3014,6 +3014,8 @@ private:
                               const void* registryClassKey,
                               bool canBeConst)
     {
+        const bool fullUserdata = lua_type(L, index) == LUA_TUSERDATA;
+
         const int result = lua_getmetatable(L, index); 
         if (result == 0 || !lua_istable(L, -1))
         {
@@ -3036,6 +3038,15 @@ private:
         {
             if (lua_rawequal(L, -1, -2)) 
             {
+                // JasperEngine (S92, S95 REQ-2): only a full userdata is an object. A class's
+                // metatable is a table whose own metatable is that class's: it matched here, and
+                // its null userdata pointer was used as the object
+                if (! fullUserdata)
+                {
+                    lua_pop(L, 1); 
+                    return badArgument(L, index);
+                }
+
                 lua_pop(L, 2); 
                 return static_cast<Userdata*>(lua_touserdata(L, index));
             }
@@ -3056,6 +3067,9 @@ private:
 
     static bool isInstance(lua_State* L, int index, const void* registryKey)
     {
+        if (lua_type(L, index) != LUA_TUSERDATA)
+            return false;
+
         const auto result = lua_getmetatable(L, index); 
         if (result == 0)
             return false;
@@ -3179,6 +3193,17 @@ public:
         auto* clazz = getClass(L, index, detail::getConstRegistryKey<T>(), detail::getClassRegistryKey<T>(), canBeConst);
         if (! clazz)
             return nullptr;
+
+        return static_cast<T*>(clazz->getPointer());
+    }
+
+    // JasperEngine (S92, S95 REQ-2): a member call's object, argument 1. Unlike get, nil is not
+    // a null object: it raises the bad-self error any other value that is not a T raises
+    template <class T>
+    static T* getSelf(lua_State* L, bool canBeConst)
+    {
+        auto* clazz = getClass(L, 1, detail::getConstRegistryKey<T>(), detail::getClassRegistryKey<T>(), canBeConst);
+        LUABRIDGE_ASSERT(clazz != nullptr);
 
         return static_cast<T*>(clazz->getPointer());
     }
@@ -6764,7 +6789,7 @@ struct property_getter
 {
     static int call(lua_State* L)
     {
-        C* c = Userdata::get<C>(L, 1, true);
+        C* c = Userdata::getSelf<C>(L, true);
 
         T C::** mp = static_cast<T C::**>(lua_touserdata(L, lua_upvalueindex(1)));
 
@@ -6835,7 +6860,7 @@ struct property_setter
 {
     static int call(lua_State* L)
     {
-        C* c = Userdata::get<C>(L, 1, false);
+        C* c = Userdata::getSelf<C>(L, false);
 
         T C::** mp = static_cast<T C::**>(lua_touserdata(L, lua_upvalueindex(1)));
 
@@ -7002,7 +7027,7 @@ int invoke_member_function(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    T* ptr = Userdata::get<T>(L, 1, false);
+    T* ptr = Userdata::getSelf<T>(L, false);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -7017,7 +7042,7 @@ int invoke_const_member_function(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    const T* ptr = Userdata::get<T>(L, 1, true);
+    const T* ptr = Userdata::getSelf<T>(L, true);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -7032,7 +7057,7 @@ int invoke_member_cfunction(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    T* t = Userdata::get<T>(L, 1, false);
+    T* t = Userdata::getSelf<T>(L, false);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -7065,7 +7090,7 @@ int invoke_const_member_cfunction(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    const T* t = Userdata::get<T>(L, 1, true);
+    const T* t = Userdata::getSelf<T>(L, true);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -7114,6 +7139,35 @@ int invoke_proxy_functor(lua_State* L)
     auto& func = *align<std::remove_reference_t<F>>(lua_touserdata(L, lua_upvalueindex(1)));
 
     return function<typename FnTraits::result_type, typename FnTraits::argument_types, 1>::call(L, func);
+}
+
+// JasperEngine (S92, S95 REQ-2): a function bound as a member of a class takes the object as
+// its first argument. A pointer parameter takes nil as a null object; for the object, nil is the
+// bad-self error a member function raises
+template <class Self>
+inline void check_proxy_self([[maybe_unused]] lua_State* L)
+{
+    if constexpr (std::is_pointer_v<Self>)
+    {
+        if (lua_isnil(L, 1))
+            Userdata::getSelf<std::remove_cv_t<std::remove_pointer_t<Self>>>(L, true);
+    }
+}
+
+template <class F>
+int invoke_proxy_member_function(lua_State* L)
+{
+    check_proxy_self<function_argument_or_void_t<0, F>>(L);
+
+    return invoke_proxy_function<F>(L);
+}
+
+template <class F>
+int invoke_proxy_member_functor(lua_State* L)
+{
+    check_proxy_self<function_argument_or_void_t<0, std::remove_reference_t<F>>>(L);
+
+    return invoke_proxy_functor<F>(L);
 }
 
 #if LUABRIDGE_SAFE_LUA_C_EXCEPTION_HANDLING && LUABRIDGE_HAS_EXCEPTIONS
@@ -7440,7 +7494,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T*, Params...), const c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7449,7 +7503,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T&, Params...), const c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7458,7 +7512,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T*, Params...) noexcept
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7467,7 +7521,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T&, Params...) noexcept
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7476,7 +7530,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T*, Params...), c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7485,7 +7539,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T&, Params...), c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7494,7 +7548,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T*, Params...) no
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7503,7 +7557,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T&, Params...) no
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class F, class = std::enable_if<
@@ -7516,7 +7570,7 @@ void push_member_function(lua_State* L, F&& f, const char* debugname)
     static_assert(std::is_same_v<T, remove_cvref_t<std::remove_pointer_t<function_argument_or_void_t<0, F>>>>);
 
     lua_newuserdata_aligned<F>(L, std::forward<F>(f));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<F>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<F>, debugname, 1);
 }
 
 template <class T, class U, class ReturnType, class... Params>
@@ -7671,56 +7725,56 @@ template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C>
@@ -7737,7 +7791,7 @@ void push_class_property_getter(lua_State* L, T getter, const char* debugname)
     static_assert(std::is_same_v<std::decay_t<std::remove_reference_t<std::remove_pointer_t<FirstArg>>>, C>);
 
     lua_newuserdata_aligned<T>(L, std::move(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<T>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<T>, debugname, 1);
 }
 
 template <class T, class = std::enable_if_t<
@@ -7826,56 +7880,56 @@ template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C>
@@ -7892,7 +7946,7 @@ void push_class_property_setter(lua_State* L, T setter, const char* debugname)
     static_assert(std::is_same_v<std::decay_t<std::remove_pointer_t<FirstArg>>, C>);
 
     lua_newuserdata_aligned<T>(L, std::move(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<T>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<T>, debugname, 1);
 }
 
 inline void push_property_readonly(lua_State* L, const char* debugname)
