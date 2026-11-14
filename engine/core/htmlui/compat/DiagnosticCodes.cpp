@@ -393,6 +393,13 @@ namespace {
          "and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that "
          "has the characters, or name one that has them after it in font-family. An info once the text is drawn; a warning from "
          "check --ui and inspect_ui of a file, for the static text of the document's own fonts."},
+        // ---- INPUT
+        {codes::PagePressListener, I, false, "page-press-listener", "Page takes presses",
+         "A transparent page (the document or its <body>) lets presses through its empty parts to the documents below and the "
+         "game, until it listens for a press: a click, dblclick, contextmenu, mousedown, pointerdown or touchstart listener on "
+         "the document or <body> (addEventListener or data-event-*) makes the document take every press there, as a modal or a "
+         "\"click outside\" handler wants. Listen on the elements that take the press otherwise; move, up, over and out "
+         "listeners on the page take nothing, and a wheel listener takes only the wheel."},
     };
 
     char toLower(char c){
@@ -468,6 +475,7 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::SVG: return "SVG";
         case DiagArea::FX: return "FX";
         case DiagArea::FONT: return "FONT";
+        case DiagArea::INPUT: return "INPUT";
     }
     return "GEN";
 }

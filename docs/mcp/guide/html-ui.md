@@ -1580,12 +1580,15 @@ page or the document.**
 - Where a page has neither, the pointer goes on to the next document below (lower
   `sortOrder` or scene layer), then to the game. A HUD under a transparent menu document still
   gets clicks where the menu has nothing, and the game gets the rest.
-- To make a transparent page take every pointer event (a modal, "click outside closes the
-  menu"), give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a pointer listener
-  (`click`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `wheel`, with
-  `addEventListener` or `data-event-*`) on the document or `doc.body`. It is decided per
-  document and follows the listeners: removing the last one gives the empty parts back.
-  `body` is only as tall as its content, so listen on the document to catch every empty part.
+- To make a transparent page take every press (a modal, "click outside closes the menu"),
+  give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a press listener (`click`,
+  `dblclick`, `contextmenu`, `mousedown`, `pointerdown`, with `addEventListener` or
+  `data-event-*`) on the document or `doc.body`. The Console and `doc:getDiagnostics()` then
+  note `HTMLUI-INPUT-0001` once. It is decided per document and follows the listeners:
+  removing the last one gives the empty parts back. `body` is only as tall as its content, so
+  listen on the document to catch every empty part.
+- Move, up, over, out, enter and leave listeners on the page take nothing (a drag tracker on
+  `body` does not block the game's joystick); a `wheel` listener takes only the wheel.
 
 ```lua
 local doc = UIDocument(self.scene, self.entity)
@@ -1601,9 +1604,15 @@ end)
 - An element is hit only where it is drawn: through every `transform` on it and its ancestors,
   inside the clips of `overflow` (rounded corners included) and `clip-path`. `mask-image` does
   not clip the hit area (CSS Masking).
-- A press that no document takes blurs the focused field. A release, and the moves of a drag,
-  go to whoever got the press. The wheel is taken when it scrolls an element (one step is 80
-  px) or the pointer is over content.
+- A press that no document takes blurs the focused field.
+- **The press decides who owns a pointer.** A finger or mouse button the game got at its press
+  stays the game's until its release: its moves and release reach `onTouchMove`/`onTouchEnd`
+  (`onMouseMove`/`onMouseUp`) also over a document or a popup shown meanwhile, which still see
+  it hover. A press a document took keeps its moves and release, also over the game.
+- A release outside the canvas of a press the game got reaches it at the nearest canvas point;
+  a document's is cancelled.
+- The wheel is taken when it scrolls an element (one step is 80 px) or the pointer is over
+  content.
 
 ### Focus, keys and gamepads
 

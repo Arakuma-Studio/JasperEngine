@@ -110,6 +110,15 @@ namespace {
         return touch ? pointer : -1 - button;
     }
 
+    // a mouse button is down (Input's level); uncaptured, it is the drag of whoever got its press
+    bool textureMouseButtonDown(){
+        for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++){
+            if (Input::getMouseButton(button))
+                return true;
+        }
+        return false;
+    }
+
     // the size a component asks for: texture pixels and the CSS px -> texture px ratio
     void textureSize(const UIDocumentComponent& document, int& width, int& height, float& ratio){
         width = std::min(std::max(document.textureWidth, 1), maxTextureSize);
@@ -652,5 +661,10 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
         }
     }
 
+    // the press decided the owner (S93 R1): a release or a finger's move no document captured
+    // is not consumed, nor a mouse move while a button another owner got is held; they only
+    // hover the document
+    if (phase == PointerPhase::UP || (phase == PointerPhase::MOVE && (touch || textureMouseButtonDown())))
+        return false;
     return receiver != NULL_ENTITY;
 }

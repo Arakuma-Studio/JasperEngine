@@ -1,0 +1,14 @@
+<html>
+<head>
+    <title>p1 input popup</title>
+    <link type="text/css" href="../../common/base.css"/>
+    <style>
+        /* a full-screen popup: its dim background takes the pointer everywhere */
+        body { width: 100%; height: 100%; margin: 0px; background-color: #00000080; }
+        #ok { position: absolute; left: 260px; top: 250px; width: 200px; height: 60px; background-color: #808080ff; }
+    </style>
+</head>
+<body>
+    <div id="ok"></div>
+</body>
+</html>
