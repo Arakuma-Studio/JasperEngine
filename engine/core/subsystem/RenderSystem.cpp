@@ -2007,8 +2007,15 @@ void RenderSystem::updateSceneLights(){
         }
     }
 
+    // the gradient ambient of the 'Agr' variants (includes/ambient.glsl); the SH ambient, the
+    // frame and Lit's camera block carry its average, which those variants swap for it (S94 F15)
+    ambientGradientBlock.average = Vector4(scene->getAmbientLightAverageLinear(), 0.0f);
+    ambientGradientBlock.sky = Vector4(scene->getAmbientLightLinear(Vector3(0.0f, 1.0f, 0.0f)), 0.0f);
+    ambientGradientBlock.equator = Vector4(scene->getAmbientLightLinear(Vector3(1.0f, 0.0f, 0.0f)), 0.0f);
+    ambientGradientBlock.ground = Vector4(scene->getAmbientLightLinear(Vector3(0.0f, -1.0f, 0.0f)), 0.0f);
+
     // what every mesh's pick depends on
-    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    const Vector3 ambient = scene->getAmbientLightAverageLinear();
     const int cap = std::clamp(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()), 1, MAX_LIGHTS_PER_OBJECT);
     if (restructured || ambient != lightListAmbient || cap != lightListCap){
         lightListEpoch++;
@@ -3191,7 +3198,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     auto skys = scene->getComponentArray<SkyboxComponent>();
     if (probe->includeSky && skys->size() > 0){
         SkyboxComponent& sky = skys->getComponentFromIndex(0);
-        if (sky.visible){
+        // (a hidden sky, or one whose entity is inactive, feeds no capture: S94 F16)
+        if (sky.visible && scene->isEntityActiveInHierarchy(skys->getEntity(0))){
             updateSkyViewProjection(sky, captureCamera);
             drawSky(sky, PIP_RTT_INVERT, sky.skyViewProjectionMatrix);
         }
@@ -3463,6 +3471,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     environment.directionalLightsOnly = directionalLightsOnly;
+    environment.ambientGradient = scene->getAmbientMode() == AmbientMode::GRADIENT;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -4353,6 +4362,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // 'Agr' (S94 F15): a lit variant that takes the scene ambient in a Gradient scene: a library
+    // shader's ambientLight (pixel or vertex lights), the built-in Lit's without the IBL that
+    // replaces it
+    if (environment.ambientGradient && !p_unlit && (manifest ? (p_punctual || p_vertexLights) : !p_ibl))
+        variant.properties |= ShaderPool::getAmbientGradientProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -4823,7 +4837,9 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
         frame.mainLightColor = Vector4(light.resolvedColor, 1.0f);
     }
 
-    frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
+    // (the gradient's average in Gradient mode: frame.ambient is the library contract's one
+    // colour, which shaders without normals take)
+    frame.ambient = Vector4(scene->getAmbientLightAverageLinear(), 1.0f);
 }
 
 Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
@@ -4857,7 +4873,7 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
     // the LUT only matters when it applies (its stage decides curve or grade)
     std::shared_ptr<const CubeLut> lut;
     if (settings.colorGradingEnabled && !settings.lutTexture.empty() && settings.lutContribution > 0.0f)
-        lut = getCachedColorLut(settings.lutTexture);
+        lut = getCachedColorLut(settings.lutTexture, settings.lutFlipGreen);
     return getPostProcessingTiers(settings, lut.get());
 }
 
@@ -4971,9 +4987,10 @@ void RenderSystem::applyPostProcessing(){
     // the user's LUT, read once per path through the shared cache (a missing or malformed one
     // is logged and left out); its stage decides whether it changes the curve or the grade
     const std::string lutPath = (settings.colorGradingEnabled && settings.lutContribution > 0.0f) ? settings.lutTexture.path : std::string();
-    if (lutPath != postLutPath){
+    if (lutPath != postLutPath || settings.lutFlipGreen != postLutFlipGreen){
         postLutPath = lutPath;
-        postLut = getCachedColorLut(lutPath);
+        postLutFlipGreen = settings.lutFlipGreen;
+        postLut = getCachedColorLut(lutPath, postLutFlipGreen);
     }
     // a UI camera's image is the UI: the device tier's render-scale cap, there to cut 3D fill,
     // would only upscale its text and images through a linear filter (a Low tier's 0.5 blurs every
@@ -5176,6 +5193,15 @@ void RenderSystem::fillVignette(const PostProcessingSettings& settings, const Re
     const float scaleY = 1.0f / (0.5f * h);
     scaleOffset = Vector4(scaleX, scaleY, centreX * scaleX, centreY * scaleY);
     color = Vector4(settings.vignetteColor.x, settings.vignetteColor.y, settings.vignetteColor.z, settings.vignetteIntensity);
+    // Radii (S94 F19): smoothstep(start, end, length(p)), a negative scale telling the shaders to
+    // take the length (includes/post_color.glsl postColorVignette, uber.frag)
+    if (settings.vignetteFalloff == VignetteFalloff::RADII){
+        const float radiusStart = std::max(settings.vignetteStart, 0.0f);
+        const float radiusWidth = std::max(settings.vignetteEnd - radiusStart, 1e-4f);
+        falloffScale = -1.0f / radiusWidth;
+        falloffBias = -radiusStart / radiusWidth;
+        return;
+    }
     // falloff over dot(p, p): from start to start + width, start and width by smoothness
     const float start = 0.6f * (1.0f - settings.vignetteSmoothness);
     const float width = 0.2f + 1.6f * settings.vignetteSmoothness;
@@ -7132,6 +7158,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             mesh.submeshes[i].slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
             shaderData.getUniformBlockMembers("u_fs_litFrame", mesh.submeshes[i].sizeFSLitFrame);
             mesh.submeshes[i].sizeFSLitFrame = std::min(mesh.submeshes[i].sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
+            // the gradient ambient ('Agr', includes/ambient.glsl)
+            mesh.submeshes[i].slotVSAmbientGradient = shaderData.getUniformBlockIndexByName("u_vs_ambientGradient");
+            mesh.submeshes[i].slotFSAmbientGradient = shaderData.getUniformBlockIndexByName("u_fs_ambientGradient");
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -9365,6 +9394,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     extra.lightDataTail = LightDataTail();
     extra.slotFSLitFrame = -1;
     extra.sizeFSLitFrame = 0;
+    extra.slotVSAmbientGradient = -1;
+    extra.slotFSAmbientGradient = -1;
     extra.slotFSLighting = -1;
     if (p_lit){
         extra.slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
@@ -9380,6 +9411,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
         shaderData.getUniformBlockMembers("u_fs_litFrame", extra.sizeFSLitFrame);
         extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
+        extra.slotVSAmbientGradient = shaderData.getUniformBlockIndexByName("u_vs_ambientGradient");
+        extra.slotFSAmbientGradient = shaderData.getUniformBlockIndexByName("u_fs_ambientGradient");
         extra.slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
     }
     extra.slotFSLighting2D = (properties & (1u << 22)) ? shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING2D) : -1;
@@ -9491,6 +9524,10 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
             render.applyUniformBlock(extra.slotFSLitFrame, extra.sizeFSLitFrame,
                 (properties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&litFrame : (void*)&litFrame.lit);
         }
+        if (extra.slotVSAmbientGradient != -1)
+            render.applyUniformBlock(extra.slotVSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
+        if (extra.slotFSAmbientGradient != -1)
+            render.applyUniformBlock(extra.slotFSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
         if (extra.slotFSLighting != -1){
             buildLegacyLighting(mesh, properties, legacyLightingBlock);
             render.applyUniformBlock(extra.slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
@@ -10971,6 +11008,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.applyUniformBlock(mesh.submeshes[i].slotFSLitFrame, mesh.submeshes[i].sizeFSLitFrame,
                         (mesh.submeshes[i].shaderProperties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&litFrame : (void*)&litFrame.lit);
                 }
+                // the gradient ambient ('Agr' variants only declare it)
+                if (mesh.submeshes[i].slotVSAmbientGradient != -1)
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
+                if (mesh.submeshes[i].slotFSAmbientGradient != -1)
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
                 if (mesh.submeshes[i].slotFSLighting != -1){
                     buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
@@ -13599,6 +13641,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSObjectLights = -1;
         submesh.slotFSObjectLights = -1;
         submesh.slotFSLitFrame = -1;
+        submesh.slotVSAmbientGradient = -1;
+        submesh.slotFSAmbientGradient = -1;
         submesh.slotFSReflectionProbe = -1;
         submesh.slotVSSprite = -1;
         submesh.slotVSShadows = -1;
@@ -14970,6 +15014,66 @@ void RenderSystem::destroyLines(Entity entity, LineRendererComponent& lines){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
+namespace {
+    // The sky sphere of a shader reading a_texcoord1 (includes/sky_vs.glsl SKY_SPHERE_UV): a
+    // 64 x 32 longitude-latitude grid with a duplicated seam column (u from 0 to 1 across it) and
+    // a fan at each pole (its apex at the middle of its column's longitudes). a_texcoord1 is the
+    // panorama's coordinate of the vertex's direction: u the longitude in turns, 0.5 at -Z (+X a
+    // quarter turn on), v the latitude, 0 straight up (library/panoramic_sky.frag's mapping).
+    // Triangles wind counter-clockwise seen from the centre, as the cube's.
+    unsigned int buildSkySphereGrid(InterleavedBuffer& buffer){
+        constexpr int COLUMNS = 64;
+        constexpr int ROWS = 32;
+        constexpr float PI_F = 3.14159265358979f;
+        buffer.clear();
+        buffer.addAttribute(AttributeType::POSITION, 3);
+        buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+        Attribute* position = buffer.getAttribute(AttributeType::POSITION);
+        Attribute* uv = buffer.getAttribute(AttributeType::TEXCOORD1);
+        auto direction = [](float u, float v){
+            const float longitude = (u - 0.5f) * 2.0f * PI_F;
+            const float latitude = v * PI_F;
+            return Vector3(std::sin(longitude) * std::sin(latitude), std::cos(latitude), -std::cos(longitude) * std::sin(latitude));
+        };
+        std::vector<Vector3> positions;
+        std::vector<Vector2> uvs;
+        auto triangle = [&](Vector2 a, Vector2 b, Vector2 c){
+            Vector3 pa = direction(a.x, a.y);
+            Vector3 pb = direction(b.x, b.y);
+            Vector3 pc = direction(c.x, c.y);
+            // seen from the centre (the camera), counter-clockwise: the face's normal points inwards
+            if ((pb - pa).crossProduct(pc - pa).dotProduct(pa + pb + pc) > 0.0f){
+                std::swap(pb, pc);
+                std::swap(b, c);
+            }
+            positions.insert(positions.end(), {pa, pb, pc});
+            uvs.insert(uvs.end(), {a, b, c});
+        };
+        for (int row = 0; row < ROWS; row++){
+            const float v0 = (float)row / ROWS;
+            const float v1 = (float)(row + 1) / ROWS;
+            for (int column = 0; column < COLUMNS; column++){
+                const float u0 = (float)column / COLUMNS;
+                const float u1 = (float)(column + 1) / COLUMNS;
+                const float uMid = 0.5f * (u0 + u1);
+                if (row == 0){
+                    triangle(Vector2(uMid, 0.0f), Vector2(u0, v1), Vector2(u1, v1));
+                }else if (row == ROWS - 1){
+                    triangle(Vector2(u0, v0), Vector2(uMid, 1.0f), Vector2(u1, v0));
+                }else{
+                    triangle(Vector2(u0, v0), Vector2(u0, v1), Vector2(u1, v1));
+                    triangle(Vector2(u0, v0), Vector2(u1, v1), Vector2(u1, v0));
+                }
+            }
+        }
+        for (const Vector3& p : positions)
+            buffer.addVector3(position, p);
+        for (const Vector2& t : uvs)
+            buffer.addVector2(uv, t);
+        return (unsigned int)positions.size();
+    }
+}
+
 bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
@@ -15043,6 +15147,11 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     }
     render->setShader(sky.shader.get());
     ShaderData& shaderData = sky.shader.get()->shaderData;
+    // a shader reading a_texcoord1 maps the sky per vertex (library:panoramic_sky's Per-Vertex
+    // Mapping, S94 F18): the sphere grid replaces the cube
+    sky.vertexCount = 36;
+    if (shaderData.getAttrIndex(AttributeType::TEXCOORD1) != -1)
+        sky.vertexCount = buildSkySphereGrid(sky.buffer);
 
     sky.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::SKY_VS_PARAMS);
     sky.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::SKY_FS_PARAMS);
@@ -15127,7 +15236,7 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
                                scene->getInheritedShaderUniforms(ShaderType::SKYBOX, sky.customShader.path), sky.needUpdateShaderUniforms,
                                sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
-        render.draw(0, 36, 1);
+        render.draw(0, sky.vertexCount, 1);
     }
 
     return true;
@@ -18081,6 +18190,11 @@ void RenderSystem::update(double dt){
         loadedDirectionalLightsOnly = directionalLightsOnly;
         needReloadMeshVariants();
     }
+    // so is the Environment Lighting Source ('Agr', S94 F15)
+    if (scene->getAmbientMode() != loadedAmbientMode){
+        loadedAmbientMode = scene->getAmbientMode();
+        needReloadMeshVariants();
+    }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
     const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
     const LitQuality litQuality = QualityResolver::litQuality(scene->getLitQuality());
@@ -19903,11 +20017,24 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
-    bool skyDrawn = skys->size() > 0;
+    // a hidden sky, or one whose entity is inactive, draws nothing (S94 F16)
+    bool skyDrawn = skys->size() > 0 && skys->getComponentFromIndex(0).visible && scene->isEntityActiveInHierarchy(skys->getEntity(0));
 #ifdef JASPERENGINE_EDITOR
     // (the Overdraw Draw Mode shows the meshes' layers alone)
     skyDrawn = skyDrawn && rv().drawMode != ViewDrawMode::OVERDRAW;
 #endif
+    // the sky after the opaque queue (S94 F17): at the far plane under the depth test, so the
+    // pixels the opaque meshes cover are not shaded. First, as the background, where there is no
+    // opaque queue (a camera without depth test or sorting: hierarchy order) and under a Video
+    // Player's far plane (drawn over the sky, without depth)
+    const bool skyAfterOpaques = distanceSort && !videoFarPlanes;
+    auto drawPassSky = [&](){
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
+        if (perCameraMVP){
+            updateSkyViewProjection(sky, camera);
+        }
+        drawSky(sky, colorPip, passSkyViewProjection(sky));
+    };
 
     // the linear store's post-processing colour (ssrStore, above): the scene's kept for the composite
     ssrLinearStore = false;
@@ -19924,16 +20051,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passPostColorLut = &ssrIdentityLut;
     }
 
-    //---------Draw sky----------
-    if (skyDrawn){
-        SkyboxComponent& sky = skys->getComponentFromIndex(0);
-        if (sky.visible){
-            if (perCameraMVP){
-                updateSkyViewProjection(sky, camera);
-            }
-
-            drawSky(sky, colorPip, passSkyViewProjection(sky));
-        }
+    //---------Draw sky (as the background)----------
+    if (skyDrawn && !skyAfterOpaques){
+        drawPassSky();
     }
 
     //---------Video Players on this camera's planes----------
@@ -19975,6 +20095,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passSubmeshMask = 0xFFFFFFFFu;
         passPreCulled = false;
         passLodFade = LodFadePass::ALL;
+        //---------Draw sky (after the opaque queue)----------
+        if (skyDrawn && skyAfterOpaques){
+            // (the opaque runs Dynamic Batching holds draw first, under the sky's depth test)
+            flushHeldBatchDraws();
+            drawPassSky();
+        }
         // SSR over the opaque queue and the sky (ssrInPass): the march between two halves of the
         // pass, the composite the first draw of the second, over every pixel of ssrPassTarget
         // (its colour not loaded; the opaque depth kept); the rest of the pass draws over it with

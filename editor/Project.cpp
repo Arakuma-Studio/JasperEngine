@@ -4649,6 +4649,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
                                          scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
                                          scriptsMention("Outline"));
+    // a script switching the Environment Lighting Source (S94 F15) draws the other lit variants
+    if (scriptsMention("ambientMode") || scriptsMention("AmbientMode"))
+        ShaderVariantCollector::addAmbientGradientTwins(keys);
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);

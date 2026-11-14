@@ -188,6 +188,16 @@ namespace jasperengine{
 		Vector4 environmentColor;          // rgb environment colour (linear)
 	} lit_frame_t;
 
+	// u_vs_ambientGradient / u_fs_ambientGradient (shaderlib/includes/ambient.glsl, S94 F15): the
+	// scene's gradient ambient, linear, times the intensity, for the 'Agr' variants; everything
+	// else takes its average
+	typedef struct ambient_gradient_t {
+		Vector4 sky;
+		Vector4 equator;
+		Vector4 ground;
+		Vector4 average;	// the SH ambient's share (Scene::getAmbientLightAverageLinear)
+	} ambient_gradient_t;
+
 	// u_fs_litFrame of a variant with the post-processing colour: its parameters first, then the
 	// prefix of lit_frame_t the variant declares
 	typedef struct lit_frame_block_t {
@@ -516,6 +526,9 @@ namespace jasperengine{
 		// every Light component of the scene is Directional (enabled or not, so a flashlight
 		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
 		bool directionalLightsOnly = false;
+		// the scene's Environment Lighting Source is Gradient (S94 F15): the lit variants that
+		// take the scene ambient ('Agr', includes/ambient.glsl)
+		bool ambientGradient = false;
 		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
 		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
 		bool waterExclusion = false;
@@ -1966,6 +1979,10 @@ namespace jasperengine{
 		bool directionalLightsOnly = false;
 		bool loadedDirectionalLightsOnly = false;
 		bool directionalLightsOnlyKnown = false;
+		// the Environment Lighting Source the meshes loaded their variants with, and its colours
+		// for this frame (applyAmbientGradient)
+		AmbientMode loadedAmbientMode = AmbientMode::COLOR;
+		ambient_gradient_t ambientGradientBlock = {};
 		// a point or spot Light was in the scene since load(): the general Lit stays until the
 		// next load, so lights that come and go never reload every mesh again
 		bool nonDirectionalLightSeen = false;
@@ -2292,6 +2309,7 @@ namespace jasperengine{
 		// the user's LUT (PostProcessingSettings::lutTexture: a .cube, its cooked .jlut or a PNG
 		// strip), shared through the CubeLut cache by path; null when none or it failed to load
 		std::string postLutPath;
+		bool postLutFlipGreen = false;
 		std::shared_ptr<const CubeLut> postLut;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
