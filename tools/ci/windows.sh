@@ -10,7 +10,8 @@
 #                                                  release editor, which package needs)
 #   tools/ci/windows.sh engine [d3d11|glcore|vulkan]  the engine sample project and jasperengine-core-tests
 #                                                  of that backend (default glcore, engine/CMakeLists.txt's
-#                                                  for Windows; vulkan needs the Vulkan SDK, VULKAN_SDK)
+#                                                  for Windows; vulkan needs the Vulkan SDK, VULKAN_SDK);
+#                                                  ENGINE_DEBUG_INFO=1 with debug information (/Z7, PDBs)
 #   tools/ci/windows.sh tests [backend]            the CPU unit tests (-*Gpu*: no device here) of the editor
 #                                                  tree and that engine tree, through tools/ci/gtest-gate.py;
 #                                                  XML in build/test-results/{core,editor}-windows.xml
@@ -56,11 +57,18 @@ step_editor() {
 }
 
 step_engine() {
-    local backend="$1"
+    local backend="$1" debug=()
     ci_msvc
-    # Release, not the preset's RelWithDebInfo: MSVC's /Zi debug information goes to PDBs, which
-    # ccache cannot cache
+    # Release, not the preset's RelWithDebInfo, whose /Zi shared PDB ccache cannot cache.
+    # ENGINE_DEBUG_INFO=1 (the tree whose core tests run): the debug information in the objects
+    # instead (/Z7: CMP0141's Embedded), which ccache caches, and /DEBUG links the PDB the crash,
+    # hang and logger tests' backtraces name their frames from
+    if [[ "${ENGINE_DEBUG_INFO:-0}" == 1 ]]; then
+        debug=(-DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+            "-DCMAKE_EXE_LINKER_FLAGS=/machine:x64 /DEBUG" "-DCMAKE_SHARED_LINKER_FLAGS=/machine:x64 /DEBUG")
+    fi
     cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
+        ${debug[@]+"${debug[@]}"} \
         -DGRAPHIC_BACKEND="$backend" -DJASPERENGINE_WERROR="$WERROR_VALUE" "${MSVC_LINKER_ARGS[@]}" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
     cmake --build "build/windows/engine-$backend" --target jasperengine-project jasperengine-core-tests ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
 }

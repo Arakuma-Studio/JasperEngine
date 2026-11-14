@@ -764,6 +764,10 @@ jobs:
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      # the repository's bytes, as on Linux and macOS: Git for Windows checks text out with CRLF, and
+      # tests compare committed files (generated docs, canonical documents) byte for byte
+      - name: LF checkout
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         if: matrix.part == 'engine-vulkan'
@@ -799,8 +803,11 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # (the OpenGL tree runs the core tests, whose crash and hang reports name frames: debug information)
       - name: Engine
         if: startsWith(matrix.part, 'engine-')
+        env:
+          ENGINE_DEBUG_INFO: ${{ matrix.part == 'engine-glcore' && '1' || '' }}
         run: tools/ci/windows.sh engine "${PART#engine-}"
       - name: Core unit tests (CPU suites)
         if: matrix.part == 'engine-glcore' && github.event_name != 'push'
@@ -829,6 +836,8 @@ jobs:
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: LF checkout
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
