@@ -706,3 +706,30 @@ WP-B (queries):
   whose settings changed and went back with one that never changed (no recorded poses: they would
   pin one compiler's floats). The AC-30 test is `CoroutineTest.FixedStepCapFollowsMaximumDeltaTime`
   (the fixture of `ScriptSchedulerTest.cpp`).
+
+WP-C (bodies and colliders):
+- The decompose command and its job runner are `editor/command/type/DecomposeColliderCmd.{h,cpp}`
+  (the commands' directory and `*Cmd` naming) rather than `editor/command/DecomposeColliderCommand`.
+  V-HACD was already vendored editor-side for Physics Placement (`engine/libs/vhacd`,
+  `ConvexDecompositionCache::decompose`); no new library.
+- The MCP tests are a new CI file, `tools/mcp/tests/test_physics_bodies.py`
+  (`test_decompose_mesh_collider`, `test_capsule_half_height_zero`, `test_attach_to_parent_body`):
+  `test_physics_3d.py` is excluded from the CI suite and runs on the pose-animation fixture.
+- An attached child's colliders take the body's GameObject layer (a Jolt or Box2D body has one) and,
+  without a material of their own, the body's default material: the child's body fields, its
+  material included, are ignored (REQ-18).
+- 2D attached colliders report `ATTACHED_COLLIDER2D_BIT | slot` keys (as Tilemap Collider 2D's
+  generated ones do); 3D ones the combined index after the body's own colliders. `ColliderRef` /
+  `ColliderRef2D` made from either name the child's collider and their `rigidbody` is the body.
+  `RaycastHit.gameObject` / `rigidbody` stay the body's (Unity's `transform`), `collider` is the
+  child's; `query_physics` cast hits name the child and add `body`.
+- REQ-44: the Scene view draws every body's colliders in one colour already, attached children
+  included; the runtime `Physics.debugDraw` draws an attached child's colliders in its body's colour.
+- REQ-24's shape builder part was already done: Jolt's `CapsuleShapeSettings::Create` and
+  `TaperedCapsuleShapeSettings::Create` make a sphere (of the larger radius) when the half height
+  is 0 (`IsSphere()`), so `JoltShapeBuilder.cpp` gives a sphere unchanged (§3.1's "returns NULL"
+  was wrong; `Physics3DBody.ZeroHalfHeightCapsuleIsSphere` pins it and stays green without
+  WP-C). The gap was the refusals: `edit_colliders` ("must be positive"), the Inspector row, and a
+  negative `setColliderHalfHeight` now raising.
+- REQ-24's CharacterController part was already done (`CharacterControllerSystem::makeShape` uses a
+  sphere when `height <= 2 radius`); unchanged.

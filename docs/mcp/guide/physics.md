@@ -78,6 +78,8 @@ any field.
 | impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse [, wake])` |
 | velocity | `linearVelocity` (Lua property) / `setLinearVelocity` (C++) | `linearVelocity` (Lua, points/s) |
 | teleport | `body.position`, `body.rotation` (Lua) / `setPosition`, `setRotation` (C++) | `body.position`, `body.angle` (Lua) / `setPosition`, `setAngle` (C++) |
+| teleport, drawn sliding | `body:setPosition(p, true)`, `body:setRotation(q, true)` | `body:setPosition(v2, true)`, `body:setAngle(a, true)` |
+| move to a pose (Unity `MovePosition`, `MoveRotation`, `Move`) | `body:movePosition(p)`, `moveRotation(q)`, `movePositionAndRotation(p, q)` | `body:movePosition(v2)`, `moveRotation(angle)`, `movePositionAndRotation(v2, angle)` |
 
 There is NO `applyForceToCenter` on the 3D `Rigidbody`. `wake` defaults to true (a sleeping body
 wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
@@ -97,6 +99,12 @@ wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
   moved with a velocity. Setting the body's position, rotation, velocity or type from a
   script takes that part over from the transform.
 - Never describe transform-only movement as physics.
+- `movePosition` / `moveRotation` put the body at the pose by the end of the next fixed step,
+  drawn interpolated (a teleport is a jump unless its `interpolate` argument is true). A
+  **kinematic** body gets there by velocity, pushing and carrying what it touches (called from
+  `onUpdate`: over the frame's fixed steps), and stops there; a dynamic or static one is placed
+  before the step and keeps its velocity. The last call before a step wins. A kinematic platform
+  or door moved by script uses these, not `body.position` (which passes through what it meets).
 
 ## 3D bodies, colliders and materials
 
@@ -119,7 +127,26 @@ what bodies did before these fields, so old scenes move as they did):
 **Type** switches live, in Play too (Inspector, `set_runtime_property`, Lua `body.type`,
 `body.isKinematic`): the same body, joints and contacts. A dynamic body made kinematic stops; a
 kinematic one made dynamic keeps the velocity it was moving with. A body with a `mesh` or
-`heightfield` collider can only be static (an error names the collider).
+`heightfield` collider can only be static (an error names the collider). For a body that moves,
+`edit_colliders` `decompose: {index, quality: low|medium|high, max_hulls}` (Inspector "Decompose
+Into Convex Hulls") replaces a `mesh` collider with up to `max_hulls` (default 16) `convex_hull`
+colliders of its shape, its pose, material, trigger flag and density kept, in one undo step (a job;
+re-importing the mesh does not redo it).
+
+A capsule (or tapered capsule) with `half_height` 0 is a sphere of its (larger) radius.
+
+### Compound bodies
+
+A Rigidbody (or Rigidbody 2D) with `attachToParentBody` (Inspector "Attach To Parent Body",
+`edit_colliders` `body: {"attach_to_parent_body": true}`) has no body of its own: its colliders join
+the body of its nearest parent with an enabled Rigidbody of the same dimension, posed by its
+Transform, adding their mass (Unity's colliders below a Rigidbody). Without such a parent it is its
+own body. Its contacts and triggers reach its GameObject's scripts and the parent's; a
+`Collider` / `ColliderRef` names the child's collider and its `rigidbody` is the parent's
+(`attachedRigidbody`, Lua `body.attachedRigidbody` on the child). Its own body fields (type, mass,
+damping...) are ignored. The parent's shape is composed again at the next step when such a child is
+added, removed, enabled, disabled, re-parented or moved: a child an animation moves every step costs
+a compose each step (warned once after 30); give it its own kinematic Rigidbody instead.
 
 **Triggers per collider** (Unity Is Trigger): a collider with `isTrigger` passes through and
 reports a sensor contact, the body's other colliders still collide; triggers add no mass and do not

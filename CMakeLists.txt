@@ -1487,6 +1487,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/SetChildSceneStartActiveCmd.cpp
+    ${EDITOR_DIR}/command/type/DecomposeColliderCmd.cpp
     ${EDITOR_DIR}/command/type/EntityNameCmd.cpp
     ${EDITOR_DIR}/command/type/ImportPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveEntityFromPrefabCmd.cpp

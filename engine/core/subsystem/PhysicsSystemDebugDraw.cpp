@@ -214,24 +214,38 @@ void PhysicsSystem::updateDebugLines(){
             RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
             const Entity entity = bodies3d->getEntity(i);
             Transform* transform = scene->findComponent<Transform>(entity);
-            if (body.body.IsInvalid() || !transform || !bodyInterface.IsAdded(body.body)){
+            if (!transform){
                 continue;
             }
-            JPH::RVec3 position;
-            JPH::Quat rotation;
-            bodyInterface.GetPositionAndRotation(body.body, position, rotation);
+            // S96 WP-C: an attached child's colliders where its GameObject is drawn, in the
+            // colour of the body they joined
+            const RigidbodyComponent* owner = &body;
+            if (body.body.IsInvalid() && body.attachedTo != NULL_ENTITY && scene->isEntityCreated(body.attachedTo)){
+                owner = scene->findComponent<RigidbodyComponent>(body.attachedTo);
+            }
+            if (!owner || owner->body.IsInvalid() || !bodyInterface.IsAdded(owner->body)){
+                continue;
+            }
             PhysicsDebugLines::Pose pose;
-            pose.position = Vector3(position.GetX(), position.GetY(), position.GetZ());
-            pose.rotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
+            if (owner == &body){
+                JPH::RVec3 position;
+                JPH::Quat rotation;
+                bodyInterface.GetPositionAndRotation(body.body, position, rotation);
+                pose.position = Vector3(position.GetX(), position.GetY(), position.GetZ());
+                pose.rotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
+            }else{
+                pose.position = transform->worldPosition;
+                pose.rotation = transform->worldRotation;
+            }
             pose.scale = transform->worldScale;
 
             Vector4 color = colorStatic;
-            if (body.type == BodyType::KINEMATIC){
+            if (owner->type == BodyType::KINEMATIC){
                 color = colorKinematic;
-            }else if (body.type == BodyType::DYNAMIC){
-                color = bodyInterface.IsActive(body.body) ? colorDynamic : colorSleeping;
+            }else if (owner->type == BodyType::DYNAMIC){
+                color = bodyInterface.IsActive(owner->body) ? colorDynamic : colorSleeping;
             }
-            const Vector4 bodyColor = body.sensor ? colorTrigger : color;
+            const Vector4 bodyColor = owner->sensor ? colorTrigger : color;
             PhysicsDebugLines::bodyEdges(scene, entity, *transform, body, pose, debugEdgeCaches3D[entity],
                 [&](const Vector3& a, const Vector3& b, size_t collider){
                     lines.addLine(a, b, (collider < body.colliders.size() && body.colliders[collider].isTrigger) ? colorTrigger : bodyColor);

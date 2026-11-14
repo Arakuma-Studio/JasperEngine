@@ -223,15 +223,17 @@ namespace jasperengine::physicsqueries2d {
         const int index = (int)reinterpret_cast<size_t>(b2Shape_GetUserData(shapeId));
         context->any = true;
         if (context->out){
+            // an attached child's collider resolves to the child's (S96 REQ-18)
+            const ColliderRef2D collider(context->scene, entity, index);
             for (const ColliderRef2D& kept : *context->out){
-                if (kept.entity == entity && kept.index == index){
+                if (kept == collider){
                     return true;
                 }
             }
             if (context->out->size() >= context->maxHits){
                 return false;
             }
-            context->out->push_back(ColliderRef2D(context->scene, entity, index));
+            context->out->push_back(collider);
             return true;
         }
         if (context->keepFirst){

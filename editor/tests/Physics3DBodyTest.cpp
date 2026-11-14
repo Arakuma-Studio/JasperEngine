@@ -612,6 +612,108 @@ TEST(Physics3DBody, DebugDrawLines2D) {
     EXPECT_EQ(physics->getDebugLineCount(), 0u);
 }
 
+// ---- S96 WP-C: movePosition / moveRotation, the interpolated teleport, zero-height capsules -----
+
+TEST(Physics3DBody, MovePositionKinematicPushes) {
+    World3D world(Vector3(0, 0, 0));
+    const Entity mover = world.box(Vector3(0, 0, 0), Vector3(1, 1, 1), BodyType::KINEMATIC);
+    // touching (within Jolt's speculative contact distance): the move pushes it in that step
+    const Entity crate = world.box(Vector3(1.01f, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
+    world.load();
+    world.step();
+    world.rb(mover).movePosition(Vector3(1, 0, 0));
+    world.rb(mover).moveRotation(degreesAbout(30.0f, Vector3(0, 1, 0)));
+    world.step();
+    // there at the end of the step, by velocity: what it touches is pushed
+    EXPECT_NEAR(world.rb(mover).getPosition().x, 1.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(mover).getLinearVelocity().x, 60.0f, 1e-2f);
+    EXPECT_GT(std::fabs(world.rb(mover).getRotation().dot(degreesAbout(30.0f, Vector3(0, 1, 0)))), 0.99999f);
+    world.step(2);
+    EXPECT_GT(world.rb(crate).getLinearVelocity().x, 0.5f) << "pushed";
+    // the step after it stops where it was sent
+    EXPECT_NEAR(world.rb(mover).getLinearVelocity().length(), 0.0f, 1e-6f);
+    EXPECT_NEAR(world.rb(mover).getAngularVelocity().length(), 0.0f, 1e-6f);
+    EXPECT_NEAR(world.rb(mover).getPosition().x, 1.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, MovePositionDynamicTeleports) {
+    World3D world(Vector3(0, 0, 0));
+    const Entity ball = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.rb(ball).setLinearDamping(0.0f);
+    world.rb(ball).setLinearVelocity(Vector3(0, 2, 0));
+    world.step();
+    const float y = world.rb(ball).getPosition().y;
+    world.rb(ball).movePosition(Vector3(5, y, 0));
+    world.step();
+    // placed before the step, its velocity kept (Unity)
+    EXPECT_NEAR(world.rb(ball).getPosition().x, 5.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, y + 2.0f * STEP, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getLinearVelocity().y, 2.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getLinearVelocity().x, 0.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, MoveIsInterpolated) {
+    World3D world(Vector3(0, 0, 0));
+    world.scene.setPhysicsInterpolation(true);
+    const Entity moved = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    const Entity mover = world.box(Vector3(0, 0, 10), Vector3(1, 1, 1), BodyType::KINEMATIC);
+    world.load();
+    world.step();
+    world.rb(moved).movePosition(Vector3(4, 0, 0));
+    world.rb(mover).movePosition(Vector3(4, 0, 10));
+    world.step();
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    // half way between the two step poses, for a dynamic and a kinematic body
+    EXPECT_NEAR(world.transform(moved).position.x, 2.0f, 1e-4f);
+    EXPECT_NEAR(world.transform(mover).position.x, 2.0f, 1e-4f);
+
+    // a teleport jumps: drawn at the target
+    world.step();
+    world.rb(moved).setPosition(Vector3(8, 0, 0));
+    world.step();
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.transform(moved).position.x, 8.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, SetPositionInterpolateOption) {
+    World3D world(Vector3(0, 0, 0));
+    world.scene.setPhysicsInterpolation(true);
+    const Entity sliding = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    const Entity jumping = world.sphere(Vector3(0, 0, 5), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step();
+    world.rb(sliding).setPosition(Vector3(4, 0, 0), true);
+    world.rb(jumping).setPosition(Vector3(4, 0, 5), false);
+    world.rb(sliding).setRotation(degreesAbout(90.0f, Vector3(0, 1, 0)), true);
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.transform(sliding).position.x, 2.0f, 1e-4f) << "slides from the pose before the last step";
+    EXPECT_NEAR(world.transform(jumping).position.x, 4.0f, 1e-4f) << "the default jumps";
+    EXPECT_GT(std::fabs(world.transform(sliding).rotation.dot(degreesAbout(45.0f, Vector3(0, 1, 0)))), 0.9999f);
+}
+
+TEST(Physics3DBody, ZeroHalfHeightCapsuleIsSphere) {
+    World3D world;
+    world.floor();
+    const Entity ball = world.body(Vector3(0, 2, 0), BodyType::DYNAMIC);
+    world.rb(ball).createCapsuleCollider(0.0f, 0.5f);
+    const Entity tapered = world.body(Vector3(3, 2, 0), BodyType::DYNAMIC);
+    world.rb(tapered).createTaperedCapsuleCollider(0.0f, 0.25f, 0.5f);
+    const Entity sphere = world.sphere(Vector3(-3, 2, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step(240);
+    // a sphere of its radius (the larger one for a tapered capsule): it rests as a sphere does
+    // (Jolt's penetration slop lets a resting body sink up to 0.02 m)
+    const float sphereY = world.rb(sphere).getPosition().y;
+    EXPECT_NEAR(sphereY, 0.5f, 0.02f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, sphereY, 1e-3f);
+    EXPECT_NEAR(world.rb(tapered).getPosition().y, sphereY, 1e-3f);
+    EXPECT_THROW(world.rb(ball).setColliderHalfHeight(0, -1.0f), std::runtime_error);
+}
+
 // ---- S96 REQ-35: the 3D world settings ---------------------------------------------------------
 
 namespace {

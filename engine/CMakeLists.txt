@@ -1766,6 +1766,7 @@ set(JASPERENGINE_SRCS
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
     core/registry/SortingLayers.cpp
+    core/physics/AttachedColliders.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp

@@ -1089,6 +1089,17 @@ void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneCont
     body.needReloadBody = true;
     body.needUpdateColliders = true;
     body.newBody = true;
+    // S96 WP-C: the copy gathers its own attached children; a move target was the original's
+    const Rigidbody2DComponent defaults;
+    body.attachedColliders.clear();
+    body.attachedTo = defaults.attachedTo;
+    body.attachedRecomposeSteps = defaults.attachedRecomposeSteps;
+    body.warnedAttachedRecompose = defaults.warnedAttachedRecompose;
+    body.hasMovePosition = defaults.hasMovePosition;
+    body.hasMoveRotation = defaults.hasMoveRotation;
+    body.moveStepsLeft = defaults.moveStepsLeft;
+    body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>
@@ -1168,6 +1179,17 @@ void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext&
     body.hasPendingType = false;
     body.appliedMaterialRevision = 0;
     body.newBody = true;
+    // S96 WP-C: the copy gathers its own attached children; a move target was the original's
+    const RigidbodyComponent defaults;
+    body.attachedColliders.clear();
+    body.attachedTo = defaults.attachedTo;
+    body.attachedRecomposeSteps = defaults.attachedRecomposeSteps;
+    body.warnedAttachedRecompose = defaults.warnedAttachedRecompose;
+    body.hasMovePosition = defaults.hasMovePosition;
+    body.hasMoveRotation = defaults.hasMoveRotation;
+    body.moveStepsLeft = defaults.moveStepsLeft;
+    body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>

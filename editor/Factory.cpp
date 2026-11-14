@@ -2133,6 +2133,8 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
+    // S96 WP-C: written when not at its default
+    if (body.attachToParentBody) code << ind << "rigidbody2d.attachToParentBody = true;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "Rigidbody2DComponent", "rigidbody2d", assignExisting);
     return code.str();
@@ -2180,6 +2182,8 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     if (body.inertiaTensorRotation != def.inertiaTensorRotation) code << ind << "rigidbody.inertiaTensorRotation = " << formatQuaternion(body.inertiaTensorRotation) << ";\n";
     boolField("allowSleeping", body.allowSleeping, def.allowSleeping);
     boolField("collideKinematicVsNonDynamic", body.collideKinematicVsNonDynamic, def.collideKinematicVsNonDynamic);
+    // S96 WP-C
+    boolField("attachToParentBody", body.attachToParentBody, def.attachToParentBody);
     if (body.interpolation != def.interpolation) {
         const char* interpolation = "RigidbodyInterpolation::SCENE";
         if (body.interpolation == RigidbodyInterpolation::NONE) interpolation = "RigidbodyInterpolation::NONE";

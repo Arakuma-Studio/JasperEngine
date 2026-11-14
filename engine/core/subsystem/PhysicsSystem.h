@@ -294,6 +294,39 @@ namespace jasperengine{
 		// drops the lines whose time is up; true when some are left
 		bool pruneTimedDebugLines();
 
+		// S96 WP-C: children whose colliders join an ancestor's body (physics/AttachedColliders.cpp)
+		struct AttachedChild{
+			Entity body;
+			Entity child;
+			// the child's colliders or scale changed: their leaves are made again
+			bool changed;
+		};
+		std::vector<AttachedChild> attachedChildren3D;
+		std::vector<AttachedChild> attachedChildren2D;
+		// the bodies holding attached colliders now
+		std::vector<Entity> attachedBodies3D;
+		std::vector<Entity> attachedBodies2D;
+		// An attachToParentBody GameObject with an ancestor body: its own body goes, its
+		// colliders are listed for the ancestor's compose after the sync loop. False: it is its
+		// own body.
+#ifdef JASPERENGINE_PHYSICS_3D
+		bool attachChild3D(Entity entity, RigidbodyComponent& body);
+		// the bodies whose attached children changed composed again, once per step
+		void composeAttached3D();
+		// a movePosition / moveRotation target, inside the step before the world steps
+		void applyMoveTarget3D(Entity entity, RigidbodyComponent& body, float stepTime);
+		// after the step that ends a kinematic move: exactly at its target
+		void finishMoveTarget3D(Entity entity, RigidbodyComponent& body);
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
+		bool attachChild2D(Entity entity, Rigidbody2DComponent& body);
+		void composeAttached2D();
+		// the attached copies' shapes made again (all: every one), true when any was
+		bool syncAttachedColliders2D(Entity entity, Rigidbody2DComponent& body, bool all);
+		void applyMoveTarget2D(Entity entity, Rigidbody2DComponent& body, float stepTime);
+		void finishMoveTarget2D(Rigidbody2DComponent& body);
+#endif
+
 		// a script that defines a contact message appeared or went: the listener masks of the
 		// bodies are computed again before the next step
 		bool listenerMasksDirty = true;
