@@ -17,7 +17,7 @@ async def lua(ed: Editor, code: str):
 
 
 async def test_lua_queries_3d(ed: Editor):
-    sid = (await ed.call("create_scene", name="Lua3D", type="3d"))["scene"]["id"]
+    sid = (await ed.call("create_scene", name="Lua3D", type="3d", path="scenes/Lua3D"))["scene"]["id"]
     for name, position in (("Player", [0, 0.5, 0]), ("Crate", [3, 0.5, 0]), ("Zone", [-4, 0.5, 0])):
         await ed.call("create_entity", scene=sid, name=name, type="box", position=position)
     await ed.call("edit_colliders", scene=sid, entity="Player", body_type="kinematic", add=[{"shape": "box"}])
@@ -102,7 +102,7 @@ async def test_lua_queries_3d(ed: Editor):
 
 
 async def test_lua_queries_2d(ed: Editor):
-    sid = (await ed.call("create_scene", name="Lua2D", type="2d"))["scene"]["id"]
+    sid = (await ed.call("create_scene", name="Lua2D", type="2d", path="scenes/Lua2D"))["scene"]["id"]
     ground = (await ed.call("create_entity", scene=sid, name="Ground", type="rigidbody2d", position=[0, -32, 0]))["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=ground, body_type="static", add=[{"shape": "box", "size": [640, 64], "fit": False}])
     crate = (await ed.call("create_entity", scene=sid, name="Crate", type="rigidbody2d", position=[200, 64, 0]))["entity_id"]

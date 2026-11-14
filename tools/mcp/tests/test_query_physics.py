@@ -16,8 +16,8 @@ def names(result):
     return [hit["name"] for hit in result["hits"]]
 
 
-async def scene3d(ed: Editor) -> int:
-    sid = (await ed.call("create_scene", name="Queries3D", type="3d"))["scene"]["id"]
+async def scene3d(ed: Editor, name: str) -> int:
+    sid = (await ed.call("create_scene", name=name, type="3d", path=f"scenes/{name}"))["scene"]["id"]
     await ed.call("create_entity", scene=sid, name="Floor", type="box", position=[0, -0.5, 0], scale=[20, 1, 20])
     await ed.call("edit_colliders", scene=sid, entity="Floor", body_type="static", add=[{"shape": "box"}])
     await ed.call("create_entity", scene=sid, name="Player", type="box", position=[0, 0.5, 0])
@@ -37,7 +37,7 @@ async def test_query_physics_group_and_outside_play(ed: Editor):
     await ed.call("tool_groups", enable=["physics"])
     ed.check("query_physics" in {t.name for t in await ed.tools(groups=None)}, "listed once enabled")
 
-    sid = await scene3d(ed)
+    sid = await scene3d(ed, "Edit3D")
     await ed.check_error("query_physics", shape="ray", origin=[0, 5, 0], direction=[0, -1, 0], max_distance=10,
                          contains="start Play first (play)")
     # the edit-time world: the scene's PhysicsSystem builds bodies only in Play (S96 REQ-17's inferred claim)
@@ -48,7 +48,7 @@ async def test_query_physics_group_and_outside_play(ed: Editor):
 
 
 async def test_query_physics_3d_in_play(ed: Editor):
-    sid = await scene3d(ed)
+    sid = await scene3d(ed, "Queries3D")
     await ed.call("play", action="start", scene=sid, fixed_fps=60, auto_pause=True)
     try:
         await ed.call("wait", frames=3)
@@ -119,7 +119,7 @@ async def test_query_physics_3d_in_play(ed: Editor):
 
 
 async def test_query_physics_2d_in_play(ed: Editor):
-    sid = (await ed.call("create_scene", name="Queries2D", type="2d"))["scene"]["id"]
+    sid = (await ed.call("create_scene", name="Queries2D", type="2d", path="scenes/Queries2D"))["scene"]["id"]
     ground = (await ed.call("create_entity", scene=sid, name="Ground", type="rigidbody2d", position=[0, -32, 0]))["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=ground, body_type="static", add=[{"shape": "box", "size": [640, 64], "fit": False}])
     crate = (await ed.call("create_entity", scene=sid, name="Crate", type="rigidbody2d", position=[200, 64, 0]))["entity_id"]
