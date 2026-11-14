@@ -18,11 +18,15 @@
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
 #include "component/MeshComponent.h"
+#include "Catalog.h"
+#include "DocumentFile.h"
 #include <cstdlib>
 
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <map>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -765,6 +769,8 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         prefab.loadReport = std::move(loadReport);
         logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
+        // its linked .material files as they are now, not the copies the file embeds (S98 REQ-29)
+        applyLinkedMaterialFiles(prefab.registry.get());
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());
             return false;
@@ -774,6 +780,53 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         Out::error("Failed to load prefab file %s: %s", filepath.string().c_str(), e.what());
         return false;
     }
+}
+
+bool editor::Project::applyLinkedMaterialFiles(EntityRegistry* registry, bool updateRender) const {
+    if (!registry) {
+        return false;
+    }
+    // each file read once per registry: many submeshes share a material
+    std::map<std::string, std::optional<Material>> files;
+    bool changed = false;
+    auto meshes = registry->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        uint64_t updateFlags = 0;
+        for (unsigned int submeshIndex = 0; submeshIndex < mesh.numSubmeshes; submeshIndex++) {
+            Material& material = mesh.submeshes[submeshIndex].material;
+            if (material.name.empty()) continue;
+            const std::string normalizedPath = fs::path(material.name).lexically_normal().generic_string();
+            auto found = files.find(normalizedPath);
+            if (found == files.end()) {
+                std::optional<Material> read;
+                const fs::path materialPath = getProjectPath() / normalizedPath;
+                std::error_code ec;
+                if (fs::is_regular_file(materialPath, ec)) {
+                    try {
+                        read = Stream::decodeMaterial(DocumentFiles::read(materialPath, DocumentKind::Material).root);
+                    } catch (const std::exception& e) {
+                        Out::error("Error loading linked material file '%s': %s", materialPath.string().c_str(), e.what());
+                    }
+                }
+                found = files.emplace(normalizedPath, std::move(read)).first;
+            }
+            if (!found->second) continue;
+            Material fileMaterial = *found->second;
+            fileMaterial.name = AssetRef(normalizedPath, material.name.guid);
+            if (material != fileMaterial) {
+                updateFlags |= Catalog::getMaterialUpdateFlags(material, fileMaterial);
+                material = fileMaterial;
+                mesh.submeshes[submeshIndex].needUpdateTexture = true;
+                changed = true;
+            }
+        }
+        if (updateFlags && updateRender) {
+            Catalog::updateEntity(registry, entity, updateFlags);
+        }
+    }
+    return changed;
 }
 
 editor::Prefab* editor::Project::loadPrefabAsset(const std::filesystem::path& filepath) {

@@ -126,6 +126,22 @@ Two more that origin/main has are fixed in this editor (also found by the upgrad
   delivered contact applies from the next step (it changed the contact being solved before), and
   with a `shouldCollide3D` handler the 3D step runs on the main thread only.
 
+## The editor leaves source files alone (S98)
+
+- **Opening a scene no longer puts it in the build.** origin/main's File > Open Scene (and MCP
+  `open_scene`) added a scene file project.yaml did not list to `scenes:`, so a scene opened to look
+  at shipped. Now it opens out of the build, as Unity leaves Build Settings alone: Build Settings
+  shows it greyed with **Add Open Scenes**, and `edit_build_scenes add` adds it. The workspace
+  reopens it with the project. A scene a listed scene uses as a child scene, and one `create_scene`
+  makes, are in the build as before.
+- **Stop writes no scene file.** origin/main's Stop saved the shader variants a Play session drew
+  with into the played scenes' files. They go to the shader warm-up list (`ShaderWarmup.json` next to
+  `project.yaml`; commit it), written only when it gains a variant; builds read it whatever
+  **Include in Builds** says. The keys older scenes hold stay and still ship.
+- **Prefabs follow their `.material` files.** A prefab's submesh linked to a `.material` takes the
+  file's values wherever the prefab is read (Prefab Mode, instances, Play, builds), as scenes did on
+  origin/main. The prefab file keeps its old copy until the prefab is next saved.
+
 ## Lua scripts
 
 Old scripts keep running; a few old names print a one-time deprecation warning with the new name.

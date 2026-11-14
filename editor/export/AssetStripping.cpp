@@ -205,7 +205,8 @@ editor::AssetStrippingPlan editor::AssetStrippingPlan::make(Project& project) {
     // the build's scenes and what project.yaml names (its scene list and standalone prefabs as
     // edges; the window icon, the audio mixer and every other path as literals)
     for (const SceneProject& scene : project.getScenes()) {
-        if (!scene.filepath.empty()) add(FileUtils::pathToGenericUtf8(project.normalizeToProjectRelative(projectPath / scene.filepath)));
+        // a scene opened without being listed is in no build (S98 REQ-28)
+        if (!scene.filepath.empty() && scene.inBuild) add(FileUtils::pathToGenericUtf8(project.normalizeToProjectRelative(projectPath / scene.filepath)));
     }
     for (const DepEdge& edge : index.dependenciesOf(AssetIndex::projectReferrer(), 1)) follow(edge);
     try {

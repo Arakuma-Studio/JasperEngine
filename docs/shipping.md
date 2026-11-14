@@ -58,8 +58,9 @@ something missing.
   exported workspace alone: Android Studio keeps its `local.properties` and caches.
 - **Shader variants**: a scene's saved variants of a fork whose files were deleted go at its next
   save (the build saves every scene); one that only Build Settings or the warm-up list still names is
-  left out with `W-SHADER-FORK-MISSING`. Stop saves the variants of what scripts made during Play
-  (also in scenes a load replaced), so the build ships them.
+  left out with `W-SHADER-FORK-MISSING`. Stop adds the variants of what scripts made during Play
+  (also in scenes a load replaced) to the warm-up list (`ShaderWarmup.json`), so the build ships
+  them; it writes no scene file.
 - **A scene never saved** ships as the editor holds it (`W-SCENE-NOT-SAVED`; Build Settings lists it
   with a **Save...** button). One that is not open either fails the build.
 - **Build errors**: a failed compile names its first error in the message ("Compiling failed with 2
