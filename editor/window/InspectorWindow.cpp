@@ -1809,7 +1809,7 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
                     std::string path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(chosen)));
                     if (!Util::isMeshAssetFile(path)) path += ".mesh";
                     std::string written, error;
-                    Command* save = MeshAssetFiles::saveAs(project, sceneProject->id, entities[0], sceneProject->scene->getComponent<MeshComponent>(entities[0]),
+                    Command* save = MeshAssetFiles::saveAs(*project, sceneProject->id, entities[0], sceneProject->scene->getComponent<MeshComponent>(entities[0]),
                                                            path, written, &error);
                     if (save) {
                         addMenuCommand(save);
