@@ -394,6 +394,9 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         RowSettings settingsFixedRotation;
         settingsFixedRotation.help = "The body never turns (Unity Constraints > Freeze Rotation)";
         propertyRow(RowPropertyType::Bool, cpType, "fixedRotation", "Fixed Rotation", sceneProject, entities, settingsFixedRotation);
+        RowSettings settingsFastRotation;
+        settingsFastRotation.help = "Not capped by the scene's Max Rotation Per Step (Physics 2D): for wheels and other round bodies that spin fast";
+        propertyRow(RowPropertyType::Bool, cpType, "allowFastRotation", "Allow Fast Rotation", sceneProject, entities, settingsFastRotation);
         propertyRowWithAutoButton(RowPropertyType::Vector2, cpType, "centerOfMass", "Center of Mass", "autoCenterOfMass", "Auto Center of Mass (the colliders' centroid)", sceneProject, entities, settingsCenter);
         propertyRowWithAutoButton(RowPropertyType::FloatPositive, cpType, "inertia", "Inertia", "autoInertia", "Auto Inertia (from the colliders)", sceneProject, entities, settingsInertia);
     }

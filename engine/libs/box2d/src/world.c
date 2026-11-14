@@ -178,6 +178,8 @@ b2WorldId b2CreateWorld( const b2WorldDef* def )
 	world->hitEventThreshold = def->hitEventThreshold;
 	world->restitutionThreshold = def->restitutionThreshold;
 	world->maxLinearSpeed = def->maximumLinearSpeed;
+	// JASPER PATCH: max rotation
+	world->maxRotation = def->maximumRotation;
 	world->contactPushSpeed = def->contactPushSpeed;
 	world->contactHertz = def->contactHertz;
 	world->contactDampingRatio = def->contactDampingRatio;
@@ -1760,6 +1762,28 @@ float b2World_GetMaximumLinearSpeed( b2WorldId worldId )
 {
 	b2World* world = b2GetWorldFromId( worldId );
 	return world->maxLinearSpeed;
+}
+
+// JASPER PATCH: max rotation
+void b2World_SetMaximumRotation( b2WorldId worldId, float maximumRotation )
+{
+	B2_ASSERT( b2IsValidFloat( maximumRotation ) && maximumRotation > 0.0f );
+
+	b2World* world = b2GetWorldFromId( worldId );
+	B2_ASSERT( world->locked == false );
+	if ( world->locked )
+	{
+		return;
+	}
+
+	world->maxRotation = maximumRotation;
+}
+
+// JASPER PATCH: max rotation
+float b2World_GetMaximumRotation( b2WorldId worldId )
+{
+	b2World* world = b2GetWorldFromId( worldId );
+	return world->maxRotation;
 }
 
 b2Profile b2World_GetProfile( b2WorldId worldId )

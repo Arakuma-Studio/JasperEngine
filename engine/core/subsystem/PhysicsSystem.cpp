@@ -301,11 +301,13 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     this->gravity2D = settingsDefaults.gravity2D;
     this->gravity3D = settingsDefaults.gravity3D;
     this->interpolation = settingsDefaults.physicsInterpolation;
+    this->worldSettings2D = settingsDefaults.physics2DWorld;
+    this->worldSettings3D = settingsDefaults.physics3DWorld;
 #ifdef JASPERENGINE_PHYSICS_2D
     this->subSteps2D = settingsDefaults.physics2DSubSteps;
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
-    this->pointsToMeterScale2D = 64.0;
+    this->pointsToMeterScale2D = worldSettings2D.pointsPerMeter;
     characters2D = std::make_unique<CharacterController2DSystem>(scene, this);
 
     // The Box2D world is created lazily (see ensureWorld2D): Box2D's global b2_worlds[] pool is
@@ -365,6 +367,11 @@ void PhysicsSystem::ensureWorld3D(){
     const unsigned int cNumBodyMutexes = 0;
     world3D.Init(maxBodies3D, cNumBodyMutexes, maxBodyPairs3D, maxContactConstraints3D, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
     world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
+    // the scene's solver settings (S96 WP-E; at their defaults, Jolt's own)
+    JPH::PhysicsSettings joltSettings = world3D.GetPhysicsSettings();
+    applyPhysicsWorldSettings(worldSettings3D, joltSettings);
+    world3D.SetPhysicsSettings(joltSettings);
+    worldSettings3DDirty = false;
 
     // per-collider materials and their combine modes; colliders without one combine as Jolt
     // always did (geometric mean friction, maximum restitution)
@@ -384,7 +391,13 @@ void PhysicsSystem::ensureWorld2D(){
 
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = {this->gravity2D.x, this->gravity2D.y};
+    // the scene's rotation cap and tuning (S96 WP-E; at their defaults, Box2D's own)
+    applyPhysicsWorldSettings(worldSettings2D, worldDef);
     world2D = b2CreateWorld(&worldDef);
+    if (b2World_IsValid(world2D) && !worldSettings2D.warmStarting){
+        b2World_EnableWarmStarting(world2D, false);
+    }
+    worldSettings2DDirty = false;
     configuredJoints2D.clear();
 
     if (!b2World_IsValid(world2D)){
@@ -542,7 +555,9 @@ float PhysicsSystem::getPointsToMeterScale2D() const{
 }
 
 void PhysicsSystem::setPointsToMeterScale2D(float pointsToMeterScale2D){
-    this->pointsToMeterScale2D = pointsToMeterScale2D;
+    ScenePhysics2DSettings settings = worldSettings2D;
+    settings.pointsPerMeter = pointsToMeterScale2D;
+    setWorldSettings2D(settings);
 }
 
 bool PhysicsSystem::isSteppingWorld2D() const{
@@ -1848,6 +1863,7 @@ void PhysicsSystem::applyRigidbody2DParameters(Entity entity, Rigidbody2DCompone
     b2Body_SetLinearDamping(body.body, std::max(0.0f, body.linearDamping));
     b2Body_SetAngularDamping(body.body, std::max(0.0f, body.angularDamping));
     b2Body_SetBullet(body.body, body.collisionDetection == CollisionDetectionMode2D::CONTINUOUS);
+    b2Body_SetAllowFastRotation(body.body, body.allowFastRotation);
     b2Body_EnableSleep(body.body, body.sleepingMode != RigidbodySleepMode2D::NEVER_SLEEP);
     // recomputes the mass
     b2Body_SetFixedRotation(body.body, body.fixedRotation);
@@ -3133,6 +3149,8 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
         bodyDef.linearDamping = std::max(0.0f, body.linearDamping);
         bodyDef.angularDamping = std::max(0.0f, body.angularDamping);
         bodyDef.fixedRotation = body.fixedRotation;
+        // not capped by the scene's Max Rotation Per Step (S96 WP-E)
+        bodyDef.allowFastRotation = body.allowFastRotation;
         bodyDef.isBullet = (body.collisionDetection == CollisionDetectionMode2D::CONTINUOUS);
         bodyDef.enableSleep = (body.sleepingMode != RigidbodySleepMode2D::NEVER_SLEEP);
         // made where its GameObject is, so a script reaching it before the first sync (Lua
@@ -4283,6 +4301,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     [[maybe_unused]] const float fixedStep = (float)dt;
 
+    // world settings changed since the last step (S96 WP-E)
+    applyWorldSettings();
+
     // scripts defining contact messages appeared or went since the last step
     if (listenerMasksDirty){
         refreshListenerMasks();
@@ -4515,7 +4536,8 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     // the world steps for the characters too (their platforms, root motion, inner bodies)
     if ((bodies3d->size() > 0 || characters3D->count() > 0) && world3DReady){
-		const int cCollisionSteps = 1;
+		// the scene setting physics3DCollisionSteps (1 by default)
+		const int cCollisionSteps = worldSettings3D.collisionSteps;
 
 		// Clears the flag and drains the teardown queue from the destructor, so a C++
 		// subscriber throwing out of a callback leaves neither behind.

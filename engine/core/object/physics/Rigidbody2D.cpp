@@ -1486,3 +1486,19 @@ void Rigidbody2D::applyAngularImpulse(float impulse, bool wake){
     checkBody(body);
     b2Body_ApplyAngularImpulse(body.body, impulse, wake);
 }
+
+void Rigidbody2D::setAllowFastRotation(bool allowFastRotation){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    body.allowFastRotation = allowFastRotation;
+    // Box2D is locked while it steps (a callback): the next step applies it then
+    if (b2Body_IsValid(body.body) && !scene->getSystem<PhysicsSystem>()->isSteppingWorld2D()){
+        b2Body_SetAllowFastRotation(body.body, allowFastRotation);
+    }else{
+        body.needApplyParameters = true;
+    }
+}
+
+bool Rigidbody2D::isAllowFastRotation() const{
+    return getComponent<Rigidbody2DComponent>().allowFastRotation;
+}

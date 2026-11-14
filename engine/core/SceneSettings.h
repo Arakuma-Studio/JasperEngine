@@ -12,6 +12,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "util/CanvasScaler.h"
+#include "physics/WorldSettings.h"
 #include <string>
 #include <vector>
 
@@ -495,6 +496,10 @@ namespace jasperengine{
         bool physicsInterpolation = true;
         // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
         int physics2DSubSteps = 4;
+        // the 2D world's units, rotation cap and tuning and the 3D solver (owned by PhysicsSystem
+        // as gravity; saved as flat keys, physicsWorldSettingFields)
+        ScenePhysics2DSettings physics2DWorld;
+        ScenePhysics3DSettings physics3DWorld;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

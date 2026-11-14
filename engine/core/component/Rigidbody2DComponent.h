@@ -272,6 +272,8 @@ namespace jasperengine{
         float linearDamping = 0.0f;
         float angularDamping = 0.0f;
         bool fixedRotation = false;
+        // S96 WP-E: not capped by the scene's Max Rotation Per Step (Box2D allowFastRotation: wheels)
+        bool allowFastRotation = false;
         CollisionDetectionMode2D collisionDetection = CollisionDetectionMode2D::DISCRETE;
         RigidbodySleepMode2D sleepingMode = RigidbodySleepMode2D::START_AWAKE;
         // false: `mass` (kg) instead of the colliders' area x density

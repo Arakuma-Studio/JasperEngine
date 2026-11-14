@@ -277,6 +277,8 @@ namespace {
         JE_FIELD(Rigidbody2DComponent, linearDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, angularDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, fixedRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        // S96 WP-E: not capped by the scene's Max Rotation Per Step
+        JE_FIELD(Rigidbody2DComponent, allowFastRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, collisionDetection, .enumDesc = &enums::kCollisionDetection2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, sleepingMode, .enumDesc = &enums::kSleepMode2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, useAutoMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
@@ -401,7 +403,7 @@ const ComponentDesc kJoint3DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbody2DKnownKeys[] = {"angularDamping", "attachToParentBody", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
+    constexpr const char* kRigidbody2DKnownKeys[] = {"allowFastRotation", "angularDamping", "attachToParentBody", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
                                                       "enabled", "fixedRotation", "gravityScale", "inertia", "linearDamping", "mass", "material",
                                                       "numColliders", "sleepingMode", "type", "useAutoMass"};
 

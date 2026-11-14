@@ -1451,6 +1451,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["linearDamping"] = body.linearDamping;
     node["angularDamping"] = body.angularDamping;
     node["fixedRotation"] = body.fixedRotation;
+    // S96: written only when set (an older editor keeps it as unknown data)
+    if (body.allowFastRotation) {
+        node["allowFastRotation"] = true;
+    }
     node["collisionDetection"] = collisionDetection2DToString(body.collisionDetection);
     node["sleepingMode"] = sleepMode2DToString(body.sleepingMode);
     node["useAutoMass"] = body.useAutoMass;
@@ -1525,6 +1529,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
     if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
     if (node["fixedRotation"]) body.fixedRotation = YamlNumbers::as<bool>(node["fixedRotation"]);
+    if (node["allowFastRotation"]) body.allowFastRotation = YamlNumbers::as<bool>(node["allowFastRotation"]);
     if (node["collisionDetection"]) body.collisionDetection = stringToCollisionDetection2D(node["collisionDetection"].as<std::string>());
     if (node["sleepingMode"]) body.sleepingMode = stringToSleepMode2D(node["sleepingMode"].as<std::string>());
     if (node["useAutoMass"]) body.useAutoMass = YamlNumbers::as<bool>(node["useAutoMass"]);

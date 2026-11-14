@@ -67,6 +67,14 @@ result passes `{hitFromInside = true}` as the options after the layer mask
 `QueryOptions::hitFromInside`). `Ray:intersects(scene, ...)`, 2D rays (which never hit from
 inside) and the engine's own rays (particle collision, Foot IK) are unchanged.
 
+### Fixed steps in a long frame (S96)
+
+A long frame runs every fixed step it needs: the old limit of 100 fixed steps a frame, which logged
+"Dropping fixed-update steps" every time a frame reached it, is now as many as `Time.maximumDeltaTime`
+lets through (`Time.maximumFixedStepsPerFrame` 0, S96). At the default 60 Hz a frame never needed 100
+steps, so a game at the default step plays the same; one with a step of 400 Hz or more no longer drops
+steps in a long frame. `Time.maximumFixedStepsPerFrame` brings a cap back.
+
 ### IK solvers (S77)
 
 Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones

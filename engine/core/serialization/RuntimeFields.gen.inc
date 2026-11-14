@@ -1275,6 +1275,7 @@ const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, linearDamping, 0x822b9a71u, Float),
     JE_RF(Rigidbody2DComponent, angularDamping, 0x77f306a8u, Float),
     JE_RF(Rigidbody2DComponent, fixedRotation, 0xb1ac8b38u, Bool),
+    JE_RF(Rigidbody2DComponent, allowFastRotation, 0xd7ccfbfdu, Bool),
     JE_RF(Rigidbody2DComponent, collisionDetection, 0x991527b3u, Enum),
     JE_RF(Rigidbody2DComponent, sleepingMode, 0xfd9d9582u, Enum),
     JE_RF(Rigidbody2DComponent, useAutoMass, 0xe18d2ee8u, Bool),

@@ -1195,6 +1195,9 @@ Entities are plain integers (`0` = none).
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
+| `physics2DPointsPerMeter`, `physics2DMaxRotation` (number, rw) | canvas points in a 2D metre (64; a change rebuilds the bodies where they are) and a 2D body's rotation per fixed step at most (45 degrees); `jasper://docs/physics` "World settings" |
+| `physics2DContactHertz`, `physics2DContactDampingRatio`, `physics2DContactPushSpeed`, `physics2DJointHertz`, `physics2DJointDampingRatio`, `physics2DBounceThreshold`, `physics2DMaxLinearSpeed` (number, rw); `physics2DWarmStarting`, `physics2DContinuous`, `physics2DSleep` (bool, rw) | the 2D solver's tuning (Box2D's defaults) |
+| `physics3DVelocityIterations`, `physics3DPositionIterations`, `physics3DCollisionSteps` (integer, rw); `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (number, rw) | the 3D solver's settings (Jolt's defaults); out of range values are clamped |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
@@ -1207,7 +1210,7 @@ Entities are plain integers (`0` = none).
 | `getCanvasScaler()` | the scene's `CanvasScaler` (UI scale, `jasper://docs/ui`): rw `uiScaleMode` (`UIScaleMode.FollowGameCanvas`/`ConstantPixelSize`/`ScaleWithScreenSize`/`ConstantPhysicalSize`), `scaleFactor`, `referenceResolution` (Vector2), `screenMatchMode` (`ScreenMatchMode.MatchWidthOrHeight`/`Expand`/`Shrink`), `matchWidthOrHeight` (0 width..1 height), `physicalUnit` (`PhysicalUnit.Centimeters`/`Millimeters`/`Inches`/`Points`/`Picas`), `fallbackScreenDPI`, `useProjectDefault`; ro `canvasSize` (Vector2, UI units now), `appliedScaleFactor`. Reads give what applies; setting a field of a scene on the project default overrides from it. Applies from the next frame |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw, as `scene.physics2DPointsPerMeter`),
 `subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`,
 `removeSubscriptionsByTag(substring)` (the scene's physics event callbacks whose tag holds it),
@@ -1579,6 +1582,8 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
 | `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `maximumFixedStepsPerFrame` | rw | fixed steps a frame may run; 0 (default) automatic: as many as `maximumDeltaTime` lets through, none dropped. A lower cap drops the rest of a long frame (one warning per Play) |
+| `droppedFixedSteps` | ro | fixed steps the cap dropped since Play (or the game) started |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
 | `smoothDeltaTime` | ro | exponential average of `deltaTime` |
 | `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
@@ -2783,6 +2788,7 @@ one clip at once.
 | `linearDamping`, `angularDamping`, `gravityScale` | rw | saved fields too (Unity drag, gravity scale) |
 | `type` | rw | `BodyType.STATIC`, `BodyType.KINEMATIC`, `BodyType.DYNAMIC` |
 | `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | `bullet` = `collisionDetection` CONTINUOUS, `enableSleep` false = NEVER_SLEEP |
+| `allowFastRotation` | rw bool | not capped by `scene.physics2DMaxRotation` (wheels) |
 | `collisionDetection` | rw | `CollisionDetectionMode2D.DISCRETE` / `CONTINUOUS` (never tunnels) |
 | `sleepingMode` | rw | `RigidbodySleepMode2D.NEVER_SLEEP` / `START_AWAKE` / `START_ASLEEP` |
 | `mass` | rw number | kg; setting it turns `useAutoMass` off (also `getMass()`) |
@@ -3681,7 +3687,8 @@ Rigidbody wrappers by index.
    `onFixedUpdate`; the fixed step is `Engine.updateTime`, `Time.fixedDeltaTime`, and
    `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
-   velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
+   velocities read/written through Rigidbody2D are in points (`scene.physics2DPointsPerMeter`,
+   default 64: set it in the scene, not from a script at start).
 10. **Pass every argument the reference does not mark optional.** A missing trailing `bool`
     reads as `false` unless the reference gives it a default (`[, wake]` of the Rigidbody2D forces
     and `[, newRun]` default to true: `applyForceToCenter(f)` wakes the body); a missing
@@ -3770,6 +3777,10 @@ Rigidbody wrappers by index.
 36. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
+36. **No fixed step is dropped by default.** A long frame (up to `Time.maximumDeltaTime`) runs all
+    its fixed steps (`Time.maximumFixedStepsPerFrame` 0, automatic); the old cap of 100 steps a
+    frame is gone. A game with a very small `Time.fixedDeltaTime` that relied on it sets
+    `Time.maximumFixedStepsPerFrame`, and reads `Time.droppedFixedSteps`.
 
 ## 7. Hot reload and editor scripts
 
