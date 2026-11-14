@@ -11,7 +11,8 @@
 // (the main pass a frame runs when the camera moves only after it), the late pass with nothing
 // moved since (REQ-33's idle cost) and with the camera moved after the update (REQ-33's
 // one-camera case; the MVPs it leaves are made by the draw's pass, not counted here), its share of
-// the main pass, and one moved object's late pass (information). REQ-35: getWorldPosition's
+// the main pass, and one moved object's late pass (information); a follow camera's late pass with
+// its target still and moved after the update. REQ-35: getWorldPosition's
 // pose of a clean Transform 8 deep and of one under a moved parent (8 compositions), with
 // --count-allocs their allocations and the late passes'. tools/perf/check_bench.py gates the JSON
 // with tools/perf/bench-thresholds.json.
@@ -23,7 +24,9 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "component/CameraComponent.h"
+#include "component/CameraFollowComponent.h"
 #include "component/Transform.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
 
@@ -121,7 +124,7 @@ int main(int argc, char** argv){
         render.update(1.0 / 60.0);
         const int calls = 100000;
         const auto start = bench::Clock::now();
-        for (int i = 0; i < calls; i++) sink = sink + (render.updateLateTransforms() ? 1.0f : 0.0f);
+        for (int i = 0; i < calls; i++) sink = sink + (render.updateLateTransforms().moved ? 1.0f : 0.0f);
         results.add("late_idle_us", bench::secondsSince(start) * 1.0e6 / calls, "us");
     }
 
@@ -162,6 +165,62 @@ int main(int argc, char** argv){
             allocations += count.count();
         }
         results.add("late_steady_allocations", (double)allocations, "allocations");
+    }
+
+    // a follow camera (Camera Follow, rigid): the late pass with its target not moved after the
+    // update (the idle cost a follow-camera game pays each frame), and with it moved (the follower
+    // stepped again, then the camera's matrices)
+    {
+        Scene follow;
+        const Entity target = transformEntity(follow, NULL_ENTITY, Vector3(0, 0, 0));
+        const Entity eye = transformEntity(follow, NULL_ENTITY, Vector3(0, 0, 10));
+        CameraComponent eyeCamera;
+        eyeCamera.type = CameraType::CAMERA_PERSPECTIVE;
+        eyeCamera.useTarget = false;
+        follow.addComponent<CameraComponent>(eye, eyeCamera);
+        follow.setCamera(eye);
+        CameraFollowComponent followComponent;
+        followComponent.target = target;
+        followComponent.offset = Vector3(0, 0, 10);
+        followComponent.damping = Vector3(0, 0, 0);
+        followComponent.lookAt = false;
+        follow.addComponent<CameraFollowComponent>(eye, followComponent);
+        RenderSystem& followRender = *follow.getSystem<RenderSystem>();
+        CameraControlSystem& controls = *follow.getSystem<CameraControlSystem>();
+        auto frame = [&](){
+            controls.step(1.0f / 60.0f, 1.0f / 60.0f);
+            followRender.update(1.0 / 60.0);
+        };
+        auto moveTarget = [&](int i){
+            Transform& transform = follow.getComponent<Transform>(target);
+            transform.position = Vector3(0.001f * (float)(i % 1000), 0, 0);
+            transform.needUpdate = true;
+            follow.markChanged<Transform>(target);
+        };
+        for (int i = 0; i < 3; i++) frame();
+        frame();
+        const int calls = 100000;
+        const auto start = bench::Clock::now();
+        for (int i = 0; i < calls; i++) sink = sink + (followRender.updateLateTransforms().moved ? 1.0f : 0.0f);
+        results.add("late_idle_follow_us", bench::secondsSince(start) * 1.0e6 / calls, "us");
+        std::vector<double> moved;
+        uint64_t allocations = 0;
+        for (int i = 0; i < kRuns + 20; i++){
+            frame();
+            moveTarget(i);
+            testsupport::ThreadAllocationCount count;
+            const auto begin = bench::Clock::now();
+            followRender.updateLateTransforms();
+            const double us = bench::secondsSince(begin) * 1.0e6;
+            const uint64_t allocated = count.count();
+            if (i >= 20){
+                moved.push_back(us);
+                allocations += allocated;
+            }
+        }
+        results.add("late_follow_target_moved_us", bench::percentile(moved, 0.5), "us");
+        if (countAllocs)
+            results.add("late_follow_allocations", (double)allocations, "allocations");
     }
 
     // REQ-35: a Transform 8 deep, clean, then under its moved root (8 compositions)
