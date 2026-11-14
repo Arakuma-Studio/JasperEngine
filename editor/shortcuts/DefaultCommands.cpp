@@ -290,6 +290,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
         "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
+    b.menu("window.skinningEditor", "Skinning Editor", AppMenuCommand::ToggleSkinningEditor).description =
+        "Bones, mesh and weights of a Sprite's skin (2D skeletal animation), with a preview pose";
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);

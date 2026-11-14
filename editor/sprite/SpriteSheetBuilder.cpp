@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteSheetBuilder.h"
+#include "SpriteSkinEdit.h"
+#include "texture/PsdLayerImport.h"
 
 #include "Project.h"
 #include "command/type/SetAssetMetaCmd.h"
@@ -565,6 +567,8 @@ namespace jasperengine::editor::sprite {
     }
 
     void SpriteSheetBuilder::invalidate(const std::string& assetPath) {
+        // S94 F48: a PSD/PSB's layers are its sheet in Layers mode
+        if (isPsdPath(assetPath)) PsdLayerImporter::get().invalidate(assetPath);
         {
             std::lock_guard<std::mutex> lock(mutex);
             memos.erase(assetPath);
@@ -581,6 +585,8 @@ namespace jasperengine::editor::sprite {
             cache = cacheRoot;
         }
         if (!SpriteSheetSources::isTexturePath(assetPath)) return false;
+        // S94 F48: a PSD/PSB in Layers mode: its layers' sheet
+        if (isPsdPath(assetPath) && PsdLayerImporter::get().isLayered(assetPath)) return PsdLayerImporter::get().resolve(assetPath, "sheet", fileOut);
         const fs::path absolute = (assets / assetPath).lexically_normal();
         std::error_code ec;
         Memo stamp;
@@ -610,11 +616,14 @@ namespace jasperengine::editor::sprite {
             return false;
         }
         const TextureSheetInfo info = textureSheetSettings(absolute);
-        if (info.isSheet()) {
+        // S94 F49: a texture with sprite skins has a record too (a Single one: its one frame skinned)
+        const SpriteSkinSet skins = stamp.hasMeta ? readSpriteSkins(absolute) : SpriteSkinSet();
+        if (info.isSheet() || !skins.empty()) {
             std::ifstream in(absolute, std::ios::binary);
             const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            const std::string skinKey = skins.empty() ? std::string() : "|skins " + sha256Hex(skinSetKey(skins));
             const std::string key = sha256Hex(sha256Hex(bytes) + "|path " + assetPath + "|" + YAML::Dump(sheetSettingsToYaml(info.settings)) +
-                                              "|sheet " + std::to_string(SPRITESHEET_VERSION) + "|v1");
+                                              "|sheet " + std::to_string(SPRITESHEET_VERSION) + "|v1" + skinKey);
             const fs::path file = cache / key.substr(0, 2) / (key + ".json");
             if (!fs::exists(file, ec)) {
                 std::optional<pixelart::PixelImage> image = pixelart::PixelImage::decodePng(
@@ -622,6 +631,7 @@ namespace jasperengine::editor::sprite {
                 if (!image) return false;
                 TextureSheetBuild build = buildTextureSheet(absolute, assetPath, info.settings, &*image);
                 if (!build.ok) return false;
+                applySpriteSkins(build.sheet, skins);
                 io::AtomicWriteOptions options;
                 options.durability = io::Durability::Cache;
                 if (!io::writeFileAtomic(file, writeSheet(build.sheet), options).ok()) return false;

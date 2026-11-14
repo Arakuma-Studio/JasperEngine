@@ -969,6 +969,8 @@ namespace jasperengine::editor{
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Title Art Renderer (InspectorTitleArtRenderer.cpp, S81 R60-R62, §6.4)
         void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // S94 F49: InspectorSpriteSkin.cpp
+        void drawSpriteSkinComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)

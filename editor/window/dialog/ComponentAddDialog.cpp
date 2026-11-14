@@ -74,6 +74,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::SpriteSkinComponent, "Bends this GameObject's Sprite with bone GameObjects (2D skeletal animation)"},
             {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
             {ComponentType::GridComponent, "Cell layout of the Tilemap Layers on this GameObject and below it"},
             {ComponentType::TilemapLayerComponent, "A layer of tiles from a Tileset on a Grid"},

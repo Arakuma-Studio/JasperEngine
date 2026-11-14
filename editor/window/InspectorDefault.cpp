@@ -413,6 +413,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
         case ComponentType::TitleArtRendererComponent: return &InspectorWindow::drawTitleArtRendererComponent;
+        case ComponentType::SpriteSkinComponent: return &InspectorWindow::drawSpriteSkinComponent;
         case ComponentType::SkyboxComponent: return &InspectorWindow::drawSkyboxComponent;
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
         case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;
