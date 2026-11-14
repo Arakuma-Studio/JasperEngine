@@ -13,7 +13,6 @@
 #include "titleart/interchange/psd/PsdReader.h"
 #include "util/Prefab.h"
 
-#include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteSkinComponent.h"
 #include "component/Transform.h"
@@ -295,10 +294,10 @@ namespace jasperengine::editor {
                 return n;
             }
             const SpriteFrame& frame = import.sheet.frames[static_cast<size_t>(node.frame)];
-            MeshComponent mesh;
-            mesh.numSubmeshes = 1;
-            mesh.sortingOrder = std::clamp(node.order, -32768, 32767);
-            components[psdComponentKey(ComponentType::MeshComponent)] = reflect::encodeValue(ComponentType::MeshComponent, &mesh);
+            // the Mesh's defaults but its Order in Layer (a decode keeps the defaults of absent keys)
+            YAML::Node mesh(YAML::NodeType::Map);
+            mesh["sortingOrder"] = std::clamp(node.order, -32768, 32767);
+            components[psdComponentKey(ComponentType::MeshComponent)] = mesh;
             SpriteComponent sprite;
             sprite.sheet = AssetRef(assetPath, sourceGuid);
             sprite.frame = node.frame;

@@ -6,6 +6,7 @@
 
 #include "reflect/Components.h"
 
+#include "Factory.h"
 #include "component/SpriteSkinComponent.h"
 
 namespace jasperengine::editor::reflect {
@@ -20,7 +21,16 @@ namespace {
                  .tooltip = "One GameObject per bone of the sprite's skin, in the skin's bone order.", .elementOps = &ops::Entity),
     };
 
-    constexpr const char* kSpriteSkinCodegenOrder[] = {"rootBone", "bones", "enabled"};
+    constexpr const char* kSpriteSkinCodegenOrder[] = {"rootBone", "enabled"};
+
+    // the bone list (an entity list has no literal of its own), each entity as the scene's code names it
+    void spriteSkinCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
+        const SpriteSkinComponent& skin = *static_cast<const SpriteSkinComponent*>(comp);
+        if (skin.bones.empty()) return;
+        std::string list;
+        for (Entity bone : skin.bones) list += (list.empty() ? "" : ", ") + Factory::formatEntity(bone, ctx.entityVarNames);
+        out += Factory::indentation(ctx.indentSpaces) + ctx.variable + ".bones = {" + list + "};\n";
+    }
 
 }
 
@@ -29,7 +39,7 @@ const ComponentDesc kSpriteSkinDesc{
     .displayName = "Sprite Skin", .icon = ICON_FA_BONE,
     .body = JE_STRUCT_DESC(SpriteSkinComponent, "SpriteSkinComponent", kSpriteSkinFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SpriteSkinComponent),
-    .codegenVar = "spriteSkin", .codegenOrder = kSpriteSkinCodegenOrder,
+    .codegenVar = "spriteSkin", .codegenOrder = kSpriteSkinCodegenOrder, .codegenExtra = &spriteSkinCodegen,
 };
 
 }

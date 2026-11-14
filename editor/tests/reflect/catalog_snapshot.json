@@ -24302,6 +24302,57 @@
    "type": 103,
    "type_of_key": 103,
    "type_of_name": 103
+  },
+  {
+   "display_name": "Sprite Skin",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9797",
+   "key": "spriteskin",
+   "known_keys": [
+    "bones",
+    "enabled",
+    "rootBone"
+   ],
+   "name": "SpriteSkinComponent",
+   "properties_of_default": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 104,
+   "type_of_key": 104,
+   "type_of_name": 104
   }
  ],
  "ease_options": [
@@ -31269,6 +31320,28 @@
     9,
     1024,
     false
+   ]
+  },
+  "SpriteSkinComponent": {
+   "bones": [
+    15,
+    0,
+    true
+   ],
+   "bones[N]": [
+    16,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "rootBone": [
+    16,
+    0,
+    true
    ]
   },
   "TerrainComponent": {

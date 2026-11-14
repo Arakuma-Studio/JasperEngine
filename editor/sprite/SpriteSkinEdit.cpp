@@ -5,6 +5,7 @@
 
 #include "SpriteSheetBuilder.h"
 
+#include "Catalog.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -16,7 +17,6 @@
 #include "command/type/SetAssetMetaCmd.h"
 
 #include "component/CameraComponent.h"
-#include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteSkinComponent.h"
 #include "component/Transform.h"
@@ -24,6 +24,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 #include "sprite/SpriteSkinning.h"
+#include "texture/Texture.h"
 
 #include <algorithm>
 #include <cmath>
@@ -449,12 +450,14 @@ namespace jasperengine::editor::sprite {
         std::string source = sprite->sheet.path;
         if (source.empty()) {
             // a legacy Sprite of one whole texture becomes a sheet Sprite of it
-            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-            if (sprite->numFramesRect > 0 || !mesh || mesh->numSubmeshes == 0 || mesh->submeshes[0].material.baseColorTexture.getPath().empty()) {
+            // (through the Catalog: the Mesh's header is one of the editor's widest includes)
+            const PropertyData property = Catalog::findProperty(scene, entity, ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture");
+            const Texture* texture = property.ref && property.type == PropertyType::Texture ? static_cast<const Texture*>(property.ref) : nullptr;
+            if (sprite->numFramesRect > 0 || !texture || texture->getPath().empty()) {
                 error = "the Sprite has no sheet: give it one (set_sprite_frames sheet, or the Sprite's Sheet field) before skinning it";
                 return false;
             }
-            source = project->normalizeToAssetsRelative(project->resolveAssetPath(mesh->submeshes[0].material.baseColorTexture.getPath())).generic_string();
+            source = project->normalizeToAssetsRelative(project->resolveAssetPath(texture->getPath())).generic_string();
             out.convert = true;
         }
         if (SpriteSheetPool::isAsepritePath(source) || SpriteSheetSources::isAtlasPath(source) || !SpriteSheetSources::isTexturePath(source)) {
@@ -562,7 +565,7 @@ namespace jasperengine::editor::sprite {
             }
             const Entity parent = bone.parent >= 0 ? bound[static_cast<size_t>(bone.parent)] : target.entity;
             const SpriteBoneRest rest = spriteBoneRestTransform(frame, skin, input, static_cast<int>(b));
-            auto* create = new CreateEntityCmd(target.project, target.sceneId, bone.name, EntityCreationType::EMPTY, parent);
+            auto* create = new CreateEntityCmd(target.project, target.sceneId, bone.name, EntityCreationType::GAMEOBJECT, parent);
             create->setQuiet(true);
             create->addProperty<Vector3>(ComponentType::Transform, "position", rest.position);
             create->addProperty<Quaternion>(ComponentType::Transform, "rotation", Quaternion(0.0f, 0.0f, rest.rotationZ));

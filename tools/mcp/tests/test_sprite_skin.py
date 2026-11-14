@@ -83,6 +83,8 @@ async def test_bones_geometry_weights_one_undo(ed: Editor):
     skin = (await ed.call("get_entity", scene=S["scene"], entity="Arm", components=["spriteskin"]))["components"]["spriteskin"]
     check(len(skin.get("bones", [])) == 2, f"the Sprite Skin binds two bones: {skin}")
     S["upper"] = r["bones"][1]["gameobject"]["id"]
+    upper = (await ed.call("get_entity", scene=S["scene"], entity=S["upper"], components=["transform"]))["components"]
+    check("transform" in upper, f"a bone is a GameObject with a Transform: {upper}")
     found = await ed.call("find_entities", scene=S["scene"], name="upper")
     check(found.get("entities"), "the bone GameObject is in the scene")
 
