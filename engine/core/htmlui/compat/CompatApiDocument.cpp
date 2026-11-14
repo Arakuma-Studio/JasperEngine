@@ -129,9 +129,6 @@ namespace {
         if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled.rml, compiled.sourcePath)){
             document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
             context->Update();
-            // S93 R17: static text a fallback face draws (HTMLUI-FONT-0001), from the laid-out document's fonts
-            std::vector<Diagnostic> fallback = HtmlUIFontDiagnostics::check(document, compiled);
-            diagnostics.insert(diagnostics.end(), fallback.begin(), fallback.end());
             context->UnloadDocument(document);
             context->Update();
         }
@@ -183,6 +180,10 @@ CheckReport jasperengine::htmlui::compat::checkDocument(const std::string& htmlP
         if (stamp.hash != 0 && std::find(report.files.begin(), report.files.end(), stamp.path) == report.files.end())
             report.files.push_back(stamp.path);
     }
+
+    // S93 R17: static text the document's own fonts lack and a fallback face draws (HTMLUI-FONT-0001), without RmlUi
+    std::vector<Diagnostic> fallback = HtmlUIFontDiagnostics::checkStatic(*compiled, options.files);
+    report.diagnostics.insert(report.diagnostics.end(), fallback.begin(), fallback.end());
 
     if (compiled->compiled && options.verifyWithRmlUi){
         RmlScope rml;

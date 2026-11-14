@@ -392,6 +392,35 @@ async def test_cli_ui_widget_codes():
     check_eq(code, 1, "an error exits 1")
 
 
+async def test_check_ui_reports_fallback_glyphs():
+    """S93 R17 (AC21): check --ui (no RmlUi, no engine) resolves each text's font-family through the
+    document's CSS and reads its @font-face files: text whose own face lacks characters a fallback face
+    draws gives HTMLUI-FONT-0001, a warning at the element's line naming the characters, the face and the
+    family; text in a face that has them all, or in a generic family, reports nothing."""
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>t</title><style>\n"
+            "@font-face { font-family: 'AhemNoO'; src: url('ahem-no-oacute.ttf'); }\n"
+            ".title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+            "#plain { font-family: sans-serif; }\n"
+            "</style></head>\n<body>\n"
+            "<div class=\"title\"><span>CA\u00d1\u00d3N</span></div>\n"
+            "<div id=\"plain\">CA\u00d1\u00d3N</div>\n"
+            "<div class=\"title\">CAN</div>\n"
+            "</body>\n</html>\n")
+    with scratch_project() as project:
+        (project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / "engine" / "tests" / "htmlui" / "fixtures" / "fonts" / "Ahem-no-Oacute.ttf",
+                    project / "assets" / "ui" / "ahem-no-oacute.ttf")
+        write(project, "assets/ui/title.html", html)
+        code, data = run_json(project, "--ui", "--files", "assets/ui/title.html")
+    found = [f for f in data["findings"] if f["code"] == "HTMLUI-FONT-0001"]
+    check_eq([(f["path"], f["line"], f["severity"]) for f in found],
+             [("assets/ui/title.html", line_of(html, "<span>"), "warning")],
+             f"one finding, at the inherited text's element; none for sans-serif or for letters the face has: {data['findings']}")
+    check("U+00D3" in found[0]["message"] and "ahem-no-oacute.ttf" in found[0]["message"]
+          and "ahemnoo, sans-serif" in found[0]["message"].lower(), f"it names the character, the face and the family: {found}")
+    check_eq(code, 0, "a warning does not fail the check")
+
+
 async def test_live_document_reports_fallback_glyphs(ed: Editor):
     """S93 R17 (AC21, deviation: check --ui compiles without RmlUi or fonts, so the report comes from a
     document that draws): text whose first available face lacks characters a fallback face draws gives

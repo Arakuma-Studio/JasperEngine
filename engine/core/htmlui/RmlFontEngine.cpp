@@ -353,8 +353,10 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         }
         append(face);
     }
-    // (R17: a code point it lacks is drawn by a fallback face of the list's text)
-    handle->primaryListed = !handle->chain.empty();
+    // (R17: a code point it lacks is drawn by a fallback face of the list's text; the built-in fonts, a generic family's,
+    // are the engine's own, not a choice of the document)
+    handle->primaryListed = !handle->chain.empty() && handle->chain[0] != FontRegistry::getBuiltInLatin() &&
+                            handle->chain[0] != FontRegistry::getBuiltInArabic();
     // no family resolved: the default font leads (metrics, .notdef), fallbacks follow
     if (handle->chain.empty()){
         append(FontRegistry::getBuiltInLatin());

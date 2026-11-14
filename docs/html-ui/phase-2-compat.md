@@ -4372,7 +4372,7 @@ in section 3.
 | HTMLUI-SVG-0001 | Info | svg-recolor | mixed-color SVG re-rasterized for `currentColor` |
 | HTMLUI-SVG-0002 | Warning | svg-unsupported-content | SVG content the renderer cannot draw (foreignObject, …) |
 | HTMLUI-SVG-0003 | Info | svg-internal-css | CSS rules targeting elements inside an SVG are not applied |
-| HTMLUI-FONT-0001 | Info | fallback-glyph | S93: characters the first available face of the font-family list lacks are drawn by a fallback face (once per document, family and character set, when drawn; also from the checks that lay the document out) |
+| HTMLUI-FONT-0001 | by case | fallback-glyph | S93: characters the first available face of the font-family list lacks are drawn by a fallback face (info once drawn, once per document, family and character set; warning from `check --ui` and `inspect_ui` of a file for the static text of the document's own fonts) |
 
 ## Appendix G. Phase-2 integration (p2-integrate)
 

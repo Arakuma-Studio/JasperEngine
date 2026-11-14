@@ -2317,7 +2317,7 @@ Severity "by case": the construct decides (the default is given).
 
 | Code | Severity | Meaning |
 |---|---|---|
-| `HTMLUI-FONT-0001` | info | **Characters drawn by a fallback font** (`fallback-glyph`): Characters of the text are not in the first available face of its font-family list; a fallback face (a later family of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that has the characters, or name one that has them after it in font-family. Reported once the text is drawn, and by the checks that lay the document out (inspect_ui of a file). |
+| `HTMLUI-FONT-0001` | by case (info) | **Characters drawn by a fallback font** (`fallback-glyph`): Characters of the text are not in the first available face of its font-family list; a fallback face (a later family of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that has the characters, or name one that has them after it in font-family. An info once the text is drawn; a warning from check --ui and inspect_ui of a file, for the static text of the document's own fonts. |
 
 ### FX
 
