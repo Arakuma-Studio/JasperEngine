@@ -2362,6 +2362,9 @@ endif()
 if(WIN32)
     target_compile_definitions(jasperengine PUBLIC _USE_MATH_DEFINES)
 endif()
+# Sources are UTF-8 whatever the code page, as the editor's, the tests' and a game's own: MSVC read
+# the engine's in the system code page (TitleFit's kinsoku sets of U"..." literals came out wrong)
+target_compile_options(jasperengine PRIVATE $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<COMPILE_LANGUAGE:C,CXX>>:/utf-8>)
 
 # the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
 if(WIN32)
