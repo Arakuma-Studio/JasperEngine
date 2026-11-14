@@ -982,6 +982,7 @@ void LuaBinding::registerClasses(lua_State *L){
     // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
     registerPixelArtClasses(L);
     registerSortingClasses(L);
+    registerOutlineClasses(L);
     registerHitStopClasses(L);
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set

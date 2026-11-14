@@ -1017,6 +1017,8 @@ void RenderSystem::destroy(){
 
     // the FLATTEN Canvas Group layers and their composite (made again on use)
     destroyCanvasLayers();
+    // the Outline renders (made again on their next draw)
+    releaseAllOutlineRenders();
 
     // Before the transform traversal below, which the camera entities are part of.
     while (!mirrorCameras.empty()){
@@ -9560,6 +9562,206 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     }
 }
 
+// The Outline component's render of a submesh (S94 F22; the pass: RenderSystemOutline.cpp), here
+// beside the extra pass it loads like, for the binding helpers this file keeps to itself
+bool RenderSystem::loadOutlineRender(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh,
+                                     OutlineRender& outline){
+    Submesh& submesh = mesh.submeshes[submeshIndex];
+    SubmeshExtraPass& extra = outline.pass;
+
+    // the variant an extra pass of the outline shader would take on this submesh
+    const MaterialPass pass = getOutlinePass(outline.units);
+    const bool hasMirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+    const SubmeshShaderInputs submeshInputs = getCurrentSubmeshInputs(entity, mesh, submeshIndex, nullptr, instmesh, hasMirror,
+                                                                      scene->getDefaultCustomShader(ShaderType::MESH));
+    const SubmeshShaderInputs inputs = getExtraPassShaderInputs(submeshInputs, pass);
+    const SubmeshShaderVariant variant = getSubmeshShaderVariant(getMeshShaderEnvironment(), inputs);
+    const uint16_t customId = ShaderPool::registerCustomShader(getOutlineReference(outline.units));
+
+    if (extra.loaded)
+        extra.render.destroy();
+    extra.loaded = false;
+    if (extra.shader && (extra.shaderProperties != variant.properties || extra.customShaderId != customId)){
+        extra.shader.reset();
+        ShaderPool::remove(ShaderType::MESH, extra.shaderProperties, extra.customShaderId);
+    }
+    extra.shaderProperties = variant.properties;
+    extra.customShaderId = customId;
+    extra.shader = ShaderPool::get(ShaderType::MESH, extra.shaderProperties, extra.customShaderId);
+    if (!extra.shader->isCreated()){
+        if (ShaderPool::isShaderBuildFailed(ShaderType::MESH, extra.shaderProperties, extra.customShaderId) && !extra.failed){
+            Log::error("The Outline shader failed to compile for '%s': it is not outlined", scene->getEntityName(entity).c_str());
+            extra.failed = true;
+        }
+        return false;
+    }
+    extra.failed = false;
+
+    extra.manifest = inputs.manifest;
+    extra.manifestState = inputs.manifest ? inputs.manifest->resolveState(inputs.features) : ShaderManifestState();
+
+    ObjectRender& render = extra.render;
+    render.beginLoad(submesh.primitiveType);
+    render.setShader(extra.shader.get());
+    ShaderData& shaderData = extra.shader->shaderData;
+
+    // the blocks of its variant, as an extra pass resolves them (the outline is unlit)
+    const uint64_t properties = extra.shaderProperties;
+    extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+    shaderData.getUniformBlockMembers("u_vs_pbrParams", extra.sizeVSParams);
+    extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
+    shaderData.getUniformBlockMembers("u_fs_pbrParams", extra.sizeFSParams);
+    extra.slotFSTexCoordSets = (properties & (1u << 2)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS) : -1;
+    extra.slotVSFade = (properties & (1u << 26)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
+    extra.slotFSFog = hasFog ? shaderData.getUniformBlockIndex(UniformBlockType::FS_FOG) : -1;
+    extra.slotVSSprite = submesh.hasTextureRect ? shaderData.getUniformBlockIndex(UniformBlockType::SPRITE_VS_PARAMS) : -1;
+    extra.slotVSSkinning = -1;
+    if (submesh.hasSkinning){
+        extra.slotVSSkinning = shaderData.getUniformBlockIndex(UniformBlockType::VS_SKINNING);
+        if (!bindSkinningResource(render, shaderData, mesh))
+            return false;
+    }
+    extra.slotVSMorphTarget = submesh.hasMorphTarget ? shaderData.getUniformBlockIndex(UniformBlockType::VS_MORPHTARGET) : -1;
+    const bool latticeVariant = (properties & shaderPropertyBit(32)) != 0; // 'Ltc'
+    extra.slotVSLattice = latticeVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE) : -1;
+    extra.slotVSLatticeTexture = latticeVariant ? shaderData.getTextureIndex(TextureShaderType::LATTICE) : std::pair<int, int>(-1, -1);
+    const bool vatVariant = (properties & ShaderPool::getVatProperties(ShaderType::MESH)) != 0;
+    extra.slotVSVat = vatVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_VAT) : -1;
+    extra.slotVSVatTexture = vatVariant ? shaderData.getTextureIndex(TextureShaderType::VAT) : std::pair<int, int>(-1, -1);
+
+    // the manifest's defaults, then the width and colour members each draw writes
+    extra.customVSParams.resolve(shaderData, "u_vs_customParams");
+    extra.customFSParams.resolve(shaderData, "u_fs_customParams");
+    extra.customVSParams.writeValues(pass.shaderParams, nullptr, extra.manifest.get());
+    extra.customFSParams.writeValues(pass.shaderParams, nullptr, extra.manifest.get());
+    const char* widthName = (outline.units == OutlineWidthUnits::WORLD) ? "worldWidth" : "screenWidth";
+    outline.widthMember = -1;
+    for (size_t m = 0; m < extra.customVSParams.members.size(); m++){
+        if (extra.customVSParams.members[m].name == widthName)
+            outline.widthMember = (int)m;
+    }
+    outline.colorMember = -1;
+    for (size_t m = 0; m < extra.customFSParams.members.size(); m++){
+        if (extra.customFSParams.members[m].name == "outlineColor")
+            outline.colorMember = (int)m;
+    }
+
+    outlineNoTextures.clear();
+    if (!loadShaderLibraryBindings(extra.libraryBindings, shaderData, render, outlineNoTextures, extra.manifest.get(),
+                                   ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures)))
+        return false;
+
+    // the submesh's buffers, as loadMesh gathered them
+    BufferMap buffers;
+    BufferRenderMap bufferNameToRender;
+    BufferStrideMap bufferStride;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0)
+        buffers["indices"] = &mesh.indices;
+    for (unsigned int b = 0; b < mesh.numExternalBuffers; b++)
+        buffers[mesh.eBuffers[b].getName()] = &mesh.eBuffers[b];
+    for (auto const& buf : buffers){
+        if (!buf.second->getRender()->isCreated())
+            return false;
+        bufferNameToRender[buf.first] = buf.second->getRender();
+        bufferStride[buf.first] = buf.second->getStride();
+    }
+    bindSubmeshAttributes(render, shaderData, mesh, submesh, buffers, bufferNameToRender, bufferStride, instmesh);
+    if (!bindSmoothNormals(render, shaderData, mesh, submesh, buffers))
+        return false;
+    if (!bindUnfedMorphInputs(render, shaderData, mesh, submesh, buffers))
+        return false;
+
+    // the index type bindSubmeshAttributes bound (the dynamic path takes it explicitly)
+    IndexType indexType = IndexType::NONE;
+    auto indexTypeOf = [](AttributeDataType type){
+        if (type == AttributeDataType::UNSIGNED_SHORT) return IndexType::UINT16;
+        if (type == AttributeDataType::UNSIGNED_INT) return IndexType::UINT32;
+        return IndexType::NONE;
+    };
+    for (auto const& buf : buffers){
+        if (buf.second->isRenderAttributes() && buf.second->getType() == BufferType::INDEX_BUFFER)
+            indexType = indexTypeOf(buf.second->getAttributes()[AttributeType::INDEX].getDataType());
+    }
+    auto ownIndex = submesh.attributes.find(AttributeType::INDEX);
+    if (ownIndex != submesh.attributes.end() && bufferNameToRender.count(ownIndex->second.getBufferName()))
+        indexType = indexTypeOf(ownIndex->second.getDataType());
+
+    // its fill blends (the colour's alpha); a library shader's BLEND_ALPHA define shapes it
+    RenderState fillState;
+    fillState.blend = BlendMode::ALPHA;
+    extra.libraryBindings.postColorBlend = postColorBlendOf(fillState, true);
+    if (!render.endLoadDynamic(submesh.primitiveType, indexType))
+        return false;
+
+    outline.vertexBufferId = submesh.render.getVertexBufferId();
+    outline.indexBufferId = submesh.render.getIndexBufferId();
+    extra.loaded = true;
+    return true;
+}
+
+void RenderSystem::drawOutlineRender(OutlineRender& outline, const OutlineDraw& target, unsigned int submeshIndex, int instanceView,
+                                     const Matrix4* objectBlock, const PipelineState& state, float width, const Vector4& color){
+    MeshComponent& mesh = *target.mesh;
+    Submesh& submesh = mesh.submeshes[submeshIndex];
+    SubmeshExtraPass& extra = outline.pass;
+    ObjectRender& render = extra.render;
+
+    // (a pipeline still being created or warmed draws nothing this frame, spec S32)
+    if (!render.beginDraw(state))
+        return;
+
+    applyFrameBlock(render, extra.libraryBindings);
+    if (extra.slotFSFog != -1){
+#ifdef JASPERENGINE_EDITOR
+        static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
+#else
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
+#endif
+    }
+    if (extra.slotVSSprite != -1){
+        render.applyUniformBlock(extra.slotVSSprite, sizeof(float) * 4, &submesh.textureRect);
+    }
+    if (submesh.hasSkinning){
+        applySkinningUniform(render, extra.slotVSSkinning, mesh, submesh);
+    }
+    if (extra.slotVSMorphTarget != -1){
+        if (!submesh.hasMorphNormal && !submesh.hasMorphTangent){
+            render.applyUniformBlock(extra.slotVSMorphTarget, sizeof(float) * MAX_MORPHTARGETS, &mesh.morphWeights);
+        }else{
+            render.applyUniformBlock(extra.slotVSMorphTarget, sizeof(float) * MAX_MORPHTARGETS / 2, &mesh.morphWeights);
+        }
+    }
+    if (!applyLattice(render, extra.slotVSLattice, extra.slotVSLatticeTexture, mesh, submeshIndex, true))
+        return;
+    if (!applyVat(render, extra.slotVSVat, extra.slotVSVatTexture, mesh, submesh))
+        return;
+    render.applyUniformBlock(extra.slotFSParams, getLitParamsSize(extra.shaderProperties, extra.sizeFSParams), &submesh.material);
+    if (extra.slotVSFade != -1 && target.instmesh){
+        applyInstanceFadeUniform(render, extra.slotVSFade, *target.instmesh, instanceFadeEye(target.entity, *target.instmesh, instanceView));
+    }
+    if (extra.slotFSTexCoordSets != -1){
+        const Material& mat = submesh.material;
+        int32_t texCoordSets[8] = {
+            mat.baseColorTexCoord, mat.metallicRoughnessTexCoord, mat.occlusionTexCoord, mat.emissiveTexCoord,
+            mat.normalTexCoord, 0, 0, 0
+        };
+        render.applyUniformBlock(extra.slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
+    }
+    applyObjectBlock(render, extra.slotVSParams, extra.sizeVSParams, extra.shaderProperties, objectBlock);
+
+    if (outline.widthMember != -1)
+        CustomUniformBlock::writeUniform(extra.customVSParams.data, extra.customVSParams.members[(size_t)outline.widthMember], Vector4(width, 0.0f, 0.0f, 0.0f));
+    if (outline.colorMember != -1)
+        CustomUniformBlock::writeUniform(extra.customFSParams.data, extra.customFSParams.members[(size_t)outline.colorMember], color);
+    applyCustomUniforms(render, extra.customVSParams, frameTime, frameSceneTime, passResolution);
+    applyCustomUniforms(render, extra.customFSParams, frameTime, frameSceneTime, passResolution);
+
+    drawSubmeshGeometry(render, target.entity, mesh, submeshIndex, target.instmesh, instanceView, target.draw.lod, target.draw.instanceCount);
+}
+
 bool RenderSystem::hasPendingMeshLods() const{
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
@@ -13263,6 +13465,8 @@ void RenderSystem::presentFramebufferToSwapchain(Framebuffer* source){
 void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets){
     // (its draws in batch form are baked again from the mesh it loads next)
     dropBatchRecord(entity);
+    // (an Outline's renders of it are made again on their next draw)
+    releaseOutlineRenders(entity);
     InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
     TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
     const bool preserveAssets = mesh.needReload && !clearAssets;
@@ -17245,8 +17449,9 @@ void RenderSystem::updateSwapchainRedirect(){
         }
         // the scene colour (phase 3) is copied out of an offscreen colour target: in a scene
         // with an object reading it (or one gone a short while ago), the camera may draw into
-        // one blitted to the screen, decided each frame by what it sees (updateSceneColorRedirect)
-        sceneColorRedirectAllowed = !redirect && sceneColorReaders;
+        // one blitted to the screen, decided each frame by what it sees (updateSceneColorRedirect);
+        // so does an Outline on a swapchain without stencil (S94 F-PB2), whose masks need one
+        sceneColorRedirectAllowed = !redirect && (sceneColorReaders || outlinesNeedStencilTarget());
     }else{
         sceneColorRedirectAllowed = false;
         msaaRedirect = false;
@@ -17330,6 +17535,9 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
     // the swapchain's is not (S57)
     if (!seen && mainCamera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT && lighting.oit &&
             OrderIndependentTransparency::isSupported(msaaPipelineSamples))
+        seen = true;
+    // an Outline's stencil masks, which the swapchain cannot hold (S94 F-PB2)
+    if (!seen && outlinesNeedStencilTarget())
         seen = true;
 
     // kept some frames after the last one seen: an object at the edge of the view does not
@@ -19792,6 +20000,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // drawn after (transparents) takes the analytic fog alone
         if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
+        // the Outlines (S94 F22): over the opaque scene, under the transparent queue
+        if (!pass.reflection)
+            drawOutlines(camera, cameraTransform, colorPip, passMsaa, cullingMask, instanceView, lodView);
         // the opaque queue and the sky are drawn (and SSR's reflections): the scene colour,
         // before the hierarchy loop's UI and overlays (the transparent queue's readers may copy
         // it again, below)
@@ -20052,6 +20263,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
     passSortBucket = 0;
     passSpritePart = -1;
+    // a 2D pass's Outlines (S94 F22): over what its hierarchy drew
+    if (!distanceSort && !pass.reflection)
+        drawOutlines(camera, cameraTransform, colorPip, passMsaa, cullingMask, instanceView, lodView);
 
     //---------Draw transparent renderers----------
     // layered around the pass's waters (WaterLayering.h): nothing to do without one

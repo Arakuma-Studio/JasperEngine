@@ -37,6 +37,7 @@
 #include "component/SpriteComponent.h"
 #include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/OutlineComponent.h"
 #include "pixelart/PixelSnap.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
@@ -2911,6 +2912,53 @@ namespace jasperengine{
 		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
 		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// An outlined submesh's render: library:outline_stencil loaded as the submesh's extra pass
+		// would be (getOutlinePass), on the dynamic pipeline path, so its mask and fill draws and
+		// every mode share it. Made on its first draw, kept while an Outline covers the submesh
+		// and its mesh stays loaded (destroyMesh lets it go)
+		struct OutlineRender{
+			SubmeshExtraPass pass;      // shader, render and block slots
+			OutlineWidthUnits units = OutlineWidthUnits::PIXELS;
+			int widthMember = -1;       // screenWidth / worldWidth of u_vs_customParams
+			int colorMember = -1;       // outlineColor of u_fs_customParams
+			// the submesh render's buffers it was bound like (a buffer retargeted: made again)
+			uint32_t vertexBufferId = 0;
+			uint32_t indexBufferId = 0;
+			// the last frame an enabled Outline covered its mesh (unused a while: let go)
+			uint64_t coveredFrame = 0;
+		};
+		// a Mesh an enabled Outline covers in the pass being drawn
+		struct OutlineDraw{
+			Entity entity = NULL_ENTITY;
+			MeshComponent* mesh = nullptr;
+			Transform* transform = nullptr;
+			InstancedMeshComponent* instmesh = nullptr;
+			const OutlineComponent* outline = nullptr;
+			MeshDraw draw;
+		};
+		// key: entity << 32 | submesh
+		std::unordered_map<uint64_t, std::unique_ptr<OutlineRender>> outlineRenders;
+		std::vector<OutlineDraw> outlineDraws;
+		std::vector<std::pair<std::string, Texture>> outlineNoTextures;
+		uint64_t outlineSweepFrame = 0;
+		// the masks, then the fills, of every outlined Mesh the camera pass shows: after its
+		// opaque queue (3D), or after its hierarchy draws (2D)
+		void drawOutlines(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPip, int passMsaa,
+		                  uint32_t cullingMask, int instanceView, const LodView* lodView);
+		// false while its shader builds or a binding is not ready (tried again next draw)
+		bool loadOutlineRender(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh,
+		                       OutlineRender& outline);
+		void drawOutlineRender(OutlineRender& outline, const OutlineDraw& target, unsigned int submeshIndex, int instanceView,
+		                       const Matrix4* objectBlock, const PipelineState& state, float width, const Vector4& color);
+		void releaseOutlineRender(OutlineRender& outline);
+		// the renders of a mesh's submeshes (its mesh destroyed or reloaded)
+		void releaseOutlineRenders(Entity entity);
+		void releaseAllOutlineRenders();
+		// the swapchain has no stencil (a WebGL canvas or an EGL config without one) and an
+		// Outline is drawn: the main camera draws offscreen (updateSwapchainRedirect, F-PB2)
+		bool outlinesNeedStencilTarget() const;
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
 		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
@@ -3972,6 +4020,15 @@ namespace jasperengine{
 		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
 		// lighting mode, and no received shadows, IBL or mirror
 		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// The Outline drawing a Mesh GameObject: the nearest enabled one on it or, with Include
+		// Children, on an ancestor (a disabled one is skipped; null: none)
+		static const OutlineComponent* findOutline(EntityRegistry* registry, Entity entity);
+		// The pass an Outline draws a submesh with, as an extra pass: library:outline_stencil with
+		// its width units' feature and alpha blend (its variant: getExtraPassShaderInputs), and
+		// the custom shader string that variant is keyed by
+		static MaterialPass getOutlinePass(OutlineWidthUnits units);
+		static std::string getOutlineReference(OutlineWidthUnits units);
 		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
 		// the pass's values, else its shader's @state with the rules of its features
 		// (manifestState, null: none), else the submesh's legacy behaviour

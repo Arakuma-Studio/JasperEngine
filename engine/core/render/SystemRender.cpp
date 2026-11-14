@@ -16,6 +16,7 @@
 #include "Log.h"
 
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -258,6 +259,18 @@ uint64_t SystemRender::getFrameCount(){
 
 const RenderFeatures& SystemRender::getFeatures(){
     return SokolSystem::getFeatures();
+}
+
+namespace {
+    std::atomic<bool> swapchainStencil{true};
+}
+
+void SystemRender::setSwapchainStencil(bool stencil){
+    swapchainStencil.store(stencil);
+}
+
+bool SystemRender::hasSwapchainStencil(){
+    return swapchainStencil.load();
 }
 
 namespace {

@@ -816,4 +816,22 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 
 ## Deviations
 
-(none yet)
+- **P4 (Outline).**
+  - The outlined submesh's render is loaded and drawn by `RenderSystem::loadOutlineRender` /
+    `drawOutlineRender` in `RenderSystem.cpp`, beside the extra pass they follow, because they need
+    that file's local binding helpers (skinning, lattice, VAT, custom blocks). The pass itself
+    (gathering, mode states, sweep, `findOutline`) is `RenderSystemOutline.cpp`. Hooks besides the
+    call after the opaque queue: one after a 2D pass's hierarchy (2D passes have no opaque queue),
+    one line in `destroyMesh` and `destroy`, and the stencil-less swapchain redirect (F-PB2).
+  - Renders use the dynamic pipeline path (`ObjectRender::endLoadDynamic`), so the mask, the fill
+    and every mode share one render per submesh; only a change of Width Units makes it again.
+  - Smoothed normals come from the existing per-geometry cache (`bindSmoothNormals`) when an
+    outline first draws a mesh, on the main thread, not on a job (F-PF2): the extra-pass outlines
+    already work that way, and a job would need a copy of the positions anyway. A reload of a mesh
+    whose other shaders do not read them makes them again.
+  - The Inspector is the reflected default drawer (Unity names, undo) plus a note when nothing is
+    outlined, so no `InspectorOutline.cpp`.
+  - Not outlined: Terrains, Tilemaps, Sprite Batch instances and non-triangle primitives. A 2D
+    camera draws outlines after its whole hierarchy, so over that camera's component UI.
+  - Exports ship the outline variants of every mesh an Outline covers, and of every mesh when the
+    project's scripts mention `Outline` (`ShaderVariantCollector`, `scriptsAddOutlines`).

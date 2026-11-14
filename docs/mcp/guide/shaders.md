@@ -125,11 +125,13 @@ rock, sand, dirt); bricks, tiles and planks lose their grid.
 
 ## Presets, stencil and the extra pass
 
-Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
+An object's outline is the Outline component (`jasper://docs/materials`, Outline); the presets
+below are hand-made looks per material. Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
 draw-once transparency are set up in one step by a **material preset**:
 `list_material_presets` lists them (id, name, description and the material fields each
 sets); `apply_material_preset preset="outline_hull" entity="Hero"` applies one to every
-submesh (or `submesh`) of the given GameObjects as one undo step, or to a `.material` file
+submesh (or `submesh`) of the given GameObjects (one without a Mesh: the meshes below it) as one
+undo step, or to a `.material` file
 (`path`; linked submeshes follow). A preset changes only the fields it sets; a submesh
 linked to a `.material` file becomes its own material. Tune the result with the paths below.
 

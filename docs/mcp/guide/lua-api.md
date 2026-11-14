@@ -2517,6 +2517,27 @@ local group = SortingGroup(scene, sprite.entity)
 group.sortingOrder = 1
 ```
 
+### 4.9.4 Outline
+
+QuickOutline as a component (`jasper://docs/materials`, Outline).
+
+- `Outline(scene, entity)`: the GameObject's Outline, added when it has none. rw `enabled`, `mode`
+  (`OutlineMode.OUTLINE_ALL`, `OUTLINE_VISIBLE`, `OUTLINE_HIDDEN`, `OUTLINE_AND_SILHOUETTE`,
+  `SILHOUETTE_ONLY`), `color` (sRGB `Vector4`, alpha blends), `width` (0 or more; a bad one logs an
+  error and changes nothing), `widthUnits` (`OutlineWidthUnits.PIXELS`, `WORLD`),
+  `includeChildren` (the Meshes below it too: a model root covers its skinned children).
+
+```lua run
+local box = Primitive(scene)
+box:createBox(1, 1, 1)
+local outline = Outline(scene, box.entity)
+outline.mode = OutlineMode.OUTLINE_VISIBLE
+outline.color = Vector4(1, 0.8, 0, 1)
+outline.width = 3
+assert(outline.widthUnits == OutlineWidthUnits.PIXELS)
+outline.enabled = false
+```
+
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
 
 Camera shake (MilkShake's Shaker) and a small follow component. On a camera the shake is a view
