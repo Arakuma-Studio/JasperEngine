@@ -1,5 +1,8 @@
 # S93 — HTML/CSS UI gaps from the JasperArcade port
 
+**Status: implemented** on `feature/s93-htmlui-gaps` (packages P1-P6 and the integration). What differs from
+the text below is in "Deviations" at the end.
+
 Arcade engine-gaps program (S92-S98). Source: `docs/port/ENGINE_LIMITATIONS.md`, section "UI (HTML/CSS
 UI documents)", of the JasperArcade port (read-only, `/var/lib/orquester/workspaces/jaspersito/
 JasperArcade-Ported`, called `PORT` below). The port was made against `7f48d7e8d`; every claim in §3 was
@@ -952,3 +955,80 @@ Suggested order:
 
 The last package to merge regenerates `html-ui-support.md`, `TOOLS.md` and `RcssProperties.h`, and
 runs `tools/mcp/tool_budget.py --check`.
+
+## Deviations
+
+Recorded by the packages and the integration. The code is what is true now.
+
+**P1 Pointer ownership**
+- R1 also covers documents on meshes (`UIDocumentSystemTexture.cpp`): they swallowed releases the same way.
+- A body move listener gets moves only over the body's children (D3).
+- HTML5 off-canvas releases: a window `mouseup` listener only, no `pointerup`/`pointercancel` or
+  `setPointerCapture`; the `web-pointer` gate passes with it, and losing window focus already releases held
+  buttons.
+
+**P2 Hit testing and scrolling**
+- The fork changes are one `rmlui:` commit plus a speed tweak, not one commit per FORK.md row.
+- A mouse pans after 10 dp (uGUI's drag threshold), touch after 3 dp.
+- A pen no longer pans under `scroll-drag: touch` (the engine has no pen input, so nothing changes today).
+- `scroll-elasticity` is stored as text and read as s or ms.
+- Elastic overscroll is a separate offset: `scrollTop` and the scrollbars stay in range.
+- With several `clip-path` shapes, a point hits only inside all of them.
+
+**P3 Glyph cost and fonts**
+- The glyph cache also survives `Rml::Shutdown` (D7 said until then): a scene change would otherwise empty it.
+- AC15's "±8 of 255" is read as "at least 247 on every pixel the kernel fills".
+- The prewarm test is `ScriptLua.PrewarmMakesFirstShowColdFree`.
+- No extra page-upload batching: uploads already happen once per frame.
+- FORK ids are S93-G1..G3 (P6 holds S93-F); the commit messages say F1..F3.
+- AC21: `check --ui` stays engine-free (loading a font there aborted the process); HTMLUI-FONT-0001 comes from
+  an RML/RCSS font resolution plus a cmap read with the runtime's fallback chain. Selectors with
+  pseudo-classes or attributes are not evaluated, `@media` counts as matching, and it reports characters a
+  fallback face draws, not characters no face has. Text whose first face is built in is not reported (also at
+  runtime), which narrows R17.
+
+**P4 Images**
+- `image-color` does not tint `mask-image`.
+- Project Settings > Graphics > HTML UI Image Cache uses -1 for the platform default (0 keeps none).
+- AC27 is a browser-parity fixture, not a `GoldenRender` test; AC23 is the fixture test `RenderRendererGpu`.
+- `RmlRendererTest.NoLeaksAfterContextDestroy` and `AfterSceneReload` changed on purpose (the shared cache
+  keeps decoded images past a context).
+- U10 is not a bug on current code (it matches Chromium).
+
+**P5 CSS and style sheets**
+- The "golden from Chrome" criteria are browser-parity fixtures; `MixBlendModeBackdropCopies` is a pixel probe.
+- Lua reads the `text-autosize` fit through `el.style.fontSize` (there is no `getComputedStyle`).
+- Inset shadows get their own texture only when background images or decorators are present.
+- `doc:addStyleSheet` works on `.html` documents and warns on `.rml`.
+- FORK rows are S93-C1..C5; the golden-ledger checker accepts new Chromium references.
+- `mix-blend-mode` is built on main's composite (`compositeLayersNow`, `ElementEffects`, a `Bmd` post
+  variant), not on S92's: see "Merge order" below.
+- U9 and U25 did not reproduce; their guard tests stay.
+
+**P6 UI Document and Text**
+- The generic component tools keep camelCase keys; only `create_ui_document` also takes snake_case.
+- The anime option is the existing `clock`, not a new `time`.
+- Game Time has its own clock: `getGameTime()` also runs at edit time.
+- AC41 has its own test file and drives the pointer from C++; AC43's MCP test measures where the text lands
+  instead of comparing an image.
+- Behaviour changes: a fixed UI time also holds the game clock; anime `clock = "game"` stops while the editor
+  is paused; `text-effect-time` defaults to `auto`; `world` is a valid render mode.
+- The built-in shader cache moved to `v66` (World Space keeps `htmlui.vert`'s depth); main is at `v65`.
+- World Space documents draw in every camera pass; the UI Document Inspector shows two "Billboard" rows.
+
+**Integration**
+- R37 Auto Size with a bitmap font (P6 left it out): the largest scale k whose native size x k lies in
+  Font Size Min..Max and fits the fixed box, Min's scale when none fits (a range holding no multiple takes
+  Max's, at least x1). Its atlas does not change with k, so a refit only rebuilds the quads. The Inspector
+  shows Auto Size for bitmap fonts too.
+- HTMLUI-INPUT-0001 is in phase 2's Appendix F and the codes test sample.
+- `test_html_ui_checks.py::test_cli_default_includes_ui` reads the `check` summary as a list: its whole-line
+  regex broke whenever a check added a category (`titles`, on main too).
+- `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` waits for the particles instead of 4 frames: a burst
+  at time 0 comes with the first simulation tick (1/30 s of game time), which the few fast frames of a warm
+  renderer do not reach. It failed whenever the particle shader was already compiled (later in a batch, or a
+  repeat).
+
+**Merge order (coordinator)**
+- S92 rewrites the layer composite that `mix-blend-mode` uses. Merge S92 first, then merge main into S93
+  again: region layers must blend too (S92's result cache already keys by blend mode).
