@@ -9,6 +9,8 @@
 // overloaded members, property getters and setters (data members, getter methods, proxies), and
 // metamethods given nil as their first operand.
 
+#include "script/LuaBinding.h"
+
 #include "lua.hpp"
 #include "LuaBridge.h"
 
@@ -160,3 +162,22 @@ TEST(LuaBridgeSelf, ClassMetatableIsNotAnObject) {
         EXPECT_NE(error.find("Point expected, got table"), std::string::npos) << code << ": " << error;
     }
 }
+
+// The engine's own bindings, the cases S95 WP-1 found
+TEST(LuaBridgeSelf, EngineMembersRaiseOnNil) {
+    lua_State* L = jasperengine::LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    for (const char* code : {"return Vector3.length(nil)", "return Vector3.dotProduct(nil, Vector3(1, 2, 3))",
+                             "return nil + Vector3(1, 2, 3)", "return nil * Vector3(1, 2, 3)",
+                             "return debug.getmetatable(Vector3(1, 2, 3)) + Vector3(1, 2, 3)"}) {
+        const std::string chunk = std::string("local ok, e = pcall(function() ") + code + " end)\n"
+                                  "if ok then return end\nerror(tostring(e), 0)";
+        const bool raised = luaL_loadbuffer(L, chunk.data(), chunk.size(), "self") != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK;
+        const std::string error = raised && lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+        if (raised)
+            lua_pop(L, 1);
+        EXPECT_TRUE(error.find("expected, got") != std::string::npos || error.find("attempt to") != std::string::npos)
+            << code << ": " << (raised ? error : std::string("did not raise"));
+    }
+}
+
