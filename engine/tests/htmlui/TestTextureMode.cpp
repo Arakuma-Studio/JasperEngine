@@ -380,6 +380,37 @@ TEST_F(TextureModeTest, WorldPointerCapture){
     tl->RemoveEventListener(Rml::EventId::Click, &clicks);
 }
 
+// S93 R1: a press the game got (on the transparent body) is not the world document's: its release
+// and, while its button is held, the mouse's moves over the document's content are not consumed;
+// they only hover it
+TEST_F(TextureModeTest, GamePressReleasedOverWorldDocumentIsNotConsumed){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("p1/texture_input.rml", surface.getEntity());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Rml::Element* tl = element(document.getEntity(), "tl");
+    ASSERT_NE(tl, nullptr);
+    CountingListener clicks;
+    tl->AddEventListener(Rml::EventId::Click, &clicks);
+
+    Input::addMousePressed(D_MOUSE_BUTTON_LEFT);
+    EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0)));
+    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0)));
+    EXPECT_TRUE(tl->IsPseudoClassSet("hover"));
+    Input::releaseMousePressed(D_MOUSE_BUTTON_LEFT);
+    EXPECT_FALSE(pointer(PointerPhase::UP, Vector3(-0.5f, 0.5f, 0)));
+    EXPECT_EQ(clicks.count, 0);
+    // no button held: the hover over content is the document's again
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0)));
+
+    // a finger: not taken on the body, so its release over #tl is not either
+    EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0), 4, true));
+    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0), 4, true));
+    EXPECT_FALSE(pointer(PointerPhase::UP, Vector3(-0.5f, 0.5f, 0), 4, true));
+    EXPECT_EQ(clicks.count, 0);
+
+    tl->RemoveEventListener(Rml::EventId::Click, &clicks);
+}
+
 TEST_F(TextureModeTest, WorldPointerNearestFirst){
     // two documents on overlapping walls: the nearer gets the pointer where it has content,
     // its transparent body passes the pointer to the one behind

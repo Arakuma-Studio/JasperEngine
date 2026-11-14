@@ -1368,6 +1368,38 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_html_ui_page_press_listener",
+        "kind": "guard",
+        "what_happened": "S93 R4 changed the pass-through rule: only press listeners (click, mousedown, pointerdown, ...) on a "
+                         "transparent page make it take presses; the old guide listed mouseup and mousemove too, which now "
+                         "take nothing, so a 'release outside closes it' handler on mouseup never runs.",
+        "text_at_issue": "Guide 'Pointer input and pass-through': 'add a press listener (click, dblclick, contextmenu, mousedown, "
+                         "pointerdown ...) on the document or doc.body ... Move, up, over, out ... listeners on the page take "
+                         "nothing'",
+        "source": "docs/specs/S93-htmlui-gaps.md R4, D3",
+        "prompt": "The pause overlay assets/ui/pause.html is transparent around its #panel. In assets/ui/pause.lua, hide the "
+                  "overlay when the player clicks or taps anywhere outside the panel.",
+        "files": {
+            "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><style>html, body { margin: 0; } #panel { margin: 120px auto; "
+                                    "width: 320px; background: #222; color: #fff; padding: 24px; }</style></head>\n"
+                                    "<body><div id=\"panel\"><h1>Paused</h1><button id=\"resume\">Resume</button></div>"
+                                    "</body></html>\n",
+            "assets/ui/pause.lua": "---@class pause : ScriptInstance\nlocal pause = {}\n\nfunction pause:init()\n"
+                                   "    local doc = UIDocument(self.scene, self.entity)\n"
+                                   "    doc:getElementById(\"resume\"):addEventListener(\"click\", function() doc:hide() end)\n"
+                                   "end\n\nreturn pause\n",
+        },
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("pause: #panel (320x180) with #resume; the page around it is transparent.",
+                                               {"elements": [{"selector": "#panel"}, {"selector": "#resume"}]})},
+            {"tool": "read_console", "result": ok("No new console entries.", {"entries": []})},
+        ],
+        # the page's own listener: on the document or its body (the button's click is there already)
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"(doc|body)\s*:\s*addEventListener\(\s*[\"'](click|mousedown|pointerdown)[\"']"]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"addEventListener\(\s*[\"'](mouseup|pointerup)[\"']"]}},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_ui_tween_for_game_time",
         "kind": "bad",
         "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "
