@@ -212,7 +212,7 @@ editor::AssetStrippingPlan editor::AssetStrippingPlan::make(Project& project) {
     }
     // a scene never saved ships as the editor holds it (S98 REQ-4), and the index has no file of it
     for (SceneProject& scene : project.getScenes()) {
-        if (!scene.filepath.empty() || !scene.scene) continue;
+        if (!scene.filepath.empty() || !scene.scene || !scene.inBuild) continue;
         AssetRefSchema::forEachAssetRef(*scene.scene, [&](AssetRef& ref, const AssetRefSite& site) {
             DepEdge edge;
             edge.target = ref.guid;

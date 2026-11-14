@@ -2522,6 +2522,7 @@ bool editor::Exporter::loadAndCookAllScenes() {
             std::vector<std::string> unsavedNotOpen;
             for (size_t i = 0; imported && i < scenes.size(); i++) {
                 SceneProject& sceneProject = scenes[i];
+                if (!sceneProject.inBuild) continue;   // opened without being listed (S98 REQ-28)
                 if (sceneProject.filepath.empty()) {
                     if (!sceneProject.scene) {
                         unsavedNotOpen.push_back(sceneProject.name);
