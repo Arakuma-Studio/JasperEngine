@@ -301,8 +301,8 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   <package> COMPLETE` (APP_CMD_LOW_MEMORY without a window drops the EGL context) and launches it
   again; the run needs a new view and its expectations from both sides of the return. `--once TEXT`
   fails on a second line containing TEXT. `tools/test-projects/app-lifecycle` uses both (S95 AC-17:
-  an HTML UI document keeps its DOM through the loss); `GATE=app-lifecycle` checks the same
-  project in a browser through `WEBGL_lose_context`.
+  an HTML UI document keeps its DOM through the loss); its `main.cpp` says how to lose and restore
+  the WebGL context of its web build by hand.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
   the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
   `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the

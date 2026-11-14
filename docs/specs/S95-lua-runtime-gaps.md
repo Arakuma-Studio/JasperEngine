@@ -616,9 +616,10 @@ Per package, before merging:
   tests (`ViewLossTest.*`).
 - **AC-17.** The device step is `tools/android-emulator-test.sh --view-loss` (Home,
   `am send-trim-memory <pkg> COMPLETE`, the launcher) with `--once 'SVG plugin initialised'`, on the
-  new test project `tools/test-projects/app-lifecycle`. The web check is automated too:
-  `GATE=app-lifecycle tools/build.sh web-gate` loses and restores the WebGL context through
-  `WEBGL_lose_context`.
+  new test project `tools/test-projects/app-lifecycle`. The web check stays manual (in Chrome,
+  `WEBGL_lose_context` from the console, the steps in the project's `main.cpp`): the web gate's
+  chrome-headless-shell stops answering after any WebGL context loss of the page, even with the
+  engine's handler reduced to setting a flag (bisected), so no gate is committed.
 - **AC-19.** The suite is `EngineFrameGpu` (it draws frames: GPU suites end in `Gpu`), with
   `ViewRestoreClampsDelta` beside `ResumeClampsDelta`.
 - **REQ-16 held on main.** A rebuild (file change, `needReload`) already fired `onUnload` before
