@@ -1,5 +1,8 @@
 # S95 — Lua runtime gaps from the JasperArcade port
 
+**Status: implemented** on `feature/s95-lua-runtime-gaps` (WP-1..WP-6). What the code does where it
+differs from this text is in "Deviations" at the end.
+
 Program "arcade engine gaps" (S92-S98). Source: the port's ledger,
 `JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md`, section "Scripting / runtime API (Lua)",
 items S1-S32 (S33 belongs to S92). The port was made against `7f48d7e8d`; every claim below was
@@ -564,6 +567,62 @@ Per package, before merging:
 - Builds use `JOBS=6`, and the test suites are filtered to the package's tests (program rule).
 
 ## Deviations
+
+### Integration
+
+- **Cooked scene format.** `main` reads and writes 1.5; this spec takes 1.6 (WP-5: script list
+  properties, their element types a tail after a Script component's scripts) and 1.7 (WP-3: the
+  scene's Fixed Timestep), contrary to REQ-37's "no version bump": the cooked format is
+  positional, so a new value is a new minor (the YAML scene and project keys stay optional, with
+  defaults, unversioned). The reader takes 1.5 to 1.7. Other open PRs of the program (S92, S96)
+  also take 1.6: whichever lands second renumbers its minors above the one on `main`.
+- **The LuaBridge workaround stays until S92 lands.** WP-1 left `engine/libs/luabridge3/LuaBridge.h`
+  untouched (S92 owns its patch) and hardens LuaBridge's class tables from
+  `LuaBinding.cpp` (`hardenClassTables`) instead. S92 fixes the same crashes inside LuaBridge;
+  once both are on `main` the workaround is removable in one commit.
+
+### WP-1 Lua API correctness
+
+- **D-2's form.** Only the Lua bindings changed: they test `findComponent<Transform>` and return
+  `nil` (getters) or raise (setters, `parent`/`setParent`). The C++ `GameObject` getters keep their
+  behaviour for C++ callers. `localMatrix`, `modelMatrix` and `normalMatrix` follow the getters'
+  rule too. `setPosition` is one function (`x, y [, z = 0]`) instead of two overloads.
+- **REQ-2 beyond the spec's list.** The `Matrix3`/`Matrix4` accessors `row`, `column`, `get`, `set`,
+  `setRow` and `setColumn` check their 0-based index and raise. A `RotationOrder` argument that is
+  not one raises (in `Quaternion.euler`, `fromEulerAngles` and `getEulerAngles`). The class-table
+  metatable fix and the nil-operand guard are the LuaBridge workaround above. AC-3's lint flagged
+  `MathClassesLua.cpp:778` and `:803` on the base (the spec's numbers were 783 and 804).
+- **REQ-4, paste.** Paste numbered nothing before; it now numbers among siblings, like Duplicate.
+- **S27 not reproduced.** `ScriptLifecycleTest.TopLevelClassFieldsPerInstance` is green on the
+  base: each instance runs its own chunk. The test stays as a guard.
+- **AC-6's test file** is `test_scene_reentry.py` (CI), not `test_lifecycle.py`, which is outside
+  the CI suite. It was green on the base, as expected.
+
+### WP-3 Runtime defaults
+
+- **D-9's API.** The platforms call a new `Engine::setStartScreenSize(width, height)` before the
+  project starts (Windows, Linux and macOS windows, the web canvas, the Apple view) and the engine
+  lays out from it; the players do not call `computeViewLayout` themselves. Android sets nothing,
+  so `init` reads the preferred size there and `onCanvasChanged` comes when the view loads, before
+  the first `onUpdate`.
+- **The project step** is set through `Engine::setProjectUpdateTime(double)` (1/60 stays the exact
+  default) and a scene's through `applySceneUpdateTime`. Play stop resets the step, the maximum
+  delta and touch simulation to the engine defaults; the next Play start applies the project's.
+- **Lua `scene.fixedTimestep`** (read-write) was added beside the Inspector row and
+  `set_scene_settings fixed_timestep`.
+- **The scene's Fixed Timestep row** has no step buttons and names its fallback (0 = the project's)
+  to fit the Inspector.
+
+### WP-5 Data Assets
+
+- **Unknown values are reported** by `edit_data_asset get` (`unknown_values`) and listed in the
+  Inspector, where they can be removed; the `check` tool does not report them (REQ-21).
+- **Lists.** A list holds elements of one type; there are no lists of lists. In Lua an unset
+  reference inside a list is `false`, so the array keeps its length.
+- **The class index.** Exports write `je-dataassets.json` (class to assets) for
+  `DataAsset.loadAll`; editor Play builds the index from the project.
+- **Data classes leave Add Script**: a `---@dataasset` module is not offered as a component.
+- **`AssetType::DataAsset = 35`** (36 is WP-6's String Table).
 
 ### WP-6 String Tables
 
