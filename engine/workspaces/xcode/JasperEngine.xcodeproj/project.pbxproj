@@ -4934,6 +4934,9 @@
 		4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */; };
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
+		4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
+		4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
+		4A534E47A958CDF313E1B350 /* AttachedColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9521,6 +9524,8 @@
 		4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryOptions.h; sourceTree = "<group>"; };
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
+		4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AttachedColliders.cpp; sourceTree = "<group>"; };
+		4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AttachedColliders.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10956,6 +10961,8 @@
 				4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */,
 				4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */,
 				4A534E47C03036C6074531C9 /* WorldSettings.h */,
+				4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */,
+				4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -16883,6 +16890,7 @@
 				4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */,
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
+				4A534E47A958CDF313E1B350 /* AttachedColliders.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19556,6 +19564,7 @@
 				4A534E47851B10C35A83E6A9 /* WorldSettings.cpp in Sources */,
 				4A534E477487F79D16498391 /* PhysicsQueriesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20520,6 +20529,7 @@
 				4A534E4784EFA42221E2F9E0 /* WorldSettings.cpp in Sources */,
 				4A534E47A51D00E6AB5C830D /* PhysicsQueriesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
