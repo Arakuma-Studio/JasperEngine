@@ -679,8 +679,8 @@ TEST(ModelCook, SmoothingGroupsFromFbx){
     const std::set<std::array<long, 3>> smooth = cookedNormals("1,1,1,1,1,1");
     EXPECT_EQ(smooth.size(), 8u);
     for (const auto& d : smooth) EXPECT_EQ(std::abs(d[0]), 58) << "a diagonal";
-    // no two faces share a group: flat, the six axes
-    EXPECT_EQ(cookedNormals("1,2,4,8,16,32").size(), 6u);
+    // no smooth face: flat, the six axes
+    EXPECT_EQ(cookedNormals("0,0,0,0,0,0").size(), 6u);
 
     // a glTF has no smoothing groups: the angle decides, and the record says so
     settings.smoothnessSource = SmoothnessSource::PreferSmoothingGroups;

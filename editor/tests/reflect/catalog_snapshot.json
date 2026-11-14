@@ -28786,6 +28786,11 @@
     0,
     true
    ],
+   "preserveHierarchy": [
+    0,
+    0,
+    true
+   ],
    "skeleton": [
     16,
     8,

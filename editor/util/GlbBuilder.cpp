@@ -205,6 +205,7 @@ std::vector<int64_t> domIntegers(const ufbx_dom_node* node) {
         }
     };
     switch (value.type) {
+        case UFBX_DOM_VALUE_BLOB: copy(uint8_t()); break;   // an array ufbx reads as flags
         case UFBX_DOM_VALUE_ARRAY_I32: copy(int32_t()); break;
         case UFBX_DOM_VALUE_ARRAY_I64: copy(int64_t()); break;
         case UFBX_DOM_VALUE_ARRAY_F32: copy(float()); break;
@@ -1175,8 +1176,9 @@ void GlbBuilder::buildNodes() {
 }
 
 std::vector<uint32_t> GlbBuilder::smoothingGroupsOf(const ufbx_mesh* mesh) const {
-    // ByPolygon smoothing is a bit mask per face (3ds Max's groups, Blender's 0 or 1), which ufbx
-    // keeps only as a flag: the masks come from the file's DOM. ByEdge is ufbx's edge_smoothing.
+    // ByEdge smoothing is ufbx's edge_smoothing. ByPolygon is a value per face (3ds Max's group bit
+    // masks, Blender's 0 or 1), which ufbx reads as a flag, its DOM too: two faces share their edge's
+    // normals when both are smooth (Max's faces of two different groups side by side smooth together)
     std::vector<int64_t> masks;
     if (const ufbx_dom_node* geometry = mesh->element.dom_node) {
         const ufbx_dom_node* layer = ufbx_dom_find(geometry, "LayerElementSmoothing");

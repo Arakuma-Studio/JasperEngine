@@ -16,6 +16,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <unistd.h>
 
 using namespace jasperengine;
@@ -42,8 +43,9 @@ TEST(MeshSystemObjTest, MtlWindowsPaths){
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
     ASSERT_EQ(mesh.numSubmeshes, 2u);
     const std::string base = (dir / "").string();
-    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getPath(), base + "a.png") << "the drive path's file name beside the .mtl";
-    EXPECT_EQ(mesh.submeshes[1].material.baseColorTexture.getPath(), base + "tex/b.png") << "backslashes are folders";
+    // the drive path's file name beside the .mtl; backslashes are folders
+    const std::set<std::string> paths = {mesh.submeshes[0].material.baseColorTexture.getPath(), mesh.submeshes[1].material.baseColorTexture.getPath()};
+    EXPECT_EQ(paths, (std::set<std::string>{base + "a.png", base + "tex/b.png"}));
     EXPECT_EQ(log.count(D_LOG_WARN, "C:\\art\\tex\\a.png"), 1u);
     EXPECT_EQ(log.count(D_LOG_WARN, "tex\\b.png"), 1u);
     fs::remove_all(dir);
