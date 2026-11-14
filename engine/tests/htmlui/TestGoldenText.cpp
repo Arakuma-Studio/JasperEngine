@@ -275,6 +275,8 @@ TEST_F(FullPathGoldenTest, TextAutosizeFits){
     Screen second;
     ASSERT_TRUE(capture(second));
     EXPECT_TRUE(first.rgba == second.rgba) << "the fitted size shows from the first frame on";
+    // (fitted when the document shows: it was laid out hidden)
+    EXPECT_NE(document.getElementById("short").getStyle("font-size"), "30px");
 
     struct Case {
         const char* id;
@@ -294,6 +296,10 @@ TEST_F(FullPathGoldenTest, TextAutosizeFits){
         EXPECT_NEAR(element.getOffsetHeight(), ref.getOffsetHeight(), 0.5f) << c.id;
         EXPECT_LE(element.getScrollWidth(), element.getClientWidth() + 0.5f) << c.id;
     }
+    // the brute force restyled hidden copies only: the frame is the first one
+    Screen after;
+    ASSERT_TRUE(capture(after));
+    EXPECT_TRUE(after.rgba == first.rgba) << "the first frame already showed the fitted sizes";
     EXPECT_SCREEN_GOLDEN(second, "text_autosize");
 }
 
@@ -305,8 +311,8 @@ TEST_F(FullPathGoldenTest, TextAutosizePerf){
     Scene& scene = fixture.getScene();
     UIElement multi = document.getElementById("multi");
     UIElement other = document.getElementById("short-ref");
-    // (the first update after the load lays the document out and fits it)
-    updateDocuments(scene);
+    // (the first frame shows the document: its first layout fits it)
+    GpuEnvironment::drawFrames(2);
 
     // a relayout for another element: no trial layout
     const int trials = Rml::ElementDocument::GetTextAutosizeTrialCount();

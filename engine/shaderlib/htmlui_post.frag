@@ -7,8 +7,9 @@
 //   HAS_DROP_SHADOW    the source's alpha times the shadow colour, inside texCoordMinMax
 //   HAS_BLUR           one 7-tap separable gaussian pass along params.yz, mirrored at texCoordMinMax
 //   HAS_UNPREMULTIPLY  straight alpha (render-to-texture documents)
-//   HAS_BLEND_MODE     mix-blend-mode params.x (1 multiply .. 15 luminosity): the source composited over the
-//                      backdrop copy (u_htmluiMaskTex) with Compositing and Blending 1's blend function
+//   HAS_BLEND_MODE     mix-blend-mode params.x (1 multiply .. 15 luminosity): the source's part of source-over the
+//                      backdrop copy (u_htmluiMaskTex) with Compositing and Blending 1's blend function, drawn
+//                      with premultiplied blending (which adds the backdrop's part)
 //   HAS_YUV            a video frame: Y (u_htmluiPostTex), U and V planes (R8) to opaque RGB by
 //                      colorMatrix (offsets and range folded in its fourth column); params.yz
 //                      scale the texture coordinates of the chroma planes (odd sizes)
@@ -164,7 +165,9 @@ void main() {
     vec3 cs = s.rgb / max(s.a, 1e-5);
     vec3 cb = b.rgb / max(b.a, 1e-5);
     vec3 blended = clamp(blendFunction(int(htmluiPost.params.x + 0.5), cb, cs), 0.0, 1.0);
-    g_finalColor = vec4(s.rgb * (1.0 - b.a) + b.rgb * (1.0 - s.a) + s.a * b.a * blended, s.a + b.a * (1.0 - s.a));
+    // source-over's backdrop term, b * (1 - s.a), is the premultiplied blend state's: where the source has no coverage
+    // the destination is left as it is
+    g_finalColor = vec4(s.rgb * (1.0 - b.a) + s.a * b.a * blended, s.a);
 #elif defined(HAS_DROP_SHADOW)
     g_finalColor = htmluiPost.color * (source(v_uv).a * inRegion(v_uv));
 #elif defined(HAS_BLUR)

@@ -673,8 +673,9 @@ void ElementDocument::UpdateLayout()
 		// (a boundary formatted alone may still dirty the document, e.g. a scrollbar it enables: formatted fully next time)
 	}
 
-	// Fork (S93 R31): only after a layout (nothing else changes what the fit reads)
-	if (laid_out && !text_autosize.empty())
+	// Fork (S93 R31): after a layout (nothing else changes what the fit reads), or while an element waits for its first
+	// fit (registered, or hidden at the last one: a document is laid out hidden, and showing it lays nothing out)
+	if ((laid_out || text_autosize_pending) && !text_autosize.empty())
 		FitTextAutosize();
 }
 
@@ -682,7 +683,10 @@ void ElementDocument::SetTextAutosize(Element* element, bool active)
 {
 	auto it = std::find_if(text_autosize.begin(), text_autosize.end(), [element](const TextAutosizeEntry& entry) { return entry.element.get() == element; });
 	if (active && it == text_autosize.end())
+	{
 		text_autosize.push_back(TextAutosizeEntry{element->GetObserverPtr(), 0});
+		text_autosize_pending = true;
+	}
 	else if (!active && it != text_autosize.end())
 		text_autosize.erase(it);
 	if (!active)
@@ -745,6 +749,7 @@ void ElementDocument::FitTextAutosize()
 	const float dp_ratio = (context ? context->GetDensityIndependentPixelRatio() : 1.0f);
 	const Vector2f vp_dimensions = (context ? Vector2f(context->GetDimensions()) : Vector2f(1.0f));
 	bool layout_again = false;
+	text_autosize_pending = false;
 
 	for (size_t i = 0; i < text_autosize.size();)
 	{
@@ -756,7 +761,13 @@ void ElementDocument::FitTextAutosize()
 		}
 		TextAutosizeEntry& entry = text_autosize[i++];
 		int min_size = 0, max_size = 0;
-		if (!element->IsVisible(true) || !ParseTextAutosize(element, min_size, max_size))
+		if (!element->IsVisible(true))
+		{
+			// (fitted when it shows: its box is not laid out until then)
+			text_autosize_pending = true;
+			continue;
+		}
+		if (!ParseTextAutosize(element, min_size, max_size))
 			continue;
 
 		const ComputedValues& computed = element->GetComputedValues();

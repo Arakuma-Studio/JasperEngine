@@ -53,6 +53,7 @@ local Ticker = { properties = {} }
 
 function Ticker:init()
     self.doc = UIDocument(self.scene, self.entity)
+    RegisterEngineEvent(self, "onUpdate")
 end
 
 function Ticker:onUpdate()
@@ -81,8 +82,11 @@ async def test_text_changing_every_frame_draws(ed: Editor):
     try:
         await ed.call("wait", frames=3)
         previous = None
+        texts = []
         for i in range(5):
             await ed.call("wait", frames=1)
+            texts.append((await ed.call("eval_lua", code="return Engine.frameCount, "
+                                        "UIDocument(scene, entity('Ticker')):getElementById('label').textContent"))["values"])
             shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
             ed.check(not shot.is_error and shot.images, f"screenshot {i}: {shot.text[:300]}")
             (ed.scratch.root / f"ticker-{i}.png").write_bytes(shot.images[0][0])
@@ -91,7 +95,8 @@ async def test_text_changing_every_frame_draws(ed: Editor):
             ink = sum(1 for p in label if max(p) > 128)
             ed.check(ink > 100, f"frame {i}: the label's digits are drawn ({ink} light pixels)")
             if previous is not None:
-                ed.check(label != previous, f"frame {i}: the label shows a new number")
+                ed.check(texts[-1][1] != texts[-2][1], f"frame {i}: the script set a new number (frame count, text): {texts}")
+                ed.check(label != previous, f"frame {i}: the label shows the new number (frame count, text): {texts}")
             previous = label
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)

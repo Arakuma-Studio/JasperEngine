@@ -228,6 +228,7 @@ private:
 		uint64_t signature = 0;
 	};
 	Vector<TextAutosizeEntry> text_autosize;
+	bool text_autosize_pending = false;
 	/// An element's 'text-autosize' became set (or 'none'): fitted after the next layout (or its font size given back).
 	void SetTextAutosize(Element* element, bool active);
 	/// After a layout: the font size of every changed 'text-autosize' element fitted (FitTextAutosize in ElementDocument.cpp).
