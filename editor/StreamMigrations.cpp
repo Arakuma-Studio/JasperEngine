@@ -224,7 +224,8 @@ namespace {
     // version 2 systems through stream/UpstreamParticles (S20, Upstream absorption), their
     // target's quad material moving into the Renderer module. A target Points or
     // InstancedMesh with nothing of its own is removed; a MeshComponent the particles draw as
-    // their mesh stays, disabled so it does not draw itself.
+    // their mesh stays, disabled so it does not draw itself. A system moved to its target names
+    // the GameObject it came from (legacyFrom).
     void migrateParticleSystems(YAML::Node entities, MigrationLog& log){
         std::vector<YAML::Node> all;
         std::function<void(YAML::Node)> collect = [&](YAML::Node list){
@@ -289,6 +290,11 @@ namespace {
                 // the GameObject's own, as it was the component's
                 converted.useUnscaledTime = old["useUnscaledTime"] && editor::YamlNumbers::as<bool>(old["useUnscaledTime"]);
             }
+
+            // an old script wraps the old system's GameObject: it resolves to the moved system
+            // through this even if that GameObject later loses its action (S94 F2)
+            if (!host.is(entity) && entity["entity"])
+                converted.legacyFrom = editor::YamlNumbers::as<Entity>(entity["entity"]);
 
             components.remove("particlesystem");
             hostComponents["particlesystem"] = editor::Stream::encodeParticleSystemComponent(converted);

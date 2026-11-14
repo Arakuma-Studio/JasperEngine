@@ -838,6 +838,25 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P5, F28** applies to Orthographic cameras only; a UI camera keeps its pixel bounds.
 - **P5, F30 Size** is per axis: an axis at 0 keeps width or height over Pixels Per Unit.
 - **P5, AC28** HTML UI under an Orthographic Size camera: pending S92's R57 (not on this base).
+- **P4 (Outline).**
+  - The outlined submesh's render is loaded and drawn by `RenderSystem::loadOutlineRender` /
+    `drawOutlineRender` in `RenderSystem.cpp`, beside the extra pass they follow, because they need
+    that file's local binding helpers (skinning, lattice, VAT, custom blocks). The pass itself
+    (gathering, mode states, sweep, `findOutline`) is `RenderSystemOutline.cpp`. Hooks besides the
+    call after the opaque queue: one after a 2D pass's hierarchy (2D passes have no opaque queue),
+    one line in `destroyMesh` and `destroy`, and the stencil-less swapchain redirect (F-PB2).
+  - Renders use the dynamic pipeline path (`ObjectRender::endLoadDynamic`), so the mask, the fill
+    and every mode share one render per submesh; only a change of Width Units makes it again.
+  - Smoothed normals come from the existing per-geometry cache (`bindSmoothNormals`) when an
+    outline first draws a mesh, on the main thread, not on a job (F-PF2): the extra-pass outlines
+    already work that way, and a job would need a copy of the positions anyway. A reload of a mesh
+    whose other shaders do not read them makes them again.
+  - The Inspector is the reflected default drawer (Unity names, undo) plus a note when nothing is
+    outlined, so no `InspectorOutline.cpp`.
+  - Not outlined: Terrains, Tilemaps, Sprite Batch instances and non-triangle primitives. A 2D
+    camera draws outlines after its whole hierarchy, so over that camera's component UI.
+  - Exports ship the outline variants of every mesh an Outline covers, and of every mesh when the
+    project's scripts mention `Outline` (`ShaderVariantCollector`, `scriptsAddOutlines`).
 - **P3, F15 (gradient ambient).** The SH ambient, `frame.ambient`, Lit's camera block and every
   variant without `'Agr'` carry the gradient's average over every direction (sky/4 + equator/2 +
   ground/4); `'Agr'` variants swap that share for the exact gradient (`includes/ambient.glsl`,

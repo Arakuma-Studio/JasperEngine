@@ -224,6 +224,29 @@ TEST(StreamMigrations, OldUIParticleSystemKeepsItsUnscaledTime){
     EXPECT_FALSE(root["entities"][2]["components"]["particlesystem"]["useUnscaledTime"]);
 }
 
+TEST(StreamMigrations, SceneV2ToV3MovedSystemNamesItsOldGameObject){
+    // S94 F2: an old script wraps the old system's GameObject (ParticleSystem(scene, e)); the
+    // system moved to its target records it as legacyFrom, which reads back on the component.
+    // One that stays where it was records nothing
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 2, entities: ["
+        "{type: Entity, entity: 1575, name: FxConfetti, components: {transform: {position: [0, 0, 0]}, points: {points: ~}}},"
+        "{type: Entity, entity: 1576, name: FxConfettiSystem, components: {action: {state: Stopped, target: 1575},"
+        " particlesystem: {maxParticles: 45, rate: 0, bursts: [{time: 0.001, minCount: 40, maxCount: 40}]}}},"
+        "{type: Entity, entity: 1577, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
+    StreamMigrations::migrate(DocumentKind::Scene, root);
+    const YAML::Node moved = root["entities"][0]["components"]["particlesystem"];
+    ASSERT_TRUE(moved);
+    ASSERT_TRUE(moved["legacyFrom"]);
+    EXPECT_EQ(moved["legacyFrom"].as<uint64_t>(), 1576u);
+    EXPECT_EQ(Stream::decodeParticleSystemComponent(moved).legacyFrom, (Entity)1576);
+    EXPECT_FALSE(root["entities"][2]["components"]["particlesystem"]["legacyFrom"]) << "a system that did not move";
+    EXPECT_EQ(Stream::decodeParticleSystemComponent(root["entities"][2]["components"]["particlesystem"]).legacyFrom, NULL_ENTITY);
+    // written back only when set
+    EXPECT_FALSE(Stream::encodeParticleSystemComponent(ParticleSystemComponent())["legacyFrom"]);
+    EXPECT_EQ(Stream::encodeParticleSystemComponent(Stream::decodeParticleSystemComponent(moved))["legacyFrom"].as<uint64_t>(), 1576u);
+}
+
 TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
     YAML::Node root = YAML::Load(
         "{type: Prefab, version: 4, members: ["
