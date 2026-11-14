@@ -42,6 +42,7 @@ namespace jasperengine{
     struct LightComponent;
     struct LineRendererComponent;
     struct LocalVolumetricFogComponent;
+    struct FogZoneComponent;
     struct MeshComponent;
     struct MeshPolygonComponent;
     struct MirrorComponent;

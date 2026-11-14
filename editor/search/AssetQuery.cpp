@@ -166,6 +166,7 @@ std::vector<std::string> AssetQuery::typeNamesFor(const std::string& value) {
         {"stylesheet", {"stylesheet"}}, {"css", {"stylesheet"}},
         {"data", {"data"}}, {"color_lut", {"color_lut"}}, {"lut", {"color_lut"}}, {"sub_asset", {"sub_asset"}},
         {"title_art", {"title_art"}}, {"titleart", {"title_art"}},
+        {"fog_profile", {"fog_profile"}}, {"fogprofile", {"fog_profile"}},
     };
     auto it = aliases.find(key);
     return it == aliases.end() ? std::vector<std::string>{} : it->second;

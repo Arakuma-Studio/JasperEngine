@@ -269,11 +269,11 @@ void AtmosphereRenderer::clearHeightFog(height_fog_t& block){
         ring = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-void AtmosphereRenderer::update(double dt){
+void AtmosphereRenderer::update(double dt, FogComponent* fogLook){
     Scene* scene = rs->scene;
     time += dt;
 
-    FogComponent* sceneFog = scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* sceneFog = fogLook;
     fog = sceneFog;
     fogPresent = sceneFog != nullptr;
     heightFogActive = sceneFog && sceneFog->type == FogType::HEIGHT;
@@ -356,6 +356,14 @@ void AtmosphereRenderer::update(double dt){
     if (noiseShape.isCreated() && noiseReadyTime < 0.0)
         noiseReadyTime = time;
 
+    updateHorizon();
+}
+
+void AtmosphereRenderer::setViewFog(FogComponent* fogLook){
+    if (fogLook == fog || !fogLook)
+        return;
+    fog = fogLook;
+    // the horizon takes the fog's colour where the sky gives none
     updateHorizon();
 }
 

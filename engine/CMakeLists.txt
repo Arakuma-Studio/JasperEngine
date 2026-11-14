@@ -1715,6 +1715,7 @@ set(JASPERENGINE_SRCS
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
+    core/object/environment/FogZone.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
@@ -1780,6 +1781,8 @@ set(JASPERENGINE_SRCS
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
     core/render/AtmospherePresets.cpp
+    core/render/FogProfile.cpp
+    core/render/FogResolve.cpp
     core/render/AtmosphereQuality.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
@@ -1843,6 +1846,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    core/script/binding/FogClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp
     # S48 PixelFX player

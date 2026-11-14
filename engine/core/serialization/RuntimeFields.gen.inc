@@ -1405,6 +1405,7 @@ const StructTable kBody_ColorTweenComponent{"colortween", kBody_ColorTweenCompon
 
 const FieldEntry kBody_FogComponent_fields[] = {
     JE_RF(FogComponent, type, 0x8c93b3fbu, Enum),
+    JE_RF(FogComponent, profile, 0x1c69160cu, AssetPath),
     JE_RF(FogComponent, color, 0x687955a2u, Vector3),
     JE_RF(FogComponent, density, 0xca2e3d0du, Float),
     JE_RF(FogComponent, linearStart, 0x1a82c52eu, Float),
@@ -2727,6 +2728,16 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_FogZoneComponent_fields[] = {
+    JE_RF(FogZoneComponent, shape, 0x1862110au, Enum),
+    JE_RF(FogZoneComponent, size, 0xc3d4c9e8u, Vector3),
+    JE_RF(FogZoneComponent, blendDistance, 0xf811876fu, Float),
+    JE_RF(FogZoneComponent, priority, 0xdc1e74ddu, Int),
+    JE_RF(FogZoneComponent, weight, 0xf49e906du, Float),
+    JE_RF(FogZoneComponent, profile, 0xbe8c9a8au, AssetPath),
+};
+const StructTable kBody_FogZoneComponent{"fogzone", kBody_FogZoneComponent_fields, std::size(kBody_FogZoneComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2846,6 +2857,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(FogZoneComponent, "fogzone", 0x7df84fedu),
     JE_RF_COMPONENTS_END
 };
 

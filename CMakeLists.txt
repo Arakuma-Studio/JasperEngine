@@ -1052,6 +1052,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
     ${EDITOR_DIR}/reload/handlers/Voxel.cpp
     ${EDITOR_DIR}/reload/handlers/Palettes.cpp
+    ${EDITOR_DIR}/reload/handlers/FogProfiles.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/Graphs.cpp
@@ -1269,6 +1270,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
+    ${EDITOR_DIR}/FogProfileAssets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp

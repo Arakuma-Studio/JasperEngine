@@ -14,6 +14,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -208,6 +209,11 @@ namespace {
         JE_FIELD(FogComponent, type, .enumDesc = &enums::kFogType,
                  .tooltip = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base "
                             "Height and thinning above it, lit by the sun, with an optional volumetric part."),
+        // docs/specs/vapor.md R39: written only when set, so a Fog without one is as it was
+        JE_FIELD(FogComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .asset = AssetKind::FogProfile,
+                 .label = "Profile",
+                 .tooltip = "A Fog Profile (.fogprofile): the look fields it sets come from it and are shared by every Fog and Fog Zone "
+                            "using it; the others are this Fog's own."),
         JE_FIELD(FogComponent, color, .flags = ColorLinear),
         JE_FIELD(FogComponent, density, .step = 0.001f, .format = "%.4f"),
         JE_FIELD(FogComponent, linearStart),
@@ -288,6 +294,24 @@ namespace {
                  .tooltip = "The size of the noise's features."),
         JE_FIELD(LocalVolumetricFogComponent, scrollSpeed, .unit = Unit::MetersPerSecond,
                  .tooltip = "The speed the noise drifts at."),
+    };
+
+    // ---------------------------------------------------------------- Fog Zone
+
+    constexpr FieldDesc kFogZoneFields[] = {
+        JE_FIELD(FogZoneComponent, shape, .enumDesc = &enums::kFogZoneShape,
+                 .tooltip = "A box or a sphere, in the GameObject's space: its Transform moves, turns and scales it."),
+        JE_FIELD(FogZoneComponent, size, .unit = Unit::Meters, .tooltip = "The shape's size before the Transform's scale."),
+        JE_FIELD(FogZoneComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "How far outside the shape the zone's look starts fading in as the camera comes closer. 0: it switches at "
+                            "the surface."),
+        JE_FIELD(FogZoneComponent, priority,
+                 .tooltip = "Zones apply in ascending priority over the scene's fog: a higher one wins where they overlap."),
+        JE_FIELD(FogZoneComponent, weight, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "How much of the zone's look applies inside it (0..1)."),
+        JE_FIELD(FogZoneComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .asset = AssetKind::FogProfile,
+                 .label = "Profile",
+                 .tooltip = "The Fog Profile whose set fields blend over the scene's fog while the camera is in the zone. None: no effect."),
     };
 
     // ---------------------------------------------------------------- Volumetric Clouds
@@ -419,6 +443,13 @@ const ComponentDesc kLocalVolumetricFogDesc{
     .body = JE_STRUCT_DESC(LocalVolumetricFogComponent, "LocalVolumetricFogComponent", kLocalVolumetricFogFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(LocalVolumetricFogComponent),
     .codegenVar = "volume",
+};
+
+const ComponentDesc kFogZoneDesc{
+    .type = ComponentType::FogZoneComponent, .cppName = "FogZoneComponent", .key = "fogzone", .displayName = "Fog Zone", .icon = ICON_FA_SMOG,
+    .body = JE_STRUCT_DESC(FogZoneComponent, "FogZoneComponent", kFogZoneFields),
+    .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(FogZoneComponent),
+    .codegenVar = "fogzone",
 };
 
 const ComponentDesc kVolumetricCloudsDesc{

@@ -646,3 +646,13 @@ scene.fog.profile = p                  -- runtime only
 - **`volumetric_needs_height` also covers volumes with the volumetric part off**: Local Volumetric Fog
   in a scene whose Height fog has Volumetric off (R17 lists no code of its own for it); the message
   and fix say which.
+- **Profiles, zones and the resolve (R1-R11, R43).**
+  - The Fog handle's C++ setters (`Fog::setColor`, ...) take the runtime layer too while the game
+    runs, not only Lua and animation: Lua binds that handle, and a C++ script's write must show
+    over a profile as a Lua one does. Outside a running game they write the Fog as before.
+  - `Fog:applyPreset` writes the Fog's own fields in Play as well (R36: unchanged).
+  - A Fog Zone's profile set from Lua with a clone names it by its `runtime:<n>` key; runtime
+    profiles live until Stop (`FogProfileLibrary::resetRuntime`), so a script clones once.
+  - Test names: the stream test is `StreamAtmosphere.FogProfileFieldsOmitIfDefault` (the
+    file's suite); AC4 is `FogResolveTest.NothingToLayerNeedsNoResolve` (CPU, no allocation)
+    and `AtmosphereGpu.NoProfileNoResolve` (the same frame and passes through the Fog itself).

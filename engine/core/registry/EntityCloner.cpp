@@ -31,6 +31,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/MorphTracksComponent.h"
 #include "component/NavGridComponent.h"
@@ -1354,6 +1355,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SkyboxComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<FogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LocalVolumetricFogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<FogZoneComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ForceFieldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VolumetricCloudsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

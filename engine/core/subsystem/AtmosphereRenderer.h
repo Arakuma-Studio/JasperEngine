@@ -236,8 +236,12 @@ namespace jasperengine{
         AtmosphereRenderer(const AtmosphereRenderer&) = delete;
         AtmosphereRenderer& operator=(const AtmosphereRenderer&) = delete;
 
-        // once per update(): the scene's fog, clouds and volumes, the noise bake
-        void update(double dt);
+        // once per update(): the scene's fog (`fogLook`: the look its passes read, the scene's
+        // first Fog or its resolve at the frame's camera, null without a Fog), clouds and
+        // volumes, the noise bake
+        void update(double dt, FogComponent* fogLook);
+        // the look a view's passes read from now on (its resolve at the view's camera, R7)
+        void setViewFog(FogComponent* fogLook);
 
         // the scene fog is a height fog (u_fs_heightFog says so to the fogged meshes); the meshes need depth
         // programs for the atmosphere's depth pre-pass

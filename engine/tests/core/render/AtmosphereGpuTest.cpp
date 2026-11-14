@@ -21,6 +21,9 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AtmosphereRenderer.h"
 #include "render/AtmospherePresets.h"
+#include "render/FogProfile.h"
+#include "render/FogResolve.h"
+#include "object/environment/FogZone.h"
 #include "texture/TextureData.h"
 
 #include "GpuEnvironment.h"
@@ -826,5 +829,133 @@ TEST_F(AtmosphereGpu, TransparentsTakeTheAnalyticFog){
     const uint8_t* before = &clear[((size_t)y * width + x) * 4];
     const uint8_t* after = &fogged[((size_t)y * width + x) * 4];
     EXPECT_LT((int)after[1] - (int)after[0], (int)before[1] - (int)before[0] - 20);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+
+    // the valley fog written into the component itself: a running scene's Fog setters go to the
+    // runtime layer (docs/specs/vapor.md R43), which is a layer to resolve
+    FogComponent& valleyFogComponent(Scene& scene, Fog& fog){
+        FogComponent& component = scene.getComponent<FogComponent>(fog.getEntity());
+        component.type = FogType::HEIGHT;
+        component.color = Color::sRGBToLinear(Vector3(0.62f, 0.68f, 0.78f));
+        component.attenuationDistance = 90.0f;
+        component.baseHeight = 0.0f;
+        component.maximumHeight = 30.0f;
+        component.directionalInscattering = 0.5f;
+        component.anisotropy = 0.6f;
+        component.maxFogDistance = 3000.0f;
+        return component;
+    }
+
+}
+
+TEST_F(AtmosphereGpu, NoProfileNoResolve){
+    // R11, R20 (AC4): with no profile, zone, blend or runtime write the passes read the Fog itself:
+    // no resolve, the same uploads, the same passes; a profile holding the very same values renders
+    // the very same frame through the resolve
+    JASPER_REQUIRE_GPU();
+    FogProfileLibrary::clear();
+    Light sun(&scene);
+    buildValley(sun);
+    Fog fog(&scene);
+    FogComponent& component = valleyFogComponent(scene, fog);
+    component.volumetric = true;
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+
+    ASSERT_TRUE(render());
+    EXPECT_EQ(renderSystem().getFogLook(), &component);
+    EXPECT_EQ(component.runtime.get(), nullptr);
+    const std::vector<uint8_t> plain = readTarget();
+    const std::vector<std::string> plainPasses = info().passes;
+    ASSERT_FALSE(plainPasses.empty());
+
+    // the same look as a profile: resolved, and the frame is the same to the bit
+    FogProfileLibrary::set("FogProfiles/same.fogprofile", FogProfileData::fromFog(component, "Same"));
+    component.profile = "FogProfiles/same.fogprofile";
+    ASSERT_TRUE(render());
+    const FogComponent* look = renderSystem().getFogLook();
+    ASSERT_NE(look, nullptr);
+    EXPECT_NE(look, &component);
+    EXPECT_EQ(meanDifference(readTarget(), plain), 0.0);
+    EXPECT_EQ(info().passes, plainPasses);
+
+    // unlinked: the Fog itself again
+    component.profile.clear();
+    ASSERT_TRUE(render());
+    EXPECT_EQ(renderSystem().getFogLook(), &component);
+    EXPECT_EQ(meanDifference(readTarget(), plain), 0.0);
+    FogProfileLibrary::clear();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereGpu, ProfilesZonesAndWritesReachThePasses){
+    // R7: what the renderer draws is the resolved look: a profile's colour, a zone around the
+    // camera, a runtime write, each on the frame it is set
+    JASPER_REQUIRE_GPU();
+    FogProfileLibrary::clear();
+    Light sun(&scene);
+    buildValley(sun);
+    Fog fog(&scene);
+    FogComponent& component = valleyFogComponent(scene, fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> own = readTarget();
+
+    // the far buildings sit in the fog: their colour follows the fog's
+    int x = 0, y = 0;
+    ASSERT_TRUE(project(camera, Vector3(0.0f, 2.0f, -400.0f), x, y));
+    auto redness = [&](const std::vector<uint8_t>& rgba){
+        const int width = (int)GpuEnvironment::target().getWidth();
+        const size_t p = ((size_t)y * width + x) * 4;
+        return (int)rgba[p] - (int)rgba[p + 2];
+    };
+
+    FogComponent red;
+    red.color = Vector3(0.8f, 0.05f, 0.02f);
+    FogProfileData redProfile;
+    redProfile.setFrom(red, FogField::Color);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", redProfile);
+    component.profile = "FogProfiles/red.fogprofile";
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> linked = readTarget();
+    EXPECT_GT(meanDifference(linked, own), 2.0);
+    EXPECT_GT(redness(linked), redness(own) + 40);
+
+    // an edit of the profile shows on the next frame (R5)
+    FogComponent blue;
+    blue.color = Vector3(0.02f, 0.05f, 0.8f);
+    FogProfileData blueProfile;
+    blueProfile.setFrom(blue, FogField::Color);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", blueProfile);
+    ASSERT_TRUE(render());
+    EXPECT_LT(redness(readTarget()), redness(own) - 20);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", redProfile);
+
+    // a zone around the camera with the own look wins over the profile
+    FogProfileLibrary::set("FogProfiles/own.fogprofile", FogProfileData::fromFog(component, "Own"));
+    FogZone zone(&scene);
+    zone.setPosition(0.0f, 8.0f, 30.0f);
+    zone.setProfile("FogProfiles/own.fogprofile");
+    zone.setPriority(1);
+    ASSERT_TRUE(render());
+    EXPECT_EQ(meanDifference(readTarget(), own), 0.0);
+    // the camera leaves it: the profile's look again
+    zone.setPosition(0.0f, 8.0f, 500.0f);
+    ASSERT_TRUE(render());
+    EXPECT_EQ(meanDifference(readTarget(), linked), 0.0);
+
+    // a script's write (the scene runs) shows over all of it
+    fog.setColor(0.62f, 0.68f, 0.78f);
+    EXPECT_TRUE(FogScene::hasOverride(component, FogField::Color));
+    ASSERT_TRUE(render());
+    EXPECT_EQ(meanDifference(readTarget(), own), 0.0);
+    FogScene::resetRuntime(&scene);
+    FogProfileLibrary::clear();
     EXPECT_NO_ENGINE_ERRORS();
 }

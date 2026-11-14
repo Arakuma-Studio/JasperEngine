@@ -6999,6 +6999,11 @@
       1,
       "sky",
       "Sky Color"
+     ],
+     [
+      2,
+      "lit",
+      "Lit"
      ]
     ],
     "qualityOverride": [
@@ -7045,6 +7050,8 @@
    "icon": "ef9d9f",
    "key": "fog",
    "known_keys": [
+    "albedo",
+    "ambientMultiplier",
     "anisotropy",
     "attenuationDistance",
     "baseHeight",
@@ -7052,6 +7059,7 @@
     "colorMode",
     "density",
     "directionalInscattering",
+    "emissive",
     "lightShafts",
     "linearEnd",
     "linearStart",
@@ -7060,6 +7068,7 @@
     "maximumHeight",
     "noiseIntensity",
     "noiseScale",
+    "profile",
     "qualityOverride",
     "skyFill",
     "skyFillAngle",
@@ -7071,6 +7080,16 @@
    ],
    "name": "FogComponent",
    "properties_of_default": {
+    "albedo": [
+     5,
+     0,
+     true
+    ],
+    "ambientMultiplier": [
+     2,
+     0,
+     true
+    ],
     "anisotropy": [
      2,
      0,
@@ -7103,6 +7122,11 @@
     ],
     "directionalInscattering": [
      2,
+     0,
+     true
+    ],
+    "emissive": [
+     5,
      0,
      true
     ],
@@ -7143,6 +7167,11 @@
     ],
     "noiseScale": [
      2,
+     0,
+     true
+    ],
+    "profile": [
+     18,
      0,
      true
     ],
@@ -7188,6 +7217,16 @@
     ]
    },
    "properties_without_component": {
+    "albedo": [
+     5,
+     0,
+     true
+    ],
+    "ambientMultiplier": [
+     2,
+     0,
+     true
+    ],
     "anisotropy": [
      2,
      0,
@@ -7220,6 +7259,11 @@
     ],
     "directionalInscattering": [
      2,
+     0,
+     true
+    ],
+    "emissive": [
+     5,
      0,
      true
     ],
@@ -7260,6 +7304,11 @@
     ],
     "noiseScale": [
      2,
+     0,
+     true
+    ],
+    "profile": [
+     18,
      0,
      true
     ],
@@ -24211,6 +24260,103 @@
    "type": 103,
    "type_of_key": 103,
    "type_of_name": 103
+  },
+  {
+   "display_name": "Fog Zone",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ]
+    ]
+   },
+   "has_enabled": false,
+   "icon": "ef9d9f",
+   "key": "fogzone",
+   "known_keys": [
+    "blendDistance",
+    "priority",
+    "profile",
+    "shape",
+    "size",
+    "weight"
+   ],
+   "name": "FogZoneComponent",
+   "properties_of_default": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 104,
+   "type_of_key": 104,
+   "type_of_name": 104
   }
  ],
  "ease_options": [
@@ -25805,6 +25951,16 @@
    ]
   },
   "FogComponent": {
+   "albedo": [
+    5,
+    0,
+    true
+   ],
+   "ambientMultiplier": [
+    2,
+    0,
+    true
+   ],
    "anisotropy": [
     2,
     0,
@@ -25837,6 +25993,11 @@
    ],
    "directionalInscattering": [
     2,
+    0,
+    true
+   ],
+   "emissive": [
+    5,
     0,
     true
    ],
@@ -25880,6 +26041,11 @@
     0,
     true
    ],
+   "profile": [
+    18,
+    0,
+    true
+   ],
    "qualityOverride": [
     13,
     0,
@@ -25917,6 +26083,38 @@
    ],
    "wind": [
     5,
+    0,
+    true
+   ]
+  },
+  "FogZoneComponent": {
+   "blendDistance": [
+    2,
+    0,
+    true
+   ],
+   "priority": [
+    8,
+    0,
+    true
+   ],
+   "profile": [
+    18,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ],
+   "weight": [
+    2,
     0,
     true
    ]
@@ -33210,7 +33408,8 @@
    "fallback": "color",
    "names": [
     "color",
-    "sky"
+    "sky",
+    "lit"
    ]
   },
   "FogType": {

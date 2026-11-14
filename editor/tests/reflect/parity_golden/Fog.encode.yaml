@@ -1,7 +1,8 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 6ef4216e0c08de96
+digest 2face9a2e16d1d60
 --- 0
 type: height
+profile: a b/c.png
 color: [3e+38, -74, 45]
 density: 1e-45
 linearStart: 12.142858
@@ -49,6 +50,7 @@ noiseScale: -0
 wind: [-0, 6580.056, 3e+38]
 --- 2
 type: height
+profile: textures/a.png
 color: [32, -0.893133, -0]
 density: -77
 linearStart: -84
@@ -72,6 +74,7 @@ wind: [3e+38, -87.71429, 47.57143]
 qualityOverride: low
 --- 3
 type: exponential
+profile: sounds/hit.wav
 color: [-0.6429465, 0, 0]
 density: 21.285715
 linearStart: 1e-45
@@ -99,6 +102,7 @@ wind: [-0, 1e-45, 9.142858]
 qualityOverride: medium
 --- 4
 type: exponential_squared
+profile: fonts/Main.ttf
 color: [3645.1147, 0, 55.57143]
 density: 5899.044
 linearStart: -59.57143
@@ -123,6 +127,7 @@ wind: [-0.6292045, 421.57074, 0.5751873]
 qualityOverride: low
 --- 5
 type: height
+profile: ui/menu.html
 color: [-8.428572, -54, 0.48302355]
 density: .nan
 linearStart: 1e-45
@@ -149,6 +154,7 @@ wind: [0.13592365, 9, 0]
 qualityOverride: medium
 --- 6
 type: exponential
+profile: fonts/Main.ttf
 color: [5557.647, -0.2593221, -111.85714]
 density: -47
 linearStart: -0.103610635
