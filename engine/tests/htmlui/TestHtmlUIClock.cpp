@@ -8,7 +8,6 @@
 #include "TestDocumentCommon.h"
 
 #include "Engine.h"
-#include "HtmlTextEffects.h"
 #include "HtmlUIClock.h"
 #include "RmlSystem.h"
 #include "component/UIDocumentComponent.h"
@@ -19,7 +18,6 @@
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
-#include <RmlUi/Core/ElementText.h>
 
 #include <gtest/gtest.h>
 
@@ -50,19 +48,6 @@ namespace {
     Rml::Element* documentElement(Scene& scene, const UIDocument& document, const char* id){
         Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
         return rml ? rml->GetElementById(id) : nullptr;
-    }
-
-    // the cycle time of the text effect over an element's first text
-    double textEffectTime(Rml::Element* element){
-        for (int i = 0; element && i < element->GetNumChildren(); i++){
-            if (Rml::ElementText* text = rmlui_dynamic_cast<Rml::ElementText*>(element->GetChild(i))){
-                int first = 0;
-                if (!HtmlTextEffects::get().GetTextEffect(*text, first))
-                    return -1.0;
-                return HtmlTextEffects::get().lastGlyphs()->cycleTime;
-            }
-        }
-        return -1.0;
     }
 
     float opacityOf(Scene& scene, const char* id){
@@ -239,7 +224,8 @@ TEST_F(HtmlUIClockTest, RmlUiAnimationsFollowTheClock){
     EXPECT_NEAR(opacityOf(scene, "box"), 0.7f, 2e-3f);
 }
 
-// S93 R35 / AC39: a Game Time document's CSS transitions, @keyframes, anime and text effects follow
+// S93 R35 / AC39: a Game Time document's CSS transitions, @keyframes and anime follow (its text
+// effects: TextEffectDocumentTest.AutoTimeFollowsTheDocumentClock)
 // Engine.timeScale and stop at 0; an Unscaled Time document's do not
 TEST_F(HtmlUIClockTest, GameTimeDocumentFollowsTimeScale){
     JASPER_REQUIRE_GPU();
@@ -271,7 +257,7 @@ TEST_F(HtmlUIClockTest, GameTimeDocumentFollowsTimeScale){
     EXPECT_EQ(gameMove->getClock(), AnimClock::GAME);
     // a timeline takes its first animated targets' document's; a given clock wins
     auto timeline = Anime::createTimeline();
-    timeline->add({AnimTargets::fromElement(game.getElementById("line"))}, AnimParam::object({{"opacity", 0.5}, {"duration", 100}}));
+    timeline->add({AnimTargets::fromElement(game.getElementById("slide"))}, AnimParam::object({{"opacity", 0.5}, {"duration", 100}}));
     EXPECT_EQ(timeline->getClock(), AnimClock::GAME);
     auto given = Anime::animate({AnimTargets::fromElement(game.getElementById("keys"))},
                                 AnimParam::object({{"opacity", 0.5}, {"duration", 100}, {"clock", "ui"}}));
@@ -299,10 +285,6 @@ TEST_F(HtmlUIClockTest, GameTimeDocumentFollowsTimeScale){
     const float gameKeys = documentElement(scene, game, "keys")->GetOffsetLeft();
     EXPECT_GT(unscaledKeys, 0.0f);
     EXPECT_NEAR(gameKeys, unscaledKeys * 0.5f, 8.0f);
-    const double unscaledWave = textEffectTime(documentElement(scene, unscaled, "line"));
-    const double gameWave = textEffectTime(documentElement(scene, game, "line"));
-    ASSERT_GT(unscaledWave, 0.0);
-    EXPECT_NEAR(gameWave, unscaledWave * 0.5, 0.06) << "text-effect-time: auto follows the document";
 
     // time scale 0: the game document holds, the other runs on
     Engine::setTimeScale(0.0f);

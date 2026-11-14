@@ -6,7 +6,6 @@
         #slide { position: absolute; left: 0px; top: 0px; width: 10px; height: 10px; background-color: #ff0000ff; transition: left 1s linear-in-out; }
         #keys { position: absolute; left: 0px; top: 20px; width: 10px; height: 10px; background-color: #00ff00ff; animation: 4s linear-in-out slide; }
         #move { position: absolute; left: 0px; top: 40px; width: 10px; height: 10px; background-color: #0000ffff; }
-        #line { position: absolute; left: 0px; top: 60px; text-effect: wave(0.1em 100s); }
         @keyframes slide { from { left: 0px; } to { left: 400px; } }
     </style>
 </head>
@@ -14,6 +13,5 @@
     <div id="slide"></div>
     <div id="keys"></div>
     <div id="move"></div>
-    <p id="line">Wave</p>
 </body>
 </html>

@@ -212,11 +212,12 @@ TEST_F(WorldSpaceDocumentTest, WorldSpaceDocumentIsOccluded){
 
     Screen screen;
     ASSERT_TRUE(capture(screen, 2));
-    // the cube covers the red quadrant's centre; around it the red shows
+    // the cube covers the red quadrant's centre (and, nearer the camera, its top-left part); its
+    // inner corner shows red
     const Vector2 tlCentre = worldToCanvas(scene(), Vector3(-0.5f, 0.5f, 0));
     EXPECT_EQ(screen.countColor(around(tlCentre, 4), 255, 0, 0), 0u) << "the cube in front hides the document";
-    const Vector2 tlCorner = worldToCanvas(scene(), Vector3(-0.9f, 0.9f, 0));
-    EXPECT_GT(screen.countColor(around(tlCorner, 3), 255, 0, 0), 30u);
+    const Vector2 tlInner = worldToCanvas(scene(), Vector3(-0.08f, 0.08f, 0));
+    EXPECT_GT(screen.countColor(around(tlInner, 3), 255, 0, 0), 30u);
     // the cube behind is hidden by the blue quadrant
     const Vector2 brCentre = worldToCanvas(scene(), Vector3(0.5f, -0.5f, 0));
     EXPECT_GT(screen.countColor(around(brCentre, 4), 0, 0, 255), 60u) << "the document hides the cube behind it";

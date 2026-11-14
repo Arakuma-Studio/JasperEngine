@@ -49,3 +49,4 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |
 | `p1/rounded_clip_4x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | the same at four samples |
 | `p1/rounded_clip_nested` | `RenderClip.NestedRoundedClipsUseTheStencil` | three nested rounded clips: the stencil path |
+| `p6/world_space_occluded` | `WorldSpaceDocumentTest.WorldSpaceDocumentIsOccluded` | S93 R36: a World Space UI Document (red and blue quadrants on a transparent body) depth tested among the scene's objects: a cube in front hides part of the red quadrant, the blue quadrant hides a cube behind it |
