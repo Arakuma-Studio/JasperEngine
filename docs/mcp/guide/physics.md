@@ -175,6 +175,12 @@ action}`, any field through `properties`. In Play, `get_runtime_entity` adds `jo
 torque, angle, velocity, position, speed, length, broken) and `rigidbody` (mass, velocities,
 sleeping).
 
+**From a script.** `go:addJoint3D(Joint3DType.HINGE)` adds a child "Joint 3D" with bodyA = `go`
+and Unity's defaults (an error when `go` has no Rigidbody); `go:getJoints3D()` lists the joints
+whose bodyA is `go`; `joint.gameObject`, `joint:destroy([delay])`. A `Joint3D(scene)` goes under
+its bodyA once that is set and then lives as long as that GameObject, not as long as the Lua
+handle; one never given a bodyA goes with its handle.
+
 ## Ragdolls
 
 `create_ragdoll {entity}` (the `physics` tool group; GameObject > 3D Object > Ragdoll..., or the Model's component menu) is
@@ -190,6 +196,14 @@ the now dynamic parts), `r:getParts()`. Simulated pauses everything that moves t
 Animation Player, Model animations, Pose and Vertex Animators) and resumes it after;
 `ragdoll.onBeforeAnimatedRestore` is told just before the parts go back to the animation.
 `selfCollision` off keeps the parts from touching each other.
+
+**At run time** (a character spawned in Play): `Ragdoll.create(root [, options])` is the same
+wizard, all parts made before the next step; `options`: `bones` (`{pelvis = go or name, leftHips,
+leftKnee, leftFoot, rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow,
+middleSpine, head}`, names searched below root; unnamed slots are guessed), `totalMass` (20),
+`start` (`"simulated"`, the default here, or `"animated"`), `selfCollision`, `flipForward`. It
+returns the `Ragdoll`, or raises an error naming the bones it could not find. Call it from
+`onUpdate` or `onStart`, not a UI event handler, to rebuild a ragdoll a character already has.
 
 ## Debug draw and world capacity
 
@@ -327,6 +341,13 @@ result has every resolved field. In Play, `get_runtime_entity` adds
 `joint2d` read-outs: `reaction_force`, `reaction_torque`, `joint_angle`, `joint_speed`,
 `joint_translation`, `joint_linear_speed`, `motor_torque`, `motor_force`, `current_length`,
 `limit_state`; and `rigidbody2d`: mass, velocities, Box2D shapes per collider.
+
+**From a script.** `go:addJoint2D(Joint2DType.WHEEL)` adds a child "Joint 2D" with bodyA = `go`
+and Unity's defaults (an error when `go` has no Rigidbody 2D); `go:getJoints2D()` lists the joints
+whose bodyA is `go`; `joint.gameObject`, `joint:destroy([delay])`. A `Joint2D(scene)` goes under
+its bodyA once that is set (`bodyA` or a `set*Joint` helper) and then lives as long as that
+GameObject, not as long as the Lua handle; one never given a bodyA goes with its handle. A joint
+whose connected body is destroyed leaves the simulation with one "Cannot create joint" error.
 
 **A hill-climb car** (body box, two wheels on suspension, Unity values):
 

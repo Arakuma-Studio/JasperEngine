@@ -104,6 +104,7 @@
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
 #include "Joint2D.h"
+#include "component/Rigidbody2DComponent.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #include "Collision2D.h"
@@ -115,6 +116,8 @@
 #include "ControllerColliderHit.h"
 #include "Joint3D.h"
 #include "Ragdoll.h"
+#include "physics/RagdollBuilder.h"
+#include "component/RigidbodyComponent.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
 #include "Collision.h"
@@ -841,6 +844,193 @@ namespace {
         }
         return entity;
     }
+
+    // Ragdoll.create's options.bones keys (Unity RagdollBuilder's fields) and the builder's slots
+    const std::pair<const char*, const char*> ragdollBoneKeys[] = {
+        {"pelvis", "pelvis"}, {"leftHips", "left_hips"}, {"leftKnee", "left_knee"}, {"leftFoot", "left_foot"},
+        {"rightHips", "right_hips"}, {"rightKnee", "right_knee"}, {"rightFoot", "right_foot"},
+        {"leftArm", "left_arm"}, {"leftElbow", "left_elbow"}, {"rightArm", "right_arm"},
+        {"rightElbow", "right_elbow"}, {"middleSpine", "middle_spine"}, {"head", "head"}};
+
+    // a GameObject below (or at) root by name, NULL_ENTITY when none
+    Entity ragdollBoneByName(Scene* scene, Entity root, const std::string& name){
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(root)){
+            return NULL_ENTITY;
+        }
+        const size_t first = transforms->getIndex(root);
+        const size_t last = scene->findBranchLastIndex(root);
+        for (size_t i = first; i <= last && i < transforms->size(); i++){
+            const Entity candidate = transforms->getEntity(i);
+            if (scene->getEntityName(candidate) == name){
+                return candidate;
+            }
+        }
+        return NULL_ENTITY;
+    }
+
+    // The world poses of root's ancestors and branch as of now: the bones are found and sized
+    // from them, and a model instantiated this frame has only its local ones until the
+    // transform update
+    void refreshBranchWorldPoses(Scene* scene, Entity root){
+        RenderSystem* render = scene->getSystem<RenderSystem>().get();
+        std::vector<Entity> ancestors;
+        for (Entity e = scene->getComponent<Transform>(root).parent; e != NULL_ENTITY; ){
+            const Transform* transform = scene->findComponent<Transform>(e);
+            if (!transform){
+                break;
+            }
+            ancestors.push_back(e);
+            e = transform->parent;
+        }
+        for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it){
+            render->updateTransform(scene->getComponent<Transform>(*it), *it);
+        }
+        auto transforms = scene->getComponentArray<Transform>();
+        const size_t first = transforms->getIndex(root);
+        const size_t last = scene->findBranchLastIndex(root);
+        // parents come before their children in the array
+        for (size_t i = first; i <= last && i < transforms->size(); i++){
+            render->updateTransform(transforms->getComponentFromIndex(i), transforms->getEntity(i));
+        }
+    }
+
+    // the keys of a Lua table that are not in `known` (iterated with the raw C API: LuaRef has
+    // no pairs here)
+    std::vector<std::string> luaUnknownTableKeys(lua_State* L, const luabridge::LuaRef& table, const std::vector<std::string>& known){
+        std::vector<std::string> unknown;
+        const int top = lua_gettop(L);
+        table.push(L);
+        const int index = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0){
+            lua_pop(L, 1);
+            const std::string key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : std::string("(not a name)");
+            if (std::find(known.begin(), known.end(), key) == known.end()){
+                unknown.push_back(key);
+            }
+        }
+        lua_settop(L, top);
+        return unknown;
+    }
+
+    // Ragdoll.create(root [, options]): Unity's Ragdoll Wizard on a live character, all its parts
+    // made before the next step (RagdollBuilder::build + apply)
+    Ragdoll luaRagdollCreate(luabridge::LuaRef rootArg, std::optional<luabridge::LuaRef> optionsArg, lua_State* L){
+        Scene* scene = nullptr;
+        Entity root = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        rootArg.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, root);
+        lua_settop(L, top);
+        if (!isObject || !scene || !scene->isEntityCreated(root) || !scene->findComponent<Transform>(root)){
+            throw std::runtime_error("Ragdoll.create: argument 1 must be the character's root GameObject");
+        }
+
+        RagdollBuildSettings settings;
+        // made at run time to fall: simulated unless asked otherwise
+        settings.startSimulated = true;
+        RagdollBones bones = RagdollBuilder::guessBones(scene, root);
+
+        if (optionsArg && !optionsArg->isNil()){
+            const luabridge::LuaRef& options = *optionsArg;
+            if (!options.isTable()){
+                throw std::runtime_error("Ragdoll.create: options must be a table {bones, totalMass, start, selfCollision, flipForward}");
+            }
+            const std::vector<std::string> unknown = luaUnknownTableKeys(L, options, {"bones", "totalMass", "start", "selfCollision", "flipForward"});
+            if (!unknown.empty()){
+                throw std::runtime_error("Ragdoll.create: unknown option \"" + unknown.front() + "\" (bones, totalMass, start, selfCollision, flipForward)");
+            }
+            const luabridge::LuaRef totalMass = options["totalMass"];
+            if (!totalMass.isNil()){
+                if (!totalMass.isNumber() || !(totalMass.unsafe_cast<float>() > 0.0f) || !std::isfinite(totalMass.unsafe_cast<float>())){
+                    throw std::runtime_error("Ragdoll.create: options.totalMass must be a number of kg above 0");
+                }
+                settings.totalMass = totalMass.unsafe_cast<float>();
+            }
+            const luabridge::LuaRef start = options["start"];
+            if (!start.isNil()){
+                const std::string value = start.isString() ? start.tostring() : std::string();
+                if (value != "animated" && value != "simulated"){
+                    throw std::runtime_error("Ragdoll.create: options.start must be \"animated\" or \"simulated\"");
+                }
+                settings.startSimulated = value == "simulated";
+            }
+            for (const char* flag : {"selfCollision", "flipForward"}){
+                const luabridge::LuaRef value = options[flag];
+                if (value.isNil()){
+                    continue;
+                }
+                if (!value.isBool()){
+                    throw std::runtime_error(std::string("Ragdoll.create: options.") + flag + " must be a boolean");
+                }
+                (std::string(flag) == "selfCollision" ? settings.selfCollision : settings.flipForward) = value.unsafe_cast<bool>();
+            }
+            const luabridge::LuaRef given = options["bones"];
+            if (!given.isNil()){
+                if (!given.isTable()){
+                    throw std::runtime_error("Ragdoll.create: options.bones must be a table {pelvis = GameObject or name, leftHips = ..., ...}");
+                }
+                std::vector<std::string> keys;
+                for (const auto& [key, slot] : ragdollBoneKeys){
+                    keys.push_back(key);
+                }
+                const std::vector<std::string> unknownBones = luaUnknownTableKeys(L, given, keys);
+                if (!unknownBones.empty()){
+                    throw std::runtime_error("Ragdoll.create: options.bones has no slot \"" + unknownBones.front() +
+                                             "\" (pelvis, leftHips, leftKnee, leftFoot, rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow, middleSpine, head)");
+                }
+                for (const auto& [key, slot] : ragdollBoneKeys){
+                    const luabridge::LuaRef value = given[key];
+                    if (value.isNil()){
+                        continue;
+                    }
+                    Entity bone = NULL_ENTITY;
+                    if (value.isString()){
+                        bone = ragdollBoneByName(scene, root, value.tostring());
+                        if (bone == NULL_ENTITY){
+                            throw std::runtime_error(std::string("Ragdoll.create: options.bones.") + key + ": no GameObject \"" + value.tostring() +
+                                                     "\" below \"" + scene->getEntityName(root) + "\"");
+                        }
+                    }else{
+                        Scene* boneScene = nullptr;
+                        value.push(L);
+                        const bool boneObject = luaObjectArg(L, lua_gettop(L), boneScene, bone);
+                        lua_settop(L, top);
+                        if (!boneObject || boneScene != scene || !scene->isEntityCreated(bone)){
+                            throw std::runtime_error(std::string("Ragdoll.create: options.bones.") + key + " must be a GameObject of the root's scene or its name");
+                        }
+                    }
+                    bones.slot(slot) = bone;
+                }
+            }
+        }
+
+        // the bones a ragdoll cannot do without, by the names options.bones takes
+        std::string missing;
+        for (const auto& [key, slot] : ragdollBoneKeys){
+            const std::string name(slot);
+            if (name != "pelvis" && name != "left_hips" && name != "left_knee" && name != "right_hips" && name != "right_knee"){
+                continue;
+            }
+            const Entity bone = bones.slot(name);
+            if (bone == NULL_ENTITY || !scene->isEntityCreated(bone) || !scene->findComponent<Transform>(bone)){
+                missing += (missing.empty() ? "" : ", ") + std::string(key);
+            }
+        }
+        if (!missing.empty()){
+            throw std::runtime_error("Ragdoll.create: \"" + scene->getEntityName(root) + "\" has no bone found for " + missing +
+                                     " (a ragdoll needs the pelvis, both hips and both knees): name them in options.bones");
+        }
+
+        refreshBranchWorldPoses(scene, root);
+        const RagdollBuildResult result = RagdollBuilder::build(scene, root, bones, settings);
+        std::string error = result.error;
+        if (!result.ok || !RagdollBuilder::apply(scene, root, result, &error)){
+            throw std::runtime_error("Ragdoll.create: " + error);
+        }
+        return Ragdoll(scene, root);
+    }
 }
 #endif
 
@@ -1566,6 +1756,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return Joint2D(scene, self->getEntity());
         })
+        // a child joint GameObject with bodyA = this (Unity AddComponent<HingeJoint2D>())
+        .addFunction("addJoint2D", +[](GameObject* self, Joint2DType type) -> Joint2D {
+            Scene* scene = self->getScene();
+            if ((int)type < (int)Joint2DType::DISTANCE || (int)type > (int)Joint2DType::MOTOR){
+                throw std::runtime_error("GameObject:addJoint2D: the type is a Joint2DType (Joint2DType.WHEEL, ...)");
+            }
+            if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->findComponent<Rigidbody2DComponent>(self->getEntity())){
+                throw std::runtime_error("GameObject:addJoint2D: \"" + (scene ? scene->getEntityName(self->getEntity()) : std::string("?")) +
+                                         "\" has no Rigidbody 2D: give it one first (go:getRigidbody2D())");
+            }
+            return self->addJoint2D(type);
+        })
+        .addFunction("getJoints2D", &GameObject::getJoints2D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
@@ -1582,6 +1785,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return Joint3D(scene, self->getEntity());
         })
+        // a child joint GameObject with bodyA = this (Unity AddComponent<HingeJoint>())
+        .addFunction("addJoint3D", +[](GameObject* self, Joint3DType type) -> Joint3D {
+            Scene* scene = self->getScene();
+            if ((int)type < (int)Joint3DType::FIXED || (int)type > (int)Joint3DType::PULLEY){
+                throw std::runtime_error("GameObject:addJoint3D: the type is a Joint3DType (Joint3DType.HINGE, ...)");
+            }
+            if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->findComponent<RigidbodyComponent>(self->getEntity())){
+                throw std::runtime_error("GameObject:addJoint3D: \"" + (scene ? scene->getEntityName(self->getEntity()) : std::string("?")) +
+                                         "\" has no Rigidbody: give it one first (go:getRigidbody())");
+            }
+            return self->addJoint3D(type);
+        })
+        .addFunction("getJoints3D", &GameObject::getJoints3D)
         // the Ragdoll of the GameObject, nil when it has none
         .addFunction("getRagdoll", +[](GameObject* self) -> std::optional<Ragdoll> {
             Scene* scene = self->getScene();
@@ -5141,6 +5357,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Joint2D, EntityHandle>("Joint2D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        .addProperty("gameObject", &Joint2D::getGameObject)
+        // GameObject.destroy of the joint's GameObject, after delay seconds
+        .addFunction("destroy", +[](Joint2D* self, std::optional<float> delay) { self->destroy(delay.value_or(0.0f)); })
         // as before local anchors: world points, the other fields as Box2D had them
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint2D::setDistanceJoint),
@@ -5455,6 +5674,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Joint3D, EntityHandle>("Joint3D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        .addProperty("gameObject", &Joint3D::getGameObject)
+        // GameObject.destroy of the joint's GameObject, after delay seconds
+        .addFunction("destroy", +[](Joint3D* self, std::optional<float> delay) { self->destroy(delay.value_or(0.0f)); })
         // as before local anchors: world points and axes, the other fields as Jolt had them
         .addFunction("setFixedJoint", &Joint3D::setFixedJoint)
         .addFunction("setDistanceJoint",
@@ -5569,6 +5791,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Ragdoll, EntityHandle>("Ragdoll")
         .addConstructor <void (Scene*, Entity)> ()
+        .addStaticFunction("create", &luaRagdollCreate)
         .addProperty("enabled", &Ragdoll::isEnabled, &Ragdoll::setEnabled)
         .addProperty("simulated", &Ragdoll::isSimulated, &Ragdoll::setSimulated)
         .addFunction("setSimulated", &Ragdoll::setSimulated)

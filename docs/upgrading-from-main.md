@@ -138,6 +138,13 @@ Old scripts keep running; a few old names print a one-time deprecation warning w
   `setTarget()`. **Change:** `ps:isPaused()` is the property `ps.isPaused` now (calling it fails with
   "attempt to call a boolean value"). Particle counts and positions come from the new simulation: a
   script must not depend on the exact particles.
+- **Joints made from Lua** (S96). `Joint2D(scene)` / `Joint3D(scene)` make a GameObject named
+  "Joint 2D" / "Joint 3D". Once its bodyA is set (`bodyA`, `set*Joint`), the joint goes under bodyA
+  (world pose kept) and the handle stops owning it (`entityOwned` false): it outlives the handle and
+  goes when bodyA's GameObject goes, as editor-made joints do. **Change:** dropping the handle no
+  longer removes a joint that has a bodyA (before, the next garbage collection did); remove it with
+  `joint:destroy()` or `GameObject.destroy(joint)`. A joint never given a bodyA still goes with its
+  handle.
 
 ## Rendering
 
