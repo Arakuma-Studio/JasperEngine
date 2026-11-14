@@ -147,6 +147,8 @@ the project. Links inside the project are written through.
   different file at a destination, an unwritable file, a link out of the new directory, unsaved
   Code Editor edits of a moving file) refuses the call and nothing changes. After the change,
   `failed_saves` lists files that keep the old paths on disk (save them again).
+- A new project keeps its assets in `assets/` and its Lua scripts in `scripts/` (`assetsDir: assets`,
+  `luaDir: scripts`); a `project.yaml` without the keys means the project folder for both.
 - Set the directories right after creating a project, before importing: a later change moves files.
 
 ## Missing Assets and Find References

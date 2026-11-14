@@ -199,7 +199,7 @@ async def test_opaque_queue_fix_and_undo(ed: Editor):
         entry = inputs[0]
         ed.check_eq(entry["queue"], "opaque", "kept opaque by the mesh")
         ed.check_eq(entry.get("fix"), {"transparent": True}, "the fix is the mesh's Transparent")
-        r = await ed.call("check_shader", timeout=300)
+        r = (await ed.call_raw("check_shader", {}, timeout=300)).value
         messages = [f["message"] for f in r.get("findings", []) if "Soft editor kept opaque" in f.get("message", "")]
         ed.check(len(messages) == 1 and "transparent" in messages[0], f"the check says it too: {messages!r}")
 

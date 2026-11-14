@@ -1353,8 +1353,10 @@ thread_local double evalTimeoutSeconds = 5.0;
 
 void evalTimeoutHook(lua_State* L, lua_Debug*) {
     if (Clock::now() > evalDeadline) {
-        char message[96];
-        snprintf(message, sizeof(message), "eval_lua: timed out after %.1f s (infinite loop?)", evalTimeoutSeconds);
+        char message[192];
+        snprintf(message, sizeof(message),
+                 "eval_lua: timed out after %.1f s: pass timeout_seconds (up to 60); for longer work, run it as a "
+                 "coroutine in a script and wait with wait {until}", evalTimeoutSeconds);
         luaL_error(L, "%s", message);
     }
 }
@@ -3986,6 +3988,7 @@ void waitTool(const CallPtr& call) {
         FrameProgress progress;
         double progressGameTime = 0.0;      // a game_seconds cap: the game time must advance too
         Clock::time_point progressGameAt;
+        Clock::time_point timeScaleZeroAt;  // since when the time scale is 0 (epoch: it is not)
         Advance advance;
     };
     auto ws = std::make_shared<WaitState>();
@@ -4010,6 +4013,18 @@ void waitTool(const CallPtr& call) {
         if (playing && (p->getPlaySessionSceneId() != playId || state().current.serial != ws->serial)) {
             ws->reason = "play_ended";
             return true;
+        }
+        // A game_seconds-only wait into a game whose own pause set the time scale to 0 has not
+        // failed: after 1 s of a zero scale it ends with that reason instead of stalling for 60 s.
+        if (playing && gameSeconds > 0.0 && frames <= 0 && seconds <= 0.0 && until.empty()) {
+            if (Engine::getTimeScale() > 0.0f) {
+                ws->timeScaleZeroAt = Clock::time_point();
+            } else if (ws->timeScaleZeroAt == Clock::time_point()) {
+                ws->timeScaleZeroAt = Clock::now();
+            } else if (secondsSince(ws->timeScaleZeroAt) >= 1.0) {
+                ws->reason = "time_scale_zero";
+                return true;
+            }
         }
         if (ws->stallGuard) {
             bool stalled = ws->progress.stalled();
@@ -4145,6 +4160,10 @@ void waitTool(const CallPtr& call) {
                    (Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
                                        : "is it rendering, or the time scale 0?") + ").";
             isError = true;
+        } else if (ws->reason == "time_scale_zero") {
+            data["next"] = "the time scale is 0: wait with seconds or frames, or unpause";
+            text = "Waited " + elapsed + "; the time scale is 0, so game time does not advance: wait with seconds or "
+                   "frames, or unpause.";
         } else if (ws->reason == "timeout") {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
                    ws->conditionValue.dump() + ".";

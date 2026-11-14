@@ -34,7 +34,8 @@ capture_id=<id> frame=worst` (tree), `view=flat` (what costs most over every thr
 **Which pass costs the GPU time?** `get_gpu_passes` arms GPU timing, waits until the times of a
 frame arrive (a few frames late) and lists every pass with `gpu_ms`. Over many frames:
 `capture_profile frames=300` then `get_gpu_passes capture_id=<id>` gives median/p95/p99/max per
-pass label.
+pass label. A game script that checks its own GPU budget sets `Profiler.gpuTiming = true` and reads
+`Profiler.frameStats().gpuPasses` (`jasper://docs/lua-api`, 2.14).
 
 **What did a pass draw?** `capture_pass_output pass=<index or label> attachment=color0|depth
 mode=color|depth|alpha|r|g|b`. Depth is normalised to the range it holds. Swapchain passes and

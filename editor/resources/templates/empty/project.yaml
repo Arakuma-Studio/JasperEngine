@@ -26,10 +26,11 @@ windowMode: windowed
 windowWidth: 1280
 windowHeight: 720
 windowResizable: true
-luaDir: .
+assetsDir: assets
+luaDir: scripts
 versionControl:
   lfs: true
-startSceneId: 4156712284
+startSceneId: 1392539871
 mesh:
   animationEntities: auto
 audio:
@@ -37,5 +38,5 @@ audio:
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
-  - filepath: Main.scene
-    filepathGuid: b2a530fccff0fd64dd67b5dd72139f08
+  - filepath: assets/scenes/Main.scene
+    filepathGuid: 02648053e97470de32492773fdbfc754

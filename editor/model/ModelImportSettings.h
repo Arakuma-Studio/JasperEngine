@@ -57,6 +57,12 @@ namespace jasperengine::editor {
     const char* indexFormatLabel(IndexFormat value);
     const char* lodReductionLabel(LodReduction value);
 
+    // Material Creation Mode (S98 REQ-35): Import makes the model's materials and resolves their
+    // textures; None makes none, so every submesh draws with the default material. A model-level
+    // setting with no platform override: an FBX is imported once for every platform.
+    enum class MaterialCreationMode : uint8_t { Import, None };
+    const char* materialCreationModeName(MaterialCreationMode value);   // "import", "none"
+
     // The allowed values of an enum setting (its meta key), for errors that list them
     const std::vector<std::string>& modelEnumValues(const std::string& field);
 
@@ -152,6 +158,7 @@ namespace jasperengine::editor {
 
         int version = currentVersion;
         ModelSettingValues values;
+        std::optional<MaterialCreationMode> materialCreationMode;   // absent: Import
         std::array<ModelPlatformSettings, kModelFamilyCount> platforms;
         // keys this version does not know, kept as they were
         YAML::Node unknown;
@@ -176,6 +183,8 @@ namespace jasperengine::editor {
     bool validateModelSettingsField(const std::string& field, const YAML::Node& value, std::string& error);
     // the meta keys of R8's settings, in the Inspector's order
     const std::vector<std::string>& modelSettingKeys();
+    // every key a model's section sets: R8's settings and the model-level materialCreationMode
+    const std::vector<std::string>& modelImporterKeys();
 
     // project.yaml's `mesh:`: only what differs from the defaults is written (an empty map when
     // nothing does); decoding clamps out-of-range values and skips unknown names
