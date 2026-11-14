@@ -641,7 +641,7 @@ makes one on the selected mesh, or a new 2 x 1 x 4 m car, in one undo step.
   does nothing and logs once.
 - The suspension hangs from the GameObject's position + `center` down the body's down axis by
   `suspensionDistance`; the wheel rolls along the GameObject's forward (+Z). It is not a collider:
-  a cylinder cast finds the ground through the body's layer and the Layer Collision Matrix, and
+  a ray down the suspension (Unity's) finds the ground through the body's layer and the Layer Collision Matrix, and
   never hits the body or the bodies below it. Wheels send no contact callbacks.
 - Unity's fields and defaults (metres, kg, N, N m): `radius` 0.5, `mass` 20, `wheelDampingRate`
   0.25, `suspensionDistance` 0.3, `forceAppPointDistance` 0, `suspensionSpring` {`spring` 35000,

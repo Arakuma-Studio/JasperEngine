@@ -90,8 +90,13 @@ namespace jasperengine{
         std::map<Entity, Vehicle> vehicles;
         std::map<Entity, std::vector<Entity>> groupScratch;
         std::vector<float> inputScratch;
+        std::vector<Entity> partsScratch;
+        std::vector<Entity> chainScratch;
         // wheels already told why they do nothing (logged once each)
         std::unordered_set<Entity> warned;
+        // seconds spent in preStep and postStep, summed (the performance tests)
+        double preSeconds = 0.0;
+        double postSeconds = 0.0;
 
         // the nearest ancestor with a Rigidbody (NULL_ENTITY: none)
         Entity findBody(Entity wheel) const;
@@ -105,6 +110,7 @@ namespace jasperengine{
         void readOutputs(Vehicle& vehicle, float dt);
         // the bodies below the vehicle body (its parts), never hit by the wheels
         void collectParts(Vehicle& vehicle);
+        void preStepVehicles();
 
     public:
         VehicleSystem(Scene* scene, PhysicsSystem* physics);
@@ -119,6 +125,10 @@ namespace jasperengine{
         // After each world step: the read-outs and the wheels' Transforms (dt: the fixed step)
         void postStep(float dt);
         size_t count() const { return vehicles.size(); }
+        // seconds summed over the passes since the last reset (the Jolt step's own share is not in them)
+        double getPreStepSeconds() const { return preSeconds; }
+        double getPostStepSeconds() const { return postSeconds; }
+        void resetTimings() { preSeconds = 0.0; postSeconds = 0.0; }
         // every vehicle goes (the world is torn down)
         void clear();
 

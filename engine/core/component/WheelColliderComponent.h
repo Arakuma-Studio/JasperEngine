@@ -58,7 +58,7 @@ namespace jasperengine{
     // A wheel of the vehicle made of the dynamic Rigidbody above it (Unity's WheelCollider), on
     // Jolt's vehicle constraint (VehicleSystem). The suspension hangs from the GameObject's
     // position + center (in its local space) down the body's down axis by suspensionDistance;
-    // the wheel rolls along the GameObject's forward. It is not a collider: a cylinder cast finds
+    // the wheel rolls along the GameObject's forward. It is not a collider: a ray (Unity's) finds
     // the ground. Sizes in metres. driveTransform puts the GameObject at getWorldPose() after
     // each step, so a wheel mesh below it follows (interpolated with the body).
     struct JASPERENGINE_API WheelColliderComponent{

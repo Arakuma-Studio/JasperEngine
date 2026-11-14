@@ -22,6 +22,7 @@
 #include "Jolt/Physics/Vehicle/VehicleCollisionTester.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cfloat>
 #include <cmath>
 
@@ -290,7 +291,8 @@ std::vector<float> VehicleSystem::sprungMasses(const std::vector<Vector3>& point
 }
 
 void VehicleSystem::collectParts(Vehicle& vehicle){
-    std::vector<Entity> parts;
+    std::vector<Entity>& parts = partsScratch;
+    parts.clear();
     auto transforms = scene->getComponentArray<Transform>();
     if (transforms->hasEntity(vehicle.body)){
         const size_t first = transforms->getIndex(vehicle.body);
@@ -308,7 +310,7 @@ void VehicleSystem::collectParts(Vehicle& vehicle){
     }
     std::sort(parts.begin(), parts.end());
     if (vehicle.filter && vehicle.filter->parts != parts){
-        vehicle.filter->parts = std::move(parts);
+        vehicle.filter->parts = parts;
     }
 }
 
@@ -326,7 +328,7 @@ bool VehicleSystem::build(Entity bodyEntity, const std::vector<Entity>& wheelEnt
     const float gravity = physics->getGravity3D().length();
 
     JPH::Ref<JPH::VehicleConstraint> constraint;
-    JPH::Ref<JPH::VehicleCollisionTesterCastCylinder> tester;
+    JPH::Ref<JPH::VehicleCollisionTesterRay> tester;
     std::vector<float> sprung;
     float inverseMass = 0.0f;
     Vector3 centerOfMass;
@@ -374,8 +376,6 @@ bool VehicleSystem::build(Entity bodyEntity, const std::vector<Entity>& wheelEnt
             wheel->mSuspensionSpring.mStiffness = b.suspensionSpring.spring;
             wheel->mSuspensionSpring.mDamping = b.suspensionSpring.damper;
             wheel->mRadius = b.radius;
-            // a tire's contact patch for the ground cast (Unity's wheel has no width)
-            wheel->mWidth = 0.4f * b.radius;
             if (b.forceAppPointDistance > 0.0f){
                 const float restLength = b.suspensionDistance - restCompression;
                 wheel->mEnableSuspensionForcePoint = true;
@@ -489,7 +489,9 @@ bool VehicleSystem::build(Entity bodyEntity, const std::vector<Entity>& wheelEnt
         settings.mController = controller.GetPtr();
 
         constraint = new JPH::VehicleConstraint(body, settings);
-        tester = new JPH::VehicleCollisionTesterCastCylinder(body.GetObjectLayer());
+        // Unity's WheelCollider: a ray down the suspension from the wheel's top (a cylinder cast
+        // costs twice as much, over REQ-41's budget for 20 cars: VehicleBench)
+        tester = new JPH::VehicleCollisionTesterRay(body.GetObjectLayer());
     }
 
     // what the old vehicle's wheels and engine were doing goes on (an edit is not a reset)
@@ -625,7 +627,13 @@ void VehicleSystem::preStep(){
     if (!physics->hasWorld3D()){
         return;
     }
+    const auto start = std::chrono::steady_clock::now();
+    preStepVehicles();
+    preSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
 
+void VehicleSystem::preStepVehicles(){
+    auto wheels = scene->getComponentArray<WheelColliderComponent>();
     for (auto& group : groupScratch){
         group.second.clear();
     }
@@ -655,8 +663,10 @@ void VehicleSystem::preStep(){
             vehicleClearReadouts(wheel);
             continue;
         }
-        warned.erase(entity);
-        if (!rigidbody.enabled || rigidbody.body.IsInvalid() || !scene->isEntityActiveInHierarchy(body) || !bodyInterface.IsAdded(rigidbody.body)){
+        if (!warned.empty()){
+            warned.erase(entity);
+        }
+        if (!rigidbody.enabled || rigidbody.body.IsInvalid() || !scene->isEntityActiveInHierarchy(body)){
             vehicleClearReadouts(wheel);
             continue;
         }
@@ -680,6 +690,17 @@ void VehicleSystem::preStep(){
         }
         const Entity bodyEntity = group.first;
         const RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(bodyEntity);
+        // out of the world (disabled this step, removed by a script): no vehicle until it is back
+        if (!bodyInterface.IsAdded(rigidbody.body)){
+            for (Entity entity : group.second){
+                vehicleClearReadouts(scene->getComponent<WheelColliderComponent>(entity));
+            }
+            if (auto found = vehicles.find(bodyEntity); found != vehicles.end()){
+                destroy(found->second);
+                vehicles.erase(found);
+            }
+            continue;
+        }
         Vehicle& vehicle = vehicles[bodyEntity];
 
         bool rebuild = !vehicle.constraint || vehicle.bodyId != rigidbody.body || vehicle.wheels.size() != group.second.size() ||
@@ -698,10 +719,11 @@ void VehicleSystem::preStep(){
             rebuild = true;
         }
         if (!rebuild){
-            // the body's mass or centre of mass changed (a collider edit swaps its shape, keeping its id)
-            JPH::BodyLockRead lock(physics->getBodyLockInterface3D(), rigidbody.body);
-            rebuild = !lock.Succeeded() || lock.GetBody().GetMotionProperties()->GetInverseMass() != vehicle.inverseMass ||
-                      vehicleFromJolt(lock.GetBody().GetShape()->GetCenterOfMass()) != vehicle.centerOfMass;
+            // the body's mass or centre of mass changed (a collider edit swaps its shape, keeping its
+            // id). The constraint's body is that live body (same id) and nothing steps now: no lock.
+            const JPH::Body* body = vehicle.constraint->GetVehicleBody();
+            rebuild = body->GetMotionProperties()->GetInverseMass() != vehicle.inverseMass ||
+                      vehicleFromJolt(body->GetShape()->GetCenterOfMass()) != vehicle.centerOfMass;
         }
         if (rebuild && !build(bodyEntity, group.second, vehicle)){
             destroy(vehicle);
@@ -716,7 +738,7 @@ void VehicleSystem::preStep(){
             wheel.sprungMass = vehicle.sprung[i];
         }
         // the body's layer and filter bits now (a layer change swaps its ObjectLayer)
-        const JPH::ObjectLayer layer = bodyInterface.GetObjectLayer(rigidbody.body);
+        const JPH::ObjectLayer layer = vehicle.constraint->GetVehicleBody()->GetObjectLayer();
         if (vehicle.tester->GetObjectLayer() != layer){
             const_cast<JPH::VehicleCollisionTester*>(vehicle.tester.GetPtr())->SetObjectLayer(layer);
         }
@@ -726,10 +748,14 @@ void VehicleSystem::preStep(){
 }
 
 void VehicleSystem::readOutputs(Vehicle& vehicle, float dt){
-    JPH::BodyInterface& bodyInterface = physics->getBodyInterface3D();
-    const JPH::BodyLockInterface& locks = physics->getBodyLockInterface3D();
+    // between steps on the main thread nothing else touches the bodies: no locks (the caller
+    // checked that the vehicle's body is still the constraint's)
+    const JPH::BodyLockInterfaceNoLock& bodies = physics->getWorld3D()->GetBodyLockInterfaceNoLock();
+    const JPH::Body* vehicleBody = vehicle.constraint->GetVehicleBody();
     const JPH::Wheels& wheels = vehicle.constraint->GetWheels();
-    std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>();
+    RenderSystem* render = scene->getSystem<RenderSystem>().get();
+    // the body's Transform placed from this step's pose, once for its wheels
+    bool bodyResolved = false;
 
     for (size_t i = 0; i < vehicle.wheels.size() && i < wheels.size(); i++){
         const Entity entity = vehicle.wheels[i].entity;
@@ -757,15 +783,13 @@ void VehicleSystem::readOutputs(Vehicle& vehicle, float dt){
             // Jolt's lateral is the wheel's left (its right is forward x up)
             hit.sidewaysDir = -vehicleFromJolt(jwheel->GetContactLateral());
             hit.force = dt > 0.0f ? jwheel->GetSuspensionLambda() / dt : 0.0f;
-            const JPH::Vec3 relative = bodyInterface.GetPointVelocity(vehicle.bodyId, jwheel->GetContactPosition()) - jwheel->GetContactPointVelocity();
+            const JPH::Vec3 relative = vehicleBody->GetPointVelocity(jwheel->GetContactPosition()) - jwheel->GetContactPointVelocity();
             const float forwardSpeed = relative.Dot(jwheel->GetContactLongitudinal());
             hit.forwardSlip = vehicleSign(jwheel->GetAngularVelocity() * settings->mRadius - forwardSpeed) * jwheel->mLongitudinalSlip;
             hit.sidewaysSlip = vehicleSign(relative.Dot(vehicleToJolt(hit.sidewaysDir))) * jwheel->mLateralSlip;
-            JPH::BodyLockRead lock(locks, jwheel->GetContactBodyID());
-            if (lock.Succeeded()){
-                const JPH::Body& ground = lock.GetBody();
-                hit.colliderEntity = PhysicsCallbacks::bodyEntity(ground.GetUserData());
-                hit.colliderIndex = (int)ground.GetShape()->GetSubShapeUserData(jwheel->GetContactSubShapeID());
+            if (const JPH::Body* ground = bodies.TryGetBody(jwheel->GetContactBodyID())){
+                hit.colliderEntity = PhysicsCallbacks::bodyEntity(ground->GetUserData());
+                hit.colliderIndex = (int)ground->GetShape()->GetSubShapeUserData(jwheel->GetContactSubShapeID());
             }
         }
         wheel.hit = hit;
@@ -788,12 +812,14 @@ void VehicleSystem::readOutputs(Vehicle& vehicle, float dt){
         Transform* transform = scene->findComponent<Transform>(entity);
         if (wheel.driveTransform && transform){
             // the chain from the body down to the wheel's parent placed from this step's poses
-            std::vector<Entity> chain;
-            for (Entity parent = transform->parent; parent != NULL_ENTITY && chain.size() < 256;){
+            if (!bodyResolved){
+                render->updateTransform(scene->getComponent<Transform>(vehicle.body), vehicle.body);
+                bodyResolved = true;
+            }
+            std::vector<Entity>& chain = chainScratch;
+            chain.clear();
+            for (Entity parent = transform->parent; parent != NULL_ENTITY && parent != vehicle.body && chain.size() < 256;){
                 chain.push_back(parent);
-                if (parent == vehicle.body){
-                    break;
-                }
                 const Transform* parentTransform = scene->findComponent<Transform>(parent);
                 parent = parentTransform ? parentTransform->parent : NULL_ENTITY;
             }
@@ -811,27 +837,36 @@ void VehicleSystem::readOutputs(Vehicle& vehicle, float dt){
         if (VehicleDrivetrainComponent* drivetrain = scene->findComponent<VehicleDrivetrainComponent>(vehicle.body)){
             drivetrain->rpm = vehicle.controller->GetEngine().GetCurrentRPM();
             drivetrain->gear = vehicle.controller->GetTransmission().GetCurrentGear();
-            JPH::RVec3 position;
-            JPH::Quat rotation;
-            bodyInterface.GetPositionAndRotation(vehicle.bodyId, position, rotation);
-            drivetrain->speed = bodyInterface.GetLinearVelocity(vehicle.bodyId).Dot(rotation * JPH::Vec3(0.0f, 0.0f, 1.0f));
+            drivetrain->speed = vehicleBody->GetLinearVelocity().Dot(vehicleBody->GetRotation() * JPH::Vec3(0.0f, 0.0f, 1.0f));
         }
     }
 }
 
 void VehicleSystem::postStep(float dt){
+    if (vehicles.empty()){
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const JPH::BodyLockInterfaceNoLock& bodies = physics->getWorld3D()->GetBodyLockInterfaceNoLock();
     for (auto& entry : vehicles){
-        if (entry.second.constraint){
+        // a body destroyed by a callback of the step is gone already (its teardown runs right
+        // after it): the vehicle goes at the next preStep, its stale body never read
+        if (entry.second.constraint && bodies.TryGetBody(entry.second.bodyId) == entry.second.constraint->GetVehicleBody()){
             readOutputs(entry.second, dt);
         }
     }
+    postSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
 void VehicleSystem::debugLines(const std::function<void(const Vector3&, const Vector3&)>& line) const{
     constexpr int segments = 16;
+    if (vehicles.empty()){
+        return;
+    }
+    const JPH::BodyLockInterfaceNoLock& bodies = physics->getWorld3D()->GetBodyLockInterfaceNoLock();
     for (const auto& entry : vehicles){
         const Vehicle& vehicle = entry.second;
-        if (!vehicle.constraint){
+        if (!vehicle.constraint || bodies.TryGetBody(vehicle.bodyId) != vehicle.constraint->GetVehicleBody()){
             continue;
         }
         const JPH::RMat44 body = vehicle.constraint->GetVehicleBody()->GetWorldTransform();
