@@ -890,6 +890,19 @@ holding it (nested instances, a variant's bases, at any depth: `canAddToPrefab`)
 would contain itself. Add to Prefab refuses it ("... so the prefab would contain itself"), and
 Apply All leaves it an override (counted in `remaining`).
 
+Overwrite (`create_prefab {path, overwrite: true}`, `CreatePrefabCmd::setOverwrite`, Unity's
+Save As Prefab Asset over an existing one): `overwritePrefab` gives each GameObject of the new
+content the registry id of the old content's GameObject at the same name path from the root
+(duplicate names in order; the rest take new ids past the old `nextEntity`), so the instances'
+data keyed by those ids, overrides included, stays theirs (section 2). The content is made as
+`createPrefab` makes it with that GUID; the old entry keeps its instances and takes the new asset
+data (`takeAssetData`), then `refreshPrefabInstances` re-imports every open instance. A selected
+instance root is unpacked first, as for Create Prefab. The MCP tool refuses a GameObject holding
+an instance of the target or of a prefab nesting it (the prefab would contain itself), a file that
+does not read as a prefab, and a prefab open in Prefab Mode. Undo unlinks the GameObject, puts the
+asset and its instances back from `capturePrefabUndoState` (taken after the unpack) and writes
+the old content to the file.
+
 ### Out of an asset: Unpack
 
 `unpackPrefabInstances` calls `promoteNestedAssetData` before dropping an instance: what its
