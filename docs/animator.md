@@ -11,7 +11,8 @@ see `docs/pose-animation.md`).
 | What it plays | a list of clips, by name | a state machine of clips and blend trees |
 | Control | `play`, `crossFade`, `blend`, `queue` | parameters (float, int, bool, trigger) that drive transitions |
 | Layers, masks, additive | yes (clip layers with weights, Avatar Masks, override or additive) | yes (per state machine layer) |
-| Montages, IK, root motion | no | yes |
+| Montages, IK | no | yes |
+| Root motion | yes (base layer) | yes |
 | Retargeting | by bone names | humanoid clips play on any humanoid |
 
 The Animation Player stays the simple path. A GameObject with both works: the Animator runs after
@@ -137,6 +138,33 @@ Transform. The pose keeps the vertical motion (a jump stays in the pose) unless 
 A script setting `onAnimatorMove` takes the motion over. A `.anim` keeps its Root Motion settings
 in the file; a model's clips keep theirs in the model's Inspector Animation tab (saved as
 `<model>.clips`, see `docs/animation-clips.md`), where each clip's Wrap Mode is set too.
+
+Each clip has Unity's **Root Transform** options, per part (Rotation, Position (Y), Position (XZ)):
+
+- **Bake Into Pose**: that part of the motion stays in the pose instead of moving the GameObject.
+- **Based Upon**: what the root follows. **Original** is the root bone. **Body Orientation** (Rotation)
+  is the heading of the hips and shoulders line, **Center of Mass** (Y, XZ) the body's centre of
+  mass, **Feet** (Y) the lower foot. At the clip's start the pose is aligned on it: Body
+  Orientation turns the body to face the GameObject's forward, Feet and Center of Mass stand where
+  the model's rest pose has them. These three need a humanoid rig whose bones are under the root
+  bone; without one the Console warns once and the part acts as Original.
+- **Offset**: degrees (Rotation) or metres (Position (Y)) added to the pose, and to its motion.
+
+With Apply Root Motion **off**, a clip with Root Transform settings (a `root_motion` block) plays in
+place: its unbaked motion is removed from the pose and moves nothing, as in Unity. A clip without
+one plays as it always did.
+
+The **Animation Player** has **Apply Root Motion** too (Lua `AnimationPlayer.applyRootMotion`): the
+clips of its base layer move the GameObject by their weight, with the same clip settings. Clips that
+play through the humanoid path (a humanoid `.anim` or a Retarget entry) keep their root motion on the
+Animator; the Console says so once.
+
+### Changes
+
+- Clips with a `root_motion` block on an Animator (or Animation Player) with Apply Root Motion off
+  now play in place, as in Unity: before, their root bone kept its drift in the pose. To keep the
+  drift, tick Bake Into Pose for Position (XZ) (and Rotation), or remove the clip's Root Motion
+  settings.
 
 ## IK
 

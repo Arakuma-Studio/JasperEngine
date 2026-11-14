@@ -2184,6 +2184,7 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `poseFrameRate` | rw, fps (0 = smooth): every track holds on whole steps from its previous key (each key shows at its time), fades step too; events fire at their true times |
+| `applyRootMotion` | rw bool (Unity's Apply Root Motion): the base layer's clip root motion moves the GameObject; off, a clip with a `root_motion` block plays in place |
 | `isLoaded()` | every clip loaded and bound |
 | `getAnimatedProperties(name)` | the state's bound property tracks, `{"path:component.property", ...}` (debugging; empty while its clip loads). A clip animating a script field sets `self.<field>` (read it in `onUpdate`; a write of yours there is overwritten by the clip in the same frame, as in Unity) |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |

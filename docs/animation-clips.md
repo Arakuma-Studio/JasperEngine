@@ -541,8 +541,9 @@ range. Below the table, the selected clips' settings:
 - **Wrap Mode**: Once (the model's own: glTF has no loop flag), Loop, Ping Pong or Clamp Forever.
 - **Root Motion Node** (empty: Auto, the Animator's Root Motion bone, the hips, then the shallowest
   bone the clip moves), **Root Transform Rotation**, **Root Transform Position (Y)** and **Root
-  Transform Position (XZ)**, each with **Bake Into Pose**: what stays in the pose instead of moving
-  the GameObject. These are the `.anim` file's `root_motion` block.
+  Transform Position (XZ)**, each with **Bake Into Pose** (what stays in the pose instead of moving
+  the GameObject), **Based Upon** and, for Rotation and Y, **Offset** (`docs/animator.md`, "Root
+  motion"). These are the `.anim` file's `root_motion` block.
 
 A field whose value differs between the selected clips shows a dash. Edits stay in the Inspector
 until **Apply**, which writes them all as one undo step; **Revert** drops them, and leaving the model,
@@ -1001,10 +1002,14 @@ move (`anim-constant-track`) and rotations that flip between two keys (`anim-rot
 
 ### Root Motion
 
-The Inspector's **Root Motion** section sets what the Animator takes from an `.anim`: **Root Motion Node** (empty:
-Auto, the Animator's bone, the hips, then the shallowest bone the clip moves), and **Bake Into Pose** for **Root
-Transform Rotation**, **Root Transform Position (Y)** and **Root Transform Position (XZ)**. Each change is one
-undo step.
+The Inspector's **Root Motion** section sets what the Animator and the Animation Player take from an `.anim`:
+**Root Motion Node** (empty: Auto, the Animator's bone, the hips, then the shallowest bone the clip moves), and
+**Bake Into Pose**, **Based Upon** and **Offset** for **Root Transform Rotation**, **Root Transform Position (Y)**
+and **Root Transform Position (XZ)** (`docs/animator.md`, "Root motion"). Each change is one undo step. In the
+file: `"root_motion": {"bone", "bake_rotation", "bake_position_y", "bake_position_xz", "rotation_based_upon"
+(original, body_orientation), "rotation_offset" (degrees), "position_y_based_upon" (original, center_of_mass,
+feet), "position_y_offset" (metres), "position_xz_based_upon" (original, center_of_mass)}`; the Based Upon and
+Offset members are written only when set.
 
 ## Not in this version
 

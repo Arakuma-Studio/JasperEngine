@@ -4919,6 +4919,11 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47736FFBD4F64D9163 /* RootMotion.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9501,9 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E473EE5CF176C08B72B /* RootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemRootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47736FFBD4F64D9163 /* RootMotion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RootMotion.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10981,6 +10989,8 @@
 				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
 				4A534E474E197FD9213D710B /* ModelClipSettings.cpp */,
 				4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */,
+				4A534E473EE5CF176C08B72B /* RootMotion.cpp */,
+				4A534E47736FFBD4F64D9163 /* RootMotion.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -12337,6 +12347,7 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -16843,6 +16854,7 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19523,8 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */,
+				4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20484,8 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */,
+				4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

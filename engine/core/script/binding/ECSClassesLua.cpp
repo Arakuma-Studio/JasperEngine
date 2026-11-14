@@ -1124,6 +1124,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayerComponent::speed, &setTrackedMember<&AnimationPlayerComponent::speed>)
         .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &setTrackedMember<&AnimationPlayerComponent::defaultFadeTime>)
         .addProperty("poseFrameRate", &AnimationPlayerComponent::poseFrameRate, &setTrackedMember<&AnimationPlayerComponent::poseFrameRate>)
+        .addProperty("applyRootMotion", &AnimationPlayerComponent::applyRootMotion, &setTrackedMember<&AnimationPlayerComponent::applyRootMotion>)
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })

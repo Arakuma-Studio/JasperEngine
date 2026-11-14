@@ -4168,6 +4168,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayer::getSpeed, &AnimationPlayer::setSpeed)
         // fps (0 = smooth): every track holds on whole steps from its previous key, fades step too
         .addProperty("poseFrameRate", &AnimationPlayer::getPoseFrameRate, &AnimationPlayer::setPoseFrameRate)
+        // Unity's Apply Root Motion: the base layer's clip root motion moves the GameObject
+        .addProperty("applyRootMotion", &AnimationPlayer::getApplyRootMotion, &AnimationPlayer::setApplyRootMotion)
         .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
         .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)

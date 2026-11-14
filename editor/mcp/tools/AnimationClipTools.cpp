@@ -2031,25 +2031,44 @@ namespace {
 Json rootMotionJson(const std::optional<anim::ClipRootMotion>& rootMotion) {
     if (!rootMotion) return nullptr;
     return {{"bone", rootMotion->bone}, {"bake_rotation", rootMotion->bakeRotation}, {"bake_position_y", rootMotion->bakePositionY},
-            {"bake_position_xz", rootMotion->bakePositionXZ}};
+            {"bake_position_xz", rootMotion->bakePositionXZ},
+            {"rotation_based_upon", anim::rootRotationBasisName(rootMotion->rotationBasedUpon)},
+            {"rotation_offset", rootMotion->rotationOffset},
+            {"position_y_based_upon", anim::rootPositionYBasisName(rootMotion->positionYBasedUpon)},
+            {"position_y_offset", rootMotion->positionYOffset},
+            {"position_xz_based_upon", anim::rootPositionXZBasisName(rootMotion->positionXZBasedUpon)}};
 }
 
 // root_motion's members onto `rootMotion` (the others kept); false + `error` when it is not that shape
 bool applyRootMotionArg(const Json& arg, anim::ClipRootMotion& rootMotion, std::string& error) {
+    anim::ClipRootMotion changed = rootMotion;
     bool valid = arg.is_object();
     for (auto it = arg.begin(); valid && it != arg.end(); ++it) {
-        valid = it.key() == "bone" ? it.value().is_string()
-              : (it.key() == "bake_rotation" || it.key() == "bake_position_y" || it.key() == "bake_position_xz") && it.value().is_boolean();
+        const std::string& key = it.key();
+        const Json& value = it.value();
+        if (key == "bone") valid = value.is_string();
+        else if (key == "bake_rotation" || key == "bake_position_y" || key == "bake_position_xz") valid = value.is_boolean();
+        else if (key == "rotation_offset" || key == "position_y_offset") valid = value.is_number() && std::isfinite(value.get<double>());
+        else if (key == "rotation_based_upon") valid = value.is_string() && anim::rootRotationBasisFromName(value.get<std::string>(), changed.rotationBasedUpon);
+        else if (key == "position_y_based_upon") valid = value.is_string() && anim::rootPositionYBasisFromName(value.get<std::string>(), changed.positionYBasedUpon);
+        else if (key == "position_xz_based_upon") valid = value.is_string() && anim::rootPositionXZBasisFromName(value.get<std::string>(), changed.positionXZBasedUpon);
+        else valid = false;
     }
     if (!valid) {
-        error = "root_motion must be {bone: \"<path>\" (\"\": auto), bake_rotation, bake_position_y, bake_position_xz: true or false}.";
+        error = "root_motion must be {bone: \"<path>\" (\"\": auto), bake_rotation, bake_position_y, bake_position_xz: true or false, "
+                "rotation_based_upon: original|body_orientation, rotation_offset: degrees, "
+                "position_y_based_upon: original|center_of_mass|feet, position_y_offset: meters, "
+                "position_xz_based_upon: original|center_of_mass}.";
         return false;
     }
-    rootMotion.present = true;
-    rootMotion.bone = arg.value("bone", rootMotion.bone);
-    rootMotion.bakeRotation = arg.value("bake_rotation", rootMotion.bakeRotation);
-    rootMotion.bakePositionY = arg.value("bake_position_y", rootMotion.bakePositionY);
-    rootMotion.bakePositionXZ = arg.value("bake_position_xz", rootMotion.bakePositionXZ);
+    changed.present = true;
+    changed.bone = arg.value("bone", changed.bone);
+    changed.bakeRotation = arg.value("bake_rotation", changed.bakeRotation);
+    changed.bakePositionY = arg.value("bake_position_y", changed.bakePositionY);
+    changed.bakePositionXZ = arg.value("bake_position_xz", changed.bakePositionXZ);
+    changed.rotationOffset = arg.value("rotation_offset", changed.rotationOffset);
+    changed.positionYOffset = arg.value("position_y_offset", changed.positionYOffset);
+    rootMotion = changed;
     return true;
 }
 
