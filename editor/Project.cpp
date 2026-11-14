@@ -72,6 +72,7 @@
 #include "vcs/VcsService.h"
 #include "vcs/SceneDiffTracker.h"
 #include <cstdlib>
+#include <cstring>
 #include "util/SafeWrite.h"
 #include "util/VersionControlFiles.h"
 #include "util/FbxImporter.h"
@@ -7334,6 +7335,17 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
+            // S98 REQ-36: Unity's layout, the project's assets and its Lua scripts in folders of
+            // their own (a project.yaml without the keys still means "."); the MCP test harness
+            // keeps the flat layout its tests are written against (JASPER_TEST_FLAT_NEW_PROJECT)
+            const char* flat = std::getenv("JASPER_TEST_FLAT_NEW_PROJECT");
+            if (!flat || std::strcmp(flat, "1") != 0) {
+                assetsDir = newProjectAssetsDir;
+                luaDir = newProjectLuaDir;
+                std::error_code dirError;
+                FileUtils::createDirectories(projectPath / assetsDir, dirError);
+                FileUtils::createDirectories(projectPath / luaDir, dirError);
+            }
             refreshTrustedRoots();   // the folder exists now
 
             // a new project is locked like an opened one (R10); the editor's own temporary

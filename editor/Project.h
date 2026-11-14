@@ -1669,6 +1669,9 @@ namespace jasperengine::editor{
         static constexpr const char* defaultWindowTitle = "";
         static constexpr const char* defaultAssetsDir = ".";
         static constexpr const char* defaultLuaDir = ".";
+        // what a project created now gets (S98 REQ-36); the defaults above are an absent key's
+        static constexpr const char* newProjectAssetsDir = "assets";
+        static constexpr const char* newProjectLuaDir = "scripts";
         static constexpr bool defaultPackNativeResources = false;
         static constexpr bool defaultVersionControlMetadata = true;
         static constexpr bool defaultPhysics2DEnabled = true;
