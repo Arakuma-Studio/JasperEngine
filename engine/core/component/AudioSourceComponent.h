@@ -246,6 +246,12 @@ namespace jasperengine{
         bool timelineStopFade = false;
         // an audio action without a Transform plays at its animation's target (3D settings only)
         Entity timelineTarget = NULL_ENTITY;
+        // Spatial Blend between 0 and 1 (S97 REQ-18): its 2D voices' gain and pan this frame
+        bool blended = false;
+        float blendGain = 1.0f;
+        float blendPan = 0.0f;
+        // the blend was 1 when its voices last took 3D or 2D: crossing it switches the playing voices
+        bool voicesFullBlend = true;
     };
 
 }

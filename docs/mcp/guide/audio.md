@@ -25,8 +25,8 @@ meters, `isPlaying`, events and fades are real. Lua reference: `jasper://docs/lu
   {"op": "expose", "name": "SFXVolume", "group": "SFX", "volume": true, "remember": true},
   {"op": "expose", "name": "lowPassCutoff", "group": "Music", "param": "cutoff", "effect": "lowpass"},
   {"op": "expose", "name": "highPassCutoff", "group": "Music", "param": "cutoff", "effect": "highpass"},
-  {"op": "add_snapshot", "name": "Menu"},
-  {"op": "add_snapshot", "name": "Gameplay", "values": {"lowPassCutoff": 525, "highPassCutoff": 430}},
+  {"op": "add_snapshot", "name": "Menu", "values": {"lowPassCutoff": 525, "highPassCutoff": 430}},
+  {"op": "add_snapshot", "name": "Gameplay"},
   {"op": "set_start_snapshot", "name": "Menu"}
 ]}
 ```
@@ -176,6 +176,7 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | `maxVoices` | 8 | voices of this source at once (its clip + one-shots) |
 | `ignoreListenerPause` | false | plays on while `AudioListener.pause` is set |
 | `pitch` | 1 | = `speed` |
+| `spatialBlend` | 1 (a new Audio Source: 0) | Unity's Spatial Blend: 0 plays 2D (`pan`, no distance attenuation), 1 plays 3D from the GameObject's position, between them a mix of the two without Doppler. A source without a Transform plays 2D |
 
 - **Many sources, one clip**: they play at once. `play()` on a playing source starts it over.
 - **One-shots**: `sound:playOneShot("sfx/coin.wav", 0.8)` adds a voice (the source's group,
@@ -207,7 +208,12 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 - `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` plays a clip at a world
   position (3D against the scene's camera, logarithmic rolloff) without a GameObject; it belongs to
   `scene` and stops with it.
-- **3D**: a source with a Transform plays 3D under a camera. One listener hears every scene: the
+- **2D and 3D**: every new Audio Source is a GameObject (GameObject > Audio > Audio Source, MCP
+  `create_entity audio_source`, a clip dropped in the scene, Lua `AudioSource(scene)`): 2D is
+  `spatialBlend` 0, so it can be parented and made persistent and still plays centred. Audio Source 3D
+  (`audio_source_3d`, `AudioSource(scene, true)`) has 1. `sound3D = true` sets 1 (adding a missing
+  Transform), `false` sets 0. A change of `spatialBlend` is heard on the playing voices.
+- **3D**: a source with a Transform and `spatialBlend` 1 plays 3D under a camera. One listener hears every scene: the
   main scene's camera (a perspective camera at its position; an orthographic or UI camera at the
   centre of its view, so a sound at the centre of the screen is centred). A layer scene's sources
   are heard where they are in its own camera's view. Doppler follows speeds in units a second,
@@ -254,27 +260,28 @@ return VolumeController
 The values come back on the next launch by themselves (no PlayerPrefs code, no startup double-set).
 
 **Unity's MinigameSongs** (menu <-> gameplay filter sweeps): Music has a low-pass and a high-pass
-with `lowPassCutoff` / `highPassCutoff` exposed. Either time it with setFloat (scaled time, as the
-game's `Mathf.Lerp` on `Time.deltaTime`):
+with `lowPassCutoff` / `highPassCutoff` exposed. The menu muffles the music (525 Hz low-pass, 430 Hz
+high-pass, the "radio"); gameplay opens it (22000 Hz and 10 Hz). Either time it with setFloat (scaled
+time, as the game's `Mathf.Lerp` on `Time.deltaTime`):
 
 ```lua
 local MinigameSongs = {}
 
-function MinigameSongs:toGameplay()
-    AudioMixer.setFloat("lowPassCutoff", 525, 0.9)
-    AudioMixer.setFloat("highPassCutoff", 430, 0.9)
+function MinigameSongs:toMenu(seconds)
+    AudioMixer.setFloat("lowPassCutoff", 525, seconds)
+    AudioMixer.setFloat("highPassCutoff", 430, seconds)
 end
 
-function MinigameSongs:toMenu()
-    AudioMixer.setFloat("lowPassCutoff", 22000, 0.65)
-    AudioMixer.setFloat("highPassCutoff", 10, 0.65)
+function MinigameSongs:toGameplay(seconds)
+    AudioMixer.setFloat("lowPassCutoff", 22000, seconds)
+    AudioMixer.setFloat("highPassCutoff", 10, seconds)
 end
 
 return MinigameSongs
 ```
 
-or with two snapshots, `AudioMixer.transitionTo("Gameplay", 0.65)` /
-`AudioMixer.transitionTo("Menu", 0.65)` (exposed values a script set win over snapshots: use one
+or with the two snapshots of section 1, `AudioMixer.transitionTo("Menu", 1)` /
+`AudioMixer.transitionTo("Gameplay", 1)` (exposed values a script set win over snapshots: use one
 way per parameter, or `clearFloat` first).
 
 **A pause menu**: `AudioListener.pause = true` when it opens; its click sounds have
@@ -282,6 +289,10 @@ way per parameter, or `clearFloat` first).
 
 **Music that streams, effects that do not lag**: leave `loadType` Auto (big files stream, small
 ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
+
+**An engine hum or an ambience with no GameObject**: `Audio.play("sfx/hum.ogg", {loop = true, group = "SFX"})`
+loops until `handle:stop()` or its scene stops it; `{scene = SceneManager.persistentScene}` keeps it
+across scene loads (that scene exists after the first `DontDestroyOnLoad`; nil before).
 
 ## 10. Pitfalls
 
@@ -291,3 +302,11 @@ ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
 - Unknown parameter, snapshot or group names never raise: `setFloat` returns false, `getFloat`
   and `getGroup` nil, each logged once.
 - `getEffect(1)` in Lua is the first effect (1-based); MCP `index` is 0-based.
+
+## 11. Changes
+
+- S97: `AudioSource(scene)` and GameObject > Audio > Audio Source make a GameObject (a Transform)
+  with `spatialBlend` 0 instead of a bare entity; it sounds the same (2D). `getGameObject()` works on
+  it, and on an older bare source adds the Transform and keeps it 2D (it used to throw).
+  `sound3D = false` sets `spatialBlend` 0 and keeps the Transform (it used to remove it). Scenes saved
+  before keep their sound: no `spatialBlend` key is 1, and a source without a Transform plays 2D.

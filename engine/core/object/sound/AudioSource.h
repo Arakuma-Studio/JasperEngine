@@ -16,6 +16,7 @@ namespace jasperengine {
         // component checkbox (Unity Behaviour.enabled): a disabled Sound is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
+        // a new GameObject (a Transform) with an Audio Source: 2D (Spatial Blend 0), or 3D (1)
         AudioSource(Scene* scene);
         AudioSource(Scene* scene, bool is3D);
         AudioSource(Scene* scene, Entity entity);
@@ -29,6 +30,7 @@ namespace jasperengine {
         int loadSound(const std::string& filename);
         void destroySound();
 
+        // an entity without a Transform (an older AudioSource(scene)) gets one and stays 2D
         GameObject getGameObject() const;
 
         void play();
@@ -43,8 +45,14 @@ namespace jasperengine {
         bool isPaused();
         bool isStopped();
 
+        // true: a Transform (added when missing) and Spatial Blend 1; false: Spatial Blend 0
         void setSound3D(bool sound3D);
+        // a Transform and Spatial Blend above 0
         bool isSound3D() const;
+
+        // 0 = 2D (pan, no attenuation) .. 1 = 3D; clamped to 0..1 (S97 REQ-18)
+        void setSpatialBlend(float spatialBlend);
+        float getSpatialBlend() const;
 
         void setClockedSound(bool enableClocked);
         bool isClockedSound() const;
