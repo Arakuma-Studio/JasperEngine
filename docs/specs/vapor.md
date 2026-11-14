@@ -1,4 +1,4 @@
-# S92 — Fog Profiles, Fog Zones, lit fog and shadowed fog lights
+# Vapor — Fog Profiles, Fog Zones, lit fog and shadowed fog lights
 
 **Wave / Depends on.** Atmosphere follow-up to S12. It builds on S12 (the fog itself), S10 (the
 shadow atlas), S20 (particle variants), S04 (asset identity), S05 (hot reload), S24 (undo) and
