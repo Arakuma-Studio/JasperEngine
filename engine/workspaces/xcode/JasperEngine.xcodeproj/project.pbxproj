@@ -2318,6 +2318,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55BBE965B42D392B17 /* GlyphFilters.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55509E6D68603EFF2C /* GlyphFilters.cpp */; };
+		524D4C55D4A5C8F87C782C31 /* GlyphFilters.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55509E6D68603EFF2C /* GlyphFilters.cpp */; };
 		524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
@@ -4922,6 +4924,13 @@
 		4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477D90766B959111B7 /* HtmlUIImageCache.h */; };
+		4A534E47A8850A33B67AE16A /* HtmlUIPrewarm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D783659B29EF58F /* HtmlUIPrewarm.cpp */; };
+		4A534E47BE328BE80F62D96C /* HtmlUIPrewarm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D783659B29EF58F /* HtmlUIPrewarm.cpp */; };
+		4A534E47AD70E0663442E192 /* HtmlUIFontDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1DAA942DB72D580 /* HtmlUIFontDiagnostics.cpp */; };
+		4A534E476ACE50B131866CA6 /* HtmlUIFontDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1DAA942DB72D580 /* HtmlUIFontDiagnostics.cpp */; };
+		4A534E47AD816906EC266941 /* HtmlUIFontDiagnostics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47749A5DFC53FE2035 /* HtmlUIFontDiagnostics.h */; };
+		4A534E4791A46D9CB4612768 /* HtmlUIPrewarm.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A2CF463794ECE0CF /* HtmlUIPrewarm.h */; };
+		4A534E475112D57C777DCF0A /* UIPrewarm.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477545DF3CD010FF2C /* UIPrewarm.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7618,6 +7627,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55509E6D68603EFF2C /* GlyphFilters.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GlyphFilters.cpp; sourceTree = "<group>"; };
 		524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextPointer.cpp; sourceTree = "<group>"; };
 		524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineClampEllipsis.cpp; sourceTree = "<group>"; };
 		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
@@ -9501,6 +9511,11 @@
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
 		4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIImageCache.cpp; sourceTree = "<group>"; };
 		4A534E477D90766B959111B7 /* HtmlUIImageCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIImageCache.h; sourceTree = "<group>"; };
+		4A534E478D783659B29EF58F /* HtmlUIPrewarm.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIPrewarm.cpp; sourceTree = "<group>"; };
+		4A534E47B1DAA942DB72D580 /* HtmlUIFontDiagnostics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIFontDiagnostics.cpp; sourceTree = "<group>"; };
+		4A534E47749A5DFC53FE2035 /* HtmlUIFontDiagnostics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIFontDiagnostics.h; sourceTree = "<group>"; };
+		4A534E47A2CF463794ECE0CF /* HtmlUIPrewarm.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIPrewarm.h; sourceTree = "<group>"; };
+		4A534E477545DF3CD010FF2C /* UIPrewarm.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIPrewarm.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -13480,6 +13495,7 @@
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
 				4A534E47F8386218660CC63D /* UIEventData.h */,
+				4A534E477545DF3CD010FF2C /* UIPrewarm.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -14497,6 +14513,10 @@
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */,
 				4A534E477D90766B959111B7 /* HtmlUIImageCache.h */,
+				4A534E478D783659B29EF58F /* HtmlUIPrewarm.cpp */,
+				4A534E47B1DAA942DB72D580 /* HtmlUIFontDiagnostics.cpp */,
+				4A534E47749A5DFC53FE2035 /* HtmlUIFontDiagnostics.h */,
+				4A534E47A2CF463794ECE0CF /* HtmlUIPrewarm.h */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -14686,6 +14706,7 @@
 				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 				524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */,
 				524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */,
+				524D4C55509E6D68603EFF2C /* GlyphFilters.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -16851,6 +16872,9 @@
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */,
+				4A534E47AD816906EC266941 /* HtmlUIFontDiagnostics.h in Headers */,
+				4A534E4791A46D9CB4612768 /* HtmlUIPrewarm.h in Headers */,
+				4A534E475112D57C777DCF0A /* UIPrewarm.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19520,6 +19544,8 @@
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
 				4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */,
+				4A534E47A8850A33B67AE16A /* HtmlUIPrewarm.cpp in Sources */,
+				4A534E47AD70E0663442E192 /* HtmlUIFontDiagnostics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20480,6 +20506,8 @@
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
 				4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */,
+				4A534E47BE328BE80F62D96C /* HtmlUIPrewarm.cpp in Sources */,
+				4A534E476ACE50B131866CA6 /* HtmlUIFontDiagnostics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -21085,6 +21113,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55BBE965B42D392B17 /* GlyphFilters.cpp in Sources */,
 				524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */,
 				524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */,
 				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
@@ -21340,6 +21369,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55D4A5C8F87C782C31 /* GlyphFilters.cpp in Sources */,
 				524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */,
 				524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */,
 				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,

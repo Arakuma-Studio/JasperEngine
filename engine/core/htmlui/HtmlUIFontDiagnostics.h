@@ -27,8 +27,8 @@ namespace jasperengine {
         // once per frame (UIDocumentSystem::update): what the contexts' text drew from fallback faces since the last call, as
         // a diagnostic on each document that draws it, once per (document, family, code point set)
         static void update();
-        // check --ui (CompatApi::checkDocument): the static text of a laid-out document, located in its HTML source, as
-        // warnings (the check level reports no infos)
+        // the checks that lay a document out (CompatApi::checkDocument with verifyWithRmlUi): its static text, located in its
+        // HTML source
         static std::vector<htmlui::compat::Diagnostic> check(Rml::ElementDocument* document, const htmlui::compat::CompatDocument& compiled);
     };
 

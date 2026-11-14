@@ -69,8 +69,12 @@ namespace {
         }
         diagnostic.code = codes::FallbackGlyph;
         diagnostic.severity = Severity::Info;
+        // (RmlUi passes the list normalized, "a,b": written back as CSS lists it)
+        std::string family;
+        for (char c : glyphs.family)
+            family += (c == ',') ? std::string(", ") : std::string(1, c);
         diagnostic.message = describe(glyphs.codepoints) + (glyphs.codepoints.size() == 1 ? " is" : " are") + " not in '" + glyphs.primary +
-                             "', the first face of font-family '" + glyphs.family + "': a fallback face draws " +
+                             "', the first face of font-family '" + family + "': a fallback face draws " +
                              (glyphs.codepoints.size() == 1 ? "it" : "them") + " (font-effect and synthetic bold and italic apply to it)";
         diagnostic.suggestion = "use a font with these characters, or name one that has them after it in font-family";
         diagnostic.subject = glyphs.family;
@@ -151,9 +155,7 @@ std::vector<Diagnostic> HtmlUIFontDiagnostics::check(Rml::ElementDocument* docum
         const RmlFontEngine::FallbackGlyphs glyphs = HtmlUI::getFontEngine().fallbackGlyphsOf(element->GetFontFaceHandle(), text->GetText());
         if (glyphs.codepoints.empty())
             continue;
-        Diagnostic diagnostic = makeDiagnostic(glyphs, located, element);
-        // (the check level shows warnings and errors: what a fallback face will draw is worth one there)
-        diagnostic.severity = Severity::Warning;
+        const Diagnostic diagnostic = makeDiagnostic(glyphs, located, element);
         if (std::none_of(diagnostics.begin(), diagnostics.end(), [&](const Diagnostic& d){ return sameDiagnostic(d, diagnostic); }))
             diagnostics.push_back(diagnostic);
     }

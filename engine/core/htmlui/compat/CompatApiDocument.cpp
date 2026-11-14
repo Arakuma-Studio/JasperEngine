@@ -102,42 +102,6 @@ namespace {
         return names;
     }
 
-    // S93 R17 (check --ui without RmlUi's verdict): a face of the document's own may lack characters of its text; the
-    // built-in fonts and generic families are left to the runtime report
-    bool mayDrawFallbackGlyphs(const CompatDocument& compiled){
-        if (compiled.declaredFontFamilies.empty())
-            return false;
-        return std::any_of(compiled.rml.begin(), compiled.rml.end(), [](char c){ return (unsigned char)c >= 0x80; });
-    }
-
-    // the document laid out in a context nothing draws from, for HtmlUIFontDiagnostics::check; RmlUi's messages dropped
-    std::vector<Diagnostic> checkFallbackGlyphs(const CompatDocument& compiled){
-        std::vector<Diagnostic> diagnostics;
-        if (Rml::GetSystemInterface() == nullptr)
-            return diagnostics;
-        NullRenderInterface renderInterface;
-        static int counter = 0;
-        const std::string name = "htmlui-fallback-check-" + std::to_string(++counter);
-        RmlLogTranslator::Capture capture;
-        Rml::Context* context = Rml::CreateContext(name, Rml::Vector2i(compiled.options.viewport.x, compiled.options.viewport.y), &renderInterface);
-        if (!context)
-            return diagnostics;
-        context->SetDensityIndependentPixelRatio(compiled.options.dpRatio > 0.0f ? compiled.options.dpRatio : 1.0f);
-        for (const std::string& model : dataModelNames(compiled.rml))
-            context->CreateDataModel(model, nullptr, true);
-        if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled.rml, compiled.sourcePath)){
-            document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
-            context->Update();
-            diagnostics = HtmlUIFontDiagnostics::check(document, compiled);
-            context->UnloadDocument(document);
-            context->Update();
-        }
-        Rml::RemoveContext(name);
-        Rml::ReleaseTextures(&renderInterface);
-        Rml::ReleaseRenderManagers();
-        return diagnostics;
-    }
-
     std::vector<Diagnostic> verifyWithRmlUi(const CompatDocument& compiled){
         std::vector<Diagnostic> diagnostics;
         if (Rml::GetSystemInterface() == nullptr)
@@ -227,12 +191,6 @@ CheckReport jasperengine::htmlui::compat::checkDocument(const std::string& htmlP
             report.diagnostics.insert(report.diagnostics.end(), verified.begin(), verified.end());
             std::vector<Diagnostic> fonts = DocumentLoader::checkFontFamilies(*compiled);
             report.diagnostics.insert(report.diagnostics.end(), fonts.begin(), fonts.end());
-        }
-    }else if (compiled->compiled && options.checkFallbackGlyphs && mayDrawFallbackGlyphs(*compiled)){
-        RmlScope rml;
-        if (rml.ready()){
-            std::vector<Diagnostic> fallback = checkFallbackGlyphs(*compiled);
-            report.diagnostics.insert(report.diagnostics.end(), fallback.begin(), fallback.end());
         }
     }
 

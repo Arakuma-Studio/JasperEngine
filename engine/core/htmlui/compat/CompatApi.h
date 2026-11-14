@@ -33,9 +33,6 @@ namespace jasperengine::htmlui::compat {
         // HTMLUI-GEN-0006 (must stay empty: a test invariant). Initialises RmlUi for the check
         // when nothing else has (HtmlUI::acquire/release).
         bool verifyWithRmlUi = true;
-        // S93 R17: without verifyWithRmlUi, a document that declares @font-face fonts and has text beyond ASCII is laid out in
-        // RmlUi anyway, for its fallback glyphs (HTMLUI-FONT-0001); its other RmlUi messages are dropped
-        bool checkFallbackGlyphs = true;
         FileAccess files;
     };
 
