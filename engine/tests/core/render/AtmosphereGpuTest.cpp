@@ -5,7 +5,8 @@
 // perspective, orthographic and Sky colour mode (AC4), the volumetric fog's handoff to the
 // analytic fog (AC5), light shafts (AC6), Local Volumetric Fog volumes (AC7), the clouds in both
 // modes with converged frames bit-identical (AC8), the zero-cost rule (AC2), transparents (AC16)
-// and the RGBA8 targets (R14). Goldens in engine/tests/core/golden/atmosphere_*.png, made on
+// and the RGBA8 targets (R14); the Lit colour mode under day and night (docs/specs/vapor.md AC5)
+// and with volumes (AC17). Goldens in engine/tests/core/golden/atmosphere_*.png, made on
 // glcore (JASPER_TEST_UPDATE_GOLDEN=1) and matched on Vulkan.
 
 #include "Engine.h"
@@ -180,6 +181,15 @@ namespace {
             fog.setMaxFogDistance(3000.0f);
         }
 
+        // a Lit fog of the valley: its look comes from the scene's light (docs/specs/vapor.md R12)
+        void litFog(Fog& fog){
+            valleyFog(fog);
+            fog.setColorMode(FogColorMode::LIT);
+            fog.setAlbedo(Vector3(0.88f, 0.92f, 1.0f));
+            fog.setAmbientMultiplier(1.5f);
+            fog.setEmissive(Vector3(0.03f, 0.03f, 0.04f));
+        }
+
         const AtmosphereInfo& info(){
             return renderSystem().getAtmosphereInfo(0);
         }
@@ -349,6 +359,71 @@ TEST_F(AtmosphereGpu, VolumetricFogHandsOffToTheAnalyticFog){
         std::printf("[atmosphere] handoff %s: mean difference %.3f\n", AtmosphereTiers::getName(quality), difference);
         EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
     }
+
+    // the Lit colour mode hands off the same (docs/specs/vapor.md R12, AC17): the march scatters
+    // the untinted light by the albedo and adds the emissive, as the analytic fog has them folded
+    Engine::setAtmosphereQuality(AtmosphereQuality::HIGH);
+    fog.setVolumetric(false);
+    fog.setColorMode(FogColorMode::LIT);
+    fog.setAlbedo(Vector3(0.6f, 0.8f, 1.0f));
+    fog.setAmbientMultiplier(2.0f);
+    fog.setEmissive(Vector3(0.15f, 0.08f, 0.0f));
+    scene.setGlobalIllumination(0.4f, Vector3(0.7f, 0.8f, 1.0f));
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> litAnalytic = readTarget();
+    writePng(getOutputDirectory() + "/atmosphere_handoff_lit_analytic.png", litAnalytic, width, height);
+    // Lit is not the Color mode's look
+    EXPECT_GE(meanDifference(analytic, litAnalytic), 10.0);
+    fog.setVolumetric(true);
+    for (AtmosphereQuality quality : {AtmosphereQuality::LOW, AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
+        Engine::setAtmosphereQuality(quality);
+        ASSERT_TRUE(render());
+        EXPECT_TRUE(info().volumetricActive) << AtmosphereTiers::getName(quality);
+        const std::vector<uint8_t> volumetric = readTarget();
+        writePng(getOutputDirectory() + "/atmosphere_handoff_lit_" + AtmosphereTiers::getName(quality) + ".png", volumetric, width, height);
+        const double difference = meanDifference(litAnalytic, volumetric);
+        std::printf("[atmosphere] handoff lit %s: mean difference %.3f\n", AtmosphereTiers::getName(quality), difference);
+        EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// docs/specs/vapor.md AC5: one Lit fog under a noon sun and on a moonlit night takes each
+// scene's light; its Color is not used
+TEST_F(AtmosphereGpu, LitFogDay){
+    JASPER_REQUIRE_GPU();
+    Light sun(&scene);
+    buildValley(sun);
+    sun.setDirection(-0.2f, -1.0f, -0.35f);
+    sun.setColor(1.0f, 0.97f, 0.92f);
+    sun.setIntensity(3.0f);
+    scene.setGlobalIllumination(0.6f, Vector3(0.55f, 0.7f, 1.0f));
+    Fog fog(&scene);
+    litFog(fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    EXPECT_GOLDEN_OPTIONS("atmosphere_lit_day", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereGpu, LitFogNight){
+    JASPER_REQUIRE_GPU();
+    scene.setBackgroundColor(0.02f, 0.03f, 0.06f, 1.0f);
+    Light moon(&scene);
+    buildValley(moon);
+    moon.setDirection(-0.3f, -0.6f, -1.0f);
+    moon.setColor(0.55f, 0.65f, 1.0f);
+    moon.setIntensity(0.15f);
+    scene.setGlobalIllumination(0.08f, Vector3(0.3f, 0.35f, 0.6f));
+    Fog fog(&scene);
+    litFog(fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    EXPECT_GOLDEN_OPTIONS("atmosphere_lit_night", goldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -505,6 +580,70 @@ TEST_F(AtmosphereGpu, LocalVolumetricFog){
         EXPECT_EQ(info().volumesCulled, 10 - caps[index]) << AtmosphereTiers::getName(quality);
         index++;
     }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// docs/specs/vapor.md AC17: a white Local Volumetric Fog inside green Lit fog scatters the
+// light white: the fog's albedo tints the fog, not the volume
+TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
+    JASPER_REQUIRE_GPU();
+    scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
+    ground(200.0f, Vector3(0.02f, 0.02f, 0.02f));
+    box(Vector3(0.0f, 0.0f, -40.0f), Vector3(80.0f, 30.0f, 2.0f), Vector3(0.02f, 0.02f, 0.02f));
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(0.2f, -1.0f, -0.3f);
+    sun.setColor(1.0f, 1.0f, 1.0f);
+    sun.setIntensity(1.0f);
+    sun.setShadows(false);
+    scene.setGlobalIllumination(0.5f, Vector3(1.0f, 1.0f, 1.0f));
+    Fog fog(&scene);
+    fog.setType(FogType::HEIGHT);
+    fog.setColorMode(FogColorMode::LIT);
+    fog.setAlbedo(Vector3(0.1f, 1.0f, 0.1f));
+    fog.setAttenuationDistance(60.0f);
+    fog.setMaximumHeight(60.0f);
+    fog.setDirectionalInscattering(0.5f);
+    fog.setAnisotropy(0.0f);
+    fog.setVolumetric(true);
+    fog.setVolumetricDistance(60.0f);
+    fog.setSkyFill(false);
+    LocalVolumetricFog volume(&scene);
+    volume.setPosition(0.0f, 3.0f, -10.0f);
+    volume.setSize(6.0f, 6.0f, 6.0f);
+    volume.setAttenuationDistance(1.0f);
+    volume.setAlbedo(1.0f, 1.0f, 1.0f);
+    volume.setBlendDistance(0.5f);
+    camera.setPosition(0.0f, 3.0f, 0.0f);
+    camera.setTarget(0.0f, 3.0f, -40.0f);
+    camera.setFarClip(200.0f);
+    ASSERT_TRUE(render());
+    EXPECT_TRUE(info().volumetricActive);
+    EXPECT_EQ(info().volumesUsed, 1);
+
+    const std::vector<uint8_t> image = readTarget();
+    const int width = (int)GpuEnvironment::target().getWidth();
+    writePng(getOutputDirectory() + "/atmosphere_lit_volume.png", image, width, (int)GpuEnvironment::target().getHeight());
+    int insideX = 0, insideY = 0, outsideX = 0, outsideY = 0;
+    ASSERT_TRUE(project(camera, Vector3(0.0f, 3.0f, -10.0f), insideX, insideY));
+    ASSERT_TRUE(project(camera, Vector3(12.0f, 3.0f, -39.0f), outsideX, outsideY));
+    auto mean = [&](int x, int y, int c){
+        double sum = 0.0;
+        for (int j = y - 2; j < y + 2; j++)
+            for (int i = x - 2; i < x + 2; i++)
+                sum += image[((size_t)j * width + i) * 4 + c];
+        return sum / 16.0;
+    };
+    const double insideR = mean(insideX, insideY, 0), insideG = mean(insideX, insideY, 1), insideB = mean(insideX, insideY, 2);
+    const double outsideR = mean(outsideX, outsideY, 0), outsideG = mean(outsideX, outsideY, 1);
+    std::printf("[atmosphere] lit volume: inside %.1f %.1f %.1f, fog %.1f %.1f\n", insideR, insideG, insideB, outsideR, outsideG);
+    // the fog is green: its albedo scatters green
+    EXPECT_GT(outsideG, 20.0);
+    EXPECT_LT(outsideR, outsideG * 0.5);
+    // the volume is bright and white: only the thin green fog in front of it tints it
+    EXPECT_GT(insideR, 60.0);
+    EXPECT_GT(insideR, insideG * 0.8);
+    EXPECT_NEAR(insideB, insideR, insideR * 0.05);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

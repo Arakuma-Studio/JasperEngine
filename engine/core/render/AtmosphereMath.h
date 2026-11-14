@@ -32,6 +32,19 @@ namespace jasperengine{
         float maxOpacity = 1.0f;
     };
 
+    // The light of a height fog in the Lit colour mode (FogColorMode::LIT, docs/specs/vapor.md
+    // R12). The volumetric march scatters ambient and sun by the medium's albedo per step, so a
+    // Local Volumetric Fog volume scatters them by its own; the analytic fog reads one colour
+    // and one sun colour (includes/height_fog.glsl), so it takes them with the albedo folded in.
+    struct LitFogLight{
+        Vector3 albedo = Vector3(1.0f, 1.0f, 1.0f);     // the fog's, no channel below 0
+        Vector3 ambient = Vector3(0.0f, 0.0f, 0.0f);    // scene ambient × ambient multiplier: scattered, not yet tinted
+        Vector3 emissive = Vector3(0.0f, 0.0f, 0.0f);   // no channel below 0
+        Vector3 sun = Vector3(0.0f, 0.0f, 0.0f);        // the main light's colour × intensity, not yet tinted
+        Vector3 color = Vector3(0.0f, 0.0f, 0.0f);      // the analytic fog colour: albedo × ambient + emissive
+        Vector3 sunColor = Vector3(0.0f, 0.0f, 0.0f);   // the analytic sun colour: albedo × sun
+    };
+
     // the fog of a part of a view ray: what it adds (in-scattered radiance) and lets through
     struct HeightFogSegment{
         Vector3 scattering = Vector3(0.0f, 0.0f, 0.0f);
@@ -80,6 +93,9 @@ namespace jasperengine{
         // share (sunColor linear times intensity, sunDirection towards the light)
         static Vector3 inscatteredLight(const Vector3& fogColor, const Vector3& sunColor, const Vector3& sunDirection,
                                         float directionalInscattering, float anisotropy, const Vector3& dir, float visibility);
+        // the Lit colour mode's light of a fog under a scene ambient (the scene's ambient colour
+        // × intensity, linear: what meshes receive) and a main light (linear colour × intensity)
+        static LitFogLight litLight(const FogComponent& fog, const Vector3& sceneAmbient, const Vector3& sunColor);
         // the fog colour of the Sky colour mode: the horizon ring (azimuths +Z, +X, -Z, -X)
         // blended by the direction's azimuth
         static Vector3 horizonRingColor(const Vector3 ring[4], const Vector3& dir);

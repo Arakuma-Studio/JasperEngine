@@ -86,6 +86,20 @@ Vector3 AtmosphereMath::inscatteredLight(const Vector3& fogColor, const Vector3&
     return fogColor + sunColor * sun;
 }
 
+LitFogLight AtmosphereMath::litLight(const FogComponent& fog, const Vector3& sceneAmbient, const Vector3& sunColor){
+    auto nonNegative = [](const Vector3& v){
+        return Vector3(std::max(v.x, 0.0f), std::max(v.y, 0.0f), std::max(v.z, 0.0f));
+    };
+    LitFogLight light;
+    light.albedo = nonNegative(fog.albedo);
+    light.ambient = sceneAmbient * std::max(fog.ambientMultiplier, 0.0f);
+    light.emissive = nonNegative(fog.emissive);
+    light.sun = sunColor;
+    light.color = light.albedo * light.ambient + light.emissive;
+    light.sunColor = light.albedo * light.sun;
+    return light;
+}
+
 Vector3 AtmosphereMath::horizonRingColor(const Vector3 ring[4], const Vector3& dir){
     const float flat = std::sqrt(dir.x * dir.x + dir.z * dir.z);
     if (flat < 1e-5f)
