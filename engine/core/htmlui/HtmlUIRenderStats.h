@@ -44,7 +44,7 @@ namespace jasperengine {
         // S93: images (HtmlUIImageCache)
         uint32_t imagesDecoded = 0;         // image files whose decode LoadTexture started (or ran) this frame
         uint32_t imageCacheHits = 0;        // LoadTexture calls that reused a cached image this frame
-        uint32_t imagesPending = 0;         // images drawn by the context whose decode is not uploaded yet
+        uint32_t imagesPending = 0;         // images the context loaded whose decode is still running
 
         // every field by its name (the MCP render_stats, Lua's UIDocument:getRenderStats, the
         // benchmark's --ui-stats): fn(const char* name, uint32_t value)

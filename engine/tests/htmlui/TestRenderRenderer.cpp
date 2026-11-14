@@ -141,6 +141,7 @@ TEST(RmlRendererTest, GeometryLifetimeThroughContext){
     JASPER_REQUIRE_GPU();
     // (the boxes as meshes: SDF primitives make no geometry)
     ClassicReplay classic;
+    HtmlUIImageCache::get().clear();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -468,10 +469,11 @@ TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     // the composite quad's two, geometry pages and the transient buffers of the first frame
     EXPECT_GE(buffers.size(), 6u);
     EXPECT_GE(images.size(), 1u);   // placeholder
-    // S93 R19: the file images (checker, alpha50, icon) are the process image cache's, not the renderer's
+    // S93 R19: the file images (checker, alpha50; compat rasterizes the SVG itself) are the process image
+    // cache's, not the renderer's
     std::vector<uint32_t> cached;
     HtmlUIImageCache::get().getGpuHandles(cached);
-    EXPECT_GE(cached.size(), 3u);
+    EXPECT_GE(cached.size(), 2u);
     for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
     for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));
     for (uint32_t id : cached) EXPECT_TRUE(isImageValid(id));
@@ -804,4 +806,44 @@ TEST_F(RenderRendererGpu, ImageCacheSharedAcrossContexts){
         EXPECT_EQ(cache.getCounters().decodes - before.decodes, 2u);
     }
     EXPECT_EQ(cache.getEntryCount(), 0u);
+}
+
+// R15 (images): a prewarmed image is decoded and uploaded before a document shows it: its first
+// frame draws it, from the cache, with no decode
+TEST_F(RenderRendererGpu, PrewarmImageIsReadyForTheFirstFrame){
+    JASPER_REQUIRE_GPU();
+    test::TempDir dir;
+    AsyncImageDecodes async;
+    HtmlUIImageCache& cache = HtmlUIImageCache::get();
+    cache.clear();
+    const std::string file = writeLargePng(dir, "prewarm.png");
+
+    std::shared_ptr<HtmlUIImageCache::PrewarmJob> job = cache.prewarm({file, dir.file("missing.png").generic_string()});
+    ASSERT_NE(job, nullptr);
+    EXPECT_EQ(job->total, 1u);   // the missing file is a warning, not part of the job
+    bool called = false;
+    job->onDone = [&called](){ called = true; };
+    EXPECT_FALSE(job->done);
+    for (int i = 0; i < 2000 && !job->done; i++){
+        cache.update();
+        if (!job->done)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    ASSERT_TRUE(job->done);
+    EXPECT_TRUE(called);
+    EXPECT_EQ(job->progress(), 1.0f);
+    expectedWarnings = 1;
+
+    const HtmlUIImageCache::Counters before = cache.getCounters();
+    RenderTestContext test(128, 128);
+    ASSERT_TRUE(test.isValid());
+    ASSERT_NE(test.loadFromMemory("<rml><body/></rml>", "warm.rml"), nullptr);
+    ASSERT_TRUE(test.renderUntilDrawn());
+    ASSERT_NE(test.loadFromMemory(imageDocument(file), "prewarmed.rml"), nullptr);
+    ASSERT_TRUE(test.renderFrame());
+    EXPECT_TRUE(showsImage(test)) << "the prewarmed image was not drawn in its first frame";
+    EXPECT_EQ(test.renderer.getStats().imageCacheHits, 1u);
+    EXPECT_EQ(test.renderer.getStats().imagesDecoded, 0u);
+    EXPECT_EQ(cache.getCounters().decodes, before.decodes);
+    EXPECT_EQ(cache.getCounters().uploads, before.uploads);
 }

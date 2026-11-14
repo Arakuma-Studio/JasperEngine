@@ -358,6 +358,10 @@ bool HtmlUIImageCache::Reference::pending() const{
     return !entry->texture && !entry->failed;
 }
 
+bool HtmlUIImageCache::Reference::decoding() const{
+    return !entry->texture && !entry->failed && entry->source && !entry->source->pixels && !entry->source->task.isReady();
+}
+
 bool HtmlUIImageCache::Reference::failed() const{
     return entry->failed;
 }

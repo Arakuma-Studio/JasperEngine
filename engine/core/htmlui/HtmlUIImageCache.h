@@ -73,6 +73,8 @@ namespace jasperengine {
             // view must exist). failed(): the decode failed (logged once), it never draws
             TextureRender* texture();
             bool pending() const;
+            // its decode is still running (pending() and not decoded yet)
+            bool decoding() const;
             bool failed() const;
             // decodes now if it is still pending (decoding="sync", a deterministic clock)
             void finish();

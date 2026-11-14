@@ -918,6 +918,7 @@ namespace jasperengine {
         // S93: shared images whose decode is not uploaded yet (stats.imagesPending), and image
         // decodes and cache hits of LoadTexture calls outside a frame (added to the next one)
         std::unordered_set<HtmlUITexture*> pendingImages;
+        uint32_t decodingImageCount() const;
         uint32_t imagesDecodedBetweenFrames = 0;
         uint32_t imageCacheHitsBetweenFrames = 0;
 

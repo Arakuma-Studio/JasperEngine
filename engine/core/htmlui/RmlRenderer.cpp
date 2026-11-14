@@ -1047,12 +1047,22 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
         texture->render = image->texture();
         if (!texture->render && image->pending()){
             pendingImages.insert(texture);
-            stats.imagesPending = (uint32_t)pendingImages.size();
+            stats.imagesPending = decodingImageCount();
         }
     }
 
     texture_dimensions = Rml::Vector2i(texture->width, texture->height);
     return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+uint32_t RmlRenderer::decodingImageCount() const{
+    // (an image laid out but not drawn yet stays in pendingImages once decoded: it uploads when drawn)
+    uint32_t decoding = 0;
+    for (const HtmlUITexture* texture : pendingImages){
+        if (texture->image && texture->image->decoding())
+            decoding++;
+    }
+    return decoding;
 }
 
 RmlRenderer::TextureSource RmlRenderer::parseTextureSource(const std::string& source){
@@ -1149,7 +1159,7 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
         texture->render = texture->image->texture();
         if (texture->render || texture->image->failed()){
             pendingImages.erase(texture);
-            stats.imagesPending = (uint32_t)pendingImages.size();
+            stats.imagesPending = decodingImageCount();
         }else if (Rml::RenderManager* manager = getRenderManager()){
             manager->RequestRender();
         }
@@ -1159,7 +1169,7 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
 
 void RmlRenderer::destroyTexture(HtmlUITexture* texture){
     if (pendingImages.erase(texture) > 0)
-        stats.imagesPending = (uint32_t)pendingImages.size();
+        stats.imagesPending = decodingImageCount();
     if (liveTextures.erase(texture) > 0 && texture->savedLayer && stats.boxShadowTextures > 0)
         stats.boxShadowTextures--;
     if (texture->atlas)
@@ -3337,7 +3347,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     // S93: the images loaded since the last frame, and those still decoding
     stats.imagesDecoded = imagesDecodedBetweenFrames;
     stats.imageCacheHits = imageCacheHitsBetweenFrames;
-    stats.imagesPending = (uint32_t)pendingImages.size();
+    stats.imagesPending = decodingImageCount();
     imagesDecodedBetweenFrames = imageCacheHitsBetweenFrames = 0;
     lastFrameDrawCount = 0;
 
