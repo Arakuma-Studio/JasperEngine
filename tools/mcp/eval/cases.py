@@ -5249,7 +5249,7 @@ CASES = [
         "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
                          "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
                          "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
-        "text_at_issue": "set_shader_uniform: override 'A Mesh's Property Override: wins over its materials; with submesh, that submesh's.'",
+        "text_at_issue": "set_shader_uniform: '... (+ component, + submesh; override: the Mesh's Property Override, over its materials) ...'",
         "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
         "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
         "mocks": [
