@@ -8,6 +8,9 @@
 #include "component/RigidbodyComponent.h"
 #include "util/JoltPhysicsAux.h"
 #include "pool/PhysicsMaterialPool.h"
+#include "physics/AttachedColliders.h"
+#include "Engine.h"
+#include <cmath>
 
 #include <iostream>
 #include <algorithm>
@@ -866,14 +869,20 @@ Vector3 Rigidbody::getPosition() const{
 }
 
 void Rigidbody::setPosition(Vector3 position){
+    setPosition(position, false);
+}
+
+void Rigidbody::setPosition(Vector3 position, bool interpolate){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     // the script takes the position over from the Transform a kinematic body was following
     scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetPosition(body.body, JPH::Vec3(position.x, position.y, position.z), JPH::EActivation::Activate);
-    // jumps, not interpolated
-    body.previousPosition = getPosition();
+    // jumps, unless asked to slide from the pose drawn from
+    if (!interpolate){
+        body.previousPosition = getPosition();
+    }
 
     scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody(entity, body, (float)Engine::getInterpolationAlpha());
 }
@@ -888,15 +897,76 @@ Quaternion Rigidbody::getRotation() const{
 }
 
 void Rigidbody::setRotation(Quaternion rotation){
+    setRotation(rotation, false);
+}
+
+void Rigidbody::setRotation(Quaternion rotation, bool interpolate){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
 
     checkBody(body);
     physicsSystem->stopFollowing3D(body, false, true);
     getBodyInterface().SetRotation(body.body, physicsSystem->toValidatedJoltRotation(rotation, entity, -1), JPH::EActivation::Activate);
-    body.previousRotation = getRotation();
+    if (!interpolate){
+        body.previousRotation = getRotation();
+    }
 
     physicsSystem->updateTransformFromRigidbody(entity, body, (float)Engine::getInterpolationAlpha());
+}
+
+void Rigidbody::movePosition(Vector3 position){
+    if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)){
+        throw std::runtime_error("Rigidbody:movePosition: the position must be finite");
+    }
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    // the script takes the position over from the Transform a kinematic body was following
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
+    body.hasMovePosition = true;
+    body.movePosition = position;
+    body.moveFromFixedStep = Engine::isInFixedStep();
+    body.moveStepsLeft = 0;
+}
+
+void Rigidbody::moveRotation(Quaternion rotation){
+    if (!std::isfinite(rotation.w) || !std::isfinite(rotation.x) || !std::isfinite(rotation.y) || !std::isfinite(rotation.z)){
+        throw std::runtime_error("Rigidbody:moveRotation: the rotation must be finite");
+    }
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, false, true);
+    body.hasMoveRotation = true;
+    body.moveRotation = rotation;
+    body.moveFromFixedStep = Engine::isInFixedStep();
+    body.moveStepsLeft = 0;
+}
+
+void Rigidbody::movePositionAndRotation(Vector3 position, Quaternion rotation){
+    movePosition(position);
+    moveRotation(rotation);
+}
+
+bool Rigidbody::isAttachToParentBody() const{
+    return getComponent<RigidbodyComponent>().attachToParentBody;
+}
+
+void Rigidbody::setAttachToParentBody(bool attach){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (body.attachToParentBody == attach){
+        return;
+    }
+    body.attachToParentBody = attach;
+    // the next step finds the ancestor (or makes this GameObject's own body again)
+    body.needUpdateColliders = true;
+}
+
+Entity Rigidbody::getAttachedBody() const{
+    const RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (!body.attachToParentBody){
+        return NULL_ENTITY;
+    }
+    if (body.attachedTo != NULL_ENTITY && scene->isEntityCreated(body.attachedTo)){
+        return body.attachedTo;
+    }
+    return AttachedColliders::findBody3D(scene, entity);
 }
 
 Vector3 Rigidbody::getLinearVelocity() const{
@@ -1154,6 +1224,10 @@ float Rigidbody::getColliderRadius(size_t index) const{
 }
 
 void Rigidbody::setColliderHalfHeight(size_t index, float halfHeight){
+    // 0: a capsule with no cylinder part, a sphere of its radius (S96 REQ-24)
+    if (!(halfHeight >= 0.0f) || !std::isfinite(halfHeight)){
+        throw std::runtime_error("Rigidbody:setColliderHalfHeight: halfHeight must be 0 or more (0: a capsule is a sphere of its radius)");
+    }
     colliderAt(index).halfHeight = halfHeight;
     colliderChanged(index);
 }

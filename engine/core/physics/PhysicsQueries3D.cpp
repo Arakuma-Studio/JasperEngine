@@ -8,6 +8,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "component/RigidbodyComponent.h"
+#include "physics/AttachedColliders.h"
 #include "physics/ContactTracker.h"
 #include "registry/PhysicsLayers.h"
 #include "subsystem/PhysicsSystem.h"
@@ -207,8 +208,10 @@ namespace jasperengine::physicsqueries3d {
             }
             const JPH::TransformedShape* context = this->GetContext();
             const int index = context ? (int)context->mShape->GetSubShapeUserData(result.mSubShapeID2) : 0;
+            // an attached child's collider resolves to the child's (S96 REQ-18)
+            const ColliderRef collider(scene, entity, index);
             for (const ColliderRef& kept : *out){
-                if (kept.entity == entity && kept.index == index){
+                if (kept == collider){
                     return;
                 }
             }
@@ -216,7 +219,7 @@ namespace jasperengine::physicsqueries3d {
                 this->ForceEarlyOut();
                 return;
             }
-            out->push_back(ColliderRef(scene, entity, index));
+            out->push_back(collider);
         }
 
     private:
@@ -559,8 +562,12 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         return false;
     }
     std::shared_ptr<PhysicsSystem> physics = worldOf(scene);
-    const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(collider.entity);
-    if (!physics || !body || (size_t)collider.index >= body->colliders.size()){
+    // an attached child's collider is a leaf of the body it joined (S96 REQ-18)
+    Entity bodyEntity = collider.entity;
+    int index = collider.index;
+    AttachedColliders::bodyIndexOf3D(scene, collider.entity, collider.index, bodyEntity, index);
+    const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(bodyEntity);
+    if (!physics || !body || (size_t)index >= AttachedColliders::colliderCount(*body)){
         return false;
     }
     // a trigger collider of a body with solid ones is on its companion sensor body
@@ -576,7 +583,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         lock.ReleaseLock();
         ColliderLeafCollector leaves;
         leaves.root = shape.mShape;
-        leaves.index = (JPH::uint64)collider.index;
+        leaves.index = (JPH::uint64)index;
         shape.CollectTransformedShapes(JPH::AABox::sBiggest(), leaves);
         if (!leaves.found){
             continue;

@@ -110,6 +110,16 @@ namespace jasperengine{
         bool ownsMaterialInstance = false;
     };
 
+    // S96 WP-C: a collider of a child GameObject attached to this body (attachToParentBody,
+    // physics/AttachedColliders.h): a copy of the child's collider posed in the body's frame
+    // (world units, the child's scale in its leaf), its receiver the child. Runtime only.
+    struct AttachedCollider3D{
+        Entity child = NULL_ENTITY;
+        // in the child's colliders
+        size_t index = 0;
+        Collider3D collider;
+    };
+
     struct RigidbodyComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
@@ -223,6 +233,36 @@ namespace jasperengine{
         // the contact messages its scripts (and its colliders' receivers') define
         // (PhysicsCallbacks bits), packed in the Jolt body's user data; runtime
         uint16_t listenerMask = 0;
+
+        // S96 WP-C
+        // Unity's colliders below a Rigidbody: this GameObject's colliders join the body of its
+        // nearest ancestor with an enabled Rigidbody (physics/AttachedColliders.h) and this
+        // GameObject has no body of its own (its body fields are ignored). No such ancestor: it
+        // is its own body.
+        bool attachToParentBody = false;
+        // runtime: the attached children's colliders, after `colliders` in the combined collider
+        // index the body's sub-shapes, contacts and queries report
+        std::vector<AttachedCollider3D> attachedColliders;
+        // runtime, on an attached child: the body its colliders joined
+        Entity attachedTo = NULL_ENTITY;
+        // runtime, on a body with attached children: consecutive steps it was composed again for
+        // a moved child, and whether that was reported
+        int attachedRecomposeSteps = 0;
+        bool warnedAttachedRecompose = false;
+        // runtime: Rigidbody.movePosition / moveRotation (D8), the pose reached by the end of
+        // the next fixed step (a kinematic body moved from an update: of the frame's steps)
+        bool hasMovePosition = false;
+        bool hasMoveRotation = false;
+        Vector3 movePosition;
+        Quaternion moveRotation;
+        // the target was set inside a fixed step (onFixedUpdate): reached by the end of this step
+        bool moveFromFixedStep = false;
+        // kinematic: the steps left to reach the target, and the velocities that move set (they
+        // stop once it is reached unless a script changed them)
+        int moveStepsLeft = 0;
+        bool movingToTarget = false;
+        Vector3 movedLinearVelocity;
+        Vector3 movedAngularVelocity;
     };
 
 }

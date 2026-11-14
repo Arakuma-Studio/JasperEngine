@@ -144,6 +144,23 @@ namespace jasperengine{
         // steps, so place a body from onFixedUpdate with these instead of GameObject.
         void setPosition(Vector2 position);
         void setAngle(float angle);
+        // S96 WP-C
+        // interpolate: the drawn pose slides there from the pose before the last step (false: a
+        // jump, as the one-argument forms)
+        void setPosition(Vector2 position, bool interpolate);
+        void setAngle(float angle, bool interpolate);
+        // Unity MovePosition / MoveRotation / Move (points, default angle units): the body is
+        // there at the end of the next fixed step (a kinematic one moved by velocity, over the
+        // frame's steps when called from an update; a static or dynamic one placed before the
+        // step, its velocity kept), drawn interpolated. The last call before a step wins.
+        void movePosition(Vector2 position);
+        void moveRotation(float angle);
+        void movePositionAndRotation(Vector2 position, float angle);
+        // Unity's colliders below a Rigidbody2D (physics/AttachedColliders.h)
+        bool isAttachToParentBody() const;
+        void setAttachToParentBody(bool attach);
+        // the GameObject whose body this one's colliders joined, NULL_ENTITY when none
+        Entity getAttachedBody() const;
         void setLinearVelocity(Vector2 linearVelocity);
         void setAngularVelocity(float angularVelocity);
         void setLinearDamping(float linearDamping);

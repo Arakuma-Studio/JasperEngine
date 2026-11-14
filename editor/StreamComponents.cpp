@@ -1460,6 +1460,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["autoInertia"] = body.autoInertia;
     node["inertia"] = body.inertia;
     node["material"] = body.material;
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
 
     YAML::Node shapesNode;
     for (const Collider2D& collider : body.colliders) {
@@ -1531,6 +1535,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["inertia"]) body.inertia = YamlNumbers::as<float>(node["inertia"]);
     // keys written only when set: absent is the default, also over an existing component
     body.material = node["material"] ? node["material"].as<std::string>() : std::string();
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
 
     if (node["colliders"]) {
         const YAML::Node collidersNode = node["colliders"];
@@ -1638,6 +1643,10 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["allowSleeping"] = body.allowSleeping;
     node["collideKinematicVsNonDynamic"] = body.collideKinematicVsNonDynamic;
     node["interpolation"] = rigidbodyInterpolationToString(body.interpolation);
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
     if (body.overrideMassProperties) {
         node["overrideMassProperties"] = true;
         node["solidBoxSize"] = encodeVector3(body.solidBoxSize);
@@ -1749,6 +1758,8 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["allowSleeping"]) body.allowSleeping = YamlNumbers::as<bool>(node["allowSleeping"]);
     if (node["collideKinematicVsNonDynamic"]) body.collideKinematicVsNonDynamic = YamlNumbers::as<bool>(node["collideKinematicVsNonDynamic"]);
     if (node["interpolation"]) body.interpolation = stringToRigidbodyInterpolation(node["interpolation"].as<std::string>());
+    // keys written only when set: absent is the default, also over an existing component
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
     if (node["overrideMassProperties"]) body.overrideMassProperties = YamlNumbers::as<bool>(node["overrideMassProperties"]);
     if (node["solidBoxSize"]) body.solidBoxSize = decodeVector3(node["solidBoxSize"]);
     if (node["solidBoxDensity"]) body.solidBoxDensity = YamlNumbers::as<float>(node["solidBoxDensity"]);

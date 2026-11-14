@@ -2774,6 +2774,10 @@ one clip at once.
 |---|---|---|
 | `position` | rw `Vector2` | points (pixels); setting teleports and wakes the body |
 | `angle` | rw number | default units (degrees) |
+| `setPosition(v2 [, interpolate])`, `setAngle(a [, interpolate])` | methods | teleports; `interpolate` true draws it sliding from the pose before the last step (default false: a jump, as the properties) |
+| `movePosition(v2)`, `moveRotation(angle)`, `movePositionAndRotation(v2, angle)` | methods | Unity `MovePosition` / `MoveRotation` / `Move`: there at the end of the next fixed step, drawn interpolated; kinematic: by velocity (pushes, stops there), dynamic / static: placed before the step, velocity kept |
+| `attachToParentBody` | rw bool | its colliders join the nearest parent's Rigidbody 2D (compound body); no body of its own |
+| `attachedRigidbody` | ro `Rigidbody2D` or nil | the body its colliders joined |
 | `linearVelocity` | rw `Vector2` | points per second |
 | `angularVelocity` | rw | |
 | `linearDamping`, `angularDamping`, `gravityScale` | rw | saved fields too (Unity drag, gravity scale) |
@@ -2895,6 +2899,10 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 |---|---|---|
 | `position` | rw `Vector3` | teleport |
 | `rotation` | rw `Quaternion` | |
+| `setPosition(p [, interpolate])`, `setRotation(q [, interpolate])` | methods | teleports; `interpolate` true draws it sliding from the pose before the last step (default false: a jump, as the properties) |
+| `movePosition(p)`, `moveRotation(q)`, `movePositionAndRotation(p, q)` | methods | Unity `MovePosition` / `MoveRotation` / `Move`: there at the end of the next fixed step, drawn interpolated; kinematic: by velocity (pushes and carries, stops there; from `onUpdate` over the frame's steps), dynamic / static: placed before the step, velocity kept; the last call before a step wins |
+| `attachToParentBody` | rw bool | its colliders join the nearest parent's Rigidbody (compound body, `jasper://docs/physics`); no body of its own |
+| `attachedRigidbody` | ro `Rigidbody` or nil | the body its colliders joined |
 | `linearVelocity`, `angularVelocity` | rw `Vector3` | also `setLinearVelocityClamped(v)`, `setAngularVelocityClamped(v)` |
 | `mass` | rw property | kg; setting it turns `automaticMass` off (2D uses `getMass()` method) |
 | `automaticMass`, `centerOfMass`, `automaticCenterOfMass`, `inertiaTensor`, `inertiaTensorRotation`, `automaticInertiaTensor` | rw | setting a value turns its automatic off; `resetCenterOfMass()`, `resetInertiaTensor()` |
@@ -2912,7 +2920,7 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `activate()`, `deactivate()` | methods | |
 | `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload; any number of colliders, vertices and indices |
 | `getNumColliders()` / `getColliderCount()`, `getColliderType(i)`, `removeCollider(i)` (later indices shift), `removeAllColliders()`, `load()`, `getAttachedObject()` | methods | |
-| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts |
+| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts; a capsule's half height 0 is a sphere (negative: an error) |
 | `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
 | `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |

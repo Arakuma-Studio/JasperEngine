@@ -23,6 +23,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -40,6 +41,7 @@
 #include "util/RagdollWizard.h"
 #include "component/AnimationPlayerComponent.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/type/DecomposeColliderCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -1717,8 +1719,13 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
             return false;
         }
     }
+    // a capsule's half_height may be 0: a sphere of its radius (S96 REQ-24)
+    if (shape.halfHeight < 0.0f || (shape.halfHeight == 0.0f && shape.type == Collider3DType::CYLINDER)) {
+        error = "half_height must be 0 or more (0: a capsule is a sphere of its radius); a cylinder's must be positive.";
+        return false;
+    }
     if (shape.width <= 0.0f || shape.height <= 0.0f || shape.depth <= 0.0f || shape.radius <= 0.0f ||
-        shape.halfHeight <= 0.0f || shape.topRadius <= 0.0f || shape.bottomRadius <= 0.0f || shape.density <= 0.0f) {
+        shape.topRadius <= 0.0f || shape.bottomRadius <= 0.0f || shape.density <= 0.0f) {
         error = "Collider sizes, radii and density must be positive.";
         return false;
     }
@@ -1808,6 +1815,83 @@ bool editShapes(const Json& args, std::vector<Shape>& shapes, size_t maxShapes, 
     return true;
 }
 
+// edit_colliders decompose: {index, quality, max_hulls} (S96 REQ-20)
+void decomposeColliderTool(const CallPtr& call, const Target& target, bool is2D) {
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    if (is2D) {
+        call->fail("decompose is for a 3D Mesh collider; a 2D polygon is already split in convex pieces.");
+        return;
+    }
+    for (const char* other : {"add", "update", "remove", "clear", "body_type", "body"}) {
+        if (has(args, other)) {
+            call->fail(std::string("decompose runs alone: send ") + other + " in another edit_colliders call.");
+            return;
+        }
+    }
+    if (!sceneStopped(call, target)) return;
+    const Json& spec = args["decompose"];
+    if (!spec.is_object() || !has(spec, "index") || !spec["index"].is_number_integer()) {
+        call->fail("decompose must be {index, quality: low|medium|high, max_hulls}; index is the Mesh collider's.");
+        return;
+    }
+    ColliderDecomposition::Request request;
+    request.sceneId = target.sceneId();
+    request.entity = target.entity;
+    const int index = spec["index"].get<int>();
+    request.index = index < 0 ? SIZE_MAX : (size_t)index;
+    const std::string quality = stringOr(spec, "quality", "medium");
+    if (quality == "low") request.quality = DecompositionQuality::LOW;
+    else if (quality == "medium") request.quality = DecompositionQuality::MEDIUM;
+    else if (quality == "high") request.quality = DecompositionQuality::HIGH;
+    else {
+        call->fail("decompose: quality must be low, medium or high.");
+        return;
+    }
+    const int maxHulls = intOr(spec, "max_hulls", 16);
+    if (maxHulls < 1 || maxHulls > (int)ColliderDecomposition::MAX_HULLS) {
+        call->fail("decompose: max_hulls must be 1 to " + std::to_string(ColliderDecomposition::MAX_HULLS) + ".");
+        return;
+    }
+    request.maxHulls = (uint32_t)maxHulls;
+
+    JobPtr job = call->ctx().jobs().create("edit_colliders", "Decompose collider of " + scene->getEntityName(target.entity));
+    std::string error;
+    std::shared_ptr<ColliderDecomposition> decomposition = ColliderDecomposition::start(target.project, request,
+        [job, target](const ColliderDecomposition::Outcome& outcome) {
+            if (outcome.cancelled) {
+                job->markCancelled(outcome.error);
+                return;
+            }
+            if (!outcome.error.empty()) {
+                job->fail(outcome.error);
+                return;
+            }
+            Json colliders = Json::array();
+            Scene* landed = target.engineScene();
+            if (const RigidbodyComponent* body = landed ? landed->findComponent<RigidbodyComponent>(target.entity) : nullptr) {
+                for (const Collider3D& shape : body->colliders) colliders.push_back(collider3DJson(target, shape));
+            }
+            job->succeed("Decomposed into " + std::to_string(outcome.hulls) + " convex hull collider(s) (undo: " + outcome.undoName + ").",
+                         {{"hulls", outcome.hulls}, {"undo_name", outcome.undoName}, {"colliders", colliders}});
+        }, error);
+    if (!decomposition) {
+        job->fail(error);
+        call->fail(error);
+        return;
+    }
+    std::weak_ptr<ColliderDecomposition> weak = decomposition;
+    job->setCancelHandler([weak]() { if (auto running = weak.lock()) running->cancel(); });
+    call->detach();
+    replyWhenJobDone(call, job, true, 120.0, [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
+    });
+}
+
 void editCollidersTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target)) return;
@@ -1826,6 +1910,11 @@ void editCollidersTool(const CallPtr& call) {
         return;
     }
     const bool is2D = dimension == "2d";
+    // S96 WP-C: a Mesh collider made into convex hulls, on a job, in one undo step of its own
+    if (has(args, "decompose")) {
+        decomposeColliderTool(call, target, is2D);
+        return;
+    }
     const bool editing = has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false) ||
                          has(args, "body_type") || has(args, "body");
     const ComponentType bodyType = is2D ? ComponentType::Rigidbody2DComponent : ComponentType::RigidbodyComponent;
@@ -6590,7 +6679,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"clear", boolean("")},
             {"remove", array(integerItem, "")},
             {"update", array(anyObject("{index, ...fields}"), "")},
-            {"add", array(anyObject("{shape, ...fields}"), "")}
+            {"add", array(anyObject("{shape, ...fields}"), "")},
+            {"decompose", anyObject("{index, quality: low|medium|high, max_hulls (16)}: a mesh collider into convex hulls a moving body can use.")}
         }, {"entity"}),
         editCollidersTool, false, false);
 

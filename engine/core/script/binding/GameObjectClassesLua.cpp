@@ -5030,8 +5030,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isColliderSensorEvents", 
             luabridge::overload<>(&Rigidbody2D::isColliderSensorEvents),
             luabridge::overload<size_t>(&Rigidbody2D::isColliderSensorEvents))
-        .addProperty("position", &Rigidbody2D::getPosition, &Rigidbody2D::setPosition)
-        .addProperty("angle", &Rigidbody2D::getAngle, &Rigidbody2D::setAngle)
+        .addProperty("position", &Rigidbody2D::getPosition, (void(Rigidbody2D::*)(Vector2))&Rigidbody2D::setPosition)
+        .addProperty("angle", &Rigidbody2D::getAngle, (void(Rigidbody2D::*)(float))&Rigidbody2D::setAngle)
+        // S96 WP-C: teleports that may slide, Unity's MovePosition / MoveRotation / Move, and
+        // colliders joining an ancestor's body
+        .addFunction("setPosition", +[](Rigidbody2D* self, Vector2 position, std::optional<bool> interpolate) {
+            self->setPosition(position, interpolate.value_or(false));
+        })
+        .addFunction("setAngle", +[](Rigidbody2D* self, float angle, std::optional<bool> interpolate) {
+            self->setAngle(angle, interpolate.value_or(false));
+        })
+        .addFunction("movePosition", &Rigidbody2D::movePosition)
+        .addFunction("moveRotation", &Rigidbody2D::moveRotation)
+        .addFunction("movePositionAndRotation", &Rigidbody2D::movePositionAndRotation)
+        .addProperty("attachToParentBody", &Rigidbody2D::isAttachToParentBody, &Rigidbody2D::setAttachToParentBody)
+        .addProperty("attachedRigidbody", +[](const Rigidbody2D* self) -> std::optional<Rigidbody2D> {
+            const Entity body = self->getAttachedBody();
+            if (body == NULL_ENTITY) return std::nullopt;
+            return Rigidbody2D(self->getScene(), body);
+        })
         .addProperty("linearVelocity", &Rigidbody2D::getLinearVelocity, &Rigidbody2D::setLinearVelocity)
         .addProperty("angularVelocity", &Rigidbody2D::getAngularVelocity, &Rigidbody2D::setAngularVelocity)
         .addProperty("linearDamping", &Rigidbody2D::getLinearDamping, &Rigidbody2D::setLinearDamping)
@@ -5429,8 +5446,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("buoyancy", &Rigidbody::getBuoyancy, &Rigidbody::setBuoyancy)
         .addProperty("waterDrag", &Rigidbody::getWaterDrag, &Rigidbody::setWaterDrag)
         .addProperty("waterAngularDrag", &Rigidbody::getWaterAngularDrag, &Rigidbody::setWaterAngularDrag)
-        .addProperty("position", &Rigidbody::getPosition, &Rigidbody::setPosition)
-        .addProperty("rotation", &Rigidbody::getRotation, &Rigidbody::setRotation)
+        .addProperty("position", &Rigidbody::getPosition, (void(Rigidbody::*)(Vector3))&Rigidbody::setPosition)
+        .addProperty("rotation", &Rigidbody::getRotation, (void(Rigidbody::*)(Quaternion))&Rigidbody::setRotation)
+        // S96 WP-C: teleports that may slide, Unity's MovePosition / MoveRotation / Move, and
+        // colliders joining an ancestor's body
+        .addFunction("setPosition", +[](Rigidbody* self, Vector3 position, std::optional<bool> interpolate) {
+            self->setPosition(position, interpolate.value_or(false));
+        })
+        .addFunction("setRotation", +[](Rigidbody* self, Quaternion rotation, std::optional<bool> interpolate) {
+            self->setRotation(rotation, interpolate.value_or(false));
+        })
+        .addFunction("movePosition", &Rigidbody::movePosition)
+        .addFunction("moveRotation", &Rigidbody::moveRotation)
+        .addFunction("movePositionAndRotation", &Rigidbody::movePositionAndRotation)
+        .addProperty("attachToParentBody", &Rigidbody::isAttachToParentBody, &Rigidbody::setAttachToParentBody)
+        .addProperty("attachedRigidbody", +[](const Rigidbody* self) -> std::optional<Rigidbody> {
+            const Entity body = self->getAttachedBody();
+            if (body == NULL_ENTITY) return std::nullopt;
+            return Rigidbody(self->getScene(), body);
+        })
         .addProperty("linearVelocity", &Rigidbody::getLinearVelocity, &Rigidbody::setLinearVelocity)
         .addFunction("setLinearVelocityClamped", &Rigidbody::setLinearVelocityClamped)
         .addProperty("angularVelocity", &Rigidbody::getAngularVelocity, &Rigidbody::setAngularVelocity)

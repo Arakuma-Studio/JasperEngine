@@ -364,12 +364,28 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderLeaf(Scene* scene, Entity entity, 
         if (!shape_result.IsValid()) return NULL;
         return shape_result.Get();
     }else if (shapeData.type == Collider3DType::CAPSULE){
-        JPH::CapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
+        const float halfHeight = shapeData.halfHeight * absEntityScale.y;
+        const float radius = shapeData.radius * maxScaleXZ(absEntityScale);
+        // no cylinder part is a sphere (S96 REQ-24): Jolt refuses a capsule without one
+        if (halfHeight == 0.0f){
+            JPH::SphereShapeSettings sphere_settings(radius);
+            JPH::ShapeSettings::ShapeResult sphere_result = sphere_settings.Create();
+            if (!sphere_result.IsValid()) return NULL;
+            return sphere_result.Get();
+        }
+        JPH::CapsuleShapeSettings shape_settings(halfHeight, radius);
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return NULL;
         return shape_result.Get();
     }else if (shapeData.type == Collider3DType::TAPERED_CAPSULE){
         const float radiusScale = maxScaleXZ(absEntityScale);
+        // no cylinder part: the larger end's sphere
+        if (shapeData.halfHeight * absEntityScale.y == 0.0f){
+            JPH::SphereShapeSettings sphere_settings(std::max(shapeData.topRadius, shapeData.bottomRadius) * radiusScale);
+            JPH::ShapeSettings::ShapeResult sphere_result = sphere_settings.Create();
+            if (!sphere_result.IsValid()) return NULL;
+            return sphere_result.Get();
+        }
         JPH::TaperedCapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.topRadius * radiusScale, shapeData.bottomRadius * radiusScale);
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return NULL;

@@ -1294,6 +1294,34 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_decompose_mesh_collider",
+        "kind": "guard",
+        "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
+                         "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
+                         "decompose) instead of one convex hull or a box that changes the shape.",
+        "text_at_issue": "edit_colliders `decompose` parameter ('a mesh collider into convex hulls a moving body can use'); "
+                         "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
+        "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "
+                  "collider 0 (Mesh) is static-only. Fix its collider so it can be dynamic, keeping its concave shape "
+                  "as close as you can.",
+        "mocks": [
+            {"tool": "edit_colliders", "args": {"decompose": {}}, "result": ok(
+                "Decomposed into 7 convex hull collider(s) (undo: Decompose Collider (Rock)).",
+                {"job_id": "3", "status": "succeeded", "hulls": 7, "undo_name": "Decompose Collider (Rock)",
+                 "colliders": [{"shape": "convex_hull", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000, "vertices": 48}]})},
+            {"tool": "edit_colliders", "result": ok(
+                "\"Rock\" has 1 collider(s).",
+                {"entity": {"id": 9, "name": "Rock", "path": "Rock"}, "dimension": "3d", "body_type": "dynamic",
+                 "colliders": [{"shape": "mesh", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000,
+                                "source": {"id": 9, "name": "Rock", "path": "Rock"}}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_colliders", "args": {"decompose": {"index": 0}}}]}],
+                   "must_not_call": [{"tool": "edit_colliders", "args": {"update": [{"shape": "convex_hull"}]}},
+                                     {"tool": "edit_colliders", "args": {"add": [{"shape": "box"}]}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_query_physics_needs_play",
         "kind": "guard",
         "groups_enabled": ["physics"],

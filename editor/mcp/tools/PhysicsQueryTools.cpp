@@ -447,9 +447,28 @@ void queryPhysicsTool(const CallPtr& call) {
     } else if (cast) {
         Json list = Json::array();
         for (const RayReturn& hit : hits) {
-            list.push_back({{"entity", hit.body}, {"name", McpRefs::entityPath(sp, hit.body)}, {"collider", hit.colliderIndex},
-                            {"point", McpValues::toJson(hit.point)}, {"normal", McpValues::toJson(hit.normal)},
-                            {"distance", McpValues::number(hit.distance)}});
+            // a collider attached from a child GameObject names the child (S96 REQ-18), its body the ancestor
+            Entity owner = hit.body;
+            int index = (int)hit.colliderIndex;
+#ifdef JASPERENGINE_PHYSICS_2D
+            if (q.is2D) {
+                const ColliderRef2D ref(scene, hit.body, index);
+                owner = ref.entity;
+                index = ref.index;
+            }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+            if (!q.is2D) {
+                const ColliderRef ref(scene, hit.body, index);
+                owner = ref.entity;
+                index = ref.index;
+            }
+#endif
+            Json entry = {{"entity", owner}, {"name", McpRefs::entityPath(sp, owner)}, {"collider", index},
+                          {"point", McpValues::toJson(hit.point)}, {"normal", McpValues::toJson(hit.normal)},
+                          {"distance", McpValues::number(hit.distance)}};
+            if (owner != hit.body) entry["body"] = McpRefs::entityPath(sp, hit.body);
+            list.push_back(entry);
         }
         data["hits"] = list;
         text = list.empty() ? std::string("No hit.")

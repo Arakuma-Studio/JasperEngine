@@ -11,9 +11,12 @@
 #include "util/Angle.h"
 #include "util/Box2DAux.h"
 #include "component/Transform.h"
+#include "physics/AttachedColliders.h"
+#include "Engine.h"
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 using namespace jasperengine;
 
@@ -852,6 +855,10 @@ Vector2 Rigidbody2D::getPosition() const{
 }
 
 void Rigidbody2D::setPosition(Vector2 position){
+    setPosition(position, false);
+}
+
+void Rigidbody2D::setPosition(Vector2 position, bool interpolate){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
@@ -861,8 +868,10 @@ void Rigidbody2D::setPosition(Vector2 position){
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
     b2Body_SetAwake(body.body, true);
-    // jumps, not interpolated
-    body.previousTransform.p = b2Body_GetPosition(body.body);
+    // jumps, unless asked to slide from the pose drawn from
+    if (!interpolate){
+        body.previousTransform.p = b2Body_GetPosition(body.body);
+    }
 
     scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
 }
@@ -875,6 +884,10 @@ float Rigidbody2D::getAngle() const{
 }
 
 void Rigidbody2D::setAngle(float angle){
+    setAngle(angle, false);
+}
+
+void Rigidbody2D::setAngle(float angle, bool interpolate){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
@@ -882,9 +895,64 @@ void Rigidbody2D::setAngle(float angle){
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
     b2Body_SetAwake(body.body, true);
-    body.previousTransform.q = b2Body_GetRotation(body.body);
+    if (!interpolate){
+        body.previousTransform.q = b2Body_GetRotation(body.body);
+    }
 
     scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
+}
+
+void Rigidbody2D::movePosition(Vector2 position){
+    if (!std::isfinite(position.x) || !std::isfinite(position.y)){
+        throw std::runtime_error("Rigidbody2D:movePosition: the position must be finite");
+    }
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
+    body.hasMovePosition = true;
+    body.movePosition = position;
+    body.moveFromFixedStep = Engine::isInFixedStep();
+    body.moveStepsLeft = 0;
+}
+
+void Rigidbody2D::moveRotation(float angle){
+    if (!std::isfinite(angle)){
+        throw std::runtime_error("Rigidbody2D:moveRotation: the angle must be finite");
+    }
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
+    body.hasMoveRotation = true;
+    body.moveAngle = angle;
+    body.moveFromFixedStep = Engine::isInFixedStep();
+    body.moveStepsLeft = 0;
+}
+
+void Rigidbody2D::movePositionAndRotation(Vector2 position, float angle){
+    movePosition(position);
+    moveRotation(angle);
+}
+
+bool Rigidbody2D::isAttachToParentBody() const{
+    return getComponent<Rigidbody2DComponent>().attachToParentBody;
+}
+
+void Rigidbody2D::setAttachToParentBody(bool attach){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    if (body.attachToParentBody == attach){
+        return;
+    }
+    body.attachToParentBody = attach;
+    body.needUpdateColliders = true;
+}
+
+Entity Rigidbody2D::getAttachedBody() const{
+    const Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    if (!body.attachToParentBody){
+        return NULL_ENTITY;
+    }
+    if (body.attachedTo != NULL_ENTITY && scene->isEntityCreated(body.attachedTo)){
+        return body.attachedTo;
+    }
+    return AttachedColliders::findBody2D(scene, entity);
 }
 
 void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){

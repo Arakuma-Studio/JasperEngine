@@ -227,6 +227,27 @@ namespace jasperengine{
     }
 #endif
 
+#ifdef JASPERENGINE_PHYSICS_2D
+    // S96 WP-C: the shapes of a collider attached from a child GameObject (attachToParentBody)
+    // report this bit with the slot in Rigidbody2DComponent::attachedColliders: never a plain
+    // index or a generated key
+    constexpr int ATTACHED_COLLIDER2D_BIT = 0x20000000;
+
+    inline bool isAttachedCollider2DKey(int key){
+        return key >= 0 && (key & GENERATED_COLLIDER2D_BIT) == 0 && (key & ATTACHED_COLLIDER2D_BIT) != 0;
+    }
+#endif
+
+    // S96 WP-C: a collider of a child GameObject attached to this body: a copy of the child's
+    // collider in the body's frame (points, the child's scale applied), its receiver the child.
+    // Runtime only.
+    struct AttachedCollider2D{
+        Entity child = NULL_ENTITY;
+        // in the child's colliders
+        size_t index = 0;
+        Collider2D collider;
+    };
+
     struct JASPERENGINE_API Rigidbody2DComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
@@ -310,6 +331,32 @@ namespace jasperengine{
         Vector2 pendingLinearVelocity = Vector2::ZERO;
         float pendingAngularVelocity = 0.0f;
         bool pendingAwake = true;
+
+        // S96 WP-C
+        // Unity's colliders below a Rigidbody2D: this GameObject's colliders join the body of its
+        // nearest ancestor with an enabled Rigidbody 2D (physics/AttachedColliders.h) and this
+        // GameObject has no body of its own. No such ancestor: it is its own body.
+        bool attachToParentBody = false;
+        // runtime: the attached children's colliders (shape keys ATTACHED_COLLIDER2D_BIT | slot)
+        std::vector<AttachedCollider2D> attachedColliders;
+        // runtime, on an attached child: the body its colliders joined
+        Entity attachedTo = NULL_ENTITY;
+        int attachedRecomposeSteps = 0;
+        bool warnedAttachedRecompose = false;
+        // runtime: Rigidbody2D.movePosition / moveRotation (points, default angle units), reached
+        // by the end of the next fixed step (a kinematic body moved from an update: of the
+        // frame's steps)
+        bool hasMovePosition = false;
+        bool hasMoveRotation = false;
+        Vector2 movePosition = Vector2::ZERO;
+        float moveAngle = 0.0f;
+        bool moveFromFixedStep = false;
+        int moveStepsLeft = 0;
+        bool movingToTarget = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+        b2Vec2 movedLinearVelocity = b2Vec2_zero;
+        float movedAngularVelocity = 0.0f;
+#endif
     };
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -318,6 +365,10 @@ namespace jasperengine{
     inline Collider2D* findCollider2D(Rigidbody2DComponent& body, int index){
         if (isGeneratedCollider2DKey(index)){
             return body.generated ? body.generated->find(index) : nullptr;
+        }
+        if (isAttachedCollider2DKey(index)){
+            const size_t slot = (size_t)(index & (ATTACHED_COLLIDER2D_BIT - 1));
+            return slot < body.attachedColliders.size() ? &body.attachedColliders[slot].collider : nullptr;
         }
         return index >= 0 && (size_t)index < body.colliders.size() ? &body.colliders[(size_t)index] : nullptr;
     }

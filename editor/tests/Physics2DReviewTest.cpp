@@ -485,3 +485,68 @@ TEST(Physics2DReview, AJointWhoseBodyGoesAwayLeavesTheWorld) {
     EXPECT_TRUE(h.world.jointComponent(h.joint).loadFailed) << "not made, reported once";
     EXPECT_LT(h.world.rb(h.weight).getPosition().y, 59.0f) << "the weight falls";
 }
+
+// ---- S96 WP-C: movePosition / moveRotation and the interpolated teleport in 2D ------------------
+
+namespace {
+
+    Entity moveBox2D(World2D& world, const Vector3& position, BodyType type) {
+        const Entity e = world.body(position, type);
+        Collider2D collider;
+        collider.type = Collider2DType::POLYGON;
+        collider.points = boxPoints(64, 64);
+        world.component(e).colliders.push_back(collider);
+        return e;
+    }
+
+}
+
+TEST(Physics2DReview, MovePosition2D) {
+    World2D world(Vector2(0, 0));
+    world.scene.setPhysicsInterpolation(true);
+    const Entity mover = moveBox2D(world, Vector3(0, 0, 0), BodyType::KINEMATIC);
+    const Entity crate = moveBox2D(world, Vector3(77, 0, 0), BodyType::DYNAMIC);
+    const Entity ball = moveBox2D(world, Vector3(0, 300, 0), BodyType::DYNAMIC);
+    world.load();
+    world.step();
+
+    // kinematic: there at the end of the step by velocity, pushing; stopped the step after
+    const float quarter = Angle::radToDefault((float)M_PI / 2.0f);
+    world.rb(mover).movePosition(Vector2(64, 0));
+    world.rb(mover).moveRotation(quarter);
+    world.rb(ball).setLinearVelocity(Vector2(0, 128));
+    world.step();
+    EXPECT_NEAR(world.rb(mover).getPosition().x, 64.0f, 0.01f);
+    EXPECT_NEAR(world.rb(mover).getAngle(), quarter, Angle::radToDefault(1e-3f));
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.scene.getComponent<Transform>(mover).position.x, 32.0f, 0.01f) << "drawn half way";
+    world.step(2);
+    EXPECT_GT(world.rb(crate).getLinearVelocity().x, 10.0f) << "pushed";
+    EXPECT_NEAR(world.rb(mover).getLinearVelocity().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(mover).getAngularVelocity(), 0.0f, 1e-4f);
+
+    // dynamic: placed before the step, its velocity kept, drawn half way
+    const float y = world.rb(ball).getPosition().y;
+    world.rb(ball).movePosition(Vector2(320, y));
+    world.step();
+    EXPECT_NEAR(world.rb(ball).getPosition().x, 320.0f, 0.01f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, y + 128.0f * STEP, 0.01f);
+    EXPECT_NEAR(world.rb(ball).getLinearVelocity().y, 128.0f, 0.01f);
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.scene.getComponent<Transform>(ball).position.x, 160.0f, 0.01f);
+
+    // setPosition slides only when asked
+    world.step();
+    const float from = world.rb(ball).getPosition().x;
+    world.rb(ball).setPosition(Vector2(from + 200.0f, world.rb(ball).getPosition().y), true);
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_GT(world.scene.getComponent<Transform>(ball).position.x, from + 90.0f);
+    EXPECT_LT(world.scene.getComponent<Transform>(ball).position.x, from + 110.0f);
+    world.rb(ball).setPosition(Vector2(from + 400.0f, world.rb(ball).getPosition().y));
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.scene.getComponent<Transform>(ball).position.x, from + 400.0f, 0.01f);
+}
