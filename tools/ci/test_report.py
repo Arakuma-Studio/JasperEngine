@@ -660,6 +660,15 @@ class WindowsLegsTest(unittest.TestCase):
         self.assertNotIn("No report from", body)
 
 
+class LaneNameTest(unittest.TestCase):
+    def test_matrix_jobs_name_their_lane(self):
+        # the unit matrix (one job per test binary) and the MCP shards report under their lane
+        self.assertEqual((report.lane_label("unit-core", []), report.lane_base("unit-core")), ("unit (core)", "unit"))
+        self.assertEqual((report.lane_label("unit-editor", []), report.lane_base("unit-editor")), ("unit (editor)", "unit"))
+        self.assertEqual((report.lane_label("mcp-2", ["1", "2"]), report.lane_base("mcp-2")), ("mcp (2/2)", "mcp"))
+        self.assertEqual((report.lane_label("unit", []), report.lane_base("unit")), ("unit", "unit"))
+
+
 class GhTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="fake-gh-")

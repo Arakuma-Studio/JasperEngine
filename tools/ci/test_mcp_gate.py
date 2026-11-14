@@ -8,6 +8,7 @@ import io
 import json
 import sys
 import tempfile
+import re
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -30,6 +31,15 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertIn("mcp_gate: allowed skip test_web.py::test_latency", "\n".join(lines))
         self.assertIn("2 ran: 1 passed, 0 failed, 1 skipped (1 allowed)", lines[-1])
+
+    def test_a_slow_build_skip_is_allowed_outside_the_nightly_only(self):
+        # PR and merge-queue shards run without JASPER_SLOW_BUILD; the nightly builds the games
+        slow = ("test_build.py::test_desktop", "skip", "set JASPER_SLOW_BUILD=1 to build and run a real Desktop player")
+        code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), slow), {}, "mcp")
+        self.assertEqual(code, 0, lines)
+        self.assertIn("allowed skip test_build.py::test_desktop: a slow game build; runs in nightly", "\n".join(lines))
+        code, lines = gate.gate(results(("test_a.py::test_x", "pass", ""), slow), {}, "nightly")
+        self.assertEqual(code, 1, lines)
 
     def test_each_failure(self):
         cases = {
@@ -90,7 +100,9 @@ class AllowList(unittest.TestCase):
         for name in allowed:
             file, test = name.split("::")
             source = (HERE.parent / "mcp" / "tests" / file).read_text()
-            self.assertIn(f"def {test}(", source, name)
+            # a def, or a name the file makes at load time from a "test_..._" prefix (test_reflection.py)
+            prefixes = re.findall(r'"(test_[a-z0-9_]*_)"', source)
+            self.assertTrue(f"def {test}(" in source or any(test.startswith(p) for p in prefixes), name)
 
 
 if __name__ == "__main__":

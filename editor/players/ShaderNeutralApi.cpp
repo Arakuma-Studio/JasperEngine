@@ -123,7 +123,14 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"SplineAnimate", 0x00658326u},
         // S81 R67: a script changes a title's values, never its asset, its Render Mode or which
         // Live Effects it has (the export collects title_fx for the titles of shipped content)
-        {"TitleArt", 0xb946fadau},
+        // (S85's playback (animation, animationSpeed, animationTime, paused, playOverlay, prepare,
+        // sample, reset, getDuration, isAnimationPlaying, isAnimationReady, onAnimationEvent),
+        // S87's languages (language, getLanguage, setLanguage, getLanguages, getResolvedLanguage,
+        // isLanguageReady, onLanguageReady, onLanguageChanged) and S86's qualityTier and
+        // getMeshStats reviewed: they play, show or measure what the title's asset already holds,
+        // which Play Automatically and the device's tier reach without a script; the export cooks
+        // a 3D title's programs and meshes at every Realtime tier and bakes every language)
+        {"TitleArt", 0x6b2b23a2u},
     };
     return classes;
 }

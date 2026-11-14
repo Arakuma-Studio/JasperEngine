@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */; };
 		5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */; };
-        5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
-        5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000015 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000016 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
@@ -777,8 +775,6 @@
 		5452524E919481AD44CC8191 /* OverlayMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5452524E17BFAE7B893BDD25 /* OverlayMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5452524E31A069D7C5AD13CD /* HeightfieldErosion.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EC97865F506126415 /* HeightfieldErosion.h */; };
-		5452524ED0C0E5214899A2D7 /* HeightfieldErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E4ED11862DC7279EB /* HeightfieldErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
-		5452524E57B7E064BC6631C1 /* HeightfieldErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E4ED11862DC7279EB /* HeightfieldErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5452524E9CDF260EF599A778 /* FoliageTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EF9D2D4B7EFC25AD4 /* FoliageTypes.h */; };
 		5452524EB2A0BF4831756DAD /* FoliageScatter.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EA712A6B7B4173A03 /* FoliageScatter.h */; };
 		5452524EA0327FB9E31A0088 /* FoliageScatter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E37FFD5727BAC0F35 /* FoliageScatter.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
@@ -4238,12 +4234,12 @@
 		4A534E475B65CDC361A9B998 /* ShaderWarmup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479D6C988D06003720 /* ShaderWarmup.h */; };
 		4A534E47BCF812E39A4E32EC /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
 		4A534E4760FA85EA63BA6FA5 /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
-		4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; };
-		4A534E471B8FD86F7F15C4DF /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; };
-		4A534E47CBA078AD17238AB6 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; };
-		4A534E478954610132FAB175 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; };
-		4A534E47C23402E60248379D /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; };
-		4A534E47586034BACE6D7EEA /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; };
+		4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E471B8FD86F7F15C4DF /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E47CBA078AD17238AB6 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E478954610132FAB175 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E47C23402E60248379D /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E47586034BACE6D7EEA /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E471E44FBA8F03BF451 /* AnimatorRetarget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */; };
 		4A534E474EB90D13AC63955C /* AnimatorRetarget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */; };
 		4A534E47236B792DE1D98A49 /* AnimatorRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47102990E89B7B7714 /* AnimatorRig.cpp */; };
@@ -4276,8 +4272,6 @@
 		4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
 		4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729A27E0419671047 /* CurveJson.cpp */; };
 		4A534E4771F369477A4B22CC /* CurveJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */; };
-		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
-		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
 		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
@@ -4438,8 +4432,6 @@
 		4A534E474269687D105CA51D /* Collision.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733724F6EEF14DB82 /* Collision.h */; };
 		4A534E471B213535798BF4BE /* Collision2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474FA579066E077C7A /* Collision2D.h */; };
 		4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */; };
-		4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
-		4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
 		4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4725212AA03130A5CA /* ParticleSystemModule.h */; };
 		4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D160C40D539EF9BF /* ParticleModules.h */; };
 		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
@@ -4603,8 +4595,8 @@
 		4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
-		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
-		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
+		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
 		4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
 		4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799D5B065A0FD015C /* AudioMeter.h */; };
@@ -4919,6 +4911,86 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E53F2185B6DA1DAA6C0 /* AudioImport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5353AA59FA780A0415 /* AudioImport.cpp */; };
+		4A534E53AF0A9444AA441D5E /* ClipSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */; };
+		4A534E53145BA8E2C82B5D5E /* MusicPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */; };
+		4A534E53F4F9CA4A7DEDA0E3 /* MusicSequenceSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539A3C38A8CE842ECA /* MusicSequenceSource.cpp */; };
+		4A534E53B99DE0626F916677 /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536DFD1B7B90DD7A4C /* SoundEvent.cpp */; };
+		4A534E538C14BE5354FC4C42 /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534AEB5B56495774E8 /* SoundEventIO.cpp */; };
+		4A534E53A1F27AC68D662711 /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D4C6CA5E69528207 /* SoundEventLibrary.cpp */; };
+		4A534E53FC6096CD0FEEA3C0 /* TimelineAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53EF84D2340239D35A /* TimelineAudio.cpp */; };
+		4A534E53B02B817C1ECDF04D /* NavDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A0F68A54750DE418 /* NavDiagnostics.cpp */; };
+		4A534E5390248082129D3651 /* NavTerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */; };
+		4A534E53467858F036FF3D38 /* Audio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536C3F9DBC9C819346 /* Audio.cpp */; };
+		4A534E53EE974CECB4C29BA1 /* SoundHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537FA2457AFE4EDB15 /* SoundHandle.cpp */; };
+		4A534E533C5936F26D373AD0 /* Glitch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E538EFF38386696C76C /* Glitch.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53A081CEABE8022D7B /* HitStop.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5365247A3C87D85B83 /* HitStop.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53316E6BC361871657 /* Palette.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53550E8B0F9482040A /* Palette.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53F38B50F4DFF73BB7 /* PaletteCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53482885F67AC48CA1 /* PaletteCodec.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53256F2C5F666D3B29 /* PaletteMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530BD196ADB5F5223E /* PaletteMaterial.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53765764172FA62360 /* PaletteQuantize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53204BE6C8C199C317 /* PaletteQuantize.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53A47002FFCC8F7111 /* PaletteRampTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539C989D0E602C8B31 /* PaletteRampTexture.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E539CC6D00C3443AA8A /* PaletteSwap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539D391C53B6ED29FE /* PaletteSwap.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5369DD001773C0BCE0 /* PixelColor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E535A23C95948865A6F /* PixelColor.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5346D6581EF445B040 /* PixelFxKey.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BF518669372816BD /* PixelFxKey.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E537E3592B38CE24D62 /* PixelFxPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530335C970F27D1837 /* PixelFxPlayer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53D3FF434C333BCF65 /* ScreenTransition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FDA112134A4C6BC /* ScreenTransition.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53E7B11E4773EB34F5 /* TilemapColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */; };
+		4A534E53E8A1D3F94AB7EE2B /* TilemapSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */; };
+		4A534E53BC33C3264074F5AA /* TerrainSolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534379CAA5C009C7AA /* TerrainSolver.cpp */; };
+		4A534E53C5310D9F79A4F8F7 /* TerrainTemplates.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5385FFB70CE82DBF58 /* TerrainTemplates.cpp */; };
+		4A534E53891A179E1FB6051A /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
+		4A534E53E02D4F6BD72BB70E /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
+		4A534E53E94F7A6369A305A2 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
+		4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53A0A54789548D2DA1 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
+		4A534E537457DACB3B82B77D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
+		4A534E5389E89E6D01D2EB92 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
+		4A534E53E072E18B2EF1E1A7 /* TilesetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */; };
+		4A534E53167EE11DB57D3CD2 /* AudioImport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5353AA59FA780A0415 /* AudioImport.cpp */; };
+		4A534E53990EE4D72FF75631 /* ClipSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */; };
+		4A534E53255E6ADFCD360281 /* MusicPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */; };
+		4A534E537D371796CC4F33F5 /* MusicSequenceSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539A3C38A8CE842ECA /* MusicSequenceSource.cpp */; };
+		4A534E5390A5C8948930F821 /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536DFD1B7B90DD7A4C /* SoundEvent.cpp */; };
+		4A534E5339047670ADC812C7 /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534AEB5B56495774E8 /* SoundEventIO.cpp */; };
+		4A534E537F755C6CB8FE368B /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D4C6CA5E69528207 /* SoundEventLibrary.cpp */; };
+		4A534E53DC0D5D2C0DC2DF8B /* TimelineAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53EF84D2340239D35A /* TimelineAudio.cpp */; };
+		4A534E53A3B44CB28476FD91 /* NavDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A0F68A54750DE418 /* NavDiagnostics.cpp */; };
+		4A534E53D1BB4E2301809E60 /* NavTerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */; };
+		4A534E535984EEA26524ED8A /* Audio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536C3F9DBC9C819346 /* Audio.cpp */; };
+		4A534E539BDFBDB6CC7CC7A0 /* SoundHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537FA2457AFE4EDB15 /* SoundHandle.cpp */; };
+		4A534E532D967BF1A54570A7 /* Glitch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E538EFF38386696C76C /* Glitch.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E530FBEE115727F2440 /* HitStop.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5365247A3C87D85B83 /* HitStop.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53386C178D6E606266 /* Palette.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53550E8B0F9482040A /* Palette.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53A6DCDFDF71D9F8B5 /* PaletteCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53482885F67AC48CA1 /* PaletteCodec.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53CA7786D516505A24 /* PaletteMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530BD196ADB5F5223E /* PaletteMaterial.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53B456D9083083539D /* PaletteQuantize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53204BE6C8C199C317 /* PaletteQuantize.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53EEF10837CD0DFEF8 /* PaletteRampTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539C989D0E602C8B31 /* PaletteRampTexture.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E535306AF93F14A92BD /* PaletteSwap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539D391C53B6ED29FE /* PaletteSwap.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53B608BA10A8DCEF48 /* PixelColor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E535A23C95948865A6F /* PixelColor.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53B0FF935E42BB6CCF /* PixelFxKey.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BF518669372816BD /* PixelFxKey.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E537A26DE2632C0F6EF /* PixelFxPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530335C970F27D1837 /* PixelFxPlayer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5364ACE466B0FF57F7 /* ScreenTransition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FDA112134A4C6BC /* ScreenTransition.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53F5E5F2E690B2E1CD /* TilemapColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */; };
+		4A534E536E2CBB791FB6A37D /* TilemapSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */; };
+		4A534E535C00F2DD8A7B49E4 /* TerrainSolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534379CAA5C009C7AA /* TerrainSolver.cpp */; };
+		4A534E537BB384FF7939ECC1 /* TerrainTemplates.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5385FFB70CE82DBF58 /* TerrainTemplates.cpp */; };
+		4A534E5352E3A58794CE2A69 /* TileAlphaTrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */; };
+		4A534E531988399AB65AFFDF /* TileCells.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5349115B0B65EA0C9A /* TileCells.cpp */; };
+		4A534E53EBFC087919224442 /* TileColliderBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */; };
+		4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53AF7B08FE79344324 /* TilemapChunkBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */; };
+		4A534E530AFE29037462431D /* TilemapMeshAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */; };
+		4A534E53977C8FADAFA962D4 /* Tileset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5345C30F4A0E857488 /* Tileset.cpp */; };
+		4A534E5391DDC952FAC38CAF /* TilesetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */; };
+		4A534E53B8A4C9B9417B549E /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53855F80AC031EA979 /* clipper.engine.cpp */; };
+		4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
+		4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
+		4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
+		4A534E53FA0D88F9BD42D0DD /* clipper.engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53855F80AC031EA979 /* clipper.engine.cpp */; };
+		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
+		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
+		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9568,46 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E5353AA59FA780A0415 /* AudioImport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioImport.cpp; sourceTree = "<group>"; };
+		4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClipSource.cpp; sourceTree = "<group>"; };
+		4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MusicPlayer.cpp; sourceTree = "<group>"; };
+		4A534E539A3C38A8CE842ECA /* MusicSequenceSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MusicSequenceSource.cpp; sourceTree = "<group>"; };
+		4A534E536DFD1B7B90DD7A4C /* SoundEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEvent.cpp; sourceTree = "<group>"; };
+		4A534E534AEB5B56495774E8 /* SoundEventIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventIO.cpp; sourceTree = "<group>"; };
+		4A534E53D4C6CA5E69528207 /* SoundEventLibrary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventLibrary.cpp; sourceTree = "<group>"; };
+		4A534E53EF84D2340239D35A /* TimelineAudio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TimelineAudio.cpp; sourceTree = "<group>"; };
+		4A534E53A0F68A54750DE418 /* NavDiagnostics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavDiagnostics.cpp; sourceTree = "<group>"; };
+		4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavTerrainWorld.cpp; sourceTree = "<group>"; };
+		4A534E536C3F9DBC9C819346 /* Audio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Audio.cpp; sourceTree = "<group>"; };
+		4A534E537FA2457AFE4EDB15 /* SoundHandle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundHandle.cpp; sourceTree = "<group>"; };
+		4A534E538EFF38386696C76C /* Glitch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Glitch.cpp; sourceTree = "<group>"; };
+		4A534E5365247A3C87D85B83 /* HitStop.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HitStop.cpp; sourceTree = "<group>"; };
+		4A534E53550E8B0F9482040A /* Palette.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Palette.cpp; sourceTree = "<group>"; };
+		4A534E53482885F67AC48CA1 /* PaletteCodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PaletteCodec.cpp; sourceTree = "<group>"; };
+		4A534E530BD196ADB5F5223E /* PaletteMaterial.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PaletteMaterial.cpp; sourceTree = "<group>"; };
+		4A534E53204BE6C8C199C317 /* PaletteQuantize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PaletteQuantize.cpp; sourceTree = "<group>"; };
+		4A534E539C989D0E602C8B31 /* PaletteRampTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PaletteRampTexture.cpp; sourceTree = "<group>"; };
+		4A534E539D391C53B6ED29FE /* PaletteSwap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PaletteSwap.cpp; sourceTree = "<group>"; };
+		4A534E535A23C95948865A6F /* PixelColor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelColor.cpp; sourceTree = "<group>"; };
+		4A534E53BF518669372816BD /* PixelFxKey.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelFxKey.cpp; sourceTree = "<group>"; };
+		4A534E530335C970F27D1837 /* PixelFxPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelFxPlayer.cpp; sourceTree = "<group>"; };
+		4A534E530FDA112134A4C6BC /* ScreenTransition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScreenTransition.cpp; sourceTree = "<group>"; };
+		4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapColliders.cpp; sourceTree = "<group>"; };
+		4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapSystem.cpp; sourceTree = "<group>"; };
+		4A534E534379CAA5C009C7AA /* TerrainSolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainSolver.cpp; sourceTree = "<group>"; };
+		4A534E5385FFB70CE82DBF58 /* TerrainTemplates.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainTemplates.cpp; sourceTree = "<group>"; };
+		4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileAlphaTrace.cpp; sourceTree = "<group>"; };
+		4A534E5349115B0B65EA0C9A /* TileCells.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileCells.cpp; sourceTree = "<group>"; };
+		4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileColliderBuilder.cpp; sourceTree = "<group>"; };
+		4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileGridLayout.cpp; sourceTree = "<group>"; };
+		4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapChunkBuilder.cpp; sourceTree = "<group>"; };
+		4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilemapMeshAccess.cpp; sourceTree = "<group>"; };
+		4A534E5345C30F4A0E857488 /* Tileset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Tileset.cpp; sourceTree = "<group>"; };
+		4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TilesetPool.cpp; sourceTree = "<group>"; };
+		4A534E53855F80AC031EA979 /* clipper.engine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.engine.cpp; sourceTree = "<group>"; };
+		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
+		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
+		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11019,6 +11131,14 @@
 				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
 				4A534E479455F5D4C55C2B3C /* MusicPlayer.h */,
 				4A534E47858C3240395205D8 /* MusicSequenceSource.h */,
+				4A534E5353AA59FA780A0415 /* AudioImport.cpp */,
+				4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */,
+				4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */,
+				4A534E539A3C38A8CE842ECA /* MusicSequenceSource.cpp */,
+				4A534E536DFD1B7B90DD7A4C /* SoundEvent.cpp */,
+				4A534E534AEB5B56495774E8 /* SoundEventIO.cpp */,
+				4A534E53D4C6CA5E69528207 /* SoundEventLibrary.cpp */,
+				4A534E53EF84D2340239D35A /* TimelineAudio.cpp */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -11401,6 +11521,18 @@
 				4A534E472C4FC740FC9687D5 /* PixelFxLua.h */,
 				4A534E47E377CB554D876579 /* PixelFxPlayer.h */,
 				4A534E47A895801520386487 /* ScreenTransition.h */,
+				4A534E538EFF38386696C76C /* Glitch.cpp */,
+				4A534E5365247A3C87D85B83 /* HitStop.cpp */,
+				4A534E53550E8B0F9482040A /* Palette.cpp */,
+				4A534E53482885F67AC48CA1 /* PaletteCodec.cpp */,
+				4A534E530BD196ADB5F5223E /* PaletteMaterial.cpp */,
+				4A534E53204BE6C8C199C317 /* PaletteQuantize.cpp */,
+				4A534E539C989D0E602C8B31 /* PaletteRampTexture.cpp */,
+				4A534E539D391C53B6ED29FE /* PaletteSwap.cpp */,
+				4A534E535A23C95948865A6F /* PixelColor.cpp */,
+				4A534E53BF518669372816BD /* PixelFxKey.cpp */,
+				4A534E530335C970F27D1837 /* PixelFxPlayer.cpp */,
+				4A534E530FDA112134A4C6BC /* ScreenTransition.cpp */,
 			);
 			path = pixelart;
 			sourceTree = "<group>";
@@ -11655,6 +11787,7 @@
 				5452524E196FDEBB284DD19F /* terrain */,
 				5052544389C2D57FF7DC8B71 /* noise */,
 				564F584C566CEAA6686CA9AF /* voxel */,
+				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -12337,6 +12470,10 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E53A0F68A54750DE418 /* NavDiagnostics.cpp */,
+				4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */,
+				4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */,
+				4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12430,6 +12567,7 @@
 				71393ED328F8EF200074442E /* tinyxml2 */,
 				53313658205D4C7B978283CB /* msdfgen */,
 				5458545227649E7756DFE7F0 /* zstd */,
+				4A534E53D6BD09E6C1121274 /* clipper2 */,
 			);
 			path = libs;
 			sourceTree = "<group>";
@@ -12782,6 +12920,8 @@
 				717AD967290B6602007D7DB5 /* AudioSource.h */,
 				4A534E470C31E68F4C6398B1 /* Audio.h */,
 				4A534E4779D650DFEE40600C /* SoundHandle.h */,
+				4A534E536C3F9DBC9C819346 /* Audio.cpp */,
+				4A534E537FA2457AFE4EDB15 /* SoundHandle.cpp */,
 			);
 			path = sound;
 			sourceTree = "<group>";
@@ -15911,6 +16051,42 @@
 			path = decompress;
 			sourceTree = "<group>";
 		};
+		4A534E531B38A0F5FBC1FFA3 /* tilemap */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E534379CAA5C009C7AA /* TerrainSolver.cpp */,
+				4A534E5385FFB70CE82DBF58 /* TerrainTemplates.cpp */,
+				4A534E533CB35B04300CD2F0 /* TileAlphaTrace.cpp */,
+				4A534E5349115B0B65EA0C9A /* TileCells.cpp */,
+				4A534E5313E8B1AD2783ACB8 /* TileColliderBuilder.cpp */,
+				4A534E5304B3E455C0269B47 /* TileGridLayout.cpp */,
+				4A534E5337DD8B26030DAA75 /* TilemapChunkBuilder.cpp */,
+				4A534E53277315E5936B6637 /* TilemapMeshAccess.cpp */,
+				4A534E5345C30F4A0E857488 /* Tileset.cpp */,
+				4A534E533BA28D46BECD39D0 /* TilesetPool.cpp */,
+			);
+			path = tilemap;
+			sourceTree = "<group>";
+		};
+		4A534E539F0EB07C07419E7B /* src */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53855F80AC031EA979 /* clipper.engine.cpp */,
+				4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */,
+				4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */,
+				4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		4A534E53D6BD09E6C1121274 /* clipper2 */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E539F0EB07C07419E7B /* src */,
+			);
+			path = clipper2;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -18796,7 +18972,6 @@
 				5452524ED78A747B65BF2016 /* TerrainErosion.cpp in Sources */,
 				5452524EF1EC0BF596A3CB56 /* RawMapStore.cpp in Sources */,
 				5452524E919481AD44CC8191 /* OverlayMapStore.cpp in Sources */,
-				5452524ED0C0E5214899A2D7 /* HeightfieldErosion.cpp in Sources */,
 				5452524EA0327FB9E31A0088 /* FoliageScatter.cpp in Sources */,
 				5452524E6F422FDF502CA1B1 /* FoliageRules.cpp in Sources */,
 				5452524E4BB843A94191568B /* FoliageOps.cpp in Sources */,
@@ -19024,7 +19199,6 @@
 				5E5280000000000000000007 /* CrashHandler.cpp in Sources */,
 				5E5280000000000000000008 /* CrashHandlerPosix.cpp in Sources */,
 				5E5280000000000000000009 /* HangWatchdog.cpp in Sources */,
-				5E5280000000000000000010 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001C /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001E /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
@@ -19328,7 +19502,6 @@
 				4A534E47143B4D85C7260C54 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
 				4A534E477F1D537B5FCAB48A /* CurveJson.cpp in Sources */,
-				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
 				4A534E476679665D77FA7509 /* AudioEffects.cpp in Sources */,
 				4A534E47FB64C4ED6F75DB5B /* AudioMixer.cpp in Sources */,
 				4A534E47C3AF8217E22D19F6 /* AudioMixerIO.cpp in Sources */,
@@ -19375,7 +19548,6 @@
 				4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */,
 				4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */,
 				4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */,
-				4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */,
 				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
 				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
 				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
@@ -19511,6 +19683,46 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E53167EE11DB57D3CD2 /* AudioImport.cpp in Sources */,
+				4A534E53990EE4D72FF75631 /* ClipSource.cpp in Sources */,
+				4A534E53255E6ADFCD360281 /* MusicPlayer.cpp in Sources */,
+				4A534E537D371796CC4F33F5 /* MusicSequenceSource.cpp in Sources */,
+				4A534E5390A5C8948930F821 /* SoundEvent.cpp in Sources */,
+				4A534E5339047670ADC812C7 /* SoundEventIO.cpp in Sources */,
+				4A534E537F755C6CB8FE368B /* SoundEventLibrary.cpp in Sources */,
+				4A534E53DC0D5D2C0DC2DF8B /* TimelineAudio.cpp in Sources */,
+				4A534E53A3B44CB28476FD91 /* NavDiagnostics.cpp in Sources */,
+				4A534E53D1BB4E2301809E60 /* NavTerrainWorld.cpp in Sources */,
+				4A534E535984EEA26524ED8A /* Audio.cpp in Sources */,
+				4A534E539BDFBDB6CC7CC7A0 /* SoundHandle.cpp in Sources */,
+				4A534E532D967BF1A54570A7 /* Glitch.cpp in Sources */,
+				4A534E530FBEE115727F2440 /* HitStop.cpp in Sources */,
+				4A534E53386C178D6E606266 /* Palette.cpp in Sources */,
+				4A534E53A6DCDFDF71D9F8B5 /* PaletteCodec.cpp in Sources */,
+				4A534E53CA7786D516505A24 /* PaletteMaterial.cpp in Sources */,
+				4A534E53B456D9083083539D /* PaletteQuantize.cpp in Sources */,
+				4A534E53EEF10837CD0DFEF8 /* PaletteRampTexture.cpp in Sources */,
+				4A534E535306AF93F14A92BD /* PaletteSwap.cpp in Sources */,
+				4A534E53B608BA10A8DCEF48 /* PixelColor.cpp in Sources */,
+				4A534E53B0FF935E42BB6CCF /* PixelFxKey.cpp in Sources */,
+				4A534E537A26DE2632C0F6EF /* PixelFxPlayer.cpp in Sources */,
+				4A534E5364ACE466B0FF57F7 /* ScreenTransition.cpp in Sources */,
+				4A534E53F5E5F2E690B2E1CD /* TilemapColliders.cpp in Sources */,
+				4A534E536E2CBB791FB6A37D /* TilemapSystem.cpp in Sources */,
+				4A534E535C00F2DD8A7B49E4 /* TerrainSolver.cpp in Sources */,
+				4A534E537BB384FF7939ECC1 /* TerrainTemplates.cpp in Sources */,
+				4A534E5352E3A58794CE2A69 /* TileAlphaTrace.cpp in Sources */,
+				4A534E531988399AB65AFFDF /* TileCells.cpp in Sources */,
+				4A534E53EBFC087919224442 /* TileColliderBuilder.cpp in Sources */,
+				4A534E535B16EBCC4410A334 /* TileGridLayout.cpp in Sources */,
+				4A534E53AF7B08FE79344324 /* TilemapChunkBuilder.cpp in Sources */,
+				4A534E530AFE29037462431D /* TilemapMeshAccess.cpp in Sources */,
+				4A534E53977C8FADAFA962D4 /* Tileset.cpp in Sources */,
+				4A534E5391DDC952FAC38CAF /* TilesetPool.cpp in Sources */,
+				4A534E53FA0D88F9BD42D0DD /* clipper.engine.cpp in Sources */,
+				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
+				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
+				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19657,7 +19869,6 @@
 				5E528000000000000000000A /* CrashHandler.cpp in Sources */,
 				5E528000000000000000000B /* CrashHandlerPosix.cpp in Sources */,
 				5E528000000000000000000C /* HangWatchdog.cpp in Sources */,
-				5E5280000000000000000011 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001D /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001F /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
@@ -19773,7 +19984,6 @@
 				5452524E5667045321BA4BB1 /* TerrainErosion.cpp in Sources */,
 				5452524E1676F76EDA8B8E78 /* RawMapStore.cpp in Sources */,
 				5452524E17BFAE7B893BDD25 /* OverlayMapStore.cpp in Sources */,
-				5452524E57B7E064BC6631C1 /* HeightfieldErosion.cpp in Sources */,
 				5452524E4F00B2EE55D74A21 /* FoliageScatter.cpp in Sources */,
 				5452524E828C9D190F4D5751 /* FoliageRules.cpp in Sources */,
 				5452524E80D9F3FF5F31523C /* FoliageOps.cpp in Sources */,
@@ -20287,7 +20497,6 @@
 				4A534E479173156330A35D24 /* AnimatorAssetPool.cpp in Sources */,
 				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
 				4A534E47EDF76759E42FAB79 /* CurveJson.cpp in Sources */,
-				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
 				4A534E479F7DEE51D4BFF327 /* AudioEffects.cpp in Sources */,
 				4A534E4774A236D755C99296 /* AudioMixer.cpp in Sources */,
 				4A534E4746A10C8588F77C4D /* AudioMixerIO.cpp in Sources */,
@@ -20334,7 +20543,6 @@
 				4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */,
 				4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */,
 				4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */,
-				4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */,
 				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
 				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
 				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
@@ -20470,6 +20678,46 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E53F2185B6DA1DAA6C0 /* AudioImport.cpp in Sources */,
+				4A534E53AF0A9444AA441D5E /* ClipSource.cpp in Sources */,
+				4A534E53145BA8E2C82B5D5E /* MusicPlayer.cpp in Sources */,
+				4A534E53F4F9CA4A7DEDA0E3 /* MusicSequenceSource.cpp in Sources */,
+				4A534E53B99DE0626F916677 /* SoundEvent.cpp in Sources */,
+				4A534E538C14BE5354FC4C42 /* SoundEventIO.cpp in Sources */,
+				4A534E53A1F27AC68D662711 /* SoundEventLibrary.cpp in Sources */,
+				4A534E53FC6096CD0FEEA3C0 /* TimelineAudio.cpp in Sources */,
+				4A534E53B02B817C1ECDF04D /* NavDiagnostics.cpp in Sources */,
+				4A534E5390248082129D3651 /* NavTerrainWorld.cpp in Sources */,
+				4A534E53467858F036FF3D38 /* Audio.cpp in Sources */,
+				4A534E53EE974CECB4C29BA1 /* SoundHandle.cpp in Sources */,
+				4A534E533C5936F26D373AD0 /* Glitch.cpp in Sources */,
+				4A534E53A081CEABE8022D7B /* HitStop.cpp in Sources */,
+				4A534E53316E6BC361871657 /* Palette.cpp in Sources */,
+				4A534E53F38B50F4DFF73BB7 /* PaletteCodec.cpp in Sources */,
+				4A534E53256F2C5F666D3B29 /* PaletteMaterial.cpp in Sources */,
+				4A534E53765764172FA62360 /* PaletteQuantize.cpp in Sources */,
+				4A534E53A47002FFCC8F7111 /* PaletteRampTexture.cpp in Sources */,
+				4A534E539CC6D00C3443AA8A /* PaletteSwap.cpp in Sources */,
+				4A534E5369DD001773C0BCE0 /* PixelColor.cpp in Sources */,
+				4A534E5346D6581EF445B040 /* PixelFxKey.cpp in Sources */,
+				4A534E537E3592B38CE24D62 /* PixelFxPlayer.cpp in Sources */,
+				4A534E53D3FF434C333BCF65 /* ScreenTransition.cpp in Sources */,
+				4A534E53E7B11E4773EB34F5 /* TilemapColliders.cpp in Sources */,
+				4A534E53E8A1D3F94AB7EE2B /* TilemapSystem.cpp in Sources */,
+				4A534E53BC33C3264074F5AA /* TerrainSolver.cpp in Sources */,
+				4A534E53C5310D9F79A4F8F7 /* TerrainTemplates.cpp in Sources */,
+				4A534E53891A179E1FB6051A /* TileAlphaTrace.cpp in Sources */,
+				4A534E53E02D4F6BD72BB70E /* TileCells.cpp in Sources */,
+				4A534E53E94F7A6369A305A2 /* TileColliderBuilder.cpp in Sources */,
+				4A534E5304C1BA2F424C6CEC /* TileGridLayout.cpp in Sources */,
+				4A534E53A0A54789548D2DA1 /* TilemapChunkBuilder.cpp in Sources */,
+				4A534E537457DACB3B82B77D /* TilemapMeshAccess.cpp in Sources */,
+				4A534E5389E89E6D01D2EB92 /* Tileset.cpp in Sources */,
+				4A534E53E072E18B2EF1E1A7 /* TilesetPool.cpp in Sources */,
+				4A534E53B8A4C9B9417B549E /* clipper.engine.cpp in Sources */,
+				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
+				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
+				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -22892,6 +23140,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -22949,6 +23198,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -23429,6 +23679,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -23489,6 +23740,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../libs/clipper2/include",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";

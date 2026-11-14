@@ -348,7 +348,8 @@ void NavBakeTest::runtimeUpdateTiles(bool carving){
     const Entity walker = agent(*scene, Vector3(-15.0f, 0.0f, 0.0f));
     step();
     NavMeshAgent handle(scene.get(), walker);
-    ASSERT_TRUE(handle.setDestination(Vector3(15.0f, 0.0f, 0.0f)));
+    const Vector3 destination(15.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(handle.setDestination(destination));
     steps(10);
     ASSERT_TRUE(handle.isOnNavMesh());
     // beside the walker's line, not on it: the tiles land after a wall-clock bake, and an agent
@@ -360,13 +361,18 @@ void NavBakeTest::runtimeUpdateTiles(bool carving){
     ASSERT_TRUE(nav->updateTiles(surface, box, error)) << error;
     int ticks = 0;
     Vector3 previous = position(walker);
-    while (nav->isBaking(surface) && ticks < 600) {
+    const auto since = std::chrono::steady_clock::now();
+    while (bakeRunning(surface, since)) {
         step();
         ticks++;
         EXPECT_TRUE(handle.isOnNavMesh()) << "tick " << ticks;
         EXPECT_FALSE(handle.isPathPending() && handle.getPathStatus() == nav::PathStatus::Invalid) << "tick " << ticks;
-        // it keeps moving
-        EXPECT_GT(position(walker).distance(previous), 0.0f) << "tick " << ticks;
+        // it keeps moving until it arrives: with few workers (a 3-core runner) the bake can outlast
+        // the walk, and an agent standing at its destination is right not to move
+        const Vector3 flat(previous.x, destination.y, previous.z);
+        if (flat.distance(destination) > 1.0f) {
+            EXPECT_GT(position(walker).distance(previous), 0.0f) << "tick " << ticks;
+        }
         previous = position(walker);
         if (carving) {
             EXPECT_LE(nav->getCarveTileBuilds(), nav::getSettings().effectiveCarveTilesPerTick()) << "tick " << ticks;

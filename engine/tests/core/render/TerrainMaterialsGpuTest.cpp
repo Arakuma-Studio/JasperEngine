@@ -853,10 +853,15 @@ TEST_P(TerrainVariantGpu, Draws){
     if (c.world){
         // its overview, then its pages, before the frame is judged
         GpuEnvironment::setView(frameWidth, frameHeight, frameWidth, frameHeight, Scaling::STRETCH);
-        ASSERT_TRUE(GpuEnvironment::runFrames([this](){
+        // a tile in Error stays there until its file changes: once all four of writeVariantWorld's
+        // have failed, the world never streams in, and waiting out the 600 frames tells no more
+        bool everyTileFailed = false;
+        ASSERT_TRUE(GpuEnvironment::runFrames([this, &everyTileFailed](){
             const TerrainWorldRuntime* world = component().world;
-            return world && world->isReady() && world->tiles().stats().residentPages > 0;
+            everyTileFailed = world && world->tiles().stats().errors >= 4;
+            return everyTileFailed || (world && world->isReady() && world->tiles().stats().residentPages > 0);
         }, 600)) << "the world never streamed in";
+        ASSERT_FALSE(everyTileFailed) << "every tile of the world failed to load (the log names why)";
     }
     ASSERT_TRUE(render()) << "never settled";
     std::vector<uint8_t> frame;

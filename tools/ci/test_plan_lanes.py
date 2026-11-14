@@ -175,10 +175,12 @@ class Rules(unittest.TestCase):
         lines = pl.github_output(doc, r["unit_run"]).splitlines()
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
-                                "unit_run_core", "unit_run_editor", "htmlui_filter", "mcp_shards"])
+                                "unit_run_core", "unit_run_editor", "unit_suites", "htmlui_filter", "mcp_shards"])
         self.assertIn("unit_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         self.assertIn('mcp_shards=["1","2"]', lines)
         self.assertIn("unit_run_editor=false", lines)
+        # the unit lane's matrix: one job per planned suite
+        self.assertIn('unit_suites=["core"]', lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
 

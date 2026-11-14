@@ -101,10 +101,12 @@ step_tests() {
     # docs/testing.md); minimum counts and skip limit as tools/build.sh unit-tests
     "$core" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/core-macos.xml" || status=1
     "$editor" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/editor-macos.xml" || status=1
+    # what arm64 and Apple's own HTTP stack do not have: the 8-wide (AVX2) curl noise, the curl
+    # backend's missing-library seam
     "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/core-macos.xml" --min-tests "$(min_tests CORE_MIN_TESTS)" --max-skipped 0 \
-        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
+        --allow-skip-reason 'count(s)? allocations|allocation counter' --allow-skip-reason 'no 8-wide curl noise on this processor' || status=1
     "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/editor-macos.xml" --min-tests "$(min_tests EDITOR_MIN_TESTS)" --max-skipped 0 \
-        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
+        --allow-skip-reason 'count(s)? allocations|allocation counter' --allow-skip-reason "the missing library is the curl backend's \\(Linux\\)" || status=1
     return "$status"
 }
 

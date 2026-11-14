@@ -43,7 +43,11 @@ if [[ "${MCP_WEB_BUILD:-0}" == 1 ]]; then
 fi
 rm -f build/test-results/mcp.json
 status=0
-JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh exec linux env -u JASPER_FIXTURE \
+# the games' builds (an hour or more each, cold) run in the nightly; PR and merge-queue shards leave them to
+# the smoke lane, and mcp_gate.py lets their "set JASPER_SLOW_BUILD=1" skips pass outside the nightly
+SLOW_BUILD=0
+[[ "$LANE" == nightly ]] && SLOW_BUILD=1
+JASPER_SLOW_BUILD="${JASPER_SLOW_BUILD:-$SLOW_BUILD}" JASPER_SLOW_TESTS=1 tools/build.sh exec linux env -u JASPER_FIXTURE \
     dbus-run-session -- tools/mcp/run-tests.sh --plan "$PLAN" -j 2 --json build/test-results/mcp.json || status=$?
 echo "mcp_shard: run_tests.py exited $status"
 python3 tools/ci/mcp_gate.py --json build/test-results/mcp.json --allowed tools/ci/mcp-allowed-skips.txt \

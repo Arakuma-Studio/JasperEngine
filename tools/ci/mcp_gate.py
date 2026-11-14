@@ -24,6 +24,10 @@ from pathlib import Path
 ENTRY = re.compile(r"^(test_\w+\.py::\w+)\s+#\s*(\S.*?);\s*runs in\s+(\S.*?)\s*$")
 
 
+# what every test that builds a real game says when JASPER_SLOW_BUILD is off (tools/mcp/tests)
+SLOW_BUILD_SKIP = "JASPER_SLOW_BUILD=1"
+
+
 def load_allowed(path: Path) -> tuple[dict[str, tuple[str, str]], list[str]]:
     """name -> (reason, lane), and the lines that are no entry."""
     allowed, bad = {}, []
@@ -61,6 +65,9 @@ def gate(results: dict | None, allowed: dict[str, tuple[str, str]], lane: str, p
     for r in skips:
         entry = allowed.get(r["name"])
         detail = (r.get("detail") or "")[:300]
+        if entry is None and SLOW_BUILD_SKIP in detail:
+            # PR and merge-queue shards leave the games' builds to the smoke lane and the nightly
+            entry = ("a slow game build", "nightly")
         if entry is None:
             problems.append(f"{r['name']} skipped, and the allow list (tools/ci/mcp-allowed-skips.txt) does not name it: {detail}")
         elif entry[1] == lane:

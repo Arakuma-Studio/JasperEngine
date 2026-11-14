@@ -2470,6 +2470,11 @@ if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
+# the grid layouts (S50): the cell of a cell's own point is that cell only without fused
+# multiply-adds (arm64 Clang fuses them by default), so painting and picking agree on every CPU
+if(NOT MSVC)
+    set_source_files_properties(core/tilemap/TileGridLayout.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 # Every player links the limiter (S38 6.6), and most run it on one bus, with room to spare in its budget
 # (R17): it is built for size. Its result does not depend on it: no fast-math, no contraction here.
 if(NOT MSVC)

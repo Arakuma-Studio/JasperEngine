@@ -5,3 +5,6 @@
 
 test_mesh_raycast.py::test_web_latency  # loads the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web, the web image), which an mcp shard does not make; runs in nightly
 test_sound_library_data.py::test_d3_licence_files_match_the_pinned_zips  # kenney.nl no longer serves the pinned zips (S36 Deviations): needs a JASPER_SOUND_CACHE holding them, which CI has not; runs in maintainer runs with JASPER_SOUND_CACHE (no CI lane)
+test_reflection.py::test_golden_resave_prefab_legacy  # writes its prefab projects from the TappyPlane fixture (build/fixture-unity), which is not in git; runs in maintainer runs with JASPER_FIXTURE (no CI lane)
+test_reflection.py::test_golden_resave_prefab_nested  # writes its prefab projects from the TappyPlane fixture (build/fixture-unity), which is not in git; runs in maintainer runs with JASPER_FIXTURE (no CI lane)
+test_reflection.py::test_golden_resave_prefab_variant  # writes its prefab projects from the TappyPlane fixture (build/fixture-unity), which is not in git; runs in maintainer runs with JASPER_FIXTURE (no CI lane)

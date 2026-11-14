@@ -924,7 +924,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `changes` | `tools/ci/plan_lanes.py`: `tools/check-changed`'s plan for the diff, widened by CI's rules below; uploads it as the artifact `plan` |
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
-| `unit` | `UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun |
+| `unit` (one job per test binary: `core`, `editor`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core) |
 | `asan` | `SANITIZE=address,undefined tools/build.sh unit-tests` |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
@@ -940,6 +940,9 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 that ran no test, an MCP shard that ran no file, or a merge-queue or full run that skipped a lane
 turns it red. A skipped MCP test fails its shard unless `tools/ci/mcp-allowed-skips.txt` lists it
 with the reason and the lane where it does run; a new entry is reviewed like any change.
+PR and merge-queue shards run without `JASPER_SLOW_BUILD`: the tests that build a real game (an hour
+or more each, cold) skip there and run in the nightly, and the smoke lane builds and launches games
+on every change a game's build reads.
 
 **Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
 until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
@@ -1023,11 +1026,25 @@ gh run download <run> -p 'ci-report-*'         # its JSON, per lane
 
 ### Measured lane times
 
-Not yet measured: the first CI runs fill this table, warm cache, and set each job's
-`timeout-minutes` to about 1.5 times its p95.
+Warm-cache times are not measured yet: the first runs after CI lands on `main` fill this table, and
+set each job's `timeout-minutes` to about 1.5 times its p95.
 
 | Lane | p50 | p95 | Runs |
 |---|---|---|---|
+
+Cold builds on a GitHub-hosted `ubuntu-latest` runner (4 vCPU), ccache off, 2026-11-13 (one run each):
+
+| Build | Minutes |
+|---|---|
+| `UNIT_SUITE=core RUN=0 tools/build.sh unit-tests` | 43 |
+| `UNIT_SUITE=editor RUN=0 tools/build.sh unit-tests` | 111 |
+| `SKIP_ENGINE=1 tools/build.sh linux` | 73 |
+| the same three with `UNITY=1` | do not compile (a file-scope `lower` defined twice in one unit, `LuaBridgeAddon.h` and `GradientField.cpp` broken by a neighbour's macros); the nightly's unity job builds them |
+
+From the first PR runs (cold): the core tests ran in 65 min on llvmpipe, the editor tests' share is
+in the editor leg; under ASan the `*GpuSlow` suites took 135 of 167 test minutes (hence their
+nightly job); an MCP shard of about 330 tests took 24 to 86 min without the game builds, and four
+game-building tests took 18 to 91 min each, cold.
 
 ### Pins
 

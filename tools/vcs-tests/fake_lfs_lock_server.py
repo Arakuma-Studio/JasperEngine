@@ -20,6 +20,7 @@ import argparse
 import datetime
 import json
 import os
+import socketserver
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -126,6 +127,16 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(404, {"message": "not found"})
 
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer's also names the host with socket.getfqdn, a reverse lookup that can outlast
+        # the tests' wait for the port (macOS runners); nothing here reads server_name
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def main():
     global LOG_PATH
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -135,8 +146,7 @@ def main():
     args = parser.parse_args()
     USERS.update(u for u in args.users.split(",") if u)
     LOG_PATH = args.log
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    server.daemon_threads = True
+    server = Server(("127.0.0.1", 0), Handler)
     with open(args.port_file + ".tmp", "w", encoding="utf-8") as out:
         out.write(str(server.server_address[1]))
     # renamed into place: a reader never sees a half-written port
