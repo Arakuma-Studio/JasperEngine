@@ -5408,6 +5408,7 @@
    "known_keys": [
     "allowFastRotation",
     "angularDamping",
+    "attachToParentBody",
     "autoCenterOfMass",
     "autoInertia",
     "centerOfMass",
@@ -5435,6 +5436,11 @@
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5522,6 +5528,11 @@
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5757,6 +5768,7 @@
     "allowSleeping",
     "allowedDOFs",
     "angularDamping",
+    "attachToParentBody",
     "automaticCenterOfMass",
     "automaticInertiaTensor",
     "automaticMass",
@@ -5796,6 +5808,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -5943,6 +5960,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -30612,6 +30634,11 @@
     281474976710656,
     true
    ],
+   "attachToParentBody": [
+    0,
+    131072,
+    true
+   ],
    "autoCenterOfMass": [
     0,
     281474976710656,
@@ -30697,6 +30724,11 @@
    "angularDamping": [
     2,
     4503599627370496,
+    true
+   ],
+   "attachToParentBody": [
+    0,
+    262144,
     true
    ],
    "automaticCenterOfMass": [
@@ -33309,6 +33341,143 @@
     true
    ]
   },
+  "VehicleDrivetrainComponent": {
+   "antiRollBars": [
+    15,
+    0,
+    true
+   ],
+   "brake": [
+    2,
+    0,
+    true
+   ],
+   "clutchReleaseTime": [
+    2,
+    0,
+    true
+   ],
+   "clutchStrength": [
+    2,
+    0,
+    true
+   ],
+   "differentialLimitedSlipRatio": [
+    2,
+    0,
+    true
+   ],
+   "differentials": [
+    15,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "engineDamping": [
+    2,
+    0,
+    true
+   ],
+   "engineInertia": [
+    2,
+    0,
+    true
+   ],
+   "gear": [
+    8,
+    0,
+    false
+   ],
+   "gearRatios": [
+    15,
+    0,
+    true
+   ],
+   "handBrake": [
+    2,
+    0,
+    true
+   ],
+   "maxPitchRollAngle": [
+    2,
+    0,
+    true
+   ],
+   "maxRPM": [
+    2,
+    0,
+    true
+   ],
+   "maxTorque": [
+    2,
+    0,
+    true
+   ],
+   "minRPM": [
+    2,
+    0,
+    true
+   ],
+   "reverseGearRatios": [
+    15,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "shiftDownRPM": [
+    2,
+    0,
+    true
+   ],
+   "shiftUpRPM": [
+    2,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    false
+   ],
+   "steer": [
+    2,
+    0,
+    true
+   ],
+   "switchLatency": [
+    2,
+    0,
+    true
+   ],
+   "switchTime": [
+    2,
+    0,
+    true
+   ],
+   "throttle": [
+    2,
+    0,
+    true
+   ],
+   "torqueCurve": [
+    20,
+    0,
+    true
+   ],
+   "transmission": [
+    13,
+    0,
+    true
+   ]
+  },
   "VertexAnimatorComponent": {
    "animation": [
     1,
@@ -33768,6 +33937,168 @@
     true
    ],
    "width": [
+    2,
+    0,
+    true
+   ]
+  },
+  "WheelColliderComponent": {
+   "brakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "driveTransform": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "forceAppPointDistance": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "isGrounded": [
+    0,
+    0,
+    false
+   ],
+   "mass": [
+    2,
+    0,
+    true
+   ],
+   "maxBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxHandBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxSteerAngle": [
+    2,
+    0,
+    true
+   ],
+   "motorTorque": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "sidewaysFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "sprungMass": [
+    2,
+    0,
+    false
+   ],
+   "steerAngle": [
+    2,
+    0,
+    true
+   ],
+   "suspensionCompression": [
+    2,
+    0,
+    false
+   ],
+   "suspensionDistance": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.damper": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.spring": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.targetPosition": [
+    2,
+    0,
+    true
+   ],
+   "vehicleBody": [
+    16,
+    0,
+    false
+   ],
+   "wheelDampingRate": [
     2,
     0,
     true

@@ -56,10 +56,12 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"ControllerStateInfo", 0x4c569349u},
         {"Physics2D", 0x7c0bc921u},
         {"PhysicsSystem", 0x20f6cb78u},
-        {"Rigidbody", 0x44689451u},
-        {"Rigidbody2D", 0x18d6cc4au},
-        {"Joint2D", 0x752b4ab5u},
-        {"Joint3D", 0x9e244509u},
+        // S96: movePosition / moveRotation, attachToParentBody / attachedRigidbody, a joint's
+        // gameObject and destroy (bodies and joints draw nothing)
+        {"Rigidbody", 0x0fc8e85bu},
+        {"Rigidbody2D", 0x5cac3c70u},
+        {"Joint2D", 0x85abe0c4u},
+        {"Joint3D", 0x8c95c8b0u},
         {"Contact2D", 0x9896e5eau},
         {"Contact3D", 0x1ed07a59u},
         {"Manifold2D", 0x44d54ffau},
