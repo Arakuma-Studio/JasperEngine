@@ -37,23 +37,31 @@ async def setup(ed: Editor) -> dict:
     return S
 
 
-async def magenta_pixels(ed: Editor) -> int:
-    """the Scene view's pixels of the outline colour"""
-    await ed.call("wait", frames=4)
-    png = await ed.screenshot(view="scene", max_width=320)
-    width, height, channels, rows = decode_png(png)
+SHOTS = REPO / "build" / "test-results" / "s94-outline"
+
+
+async def magenta_pixels(ed: Editor, name: str, expect_some: bool = False) -> int:
+    """the Scene view's pixels of the outline colour (kept as build/test-results/s94-outline/<name>.png).
+    expect_some: shot again for a while until some show (the outline's shader variant may still build)"""
     count = 0
-    for row in rows:
-        for x in range(0, width * channels, channels):
-            r, g, b = row[x], row[x + 1], row[x + 2]
-            if r > 200 and b > 200 and g < 80:
-                count += 1
+    for _ in range(20 if expect_some else 1):
+        await ed.call("wait", frames=4)
+        png = await ed.screenshot(view="scene", max_width=320, path=SHOTS / f"{name}.png")
+        width, height, channels, rows = decode_png(png)
+        count = 0
+        for row in rows:
+            for x in range(0, width * channels, channels):
+                r, g, b = row[x], row[x + 1], row[x + 2]
+                if r > 200 and b > 200 and g < 80:
+                    count += 1
+        if count > 0 or not expect_some:
+            break
     return count
 
 
 async def test_outline_component(ed: Editor):
     s = await setup(ed)
-    before = await magenta_pixels(ed)
+    before = await magenta_pixels(ed, "cube_before")
     ed.check_eq(before, 0, "nothing is magenta before the Outline")
     await ed.call("add_component", scene=s["scene"], entity="Hero", component="outline",
                   values={"outline": {"color": MAGENTA, "width": 4, "mode": "outline_visible"}})
@@ -64,20 +72,20 @@ async def test_outline_component(ed: Editor):
     ed.check_eq(outline["width"], 4, f"the width reads back: {outline}")
     ed.check_eq(outline["widthUnits"], "pixels", f"the width units default to Pixels: {outline}")
     ed.check_eq(outline["includeChildren"], True, f"Include Children defaults on: {outline}")
-    drawn = await magenta_pixels(ed)
+    drawn = await magenta_pixels(ed, "cube_outline_visible", expect_some=True)
     ed.check(drawn > 40, f"the outline draws round the cube: {drawn} magenta pixels")
 
     await ed.call("set_properties", scene=s["scene"], entity="Hero", values={"outline": {"mode": "silhouette_only"}})
     hero = await ed.call("get_entity", scene=s["scene"], entity="Hero", properties=["mode"])
     ed.check_eq(hero["components"]["outline"]["mode"], "silhouette_only", "set_properties changes the mode")
     # nothing covers the cube: a silhouette alone shows nothing
-    ed.check_eq(await magenta_pixels(ed), 0, "Silhouette Only of an uncovered cube draws nothing")
+    ed.check_eq(await magenta_pixels(ed, "cube_silhouette_only"), 0, "Silhouette Only of an uncovered cube draws nothing")
     await ed.call("undo", scene=s["scene"])
     hero = await ed.call("get_entity", scene=s["scene"], entity="Hero", properties=["mode"])
     ed.check_eq(hero["components"]["outline"]["mode"], "outline_visible", "one undo restores the mode")
 
     await ed.call("set_properties", scene=s["scene"], entity="Hero", values={"outline": {"enabled": False}})
-    ed.check_eq(await magenta_pixels(ed), 0, "a disabled Outline draws nothing")
+    ed.check_eq(await magenta_pixels(ed, "cube_disabled"), 0, "a disabled Outline draws nothing")
     await ed.call("set_properties", scene=s["scene"], entity="Hero", values={"outline": {"enabled": True}})
 
     bad = await ed.call_raw("set_properties", {"scene": s["scene"], "entity": "Hero", "values": {"outline": {"mode": "glow"}}})
@@ -98,13 +106,16 @@ async def test_outline_on_skinned_model_root(ed: Editor):
     await ed.call("set_properties", scene=s["scene"], entity="Hero", values={"transform": {"position": [0, -50, 0]}})
     made = await ed.call("set_model", scene=s["scene"], create={"name": "Rig"}, path=f"{models}/rigged_cube.fbx")
     rig = find_key(made["model"], "id", "entity_id")
-    ed.check_eq(await magenta_pixels(ed), 0, "the model alone has no magenta")
+    # (the FBX's units: framed as F does)
+    await ed.call("frame_entity", scene=s["scene"], entity=rig)
+    ed.check_eq(await magenta_pixels(ed, "rig_before"), 0, "the model alone has no magenta")
     await ed.call("add_component", scene=s["scene"], entity=rig, component="outline", values={"outline": {"color": MAGENTA, "width": 4}})
-    drawn = await magenta_pixels(ed)
+    drawn = await magenta_pixels(ed, "rig_outline", expect_some=True)
     ed.check(drawn > 20, f"the Outline on the model root outlines its skinned mesh: {drawn} magenta pixels")
     await ed.call("remove_component", scene=s["scene"], entity=rig, component="outline")
     await ed.call("set_properties", scene=s["scene"], entity="Hero", values={"transform": {"position": [0, 0, 0]}})
     await ed.call("delete_entity", scene=s["scene"], entity=rig)
+    await ed.call("set_scene_camera", scene=s["scene"], position=[0, 0.8, 4.0], target=[0, 0, 0])
 
 
 LUA_OUTLINE = """

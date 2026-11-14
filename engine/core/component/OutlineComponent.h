@@ -7,13 +7,12 @@
 #include "Export.h"
 #include "math/Vector4.h"
 
-#include <cstdint>
-
 namespace jasperengine{
 
     // QuickOutline's five modes (docs/specs/S94-rendering-anim-gaps.md F22): which parts of the
-    // outline band and of the object's hidden silhouette draw
-    enum class OutlineMode : uint8_t{
+    // outline band and of the object's hidden silhouette draw. (int: the reflection and the
+    // cooked scenes read an enum field as an int)
+    enum class OutlineMode{
         OUTLINE_ALL,            // the band, also where something covers it
         OUTLINE_VISIBLE,        // the band where nothing covers it
         OUTLINE_HIDDEN,         // the band only where something covers it
@@ -21,7 +20,7 @@ namespace jasperengine{
         SILHOUETTE_ONLY         // the object's covered parts filled, no band
     };
 
-    enum class OutlineWidthUnits : uint8_t{
+    enum class OutlineWidthUnits{
         PIXELS, // a constant width on screen
         WORLD   // world units along the smoothed normal
     };
