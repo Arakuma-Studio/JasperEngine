@@ -108,7 +108,11 @@ namespace jasperengine{
         // (USE_WATER_WAKE) only while its scene has such components, so without them the shader
         // compiles as if it did not ask. They imply position. Mesh shaders only, fragment stage
         ShaderRequire_WaterExclusion = 1 << 13,
-        ShaderRequire_WaterWake = 1 << 14
+        ShaderRequire_WaterWake = 1 << 14,
+        // the mesh's normals as a vertex input (a_normal, HAS_NORMALS) without the v_normal
+        // varying @require normals adds: a shader that lights or displaces in its vertex stage
+        // only. No SURFACE_* define
+        ShaderRequire_VertexNormals = 1 << 15
     };
 
     // What the engine treats a shader as (manifest @role), whatever its name: forks of
@@ -148,6 +152,9 @@ namespace jasperengine{
         // (library:water's BUILTIN_TEXTURES); empty: none
         std::string featureDefaultDefine;
         ShaderTextureDefault featureDefaultTexture = ShaderTextureDefault::WHITE;
+        // `main`: the texture Mesh:setTexture writes (Unity's [MainTexture]); without one, the
+        // first @texture is the main one (ShaderManifest::getMainTexture)
+        bool main = false;
         int line = 0;
 
         // the default an unset slot binds with these defines on (ShaderReference::getEnabledFeatures)
@@ -232,6 +239,9 @@ namespace jasperengine{
     // @state defaults; AUTO leaves the value to the engine's legacy behaviour
     struct JASPERENGINE_API ShaderManifestState{
         MaterialBlendMode blend = MaterialBlendMode::AUTO;
+        // blend=<src>,<dst>[,<srcAlpha>,<dstAlpha>] (blend CUSTOM) and blendop= (hasBlendOp)
+        MaterialBlendFactors blendFactors;
+        bool hasBlendOp = false;
         MaterialCullMode cull = MaterialCullMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
@@ -333,6 +343,8 @@ namespace jasperengine{
         bool usesInstanceSlots(const std::vector<std::string>& enabledFeatures) const;
         bool usesFrameRect(const std::vector<std::string>& enabledFeatures) const;
         const ShaderManifestTexture* findTexture(const std::string& uniform) const;
+        // the @texture marked main, else the first @texture; null without one
+        const ShaderManifestTexture* getMainTexture() const;
         const ShaderManifestPalette* findPalette(const std::string& uniform) const;
         const ShaderManifestFeature* findFeature(const std::string& define) const;
         // the group a "<group>_<value>" define belongs to, or null

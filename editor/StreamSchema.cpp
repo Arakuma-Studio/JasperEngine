@@ -48,10 +48,10 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
-        {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
+        {NestedKind::MaterialPass, {"blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
-        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
+        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "propertyOverrides", "textureRect", "textureShadow", "vertexCount"}},
         {NestedKind::Texture, {"video", "alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
@@ -527,6 +527,16 @@ const EnumTable<MaterialAlphaMode>& StreamSchema::materialAlphaMode() {
 
 const EnumTable<MaterialBlendMode>& StreamSchema::materialBlendMode() {
     static const EnumTable<MaterialBlendMode> table(reflect::enums::kMaterialBlendMode);
+    return table;
+}
+
+const EnumTable<MaterialBlendFactor>& StreamSchema::materialBlendFactor() {
+    static const EnumTable<MaterialBlendFactor> table(reflect::enums::kMaterialBlendFactor);
+    return table;
+}
+
+const EnumTable<MaterialBlendOp>& StreamSchema::materialBlendOp() {
+    static const EnumTable<MaterialBlendOp> table(reflect::enums::kMaterialBlendOp);
     return table;
 }
 

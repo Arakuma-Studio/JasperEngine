@@ -1140,12 +1140,54 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 
     getCustomShaderPaths(base, result.vertFile, result.fragFile);
     const std::string includeRoot = getCustomShaderIncludeRoot(base);
+    const auto& library = getLibrarySources();
+
+    // A project shader whose manifest has @depth draws its depth passes with its own depth
+    // program, as a library shader does: <name>_depth.vert / _depth.frag beside its sources,
+    // each else the library's generic one (library/surface_depth.*). Its manifest (the
+    // @require varyings) is the colour program's. A depth fork (Mesh customDepthShader) has no
+    // manifest of its own: its files are the depth program.
+    std::string colorVertSource;
+    std::string colorFragSource;
+    bool ownDepthProgram = false;
+    if (shaderType == ShaderType::DEPTH && !result.vertFile.empty() && isSafeRelativePath(result.fragFile) &&
+            readProjectFile(result.fragFile, colorFragSource)){
+        if (isSafeRelativePath(result.vertFile))
+            readProjectFile(result.vertFile, colorVertSource);
+        ShaderManifest colorManifest;
+        colorManifest.parse(colorFragSource, result.fragFile);
+        colorManifest.parse(colorVertSource, result.vertFile);
+        ownDepthProgram = colorManifest.present && colorManifest.depth;
+        if (ownDepthProgram){
+            appendSignaturePart(signatureInput, "manifest:" + result.fragFile, colorFragSource);
+            appendSignaturePart(signatureInput, "manifest:" + result.vertFile, colorVertSource);
+            auto depthFile = [&](const std::string& colorFile, const char* extension, const char* fallback){
+                const std::string stem = colorFile.substr(0, colorFile.size() - std::string(extension).size());
+                const std::string own = stem + "_depth" + extension;
+                std::string probe;
+                return (isSafeRelativePath(own) && readProjectFile(own, probe)) ? own : std::string(fallback);
+            };
+            result.vertFile = depthFile(result.vertFile, ".vert", "library/surface_depth.vert");
+            result.fragFile = depthFile(result.fragFile, ".frag", "library/surface_depth.frag");
+        }
+    }
 
     auto loadEntryPoint = [&](const std::string& rel, const char* stage) -> bool {
         std::string content;
         if (!isSafeRelativePath(rel)) {
             result.error = std::string("Unsafe custom ") + stage + " shader path: " + rel;
             return false;
+        }
+        // (a project depth program's library fallback, library/surface_depth.*)
+        if (ownDepthProgram && rel.rfind("library/", 0) == 0) {
+            auto it = library.find(rel);
+            if (it == library.end()) {
+                result.error = "This build has no engine shader library to compile " + base + " from";
+                return false;
+            }
+            appendSignaturePart(signatureInput, std::string("entry:") + rel, it->second);
+            appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+            return true;
         }
         if (!readProjectFile(rel, content)) {
             result.error = std::string("Could not open custom ") + stage + " shader: " + rel;
@@ -1164,7 +1206,6 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     // An empty include root means the entry point sits at the project root, where the
     // first two candidates would be the same file.
     const bool hasLocalRoot = !includeRoot.empty() && includeRoot != ".";
-    const auto& library = getLibrarySources();
 
     std::unordered_set<std::string> visited;
     std::function<void(const std::string&)> visitSource = [&](const std::string& source) {
@@ -1199,16 +1240,26 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     };
 
     // copies: visiting can insert into result.files
-    const std::string vertSource = result.vertFile.empty() ? std::string() : result.files[result.vertFile];
-    const std::string fragSource = result.files[result.fragFile];
+    auto entrySource = [&](const std::string& rel){
+        if (rel.empty())
+            return std::string();
+        auto own = result.files.find(rel);
+        if (own != result.files.end())
+            return own->second;
+        auto engine = library.find(rel);
+        return engine != library.end() ? engine->second : std::string();
+    };
+    const std::string vertSource = entrySource(result.vertFile);
+    const std::string fragSource = entrySource(result.fragFile);
     visitSource(vertSource);
     visitSource(fragSource);
 
     // a fork with a manifest compiles with the varyings its @require asks for, as a library
-    // shader does (the entry sources are already in the signature)
+    // shader does (the entry sources are already in the signature); its depth program with the
+    // colour program's
     ShaderManifest manifest;
-    manifest.parse(fragSource, result.fragFile);
-    manifest.parse(vertSource, result.vertFile);
+    manifest.parse(ownDepthProgram ? colorFragSource : fragSource, result.fragFile);
+    manifest.parse(ownDepthProgram ? colorVertSource : vertSource, result.vertFile);
     const std::vector<std::string> enabled = result.defines;
     for (const std::string& define : manifest.getRequireDefines(enabled))
         result.defines.push_back(define);

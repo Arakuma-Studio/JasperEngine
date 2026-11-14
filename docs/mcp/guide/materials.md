@@ -136,6 +136,26 @@ Paint (clear coat), Velvet (sheen), Brushed Metal (anisotropy), Soap Bubble (iri
 Glass (transmission and volume), Tiled Floor (hex tiling). They set the built-in Lit on a
 material that had a library shader.
 
+## Property Overrides
+
+Per-object colours or textures over one shared material (Unity's MaterialPropertyBlock, saved
+with the mesh): `set_shader_uniform {entity, name: "baseColorFactor", value, override: true}`
+(with `submesh`: that submesh's, which wins). The built-in Lit takes `baseColorFactor`,
+`emissiveFactor` (linear) and, through `set_properties` `{"mesh": {"propertyOverrides.textures":
+{"baseColorTexture": path}}}`, its base map; a library or custom shader any parameter and
+`@texture`. `get_entity` lists `propertyOverrides` on the mesh and its submeshes. Do not put the
+value in the material (every user of the material changes) or in the Mesh's `shaderUniforms` (the
+material's parameter of the same name wins over it).
+
+## Blend Mode Custom
+
+`blendMode: custom` with `blendSrc`, `blendDst`, `blendSrcAlpha`, `blendDstAlpha` (`one`, `zero`,
+`src_color`, `src_alpha`, `dst_color`, `dst_alpha`, `one_minus_...`) and `blendOp` (`add`,
+`subtract`, `reverse_subtract`, `min`, `max`; `blendOpAlpha` the alpha channel's): Unity's ShaderLab
+`Blend` and `BlendOp`. Unity's
+2x multiply (`Blend DstColor SrcColor`) is `blendSrc: dst_color, blendDst: src_color`. It draws in
+the transparent queue like any other blend.
+
 ## Lua
 
 Flat `Material` properties on the copy `getMaterial` returns, then `setMaterial`:

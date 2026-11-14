@@ -64,7 +64,9 @@ namespace jasperengine{
         SUBTRACT_PREMULTIPLIED,
         LIGHT_PREMULTIPLIED,
         MAX_PREMULTIPLIED,
-        ERASE_PREMULTIPLIED
+        ERASE_PREMULTIPLIED,
+        // a material's own factors and operation (RenderState::customBlend, Blend Mode Custom)
+        CUSTOM
     };
 
     enum class DepthCompare{
@@ -109,6 +111,35 @@ namespace jasperengine{
         COLOR_WRITE_ALL = 15
     };
 
+    enum class BlendFactor {
+        ZERO, ONE,
+        SRC_COLOR, ONE_MINUS_SRC_COLOR, SRC_ALPHA, ONE_MINUS_SRC_ALPHA,
+        DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA
+    };
+
+    // MIN and MAX take ONE for every factor (sokol validates it)
+    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT, MAX, MIN };
+
+    // Color blending of a render object's color pipelines (PIP_DEFAULT, PIP_DEFAULT_NODEPTH,
+    // PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT). Without one, those pipelines keep their
+    // built-in straight-alpha blending (SokolObject::makePipelineDesc).
+    struct BlendState {
+        bool enabled = true;
+        BlendFactor srcFactorRGB = BlendFactor::SRC_ALPHA;
+        BlendFactor dstFactorRGB = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        BlendOperation opRGB = BlendOperation::ADD;
+        BlendFactor srcFactorAlpha = BlendFactor::ONE;
+        BlendFactor dstFactorAlpha = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        BlendOperation opAlpha = BlendOperation::ADD;
+
+        // ONE, ONE_MINUS_SRC_ALPHA on color and alpha: colors already multiplied by alpha
+        static BlendState premultipliedAlpha() {
+            BlendState s; s.srcFactorRGB = BlendFactor::ONE; return s;
+        }
+        // no blending: the source replaces the destination
+        static BlendState opaque() { BlendState s; s.enabled = false; return s; }
+    };
+
     // What ObjectRender::endLoad builds every pipeline of an object with. The defaults are
     // the state objects had before it was configurable. Each pipeline type keeps its own
     // fixed parts (colour mask, offscreen alpha, depth-only passes): blend, depth compare
@@ -124,6 +155,8 @@ namespace jasperengine{
         bool depthWrite = true;
         DepthCompare depthCompare = DepthCompare::LESS_EQUAL; // camera depth test off forces always
         BlendMode blend = BlendMode::ALPHA;
+        // blend CUSTOM: the factors and operations, as given (an offscreen target's alpha too)
+        BlendState customBlend;
         float depthBiasSlope = 0.0f; // polygon offset factor
         float depthBias = 0.0f;      // polygon offset units
         // stencil test and write, the same for front and back faces (off: no test, no write)
@@ -524,35 +557,6 @@ namespace jasperengine{
         // changed llvmpipe's output by 1 on a few pixels, so effects keep a depth plane.)
         DEPTH,
         NONE           // no depth attachment (only pipelines whose depth format is NONE)
-    };
-
-    enum class BlendFactor {
-        ZERO, ONE,
-        SRC_COLOR, ONE_MINUS_SRC_COLOR, SRC_ALPHA, ONE_MINUS_SRC_ALPHA,
-        DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA
-    };
-
-    // MAX takes ONE for every factor (sokol validates it)
-    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT, MAX };
-
-    // Color blending of a render object's color pipelines (PIP_DEFAULT, PIP_DEFAULT_NODEPTH,
-    // PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT). Without one, those pipelines keep their
-    // built-in straight-alpha blending (SokolObject::makePipelineDesc).
-    struct BlendState {
-        bool enabled = true;
-        BlendFactor srcFactorRGB = BlendFactor::SRC_ALPHA;
-        BlendFactor dstFactorRGB = BlendFactor::ONE_MINUS_SRC_ALPHA;
-        BlendOperation opRGB = BlendOperation::ADD;
-        BlendFactor srcFactorAlpha = BlendFactor::ONE;
-        BlendFactor dstFactorAlpha = BlendFactor::ONE_MINUS_SRC_ALPHA;
-        BlendOperation opAlpha = BlendOperation::ADD;
-
-        // ONE, ONE_MINUS_SRC_ALPHA on color and alpha: colors already multiplied by alpha
-        static BlendState premultipliedAlpha() {
-            BlendState s; s.srcFactorRGB = BlendFactor::ONE; return s;
-        }
-        // no blending: the source replaces the destination
-        static BlendState opaque() { BlendState s; s.enabled = false; return s; }
     };
 
     //-------Start shader definition--------
