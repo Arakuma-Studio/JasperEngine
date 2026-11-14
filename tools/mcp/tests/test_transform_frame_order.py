@@ -1,6 +1,6 @@
-"""World poses read between frames (S95 REQ-6): get_runtime_entity reports a child's world values
-as its script's getWorldPosition() reads them, current after its parent moved, before any frame
-propagated the move."""
+"""World poses read between frames (S95 REQ-6): get_runtime_entity reports a child's world position,
+rotation and scale as its script's getWorld*() reads them, current after its parent moved, before
+any frame propagated the move."""
 
 import harness
 from harness import Editor
@@ -32,8 +32,8 @@ async def test_runtime_entity_world_pose_is_current(ed: Editor):
         live = await ed.call("get_runtime_entity", entity="Mover/Rider", components=["transform"], include_script_state=False)
         world = vec(harness.find_key(live, "worldPosition"))
         ed.check(close(world, seen), f"get_runtime_entity worldPosition {world} equals the script's {seen}")
-        model = harness.find_key(live, "modelMatrix")
-        ed.check(model is not None, f"modelMatrix listed: {live}")
+        ed.check(harness.find_key(live, "worldRotation") is not None and harness.find_key(live, "worldScale") is not None,
+                 f"world rotation and scale listed: {live}")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     await ed.check_alive()

@@ -2583,19 +2583,8 @@ void getRuntimeEntityTool(const CallPtr& call) {
         ctx.entity = entity;
         ctx.component = type;
         if (type != ComponentType::ScriptComponent || !onlyProps.empty() || !only.empty()) {
-            // the world values as a script's getWorldPosition() reads them now (S95 REQ-6), not the
-            // last transform pass's: what eval_lua or set_runtime_property moved since shows
-            TransformPose pose;
-            if (type == ComponentType::Transform) pose = computeWorldPose(*sp->scene, entity);
-            for (const auto& [name, listed] : Catalog::findEntityProperties(sp->scene, entity, type)) {
+            for (const auto& [name, property] : Catalog::findEntityProperties(sp->scene, entity, type)) {
                 if (!onlyProps.empty() && !onlyProps.count(name)) continue;
-                PropertyData property = listed;
-                if (type == ComponentType::Transform) {
-                    if (name == "worldPosition") property.ref = &pose.position;
-                    else if (name == "worldRotation") property.ref = &pose.rotation;
-                    else if (name == "worldScale") property.ref = &pose.scale;
-                    else if (name == "modelMatrix") property.ref = &pose.modelMatrix;
-                }
                 try {
                     // context reads give enum names and resolvable entity refs; custom values stay
                     // out of this listing (they can be large)
@@ -2606,6 +2595,19 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 }
             }
             addRuntimeState(sp->scene, entity, type, onlyProps, props);
+            // the world pose as a script's getWorldPosition() reads it now (S95 REQ-6), not the last
+            // transform pass's: what eval_lua or set_runtime_property moved since shows
+            if (type == ComponentType::Transform) {
+                TransformPose pose = computeWorldPose(*sp->scene, entity);
+                auto world = [&](const char* name, PropertyType kind, void* value) {
+                    if (!onlyProps.empty() && !onlyProps.count(name)) return;
+                    PropertyData data{kind, 0, nullptr, value};
+                    props[name] = McpValues::readProperty(ctx, name, data);
+                };
+                world("worldPosition", PropertyType::Vector3, &pose.position);
+                world("worldRotation", PropertyType::Quat, &pose.rotation);
+                world("worldScale", PropertyType::Vector3, &pose.scale);
+            }
         }
         if (type == ComponentType::CameraShakerComponent) {
             props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
