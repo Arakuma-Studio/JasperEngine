@@ -1841,6 +1841,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
+    # S94 Property Overrides (MaterialPropertyBlock)
+    core/script/binding/MaterialPropertyBlockLua.cpp
     core/script/binding/HitStopClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp

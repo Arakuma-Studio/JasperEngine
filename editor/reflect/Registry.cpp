@@ -351,7 +351,7 @@ namespace {
         &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
-        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
+        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialBlendFactor, &enums::kMaterialBlendOp, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kTerrainQualitySetting, &enums::kTerrainOffscreenShadows,
         &enums::kTerrainMacroMode, &enums::kTerrainCliffProjection, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,

@@ -248,6 +248,7 @@ namespace luabridge
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
     template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
+    template<> struct Stack<AmbientMode> : EnumWrapper<AmbientMode>{};
     template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
@@ -257,6 +258,7 @@ namespace luabridge
     template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
     template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
+    template<> struct Stack<VignetteFalloff> : EnumWrapper<VignetteFalloff>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
     template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};

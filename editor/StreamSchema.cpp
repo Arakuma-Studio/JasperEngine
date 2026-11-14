@@ -48,10 +48,10 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
-        {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
+        {NestedKind::MaterialPass, {"blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
-        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
+        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "propertyOverrides", "textureRect", "textureShadow", "vertexCount"}},
         {NestedKind::Texture, {"video", "alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
@@ -61,7 +61,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
+        {RootKind::SceneSettings, {"ambientEquatorColor", "ambientGroundColor", "ambientLight2DColor", "ambientLight2DIntensity", "ambientMode", "ambientSkyColor", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
             // upstream's scene settings (SYNC#4): written away from their defaults
             "canvasScaler", "physics2DSubSteps"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
@@ -530,6 +530,16 @@ const EnumTable<MaterialBlendMode>& StreamSchema::materialBlendMode() {
     return table;
 }
 
+const EnumTable<MaterialBlendFactor>& StreamSchema::materialBlendFactor() {
+    static const EnumTable<MaterialBlendFactor> table(reflect::enums::kMaterialBlendFactor);
+    return table;
+}
+
+const EnumTable<MaterialBlendOp>& StreamSchema::materialBlendOp() {
+    static const EnumTable<MaterialBlendOp> table(reflect::enums::kMaterialBlendOp);
+    return table;
+}
+
 const EnumTable<MaterialCullMode>& StreamSchema::materialCullMode() {
     static const EnumTable<MaterialCullMode> table(reflect::enums::kMaterialCullMode);
     return table;
@@ -634,6 +644,14 @@ const EnumTable<SceneColorScale>& StreamSchema::sceneColorScale() {
         {SceneColorScale::FULL, "full"},
         {SceneColorScale::HALF, "half"},
     }, SceneColorScale::HALF);
+    return table;
+}
+
+const EnumTable<AmbientMode>& StreamSchema::ambientMode() {
+    static const EnumTable<AmbientMode> table("AmbientMode", {
+        {AmbientMode::COLOR, "color"},
+        {AmbientMode::GRADIENT, "gradient"},
+    }, AmbientMode::COLOR);
     return table;
 }
 

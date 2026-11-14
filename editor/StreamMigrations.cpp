@@ -30,6 +30,17 @@ namespace {
     void materialV0ToV1(YAML::Node&, MigrationLog&){
     }
 
+    // Project 1 -> 2 (S94 F5): Transparency Sort Mode Default now sorts an orthographic camera's
+    // transparent draws by depth along its view axis (Unity's rule). A project written before
+    // sorted every camera by the distance, which is Perspective now: it keeps that look.
+    void projectV1ToV2(YAML::Node& root, MigrationLog& log){
+        if (root["transparencySortMode"])
+            return;
+        root["transparencySortMode"] = "perspective";
+        log.info("Transparency Sort Mode: Perspective, the distance sort this project drew with (Default now sorts an "
+                 "orthographic camera along its view axis; set it in Project Settings > Graphics)");
+    }
+
     // Every light component below node (scenes nest entities in children; prefabs list their
     // members): a shadowBias saved in NDC depth units (default 0.002) means a bias of
     // shadowBias shadow texels now, so it is reset to the new default of 1.0. The old units
@@ -774,7 +785,7 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
         case DocumentKind::Scene: return 9;
-        case DocumentKind::Project: return 1;
+        case DocumentKind::Project: return 2;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
         case DocumentKind::Prefab: return 10;
@@ -822,6 +833,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
+        {1, 2, "Transparency Sort Mode Perspective for a project without one", projectV1ToV2},
     };
     static const std::vector<Migration> material = {
         {0, 1, "stamp the material format version", materialV0ToV1},

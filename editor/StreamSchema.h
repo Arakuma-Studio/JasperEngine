@@ -260,6 +260,8 @@ namespace jasperengine::editor {
         static const EnumTable<PbrTier>& pbrTier();
         static const EnumTable<MaterialAlphaMode>& materialAlphaMode();
         static const EnumTable<MaterialBlendMode>& materialBlendMode();
+        static const EnumTable<MaterialBlendFactor>& materialBlendFactor();
+        static const EnumTable<MaterialBlendOp>& materialBlendOp();
         static const EnumTable<MaterialCullMode>& materialCullMode();
         static const EnumTable<MaterialDepthTest>& materialDepthTest();
         static const EnumTable<MaterialDepthWrite>& materialDepthWrite();
@@ -281,6 +283,7 @@ namespace jasperengine::editor {
         static const EnumTable<SceneColorScale>& sceneColorScale();
         static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<WaterWakeResolution>& waterWakeResolution();
+        static const EnumTable<AmbientMode>& ambientMode();
         static const EnumTable<SceneType>& sceneType();
         static const EnumTable<ScriptPropertyType>& scriptPropertyType();
         static const EnumTable<ScriptType>& scriptType();

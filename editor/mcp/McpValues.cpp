@@ -623,6 +623,14 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& ambientModeOptions() {
+    static const EnumOptions options = {
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
+    };
+    return options;
+}
+
 const EnumOptions& planarReflectionResolutionOptions() {
     static const EnumOptions options = {
         {(int)PlanarReflectionResolution::OFF, "off", "Off"},
@@ -838,6 +846,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
@@ -846,6 +855,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"texture_alpha_border", &tableOptions(reflect::enums::kTextureAlphaBorder)},
         {"material_alpha_mode", &tableOptions(reflect::enums::kMaterialAlphaMode)},
         {"material_blend_mode", &tableOptions(reflect::enums::kMaterialBlendMode)},
+        {"material_blend_factor", &tableOptions(reflect::enums::kMaterialBlendFactor)},
+        {"material_blend_op", &tableOptions(reflect::enums::kMaterialBlendOp)},
         {"material_cull_mode", &tableOptions(reflect::enums::kMaterialCullMode)},
         {"material_depth_write", &tableOptions(reflect::enums::kMaterialDepthWrite)},
         {"material_depth_test", &tableOptions(reflect::enums::kMaterialDepthTest)},
@@ -2109,7 +2120,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, emissiveStrength, pbr, baseColorTexture, emissiveTexture, "
                     "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, stochasticTiling, "
                     "stochasticCellSize, stochasticBlendSharpness, stochasticContrast, stochasticRotation, shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
         }

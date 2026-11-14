@@ -11,6 +11,7 @@
 #include "support/EditorTestSupport.h"
 #include "component/TextComponent.h"
 #include "reflect/Reflect.h"
+#include "registry/SortingLayers.h"
 
 #include <gtest/gtest.h>
 
@@ -341,4 +342,30 @@ TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
     EXPECT_EQ(sign["verticalAlignment"].as<std::string>(), "baseline");
     EXPECT_EQ(sign["horizontalAlignment"].as<std::string>(), "center");
     EXPECT_FALSE(sign["pivotBaseline"]);
+}
+
+// S94 F5 (AC5): a project written before Transparency Sort Mode Default followed the projection
+// sorted every camera by the distance: it loads as Perspective; one that named a mode keeps it,
+// and a project of format 2 without the key is Default
+TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
+    YAML::Node root = YAML::LoadFile(test::fixture("migrations/project-v1-sort.yaml").string());
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Project, root);
+    EXPECT_EQ(result.versionRead, 1);
+    EXPECT_EQ(result.versionCurrent, 2);
+    EXPECT_TRUE(result.migrated());
+    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
+    ASSERT_TRUE(root["transparencySortMode"]);
+    TransparencySortMode mode = TransparencySortMode::DEFAULT;
+    EXPECT_TRUE(SortingLayers::transparencySortModeFromToken(root["transparencySortMode"].as<std::string>(), mode));
+    EXPECT_EQ(mode, TransparencySortMode::PERSPECTIVE);
+    EXPECT_EQ(root["sortingLayers"].size(), 2u);
+    EXPECT_FALSE(result.log.lines.empty());
+
+    YAML::Node axis = YAML::Load("{formatVersion: 1, name: A, transparencySortMode: custom_axis}");
+    StreamMigrations::migrate(DocumentKind::Project, axis);
+    EXPECT_EQ(axis["transparencySortMode"].as<std::string>(), "custom_axis");
+
+    YAML::Node current = YAML::Load("{formatVersion: 2, name: B}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Project, current).migrated());
+    EXPECT_FALSE(current["transparencySortMode"]);
 }

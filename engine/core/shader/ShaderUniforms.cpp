@@ -9,11 +9,15 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
+#include <set>
+#include <tuple>
 
 using namespace jasperengine;
 
 const char* jasperengine::uniformSourceName(UniformSource source){
     switch (source){
+        case UniformSource::Override: return "override";
         case UniformSource::Global: return "global";
         case UniformSource::Own: return "own";
         case UniformSource::Fallback: return "fallback";
@@ -28,7 +32,13 @@ Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& na
     Vector4 value = Vector4::ZERO;
     UniformSource from = UniformSource::Zero;
     const std::string global = chain.bindings ? ShaderGlobals::getBinding(*chain.bindings, name) : std::string();
-    if (!global.empty()){
+    if (chain.submeshOverride && has(*chain.submeshOverride, name)){
+        value = get(*chain.submeshOverride, name);
+        from = UniformSource::Override;
+    }else if (chain.rendererOverride && has(*chain.rendererOverride, name)){
+        value = get(*chain.rendererOverride, name);
+        from = UniformSource::Override;
+    }else if (!global.empty()){
         // the global's current value; zero while it does not exist (or is a texture)
         ShaderGlobals::getBoundValue(global, value);
         from = UniformSource::Global;
@@ -47,6 +57,22 @@ Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& na
     if (source)
         *source = from;
     return value;
+}
+
+bool ShaderUniforms::warnShadowedByMaterial(const void* scene, uint32_t entity, const std::string& owner, const std::string& name,
+                                            const ShaderUniformValues& materialParams){
+    if (!has(materialParams, name))
+        return false;
+    // once per GameObject and name: a script setting it every frame logs it once
+    static std::mutex mutex;
+    static std::set<std::tuple<const void*, uint32_t, std::string>> warned;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (warned.insert({scene, entity, name}).second){
+        Log::warn("'%s': its shader uniform '%s' is hidden by its material's parameter of the same name. "
+                  "Set it as a Property Override instead (Lua MaterialPropertyBlock and Mesh:setPropertyBlock; "
+                  "MCP set_shader_uniform with override: true), which wins over the material", owner.c_str(), name.c_str());
+    }
+    return true;
 }
 
 bool ShaderUniforms::isReserved(const std::string& name){
@@ -135,8 +161,6 @@ bool CustomUniformBlock::resolve(ShaderData& shaderData, const std::string& bloc
         uniform.name = ShaderData::getUniformShortName(uniform.name);
         if (uniform.name == "time"){
             timeMember = (int)members.size();
-        }else if (uniform.name == "gameTime"){
-            gameTimeMember = (int)members.size();
         }else if (uniform.name == "resolution"){
             resolutionMember = (int)members.size();
         }else if (uniform.name == "sceneTime"){
@@ -163,7 +187,6 @@ void CustomUniformBlock::clear(){
     members.clear();
     data.clear();
     timeMember = -1;
-    gameTimeMember = -1;
     resolutionMember = -1;
     sceneTimeMember = -1;
     waterInteractionOffset = -1;
