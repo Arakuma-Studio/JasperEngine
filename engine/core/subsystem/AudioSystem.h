@@ -134,6 +134,8 @@ namespace jasperengine{
 		int variation = -1;
 		int layer = -1;
 		uint64_t instance = 0;
+		// the pool's sample the voice plays, when a source's effects may wrap it (S97 D2)
+		const std::shared_ptr<SoLoud::AudioSource>* sampleRef = nullptr;
 	};
 	class JASPERENGINE_API AudioSystem : public SubSystem {
 		// the unit tests reach a voice's parameters without the frame's 3D pass after them

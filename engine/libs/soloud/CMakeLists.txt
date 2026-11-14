@@ -22,6 +22,9 @@
 # A mix flushes denormals only while it runs (src/core/soloud.cpp mix_internal: flush-to-zero and
 # denormals-are-zero were turned on once per process in the first thread that mixed and never restored,
 # so a main thread that mixed, on the null or deterministic driver, flushed denormals from then on).
+# FILTERS_PER_STREAM is 9, upstream 8 (include/soloud.h): a mixer group's bus holds its 8 effects and
+# its level meter after them (engine/core/audio/AudioMixer.cpp METER_SLOT). An Audio Source's own
+# effects (engine/core/audio/SourceEffects.cpp, at most 4) use the first slots of each voice they wrap.
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
