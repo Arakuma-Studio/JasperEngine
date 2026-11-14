@@ -563,10 +563,13 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     // GameObject is inactive or its entry disabled; other tables are never guarded. Where the
     // script is (self.scene, self.entity) is read at each call: a persistent object's
     // GameObject moves to another scene, and a deleted scene is never reached through it.
-    // Build closure: function(...) return method(self, ...) end
-    lua_pushvalue(L, methodFuncIndex); // method
+    // The method is looked up by name at each call (S95 REQ-7), as Event:addListener(self, "m")
+    // and self:invoke("m") do: assigning self.onUpdate = other takes effect at the next call.
+    // Build closure: function(...) return self[methodName](self, ...) end
+    lua_pushstring(L, methodName);     // method name (interned: one lookup a call)
     lua_pushvalue(L, selfIndex);       // self
     lua_pushboolean(L, guardActive ? 1 : 0);
+    lua_pushboolean(L, 0);             // warned that the method is not a function
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
@@ -612,7 +615,24 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 }
             }
 
-            lua_pushvalue(Linner, lua_upvalueindex(1)); // method
+            // self[methodName], through its class (__index)
+            lua_pushvalue(Linner, lua_upvalueindex(1));
+            lua_gettable(Linner, lua_upvalueindex(2));
+            if (!lua_isfunction(Linner, -1)) {
+                // not a function now (nil, a value): no call, one warning per subscription
+                if (!lua_toboolean(Linner, lua_upvalueindex(4))) {
+                    lua_pushboolean(Linner, 1);
+                    lua_replace(Linner, lua_upvalueindex(4));
+                    lua_pushstring(Linner, "__name");
+                    lua_rawget(Linner, lua_upvalueindex(2));
+                    const char* className = lua_isstring(Linner, -1) ? lua_tostring(Linner, -1) : "Script";
+                    Log::warn("%s: event handler '%s' is %s, not a function: its calls are skipped until it is one again",
+                              className, lua_tostring(Linner, lua_upvalueindex(1)), luaL_typename(Linner, -2));
+                    lua_pop(Linner, 1);
+                }
+                lua_pop(Linner, 1);
+                return 0;
+            }
             lua_pushvalue(Linner, lua_upvalueindex(2)); // self
 
             for (int i = 1; i <= nargs; ++i) {
@@ -632,7 +652,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        3);
+        4);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
@@ -663,7 +683,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
-    // a hot reload during Play replays it against the new method (LuaReload)
+    // a hot reload during Play replays it, with its tag and guard (LuaReload)
     lua_reload::recordRegistration(L, selfIndex, eventIndex, methodName, lua_tostring(L, tagIndex), guardActive);
 
     noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, lua_tostring(L, tagIndex));
