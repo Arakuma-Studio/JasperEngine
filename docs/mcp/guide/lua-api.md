@@ -2684,8 +2684,8 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `snap()` | the next update places it without damping |
 
 Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
-(warned once). A target moved in `onPostUpdate` is followed the next frame (Camera Follow runs in the
-scenes' update).
+(warned once). A target moved in `onPostUpdate`, a timer or a coroutine is followed in the same
+frame, damped as if it had moved in `onUpdate`.
 
 ```lua
 -- MilkShake's CameraShaker.cs, ported

@@ -62,6 +62,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "component/LatticeFollowerComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
@@ -17804,19 +17806,23 @@ void RenderSystem::updateFrameLights(CameraComponent& mainCamera, Transform& mai
 // transform stage runs for them: sprite batches, skins, lattice followers, the cameras' matrices,
 // bounds, MVPs, lights. A moved main camera leaves every MVP to the draw (mainViewMVPStale), as a
 // frame with several cameras does: the late pass never walks the static Transforms.
-bool RenderSystem::updateLateTransforms(){
+LateTransformResult RenderSystem::updateLateTransforms(){
     if (!lateTransformReady || paused)
-        return false;
+        return LateTransformResult();
+    // Camera Follow (Unity's follow cameras in LateUpdate): a follower whose target moved since
+    // the update steps again first; the stamps it leaves are what the gate below sees
+    if (scene->getComponentArray<CameraFollowComponent>()->size() > 0)
+        scene->getSystem<CameraControlSystem>()->updateLateFollowers();
     ComponentArray<Transform>* transforms = scene->getComponentArray<Transform>();
     ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
     const Tick gate = lateTransformGate;
     if (transforms->getLastChangedTick() <= gate && cameras->getLastChangedTick() <= gate)
-        return false;
+        return LateTransformResult();
 
     const Entity mainCameraEntity = scene->getCamera();
     if (!scene->findComponent<CameraComponent>(mainCameraEntity) || !scene->findComponent<Transform>(mainCameraEntity)){
         lateTransformGate = scene->getChangeClock().sample();
-        return false;
+        return LateTransformResult();
     }
 
     // the branches of what changed, parents first (a branch is contiguous after its root); a
@@ -17971,7 +17977,10 @@ bool RenderSystem::updateLateTransforms(){
         updateFrameLights(mainCamera, mainCameraTransform, frameNumLights);
 
     lateTransformGate = scene->getChangeClock().sample();
-    return viewMoved;
+    LateTransformResult result;
+    result.moved = true;
+    result.viewMoved = viewMoved;
+    return result;
 }
 
 void RenderSystem::update(double dt){

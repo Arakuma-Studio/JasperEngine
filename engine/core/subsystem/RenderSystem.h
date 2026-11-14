@@ -742,6 +742,12 @@ namespace jasperengine{
 	class TitleArtSystem;
 
 
+	// What a scene's late transform pass did (Engine::runFrame hands it to the audio)
+	struct LateTransformResult{
+		bool moved = false;      // Transforms or cameras moved after the update
+		bool viewMoved = false;  // the main camera's view among them
+	};
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
 		// null until then or without one)
@@ -4071,10 +4077,9 @@ namespace jasperengine{
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform, Entity entity);
 		// S95 REQ-5: after onPostUpdate, the timers and the coroutines, before the draw
-		// (Engine::runFrame): propagates what moved since this scene's update and runs the
-		// transform stage for it. Nothing moved: one compare. True when the main camera's view
-		// moved (the audio listener follows it).
-		bool updateLateTransforms();
+		// (Engine::runFrame): steps the Camera Follows whose target moved since this scene's update,
+		// propagates what moved and runs the transform stage for it. Nothing moved: one compare.
+		LateTransformResult updateLateTransforms();
 		void updateCamera(CameraComponent& camera, Transform& transform);
 		void updateMirrors(Entity mainCameraEntity);
 		Entity createMirrorCamera(Entity mirrorEntity);

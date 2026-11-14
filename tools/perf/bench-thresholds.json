@@ -236,6 +236,8 @@
     "late_idle_us": {"max": 1.0, "spec": "REQ-33 the late pass with nothing moved since the update, per scene"},
     "late_camera_ratio": {"max": 0.10, "spec": "REQ-33 the late pass with the camera moved in onPostUpdate, over the scene's main pass"},
     "late_steady_allocations": {"max": 0, "spec": "the late pass at steady state (--count-allocs)"},
+    "late_idle_follow_us": {"max": 1.0, "spec": "REQ-33 a follow camera's scene, its target not moved after the update"},
+    "late_follow_allocations": {"max": 0, "spec": "a follower stepped again in the late pass (--count-allocs)"},
     "world_pose_allocations": {"max": 0, "spec": "REQ-35 getWorldPosition's pose, clean and under a moved parent (--count-allocs)"}
   }
 }

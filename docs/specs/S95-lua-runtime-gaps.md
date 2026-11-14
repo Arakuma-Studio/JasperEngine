@@ -589,3 +589,39 @@ Per package, before merging:
 - **`data-loc` text is never markup**: a translation cannot inject elements.
 - **The editor shows String Tables in Edit mode too** (a Text's Localization Key, `data-loc`), and a
   table edited during Play applies at once.
+
+### WP-2 Frame order and transforms
+
+- **REQ-33's idle cost is two compares, not one.** The late pass skips a scene when neither the
+  Transform array's nor the Camera array's newest change is past the tick its update ended at
+  (camera settings set in `onPostUpdate` count too). With the Camera Follow check and the system
+  lookup, `je-bench-late-transforms` measures 0.006 µs a scene, 0.14 µs with a follow camera
+  whose target did not move late (1.2 µs when it did: the follower stepped again).
+- **A main camera moved late leaves the MVPs to its draw.** Every object's MVP depends on the
+  view, so the late pass sets `mainViewMVPStale`: the camera's pass makes them (the multi-camera
+  path, `perCameraMVP`), or the next update when no draw comes. The late pass itself never walks
+  the static Transforms; the bench's ratio (0.02 of the main pass) leaves that draw-time work out.
+  "The main transform pass" in the bench is `RenderSystem::update` of the static scene.
+- **What the late pass covers.** Propagation, sprite batches, skins (Model skin bindings and
+  Bone components), lattice followers, cameras (view, projection, frustum, Pixel Perfect snap,
+  mirrors, sky), bounds, MVPs of moved objects, instanced and points sorting, terrain cuts, lights
+  and shadow cameras, Camera Follow, the 3D listener and the 3D sources' positions (their velocity
+  stays the update's, so Doppler measures from frame to frame). It does not re-run UI layout: a
+  RectTransform's anchors or size changed after the scenes' update lay out at the next frame.
+- **Camera Follow in the late pass.** A follower whose target moved after the update steps again
+  from where the frame's step started, with its delta, toward the target's pose now
+  (`CameraControlSystem::updateLateFollowers`), so a damped follow ends the frame where it would
+  had the target moved in `onUpdate`; a transform-mode Camera Shaker on it shakes around the new
+  placement. `computeWorldNow` keeps its parent chain on the stack (no allocation a frame).
+- **More changes are stamped (`Changed<Transform>`)**: a reparenting, the children a destroyed
+  parent hands to its own parent, and the lattice followers. A system that sets `needUpdate`
+  without a stamp after `RenderSystem` in the scene update is still drawn at the next frame.
+- **REQ-34 needed a compensating change.** The name lookup alone cost +12% on 1 000 handlers;
+  the guard's four keys are now upvalues pushed by value, and the dispatch is +3.0% (216.5 ns to
+  223.0 ns a handler, median of 7, one box).
+- **REQ-6 scope.** `getWorldPosition/Rotation/Scale` and `modelMatrix` are current; `normalMatrix`
+  stays the last pass's. `get_runtime_entity` lists `worldPosition`, `worldRotation` and
+  `worldScale` (the Transform's world fields are derived and were not listed before); there is no
+  matrix value type in its listing, so `modelMatrix` is not added.
+- **Hot reload** still drops a registration whose method is gone after the reload (with its
+  warning), as before; a method assigned at runtime after that is not picked up.

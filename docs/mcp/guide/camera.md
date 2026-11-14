@@ -21,8 +21,10 @@ Shakers**, then the UI layout and `RenderSystem`, which builds the view matrices
 - A target moved in `onUpdate`, by physics or by an animation is followed the same frame. The
   follower composes the target's local transforms itself and does not use the world matrices
   cached by the last render.
-- A target moved in `onPostUpdate` is followed the next frame. A camera a script moves itself
-  in `onPostUpdate` (no Camera Follow) is drawn there the same frame.
+- A target moved in `onPostUpdate`, a timer or a coroutine is followed the same frame: the
+  follow step runs again from where the frame's step started, with its delta, so damping is the
+  same as for a target moved in `onUpdate`. A camera a script moves itself in `onPostUpdate` (no
+  Camera Follow) is drawn there the same frame, and the 3D listener hears from there.
 - A held simulation or a paused app freezes everything. The offset holds.
 
 ## Shakes
