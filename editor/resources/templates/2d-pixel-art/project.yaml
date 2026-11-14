@@ -50,7 +50,9 @@ assetsDir: assets
 luaDir: scripts
 versionControl:
   lfs: true
-startSceneId: 3584970240
+export:
+  assetStripping: referencedOnly
+startSceneId: 196590213
 mesh:
   animationEntities: auto
 audio:
@@ -59,4 +61,4 @@ audio:
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: f2cbcea5d68de3716d588f2a3ce6e9c9
+    filepathGuid: 1fd59ecbd671cacec58d6e9d2a0b5a67

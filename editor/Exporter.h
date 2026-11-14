@@ -13,6 +13,7 @@
 #include "ShaderDataSerializer.h"
 #include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
+#include "export/AssetStripping.h"
 #include "export/ExportFiles.h"
 
 #include <filesystem>
@@ -151,6 +152,9 @@ namespace jasperengine::editor {
         fs::path buildReport;
         uint64_t buildBytes = 0;
         std::map<std::string, uint64_t> buildCategories;
+        // S98 REQ-10: what Asset Stripping (and Exclude From Build) left out
+        size_t strippedCount = 0;
+        uint64_t strippedBytes = 0;
     };
 
     struct ExportProgress {
@@ -231,6 +235,11 @@ namespace jasperengine::editor {
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
         BuildReport buildReport;
+        // S98 REQ-8 to REQ-12: what Asset Stripping and Exclude From Build leave out of this
+        // build (planAssetStripping), and the files the steps left out (copyAssets, copyLua,
+        // copyCustomShaderSources), for the Build Report and a Development Build's manifest
+        AssetStrippingPlan strippingPlan;
+        std::vector<BuildReportLeftOut> leftOutAssets;
         // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
         // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
         std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
@@ -452,6 +461,14 @@ namespace jasperengine::editor {
         // S45 R19: every atlas built for the export's family, and the texture sheets' records
         bool gatherSpriteAtlases(const std::vector<std::string>& platforms);
         bool copyAssets();
+        // S98 REQ-9, REQ-12: the plan on the main thread, then the FBX files it ships imported
+        // (their linked textures ship with them); fails naming an FBX that cannot be imported
+        bool planAssetStripping();
+        // whether the plan leaves a project-relative file out (recorded once, with its bytes)
+        bool leftOutOfBuild(const std::string& projectRelative, const fs::path& absolute);
+        // .vert and .frag, and .glsl includes when the game compiles shaders at runtime: what
+        // copyCustomShaderSources() ships and copyAssets() leaves to it (S98 REQ-11)
+        static bool isShippedShaderSource(const fs::path& path, bool runtimeShaders);
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
         // S51 R34: the project's bitmap fonts' sources no asset references (main thread)
