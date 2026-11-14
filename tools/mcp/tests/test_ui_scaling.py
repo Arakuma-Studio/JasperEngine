@@ -243,7 +243,7 @@ async def test_text_alignment_golden(ed: Editor):
     try:
         await ed.call("play", action="start", scene=scene)
         # the 800 x 400 box, centred on the canvas, in the 960 px wide shot of the 1920 x 1080 view
-        cw, ch = (await lua(ed, "return {Engine.getCanvasWidth(), Engine.getCanvasHeight()}"))[0]
+        cw, ch = (await lua(ed, "return {Engine.canvasWidth, Engine.canvasHeight}"))[0]
         f = 960 / cw
         box = ((cw - 800) / 2 * f, (ch - 400) / 2 * f, (cw + 800) / 2 * f, (ch + 400) / 2 * f)
         middle = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
