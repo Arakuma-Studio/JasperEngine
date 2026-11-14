@@ -2525,6 +2525,10 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
                 attachScriptFile(sceneProject, entities, script.file);
             });
         }
+        componentAddDialog.setAudioFilters([this](const std::string& effect) {
+            std::string why;
+            if (!addAudioEffectToSelection(effect, &why)) Out::warning("Add Component: %s", why.c_str());
+        });
     }
     ImGui::EndDisabled();
 
@@ -10261,6 +10265,8 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         endTable();
     }
 
+    // S97 WP-B: the source's own effects (Unity's filter components, below the source)
+    drawAudioEffectRows(cpType, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){

@@ -5,6 +5,8 @@
 #include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
 #include "component/ButtonComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "audio/SourceEffectEdit.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -4104,6 +4106,15 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            // an Audio Source's own effects name types and parameters a source has (S97 REQ-42)
+            if (component == ComponentType::AudioSourceComponent) {
+                const AudioSourceComponent& audio = scene->scene->getComponent<AudioSourceComponent>(entity);
+                for (const Change& change : changes) {
+                    if (change.component == component && !SourceEffectEdit::checkChange(audio, change.property, change.op, change.value, error)) {
+                        return false;
+                    }
+                }
             }
             if (component == ComponentType::RectTransformComponent) {
                 for (const Change& change : changes) {
