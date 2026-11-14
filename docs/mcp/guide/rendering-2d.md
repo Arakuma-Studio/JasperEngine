@@ -16,6 +16,11 @@ A 2D camera (no depth test) draws renderers by, in this order:
 
 UI (RectTransform subtrees) keeps its place and Hierarchy order. A 3D camera's transparent queue
 compares Sorting Layer and Order in Layer before `sortPriority` and the distance.
+`graphics.transparency_sort_mode` picks that distance: `orthographic` the depth along the camera's
+view (sprites a little apart in z keep their order while an orthographic camera scrolls),
+`perspective` the distance to the camera, `default` orthographic for orthographic cameras and
+perspective otherwise. Projects made before this setting load as `perspective`; set `default` to
+layer sprites by z under an orthographic camera.
 
 - Add layers with `set_project_settings {"tags_and_layers.sorting_layers": ["Background",
   "Default", "Characters", "Foreground"]}`. Pass the whole list. It reads back as `[{id, name}]`;

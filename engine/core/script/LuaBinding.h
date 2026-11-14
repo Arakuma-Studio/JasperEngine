@@ -112,6 +112,8 @@ namespace jasperengine {
         static void registerSortingClasses(lua_State *L);
         // S94 F22: OutlineMode, OutlineWidthUnits, Outline (OutlineLua.cpp)
         static void registerOutlineClasses(lua_State *L);
+        // S94: MaterialPropertyBlock and the Mesh calls taking it, Mesh:setShaderTexture (MaterialPropertyBlockLua.cpp)
+        static void registerMaterialPropertyBlockClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)

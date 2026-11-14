@@ -383,8 +383,30 @@ static std::string formatBlendMode(MaterialBlendMode mode) {
         case MaterialBlendMode::PREMULTIPLIED: return "MaterialBlendMode::PREMULTIPLIED";
         case MaterialBlendMode::ADDITIVE: return "MaterialBlendMode::ADDITIVE";
         case MaterialBlendMode::MULTIPLY: return "MaterialBlendMode::MULTIPLY";
+        case MaterialBlendMode::CUSTOM: return "MaterialBlendMode::CUSTOM";
         default: return "MaterialBlendMode::AUTO";
     }
+}
+
+// Blend Mode Custom's factors (MaterialBlendFactors), each away from its default
+static std::string formatBlendFactors(const std::string& ind, const std::string& target, const MaterialBlendFactors& factors) {
+    using editor::Factory;
+    namespace enums = editor::reflect::enums;
+    const MaterialBlendFactors defaults;
+    std::string code;
+    auto factor = [&](const char* name, MaterialBlendFactor value, MaterialBlendFactor fallback) {
+        if (value != fallback)
+            code += ind + target + "." + name + " = " + Factory::formatEnum(enums::kMaterialBlendFactor, (int)value) + ";\n";
+    };
+    factor("blendSrc", factors.src, defaults.src);
+    factor("blendDst", factors.dst, defaults.dst);
+    factor("blendSrcAlpha", factors.srcAlpha, defaults.srcAlpha);
+    factor("blendDstAlpha", factors.dstAlpha, defaults.dstAlpha);
+    if (factors.op != defaults.op)
+        code += ind + target + ".blendOp = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.op) + ";\n";
+    if (factors.opAlpha != defaults.opAlpha)
+        code += ind + target + ".blendOpAlpha = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.opAlpha) + ";\n";
+    return code;
 }
 
 static std::string formatCullMode(MaterialCullMode mode) {
@@ -490,6 +512,7 @@ std::string editor::Factory::formatMaterialPass(int indentSpaces, const Material
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(pass.shaderFeatures) << ";\n";
     if (pass.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(pass.blendMode) << ";\n";
+    code << formatBlendFactors(ind, target, pass.getBlendFactors());
     if (pass.cullMode != MaterialCullMode::AUTO)
         code << ind << target << ".cullMode = " << formatCullMode(pass.cullMode) << ";\n";
     if (pass.depthWrite != MaterialDepthWrite::AUTO)
@@ -573,6 +596,7 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
     }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
+    code << formatBlendFactors(ind, target, material.getBlendFactors());
     if (material.cullMode != MaterialCullMode::AUTO)
         code << ind << target << ".cullMode = " << formatCullMode(material.cullMode) << ";\n";
     if (material.depthWrite != MaterialDepthWrite::AUTO)
@@ -1278,6 +1302,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.customDepthShader = " << formatString(mesh.customDepthShader) << ";\n";
     if (!mesh.shaderUniforms.empty())
         code << ind << "mesh.shaderUniforms = " << formatShaderUniforms(mesh.shaderUniforms) << ";\n";
+    // Property Overrides (S94 F7)
+    if (!mesh.propertyOverrides->values.empty())
+        code << ind << "mesh.propertyOverrides.edit().values = " << formatShaderUniforms(mesh.propertyOverrides->values) << ";\n";
+    code << formatShaderTextures(indentSpaces, mesh.propertyOverrides->textures, "mesh.propertyOverrides.edit().textures", projectPath);
     // Kept for a model too: its load reads the count to find the edited submeshes.
     code << ind << "mesh.numSubmeshes = " << formatUInt(numSubmeshes) << ";\n";
     for (unsigned int s = 0; s < numSubmeshes; s++){
@@ -1318,6 +1346,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.normalTexture, "mesh.submeshes[" + idx + "].material.normalTexture", projectPath);
+
+        if (!mesh.submeshes[s].propertyOverrides->values.empty())
+            code << ind << "mesh.submeshes[" << idx << "].propertyOverrides.edit().values = " << formatShaderUniforms(mesh.submeshes[s].propertyOverrides->values) << ";\n";
+        code << formatShaderTextures(indentSpaces, mesh.submeshes[s].propertyOverrides->textures, "mesh.submeshes[" + idx + "].propertyOverrides.edit().textures", projectPath);
 
         // The UV set each texture samples: only a model or a linked material sets it, and an
         // overridden texture is put back together with it.

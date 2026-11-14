@@ -983,6 +983,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelArtClasses(L);
     registerSortingClasses(L);
     registerOutlineClasses(L);
+    // after the GameObject classes: Mesh reopened for its Property Overrides
+    registerMaterialPropertyBlockClasses(L);
     registerHitStopClasses(L);
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set
