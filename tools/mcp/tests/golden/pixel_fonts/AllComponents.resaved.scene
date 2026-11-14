@@ -105,6 +105,8 @@ shaderKeys:
   - type: shadowcache
   - type: atmospheredepth
   - type: volumetricfog
+  - type: volumetricfog
+    properties: 1
   - type: atmospheredenoise
   - type: volumetricclouds
   - type: skycomposite

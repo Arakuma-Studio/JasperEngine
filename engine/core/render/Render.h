@@ -182,7 +182,7 @@ namespace jasperengine{
         SHADOW_CACHE,    // the shadow cache's depth copy and slot clear; 'Vis' the atlas debug view (RenderSystem)
         // the atmosphere's passes (docs/specs/S12-atmosphere.md, RenderSystem's AtmosphereRenderer)
         ATMOSPHERE_DEPTH,     // reduced-resolution linear depth of the scene (Atmosphere/DepthDownsample)
-        VOLUMETRIC_FOG,       // the volumetric fog march (Atmosphere/VolumetricFog)
+        VOLUMETRIC_FOG,       // the volumetric fog march (Atmosphere/VolumetricFog); 'Pnt' with the point shadows
         ATMOSPHERE_DENOISE,   // depth-aware 3x3 blur of a reduced (S, T) target (Atmosphere/Denoise)
         VOLUMETRIC_CLOUDS,    // the clouds march, Screen and Sky Map (Atmosphere/CloudsScreen, CloudsSkyMap)
         SKY_COMPOSITE,        // clouds and sky fill over the sky pixels (Atmosphere/SkyComposite)

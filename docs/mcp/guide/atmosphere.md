@@ -8,7 +8,7 @@ agree where they meet (design record: `docs/specs/S12-atmosphere.md`):
   perspective and orthographic cameras and covers the sky near the horizon (Sky Fill).
 - **Volumetric fog**: an option of the height fog. Near the camera the same medium is
   raymarched with the sun's shadows (light shafts), Local Volumetric Fog volumes, a density
-  noise and, at High quality, point and spot lights. Past its Distance the analytic height fog
+  noise and point and spot lights, shadowed when they cast shadows. Past its Distance the analytic height fog
   continues, so the two meet without a seam.
 - **Volumetric clouds**: a Volumetric Clouds component; raymarched clouds lit by the sun and the
   sky, in a Sky Map (every camera) or per pixel on screen (the main camera).
@@ -68,7 +68,7 @@ Fog a height fog of that look and keep its Color Mode and volumetric settings:
 |---|---|---|
 | Enabled | `volumetric` | the main camera raymarches the fog near it (Atmosphere Quality Low and up) |
 | Distance | `volumetricDistance` | how far it marches (m); the analytic fog continues beyond |
-| Light Shafts | `lightShafts` | the main directional light's shadows darken the fog (it must cast shadows) |
+| Light Shafts | `lightShafts` | shadows darken the fog: the main directional light's and the fog lights' (each must cast shadows) |
 | Noise Intensity, Noise Scale, Wind | `noiseIntensity`, `noiseScale`, `wind` | a drifting 3D density noise, faded out over the last fifth of the Distance |
 | Quality Override | `qualityOverride` | caps this fog's tier below the project's (never raises it) |
 
@@ -77,8 +77,8 @@ The Inspector's last line says what runs, e.g. "Running: Medium · 960×540 · 3
 
 How it renders: the scene's depth is reduced to the fog's resolution (the farthest of each block),
 the march runs per low-resolution texel with steps spread quadratically and offset by a static
-64×64 blue noise (no frame index: a still scene renders the same image every frame), a 3×3
-depth-aware denoise removes the pattern, and a joint bilateral upsample composites it over the
+64×64 blue noise (no frame index: a still scene renders the same image every frame), a
+depth-aware denoise (5×5 at Low, 3×3 at Medium and High) removes the pattern, and a joint bilateral upsample composites it over the
 opaque scene. Every surface takes the analytic fog over its whole ray; the composite then puts
 the marched fog in place of the analytic fog's near part (up to the Distance), so where the two
 are the same medium (no shadow, volume or noise) the image is exactly the analytic fog's, and
@@ -95,8 +95,11 @@ inner (blend) shape of a selected volume. It shows only through volumetric fog (
 warns otherwise). Per frame the volumes in view and within the Distance are sorted by distance
 and the nearest are used: 2 at Low, 4 at Medium, 8 at High.
 
-Point and spot lights with **Volumetric Intensity** above 0 scatter in the volumetric fog at High
-quality (the 4 nearest, without shadows).
+Point and spot lights with Intensity and **Volumetric Intensity** above 0 scatter in the volumetric
+fog: those whose range reaches the view and comes within the Distance, the nearest first, 1 at
+Low, 2 at Medium, 4 at High. With Light Shafts on, a light with Shadows on casts them in the fog
+(one shadow tap per step), as the sun does; the sun takes two taps per step at Medium and High
+(softer shafts). A light set to Volumetric Intensity 0 costs nothing.
 
 ## Volumetric clouds
 
@@ -138,7 +141,8 @@ tiered. Components cap it downward with Quality Override.
 | | Low | Medium | High |
 |---|---|---|---|
 | Volumetric fog resolution / steps | 1/4 per axis, 16 | 1/2, 32 | 1/2, 64 |
-| Local lights / volumes | 0 / 2 | 0 / 4 | 4 / 8 |
+| Local lights / volumes | 1 / 2 | 2 / 4 | 4 / 8 |
+| Sun shadow taps per step / denoise | 1 / 5×5 | 2 / 3×3 | 2 / 3×3 |
 | Clouds (Automatic) | Sky Map 256², 8 frames, 32 + 3 steps, no erosion | Sky Map 512², 4 frames, 64 + 4 steps | Screen ¼ resolution, 96 + 6 steps |
 
 Low-resolution targets are RGBA16F where the device renders and filters them, else RGBA8 with the
