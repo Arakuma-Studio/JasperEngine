@@ -97,6 +97,7 @@
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/AtmospherePresetCmd.h"
+#include "render/AtmosphereDiagnostics.h"
 #include "render/AtmospherePresets.h"
 #include "render/RenderUtil.h"
 #include "util/EntityClipboard.h"
@@ -11175,6 +11176,8 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
         settingsVolumetric.help = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, "
                                   "no shadows). 0: none.";
         propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricIntensity", "Volumetric Intensity", sceneProject, entities, settingsVolumetric);
+        // why the volumetric fog does not scatter this light, under its Volumetric Intensity
+        drawAtmosphereDiagnostics(sceneProject, entities[0], false, true);
     }
     if (light.type == LightType::SPOT){
         RowSettings settingsMask;
@@ -11654,6 +11657,36 @@ void editor::InspectorWindow::drawAtmospherePresetsMenu(ComponentType cpType, Sc
     }
 }
 
+void editor::InspectorWindow::drawAtmosphereDiagnostics(SceneProject* sceneProject, Entity entity, bool volumeSetup, bool tableRow){
+    // what the Game view (the frame's own view while playing) ran last: get_atmosphere_info's default
+    AtmosphereDiagnosticsInput input;
+    input.scene = sceneProject->scene;
+    input.info = &sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(sceneProject->playState == ScenePlayState::STOPPED ? GAME_VIEW_ID : 0);
+    input.sceneViewFogDisabled = sceneProject->displaySettings.disableFog;
+    input.camera = project->getGameCamera(sceneProject->id);
+    const AtmosphereReport report = AtmosphereDiagnostics::run(input);
+    for (const AtmosphereDiagnostic& diagnostic : report.diagnostics){
+        const bool setup = diagnostic.code == "fog_missing" || diagnostic.code == "volumetric_needs_height" || diagnostic.code == "volumetric_quality_off";
+        if (diagnostic.entity != entity && !(volumeSetup && setup))
+            continue;
+        if (tableRow){
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+        }
+        if (diagnostic.severity == AtmosphereSeverity::Info)
+            ImGui::TextDisabled(ICON_FA_CIRCLE_INFO);
+        else
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::TextWrapped("%s", diagnostic.message.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", diagnostic.fix.c_str());
+        ImGui::PopStyleColor();
+        ImGui::EndGroup();
+    }
+}
+
 void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     FogComponent& fog = sceneProject->scene->getComponent<FogComponent>(entities[0]);
     const bool height = fog.type == FogType::HEIGHT;
@@ -11694,9 +11727,11 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("Volumetric fog needs a Fog of Type Height.");
         endTable();
+        drawAtmosphereDiagnostics(sceneProject, entities[0], false);
         return;
     }
     endTable();
+    drawAtmosphereDiagnostics(sceneProject, entities[0], false);
 
     const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(0);
 
@@ -11728,11 +11763,6 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         propertyRow(RowPropertyType::FloatPositive, cpType, "maxFogDistance", "Max Fog Distance", sceneProject, entities, settingsMaxDistance);
         propertyRow(RowPropertyType::Float_0_1, cpType, "maxOpacity", "Max Opacity", sceneProject, entities, settingsOpacity);
         endTable();
-        if (fog.colorMode == FogColorMode::SKY && info.horizonSource == "fog_color"){
-            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
-            ImGui::SameLine();
-            ImGui::TextWrapped("The sky has no horizon colour (it is not a cube map and its shader declares no horizonColor): the fog uses its Color.");
-        }
         endFoldout();
     }
 

@@ -16,7 +16,6 @@
 
 #include "Catalog.h"
 #include "Theme.h"
-#include "component/FogComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
@@ -369,15 +368,10 @@ void editor::InspectorWindow::drawDefaultArray(ComponentType cpType, SceneProjec
     }
 }
 
-void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>&) {
-    if (cpType == ComponentType::LocalVolumetricFogComponent) {
+void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities) {
+    if (cpType == ComponentType::LocalVolumetricFogComponent && !entities.empty()) {
         // it shows through the scene's volumetric fog only
-        FogComponent* fog = sceneProject->scene->findComponentFromIndex<FogComponent>(0);
-        if (!fog || fog->type != FogType::HEIGHT || !fog->volumetric) {
-            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
-            ImGui::SameLine();
-            ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
-        }
+        drawAtmosphereDiagnostics(sceneProject, entities[0], true);
     }
     if (cpType == ComponentType::TerrainWorldComponent) {
         TerrainWorldPanel::drawInspectorNotes(project, sceneProject);

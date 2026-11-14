@@ -1022,6 +1022,10 @@ namespace jasperengine::editor{
         // Cast Shadows, the capsule list (up to 8) and Fit To Skeleton, each an undo step
         void drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the atmosphere's diagnostics about entity (docs/specs/vapor.md R28), as help boxes;
+        // volumeSetup adds the scene's and the Fog's reasons a Local Volumetric Fog does not show;
+        // tableRow puts them in a row of their own under the open table's values
+        void drawAtmosphereDiagnostics(SceneProject* sceneProject, Entity entity, bool volumeSetup, bool tableRow = false);
         void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
         void drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
