@@ -857,3 +857,18 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
   library shader).
 - **P3, F16.** An inactive sky entity stops drawing and feeding probes, as a hidden one; its IBL
   keeps lighting the scene, as `visible = false` does.
+- **P6, F38.** `Ragdoll.build` is not in P6: the package brief gave the runtime ragdoll builder and
+  its Lua API to S96 (R13 split). P6 does only F37, the Animator pause.
+- **P6, F32 definitions.** Body Orientation is the heading of the hips line (upper legs) plus the
+  shoulders line (upper arms, when both are mapped). Center of Mass weights the humanoid slots'
+  joints with Dempster-like mass fractions. Feet is the lower foot joint. "At start" aligns the
+  clip's frame 0 on the model's rest pose: the body faces the root's forward, and the feet or the
+  centre of mass stand where the rest pose has them. The Inspector shows Unity's labels
+  ("Center of Mass").
+- **P6, F34.** The Animation Player adds the root motion of its base layer's states by weight. The
+  pose's root is removed with the heaviest of those states' settings, after the blend. A state that
+  plays through the humanoid path (a humanoid clip or a Retarget entry) has no root motion on the
+  Player and says so once; the Animator is the humanoid root motion path.
+- **P6, F35.** An imported clip gets a `root_motion` block only when one of Unity's Bake Into Pose
+  flags is set, so a prop clip does not start playing in place under F33. The block then carries
+  Unity's Based Upon and offsets.
