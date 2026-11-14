@@ -783,3 +783,15 @@ Avoiding conflicts:
   - `test_scene_view_icons.py` fails under load (three copies with `-j 3` on a build box) on the
     code before WP-5 as after it, by the same 0.056: the difference is the Scene view's camera
     gauge fading between the shots (pixels x 6-37), not the icon, which is back. Not changed here.
+- **WP-5 imports (E15, E21; REQ-32, REQ-33, D10).** `editor/model/FbxImportQueue` is the one
+  scheduler: any thread queues an FBX; one Background Heavy job converts the queue once a frame
+  queued nothing new (a scene's load is one batch); Play startup, the export (before
+  `loadAndSaveAllScenes`, on its thread) and reload jobs convert on their own threads.
+  `fbxImportCallMutex` and the scan task are gone. Main-thread callers queue: `ModelLoadCmd`
+  waits (`whenModelImported`), foliage layers draw once imported, `import_files` replies from a
+  deferred wait, thumbnails ask again, the cook queue keeps the model queued, VAT bake/preview
+  report "still importing". `MeshSystem::setModelImportGate` keeps a pending model waiting with
+  no error. `editor_status` lists the `model_import` job with `done`/`total`. Red control (the
+  delay hook alone on `3ef9338fa`): AC25 fails (`read_console` answered only after
+  `create_entity` converted on the main thread), AC26 fails ("Model load failed, not retrying").
+  The guide gained no line: the result says it (eval case `guard_model_import_pending`, not run).

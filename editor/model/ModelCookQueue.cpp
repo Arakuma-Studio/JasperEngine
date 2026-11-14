@@ -4,6 +4,7 @@
 #include "ModelCookQueue.h"
 #include "export/ExportFiles.h"
 
+#include "EditorHost.h"
 #include "Out.h"
 #include "Project.h"
 #include "command/type/SetAssetMetaCmd.h"
@@ -98,8 +99,19 @@ bool editor::gatherModelCookRequest(Project& project, const std::string& assetPa
     out.settings = settings.resolve(family, project.getModelSettings());
     out.blended = ModelUsageIndex::get().usageOf(assetPath).blended();
     if (FbxImporter::isFbxFile(absolute)){
-        // an FBX cooks from its import, made now if it is missing or old
-        if (!project.importFbxModel(absolute)){
+        // an FBX cooks from its import, made now if it is missing or old; the main thread only
+        // queues it (S98 REQ-32)
+        if (getEditorHost().isMainThread()){
+            const Project::ModelImport import = project.requestModelImport(absolute);
+            if (import == Project::ModelImport::Pending){
+                error = assetPath + " is still importing: try again once editor_status lists no model_import job";
+                return false;
+            }
+            if (import == Project::ModelImport::Failed){
+                error = assetPath + " could not be imported (the FBX importer's error is in the Console)";
+                return false;
+            }
+        }else if (!project.importFbxModel(absolute)){
             error = assetPath + " could not be imported (the FBX importer's error is in the Console)";
             return false;
         }
@@ -441,6 +453,10 @@ void ModelCookQueue::startJobs(){
         lastUsageRefresh = now;
     }
     for (const auto& key : candidates){
+        // an FBX whose import runs stays queued: it cooks once the import lands
+        const fs::path source = (project->getAssetsPath() / FileUtils::pathFromUtf8(key.first)).lexically_normal();
+        if (FbxImporter::isFbxFile(source) && project->requestModelImport(source) == Project::ModelImport::Pending)
+            continue;
         auto job = std::make_shared<Job>();
         job->assetPath = key.first;
         job->family = (ModelFamily)key.second;

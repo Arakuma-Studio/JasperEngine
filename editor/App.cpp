@@ -141,6 +141,7 @@
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "model/FbxImportQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/cleanup/CleanupSession.h"
@@ -3591,6 +3592,12 @@ void editor::App::engineInit(int argc, char** argv) {
     if (const char* delay = std::getenv("JASPER_TEST_MODEL_LOAD_DELAY_MS")) {
         const long ms = std::strtol(delay, nullptr, 10);
         if (ms > 0) MeshSystem::setModelLoadDelayForTest(static_cast<int>(std::min(ms, 60000L)));
+    }
+    // Test hook: each FBX conversion waits this long first, so tools are called while an import
+    // runs (test_import_blocking.py)
+    if (const char* delay = std::getenv("JASPER_TEST_FBX_IMPORT_DELAY_MS")) {
+        const long ms = std::strtol(delay, nullptr, 10);
+        if (ms > 0) FbxImportQueue::setDelayForTest(static_cast<int>(std::min(ms, 60000L)));
     }
 
     // Before the project loads, so an MCP client's initialize is answered at once;
