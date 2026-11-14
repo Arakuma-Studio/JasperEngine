@@ -391,8 +391,9 @@ LayerHandle RenderManager::PushLayer()
 
 LayerHandle RenderManager::PushLayer(Rectanglei region)
 {
-	const Rectanglei viewport = Rectanglei::FromSize(viewport_dimensions);
-	if (!region.Valid() || region.Width() <= 0 || region.Height() <= 0 || region.Intersect(viewport) == region)
+	// Fork (S92-F4): a region within the viewport goes to the render interface too, which may size the layer to it
+	// (a layer per element: its passes load and store its own pixels, not the viewport's).
+	if (!region.Valid() || region.Width() <= 0 || region.Height() <= 0)
 		region = Rectanglei::MakeInvalid();
 	return PushLayerInRegion(region);
 }

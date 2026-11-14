@@ -403,18 +403,24 @@ void ElementText::RenderShadowList(RenderManager& render_manager, Vector<Shadow>
 		if (!shadow.filter)
 			continue;
 
+		Rectanglei scissor = Rectanglei::MakeInvalid();
 		if (!transformed)
 		{
 			Rectanglef region = shadow.ink.Translate(translation).Extend(3.f * sigma + 1.f);
 			Math::ExpandToPixelGrid(region);
-			const Rectanglei scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
+			scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
 			if (!scissor.Valid())
 				continue;
 			render_manager.SetScissorRegion(scissor);
 		}
 
 		GetFontEngineInterface()->ReportTextEffectFallback(render_manager);
-		render_manager.PushLayer();
+		// Fork (S92-F4): the blur's layer covers the shadow's window (within the layer it is composited into), not the
+		// viewport; under a transform the region of the layer it is drawn in, as before.
+		if (scissor.Valid())
+			render_manager.PushLayer(scissor.IntersectIfValid(render_manager.GetLayerRegion()));
+		else
+			render_manager.PushLayer();
 		for (const TexturedGeometry& part : shadow.geometry)
 			part.geometry.Render(translation, part.texture);
 		if (shadow.decoration)

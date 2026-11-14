@@ -493,7 +493,11 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 
 			if (has_mask)
 			{
-				render_manager->PushLayer();
+				// Fork (S92-F4): the mask's layer covers the element's window, as the layer it masks.
+				if (window.Valid())
+					render_manager->PushLayer(window);
+				else
+					render_manager->PushLayer();
 
 				if (!mask_layers)
 					mask_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Mask);
