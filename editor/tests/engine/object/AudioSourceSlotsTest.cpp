@@ -16,6 +16,7 @@
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "picking/ScenePicker.h"
 #include "component/AudioSourceComponent.h"
 #include "camera/CameraType.h"
 #include "component/CameraComponent.h"
@@ -291,9 +292,8 @@ TEST_F(AudioSourceSlotsEditorTest, SecondSourceIsAHiddenChildThatFollows) {
     EXPECT_EQ(registry->getComponent<Transform>(horn).position, Vector3(0, 0, 0)) << "at the local origin";
     EXPECT_EQ(registry->getComponent<AudioSourceComponent>(horn).slot, 1);
     EXPECT_EQ(project->getSelectedEntities(scene->id), std::vector<Entity>{car}) << "the GameObject stays selected";
-    const std::vector<Entity> pickable = project->getPickableEntities(scene);
-    EXPECT_EQ(std::count(pickable.begin(), pickable.end(), horn), 0) << "picked as its GameObject, never by itself";
-    EXPECT_EQ(std::count(pickable.begin(), pickable.end(), car), 1);
+    EXPECT_EQ(editor::ScenePicker::pickedEntity(registry, horn), car) << "picked as its GameObject, never by itself";
+    EXPECT_EQ(editor::ScenePicker::pickedEntity(registry, car), car);
 
     const Entity siren = addSlot(car);
     EXPECT_EQ(registry->getComponent<AudioSourceComponent>(siren).slot, 2);
