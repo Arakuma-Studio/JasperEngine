@@ -749,16 +749,19 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
+      # ccache where it shortens the lane: the editor job is its longest (a full editor and tests build is
+      # about 1 GB of cache); the engine jobs finish well within it cold, so only OpenGL's, whose /Z7
+      # objects alone pass 1.2 GB, keeps a little, and D3D11 and Vulkan none (the 10 GB repository budget)
       matrix:
         include:
           - part: editor
-            ccache: 0.6G
+            ccache: 1.2G
           - part: engine-glcore
-            ccache: 0.25G
+            ccache: 0.15G
           - part: engine-d3d11
-            ccache: 0.25G
+            ccache: ''
           - part: engine-vulkan
-            ccache: 0.25G
+            ccache: ''
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
@@ -782,6 +785,7 @@ jobs:
         with:
           arch: x64
       - uses: ./.github/actions/ccache-restore
+        if: matrix.ccache != ''
         with:
           lane: windows-${{ matrix.part }}
           max-size: ${{ matrix.ccache }}
@@ -829,7 +833,7 @@ jobs:
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
       - uses: ./.github/actions/ccache-save
-        if: always()
+        if: always() && matrix.ccache != ''
         with:
           lane: windows-${{ matrix.part }}
       - uses: ./.github/actions/report
@@ -978,8 +982,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for prefix in plan-inputs- gradle- ccache-linux- ccache-asan- ccache-htmlui- ccache-web- \
-                        ccache-android- ccache-windows-editor- ccache-windows-engine-glcore- ccache-windows-engine-d3d11- \
-                        ccache-windows-engine-vulkan- ccache-macos- ccache-smoke- ccache-unit-core- ccache-unit-editor-; do
+                        ccache-android- ccache-windows-editor- ccache-windows-engine-glcore- ccache-macos- ccache-smoke- \
+                        ccache-unit-core- ccache-unit-editor-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do

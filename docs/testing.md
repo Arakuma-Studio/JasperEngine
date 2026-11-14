@@ -974,6 +974,9 @@ Windows jobs' builds and the core tests' run included.
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
 - **Push to `main`** builds only: its tests ran in the queue. It saves the caches (ccache per lane,
   the deps dumps `changes` plans from): a PR restores what `main` saved, never what the queue did.
+  The caps (`max-size` in `ci.yml`) share GitHub's 10 GB per repository: of the Windows jobs only the
+  editor's (1.2 GB, a full editor and tests build) and OpenGL's (0.15 GB) keep one; D3D11 and Vulkan
+  build cold within the editor job's time.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
 
 ### The nightly and releases
