@@ -565,6 +565,8 @@ private:
             std::string name = fs::path(assetPath).stem().string();
             createHostCmd = new CreateEntityCmd(project, sceneId, name.empty() ? "Terrain Instances" : name, EntityCreationType::MODEL, terrainEntity);
             createHostCmd->setQuiet(true);
+            // its Instanced Mesh draws the Model's own Mesh: never Preserve Hierarchy (S94 F44)
+            createHostCmd->addProperty<bool>(ComponentType::ModelComponent, "preserveHierarchy", false);
         }
         if (!createHostCmd->execute()){
             return false;
