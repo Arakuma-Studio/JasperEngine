@@ -301,6 +301,8 @@ void ScriptRuntime::awakeScene(Scene* scene) {
         return;
     }
     startedScenes.push_back(scene);
+    // the fixed step the scene's init reads (and may change) is its own (S95 D-7)
+    SceneManager::mainSceneStarting(scene);
     // what the scripts instantiate goes to their scene, not yet the Engine's
     ObjectManager::pushActiveScene(scene);
     awakeningScenes++;

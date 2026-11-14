@@ -740,6 +740,14 @@ int Scene::getPhysics2DSubSteps() const{
 #endif
 }
 
+void Scene::setFixedTimestep(float seconds){
+    settings.fixedTimestep = (std::isfinite(seconds) && seconds > 0.0f) ? seconds : 0.0f;
+}
+
+float Scene::getFixedTimestep() const{
+    return settings.fixedTimestep;
+}
+
 void Scene::setDefaultMeshShader(const std::string& path){
     if (settings.defaultMeshShader != path){
         settings.defaultMeshShader = path;

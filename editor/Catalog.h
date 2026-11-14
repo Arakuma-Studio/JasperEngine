@@ -665,6 +665,11 @@ namespace jasperengine::editor{
                     return scene->getPhysics2DSubSteps();
                 }
             }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getFixedTimestep();
+                }
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) {
                     return scene->getLightState();
@@ -955,6 +960,9 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) return d.physics2DSubSteps;
             }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) return d.fixedTimestep;
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
@@ -1203,6 +1211,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) {
                     scene->setPhysics2DSubSteps(value);
+                }
+            }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setFixedTimestep(value);
                 }
             }
             else if (propertyName == "light_state") {

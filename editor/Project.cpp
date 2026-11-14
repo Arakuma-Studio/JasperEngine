@@ -6453,6 +6453,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     ::jasperengine::pixelart::HitStop::reset();
     Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
+    // Project Settings > Time and Input applied at Play start (and what a game's script changed)
+    Engine::setProjectUpdateTime(defaultFixedTimestep);
+    Engine::setMaxDeltatime(static_cast<float>(defaultMaximumDeltaTime));
+    Engine::setCallTouchInMouseEvent(false);
     Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
@@ -6540,6 +6544,9 @@ void editor::Project::resetConfigs() {
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
+    simulateTouchFromMouse = false;
+    fixedTimestep = defaultFixedTimestep;
+    maximumDeltaTime = defaultMaximumDeltaTime;
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
     packContent = false;
@@ -8537,6 +8544,7 @@ void editor::Project::configureGenerator() {
     generator.setDrawSubmission(drawSubmission);
     generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setTimeAndTouchSettings(fixedTimestep, maximumDeltaTime, simulateTouchFromMouse);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -10751,6 +10759,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setDrawSubmission(drawSubmission);
     generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setTimeAndTouchSettings(fixedTimestep, maximumDeltaTime, simulateTouchFromMouse);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -10970,6 +10979,11 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
                 Engine::setPixelsPerUnit(pixelsPerUnit);
+                // Project Settings > Time and Input > Simulate Touch From Mouse, as a game's main
+                // sets them before its init (the Game view's Simulate Touch is PlayInput's own)
+                Engine::setProjectUpdateTime(fixedTimestep);
+                Engine::setMaxDeltatime(static_cast<float>(maximumDeltaTime));
+                Engine::setCallTouchInMouseEvent(simulateTouchFromMouse);
                 // runtime-made textures of the game start with the Default Filter Mode (S42 R3);
                 // edit mode keeps Bilinear: assignments copy their filters explicitly (R7)
                 Engine::setDefaultTextureFilter(textureFilterModeEngineFilter(defaultFilterMode));
