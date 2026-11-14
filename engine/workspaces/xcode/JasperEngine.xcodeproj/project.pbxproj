@@ -4921,6 +4921,14 @@
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
 		4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
 		4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
+		4A534E479B061C69221C4D62 /* Outline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478DFCC199D4981589 /* Outline.cpp */; };
+		4A534E4742E5599C8B465910 /* Outline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478DFCC199D4981589 /* Outline.cpp */; };
+		4A534E47C98545D43F637C78 /* OutlineLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4754C3A6961FBF853C /* OutlineLua.cpp */; };
+		4A534E4730EC6BBAA28A148C /* OutlineLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4754C3A6961FBF853C /* OutlineLua.cpp */; };
+		4A534E476216B24F1D94D8A8 /* RenderSystemOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */; };
+		4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */; };
+		4A534E47730A71320720C44A /* OutlineComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */; };
+		4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474C83E40B234EA9C4 /* Outline.h */; };
 		4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
 		4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
 		4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
@@ -9504,6 +9512,11 @@
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
 		4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MaterialPropertyBlockLua.cpp; sourceTree = "<group>"; };
+		4A534E478DFCC199D4981589 /* Outline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Outline.cpp; sourceTree = "<group>"; };
+		4A534E4754C3A6961FBF853C /* OutlineLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OutlineLua.cpp; sourceTree = "<group>"; };
+		4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemOutline.cpp; sourceTree = "<group>"; };
+		4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OutlineComponent.h; sourceTree = "<group>"; };
+		4A534E474C83E40B234EA9C4 /* Outline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Outline.h; sourceTree = "<group>"; };
 		4A534E473EE5CF176C08B72B /* RootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RootMotion.cpp; sourceTree = "<group>"; };
 		4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemRootMotion.cpp; sourceTree = "<group>"; };
 		4A534E47736FFBD4F64D9163 /* RootMotion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RootMotion.h; sourceTree = "<group>"; };
@@ -10077,6 +10090,7 @@
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 				4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */,
+				4A534E4754C3A6961FBF853C /* OutlineLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -12001,6 +12015,7 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12141,6 +12156,8 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E478DFCC199D4981589 /* Outline.cpp */,
+				4A534E474C83E40B234EA9C4 /* Outline.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12351,6 +12368,7 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */,
 				4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */,
 			);
 			path = subsystem;
@@ -16858,6 +16876,8 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E47730A71320720C44A /* OutlineComponent.h in Headers */,
+				4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */,
 				4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -19528,6 +19548,9 @@
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
 				4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */,
+				4A534E479B061C69221C4D62 /* Outline.cpp in Sources */,
+				4A534E47C98545D43F637C78 /* OutlineLua.cpp in Sources */,
+				4A534E476216B24F1D94D8A8 /* RenderSystemOutline.cpp in Sources */,
 				4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */,
 				4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */,
 			);
@@ -20490,6 +20513,9 @@
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
 				4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */,
+				4A534E4742E5599C8B465910 /* Outline.cpp in Sources */,
+				4A534E4730EC6BBAA28A148C /* OutlineLua.cpp in Sources */,
+				4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */,
 				4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */,
 				4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */,
 			);
