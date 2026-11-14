@@ -662,6 +662,7 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
         if (!script.path.empty()) scan.cppScripts.push_back(script.path.generic_string());
     for (SceneProject& scene : project->getScenes()) {
         if (scene.filepath.empty()) continue;   // not a scene of the build (an export saves it first)
+        if (!scene.inBuild) continue;           // opened without being listed (S98 REQ-28)
         scan.contents.push_back({"scene " + scene.name, scene.scene, scene.entities});
     }
     // the prefabs the build registers: a script can spawn any of them (as collectRequiredShaderKeys
@@ -690,6 +691,8 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
         try {
             Prefab loaded;
             loaded.loadRegistry(DocumentFiles::read(project->getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
+            // its linked .material files as the build reads them (S98 REQ-29)
+            project->applyLinkedMaterialFiles(loaded.registry.get());
             std::shared_ptr<EntityRegistry> registry(std::move(loaded.registry));
             scan.contents.push_back({label, registry.get(), loaded.registryEntities});
             scan.owned.push_back(registry);

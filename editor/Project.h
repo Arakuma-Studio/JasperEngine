@@ -255,6 +255,10 @@ namespace jasperengine::editor{
         bool transientId = false;
         bool isVisible = false;
         bool opened = true;
+        // project.yaml lists it: the build's scenes (Build Settings). A file opened without being
+        // listed (S98 REQ-28) is false: open in a tab (the workspace remembers it), in no build,
+        // and closing it takes it out of the editor. A child scene of a listed one is listed.
+        bool inBuild = true;
         bool expandedInline = false;
         // a Play copy a game load put in place of the played scene: the editor camera's mirror in
         // it, which the Scene view draws it through (render/ViewCameraMirror.h)
@@ -876,6 +880,8 @@ namespace jasperengine::editor{
 
     // editor/tests/PlayStartupScenesTest.cpp: builds a play session around a scenes vector
     struct PlaySessionTestAccess;
+    // editor/tests/project/ProjectPrefabMaterialsTest.cpp: Play's prefab templates
+    struct PrefabMaterialsTestAccess;
     // Project Settings > Player > Crash Handling (project.yaml "playerCrash", docs/crash-diagnostics.md).
     // The defaults are what a game does without the key.
     struct PlayerCrashSettings {
@@ -923,6 +929,7 @@ namespace jasperengine::editor{
 
     class Project{
         friend struct PlaySessionTestAccess;
+        friend struct PrefabMaterialsTestAccess;
     private:
 
         Conector conector;
@@ -1567,9 +1574,6 @@ namespace jasperengine::editor{
         // modified
         void markSceneSaved(SceneProject* sceneProject);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
-        bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
-        // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy
-        bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         void applyFirstDrawSettings(SceneProject* sceneProject) const;
@@ -1756,7 +1760,7 @@ namespace jasperengine::editor{
         // lighting setup they can make (see ShaderVariantCollector)
         void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
         // The shader keys a save writes into the scene file (shaderKeys): what the content needs
-        // (collectRequiredShaderKeys) and the keys it had (its file's, Play's at Stop), never what
+        // (collectRequiredShaderKeys) and the keys it had (its file's), never what
         // has drawn, so the same scene saves the same list whatever rendered before
         void collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
@@ -2227,6 +2231,13 @@ namespace jasperengine::editor{
         std::filesystem::path getShaderWarmupPath() const;
         // Stop of a Play that recorded: the run's entries merged into the list file
         void finishShaderWarmupRecording();
+        // Stop: the variants a Play session drew with that the played scenes' own lists lack go
+        // to the warm-up list (S98 REQ-27), never into a scene file. `discovered`: by the editor
+        // scene each ran for
+        void addPlayShaderKeysToWarmup(const std::map<uint32_t, std::set<ShaderKey>>& discovered);
+        // `recorded` (a list's text, or empty) and `variants` merged into the list file, which is
+        // written (sorted, atomically) only when it gains an entry; true when it was written
+        bool mergeIntoShaderWarmup(const std::string& recorded, const std::set<ShaderKey>& variants);
         // empties the list file (and a recording in progress)
         bool clearShaderWarmup();
         const LoadingSettings& getLoadingSettings() const;
@@ -2468,8 +2479,15 @@ namespace jasperengine::editor{
         // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
         // before an edit made while playing)
         void reapplyLinkedMaterialFiles();
-        // `relativePath` was read again: every submesh linked to it takes `material`
+        // `relativePath` was read again: every submesh linked to it takes `material`, in the open
+        // scenes, the loaded prefab assets and their Prefab Mode stages (S98 REQ-29)
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
+        // Each submesh of `registry` that names a .material file (Material::name, S04 deviation 1)
+        // takes the file's current values, as a scene's do when it opens: a prefab follows its
+        // linked materials wherever it is read (Prefab Mode, instances, Play's templates, the cook
+        // and the export; S98 REQ-29). The prefab file is written only when the prefab is saved.
+        // updateRender: the registry draws (its meshes reload what changed). True when one changed.
+        bool applyLinkedMaterialFiles(EntityRegistry* registry, bool updateRender = false) const;
 
         //=== HTML UI hot reload ===
         // The scenes whose HTML UI documents hot reload (editor/reload): the loaded scenes, Prefab Mode
@@ -2565,8 +2583,9 @@ namespace jasperengine::editor{
         uint32_t createSceneNow(const std::string& name, SceneType type, const std::filesystem::path& saveAs = {},
                                 bool closePrevious = false, UnsavedChoice unsaved = UnsavedChoice::Cancel,
                                 std::string* error = nullptr);
-        // Opens a .scene file and selects it, adding it to the project when it is not listed
-        // yet; an open one is only selected. closePrevious closes the scene selected before
+        // Opens a .scene file and selects it; one project.yaml does not list opens out of the
+        // build (inBuild false, S98 REQ-28) and writes only the workspace. An open one is only
+        // selected. closePrevious closes the scene selected before
         // (once the new one loaded), `unsaved` deciding its changes. Returns the scene's id,
         // NULL_PROJECT_SCENE on failure.
         uint32_t openSceneNow(const std::filesystem::path& path, bool closePrevious = false,
@@ -2594,6 +2613,12 @@ namespace jasperengine::editor{
 
         std::vector<std::filesystem::path> findSceneFiles() const;
         uint32_t findSceneByPath(const std::filesystem::path& filepath) const;
+        // An open scene project.yaml does not list joins the build (Build Settings' Add Open
+        // Scenes, edit_build_scenes add), its child scenes with it; project.yaml is written. False
+        // when nothing changed (unknown, untitled, or listed already)
+        bool addSceneToBuild(uint32_t sceneId);
+        // The open scenes of a file project.yaml does not list, in tab order
+        std::vector<uint32_t> getOpenScenesNotInBuild() const;
         // One file per scene (docs/data-safety.md, "Scene files and identity"). The key two spellings of
         // one project file share: project-relative, lexically normal, generic, lower case on a
         // case-insensitive project volume
