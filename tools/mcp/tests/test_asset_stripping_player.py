@@ -18,7 +18,7 @@ import build_cache
 from harness import Editor, skip
 
 CI = True
-TIMEOUT = 2400
+TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200")) if os.environ.get("JASPER_SLOW_BUILD", "") not in ("", "0") else 900
 PREBUILT_PLAYERS = ["glcore-development"]
 
 COMPUTED = """local Computed = {}

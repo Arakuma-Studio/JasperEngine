@@ -783,3 +783,12 @@ Avoiding conflicts:
   with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
   Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
   1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.
+- **WP-6, what ships** (AC9, AC10, AC11, AC35, AC36): `test_asset_stripping.py` 6/6 on the WP-6
+  editor; red on the spec branch's editor (3ef9338fa): 0/6, everything shipped (`textures/unused.png`
+  and `dev/debug.png` cooked), Play imported the unused FBX, two copies of the shader source
+  (`assets/assets/shaders/Plain.frag` and `assets/shaders/Plain.frag`), the settings unknown. The
+  WP-6 unit tests (`AssetStripping.*`, `AssetStrippingProjectTest.*`, `StreamProjectSettings*.*`,
+  `ContentManifest.StrippedListRoundTripsAndIsAbsentWhenEmpty`, `StrippedAssets.*`) use the new API
+  and do not build on the old one. AC36: screenshots of Project Settings > Player > Build, the
+  Project window's two items and an Exclude From Build undone with Edit > Undo (outside the
+  repository, the package's evidence folder).
