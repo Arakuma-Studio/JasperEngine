@@ -1,5 +1,8 @@
 # S96 — Physics gaps from the JasperArcade port: vehicles, shape queries, compound bodies, joint ownership, 2D world settings
 
+**Status: implemented** on `feature/s96-physics-gaps` (WP-A..WP-E). What the code does where it
+differs from this text is in "Deviations" at the end.
+
 Arcade engine-gaps program (S92-S98). The source is the "Physics" section of the port's ledger,
 `JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md` (P1-P20), written against engine commit
 `7f48d7e8d` (2026-10-30), plus R13 (ragdoll builder) from its "Rendering" list, which is physics
@@ -733,3 +736,50 @@ WP-C (bodies and colliders):
   negative `setColliderHalfHeight` now raising.
 - REQ-24's CharacterController part was already done (`CharacterControllerSystem::makeShape` uses a
   sphere when `height <= 2 radius`); unchanged.
+
+WP-A (vehicles):
+- **REQ-2 wheel ground test (coordinator decision).** The ground test is a ray down the suspension
+  from the wheel's top (Jolt `VehicleCollisionTesterRay`, filtered by the body's layer through the
+  Layer Collision Matrix), not REQ-2's cylinder cast (`VehicleCollisionTesterCastCylinder`).
+  Unity's WheelCollider also uses a ray, and the cylinder cast cost REQ-41's budget: 20 cars added
+  0.365 ms a step with it (about 0.17 ms of that the 80 casts) and 0.204-0.219 ms with the ray,
+  against 0.25 ms. The trade-off: a wheel does not catch a curb at the side of its tread, only
+  under its centre line.
+- **REQ-4 forward slip.** Forward slip is Unity's (PhysX's) slip ratio, with its 4 m/s least
+  denominator, rather than Jolt's own slip ratio: with Jolt's, a wheel pulling away from rest sat
+  at the curve's asymptote and spun (AC-3 reached 7.59 m/s with the rear wheels at twice the
+  ground speed; AC-5 stayed in gear 3 on the rev limiter).
+- **AC-8 measurement.** `VehicleBench.TwentyCarsStep` (file `VehicleBenchTest.cpp`, picked by the
+  core suite's `*Test.cpp` glob) measures the added time against the same 20 bodies floating at
+  the same speed without wheels, the median of 5 rounds of 300 steps, and prints the VehicleSystem
+  passes and Jolt's step apart.
+
+WP-D (joints and ragdoll):
+- REQ-29: `Ragdoll.create` refreshes the branch's world poses before building, and
+  `RagdollBuilder::apply` refuses (with an error) to replace parts while the scene defers removals
+  (a UI event handler), where a deferred removal plus an immediate add would fail half way.
+- AC-24/AC-25 are covered by the editor gtests `JointOwnership.*` as well as the MCP file
+  `tools/mcp/tests/test_joints_lua.py`.
+
+Integration:
+- REQ-38 / AC-32: `engine/core/navigation/NavBakeCollector.cpp` included `VoxelVolumeComponent.h`
+  under `JASPERENGINE_PHYSICS_3D` while it uses it under `JASPERENGINE_VOXEL`, so every build
+  with 3D physics off failed (already so on `main`); the include moved under the voxel guard so
+  `tools/check-physics-off.sh` passes.
+- AC-32: a prebuilt player lost the whole scene hierarchy (already so on `main`): the cooker writes
+  a Transform without its parent and a cooked scene had no hierarchy record (a prefab has one), so
+  every child GameObject loaded as a root with its local pose as its world pose, and an exported
+  car's Wheel Colliders found no Rigidbody above them. Cooked format 1.6 (S96's bump) ends a scene
+  with its hierarchy, each child after its parent; a 1.5 scene loads as before
+  (`CookedScene.SceneKeepsItsHierarchy`).
+- The merged packages' review and fixture fallout: Joint2D, Joint3D, Rigidbody and Rigidbody2D's
+  new Lua members reviewed as shader-neutral (`ShaderNeutralApi.cpp`), the Wheel Collider and
+  Vehicle Drivetrain added to `tools/fixtures/reflection-parity/AllComponents.scene` and its
+  re-save, codegen and world-matrix goldens, the catalog snapshot and the Inspector layout golden
+  with WP-C's `attachToParentBody` (added keys, rows and entities only), and `VehicleRig.cpp`
+  without the `MeshComponent.h` it did not use (`tools/check_fanout.py`: 151 units, limit 150).
+- AC-8 on the merged tree: `VehicleBench.TwentyCarsStep` 0.179 ms on a loaded build server.
+  `PhysicsContactsTest.ContactProcessingCostIsSmall`, which read 7.4-8.5% against its 7% on loaded
+  servers during the packages, passed twice on a quieter one: 6.21% and 6.22% of the step, 3.52 and
+  4.03 µs a callback, inside the test's idle-server range (3.51-4.12 µs), so no sign that S96 slowed
+  contact processing.

@@ -122,6 +122,10 @@ The upgrade test found these, fixed in this editor (each with a test that failed
   test's balls fell past the end of the ground). It also left out a 2D collider's collision filter
   (category, mask, group) and a 3D body's allowed degrees of freedom and mesh collider indices; all
   are cooked now.
+- **A prebuilt player flattened the scene hierarchy** (S96). A cooked scene carried no parent links,
+  so in a prebuilt player every child GameObject was a root and its local position, rotation and
+  scale were taken as world values (an exported car's Wheel Colliders found no Rigidbody above
+  them). Cooked scenes now keep the hierarchy; a game built before must be built again.
 
 ## Known, as on origin/main
 
