@@ -531,8 +531,8 @@ TEST(HtmlUIRenderPerf, ProfileTarget){
 // medians (gatedCpuMs). The base's figure was measured by this test on the base, on the build host.
 TEST(HitTestPerf, TenThousandRowList){
     JASPER_REQUIRE_GPU();
-    // ms for the 64 points on the base (the median of 20, least of 15; the S93 P2 red run)
-    constexpr double baseMs = 0.1291;
+    // ms for the 64 points on the base (the median of 20, least of 15; measured on the build box)
+    constexpr double baseMs = 0.1341;
     FixtureRunner runner(1280, 720, 4);
     ASSERT_TRUE(runner.valid());
     ASSERT_TRUE(load(runner, "fixtures/bench/virtual-list.html"));

@@ -305,23 +305,6 @@ async def test_two_touch_pointers(ed: Editor):
     ed.check_eq(await probe(ed, "touches"), touches + 1, "a touch on the body did not reach the game")
 
 
-async def test_mouse_leave_clears_hover(ed: Editor):
-    await send(ed, {"type": "mouse", "action": "move", "x": P_BUTTON[0], "y": P_BUTTON[1]}, frames_after=3)
-    shot = await shoot(ed, "hover")
-    check_color(ed, shot, P_BUTTON, GREEN, "the button under the pointer (:hover)")
-    await send(ed, {"type": "mouse_leave"}, frames_after=3)
-    shot = await shoot(ed, "left")
-    check_color(ed, shot, P_BUTTON, GRAY, "the button after mouse_leave")
-    await send(ed, {"type": "mouse_enter"},
-               {"type": "mouse", "action": "move", "x": P_BUTTON[0] + 2, "y": P_BUTTON[1]}, frames_after=3)
-    shot = await shoot(ed, "entered")
-    check_color(ed, shot, P_BUTTON, GREEN, "hover again after mouse_enter and a move")
-
-    await ed.call("play", action="stop")
-    errors = await html_ui_errors(ed)
-    ed.check(not errors, f"[HTML UI] errors: {errors}")
-
-
 # -- S93 P2: hit testing through transforms, drag scrolling -----------------------------------------
 
 
@@ -350,4 +333,21 @@ async def test_scroll_drag_pointer(ed: Editor):
     ed.check_eq(await probe(ed, "dragClicks"), 0, "the panned press clicked nothing")
     await send(ed, {"type": "mouse", "action": "click", "x": P_DRAGLIST[0], "y": P_DRAGLIST[1]})
     ed.check_eq(await probe(ed, "dragClicks"), 1, "a still click on the list clicks")
+
+
+async def test_mouse_leave_clears_hover(ed: Editor):
+    await send(ed, {"type": "mouse", "action": "move", "x": P_BUTTON[0], "y": P_BUTTON[1]}, frames_after=3)
+    shot = await shoot(ed, "hover")
+    check_color(ed, shot, P_BUTTON, GREEN, "the button under the pointer (:hover)")
+    await send(ed, {"type": "mouse_leave"}, frames_after=3)
+    shot = await shoot(ed, "left")
+    check_color(ed, shot, P_BUTTON, GRAY, "the button after mouse_leave")
+    await send(ed, {"type": "mouse_enter"},
+               {"type": "mouse", "action": "move", "x": P_BUTTON[0] + 2, "y": P_BUTTON[1]}, frames_after=3)
+    shot = await shoot(ed, "entered")
+    check_color(ed, shot, P_BUTTON, GREEN, "hover again after mouse_enter and a move")
+
+    await ed.call("play", action="stop")
+    errors = await html_ui_errors(ed)
+    ed.check(not errors, f"[HTML UI] errors: {errors}")
 

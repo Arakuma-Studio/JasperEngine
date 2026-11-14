@@ -168,9 +168,7 @@ namespace jasperengine{
         void scrollTo(float x, float y, bool smooth = false); void scrollBy(float dx, float dy, bool smooth = false);
         float getScrollTop() const; void setScrollTop(float value); float getScrollLeft() const; void setScrollLeft(float value);
         float getScrollWidth() const; float getScrollHeight() const;
-        // drag scrolling physics (S93 R10): the scroll container's velocity in px/s (positive towards
-        // the end; its inertia or the pan dragging it), set to fling it; stopScrolling ends its inertia
-        // and smooth scroll (uGUI StopMovement: an elastic overscroll still springs back)
+        // uGUI ScrollRect.velocity and StopMovement for a scroll container
         Vector2 getScrollVelocity() const; void setScrollVelocity(const Vector2& velocity);
         void stopScrolling();
         float getClientWidth() const; float getClientHeight() const;
