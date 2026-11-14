@@ -108,8 +108,9 @@ namespace {
                  .group = "Shadows", .visibleIf = &lightCastsContactShadows),
         // the volumetric fog's share of the light
         JE_FIELD(LightComponent, volumetricIntensity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
-                 .tooltip = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, no "
-                            "shadows). 0: none.",
+                 .tooltip = "How much of this light the volumetric fog scatters (the nearest 1, 2 or 4 point and spot lights in view, at "
+                            "Low, Medium and High atmosphere quality). With its Shadows on, they reach the fog while the Fog's Light "
+                            "Shafts is on. 0: none.",
                  .visibleIf = &lightNotDirectional),
         // photometric units and colour temperature (util/LightPhotometry.h), resolved on the CPU
         JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unit",
@@ -255,7 +256,8 @@ namespace {
         JE_FIELD(FogComponent, volumetricDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f, .label = "Distance",
                  .tooltip = "How far from the camera the fog is raymarched; the analytic fog continues beyond.", .group = "Volumetric Fog"),
         JE_FIELD(FogComponent, lightShafts, .flags = OmitIfDefault | CodegenIfChanged,
-                 .tooltip = "The main directional light's shadows darken the fog behind objects (light shafts). Needs its shadows on.",
+                 .tooltip = "Shadows darken the fog behind objects (light shafts): the main directional light's and those of the point "
+                            "and spot lights the fog scatters. Each light needs its shadows on.",
                  .group = "Volumetric Fog"),
         JE_FIELD(FogComponent, noiseIntensity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 1.0f,
                  .tooltip = "How much a 3D noise varies the fog's density, fading out towards the Distance.", .group = "Volumetric Fog"),

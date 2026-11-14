@@ -431,6 +431,10 @@ TEST_F(AtmosphereGpu, LightShafts){
         std::printf("[atmosphere] shafts %s: lit %.1f shadowed %.1f\n", AtmosphereTiers::getName(quality), lit, shadowed);
         EXPECT_LE(shadowed, lit * 0.85) << AtmosphereTiers::getName(quality);
         EXPECT_GOLDEN_OPTIONS(goldens[index++], goldenTolerance());
+        // the two rotated sun taps and the 5x5 denoise are static per pixel: a frame is the one
+        // before it (S12 R12, docs/specs/vapor.md AC7)
+        GpuEnvironment::drawFrames(1);
+        EXPECT_TRUE(readTarget() == image) << AtmosphereTiers::getName(quality);
 
         // without light shafts the fog is lit everywhere
         shafts.fog.setLightShafts(false);
@@ -684,5 +688,139 @@ TEST_F(AtmosphereGpu, TransparentsTakeTheAnalyticFog){
     const uint8_t* before = &clear[((size_t)y * width + x) * 4];
     const uint8_t* after = &fogged[((size_t)y * width + x) * 4];
     EXPECT_LT((int)after[1] - (int)after[0], (int)before[1] - (int)before[0] - 20);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+
+    // docs/specs/vapor.md AC6: a ceiling (the wall between the light and the view) with one
+    // hole under a point or spot light above it; the camera, below, looks along the room. The
+    // light reaches the fog below only through the hole: a lit column in the middle of the view,
+    // and none to its sides, where an unshadowed light shines through the ceiling.
+    struct FogLightRoom{
+        Light light;
+        Fog fog;
+        int columnX = 0, columnY = 0, sideX = 0, sideY = 0, band = 0;
+        explicit FogLightRoom(Scene* scene): light(scene), fog(scene){}
+    };
+
+}
+
+class AtmosphereFogLightGpu : public AtmosphereGpu {
+protected:
+    void buildRoom(FogLightRoom& room, LightType type){
+        ground(200.0f, Vector3(0.3f, 0.3f, 0.3f));
+        box(Vector3(0.0f, 0.0f, -50.0f), Vector3(80.0f, 11.0f, 1.0f), Vector3(0.1f, 0.1f, 0.1f));
+        // the ceiling at 10 m, with a 4 x 4 m hole at x -2..2, z -27..-23
+        const Vector3 dark(0.1f, 0.1f, 0.1f);
+        box(Vector3(-21.0f, 10.0f, -20.0f), Vector3(38.0f, 1.0f, 60.0f), dark);
+        box(Vector3(21.0f, 10.0f, -20.0f), Vector3(38.0f, 1.0f, 60.0f), dark);
+        box(Vector3(0.0f, 10.0f, -38.5f), Vector3(4.0f, 1.0f, 23.0f), dark);
+        box(Vector3(0.0f, 10.0f, -6.5f), Vector3(4.0f, 1.0f, 33.0f), dark);
+
+        room.light.setType(type);
+        room.light.setPosition(0.0f, 18.0f, -25.0f);
+        room.light.setDirection(0.0f, -1.0f, 0.0f);
+        room.light.setConeAngle(60.0f, 80.0f);
+        room.light.setRange(40.0f);
+        room.light.setColor(1.0f, 0.9f, 0.75f);
+        room.light.setIntensity(2000.0f);
+        room.light.setShadows(true);
+
+        room.fog.setType(FogType::HEIGHT);
+        room.fog.setColor(0.01f, 0.01f, 0.015f);
+        room.fog.setAttenuationDistance(30.0f);
+        room.fog.setBaseHeight(20.0f);
+        room.fog.setMaximumHeight(60.0f);
+        room.fog.setDirectionalInscattering(0.0f);
+        room.fog.setAnisotropy(0.0f);
+        room.fog.setVolumetric(true);
+        room.fog.setVolumetricDistance(60.0f);
+        room.fog.setSkyFill(false);
+        room.fog.setLightShafts(true);
+
+        camera.setPosition(0.0f, 3.0f, 0.0f);
+        camera.setTarget(0.0f, 3.0f, -25.0f);
+        camera.setFarClip(150.0f);
+        // the column under the hole, and a column of fog 8 m to its side (in the light's cone,
+        // under the ceiling): the side's rays never cross the lit column
+        const int height = (int)GpuEnvironment::target().getHeight();
+        room.band = height / 8;
+        ASSERT_TRUE(project(camera, Vector3(0.0f, 3.0f, -25.0f), room.columnX, room.columnY));
+        ASSERT_TRUE(project(camera, Vector3(-8.0f, 3.0f, -25.0f), room.sideX, room.sideY));
+    }
+
+    double column(const FogLightRoom& room, const std::vector<uint8_t>& image){
+        return luminance(image, room.columnX - 4, room.columnY - room.band / 2, 8, room.band);
+    }
+
+    double side(const FogLightRoom& room, const std::vector<uint8_t>& image){
+        return luminance(image, room.sideX - 4, room.sideY - room.band / 2, 8, room.band);
+    }
+
+    // what get_atmosphere_info reports of the room's one light (non-fatal: the images are checked
+    // whatever it says)
+    void expectFogLight(const FogLightRoom& room, const char* name, bool scattered, bool shadowed, const char* reason){
+        const std::vector<AtmosphereFogLight>& lights = info().fogLights;
+        EXPECT_EQ(lights.size(), 1u) << name;
+        if (lights.size() != 1)
+            return;
+        EXPECT_EQ(lights[0].entity, room.light.getEntity()) << name;
+        EXPECT_EQ(lights[0].scattered, scattered) << name;
+        EXPECT_EQ(lights[0].shadowed, shadowed) << name;
+        EXPECT_EQ(lights[0].reason, reason) << name;
+    }
+
+    // every tier: the light scatters through the hole only; without light shafts (no shadows in
+    // the fog) it shines through the ceiling too. High last: the golden.
+    void checkRoom(FogLightRoom& room, const char* golden){
+        for (AtmosphereQuality quality : {AtmosphereQuality::LOW, AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
+            const char* name = AtmosphereTiers::getName(quality);
+            Engine::setAtmosphereQuality(quality);
+            room.light.setVolumetricIntensity(0.0f);
+            room.fog.setLightShafts(true);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> dark = readTarget();
+            expectFogLight(room, name, false, false, "volumetric_intensity");
+
+            room.light.setVolumetricIntensity(1.0f);
+            room.fog.setLightShafts(false);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> unshadowed = readTarget();
+            expectFogLight(room, name, true, false, "");
+
+            room.fog.setLightShafts(true);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> shadowed = readTarget();
+            expectFogLight(room, name, true, true, "");
+            EXPECT_EQ(info().localLights, 1) << name;
+
+            std::printf("[atmosphere] %s %s: column dark %.1f unshadowed %.1f shadowed %.1f, side dark %.1f unshadowed %.1f shadowed %.1f\n",
+                        golden, name, column(room, dark), column(room, unshadowed), column(room, shadowed), side(room, dark),
+                        side(room, unshadowed), side(room, shadowed));
+            // the light through the hole
+            EXPECT_GE(column(room, shadowed), column(room, dark) + 10.0) << name;
+            // without shadows it shines through the ceiling (the scene shows what shadows remove)
+            EXPECT_GE(side(room, unshadowed), side(room, dark) + 10.0) << name;
+            // with them, no light behind the wall
+            EXPECT_LE(side(room, shadowed), side(room, dark) + 1.5) << name;
+        }
+        EXPECT_GOLDEN_OPTIONS(golden, goldenTolerance());
+    }
+};
+
+TEST_F(AtmosphereFogLightGpu, SpotLightShadowedInTheFog){
+    JASPER_REQUIRE_GPU();
+    FogLightRoom room(&scene);
+    ASSERT_NO_FATAL_FAILURE(buildRoom(room, LightType::SPOT));
+    ASSERT_NO_FATAL_FAILURE(checkRoom(room, "fog_spot_shadowed"));
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereFogLightGpu, PointLightShadowedInTheFog){
+    JASPER_REQUIRE_GPU();
+    FogLightRoom room(&scene);
+    ASSERT_NO_FATAL_FAILURE(buildRoom(room, LightType::POINT));
+    ASSERT_NO_FATAL_FAILURE(checkRoom(room, "fog_point_shadowed"));
     EXPECT_NO_ENGINE_ERRORS();
 }

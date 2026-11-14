@@ -55,8 +55,11 @@ namespace {
     // the shader of each AtmosphereRenderer::ProgramKind
     const ShaderType PROGRAM_TYPES[] = {
         ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE,
+        ShaderType::VOLUMETRIC_FOG
     };
+    // and its properties: the fog's 'Pnt' variant samples the point lights' shadows
+    const uint64_t PROGRAM_PROPERTIES[] = {0, 0, 0, 0, 0, 0, 1};
 
     std::unordered_map<std::string, IBLEnvironment::HorizonRing>& horizonRings(){
         static std::unordered_map<std::string, IBLEnvironment::HorizonRing> rings;
@@ -483,10 +486,10 @@ bool AtmosphereRenderer::loadProgram(ProgramKind kind){
     if (program.loaded)
         return true;
     // asked again until it is created: a background build finishes in a later get()
-    program.shader = ShaderPool::get(types[kind], 0);
+    program.shader = ShaderPool::get(types[kind], PROGRAM_PROPERTIES[kind]);
     if (!program.shader || !program.shader->isCreated()){
         // still building (a failed build is not waited for)
-        if (!ShaderPool::isShaderBuildFailed(types[kind], 0, 0))
+        if (!ShaderPool::isShaderBuildFailed(types[kind], PROGRAM_PROPERTIES[kind], 0))
             waiting = true;
         return false;
     }
@@ -579,10 +582,11 @@ void AtmosphereRenderer::renderDepth(Framebuffer& target, TextureRender* sceneDe
     notePass(PASS_LABELS[0]);
 }
 
-void AtmosphereRenderer::renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label){
+void AtmosphereRenderer::renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label, int radius){
     Program& program = programs[PROGRAM_DENOISE];
     atmosphere_denoise_t block;
-    block.target = Vector4(1.0f / (float)target.getWidth(), 1.0f / (float)target.getHeight(), useFloatTargets() ? 0.0f : 1.0f, 0.0f);
+    block.target = Vector4(1.0f / (float)target.getWidth(), 1.0f / (float)target.getHeight(), useFloatTargets() ? 0.0f : 1.0f,
+                           (float)std::clamp(radius, 1, 2));
     passRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     passRender.setLabel(label);
     passRender.startRenderPass(&target.getRender());
@@ -600,7 +604,6 @@ void AtmosphereRenderer::renderDenoise(Framebuffer& source, Framebuffer& target,
 void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier){
     AtmosphereViewTargets& targets = rs->rv().atmosphere;
     Framebuffer& depth = targets.depth[tier.fogDivisor == 2 ? 0 : 1];
-    Program& program = programs[PROGRAM_FOG];
     volumetric_fog_t& block = fogBlock;
     block = volumetric_fog_t();
 
@@ -611,12 +614,16 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     const bool orthographic = camera.type != CameraType::CAMERA_PERSPECTIVE;
     block.camera = Vector4(cameraForward(camera), orthographic ? 1.0f : 0.0f);
     // light shafts: the main directional light's cascades of this camera pass (S10's
-    // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1)
-    const fs_shadow_data_t& shadowData = rs->ps().fs_shadow_data;
-    const bool shafts = fog->lightShafts && rs->hasShadows && shadowData.header.x >= -0.5f;
+    // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1 and 2); with them
+    // the fog lights' shadows (docs/specs/vapor.md R14)
+    const RenderSystem::CameraShadows& shadows = rs->ps();
+    const fs_shadow_data_t& shadowData = shadows.fs_shadow_data;
+    const bool fogShadows = fog->lightShafts && rs->hasShadows;
+    const bool shafts = fogShadows && shadowData.header.x >= -0.5f;
+    const int sunTaps = shafts ? std::clamp(tier.fogSunShadowTaps, 1, 2) : 0;
     // the depth is linearised with the near and far the projection was built with
     const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
-    block.depthInfo = Vector4(nearFar.y, nearFar.x, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
+    block.depthInfo = Vector4(nearFar.y, nearFar.x, floatFormat ? 0.0f : 1.0f, (float)sunTaps);
 
     // the volumes: in view, within the volumetric distance, the nearest first, capped by the tier
     std::vector<int> selected;
@@ -633,37 +640,65 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
         block.volumeScroll[i] = Vector4(volume.fog.scrollSpeed * (float)(-time), 0.0f);
     }
 
-    // point and spot lights (High), nearest the camera first
+    // point and spot lights: lit, in view, within the volumetric distance, the nearest first,
+    // capped by the tier (R13); shadowed when they cast shadows and the shafts are on (R14)
     int lightCount = 0;
+    bool spotShadows = false;
+    bool pointShadows = false;
+    std::vector<AtmosphereFogLight> considered;
     if (tier.fogLocalLights > 0){
-        struct Candidate{ int index; float distance; Vector3 position; };
-        std::vector<Candidate> candidates;
         Scene* scene = rs->scene;
         auto lights = scene->getComponentArray<LightComponent>();
+        std::vector<FogLightCandidate> candidates;
+        std::vector<int> indices;
         for (size_t i = 0; i < lights->size(); i++){
             const LightComponent& light = lights->getComponentFromIndex(i);
             const Entity entity = lights->getEntity(i);
-            if (light.type == LightType::DIRECTIONAL || light.intensity <= 0.0f || light.volumetricIntensity <= 0.0f || !rs->isLightActive(entity, light))
+            if (light.type == LightType::DIRECTIONAL || !rs->isLightActive(entity, light))
                 continue;
             Transform* transform = scene->findComponent<Transform>(entity);
             if (!transform)
                 continue;
-            const float distance = std::max((transform->worldPosition - cameraTransform.worldPosition).length() - std::max(light.range, 0.0f), 0.0f);
-            if (distance > fog->volumetricDistance)
-                continue;
-            candidates.push_back({(int)i, distance, transform->worldPosition});
+            FogLightCandidate candidate;
+            candidate.entity = entity;
+            candidate.position = transform->worldPosition;
+            candidate.range = std::max(light.range, 0.0f);
+            candidate.intensity = light.intensity;
+            candidate.volumetricIntensity = light.volumetricIntensity;
+            candidates.push_back(candidate);
+            indices.push_back((int)i);
         }
-        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
-            return a.distance != b.distance ? a.distance < b.distance : a.index < b.index;
-        });
-        for (const Candidate& candidate : candidates){
-            if (lightCount >= std::min(tier.fogLocalLights, ATMOSPHERE_MAX_FOG_LIGHTS))
-                break;
-            const LightComponent& light = lights->getComponentFromIndex(candidate.index);
-            block.lightPosition[lightCount] = Vector4(candidate.position, light.type == LightType::SPOT ? 2.0f : 1.0f);
+        std::vector<int> chosen;
+        selectFogLights(candidates, camera.frustumPlanes, camera.farClip, cameraTransform.worldPosition, fog->volumetricDistance,
+                        std::min(tier.fogLocalLights, ATMOSPHERE_MAX_FOG_LIGHTS), chosen, considered);
+
+        // a point light's shadows need the fog's 'Pnt' variant: until it is made, they scatter unshadowed
+        const bool pointAtlas = shadows.pointAtlas != nullptr || rs->hasShadowPointAtlas;
+        const bool projectiveAtlas = shadows.projectiveAtlas != nullptr || rs->hasShadowAtlas;
+        bool pointProgram = false;
+        bool pointProgramAsked = false;
+        for (int c : chosen){
+            const LightComponent& light = lights->getComponentFromIndex(indices[c]);
+            const bool point = light.type == LightType::POINT;
+            bool shadowed = fogShadows && light.shadows && light.shadowMapIndex >= 0;
+            if (shadowed && point){
+                shadowed = pointAtlas && light.shadowMapIndex + SHADOW_CUBE_FACES <= MAX_POINT_SHADOW_ATLAS_SLOTS;
+                if (shadowed && !pointProgramAsked){
+                    pointProgramAsked = true;
+                    pointProgram = loadProgram(PROGRAM_FOG_POINT_SHADOWS);
+                }
+                shadowed = shadowed && pointProgram;
+            }else if (shadowed){
+                shadowed = projectiveAtlas && light.shadowMapIndex < MAX_SHADOW_ATLAS_SLOTS;
+            }
+            spotShadows = spotShadows || (shadowed && !point);
+            pointShadows = pointShadows || (shadowed && point);
+            considered[c].shadowed = shadowed;
+
+            block.lightPosition[lightCount] = Vector4(candidates[c].position, point ? 1.0f : 2.0f);
             block.lightColor[lightCount] = Vector4(light.color * (light.intensity * light.volumetricIntensity), light.range);
             block.lightSpot[lightCount] = Vector4(light.worldDirection, 0.0f);
-            block.lightCone[lightCount] = Vector4(light.innerConeCos, light.outerConeCos, 0.0f, 0.0f);
+            block.lightCone[lightCount] = Vector4(light.innerConeCos, light.outerConeCos, shadowed ? (float)light.shadowMapIndex : -1.0f, 0.0f);
             lightCount++;
         }
     }
@@ -683,16 +718,24 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
 
     passRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     passRender.setLabel(PASS_LABELS[1]);
+    // the point shadows' variant only when a selected point light casts them (R20)
+    Program& program = pointShadows ? programs[PROGRAM_FOG_POINT_SHADOWS] : programs[PROGRAM_FOG];
     passRender.startRenderPass(&target.getRender());
     if (program.render.beginDraw(offscreenState(floatFormat))){
         ShaderData& data = program.shader->shaderData;
+        // the real atlas only for what samples it: the sun's shafts, a shadowed spot light
         TextureRender* atlas = &RenderSystem::emptyShadowDepth;
-        if (shafts){
-            const RenderSystem::CameraShadows& shadows = rs->ps();
+        if (shafts || spotShadows){
             if (shadows.projectiveAtlas)
                 atlas = &shadows.projectiveAtlas->getDepthTexture();
             else if (rs->hasShadowAtlas)
                 atlas = &rs->shadowAtlasFramebuffer.getDepthTexture();
+        }
+        if (pointShadows){
+            // bound before the projective atlas, whose comparison sampler both read (RenderSystem::loadShadowTextures)
+            bindTexture(program.render, data, "u_shadowPointAtlas", shadows.pointAtlas ? &shadows.pointAtlas->getDepthTexture()
+                                                                                      : &rs->shadowPointAtlasFramebuffer.getDepthTexture());
+            applyBlock(program.render, data, "u_fs_point_shadow_data", sizeof(shadows.fs_point_shadow_data), &shadows.fs_point_shadow_data);
         }
         bindTexture(program.render, data, "u_depthTexture", &depth.getRender().getColorTexture());
         bindTexture(program.render, data, "u_fogNoise", noiseReady ? &noiseDetail : &empty3D);
@@ -713,6 +756,62 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     building.volumesUsed = (int)selected.size();
     building.volumesCulled = culled;
     building.localLights = lightCount;
+    building.fogLights = std::move(considered);
+}
+
+void AtmosphereRenderer::selectFogLights(const std::vector<FogLightCandidate>& lights, const Plane frustumPlanes[6], float cameraFar,
+                                         const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                         std::vector<AtmosphereFogLight>& considered){
+    selected.clear();
+    considered.assign(lights.size(), AtmosphereFogLight());
+    struct Candidate{ int index; float distance; };
+    std::vector<Candidate> candidates;
+    candidates.reserve(lights.size());
+    for (int i = 0; i < (int)lights.size(); i++){
+        const FogLightCandidate& light = lights[i];
+        AtmosphereFogLight& record = considered[i];
+        record.entity = light.entity;
+        if (light.intensity <= 0.0f){
+            record.reason = "intensity";
+            continue;
+        }
+        if (light.volumetricIntensity <= 0.0f){
+            record.reason = "volumetric_intensity";
+            continue;
+        }
+        // the distance to its reach (an unlimited one: to the light)
+        const float distance = std::max((light.position - cameraPosition).length() - light.range, 0.0f);
+        if (distance > maxDistance){
+            record.reason = "distance";
+            continue;
+        }
+        // an unlimited light reaches every part of the view
+        bool visible = true;
+        for (int plane = 0; plane < 6 && visible && light.range > 0.0f; plane++){
+            // without a far clip the far plane is not tested (RenderSystem::isInsideCamera)
+            if (plane == FRUSTUM_PLANE_FAR && cameraFar == 0.0f)
+                continue;
+            if (frustumPlanes[plane].getDistance(light.position) < -light.range)
+                visible = false;
+        }
+        if (!visible){
+            record.reason = "frustum";
+            continue;
+        }
+        candidates.push_back({i, distance});
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
+        return a.distance != b.distance ? a.distance < b.distance : a.index < b.index;
+    });
+    for (const Candidate& candidate : candidates){
+        AtmosphereFogLight& record = considered[candidate.index];
+        if ((int)selected.size() >= std::max(cap, 0)){
+            record.reason = "tier_cap";
+            continue;
+        }
+        record.scattered = true;
+        selected.push_back(candidate.index);
+    }
 }
 
 float AtmosphereRenderer::cloudsFade() const{
@@ -973,7 +1072,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
             renderDepth(targets.depth[level], sceneDepth, tier.fogDivisor, camera);
             depthReady[level] = true;
             renderFog(camera, cameraTransform, tier);
-            renderDenoise(targets.fog[0], targets.fog[1], targets.depth[level], PASS_LABELS[2]);
+            renderDenoise(targets.fog[0], targets.fog[1], targets.depth[level], PASS_LABELS[2], tier.fogDenoiseRadius);
             marched = std::max(fog->volumetricDistance, 0.0f);
             fogDepthLevel = level;
         }else{
@@ -994,7 +1093,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
                 if (!depthReady[1])
                     renderDepth(targets.depth[1], sceneDepth, tier.cloudScreenDivisor, camera);
                 renderScreenClouds(camera, cameraTransform, tier);
-                renderDenoise(targets.clouds[0], targets.clouds[1], targets.depth[1], PASS_LABELS[2]);
+                renderDenoise(targets.clouds[0], targets.clouds[1], targets.depth[1], PASS_LABELS[2], 1);
             }else{
                 plan.screenClouds = false;
             }
@@ -1151,7 +1250,7 @@ void AtmosphereRenderer::destroy(){
         program.loaded = false;
         if (program.shader){
             program.shader.reset();
-            ShaderPool::remove(PROGRAM_TYPES[kind], 0);
+            ShaderPool::remove(PROGRAM_TYPES[kind], PROGRAM_PROPERTIES[kind]);
         }
     }
 }

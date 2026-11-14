@@ -1626,6 +1626,11 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                                (allFacts & FACT_CLOUDS) != 0)){
         keys.insert(ShaderPool::getShaderKey(type, 0));
     }
+    // a shadowed point light scatters in the volumetric fog through its 'Pnt' variant (a script
+    // can switch a light's type or shadows, so any shadowed light asks for it)
+    if ((allFacts & FACT_VOLUMETRIC_FOG) && (allFacts & FACT_SHADOW_LIGHTS)){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::VOLUMETRIC_FOG, 1));
+    }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){
