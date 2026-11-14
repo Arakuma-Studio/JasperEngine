@@ -3,6 +3,7 @@
 
 #include "STBText.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include "Log.h"
@@ -586,6 +587,9 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
             TextGlyphInfo info;
             info.cluster = shapedGlyph.cluster;
             info.line = shapedGlyph.line;
+            info.penLeft = glyphStart;
+            info.penRight = offsetX;
+            info.space = shapedGlyph.cluster < codepoints.size() && codepoints[shapedGlyph.cluster] == 32;
             glyphInfo->push_back(info);
         }
     }
@@ -663,6 +667,12 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
         for (Vector2& position : charPositions){
             position = position * inverse;
         }
+        if (glyphInfo){
+            for (TextGlyphInfo& info : *glyphInfo){
+                info.penLeft *= inverse;
+                info.penRight *= inverse;
+            }
+        }
         for (CharExtent& extent : charExtents){
             extent.left *= inverse;
             extent.right *= inverse;
@@ -683,6 +693,37 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
     if (atlasVersion != startVersion){
         refreshTextureData();
     }
+}
+
+void STBText::measure(const std::string& text, unsigned int fontSize, unsigned int width, bool fixedWidth, bool multiline,
+                      float& outWidth, float& outHeight){
+    outWidth = 0.0f;
+    outHeight = 0.0f;
+    if (!fontLoaded || faces.empty())
+        return;
+
+    bool hadInvalid = false;
+    const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text, hadInvalid);
+
+    // the shaping at the other size: each face's scale for it, then the loaded ones back
+    const std::vector<float> loadedScales = faceScales;
+    for (size_t i = 0; i < faces.size(); i++)
+        faceScales[i] = faces[i]->scaleForPixelHeight((float)fontSize);
+    std::vector<ShapedGlyph> shaped;
+    const unsigned int lines = shapeLines(codepoints, width, fixedWidth, multiline, shaped);
+    const float scale = faceScales[0];
+    faceScales = loadedScales;
+
+    std::vector<float> lineWidths(lines, 0.0f);
+    for (const ShapedGlyph& glyph : shaped){
+        if (glyph.line < lineWidths.size())
+            lineWidths[glyph.line] += glyph.xAdvance;
+    }
+    for (float lineWidth : lineWidths)
+        outWidth = std::max(outWidth, lineWidth);
+    // the line height as load() computes it at that size
+    const int lineStep = (int)((faces[0]->getAscender() - faces[0]->getDescender() + faces[0]->getLineGap()) * scale);
+    outHeight = (float)(lines * lineStep);
 }
 
 TextureData* STBText::getTextureData(){

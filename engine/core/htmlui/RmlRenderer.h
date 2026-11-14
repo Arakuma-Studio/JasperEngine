@@ -281,6 +281,10 @@ namespace jasperengine {
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
                            int msaaSamples = 1);
+        // S93 R36 (RmlRendererWorld.cpp): source (a context's composited layer) as a World Space
+        // quad inside the current camera pass of format target: clipFromQuad maps the corners
+        // (-1,1) top-left .. (1,-1) bottom-right, depth tested (LESS_EQUAL), not written
+        bool drawWorldQuad(TextureRender& source, const RenderTargetFormat& target, const Rml::Matrix4f& clipFromQuad);
         // A straight-alpha copy of layer 0 (HTMLUI_POST Unp) into dst, a 1-sample RGBA8 colour
         // framebuffer of any size (render-to-texture documents). Outside a frame
         bool drawUnpremultiplied(RmlRenderTarget& target, FramebufferRender& dst, int width, int height);

@@ -196,3 +196,29 @@ UIWorldHit jasperengine::raycastMeshUV(Scene* scene, Entity meshEntity, const Ra
 
     return result;
 }
+
+UIWorldHit jasperengine::raycastQuadUV(const Matrix4& worldFromQuad, const Ray& worldRay){
+    UIWorldHit result;
+    const Vector3 worldDirection = worldRay.getDirection();
+    const float rayLength = worldDirection.length();
+    if (!(rayLength > 0.0f))
+        return result;
+
+    // in quad space the square is z = 0, |x| <= 1, |y| <= 1; t is the same in both spaces
+    const Matrix4 quadFromWorld = worldFromQuad.inverse();
+    const Vector3 origin = quadFromWorld * worldRay.getOrigin();
+    const Vector3 direction = (quadFromWorld * (worldRay.getOrigin() + worldDirection)) - origin;
+    if (std::fabs(direction.z) < 1e-12f)
+        return result;   // parallel to the quad
+    const float t = -origin.z / direction.z;
+    if (!(t >= 0.0f && t <= 1.0f))
+        return result;
+    const Vector3 point = origin + direction * t;
+    if (std::fabs(point.x) > 1.0f || std::fabs(point.y) > 1.0f)
+        return result;
+
+    result.hit = true;
+    result.uv = Vector2((point.x + 1.0f) * 0.5f, (1.0f - point.y) * 0.5f);
+    result.distance = t * rayLength;
+    return result;
+}

@@ -70,6 +70,12 @@ double EffectClock::now(){
     return HtmlUIClock::now();
 }
 
+double EffectClock::now(Rml::Element* element){
+    if (fixedTime())
+        return *fixedTime();
+    return HtmlUIClock::now(element);
+}
+
 void EffectClock::setFixedTime(std::optional<double> seconds){
     if (seconds && !std::isfinite(*seconds))
         return;
@@ -420,12 +426,14 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
             const Rml::Vector2f press = toLocal(element, pointer->pressPosition, areaOrigin);
             const bool pressInside = press.x >= 0.f && press.y >= 0.f && press.x <= instance.areaSize.x && press.y <= instance.areaSize.y;
             if (pressInside){
-                state.pressTime = pointer->pressClock;
+                // the press was on the unscaled clock (input timing): its age on the element's
+                const double pressAge = std::max(EffectClock::now() - pointer->pressClock, 0.0);
+                state.pressTime = now - pressAge;
                 if (m.pointer == EffectPointer::Ripples){
                     // newest first; at most 8
                     for (int i = std::min(state.rippleCount, 7); i > 0; i--)
                         state.ripples[i] = state.ripples[i - 1];
-                    state.ripples[0] = Rml::Vector4f(pointer->pressPosition.x, pointer->pressPosition.y, (float)(now - pointer->pressClock), 1.f);
+                    state.ripples[0] = Rml::Vector4f(pointer->pressPosition.x, pointer->pressPosition.y, (float)pressAge, 1.f);
                     state.rippleCount = std::min(state.rippleCount + 1, 8);
                 }
             }
@@ -500,7 +508,7 @@ void EffectRuntime::prepare(EffectInstance& instance){
     const Rml::Vector2f areaOrigin = element->GetAbsoluteOffset(Rml::BoxArea::Border) + instance.areaOffset;
     instance.areaOrigin = areaOrigin;
 
-    const double now = EffectClock::now();
+    const double now = EffectClock::now(element);
     const bool fixed = EffectClock::isFixed();
     EffectElementState& state = *instance.state;
     Rml::Context* context = instance.context ? instance.context : element->GetContext();

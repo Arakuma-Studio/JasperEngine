@@ -210,3 +210,67 @@ async def test_game_view_resolutions_render_size_and_dpi(ed: Editor):
         ed.check("Deck" in workspace and "1280" in workspace, f"kept in the workspace file: {workspace[:400]}")
     finally:
         await ed.call("configure_game_view", resolution="free")
+
+
+async def test_text_alignment_golden(ed: Editor):
+    """S93 R37 / AC43: a Text in a fixed 800 x 400 box drawn Left/Top, Center/Middle and Right/Bottom
+    lands where TextMeshPro puts it (ink box against the box edges in the Game view), each set
+    through the generic component tools; Auto Size grows a short title to the box."""
+    made = await ed.call("create_scene", name="TextAlign", type="UI", path="scenes/TextAlign")
+    scene = made["scene"]["id"]
+    await ed.call("create_ui", scene=scene, root={
+        "type": "image", "name": "Back", "color": [0, 0, 0, 1], "layout": {"anchor": "stretch"},
+        "children": [{"type": "text", "name": "Label", "text": "HELLO", "font_size": 64, "text_color": [1, 1, 1, 1],
+                      "layout": {"anchor": "center", "size": [800, 400]}}]})
+    await ed.call("set_properties", scene=scene, entity="Label",
+                  values={"TextComponent": {"fixedWidth": True, "fixedHeight": True}})
+    await ed.call("save_scene", scene=scene)
+    await ed.call("configure_game_view", resolution="1920x1080")
+
+    async def ink() -> tuple:
+        shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 960})
+        width, height, channels, rows = decode_png(shot.images[0][0])
+        xs, ys = [], []
+        for y in range(height):
+            for x in range(width):
+                r, g, b = pixel(rows, channels, x, y)
+                if r > 128 and g > 128 and b > 128:
+                    xs.append(x)
+                    ys.append(y)
+        ed.check(xs, "the text is drawn")
+        return min(xs), min(ys), max(xs), max(ys)
+
+    try:
+        await ed.call("play", action="start", scene=scene)
+        # the 800 x 400 box, centred on the canvas, in the 960 px wide shot of the 1920 x 1080 view
+        cw, ch = (await lua(ed, "return {Engine.canvasWidth, Engine.canvasHeight}"))[0]
+        f = 960 / cw
+        box = ((cw - 800) / 2 * f, (ch - 400) / 2 * f, (cw + 800) / 2 * f, (ch + 400) / 2 * f)
+        middle = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+        placements = {}
+        for horizontal, vertical in (("left", "top"), ("center", "middle"), ("right", "bottom")):
+            await ed.call("set_properties", scene=scene, entity="Label",
+                          values={"TextComponent": {"horizontalAlignment": horizontal, "verticalAlignment": vertical}})
+            await ed.call("wait", frames=3)
+            placements[horizontal] = await ink()
+        x0, y0, x1, y1 = placements["left"]
+        ed.check(abs(x0 - box[0]) <= 6 and abs(y0 - box[1]) <= 12, f"Left / Top at the box's top-left {box}: {placements['left']}")
+        x0, y0, x1, y1 = placements["center"]
+        ed.check(abs((x0 + x1) / 2 - middle[0]) <= 4 and abs((y0 + y1) / 2 - middle[1]) <= 10, f"Center / Middle in the box's middle {middle}: {placements['center']}")
+        x0, y0, x1, y1 = placements["right"]
+        ed.check(abs(x1 - box[2]) <= 6 and box[3] - 24 <= y1 <= box[3] + 1, f"Right / Bottom at the box's bottom-right {box}: {placements['right']}")
+        ed.check_eq(placements["left"][3] - placements["left"][1], placements["right"][3] - placements["right"][1], "same glyphs, moved")
+
+        # Auto Size: the largest whole size whose text fits the box
+        await ed.call("set_properties", scene=scene, entity="Label",
+                      values={"TextComponent": {"autoSize": True, "fontSizeMin": 10, "fontSizeMax": 400,
+                                                "horizontalAlignment": "left", "verticalAlignment": "top"}})
+        await ed.call("wait", frames=3)
+        size = (await lua(ed, "return object('Label', 'Text').effectiveFontSize"))[0]
+        ed.check(size > 64, f"grown past its fontSize: {size}")
+        x0, y0, x1, y1 = await ink()
+        ed.check(x1 - x0 > 0.8 * (box[2] - box[0]) and x1 <= box[2] + 2 and y1 <= box[3] + 2,
+                 f"it fills the box and stays in it: {(x0, y0, x1, y1)}")
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("configure_game_view", resolution="free")

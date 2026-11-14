@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest efc401147bc713b1
+digest 603f87a77f916ba4
 --- 0
 font: []
 text: "multi\nline"
@@ -10,6 +10,10 @@ fixedWidth: true
 fixedHeight: false
 pivotBaseline: false
 pivotCentered: true
+horizontalAlignment: justified
+autoSize: true
+fontSizeMin: 2734
+fontSizeMax: 2732
 outlineColor: [8061.4214, 3e+38, 0, 9289.217]
 shadowEnabled: true
 shadowColor: [-0, 0, 72, 0]
@@ -25,7 +29,11 @@ fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-visibleCharacters: 0
+horizontalAlignment: center
+fontSizeMin: 4951
+outlineColor: [90.14286, 5782.803, 1e-45, 17]
+shadowColor: [91.28571, -84, 95, 1e-45]
+shadowOffset: [0.9141565, 67]
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: ""
@@ -36,6 +44,10 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: true
 pivotCentered: true
+verticalAlignment: middle
+autoSize: true
+fontSizeMin: 2289
+fontSizeMax: 1281
 outlineWidth: 16
 outlineColor: [0.16723287, 76, 1.7142857, 0]
 shadowEnabled: true
@@ -53,6 +65,8 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: true
+outlineColor: [99, 0, 3234.2798, 0.49476862]
+shadowColor: [0, 3e+38, 1e-45, -0.8328273]
 visibleCharacters: 3
 --- 4
 font: []
@@ -64,6 +78,11 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
+horizontalAlignment: justified
+verticalAlignment: baseline
+autoSize: true
+fontSizeMin: 2808
+fontSizeMax: 4755
 outlineWidth: 3e+38
 outlineColor: [0, 0, 82, 136.42857]
 shadowEnabled: true
@@ -80,8 +99,10 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
+horizontalAlignment: right
+verticalAlignment: middle
+fontSizeMax: 2525
 outlineColor: [3e+38, -0, 5256.1304, -22.714285]
-shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
 --- 6
@@ -94,6 +115,9 @@ fixedWidth: false
 fixedHeight: false
 pivotBaseline: true
 pivotCentered: false
+autoSize: true
+fontSizeMin: 4294967295
+fontSizeMax: 2110
 outlineColor: [-55, 3957.2656, -16, 10.142858]
 shadowColor: [-0.3379538, -0.805099, -0.9656368, 3e+38]
 shadowOffset: [-0.16696316, 0.9542685]
@@ -109,7 +133,11 @@ fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-outlineWidth: 0.44957882
+horizontalAlignment: justified
+autoSize: true
+fontSizeMin: 103
+fontSizeMax: 1250
 shadowEnabled: true
 shadowColor: [3e+38, 0, 0, 4453.748]
-visibleCharacters: 14
+shadowOffset: [0.6752126, -88.57143]
+shadowSoftness: 6236.2314

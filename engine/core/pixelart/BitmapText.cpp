@@ -264,6 +264,9 @@ namespace jasperengine::pixelart {
                 info.cluster = (uint32_t)p.index;
                 info.line = p.line;
                 info.back = back;
+                info.penLeft = (float)p.pen * unit;
+                info.penRight = (float)(p.pen + p.glyph->advance) * unit;
+                info.space = cp[p.index] == 32;
                 glyphInfo->push_back(info);
             }
         };

@@ -123,6 +123,21 @@ int UIDocument::getSortOrder() const{
     return getComponent<UIDocumentComponent>().sortOrder;
 }
 
+void UIDocument::setUpdateMode(UIDocumentUpdateMode mode){
+    UIDocumentComponent& component = getComponent<UIDocumentComponent>();
+    component.updateMode = mode;
+    // a loaded document takes it now (the system's next update would too): an animation a
+    // script starts next runs on it
+    if (Rml::ElementDocument* document = scene->getSystem<UIDocumentSystem>()->getDocument(entity)){
+        document->SetAnimationClock(HtmlUIClock::animationClockOf(mode));
+        component.appliedUpdateMode = mode;
+    }
+}
+
+UIDocumentUpdateMode UIDocument::getUpdateMode() const{
+    return getComponent<UIDocumentComponent>().updateMode;
+}
+
 UIElement UIDocument::getElementById(const std::string& id) const{
     loadedDocument(scene, entity);
     UIElement element = scene->getSystem<UIDocumentSystem>()->getElementById(entity, id);

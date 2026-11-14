@@ -266,5 +266,13 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
 // S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
 // S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
+}
+
+// S93's World Space quad (htmlui.vert keeps its depth) is cached under v66 and later: an older cache
+// holds the HTMLUI program that draws it in front of everything
+TEST(HtmlUIShaders, ShaderCacheVersionCoversWorldSpaceDepth){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v66");
 }

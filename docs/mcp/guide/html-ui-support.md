@@ -726,7 +726,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `chains` | unsupported | template layout (draft) is not supported (HTMLUI-CSS-0002) | lay out the content with flex or block elements |
 | `clear` | native | inline-start/inline-end -> left/right |  |
 | `clip` | unsupported | CSS 2.1 rect() clipping is never passed through: RmlUi's clip property means something else; clip: auto dropped silently (HTMLUI-CSS-0002) | use clip-path: inset(...), or overflow: hidden on a wrapper |
-| `clip-path` | emulated | basic shapes exact through the html-shape decorator; url() unsupported; no hit-test clipping |  |
+| `clip-path` | emulated | basic shapes exact through the html-shape decorator, which also clips hit testing (calc() lengths included); url() unsupported |  |
 | `clip-rule` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `color` | native | every CSS Color 4 syntax normalized to hex; the current color companion follows it |  |
 | `color-adjust` | ignored | legacy alias of print-color-adjust; printing only (HTMLUI-CSS-0003) |  |
@@ -1203,13 +1203,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `rule-width` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
 | `running` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 
-### Properties: scale to speak-as
+### Properties: scale to shape-rendering
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
 | `scale` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
 | `scroll-axis-lock` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | restrict scrolling with overflow-x / overflow-y |
 | `scroll-behavior` | ignored | smooth scrolling hint; ignored (HTMLUI-CSS-0003) | Use focus navigation or Lua scrolling (element:scrollIntoView{behavior = "smooth"}). |
+| `scroll-deceleration-rate` | native | engine extension (uGUI ScrollRect Deceleration Rate): auto (the default curve) or the share of a drag scroll's velocity kept per second, 0 to 1 (v *= rate^dt, stopping below 1 px/s) |  |
+| `scroll-drag` | native | engine extension: what drags a scroll container's content: touch (fingers) or pointer (the mouse and pen too); a drag past the slop cancels the press (no click) |  |
+| `scroll-elasticity` | native | engine extension (uGUI ScrollRect Elasticity): the time an elastic overscroll springs back in (a SmoothDamp) |  |
+| `scroll-inertia` | native | engine extension (uGUI ScrollRect Inertia): auto keeps a drag scroll's velocity after the release, none stops it |  |
 | `scroll-initial-target` | unsupported | not supported (HTMLUI-CSS-0002) | set the scroll position from Lua after load |
 | `scroll-margin` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-margin-block` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
@@ -1223,6 +1227,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `scroll-margin-right` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-margin-top` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-marker-group` | unsupported | scroll markers are not supported (HTMLUI-CSS-0002) | build the markers as buttons that scroll from Lua |
+| `scroll-movement` | native | engine extension (uGUI ScrollRect Movement Type): clamped, elastic (a drag past an edge is rubber-banded, the content springs back) or unrestricted (the content goes anywhere) |  |
 | `scroll-padding` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-padding-block` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-padding-block-end` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
@@ -1251,6 +1256,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `shape-margin` | unsupported | text wrapping around shapes is not supported (Info) (HTMLUI-CSS-0002) | use rectangular floats, or absolute positioning |
 | `shape-outside` | unsupported | text wrapping around shapes is not supported (Info) (HTMLUI-CSS-0002) | use rectangular floats, or absolute positioning |
 | `shape-rendering` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
+
+### Properties: size to stroke-width
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `size` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `slider-orientation` | unsupported | not supported (HTMLUI-CSS-0002) | rotate the range input with transform: rotate(-90deg) |
 | `spatial-navigation-action` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
@@ -1258,11 +1268,6 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `spatial-navigation-function` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
 | `speak` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-as` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
-
-### Properties: speak-header to stroke-width
-
-| Property | Support | Notes | Instead |
-|---|---|---|---|
 | `speak-header` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-numeral` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-punctuation` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -1293,7 +1298,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-overflow
+### Properties: tab-index to text-orientation
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -1323,7 +1328,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-decoration-thickness` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-effect` | emulated | engine extension: per-character animation of the text (wave, bounce, shake, pulse, typewriter, fade-in, grow, unfold, rainbow, gradient), the native Text Effect's formulas |  |
 | `text-effect-iteration` | emulated | engine extension: how many times the one-shot text effects run (infinite or an integer); texteffectend after the last |  |
-| `text-effect-time` | emulated | engine extension: the clock of the text effects: ui (unscaled, runs at Engine.timeScale 0) or game (scaled game time) |  |
+| `text-effect-time` | emulated | engine extension: the clock of the text effects: auto (the UI Document's Update Mode), ui (unscaled, runs at Engine.timeScale 0) or game (scaled game time) |  |
 | `text-emphasis` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-color` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-position` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
@@ -1333,12 +1338,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-indent` | native | native with the fork (TextIndent): a length or percentage (of the block's width), negative too, with hanging and each-line, as Chromium; not supported without it (Warning) | add padding-left to the first line content, e.g. on the first child |
 | `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
 | `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
-| `text-overflow` | native | ellipsis, clip and strings native |  |
 
-### Properties: text-rendering to translate
+### Properties: text-overflow to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-overflow` | native | ellipsis, clip and strings native |  |
 | `text-rendering` | native | native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields |  |
 | `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
 | `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -1547,14 +1552,14 @@ Values of a property that are not handled like the property's other values; `<..
 |---|---|---|---|---|
 | `clear` | `inline-end` | rewritten | LTR; an RTL root swaps it |  |
 | `clear` | `inline-start` | rewritten | LTR; an RTL root swaps it |  |
-| `clip-path` | `circle()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `ellipse()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `inset()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `path()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `polygon()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `rect()` | emulated | exact geometry; no hit-test clipping (Info) |  |
+| `clip-path` | `circle()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `ellipse()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `inset()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `path()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `polygon()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `rect()` | emulated | exact geometry; clips hit testing too |  |
 | `clip-path` | `url()` | unsupported | SVG clip paths are not supported (Warning) (HTMLUI-CSS-0004) | use a basic shape: inset(), circle(), ellipse(), polygon() or path() |
-| `clip-path` | `xywh()` | emulated | exact geometry; no hit-test clipping (Info) |  |
+| `clip-path` | `xywh()` | emulated | exact geometry; clips hit testing too |  |
 | `color` | `currentcolor` | native | the parent current color (same as inherit); the fork resolves currentcolor itself (CurrentColor) in color, background, border and caret colors, the companion stays in shadows, outlines, gradients, filters and text effects |  |
 | `column-gap` | `normal` | rewritten | normal gap is 0 in flex layout |  |
 | `cursor` | `alias` | native |  |  |

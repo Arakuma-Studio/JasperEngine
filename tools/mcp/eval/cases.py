@@ -1368,6 +1368,30 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_ui_tween_for_game_time",
+        "kind": "bad",
+        "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "
+                         "game (S93 U3); a UI Document's Update Mode Game Time does it (S93 R35).",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Animation: 'A document whose HUD should freeze and slow with the game takes "
+                         "Update Mode Game Time (updateMode: game ...)'",
+        "source": "S93 U3",
+        "prompt": "The pulsing coin counter of the HUD (UI Document \"Hud\", assets/ui/hud.html, a CSS @keyframes pulse) "
+                  "keeps pulsing while the game is paused with Engine.timeScale = 0. Make the HUD's animations pause and "
+                  "slow down with the game; the pause menu document must keep animating.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObjects: Hud [12] (UI Document assets/ui/hud.html), PauseMenu [13] "
+                                                   "(UI Document assets/ui/pause.html).",
+                                                   {"entities": [{"id": 12, "path": "Hud"}, {"id": 13, "path": "PauseMenu"}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on Hud [12].", {"changed": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {key: {"updateMode": "re:(?i)game"}}}}]}
+                              for key in ("UIDocumentComponent", "uidocument", "UIDocument")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:PauseMenu|^13$"}}],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_post_processing_preset",
         "kind": "guard",
         "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "
@@ -5298,5 +5322,28 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_html_ui_drag_scroll_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port re-implemented uGUI's ScrollRect in Lua (ScrollView.lua: pointer tracking, "
+                         "elasticity, deceleration) because the mouse never drag-scrolled an HTML list; S93 adds scroll-drag, "
+                         "scroll-movement and the other scroll physics properties instead.",
+        "text_at_issue": "html-ui.md 'Drag scrolling (uGUI ScrollRect)'",
+        "source": "docs/specs/S93-htmlui-gaps.md R8 (ledger U12)",
+        "files": {"assets/ui/shop.html": "<html>\n<head>\n<title>shop</title>\n<style>\n"
+                                         "  #items { position: absolute; left: 40px; top: 80px; width: 400px; height: 500px; overflow-y: auto; }\n"
+                                         "  .item { height: 80px; }\n</style>\n</head>\n<body>\n"
+                                         "  <div id=\"items\"><div class=\"item\">Sword</div><div class=\"item\">Shield</div></div>\n"
+                                         "</body>\n</html>\n"},
+        "prompt": "In assets/ui/shop.html, PC players must be able to drag the #items list with the mouse like a phone list, and it "
+                  "should bounce back when dragged past its ends.",
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("shop: #items (div, overflow-y auto, 2 children), no diagnostics.",
+                                               {"elements": [{"ref": "#items"}], "diagnostics": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/shop.html": [r"scroll-drag\s*:\s*pointer", r"scroll-movement\s*:\s*elastic"]},
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 14,
     },
 ]

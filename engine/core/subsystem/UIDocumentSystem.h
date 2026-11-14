@@ -13,9 +13,12 @@
 
 #include "SubSystem.h"
 #include "UIDocumentInput.h"
+#include "math/Matrix4.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/UIWorldRaycast.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
@@ -255,6 +258,17 @@ namespace jasperengine{
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
 
+        // --- S93 R36 World Space (UIDocumentSystemWorld.cpp) ---
+        // a WORLD-mode document in the scene (RenderSystem then looks for their GameObjects)
+        bool hasWorldDocuments() const;
+        // a World Space document's quad: maps its corners (-1,1) top-left .. (1,-1)
+        // bottom-right to the world (Billboard: turned to camera's view; no camera: unturned).
+        // False when the entity has no WORLD-mode document with a target
+        bool getWorldQuad(Entity entity, const CameraComponent* camera, Matrix4& worldFromQuad) const;
+        // RenderSystem's transparent queue: the shown document's quad inside camera's pass of
+        // format target (flipY: the pass renders flipped, as drawComposite's)
+        void drawWorldDocument(Entity entity, CameraComponent& camera, const RenderTargetFormat& target, bool flipY);
+
         // --- p2-html (UIDocumentSystemCompat.cpp, phase-2 §3.12, hooks H1b/H4) ---
         // the compile of an .html document (the compat layer's RML, source map, diagnostics);
         // null for .rml documents and before the load
@@ -390,6 +404,9 @@ namespace jasperengine{
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
         void textureCancelAll();   // ui-multitouch D6: pause, focus loss
+        // where a ray hits a document's input surface: a WORLD document's quad (unless a mesh
+        // in front of it takes the ray, as its depth test does), else its mesh's uv
+        UIWorldHit raycastDocumentSurface(Entity entity, const UIDocumentComponent& document, const Ray& ray) const;
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;

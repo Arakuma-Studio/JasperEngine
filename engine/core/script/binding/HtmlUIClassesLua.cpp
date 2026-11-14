@@ -1412,6 +1412,10 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("disabled", &UIElement::getDisabled, &UIElement::setDisabled)
         .addProperty("scrollTop", &UIElement::getScrollTop, &UIElement::setScrollTop)
         .addProperty("scrollLeft", &UIElement::getScrollLeft, &UIElement::setScrollLeft)
+        // the scroll container's velocity in px/s, positive towards the end (its inertia, or the drag panning it); set it to fling
+        .addProperty("scrollVelocity", &UIElement::getScrollVelocity, &UIElement::setScrollVelocity)
+        // stops the container's inertia and smooth scroll (an elastic overscroll still springs back)
+        .addFunction("stopScrolling", &UIElement::stopScrolling)
         .addProperty("scrollWidth", &UIElement::getScrollWidth)
         .addProperty("scrollHeight", &UIElement::getScrollHeight)
         .addProperty("clientWidth", &UIElement::getClientWidth)
@@ -1624,11 +1628,20 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     guardClass<UIStyle>(L);
     guardClass<UIDataset>(L);
 
-    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture()
+    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture(); S93 R36:
+    // WORLD, that texture as a quad at the GameObject (Canvas World Space)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("UIDocumentRenderMode")
         .addVariable("SCREEN", UIDocumentRenderMode::SCREEN)
         .addVariable("TEXTURE", UIDocumentRenderMode::TEXTURE)
+        .addVariable("WORLD", UIDocumentRenderMode::WORLD)
+        .endNamespace();
+
+    // S93 R35: the clock of a document's animations (doc.updateMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIDocumentUpdateMode")
+        .addVariable("UNSCALED_TIME", UIDocumentUpdateMode::UNSCALED_TIME)
+        .addVariable("GAME_TIME", UIDocumentUpdateMode::GAME_TIME)
         .endNamespace();
 
     // the component of a UIDocument (UIDocument:getUIDocumentComponent())
@@ -1646,6 +1659,11 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &setTrackedMember<&UIDocumentComponent::textureHeight>)
         .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &setTrackedMember<&UIDocumentComponent::inputSurface>)
         .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &setTrackedMember<&UIDocumentComponent::pixelRatio>)
+        // S93: the Update Mode (applied at the next update; UIDocument.updateMode at once), and
+        // WORLD mode's size (texture pixels per unit) and billboard, both live
+        .addProperty("updateMode", &UIDocumentComponent::updateMode, &setTrackedMember<&UIDocumentComponent::updateMode>)
+        .addProperty("pixelsPerUnit", &UIDocumentComponent::pixelsPerUnit, &setTrackedMember<&UIDocumentComponent::pixelsPerUnit>)
+        .addProperty("billboard", &UIDocumentComponent::billboard, &setTrackedMember<&UIDocumentComponent::billboard>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
@@ -1663,6 +1681,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("hide", &UIDocument::hide)
         .addProperty("visible", &UIDocument::isVisible, &UIDocument::setVisible)
         .addProperty("sortOrder", &UIDocument::getSortOrder, &UIDocument::setSortOrder)
+        .addProperty("updateMode", &UIDocument::getUpdateMode, &UIDocument::setUpdateMode)
         .addFunction("getElementById", [](const UIDocument* self, const std::string& id) -> std::optional<UIElement> {
             return optionalElement(self->getElementById(id));
         })

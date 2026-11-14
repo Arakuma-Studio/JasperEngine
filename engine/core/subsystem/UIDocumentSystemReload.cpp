@@ -381,7 +381,7 @@ Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const 
         });
         // p1-rtt: a TEXTURE-mode document loads into its own context
         UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
-        if (component && component->renderMode == UIDocumentRenderMode::TEXTURE)
+        if (component && rendersToTexture(component->renderMode))
             document = textureLoadDocument(entity, *component);
         else
             document = getContext()->loadDocument(filename);
@@ -495,7 +495,7 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloa
     const DocumentSnapshot snapshot = captureState(oldDocument, rmlContext);
 
     // 2. load the new one next to the old one, which RmlUi only destroys at the next update
-    if (component->renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(component->filename);
+    if (!rendersToTexture(component->renderMode)) scriptDocumentLoading(component->filename);
     Rml::ElementDocument* newDocument = loadEntityDocument(entity, component->filename);
     if (!newDocument){
         // the old document goes too, as with a plain load of a broken file
@@ -526,7 +526,7 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloa
     oldContext->unloadDocument(oldDocument);
     documents[entity] = newDocument;
     // p1-rtt: back to SCREEN, the texture context goes (after the old document left it)
-    if (component->renderMode != UIDocumentRenderMode::TEXTURE) textureRemoveEntity(entity);
+    if (!rendersToTexture(component->renderMode)) textureRemoveEntity(entity);
     HtmlUIContext* newContext = documentContext(entity);
     component->loaded = true;
     component->loadFailed = false;
@@ -535,6 +535,8 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloa
     // placed and shown as applyComponent does
     newDocument->SetProperty(Rml::PropertyId::ZIndex, Rml::Property((float)component->sortOrder, Rml::Unit::NUMBER));
     component->appliedSortOrder = component->sortOrder;
+    newDocument->SetAnimationClock(HtmlUIClock::animationClockOf(component->updateMode));
+    component->appliedUpdateMode = component->updateMode;
     const bool visible = component->enabled && scene->isEntityActiveInHierarchy(entity);
     if (visible){
         newDocument->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
