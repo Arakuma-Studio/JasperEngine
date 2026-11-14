@@ -13,6 +13,7 @@
 #include "util/BackgroundRelease.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -385,6 +386,21 @@ bool editor::PasteEntitiesCmd::execute(){
             // Tracked list back in Transform order, the GameObjects without one where they
             // were. Appended at the end it already was.
             ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
+        }
+    }
+
+    // A pasted GameObject is numbered only when a sibling where it landed has its name (Unity's)
+    {
+        const std::unordered_set<Entity> pasted(createdRoots.begin(), createdRoots.end());
+        std::unordered_map<Entity, UniqueEntityNames> namesUnder;
+        for (Entity root : createdRoots) {
+            const Transform* rootTransform = scene->findComponent<Transform>(root);
+            const Entity rootParent = rootTransform ? rootTransform->parent : ProjectUtils::getVirtualParent(scene, root);
+            auto names = namesUnder.find(rootParent);
+            if (names == namesUnder.end()) {
+                names = namesUnder.emplace(rootParent, UniqueEntityNames(ProjectUtils::siblingNames(scene, sceneProject->entities, rootParent, pasted))).first;
+            }
+            scene->setEntityName(root, names->second.make(scene->getEntityName(root)));
         }
     }
 
