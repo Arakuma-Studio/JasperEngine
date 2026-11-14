@@ -85,9 +85,9 @@ namespace {
         void roundTrip(Entity entity, ComponentType type, const char* property, const T& value, const char* key) {
             const std::string before = encoded(entity, type);
             EXPECT_EQ(before.find(key), std::string::npos) << key << " is written only away from its default";
-            const size_t steps = history()->entries().size();
+            history()->clear();
             history()->addCommandNoMerge(new PropertyCmd<T>(project.get(), scene->id, entity, type, property, value));
-            EXPECT_EQ(history()->entries().size(), steps + 1) << property << ": one undo step";
+            EXPECT_EQ(history()->entries().size(), 1u) << property << ": one undo step";
             const std::string after = encoded(entity, type);
             EXPECT_NE(after, before) << property;
             EXPECT_NE(after.find(key), std::string::npos) << property;
@@ -186,8 +186,13 @@ TEST_F(UIInspectorUndoTest, OldSceneLoadsWithTheDefaults) {
     EXPECT_EQ(text.verticalAlignment, TextVerticalAlignment::TOP);
     EXPECT_FALSE(text.autoSize);
 
-    const std::string saved = encodeSceneText(decoded);
-    for (const char* key : {"updateMode", "pixelsPerUnit", "billboard", "horizontalAlignment", "verticalAlignment", "autoSize", "fontSizeMin",
-                            "fontSizeMax"})
-        EXPECT_EQ(saved.find(key), std::string::npos) << key;
+    // the components as saved: none of the new keys (written only away from their defaults)
+    const YAML::Node saved = encodeScene(decoded);
+    for (const YAML::Node& entity : saved["entities"]) {
+        const YAML::Node components = entity["components"];
+        for (const char* key : {"updateMode", "pixelsPerUnit", "billboard"})
+            EXPECT_FALSE(components["uidocument"] && components["uidocument"][key]) << key;
+        for (const char* key : {"horizontalAlignment", "verticalAlignment", "autoSize", "fontSizeMin", "fontSizeMax"})
+            EXPECT_FALSE(components["text"] && components["text"][key]) << key;
+    }
 }

@@ -153,9 +153,9 @@ async def test_set_every_field(ed: Editor):
     ed.check_eq((v["textureWidth"], v["textureHeight"]), (8192, 1), "clamped texture size")
 
     # a render mode that does not exist is refused, naming the valid ones
-    msg = await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"renderMode": "world"}},
+    msg = await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"renderMode": "hologram"}},
                         expect_error=True)
-    ed.check("screen" in msg and "texture" in msg, f"renderMode error: {msg}")
+    ed.check("screen" in msg and "texture" in msg and "world" in msg, f"renderMode error: {msg}")
 
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"filename": ""}})
     ed.check_eq((await doc_values(ed, S["doc"]))["filename"], "", "empty source is allowed")
