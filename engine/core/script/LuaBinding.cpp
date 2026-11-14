@@ -571,6 +571,11 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushvalue(L, selfIndex);       // self
     lua_pushboolean(L, guardActive ? 1 : 0);
     lua_pushboolean(L, 0);             // warned that the method is not a function
+    // the guard's keys, pushed by value at each call (no string lookup there)
+    lua_pushstring(L, "__released");
+    lua_pushstring(L, "scene");
+    lua_pushstring(L, "entity");
+    lua_pushstring(L, "__scriptRef");
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
@@ -581,7 +586,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
 
             if (lua_toboolean(Linner, lua_upvalueindex(3))) {
                 const int self = lua_upvalueindex(2);
-                lua_pushstring(Linner, "__released");
+                lua_pushvalue(Linner, lua_upvalueindex(5));
                 lua_rawget(Linner, self);
                 const bool released = lua_toboolean(Linner, -1) != 0;
                 lua_pop(Linner, 1);
@@ -589,7 +594,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                     return 0;
                 }
                 Scene* scene = nullptr;
-                lua_pushstring(Linner, "scene");
+                lua_pushvalue(Linner, lua_upvalueindex(6));
                 lua_rawget(Linner, self);
                 if (lua_isuserdata(Linner, -1)) {
                     auto sceneResult = luabridge::get<Scene*>(Linner, -1);
@@ -598,11 +603,11 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                     }
                 }
                 lua_pop(Linner, 1);
-                lua_pushstring(Linner, "entity");
+                lua_pushvalue(Linner, lua_upvalueindex(7));
                 lua_rawget(Linner, self);
                 const lua_Integer entity = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
                 lua_pop(Linner, 1);
-                lua_pushstring(Linner, "__scriptRef");
+                lua_pushvalue(Linner, lua_upvalueindex(8));
                 lua_rawget(Linner, self);
                 const lua_Integer ref = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
                 lua_pop(Linner, 1);
@@ -653,7 +658,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        4);
+        8);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
