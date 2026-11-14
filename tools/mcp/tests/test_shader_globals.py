@@ -21,6 +21,7 @@ every frame by scripts/VertexLightsUpdater.lua, the port of VertexLightsUpdater.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -495,9 +496,9 @@ async def test_desktop_export_declares_the_globals(ed: Editor):
         await ed.call("wait", seconds=15)
         job = await ed.call("get_job", job_id=r["job_id"])
     ed.check_eq(job["status"], "succeeded", f"{job}")
-    main = next(Path(out).rglob("main.cpp"), None)
-    if main:
-        ed.check_in("ShaderGlobals::declare({", main.read_text(), "the generated main declares the globals")
+    # game.json declares them, for a prebuilt and a compiled game alike (S98 D1)
+    game = json.loads(next(Path(out).rglob("game.json")).read_text())
+    ed.check(game.get("shaderGlobals"), f"game.json declares the globals: {sorted(game)}")
     raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
     ed.check(not raw.is_error and raw.images, raw.text[:500])
     image = decode_png(raw.images[0][0])

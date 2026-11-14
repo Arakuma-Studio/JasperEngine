@@ -7,7 +7,7 @@ checks what landed:
   an output folder inside the project is refused by MCP and the CLI alike;
 - the saved shader keys of a deleted fork go at the next save (a split vert|frag fork keeps its own);
 - Stop saves the variants of the objects scripts made during Play, in scenes a load replaced too;
-- a never-saved scene gets its generated source (main.cpp loads it), with W-SCENE-NOT-SAVED;
+- a never-saved scene is cooked (game.json loads it), with W-SCENE-UNSAVED;
 - the web page step (export-settings/apply.cmake) writes index.html and always links a favicon;
 - a source export in a folder named with spaces, @ and glob characters configures with every source.
 """
@@ -15,6 +15,7 @@ checks what landed:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -236,13 +237,10 @@ async def test_never_saved_scene_ships(ed: Editor):
     out = ed.scratch.root / "export-unsaved"
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")
-    ed.check_in("W-SCENE-NOT-SAVED", warning_codes(job))
-    sources = [p.name for p in (out / "project").glob(f"scene_*_{draft_id}.cpp")]
-    ed.check_eq(len(sources), 1, f"the never-saved scene's source: {sorted(p.name for p in (out / 'project').glob('scene_*.cpp'))}")
-    ed.check_in('"Draft"', (out / "project" / "main.cpp").read_text(), "main.cpp loads the never-saved scene")
-    # the Xcode workspace compiles its source too (test_build.py's check, over the scenes in the build)
-    pbx = (out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(errors="replace")
-    ed.check_in(sources[0], pbx, "the Xcode project compiles the never-saved scene's source")
+    ed.check_in("W-SCENE-UNSAVED", warning_codes(job))
+    ed.check((out / "project" / "content" / "scenes" / f"{draft_id}.jscn").is_file(), "the never-saved scene is cooked")
+    game = json.loads((out / "project" / "content" / "game.json").read_text())
+    ed.check_in("Draft", [scene["name"] for scene in game["scenes"]], "game.json loads the never-saved scene")
     await ed.call("close_scene", scene=draft_id, unsaved="discard")
 
 
@@ -323,7 +321,7 @@ async def test_export_paths_with_special_characters(ed: Editor):
                            "-DGRAPHIC_BACKEND=glcore"], capture_output=True, text=True, timeout=900)
     ed.check_eq(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
     ninja = (build / "build.ninja").read_text(errors="replace")
-    ed.check(re.search(r"scene_\w+\.cpp", ninja) is not None, "the generated scene sources are compiled")
+    ed.check(re.search(r"scene_(?!scripts)\w+\.cpp", ninja) is None, "no scene has code: every build loads it cooked")
     ed.check_in("scene_scripts.cpp", ninja)
     ed.check_in("meshoptimizer", ninja)
     ed.check(re.search(r"Source/Core/\w+\.cpp", ninja) is not None, "RmlUi's sources are found")
