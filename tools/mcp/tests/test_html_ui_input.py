@@ -385,9 +385,10 @@ P_CLIPBTN = (90, 490)          # #clipbtn where it is drawn; its layout box is b
 async def test_hit_follows_transform_in_clip(ed: Editor):
     """S93 R6/R51 (AC7): inspect_ui's hit test finds a button translated into view inside an
     `overflow: hidden` box where it is drawn, not the box (6.3 tested its layout position)."""
-    r = await ed.call("inspect_ui", at=list(P_CLIPBTN))
+    # (entity: the popup of test_joystick_survives_popup is a second document)
+    r = await ed.call("inspect_ui", entity="Menu", at=list(P_CLIPBTN))
     ed.check_eq(r["hit"][0]["ref"], "#clipbtn", f"the translated button is hit where it is drawn: {r['hit']}")
-    r = await ed.call("inspect_ui", at=[P_CLIPBTN[0], 555])
+    r = await ed.call("inspect_ui", entity="Menu", at=[P_CLIPBTN[0], 555])
     ed.check_eq(r["hit"][0]["ref"], "#clipview", f"the box under the button's layout area: {r['hit']}")
 
 
