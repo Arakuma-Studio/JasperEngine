@@ -1,6 +1,7 @@
 """The Lua Audio table, SoundHandle and AudioPlayOn (docs/specs/S37-sound-events.md R13; AC7): each
 option of Audio.play, a handle going invalid at the end, fadeOut with pause, stopAll("SFX")'s count,
-calls inside a contact callback deferred, the AudioSource additions, AudioPlayOn's values.
+calls inside a contact callback deferred, the AudioSource additions, AudioPlayOn's values, and several
+Audio Sources on one GameObject (S97 REQ-27).
 """
 
 import json
@@ -199,5 +200,33 @@ async def test_audio_source_additions(ed: Editor):
         ed.check_eq(got, [EVENT, EVENT, 17, 1.5, 8, 24, 3], "the AudioSource additions")
         names = (await lua(ed, "return {AudioPlayOn.UIClick, AudioPlayOn.UIPress, AudioPlayOn.UIHover, AudioPlayOn.Collision2D, AudioPlayOn.Collision3D, AudioPlayOn.Sensor2D, AudioPlayOn.Sensor3D}"))[0]
         ed.check_eq(names, [1, 2, 4, 8, 16, 32, 64], "AudioPlayOn")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_audio_source_slots_lua(ed: Editor):
+    """S97 REQ-27 (AC25): AudioSource.add gives a GameObject its own source, then slots; getAll lists them in
+    order; remove takes a slot or the GameObject's own; findObjectOfType finds a slot as a source."""
+    await ed.call("play", action="start", scene=STATE["scene"], fixed_fps=60, auto_pause=True)
+    try:
+        await ed.call("wait", frames=2)
+        got = (await lua(ed, """
+            local car = object('Carrier', 'GameObject')
+            local own = AudioSource.add(car)
+            local first = AudioSource.add(car)
+            local second = AudioSource.add(car)
+            local all = AudioSource.getAll(car)
+            local ordered = #all == 3 and all[1].entity == car.entity and all[2].entity == first.entity
+                and all[3].entity == second.entity
+            local slots = first:getAudioSourceComponent().slot .. ',' .. second:getAudioSourceComponent().slot
+            AudioSource.remove(first)
+            local afterSlot = AudioSource.getAll(car)
+            AudioSource.remove(own)
+            local afterOwn = AudioSource.getAll(car)
+            return {own.entity == car.entity, ordered, slots, #afterSlot, afterSlot[2].entity == second.entity,
+                    #afterOwn, afterOwn[1].entity == second.entity}"""))[0]
+        ed.check_eq(got, [True, True, "1,2", 2, True, 1, True], "add, getAll, remove")
+        problems = await ed.console_since(types=["error"], limit=20)
+        ed.check(not problems, f"no error: {problems}")
     finally:
         await ed.call("play", action="stop")

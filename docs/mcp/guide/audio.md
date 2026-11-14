@@ -179,6 +179,7 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | `pitch` | 1 | = `speed` |
 | `effects` | `[]` | its own effects, up to 4: `[{type, bypass, wet, params}]` (below) |
 | `spatialBlend` | 1 (a new Audio Source: 0) | Unity's Spatial Blend: 0 plays 2D (`pan`, no distance attenuation), 1 plays 3D from the GameObject's position, between them a mix of the two without Doppler. A source without a Transform plays 2D |
+| `slot` | 0 | 0: the GameObject's own Audio Source; 1, 2, ...: a further one, on a hidden child (below) |
 
 - **Effects on one source** (Unity's Audio Low Pass, High Pass, Echo, Distortion and Reverb
   Filter): to muffle, filter or echo one source (a radio, a voice behind a door), give that source
@@ -251,6 +252,17 @@ lowpass:setParameter("cutoff", 525, 0.9)
   are heard where they are in its own camera's view. Doppler follows speeds in units a second,
   under perspective cameras only (2D and UI scenes move in pixels); a teleport or a camera cut has
   none. A clocked source (`enableClocked`) starts at the game time it was played.
+- **Several Audio Sources on one GameObject** (an engine and a horn on a car): the first is the
+  GameObject's own; `add_component AudioSource` on a GameObject that has one (Inspector: Add
+  Component > Audio Source) adds a further one and returns its entity in `added[].audio_source`.
+  Address it by that id: `set_properties`, `get_entity`, `remove_component` and `delete_entities`
+  take it. It is a child at the GameObject's origin with its own values and effects, hidden from the
+  Hierarchy, `get_scene_tree`, `find_entities` and Scene view picks; `get_entity` on the GameObject
+  lists `audio_sources: [{entity, slot}]`. It moves, copies, prefabs and persists with the
+  GameObject. Lua: `AudioSource.getAll(gameObject)` (its own first, then the others in order),
+  `AudioSource.add(gameObject)` (its own when it has none, else a further one at Spatial Blend 1),
+  `AudioSource.remove(source)`; `GameObject.findObjectOfType("AudioSource")` finds them too. The
+  GameObject's child APIs (`getChildCount`, `getChildren`) count them, as Unity's hidden objects.
 
 ## 8. Scene loads, persistence, devices
 

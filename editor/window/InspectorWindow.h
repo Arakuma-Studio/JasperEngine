@@ -669,6 +669,8 @@ namespace jasperengine::editor{
         bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
+        // the further Audio Sources of a GameObject (S97 REQ-26): an Audio Source section each
+        void drawAudioSourceSlots(SceneProject* sceneProject, Entity owner, bool readOnly);
         // New Script (or, existing: Existing Script) dialog; what it makes goes on the entities
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities, bool existing);
         // a script file onto the entities (ScriptAttach), problems to the Console

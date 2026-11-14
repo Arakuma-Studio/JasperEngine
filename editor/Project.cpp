@@ -176,6 +176,8 @@
 #include "project/SceneFileIdentity.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
@@ -8949,6 +8951,12 @@ std::vector<Entity> editor::Project::getPickableEntities(const SceneProject* sce
     // what a running scene made for itself is drawn too (and selectable, read-only)
     const std::vector<Entity> playCreated = getPlayCreatedEntities(sceneProject);
     entities.insert(entities.end(), playCreated.begin(), playCreated.end());
+    // an Audio Source slot is picked as its GameObject (ScenePicker::pickedEntity, S97 REQ-25)
+    if (sceneProject->scene && sceneProject->scene->getComponentArray<AudioSourceComponent>()->size() > 0) {
+        entities.erase(std::remove_if(entities.begin(), entities.end(), [sceneProject](Entity entity) {
+            return AudioSourceSlots::isSlot(sceneProject->scene, entity);
+        }), entities.end());
+    }
     return entities;
 }
 

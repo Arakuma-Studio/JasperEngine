@@ -2487,6 +2487,40 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_second_audio_source_by_slot_id",
+        "kind": "bad",
+        "what_happened": "S97 AU4: a GameObject held one Audio Source, add_component skipped a second, so agents asked for an engine "
+                         "and a horn on one car made a child GameObject for the horn or overwrote the engine's clip; a second "
+                         "add_component AudioSource now adds a slot and returns its entity to set its values on.",
+        "text_at_issue": "add_component's description (AudioSource adds another); its result's added[].audio_source and next",
+        "source": "S97 REQ-28, REQ-43 (c) (spec-first)",
+        "prompt": "The Car GameObject (id 12) in the open scene needs two sounds playing from it: an engine loop "
+                  "(sounds/engine.wav, looping) and a horn (sounds/horn.wav, not looping). Set both up.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok("Car [12] components: Transform Mesh",
+                                                {"id": 12, "name": "Car", "components": {"Transform": {}, "Mesh": {}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\n12 Car",
+                                                   {"count": 1, "entities": [{"id": 12, "name": "Car", "path": "Car"}]})},
+            {"tool": "add_component", "once": True, "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource"}], "skipped": []})},
+            {"tool": "add_component", "after": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step). Each further Audio Source is its own entity (31), hidden in the scene tree: "
+                "pass that id as entity to set_properties, get_entity and remove_component.",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource", "audio_source": 31, "slot": 1}], "skipped": [],
+                 "next": "Each further Audio Source is its own entity (31), hidden in the scene tree: pass that id as entity to "
+                         "set_properties, get_entity and remove_component."})},
+            {"tool": "set_properties", "result": ok("Set 2 propertie(s) (one undo step).", {"scene_id": 1, "values": {}})},
+            {"tool": "create_entity", "result": ok("Created GameObject \"Horn\" [40] under Car.", {"entity_id": 40})},
+        ],
+        "checks": {"min_calls": {"add_component": 2},
+                   "any_of": [{"calls": [{"tool": "set_properties", "args": {"entity": "re:^31$"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"values": "*"}}],
+                               "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^12$"}}]}],
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_placeholder_coin_finds_the_group",
         "kind": "guard",
         "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
