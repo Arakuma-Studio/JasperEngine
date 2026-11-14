@@ -132,6 +132,9 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterController2DTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerBenchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueries2DTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueries3DTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueriesBenchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pose/HumanoidMapIOTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseFileTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseIOTest.cpp

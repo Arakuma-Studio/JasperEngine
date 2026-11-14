@@ -373,7 +373,12 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
             if (run.hasFoot && c.enabled && context.sample){
                 const Vector3 up = context.rootWorldRotation * Vector3(0, 1, 0);
                 const Vector3 origin = run.footWorld + up * c.rayStart;
-                RayReturn hit = Physics::raycast(scene, origin, up * -1.0f, c.rayStart + c.rayLength, c.layerMask);
+                // the ground under the foot as before Physics.raycast took Unity's start-inside
+                // rule (S96 REQ-14): a collider around the ray's start is still the ground
+                QueryOptions options;
+                options.layerMask = c.layerMask;
+                options.hitFromInside = true;
+                RayReturn hit = Physics::raycast(scene, origin, up * -1.0f, c.rayStart + c.rayLength, options);
                 stats.footRaycasts++;
                 if (hit.hit){
                     run.hit = true;

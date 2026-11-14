@@ -81,6 +81,8 @@ namespace jasperengine{
         const std::vector<Entity>* ignoreEntities = nullptr;
         // query mask tested against the collider category bits
         uint16_t maskBits = 0xFFFF;
+        // S96 queries: sensor shapes (Unity triggers) are not hits
+        bool skipSensors = false;
     };
 
 
@@ -150,6 +152,10 @@ namespace jasperengine{
             Box2DWorldRayCastContext* ctx = (Box2DWorldRayCastContext*)context;
 
             if ((b2Shape_GetFilter(shapeId).categoryBits & (uint64_t)ctx->maskBits & Box2DLayers::USER_BITS) == 0){
+                return -1.0f;
+            }
+
+            if (ctx->skipSensors && b2Shape_IsSensor(shapeId)){
                 return -1.0f;
             }
 
