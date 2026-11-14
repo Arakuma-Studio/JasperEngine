@@ -524,6 +524,27 @@ REQ-18 to REQ-23, REQ-31.
   for the 100 KB file), with `AudioImportSettings.LoadTypeKeyRoundTripsAndApplies` for the key, the hash and the
   export table. The export check is in `test_build_method.py::test_prebuilt_build_hears_the_projects_mixer_and_audio_settings`
   (fast: a stand-in runtime) as well as `test_prebuilt_audio.py` (a real player, `JASPER_SLOW_BUILD=1`).
+- **WP-B, REQ-36 revised (coordinator's decision, delegated by the product owner).** The first budget (a low-pass
+  on each of 32 voices adds at most 15 % to the null driver's mix of them) measured the biquad, not the design: a
+  low-pass costs about 1.4 times what SoLoud's mixing of a plain voice does (x3.1 before the biquad patch below,
+  x2.2 after). REQ-36 is now:
+  - the per-source wrapper costs at most 15 % over SoLoud filtering the same voices natively (the same
+    `BiquadResonantFilter` in the sound's own filter slot, which the engine cannot use on a shared sample, D2);
+  - a source with no effects plays the sample itself: no wrapper, no filter (AC5);
+  - 32 low-passed voices mix one 1024-frame block in under 600 us (about 3.3x the median measured on the build box).
+  `AudioSourceEffectsBench.LowPassCostOn32Voices` checks all three. It takes the median of five interleaved rounds of
+  31 blocks each, and `perfSlack()` enforces it (docs/testing.md). Measured on the build box (null driver, 48 kHz):
+  73-75 us a block without effects, 170-182 us with SoLoud's native low-pass on each voice, and 170-180 us through
+  the sources' effects (x0.98-1.00 of native). The wrapper adds nothing to the mix: a voice's instances are the
+  sample's own and the filters' own, and values are written only when they change. No optimisation was needed.
+  The SoLoud biquad now keeps its coefficients and state in locals (ledger entry in `engine/libs/soloud/CMakeLists.txt`).
+  This cut the filtered mix by about a third for the mixer's groups too.
+- **WP-B, REQ-5: the Unity filter aliases are in `editor/audio/SourceEffectEdit.{h,cpp}`**, not `editor/Catalog.cpp`.
+  That one list feeds the Add Component dialog (the Audio category and its search), the Search palette and MCP
+  `add_component`.
+- **WP-B, REQ-2: a longer echo delay is cut on a live voice.** An echo's delay longer than the one its voice started
+  with is cut to that delay (SoLoud sizes a voice's echo buffer at its first block). The next start takes the new
+  delay. The guide says so.
 
 ## Progress
 

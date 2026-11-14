@@ -22,6 +22,7 @@
 #include "subsystem/AudioSystem.h"
 
 #include "soloud.h"
+#include "soloud_biquadresonantfilter.h"
 
 #include <algorithm>
 #include <chrono>
@@ -269,33 +270,75 @@ TEST_F(AudioSourceEffects, EmptyOrBypassedPlaysTheSampleDirectly) {
     EXPECT_FALSE(bypassed.getComponent<AudioSourceComponent>().effectRuntime);
 }
 
+// REQ-36 (revised, spec Deviations): 32 voices of one clip, each with a 500 Hz low-pass, mixed one
+// 1024-frame block at a time on the null driver. The source's wrapper costs at most 15 % over SoLoud
+// filtering each voice natively (the same BiquadResonantFilter in the sound's own filter slot, which
+// the engine cannot use on a shared sample: D2), a source without effects plays the sample itself
+// (no wrapper, AC5), and a block stays under an absolute ceiling. Medians of interleaved rounds;
+// enforced through perfSlack() (docs/testing.md), printed always.
 TEST_F(AudioSourceEffectsBench, LowPassCostOn32Voices) {
+    constexpr int voices = 32;
+    constexpr unsigned int frames = 1024;
+    // the ceiling of one block: about 3x the box's measured median (docs/specs/S97-audio-gaps.md
+    // Deviations, REQ-36)
+    constexpr double ceilingMicros = 600.0;
+
     std::vector<AudioSource> sources;
-    for (int i = 0; i < 32; i++) sources.push_back(source("A"));
-    auto measure = [&](bool filtered) {
+    for (int i = 0; i < voices; i++) sources.push_back(source("A"));
+    SoLoud::BiquadResonantFilter native;
+    native.setParams(SoLoud::BiquadResonantFilter::LOWPASS, 500.0f, 1.0f);
+    std::vector<float> buffer(frames * 2);
+
+    enum class Mode { Plain, Native, Wrapper };
+    auto start = [&](Mode mode) {
+        for (AudioSource& sound : sources) sound.stop();
+        run(0.04);
+        SoLoud::AudioSource& sample = *sources[0].getComponent<AudioSourceComponent>().sample;
+        sample.setFilter(0, mode == Mode::Native ? &native : nullptr);
         for (AudioSource& sound : sources) {
             while (sound.getEffectCount() > 0) sound.removeEffect(1);
-            if (filtered) sound.addEffect("lowpass").setParameter("cutoff", 500.0f);
+            if (mode == Mode::Wrapper) sound.addEffect("lowpass").setParameter("cutoff", 500.0f);
             sound.play();
         }
         run(0.04);
+    };
+    // the median of 31 blocks, microseconds
+    auto blocks = [&]() {
         std::vector<double> times;
-        for (int i = 0; i < 5; i++) {
-            const auto start = std::chrono::steady_clock::now();
-            AudioSystem::mixManually(1.0);
-            times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        for (int i = 0; i < 31; i++) {
+            const auto begin = std::chrono::steady_clock::now();
+            soloud().mix(buffer.data(), frames);
+            times.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - begin).count());
         }
         std::sort(times.begin(), times.end());
-        return times[2];
+        return times[times.size() / 2];
     };
-    const double plain = measure(false);
-    const double filtered = measure(true);
-    EXPECT_EQ(sources[0].getVoiceCount(), 1);
-    const double ratio = filtered / plain;
-    std::printf("[bench] 32 voices, 1 s at 48 kHz on the null driver: %.2f ms plain, %.2f ms with a low-pass each (x%.3f)\n",
-                plain, filtered, ratio);
+    std::vector<double> plain, nativeTimes, wrapper;
+    for (int round = 0; round < 5; round++) {
+        start(Mode::Plain);
+        plain.push_back(blocks());
+        start(Mode::Native);
+        nativeTimes.push_back(blocks());
+        EXPECT_EQ(soloud().countAudioSource(*sources[0].getComponent<AudioSourceComponent>().sample), voices) << "native: the sample itself";
+        start(Mode::Wrapper);
+        wrapper.push_back(blocks());
+        EXPECT_EQ(soloud().countAudioSource(*sources[0].getComponent<AudioSourceComponent>().sample), 0) << "wrapped: no voice plays the sample itself";
+    }
+    start(Mode::Plain);
+    auto median = [](std::vector<double> values) {
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+    const double plainMicros = median(plain);
+    const double nativeMicros = median(nativeTimes);
+    const double wrapperMicros = median(wrapper);
+    const double ratio = wrapperMicros / nativeMicros;
+    std::printf("[bench] 32 voices, one 1024-frame block on the null driver: %.1f us without effects, %.1f us with SoLoud's own "
+                "low-pass on each voice, %.1f us through the sources' effects (x%.3f of native; ceiling %.0f us)\n",
+                plainMicros, nativeMicros, wrapperMicros, ratio, ceilingMicros);
     const double slack = editor::test::perfSlack();
     if (slack > 0.0) {
-        EXPECT_LE(ratio, 1.15 * slack) << "REQ-36";
+        EXPECT_LE(ratio, 1.15 * slack) << "REQ-36: the wrapper over SoLoud's native per-voice filter";
+        EXPECT_LE(wrapperMicros, ceilingMicros * slack) << "REQ-36: the block's ceiling";
     }
 }
