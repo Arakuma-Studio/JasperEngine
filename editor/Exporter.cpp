@@ -3477,19 +3477,15 @@ bool editor::Exporter::cookModels() {
     auto gatheredFuture = gathered.get_future();
     editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &families, &gatherError, &gathered]() {
         project->getAssetIndex().waitUntilReady();
-        gathered.set_value(ModelExport::gather(*project, families, inputs, gatherError));
+        // S98 REQ-9, REQ-12: a model the build leaves out is not cooked, nor an FBX imported for it
+        const std::string assetsRoot = project->getAssetRoots().assetsDir;
+        gathered.set_value(ModelExport::gather(*project, families, inputs, gatherError, [this, &assetsRoot](const std::string& assetPath) {
+            return strippingPlan.leftOutReason(assetsRoot.empty() ? assetPath : assetsRoot + "/" + assetPath).empty();
+        }));
     });
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
-    }
-    // S98 REQ-9, REQ-12: a model the build leaves out is not cooked (nor an FBX imported for it)
-    {
-        const std::string assetsRoot = project->getAssetRoots().assetsDir;
-        inputs.items.erase(std::remove_if(inputs.items.begin(), inputs.items.end(), [&](const ModelBatchItem& item) {
-            const std::string projectRelative = assetsRoot.empty() ? item.assetPath : assetsRoot + "/" + item.assetPath;
-            return !strippingPlan.leftOutReason(projectRelative).empty();
-        }), inputs.items.end());
     }
     // before the cook, which would read such an asset as a model and fail on it instead
     for (const ModelBatchItem& item : inputs.items) {

@@ -101,7 +101,7 @@ async def test_prepare(ed: Editor):
     S["scene"] = scene["scene"]["id"]
     await ed.call("create_entity", scene=S["scene"], type="sprite", name="Board", values={
         "sprite": {"width": 64, "height": 64},
-        "mesh": {"submeshes[0].material.baseColorTexture": "textures/used.png"},
+        "mesh": {"submeshes[0].material.baseColorTexture": "assets/textures/used.png"},
     })
     await ed.call("save_scene", scene=S["scene"])
     await ed.call("edit_build_scenes", action="add", scene=S["scene"])
@@ -114,11 +114,22 @@ async def test_prepare(ed: Editor):
     })
 
 
+async def drop_editor_import(ed: Editor, glb: Path) -> None:
+    """The editor's own model cook (its previews, S53) imports a new FBX by itself: wait for that
+    import, then delete it, so what a later step imports is that step's"""
+    for _ in range(200):
+        if glb.is_file():
+            break
+        await ed.call("wait", frames=5)
+    await ed.call("wait", frames=10)
+    glb.unlink(missing_ok=True)
+
+
 async def test_play_imports_only_shipped_fbx(ed: Editor):
     """AC11: Referenced Only with an FBX nothing uses: Play start leaves it unimported; under Ship All
     Assets Play imports it, as before"""
     glb = ed.project / ".jasperengine" / "imported" / "models" / "unused.fbx.glb"
-    ed.check(not glb.exists(), "not imported before Play")
+    await drop_editor_import(ed, glb)
     await ed.call("play", action="start", scene=S["scene"], timeout_seconds=120)
     await ed.call("play", action="stop")
     ed.check(not glb.exists(), f"Play imported the FBX the build would not ship: {glb}")
@@ -129,12 +140,12 @@ async def test_play_imports_only_shipped_fbx(ed: Editor):
         ed.check(glb.is_file(), "under Ship All Assets Play imports every FBX")
     finally:
         await ed.call("set_project_settings", values={"player.asset_stripping": "referenced_only"})
-    glb.unlink()
 
 
 async def test_referenced_only_ships_what_the_build_references(ed: Editor):
     """AC9: the sprite's texture, the Lua literal's and Always Include ship; the unused texture, the
     unused FBX and the excluded folder are listed with their reason"""
+    await drop_editor_import(ed, ed.project / ".jasperengine" / "imported" / "models" / "unused.fbx.glb")
     job = await source_export(ed, "export-referenced")
     out = job["out"]
     textures = cooked_textures(out)
