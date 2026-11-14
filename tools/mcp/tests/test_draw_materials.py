@@ -29,8 +29,9 @@ async def make_box(ed: Editor, name: str):
     return eid
 
 
-def mesh_of(entity: dict) -> dict:
-    return entity.get("components", {}).get("mesh", {})
+async def mesh_values(ed: Editor, entity, *properties: str) -> dict:
+    got = await ed.call("get_entity", entity=entity, components=["mesh"], properties=list(properties), detail="values")
+    return got["components"]["mesh"]
 
 
 async def test_property_overrides(ed: Editor):
@@ -40,18 +41,18 @@ async def test_property_overrides(ed: Editor):
 
         set_ = await ed.call("set_shader_uniform", entity=eid, name="baseColor", value=[1, 0, 0, 1], override=True)
         ed.check_eq(set_.get("property"), "propertyOverrides.values", f"{set_}")
-        overrides = mesh_of(await ed.call("get_entity", entity=eid)).get("propertyOverrides", {})
+        overrides = (await mesh_values(ed, eid, "propertyOverrides")).get("propertyOverrides", {})
         ed.check_eq(overrides.get("values"), {"baseColor": [1, 0, 0, 1]}, f"get_entity lists the override: {overrides}")
 
         # a submesh's override beside the Mesh's
         await ed.call("set_shader_uniform", entity=eid, submesh=0, name="tiling", value=[2, 2, 0, 0], override=True)
-        submesh = mesh_of(await ed.call("get_entity", entity=eid)).get("submeshes", [{}])[0]
-        ed.check_eq(submesh.get("propertyOverrides", {}).get("values"), {"tiling": [2, 2, 0, 0]}, f"{submesh.get('propertyOverrides')}")
+        submesh = (await mesh_values(ed, eid, "submeshes[0].propertyOverrides")).get("submeshes[0].propertyOverrides", {})
+        ed.check_eq(submesh.get("values"), {"tiling": [2, 2, 0, 0]}, f"{submesh}")
 
         # one undo step each
         await ed.call("undo", scope="scene")
-        submesh = mesh_of(await ed.call("get_entity", entity=eid)).get("submeshes", [{}])[0]
-        ed.check(not submesh.get("propertyOverrides", {}).get("values"), f"undone: {submesh.get('propertyOverrides')}")
+        submesh = (await mesh_values(ed, eid, "submeshes[0].propertyOverrides")).get("submeshes[0].propertyOverrides", {})
+        ed.check(not submesh.get("values"), f"undone: {submesh}")
 
         # a library shader refuses a member it does not declare, as a material value does
         await ed.check_error("set_shader_uniform", entity=eid, name="nope", value=1, override=True, contains="has no parameter")
@@ -65,9 +66,9 @@ async def test_property_overrides(ed: Editor):
         await ed.call("save_scene", scene=path)
         await ed.call("close_scene", scene=path)
         await ed.call("open_scene", scene=path)
-        reopened = mesh_of(await ed.call("get_entity", entity="Zone")).get("propertyOverrides", {})
+        reopened = (await mesh_values(ed, "Zone", "propertyOverrides")).get("propertyOverrides", {})
         ed.check_eq(reopened.get("values"), {"baseColor": [1, 0, 0, 1]}, f"after a reopen: {reopened}")
-        lit_reopened = mesh_of(await ed.call("get_entity", entity="LitBox")).get("propertyOverrides", {})
+        lit_reopened = (await mesh_values(ed, "LitBox", "propertyOverrides")).get("propertyOverrides", {})
         ed.check_eq(lit_reopened.get("values"), {"baseColorFactor": [0, 1, 0, 1]}, f"{lit_reopened}")
 
 
@@ -88,8 +89,8 @@ async def test_custom_blend_factors(ed: Editor):
         eid = await make_box(ed, "Smoke")
         await ed.call("set_properties", entity=eid, values={"mesh": {
             M + "blendMode": "custom", M + "blendSrc": "dst_color", M + "blendDst": "src_color", M + "blendOp": "add"}})
-        material = mesh_of(await ed.call("get_entity", entity=eid)).get("submeshes", [{}])[0].get("material", {})
-        ed.check_eq((material.get("blendMode"), material.get("blendSrc"), material.get("blendDst")), ("custom", "dst_color", "src_color"), f"{material}")
+        got = await mesh_values(ed, eid, M + "blendMode", M + "blendSrc", M + "blendDst")
+        ed.check_eq((got.get(M + "blendMode"), got.get(M + "blendSrc"), got.get(M + "blendDst")), ("custom", "dst_color", "src_color"), f"{got}")
         await ed.check_error("set_properties", entity=eid, values={"mesh": {M + "blendSrc": "dst_colour"}})
 
 
@@ -142,10 +143,9 @@ async def test_lua_property_block_and_textures(ed: Editor):
             ed.check_eq(values[6], TEXTURE, f"Mesh:setTexture writes the library shader's main texture: {values}")
             ed.check_eq(values[7], "boolean", f"Texture.ready is a property: {values}")
             await ed.call("wait", frames=3)
-            board = await ed.call("get_entity", entity="Board")
-            textures = mesh_of(board).get("submeshes", [{}])[0].get("material", {}).get("shaderTextures", {})
+            textures = (await mesh_values(ed, "Board", M + "shaderTextures")).get(M + "shaderTextures", {})
             ed.check(TEXTURE in str(textures), f"get_entity shows the shader texture: {textures}")
-            console = await ed.call("read_console", level="error")
+            console = await ed.call("read_console", levels=["error"])
             ed.check(not console.get("entries"), f"no errors: {console}")
         finally:
             await ed.call("play", action="stop")
