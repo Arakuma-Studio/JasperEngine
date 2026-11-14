@@ -64,8 +64,10 @@ void FbxImportQueue::request(const fs::path& fbx, bool force) {
     // a check of a file converting now would find it current
     if (!force && running.count(key)) return;
     enter();
-    bool& forced = queued[key];
-    forced = forced || force;
+    auto [it, added] = queued.emplace(key, force);
+    it->second = it->second || force;
+    // a file asked for again (a cook polling each frame) is no news for start()
+    if (added) requests++;
 }
 
 bool FbxImportQueue::isPending(const fs::path& fbx) const {
@@ -100,7 +102,9 @@ std::vector<FbxImportQueue::Item> FbxImportQueue::takeQueued() {
 void FbxImportQueue::start() {
     {
         std::lock_guard<std::mutex> lock(mutex);
-        if (jobRunning || queued.empty()) return;
+        const bool settled = requests == requestsSeen;
+        requestsSeen = requests;
+        if (jobRunning || queued.empty() || !settled) return;
         jobRunning = true;
     }
     // hashing and converting take seconds: a Background job (S06), Heavy (a conversion parses the

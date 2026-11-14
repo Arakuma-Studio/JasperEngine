@@ -102,34 +102,26 @@ async def models_loaded(ed: Editor, sid) -> bool:
 
 
 async def test_tools_answer_during_import():
-    """AC25. Red before the change: no import job runs (nothing to list) and a model load that needs
-    an FBX converts it on the main thread, which every other call waits for"""
+    """AC25. Red before the change (the delay hook alone): create_entity converts the FBX on the main
+    thread, so the calls behind it answer only once it is done, and no import job is listed"""
     project = await project_copy()
     async with Editor(project=str(project), label="import-delayed", env={DELAY_ENV: "5000"}) as ed:
         started = time.monotonic()
         sid = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
         took = {"open_scene": time.monotonic() - started}
-
-        async def running():
-            job = import_job(await ed.call("editor_status"))
-            return job if job and job["done"] < job["total"] else None
-
-        await wait_until(ed, "the model_import job", running)
+        # a model whose FBX was never imported: the call waits for the import, the others do not wait for it
+        create = asyncio.ensure_future(ed.call("create_entity", scene=sid, type="model", name="D",
+                                               model=f"{S['models']}/d.fbx", select=False, timeout=300))
+        await asyncio.sleep(0.5)
         for tool, args in (("editor_status", {}), ("get_scene_tree", {"scene": sid}), ("read_console", {"limit": 20})):
             started = time.monotonic()
             await ed.call(tool, **args)
             took[tool] = time.monotonic() - started
-        # a model whose FBX imports later: the call waits for it, the others do not wait for that call
-        create = asyncio.ensure_future(ed.call("create_entity", scene=sid, type="model", name="D",
-                                               model=f"{S['models']}/d.fbx", select=False, timeout=300))
-        await asyncio.sleep(0.5)
-        started = time.monotonic()
+            ed.check(not create.done(), f"{tool} answered while create_entity waits for its FBX's import")
+
         raw = await ed.call_raw("editor_status")
-        took["editor_status during create_entity"] = time.monotonic() - started
-        ed.check(not create.done(), "create_entity waits for its FBX's import")
         job = import_job(raw.value)
-        ed.check(job is not None and job["done"] < job["total"],
-                 f"every call answered while the import ran: {raw.value['jobs']}")
+        ed.check(job is not None and job["done"] < job["total"], f"the import job runs: {raw.value['jobs']}")
         ed.check_in("Importing models:", raw.text, "the status text names the import")
 
         await wait_until(ed, "the scene's models to appear once imported", lambda: models_loaded(ed, sid))
@@ -147,14 +139,15 @@ async def test_pending_import_logs_no_error():
     async with Editor(project=str(project), label="import-fresh", env={DELAY_ENV: "1000"}) as ed:
         cursor = (await ed.call("read_console", limit=1)).get("next_cursor")
         sid = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
+        jobs = []
 
-        async def listed():
-            return import_job(await ed.call("editor_status"))
+        async def loaded():
+            job = import_job(await ed.call("editor_status"))
+            if job:
+                jobs.append(job)
+            return await models_loaded(ed, sid)
 
-        job = await wait_until(ed, "the model_import job", listed)
-        ed.check_eq(job["total"], len(MODELS), f"the job counts the scene's imports: {job!r}")
-        ed.check(0 <= job["done"] <= job["total"], f"{job!r}")
-        await wait_until(ed, "the scene's models to appear once imported", lambda: models_loaded(ed, sid))
+        await wait_until(ed, "the scene's models to appear once imported", loaded)
 
         args = {"since": cursor} if cursor is not None else {}
         problems = (await ed.call("read_console", only_problems=True, limit=1000, **args))["entries"]
@@ -163,4 +156,7 @@ async def test_pending_import_logs_no_error():
                      f"a pending import is no failure: {entry['message']}")
         lines = (await ed.call("read_console", regex=r"Importing \d+ models? \(first open\)", limit=1000, **args))["entries"]
         ed.check_eq(len(lines), 1, f"one line for the batch: {[e['message'] for e in lines]}")
-        ed.check_in(f"Importing {len(MODELS)} models (first open)", lines[0]["message"] if lines else "")
+        ed.check_in(f"Importing {len(MODELS)} models (first open): they appear when ready", lines[0]["message"] if lines else "")
+        ed.check(jobs, "editor_status listed the model_import job while it ran")
+        ed.check(all(0 <= job["done"] <= job["total"] for job in jobs), f"done/total: {jobs}")
+        ed.check_eq(max((job["total"] for job in jobs), default=0), len(MODELS), f"the job counts the scene's imports: {jobs}")

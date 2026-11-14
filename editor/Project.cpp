@@ -1234,7 +1234,7 @@ editor::Project::ModelImport editor::Project::requestModelImport(const fs::path&
     if (!force && !imported && fbxImports->hasFailed(fbxPath)) {
         return ModelImport::Failed;
     }
-    if (force || !imported || !fbxImports->isPending(fbxPath)) {
+    if (force || !fbxImports->isPending(fbxPath)) {
         fbxImports->request(fbxPath, force);
     }
     return imported && !force ? ModelImport::Ready : ModelImport::Pending;

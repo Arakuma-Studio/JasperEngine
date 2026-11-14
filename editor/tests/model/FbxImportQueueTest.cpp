@@ -4,7 +4,8 @@
 // The FBX import queue (spec S98 D10, REQ-32, REQ-33): what is queued is pending until converted,
 // a file is converted once however often it is asked for, files already current count nothing, a
 // batch counts done/total and says "Importing N models (first open)" once, a failed file waits for
-// a change (or a forced reimport), and the Background job converts the queue as drain() does.
+// a change (or a forced reimport), and the Background job converts the queue as drain() does, once
+// a call of start() finds nothing new queued (the requests of a scene's load make one batch).
 
 #include <gtest/gtest.h>
 
@@ -176,6 +177,10 @@ TEST(FbxImportQueue, TheJobConvertsTheQueue) {
     queue.start();   // nothing queued: no job
     queue.request(a);
     queue.request(b);
+    queue.start();   // files queued since the last call: the next one starts them
+    EXPECT_TRUE(queue.isPending(a));
+    queue.wait();
+    EXPECT_EQ(importer.count(a), 0);
     queue.start();
     queue.wait();
     EXPECT_EQ(importer.count(a), 1);

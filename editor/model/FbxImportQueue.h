@@ -57,8 +57,9 @@ namespace jasperengine::editor {
         bool isPending(const std::filesystem::path& fbx) const;
         // Its last conversion failed and the FBX has not changed since
         bool hasFailed(const std::filesystem::path& fbx) const;
-        // Submits the job when a file is queued and none runs. The main thread calls it once a
-        // frame, so the requests of a frame (a scene's models) make one batch.
+        // Submits the job when a file is queued, none runs and nothing was queued since the last
+        // call. The main thread calls it once a frame, so the requests of a scene's load, which
+        // can take a few frames, make one batch.
         void start();
         // Converts the file on this thread, once a conversion of it running elsewhere ends; false
         // when it failed. Never on the main thread.
@@ -96,6 +97,8 @@ namespace jasperengine::editor {
         std::map<std::filesystem::path, Stamp> failures;
         Progress counts;
         bool announced = false;
+        uint64_t requests = 0;      // files queued so far
+        uint64_t requestsSeen = 0;  // ... at the last start()
         bool jobRunning = false;
         jobs::Task<void> job;
     };
