@@ -1654,7 +1654,10 @@ namespace jasperengine::editor{
         static constexpr std::array<FoliageQuality, 3> defaultFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
         static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
-        static constexpr int defaultHtmlUiMsaaSamples = 4;
+        // S92 R16: new projects are Auto (0: 1 sample on phones and the web, 4 on desktop); a
+        // project.yaml without the key had 4
+        static constexpr int defaultHtmlUiMsaaSamples = 0;
+        static constexpr int legacyHtmlUiMsaaSamples = 4;
         static constexpr int defaultPixelsPerUnit = 1;
         static constexpr int minPixelsPerUnit = 1;
         static constexpr int maxPixelsPerUnit = 256;
@@ -1819,8 +1822,8 @@ namespace jasperengine::editor{
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
 
-        // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
-        // them), applied to the editor's documents at once and written into exports
+        // MSAA samples of the HTML UI targets (0 = Auto, else 1, 2, 4 or 8; others round down to
+        // one of them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports

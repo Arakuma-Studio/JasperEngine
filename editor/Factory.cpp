@@ -3235,6 +3235,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
+    // the screen HTML UI documents (S92), away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        out << ind2 << "scene->setHtmlUiRenderMode(UIRenderMode::" << (scene->getHtmlUiRenderMode() == UIRenderMode::CAMERA ? "CAMERA" : "OVERLAY") << ");\n";
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        out << ind2 << "scene->setHtmlUiMsaaSamples(" << scene->getHtmlUiMsaaSamples() << ");\n";
     // planar reflections, away from their defaults
     {
         const SceneSettings defaults;

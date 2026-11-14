@@ -1488,6 +1488,8 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &setTrackedMember<&UIDocumentComponent::textureHeight>)
         .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &setTrackedMember<&UIDocumentComponent::inputSurface>)
         .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &setTrackedMember<&UIDocumentComponent::pixelRatio>)
+        // S92: a texture-mode document's MSAA samples (0: the scene's); next frame
+        .addProperty("msaaSamples", &UIDocumentComponent::msaaSamples, &setTrackedMember<&UIDocumentComponent::msaaSamples>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();

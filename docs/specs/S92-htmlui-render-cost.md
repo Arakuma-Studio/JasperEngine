@@ -909,3 +909,34 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 
   Every R34 budget holds there (later <= 2x + 1 us of overload 1, overload 1 and wrong calls
   <= 1.1x stock); enforced only with `JASPER_TEST_PERF_SLACK`.
+
+### Package C (composite stage, MSAA settings)
+
+- **Setting names.** `set_scene_settings` / `get_scene_settings` take `html_ui_render_mode` (`overlay`,
+  `camera`) and `html_ui_msaa_samples`: the scene-property catalog is snake_case (`scene_color_scale`).
+  The scene file keys are `htmlUiRenderMode` and `htmlUiMsaaSamples`, Lua `scene.htmlUiRenderMode` and
+  `scene.htmlUiMsaaSamples`, as specified.
+- **R13, Pixel Perfect bars.** The documents composite in the Pixel Perfect blit (the pass that draws the
+  bars), at the screen's resolution over the view rect (the k x base image), not into the base image
+  scaled up with it. They do not extend into the bars: the document's canvas is the view rect, and
+  `FullPathGoldenTest.Letterbox` pins that letterbox bars stay untouched. Covering the bars would need a
+  canvas the size of the screen, a layout change outside S92. `HtmlUIScene.PixelPerfectBarsCoveredByOverlay`
+  checks the resolution (red before: 0 mixed 2 x 2 blocks, every block one colour).
+- **R13, "no pass is added"** is inferred from the code (the documents draw inside the uber, blit, chain
+  or SSR composite pass that writes the view); the htmlui suite's build records no pass list, so no test
+  counts passes.
+- **Cooked scenes.** The two scene settings are appended to the cooked scene settings record as format 1.6
+  (`CookedScene.h` `FORMAT_MINOR` 6), so exported games carry them; a 1.5 record reads the defaults
+  (`CookedScene.SceneSettingsKeepHtmlUi`).
+- **R32 `samples`, `targetBytes`** are filled by `UIDocumentSystemRender.cpp` from the context's target when
+  the statistics are read (layers: colour and depth-stencil at every sample plus the resolve image;
+  single-sampled post-process targets; region layers), not by the renderer's frame.
+- **AC16, Lua in Play.** `eval_lua` captures `print`, so the MCP test reads the printed line from its result
+  and the resulting `samples` from `inspect_ui render_stats`, not from `read_console`.
+- **R23, FORK.md.** Package C has no fork patch; the "S92 patches" table and its rows (S92-F1..F6) are
+  B1's and B2's.
+- **Red controls (package C).** With the placement reverted (no later-pass composite, the world canvas for
+  every non-perspective camera): `HtmlUIScene.OverlayIgnoresRenderScale` (3644 pixels differ),
+  `.OverlayIgnoresFxaaAndCrt` (230400), `.OrthoCameraFillsViewport`, `.UiCameraPannedFillsViewport` and
+  `.PixelPerfectBarsCoveredByOverlay` fail; `.CameraModeKeepsOldPlacement`'s golden
+  (`overlay_camera_mode_scaled.png`) was captured in that state.

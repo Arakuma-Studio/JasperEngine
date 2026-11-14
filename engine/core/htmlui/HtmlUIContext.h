@@ -31,6 +31,7 @@ namespace Rml {
 
 namespace jasperengine {
 
+    enum class Platform;   // Engine.h
     class RmlRenderer;
     class RmlRenderTarget;
     class RmlTextInputHandler;
@@ -131,10 +132,17 @@ namespace jasperengine {
         // the next render() draws whatever it records: content the frame signature cannot see
         // changed (native drawing, render settings; S92 R2)
         void requestRedraw();
-        // MSAA samples of every UI target: the preferred count (1/2/4/8, default 4), 1 when
-        // the device cannot multisample RGBA8 and DEPTH_STENCIL attachments
+        // MSAA samples of the UI targets (S92 R16, R19): the project's count (0 = Auto, else
+        // 1/2/4/8; default 4), which a context's own override replaces (the scene's setting for
+        // its screen context, the component's or the scene's for a texture-mode one). Auto is
+        // autoSampleCount of the running platform. getSampleCount clamps the result to the
+        // device: 1 when it cannot multisample RGBA8 and DEPTH_STENCIL attachments
         static void setPreferredSampleCount(int samples);
         static int getPreferredSampleCount();
+        static int autoSampleCount(Platform platform);   // 1 on Android, iOS and the web, 4 on desktop
+        void setSampleCountOverride(int samples);         // 0: the project's
+        int getSampleCountOverride() const;
+        int getRequestedSampleCount() const;              // before the device clamp
         int getSampleCount() const;
 
     private:
@@ -151,6 +159,7 @@ namespace jasperengine {
         float pixelRatio = 1.0f;
         float densityRatio = 1.0f;
         bool renderedOnce = false;
+        int sampleCountOverride = 0;   // S92 R19: 0 = the project's preferred count
         // the element a primary button press started on, until the release (RmlUi keeps it private)
         Rml::ObserverPtr<Rml::Element> activeElement;
         int mouseButtons = 0;   // the RmlUi mouse buttons held (bit per button), for processMouseCancel
