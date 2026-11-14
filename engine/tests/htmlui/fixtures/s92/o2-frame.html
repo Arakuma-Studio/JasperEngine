@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: o2-frame</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): the port's O2 frame: five gradients on rounded boxes (the port measured 30 passes).
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  .g { position: absolute; border-radius: 18px; }
+</style>
+</head>
+<body>
+  <div class="g" style="left: 60px; top: 60px; width: 420px; height: 140px; background-image: linear-gradient(to bottom, #2b5876, #4e4376)"></div>
+  <div class="g" style="left: 80px; top: 80px; width: 380px; height: 40px; background-image: linear-gradient(to right, #1ec921 0%, #ffc605 60%, #f34594 100%)"></div>
+  <div class="g" style="left: 80px; top: 130px; width: 380px; height: 50px; border-radius: 25px; background-image: radial-gradient(circle, #ffffff, #0dcaf2)"></div>
+  <div class="g" style="left: 500px; top: 60px; width: 140px; height: 140px; border-radius: 70px; background-image: linear-gradient(135deg, #f98d44, #d938b7)"></div>
+  <div class="g" style="left: 660px; top: 60px; width: 200px; height: 140px; background-image: linear-gradient(to top, #000000 0px, #333333 20px, #666666 60px)"></div>
+  <span id="tick">0</span>
+</body>
+</html>

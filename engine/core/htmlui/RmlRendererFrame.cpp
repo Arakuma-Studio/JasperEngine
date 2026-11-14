@@ -211,8 +211,19 @@ uint64_t RmlRenderer::signatureOf(size_t first, size_t end, Rml::Vector2i origin
 
     uint64_t h = frameMix(0x592f4a3eull, end - first);
     h = transformAt >= 0 ? matrixHash(h, commands[(size_t)transformAt]) : frameMix(h, 0);
-    h = frameMix(h, scissorEnableAt >= 0 ? commands[(size_t)scissorEnableAt].flag : 0u);
-    if (scissorRegionAt >= 0){
+    const bool scissorAtStart = scissorEnableAt >= 0 && commands[(size_t)scissorEnableAt].flag != 0;
+    h = frameMix(h, scissorAtStart ? 1u : 0u);
+    // the region in effect at first matters when the scissor is on there, or turned on in the
+    // range before a region of its own is set (a layer scope's key: where it lies otherwise not)
+    bool startRegionUsed = scissorAtStart;
+    for (size_t i = first; !startRegionUsed && i < end; i++){
+        if (commands[i].type == CommandType::SCISSOR_REGION)
+            break;
+        if (commands[i].type == CommandType::SCISSOR_ENABLE && commands[i].flag)
+            startRegionUsed = true;
+    }
+    if (!startRegionUsed){
+    }else if (scissorRegionAt >= 0){
         const Command& c = commands[(size_t)scissorRegionAt];
         h = scissorHash(h, c.i[0], c.i[1], c.i[2], c.i[3]);
     }else{
