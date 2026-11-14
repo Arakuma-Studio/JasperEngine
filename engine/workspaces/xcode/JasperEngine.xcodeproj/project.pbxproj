@@ -4919,6 +4919,21 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E473BBFA78FB6C0C915 /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E476E579B2C1F79BEA7 /* PhysicsQueries3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */; };
+		4A534E47D29CEE5B8C15A3A9 /* PhysicsQueries3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */; };
+		4A534E47851B10C35A83E6A9 /* WorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478B432BBA648C03AD /* WorldSettings.cpp */; };
+		4A534E4784EFA42221E2F9E0 /* WorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478B432BBA648C03AD /* WorldSettings.cpp */; };
+		4A534E477487F79D16498391 /* PhysicsQueriesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */; };
+		4A534E47A51D00E6AB5C830D /* PhysicsQueriesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */; };
+		4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */; };
+		4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */; };
+		4A534E47B0ACCE2C50EB2E86 /* PhysicsQueries2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */; };
+		4A534E479A618D33EE985DFE /* PhysicsQueries3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */; };
+		4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */; };
+		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
+		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9511,16 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries2D.cpp; sourceTree = "<group>"; };
+		4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries3D.cpp; sourceTree = "<group>"; };
+		4A534E478B432BBA648C03AD /* WorldSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WorldSettings.cpp; sourceTree = "<group>"; };
+		4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueriesLua.cpp; sourceTree = "<group>"; };
+		4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemWorldSettings.cpp; sourceTree = "<group>"; };
+		4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueries2D.h; sourceTree = "<group>"; };
+		4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueries3D.h; sourceTree = "<group>"; };
+		4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryOptions.h; sourceTree = "<group>"; };
+		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
+		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10065,6 +10090,8 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */,
+				4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10922,6 +10949,13 @@
 				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 				54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */,
 				54574C442B54D4346813C175 /* TerrainWorldCollision.h */,
+				4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */,
+				4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */,
+				4A534E478B432BBA648C03AD /* WorldSettings.cpp */,
+				4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */,
+				4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */,
+				4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */,
+				4A534E47C03036C6074531C9 /* WorldSettings.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -12337,6 +12371,7 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -16843,6 +16878,11 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E47B0ACCE2C50EB2E86 /* PhysicsQueries2D.h in Headers */,
+				4A534E479A618D33EE985DFE /* PhysicsQueries3D.h in Headers */,
+				4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */,
+				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
+				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19551,11 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */,
+				4A534E476E579B2C1F79BEA7 /* PhysicsQueries3D.cpp in Sources */,
+				4A534E47851B10C35A83E6A9 /* WorldSettings.cpp in Sources */,
+				4A534E477487F79D16498391 /* PhysicsQueriesLua.cpp in Sources */,
+				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20515,11 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E473BBFA78FB6C0C915 /* PhysicsQueries2D.cpp in Sources */,
+				4A534E47D29CEE5B8C15A3A9 /* PhysicsQueries3D.cpp in Sources */,
+				4A534E4784EFA42221E2F9E0 /* WorldSettings.cpp in Sources */,
+				4A534E47A51D00E6AB5C830D /* PhysicsQueriesLua.cpp in Sources */,
+				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
