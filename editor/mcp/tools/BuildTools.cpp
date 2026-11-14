@@ -2371,7 +2371,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Build Project";
         tool.description =
             "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
-            "native code); desktop/web: this computer/web; source: a CMake project. Saves scenes first. Past "
+            "native code); desktop/web: this computer/web; source: a CMake project. Past "
             "timeout_seconds: {job_id} (get_job). Result: output_dir, artifacts, executable, errors, warnings, log_file.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"player", "desktop", "web", "source"}), "desktop")},
