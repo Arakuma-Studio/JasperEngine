@@ -2040,6 +2040,8 @@ std::vector<Setting> mcpSettingsTable() {
                 const std::string family = modelFamilyName((ModelFamily)f);
                 // each R8 setting's default for models that do not set it ("" = the built-in default)
                 for (const std::string& metaKey : modelSettingKeys()) {
+                    // the FBX conversion's keys are each model's own
+                    if (isModelOnlySettingKey(metaKey)) continue;
                     const std::vector<std::string>& choices = modelEnumValues(metaKey);
                     const bool isBool = metaKey == "weldVertices" || metaKey == "shipSource";
                     std::vector<std::string> values;
@@ -2148,6 +2150,16 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            meshSetting("mesh.preserve_hierarchy_for_new_models", "bool",
+                        "Models made in the editor start with Preserve Hierarchy on (every glTF node its own GameObject; "
+                        "on in new projects).",
+                        [](const ModelProjectSettings& m) { return Json(m.preserveHierarchyForNewModels); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            bool flag = false;
+                            if (!readBool(v, flag, e)) return false;
+                            m.preserveHierarchyForNewModels = flag;
+                            return true;
+                        });
             // Project Settings > Animation (S77 R38); stored with the model settings
             meshSetting("animation.animation_entities", "enum",
                         "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "

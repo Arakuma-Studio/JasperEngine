@@ -69,6 +69,9 @@ namespace jasperengine::editor {
         std::string previewError;
         Texture previewTexture;
         int previewSerial = 0;
+        // the takes of the selected FBX (Rest Pose's Take), read once a selection
+        std::vector<std::string> takes;
+        std::string takesKey;
 
         void select(const std::vector<std::filesystem::path>& selection);
         ModelFamily shownFamily() const;
@@ -80,6 +83,8 @@ namespace jasperengine::editor {
         void drawPreview();
         void drawMeshes(const ResolvedModelSettings& resolved);
         void drawLevels(const ResolvedModelSettings& resolved);
+        // Rest Pose and its Take: the FBX conversion's, so the Default tab's alone (S94 F40)
+        void drawRestPose(const ModelImportSettings& settings);
         void drawBeforeAfter();
         void drawPlatformTable();
         void drawIssues();
