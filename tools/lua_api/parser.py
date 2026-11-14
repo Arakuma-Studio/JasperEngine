@@ -1968,6 +1968,10 @@ OVERRIDES = {
     },
 }
 
+# S95 REQ-1: Quaternion.euler reads its order by hand (an enum argument takes any value)
+OVERRIDES[('Quaternion', 'euler')] = {
+    'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],

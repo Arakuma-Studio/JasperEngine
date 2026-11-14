@@ -941,6 +941,65 @@ void LuaBinding::init(){
 
 }
 
+#ifndef DISABLE_LUA_BINDINGS
+// A binary metamethod of a bound class gets nil as its first operand from `nil + v` or
+// `nil < v`, and LuaBridge reads a nil self as a null object: the process crashed (S95 REQ-2).
+// Upvalue 1 is the class's metamethod, upvalue 2 its name.
+static int nilOperandGuard(lua_State* L){
+    if (lua_isnil(L, 1))
+        return luaL_error(L, "attempt to perform '%s' on a nil value", lua_tostring(L, lua_upvalueindex(2)));
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);
+    return lua_gettop(L);
+}
+
+// What a script can reach of LuaBridge's class tables, made safe (S95 REQ-2):
+// - The class and const tables are their own metatables, so the one a script reaches
+//   (debug.getmetatable(Vector3())) passed for an instance of its class: LuaBridge read the
+//   table as a userdata (tostring(mt) or v + mt crashed the process). Each gets an empty
+//   metatable instead: a call with one is a type error, tostring gives "table: 0x...". LuaBridge
+//   reads these tables raw, never through their metatable.
+// - Their binary metamethods refuse a nil first operand (nilOperandGuard).
+static void hardenClassTables(lua_State* L){
+    static const char* const binaryMetamethods[] = {"__add", "__sub", "__mul", "__div", "__mod", "__pow", "__idiv",
+        "__band", "__bor", "__bxor", "__shl", "__shr", "__concat", "__lt", "__le"};
+    lua_newtable(L);
+    lua_pushboolean(L, 0);
+    lua_setfield(L, -2, "__metatable");  // still hidden from getmetatable
+    const int empty = lua_gettop(L);
+    lua_pushnil(L);
+    while (lua_next(L, LUA_REGISTRYINDEX)){
+        if (lua_islightuserdata(L, -2) && lua_istable(L, -1) && lua_getmetatable(L, -1)){
+            const bool ownMetatable = lua_rawequal(L, -1, -2);
+            lua_pop(L, 1);
+            lua_rawgetp(L, -1, luabridge::detail::getTypeKey());
+            const bool classTable = ownMetatable && lua_type(L, -1) == LUA_TSTRING;
+            lua_pop(L, 1);
+            if (classTable){
+                for (const char* name : binaryMetamethods){
+                    lua_pushstring(L, name);
+                    lua_rawget(L, -2);
+                    if (lua_isfunction(L, -1)){
+                        lua_pushstring(L, name);
+                        lua_pushcclosure(L, nilOperandGuard, 2);
+                        lua_pushstring(L, name);
+                        lua_insert(L, -2);
+                        lua_rawset(L, -3);
+                    }else{
+                        lua_pop(L, 1);
+                    }
+                }
+                lua_pushvalue(L, empty);
+                lua_setmetatable(L, -2);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+#endif
+
 void LuaBinding::registerClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     // luaL_openlibs() open all libraries: base, string, io, os, package, table, debug
@@ -998,6 +1057,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerHtmlUIWidgetClasses(L);
 #endif
     registerScriptClasses(L);
+    // last: every class is registered
+    hardenClassTables(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }
@@ -1667,6 +1728,7 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 void LuaBinding::registerMathClassesIn(lua_State* L) {
 #ifndef DISABLE_LUA_BINDINGS
     registerMathClasses(L);
+    hardenClassTables(L);
 #endif
 }
 

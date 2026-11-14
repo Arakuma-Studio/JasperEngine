@@ -1778,15 +1778,30 @@ assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
 | `Quaternion()` | identity (w=1); same as `Quaternion.IDENTITY` |
 | `Quaternion(w, x, y, z)` | raw components (w first) |
 | `Quaternion(xDeg, yDeg, zDeg)` | Euler angles in default units (degrees), ZYX order |
-| `Quaternion(x, y, z, RotationOrder.XYZ)` | Euler with explicit order |
-| `Quaternion(angle, axisVector3)` | angle-axis |
+| `Quaternion.euler(x, y, z [, order])` | Euler angles with an order (`RotationOrder.*`, default ZYX, as `Quaternion(x, y, z)`); four numbers to the constructor are always `(w, x, y, z)` |
+| `Quaternion(angle, axisVector3)` | angle-axis (a unit axis); `Quaternion.angleAxis(angle, axis)` normalizes the axis (Unity's `AngleAxis`) |
 | `Quaternion(Matrix3)`, `Quaternion(Matrix4)`, `Quaternion(xAxis, yAxis, zAxis)` | |
 | `Quaternion.IDENTITY` | static |
 | fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector, `* number` / `number *` scales; `+ - unary- == tostring` | |
 | methods | `fromEulerAngles(x, y, z, order)`, `getEulerAngles(order)`, `fromAngle(a)` (Z axis), `fromAngleAxis(a, axis)`, `fromAxes(...)`, `fromRotationMatrix(m)`, `getRotationMatrix()`, `xAxis() yAxis() zAxis()`, `dot(q) norm() inverse() unitInverse() exp() log()`, `normalize() normalized() normalizeL()`, `getRoll() getPitch() getYaw()` (default units) |
 | static | `Quaternion.slerp(t, a, b [, shortestPath])`, `Quaternion.nlerp(t, a, b [, shortestPath])`, `Quaternion.squad(...)`, `Quaternion.slerpExtraSpins(...)`, `Quaternion.lookRotation(forward [, up])` |
 
-`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`.
+`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`. An order names the product of the three
+axis rotations, left to right, so the last letter turns a vector first:
+
+| Unity | JasperEngine |
+|---|---|
+| `Quaternion.Euler(x, y, z)` (z, then x, then y) | `Quaternion.euler(x, y, z, RotationOrder.YXZ)` |
+| `Quaternion.AngleAxis(angle, axis)` | `Quaternion.angleAxis(angle, axis)` |
+
+```lua run
+local unity = Quaternion.angleAxis(45, Vector3(0, 1, 0)) * Quaternion.angleAxis(10, Vector3(1, 0, 0))
+local q = Quaternion.euler(10, 45, 0, RotationOrder.YXZ)
+assert(math.abs(q:dot(unity)) > 0.99999)
+```
+
+A wrong argument (nil, another class, an order that is not a `RotationOrder`, a matrix index
+outside 0..2 or 0..3) raises an error.
 
 ### 3.3 Other math types (partial)
 
