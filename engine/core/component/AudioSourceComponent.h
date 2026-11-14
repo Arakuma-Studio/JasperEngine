@@ -246,6 +246,11 @@ namespace jasperengine{
         bool timelineStopFade = false;
         // an audio action without a Transform plays at its animation's target (3D settings only)
         Entity timelineTarget = NULL_ENTITY;
+        // S97 REQ-12/13: a load asked by loadSound or the scene's preload, not over yet
+        // (loadState Loading), and onLoad(loadEventOk) due in the next audio update
+        bool loadRequested = false;
+        bool loadEventPending = false;
+        bool loadEventOk = false;
     };
 
 }

@@ -4759,6 +4759,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
         .addFunction("loadSound", &AudioSource::loadSound)
         .addFunction("destroySound", &AudioSource::destroySound)
+        // read-only: Unloaded, Loading (from loadSound until ready), Loaded or Failed
+        .addProperty("loadState", &AudioSource::getLoadState)
         .addFunction("getGameObject", &AudioSource::getGameObject)
         .addFunction("play", &AudioSource::play)
         .addFunction("pause", &AudioSource::pause)
