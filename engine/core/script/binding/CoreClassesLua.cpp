@@ -1986,6 +1986,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HALF", SceneColorScale::HALF)
         .endNamespace();
 
+    // where the scene's screen HTML UI documents composite (Scene.htmlUiRenderMode): OVERLAY after
+    // post-processing at the output resolution, CAMERA in the camera pass before it
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIRenderMode")
+        .addVariable("OVERLAY", UIRenderMode::OVERLAY)
+        .addVariable("CAMERA", UIRenderMode::CAMERA)
+        .endNamespace();
+
     // the resolution of the water reflection passes (Scene.planarReflectionResolution)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("PlanarReflectionResolution")
@@ -3459,6 +3467,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // the screen HTML UI documents: their composite (UIRenderMode) and MSAA samples (0: the project's)
+        .addProperty("htmlUiRenderMode", &Scene::getHtmlUiRenderMode, &Scene::setHtmlUiRenderMode)
+        .addProperty("htmlUiMsaaSamples", &Scene::getHtmlUiMsaaSamples, &Scene::setHtmlUiMsaaSamples)
         // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
         .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
         .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)

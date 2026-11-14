@@ -91,15 +91,15 @@ static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIG
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
-static const char* htmlUiMsaaNames[] = { "Off", "2x", "4x", "8x" };
-static const int htmlUiMsaaValues[] = { 1, 2, 4, 8 };
-static constexpr int htmlUiMsaaCount = 4;
+static const char* htmlUiMsaaNames[] = { "Auto", "Off", "2x", "4x", "8x" };
+static const int htmlUiMsaaValues[] = { 0, 1, 2, 4, 8 };
+static constexpr int htmlUiMsaaCount = 5;
 
 static int findHtmlUiMsaaIndex(int samples) {
     for (int i = 0; i < htmlUiMsaaCount; i++) {
         if (htmlUiMsaaValues[i] == samples) return i;
     }
-    return 2;
+    return 0;
 }
 static const TextureStrategy textureStrategyValues[] = { TextureStrategy::FIT, TextureStrategy::RESIZE, TextureStrategy::NONE };
 static const int textureStrategyCount = sizeof(textureStrategyValues) / sizeof(textureStrategyValues[0]);
@@ -2032,6 +2032,7 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         if (settingsui::beginRow("graphics.html_ui_msaa_samples")) {
             drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
                 "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
+                "Auto: 1 sample on phones and the web, 4 on desktop. A scene's Anti-aliasing (MSAA) replaces it for its documents. "
                 "Devices without MSAA draw them without it.");
         }
         {

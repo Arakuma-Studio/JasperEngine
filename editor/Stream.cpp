@@ -3608,9 +3608,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPlayerCrash(crash);
     }
 
-    if (node["htmlUiMsaaSamples"].IsDefined()) {
-        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
-    }
+    // S92 R16: a project saved without the key had 4 samples (new projects are Auto, 0)
+    project->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"].IsDefined() ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"])
+                                                                         : Project::legacyHtmlUiMsaaSamples);
 
     // S56: a project saved before it has no device block, and gets the defaults
     {
@@ -5045,6 +5045,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // the screen HTML UI documents (S92): written only away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        sceneNode["htmlUiRenderMode"] = StreamSchema::uiRenderMode().toString(scene->getHtmlUiRenderMode());
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        sceneNode["htmlUiMsaaSamples"] = scene->getHtmlUiMsaaSamples();
     // planar reflections: written only away from their defaults
     if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
         sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
@@ -5204,6 +5209,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // the screen HTML UI documents: absent = the defaults (Screen Space - Overlay, the project's samples)
+    scene->setHtmlUiRenderMode(node["htmlUiRenderMode"] ? decodeEnum(node, "htmlUiRenderMode", StreamSchema::uiRenderMode()) : SceneSettings().htmlUiRenderMode);
+    scene->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"] ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"]) : SceneSettings().htmlUiMsaaSamples);
     // planar reflections: absent = the defaults
     const SceneSettings planarDefaults;
     scene->setPlanarReflectionResolution(node["planarReflectionResolution"]

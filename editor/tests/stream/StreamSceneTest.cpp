@@ -322,3 +322,35 @@ TEST(StreamScene, WaterWakeSettings){
     read.setWaterWakeFade(1000.0f);
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
+
+// S92 R37: the screen HTML UI documents' render mode and MSAA samples: written only away from
+// their defaults (Screen Space - Overlay, 0 = the project's), read back; a scene without the keys
+// takes the defaults; a sample count that is not 0, 1, 2, 4 or 8 goes to the one below it
+TEST(StreamScene, HtmlUiSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("htmlUi"), std::string::npos) << "defaults are not written";
+
+    Scene scene;
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
+    scene.setHtmlUiMsaaSamples(2);
+    const YAML::Node encoded = YAML::Load(dumpScene(&scene));
+    EXPECT_EQ(encoded["htmlUiRenderMode"].as<std::string>(), "camera");
+    EXPECT_EQ(encoded["htmlUiMsaaSamples"].as<int>(), 2);
+    Scene read;
+    Stream::decodeScene(&read, encoded);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::CAMERA);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 2);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getHtmlUiRenderMode(), defaults.htmlUiRenderMode);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::OVERLAY);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+
+    Stream::decodeScene(&read, YAML::Load("htmlUiMsaaSamples: 6\n"));
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 4);
+    read.setHtmlUiMsaaSamples(-1);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+}

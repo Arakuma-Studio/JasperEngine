@@ -26,8 +26,15 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
 - It draws over its scene's camera in the Game view (edit mode and play mode) and in the
   exported game, in front of the component UI. A scene stacked as a layer draws its documents
   over the scenes below; within a scene a higher `sortOrder` draws on top. A scene's screen
-  documents draw together into one offscreen target that the camera composites (post-process
-  applies to it, as to the component UI).
+  documents draw together into one offscreen target the size of the output.
+- **Render Mode** (scene setting `html_ui_render_mode`, Lua `scene.htmlUiRenderMode`, Unity's
+  Canvas Render Mode): `overlay` (Screen Space - Overlay, the default) composites them after
+  post-processing at the output resolution, so `renderScale`, dynamic resolution, FXAA, CRT,
+  VHS, pixelate and the other post effects leave them sharp; `camera` (Screen Space - Camera)
+  composites them in the camera's pass, so render scale and post-processing apply to them, as
+  to the component UI. Set `camera` for a HUD that should go through a CRT or VHS look.
+- In game views (the Game view, Play, exported games) screen documents fill the viewport
+  under every camera: perspective, orthographic of any size, UI.
 - **CSS `px` = canvas pixels.** The page is the project canvas (`canvasWidth` x
   `canvasHeight`): `100vw` x `100vh` is the canvas and media queries see its size. With a
   scaled canvas (letterbox, high-DPI screens) the document is drawn at screen resolution, so
@@ -52,6 +59,7 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
 | `textureWidth`, `textureHeight` | int | `texture` mode: texture size, 1..8192 (default 1024 x 1024). |
 | `inputSurface` | entity | `texture` mode: the mesh whose UVs receive the pointer; none = the document's own GameObject. |
 | `pixelRatio` | float | Document pixels per CSS pixel; 0 = automatic (the canvas-to-screen scale; 1 in `texture` mode). |
+| `msaaSamples` | int | `texture` mode: MSAA samples of its texture, 0 (default: the scene's `html_ui_msaa_samples`), 1, 2, 4 or 8. A `screen` document shares the scene's target: the scene setting decides. Inspector "Anti-aliasing (MSAA)". |
 
 - Saved with the scene (YAML key `uidocument`; properties written only when they differ from
   their defaults), copied with copy/paste, duplicate and prefabs (with overrides), exported with
@@ -59,7 +67,8 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
   `[HTML UI] could not load document '<path>'` and draws nothing; nothing crashes. Every
   HTML UI Console line starts with `[HTML UI]`.
 - The Scene view of UI and 2D scenes shows a scene's documents in place on the canvas
-  rectangle (outlined while a UI Document is selected; select documents in the Hierarchy).
+  rectangle of world space, which pans and zooms with the view (outlined while a UI Document is
+  selected; select documents in the Hierarchy).
   A 3D scene's Scene view has no canvas: its documents show in the Game view.
 
 ### What "Chromium parity" means, and where it stops
@@ -398,7 +407,8 @@ Native or exactly rewritten, as in Chrome:
   `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mask-image`/`mask` layers;
   `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`);
   `object-fit`; `image-rendering: pixelated`; `accent-color` and `appearance: none` on form
-  controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default). Filters apply
+  controls; `cursor` keywords. Everything is anti-aliased: boxes, borders, shadows and clips at
+  any MSAA count, other edges by MSAA (Auto: 4x on desktop, 1 sample on phones and the web). Filters apply
   left to right to the element and everything it contains (overflowing children too);
   `drop-shadow` without a colour uses the text colour; `backdrop-filter` filters what is behind
   the border box; mask layers take images and gradients with size, position and repeat (not
@@ -629,7 +639,7 @@ is the global `document`.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching and atlas counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching, atlas and target counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, `framesKept`, `samples`, `targetBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
 | Tree | `id`, `tagName` (`"DIV"`; lower case in `.rml`), `localName` (`"div"`), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
 | Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it) |
@@ -2000,7 +2010,12 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   only when its frame changes (a 30 fps animation 30 times a second; paused, never). Texture
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:
-  1, 2, 4 or 8, default 4; devices that cannot multisample use 1).
+  0 = Auto, new projects: 1 sample on Android, iOS and the web, 4 on desktop; else 1, 2, 4 or 8;
+  a project saved without it keeps 4). A scene's Anti-aliasing (MSAA) (`html_ui_msaa_samples`,
+  Lua `scene.htmlUiMsaaSamples`: 0 = the project's) replaces it for its screen documents, a
+  texture-mode document's `msaaSamples` for its texture. Devices that cannot multisample use 1.
+  At 1 sample a 2.6-megapixel document target (2400 x 1080) is about 21 MB (colour and depth-stencil), at 4
+  about 83 MB plus the resolved copy (`render_stats` `samples`, `targetBytes`).
 - Project Settings > Graphics > HTML UI also has *Glyph Atlas Budget (MiB)*
   (`graphics.html_ui_glyph_atlas_mib`: 0 = the platform's default, 24 MiB on desktop and 12 on
   Android, iOS and the web, else 4-256; pages of glyphs not drawn lately are cleared when text needs

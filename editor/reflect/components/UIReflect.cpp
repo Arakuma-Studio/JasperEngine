@@ -344,10 +344,16 @@ namespace {
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
+        // S92 R18: read each frame by UIDocumentSystem (no reload); another count goes to the one below it
+        JE_FIELD(UIDocumentComponent, msaaSamples, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged | Clamped,
+                 .min = 0.0f, .max = 8.0f, .label = "Anti-aliasing (MSAA)",
+                 .tooltip = "Texture mode: MSAA samples of the document's texture, 0 (the scene's), 1, 2, 4 or 8. Screen documents use the scene's.",
+                 .visibleIf = &documentInTexture),
     };
 
     constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio"
+        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio",
+        "msaaSamples"
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do

@@ -11,6 +11,7 @@
 #include "RmlFontEngine.h"
 #include "RmlRenderer.h"
 
+#include "Engine.h"
 #include "Log.h"
 #include "render/FramebufferRender.h"
 #include "render/SystemRender.h"
@@ -37,37 +38,69 @@ namespace {
         return false;
     }
 
+    // the project's count; 0 = Auto (autoSampleCount of the running platform)
     int preferredSampleCount = 4;
+
+    // 1, 2, 4 or 8 (another count goes to the one below it, at least 1); 0 stays 0
+    int normalizedSampleCount(int samples){
+        if (samples <= 0)
+            return 0;
+        return samples >= 8 ? 8 : samples >= 4 ? 4 : samples >= 2 ? 2 : 1;
+    }
 
 }
 
 void HtmlUIContext::setPreferredSampleCount(int samples){
-    // 1, 2, 4 or 8: anything else goes to the nearest of them
-    int clamped = 1;
-    if (samples >= 8)
-        clamped = 8;
-    else if (samples >= 4)
-        clamped = 4;
-    else if (samples >= 2)
-        clamped = 2;
-    if (clamped != samples)
-        Log::warn("[HTML UI] MSAA sample count %d is not 1, 2, 4 or 8: %d is used", samples, clamped);
-    preferredSampleCount = clamped;
+    const int valid = normalizedSampleCount(samples);
+    if (valid != samples)
+        Log::warn("[HTML UI] MSAA sample count %d is not 0 (Auto), 1, 2, 4 or 8: %d is used", samples, valid);
+    preferredSampleCount = valid;
 }
 
 int HtmlUIContext::getPreferredSampleCount(){
     return preferredSampleCount;
 }
 
+int HtmlUIContext::autoSampleCount(Platform platform){
+    // phones and the web: one sample (SDF primitives and analytic clips antialias at any count,
+    // and a 2.6 MP target is a quarter of the memory and bandwidth); desktop: 4
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+        case Platform::Web:
+            return 1;
+        case Platform::Windows:
+        case Platform::Linux:
+        case Platform::MacOS:
+            return 4;
+    }
+    return 4;
+}
+
+void HtmlUIContext::setSampleCountOverride(int samples){
+    sampleCountOverride = normalizedSampleCount(samples);
+}
+
+int HtmlUIContext::getSampleCountOverride() const{
+    return sampleCountOverride;
+}
+
+int HtmlUIContext::getRequestedSampleCount() const{
+    if (sampleCountOverride > 0)
+        return sampleCountOverride;
+    return preferredSampleCount > 0 ? preferredSampleCount : autoSampleCount(Engine::getPlatform());
+}
+
 int HtmlUIContext::getSampleCount() const{
-    if (preferredSampleCount <= 1)
+    const int requested = getRequestedSampleCount();
+    if (requested <= 1)
         return 1;
     // the first sg_query_pixelformat calls of the engine, cached
     const RenderFeatures& features = SystemRender::getFeatures();
     if (!features.msaaRGBA8 || !features.msaaDepthStencil)
         return 1;
     // the highest count up to it that the device renders (RmlRenderTarget::ensure)
-    return std::max(FramebufferRender::getMaxMsaaSamples(preferredSampleCount), 1);
+    return std::max(FramebufferRender::getMaxMsaaSamples(requested), 1);
 }
 
 void HtmlUIContext::markUpdated(){
