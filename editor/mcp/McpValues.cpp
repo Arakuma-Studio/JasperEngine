@@ -2621,6 +2621,13 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
             return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
         }
+        // an Audio Source's effects and their parameters (S97): small, read as the scene file has
+        // them, so a running source's list shows the values heard now (get_runtime_entity)
+        if (ref && ctx.component == ComponentType::AudioSourceComponent) {
+            const reflect::ComponentDesc* desc = reflect::find(ctx.component);
+            const reflect::FieldDesc* field = desc ? reflect::findField(*desc, name) : nullptr;
+            if (field && field->ops && field->ops->toYaml) return yamlToJson(field->ops->toYaml(*field, ref, reflect::EncodeContext{}));
+        }
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
