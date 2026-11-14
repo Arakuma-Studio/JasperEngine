@@ -604,6 +604,21 @@ namespace {
         } else if (property.type == ScriptPropertyType::Asset && std::holds_alternative<AssetRef>(property.value)) {
             AssetRef& value = std::get<AssetRef>(property.value);
             visit.asset(value, row, field, AssetPathBase::Project, false, assetTypeFromName(property.assetType));
+        } else if (property.type == ScriptPropertyType::List && std::holds_alternative<ScriptPropertyList>(property.value)) {
+            // a list's references, each as its single property's (S95 REQ-20)
+            ScriptPropertyList& list = std::get<ScriptPropertyList>(property.value);
+            for (size_t i = 0; i < list.items.size(); i++) {
+                const std::string at = field + "[" + std::to_string(i) + "]";
+                if (PrefabAsset* prefab = std::get_if<PrefabAsset>(&list.items[i])) {
+                    std::string path = prefab->getPath();
+                    std::string guid = prefab->getGuid();
+                    if (visit.prefab(path, guid, row, at) || guid != prefab->getGuid() || path != prefab->getPath()) {
+                        *prefab = PrefabAsset(guid, path);
+                    }
+                } else if (AssetRef* value = std::get_if<AssetRef>(&list.items[i])) {
+                    visit.asset(*value, row, at, AssetPathBase::Project, false, assetTypeFromName(property.assetType));
+                }
+            }
         }
     }
 

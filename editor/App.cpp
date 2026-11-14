@@ -35,6 +35,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
+#include "dataasset/DataAssets.h"
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
@@ -752,6 +753,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         // Sprite Atlas and Palette: in Create > 2D below
         if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette || item.kind == AssetCreateKind::Tileset) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        if (item.kind == AssetCreateKind::DataAsset) {
+            // Data Asset > <each data class> (S95 REQ-21), the classes looked at once a second
+            std::vector<PlatformMenuItem> classItems;
+            for (const std::string& name : DataAssets::classNamesThrottled(project.getLuaPath())) {
+                classItems.push_back(menuPayloadCommand(AppMenuCommand::AssetsCreateDataAsset, name, name, !isProjectBusy));
+            }
+            if (classItems.empty()) classItems.push_back(menuCommand(AppMenuCommand::AssetsCreateDataAsset, "No data class (---@dataasset)", false));
+            assetsCreateItems.push_back(menuSubmenu(item.label, std::move(classItems)));
+            continue;
+        }
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
@@ -1124,6 +1135,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateNoiseGraph:
             projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateDataAsset:
+            if (!command.payload.empty()) projectWindow->assetsCreateDataAsset(command.payload, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::ToggleVoxelVolume:
             showEditorWindow(voxelEditWindow);

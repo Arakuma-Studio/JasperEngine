@@ -5,6 +5,8 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "dataasset/DataAssets.h"
+#include "script/DataAsset.h"
 #include "util/TitleArtLanguage.h"
 #include "localization/Localization.h"
 #include "localization/StringTable.h"
@@ -289,6 +291,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const AssetRef* b = std::get_if<AssetRef>(&rhs);
             return a && b && *a == *b;
         }
+        case ScriptPropertyType::List: {
+            const ScriptPropertyList* a = std::get_if<ScriptPropertyList>(&lhs);
+            const ScriptPropertyList* b = std::get_if<ScriptPropertyList>(&rhs);
+            return a && b && *a == *b;
+        }
     }
 
     return false;
@@ -311,7 +318,9 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         }
 
         const size_t currentIndex = static_cast<size_t>(currentIt - properties.begin());
-        const bool sameType = currentIt->type == parsedProp.type;
+        // a list of another element type, or a reference to another kind of asset, is another type
+        const bool sameType = currentIt->type == parsedProp.type && currentIt->assetType == parsedProp.assetType &&
+            (parsedProp.type != ScriptPropertyType::List || currentIt->elementType == parsedProp.elementType);
         const bool defaultChanged = sameType &&
             !scriptPropertyValuesEqual(currentIt->type, currentIt->defaultValue, parsedProp.defaultValue);
         const bool updateValue = !sameType || (defaultChanged &&
@@ -329,6 +338,8 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         merged.displayName = parsedProp.displayName;
         merged.type = parsedProp.type;
         merged.ptrTypeName = parsedProp.ptrTypeName;
+        merged.assetType = parsedProp.assetType;
+        merged.elementType = parsedProp.elementType;
         merged.defaultValue = parsedProp.defaultValue;
 
         if (updateValue) {
@@ -2482,6 +2493,8 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S95: Play's data classes and their assets, as the project has them when a run first asks
+    DataAsset::setIndexProvider([this]() { return DataAssets::buildIndex(this); });
     // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
     // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
     jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
@@ -6625,6 +6638,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    DataAsset::setIndexProvider(nullptr);
     jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();

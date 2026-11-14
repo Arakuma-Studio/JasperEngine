@@ -17,6 +17,7 @@
 #include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
+#include "dataasset/DataAssets.h"
 #include "util/ProjectChecks.h"
 
 #include "audio/AudioCredits.h"
@@ -101,6 +102,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <future>
 #include <optional>
 #include <iterator>
@@ -1290,6 +1292,7 @@ void editor::Exporter::runExport() {
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
     if (!writeAssetMap()) return;
+    if (!writeDataAssetIndex()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -2973,6 +2976,70 @@ bool editor::Exporter::writeAssetMap() {
     return true;
 }
 
+bool editor::Exporter::writeDataAssetIndex() {
+    const DataAsset::Index index = DataAssets::buildIndex(project);
+    // a class that does not ship leaves its assets without methods or defaults: the game cannot load them
+    for (const auto& [name, info] : index.classes) {
+        const fs::path module = project->getLuaPath() / FileUtils::pathFromUtf8(info.module);
+        if (!info.assets.empty() && EditorScripts::isEditorOnlyScript(module, project->getProjectPath())) {
+            Out::warning("Data class %s (%s) is an editor script and does not ship: its %zu Data Asset(s) will not load in the game",
+                         name.c_str(), info.module.c_str(), info.assets.size());
+        }
+    }
+    project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type != AssetType::DataAsset) return;
+        const fs::path file = project->getProjectPath() / FileUtils::pathFromUtf8(info.path);
+        if (!project->isInsideAssetsPath(file)) {
+            Out::warning("Data Asset %s is outside the assets folder and does not ship", info.path.c_str());
+            return;
+        }
+        const std::string className = DataAssets::classOfFile(file);
+        if (!index.classes.count(className)) {
+            Out::warning("Data Asset %s names the class '%s', which no Lua module marked ---@dataasset declares: it will not load in the game",
+                         info.path.c_str(), className.c_str());
+        }
+    });
+    const std::string text = DataAsset::encodeIndex(index);
+    const fs::path target = getExportProjectRoot() / "assets" / DataAsset::INDEX_FILE;
+    std::string error;
+    if (!assetio::writeFile(target, std::string_view(text), assetio::Durability::Cache, &error)) {
+        setError("Failed to write " + target.string() + ": " + error);
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeResolvedDataAsset(const fs::path& source, const fs::path& destination) {
+    DataAssets::Document document;
+    if (!DataAssets::read(source, document, nullptr)) return false;
+    // every {guid, path} among the values: the path its GUID has now, in its type's hint form
+    std::function<void(nlohmann::json&)> resolve = [&](nlohmann::json& value) {
+        if (value.is_array()) {
+            for (nlohmann::json& item : value) resolve(item);
+            return;
+        }
+        if (!value.is_object() || !value.contains("guid") || !value["guid"].is_string() || !Guid::isValidText(value["guid"].get<std::string>())) return;
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(Guid::parse(value["guid"].get<std::string>()), std::string(),
+                                                                                    AssetType::Unknown, false);
+        if (!found.found()) {
+            Out::warning("%s: %s resolves to no asset; it ships with its path", FileUtils::pathToGenericUtf8(source).c_str(),
+                         value["guid"].get<std::string>().c_str());
+            return;
+        }
+        value["path"] = project->projectPathToAssetHint(found.path, found.type == AssetType::Prefab ? AssetPathBase::Project : AssetTypes::info(found.type).base);
+    };
+    for (auto it = document.values.begin(); it != document.values.end(); ++it) resolve(it.value());
+    const std::string bytes = DataAssets::write(document);
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(destination, std::string_view(bytes), options);
+    if (!written.ok()) {
+        Out::warning("%s ships as it is: %s", FileUtils::pathToGenericUtf8(source).c_str(), written.message.c_str());
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::prepareTitleArt() {
     TitleArtExport::Prepared prepared;
     std::promise<void> done;
@@ -3851,6 +3918,9 @@ bool editor::Exporter::copyAssets() {
         // A .tileset ships with its images' current paths (S50): their GUIDs follow a move in the
         // editor, a game loads by path
         if (relPath.extension() == ".tileset" && writeResolvedTileset(entry.path(), destPath)) return TreeStep::Skip;
+
+        // A .dataasset likewise (S95): its references' GUIDs follow a move in the editor
+        if (Util::isDataAssetFile(relPath.generic_string()) && writeResolvedDataAsset(entry.path(), destPath)) return TreeStep::Skip;
 
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the

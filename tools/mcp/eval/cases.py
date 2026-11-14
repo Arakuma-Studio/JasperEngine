@@ -5275,4 +5275,38 @@ CASES = [
                    "edits_must_not": [r"\.stringtable$"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_data_asset_written_by_hand",
+        "kind": "bad",
+        "what_happened": "S95 REQ-24: a .dataasset is JSON, so an agent asked for one writes the file itself and gets no GUID "
+                         "meta check, no type check of the values and no undo step. edit_data_asset sits in the scripting group, so "
+                         "it has to be found from the task: the group's line names Data Assets, the tool's description says to edit "
+                         "them with it, not by writing the JSON.",
+        "text_at_issue": "McpToolGroups.cpp scripting: '... numeric expressions and Data Assets.'; DataAssetTools.cpp edit_data_asset "
+                         "description: 'Edit them with this tool, not by writing the JSON.'",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-24, AC-21 (new tool; no failure on record)",
+        "files": {"lua/data/ItemData.lua": "---@dataasset\nlocal ItemData = { properties = {\n"
+                                           "    { name = 'displayName', type = 'string', default = 'Item' },\n"
+                                           "    { name = 'price', type = 'int', default = 10 },\n} }\nreturn ItemData\n"},
+        "prompt": "lua/data/ItemData.lua is a data class. Make a Data Asset of it at assets/items/sword.dataasset: a Sword that costs 30.",
+        "mocks": [
+            {"tool": "edit_data_asset", "args": {"action": "list"}, "result": ok(
+                "1 data class(es): ItemData (0 asset(s)).",
+                {"classes": [{"class": "ItemData", "script": "lua/data/ItemData.lua",
+                              "fields": [{"name": "displayName", "type": "string"}, {"name": "price", "type": "int"}], "assets": []}]})},
+            {"tool": "edit_data_asset", "args": {"action": "create"}, "result": ok(
+                "Created assets/items/sword.dataasset (ItemData, 2 field(s)). One undo step.",
+                {"path": "assets/items/sword.dataasset", "guid": "4b1e9c0d2a7f4e31b6c58d0f9e2a7c13", "class": "ItemData",
+                 "values": {"displayName": "Sword", "price": 30}, "problems": [], "written": True,
+                 "next": "Scripts reach it through a property typed \"ItemData\" (set_script_properties: this path), or "
+                         "DataAsset.load(\"items/sword.dataasset\") in Lua."})},
+            {"tool": "edit_data_asset", "args": {"action": "get"}, "result": ok(
+                "assets/items/sword.dataasset: ItemData, 2 field(s), 0 problem(s).",
+                {"path": "assets/items/sword.dataasset", "class": "ItemData", "values": {"displayName": "Sword", "price": 30}, "problems": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_data_asset", "args": {"action": "create", "class": "ItemData",
+                                                                  "values": {"displayName": "Sword", "price": 30}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.dataasset$"]},
+        "max_turns": 10,
+    },
 ]

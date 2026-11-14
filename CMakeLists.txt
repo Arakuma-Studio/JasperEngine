@@ -1502,6 +1502,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/dataasset/DataAssets.cpp
+    ${EDITOR_DIR}/window/InspectorDataAsset.cpp
+    ${EDITOR_DIR}/window/ScriptValueEditor.cpp
+    ${EDITOR_DIR}/mcp/tools/DataAssetTools.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/StringTablesWindow.cpp
     ${EDITOR_DIR}/localization/StringTables.cpp

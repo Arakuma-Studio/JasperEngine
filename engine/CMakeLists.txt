@@ -1823,11 +1823,13 @@ set(JASPERENGINE_SRCS
     core/script/ScriptScheduler.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
+    core/script/DataAsset.cpp
     core/script/ToolchainFingerprint.cpp
     core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/DataAssetClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp

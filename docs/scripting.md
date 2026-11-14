@@ -1,7 +1,7 @@
 # Scripting workflow: hot reload, script status, editor scripts, numeric fields, click-to-source
 
-This page covers how scripts behave while you work: what happens when you save a script during
-Play, the script status badge, menus written as editor scripts, maths in number fields, and
+This page covers how scripts behave while you work: list properties and Data Assets, what happens
+when you save a script during Play, the script status badge, menus written as editor scripts, maths in number fields, and
 jumping from a Console line to the source. The Lua API itself is in
 [mcp/guide/lua-api.md](mcp/guide/lua-api.md). C++ scripts are in
 [mcp/guide/cpp-scripting.md](mcp/guide/cpp-scripting.md).
@@ -26,6 +26,34 @@ The fields an entry shows are what its file declares:
 - a scene or a Prefab Mode stage you open shows the fields its scripts declare now, also when they
   changed while it was closed; that refresh does not mark the scene modified (the next save writes
   it). Each file runs once per refresh, however many GameObjects use it.
+
+## Lists and Data Assets
+
+A property `type = "list", of = <type>` is Unity's `List<T>`: the Inspector shows its size and one row
+per element, with Add (+, a copy of the last), the arrows to reorder and Remove (x); each change is one
+undo step. In Lua the field is an array (an unassigned reference in it is `false`, so `#list` stays its
+length).
+
+Data Assets are Unity's ScriptableObjects:
+
+- **The class.** A Lua module in the Lua folder whose first lines hold `---@dataasset`. Its
+  `properties` (any type but GameObject references) are the fields, its functions the methods of every
+  asset. It is never attached to a GameObject.
+- **The asset.** Assets > Create > Data Asset > <class> (also the Project window's Create menu) makes
+  `New <class>.dataasset` in the assets folder with the class's defaults. It is JSON
+  (`{version: 1, class, values}`) with its GUID in its `.meta`, so moving or renaming it keeps every
+  reference.
+- **The Inspector.** Selecting one shows its fields; every edit is one undo step (a drag one step).
+  A value whose field the class no longer has (renamed) stays in the file and is listed, with
+  **Remove Unknown Values**.
+- **Using one.** A script property typed with the class name (`type = "ItemData"`, or a list of them)
+  takes assets of that class: drag one from the Project window or pick it. In Play the script gets the
+  asset's table, the same table for every user in the run; `DataAsset.load`, `loadAll` and `create`
+  (lua-api 2.4.3) reach them from code. Nothing a game changes is written back.
+- **Agents.** MCP `edit_data_asset` (group `scripting`) lists classes, creates, reads and sets values;
+  `get_asset_info` shows a file's class and values.
+- **Builds.** Every `.dataasset` ships with its references at their current paths, with an index of
+  the classes for `loadAll`; a class that is an editor script, or a missing class, is warned about.
 
 ## Lua hot reload during Play
 
