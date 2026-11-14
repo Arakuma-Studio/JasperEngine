@@ -804,3 +804,7 @@ Avoiding conflicts:
   with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
   Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
   1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.
+- **WP-7 (F1, `.mesh` assets)** implemented on `feature/s98-editor-tooling-gaps--7` (Deviations).
+  Red controls: `test_mesh_assets.py` on the editor of `3ef9338fa` (3 of 3 fail: `save_as` unknown,
+  no `.mesh` written); the editor unit tests with `MeshSystem`'s read and the save's extraction
+  turned off (5 of 7 `MeshAsset*` fail). Evidence: `/tmp/arcade-gaps/evidence/s98-7/`.
