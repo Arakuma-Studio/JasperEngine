@@ -62,6 +62,8 @@
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
 #include "command/type/GraphEditCmd.h"
+#include "command/type/FogProfileAssetCmd.h"
+#include "render/FogProfile.h"
 #include "noise/TerrainPresets.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakePresets.h"
@@ -5125,6 +5127,31 @@ void editor::ProjectWindow::assetsCreateShakePreset(const fs::path& directory) {
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreateFogProfile(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    if (!project->isInsideAssetsPath(directory)) {
+        Backend::getApp().registerAlert("Create Fog Profile", "A Fog Profile goes in the assets folder, where Fogs and Fog Zones can link it.");
+        return;
+    }
+    focusProjectPanel(this);
+    std::error_code ec;
+    std::string folder = FileUtils::pathToGenericUtf8(fs::relative(directory, project->getAssetsPath(), ec));
+    if (folder == ".") folder.clear();
+    FogProfileData data;
+    data.name = "New Fog Profile";
+    const std::string path = FogProfileAssetCmd::freePath(*project, folder, data.name);
+    project->getProjectCommandHistory()->addCommandNoMerge(FogProfileAssetCmd::create(project, path, data));
+    const fs::path created = project->getAssetsPath() / FileUtils::pathFromUtf8(path);
+    if (!fs::exists(created, ec)) {
+        Backend::getApp().registerAlert("Create Fog Profile", "Could not write " + path + " (the Console has why).");
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateTitleArt(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5835,6 +5862,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
         case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::FogProfile: assetsCreateFogProfile(directory); break;
         case AssetCreateKind::TitleArt: assetsCreateTitleArt(directory); break;
         case AssetCreateKind::ProceduralMaterial: assetsCreateProceduralMaterial(directory); break;
         case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;

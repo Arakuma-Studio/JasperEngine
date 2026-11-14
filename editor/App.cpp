@@ -1397,6 +1397,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
             break;
+        case AppMenuCommand::AssetsCreateFogProfile:
+            projectWindow->createAsset(AssetCreateKind::FogProfile, projectWindow->createTargetDirectory());
+            break;
         case AppMenuCommand::AssetsCreateTileset:
             projectWindow->createAsset(AssetCreateKind::Tileset, projectWindow->createTargetDirectory());
             break;
