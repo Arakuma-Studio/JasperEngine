@@ -5242,4 +5242,42 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S98 WP-4: opening a scene leaves the build list alone (E8, REQ-28)
+    {
+        "id": "s98_open_scene_stays_out_of_build",
+        "kind": "bad",
+        "what_happened": "open_scene added every scene file it opened to project.yaml's build list, so the scenes an agent opened "
+                         "to look at shipped with the game (JasperArcade port, E8). Opening no longer lists a scene: asked to "
+                         "open one and ship it, the agent adds it with edit_build_scenes instead of taking the open for the add.",
+        "text_at_issue": "open_scene: 'An unlisted one stays out of the build (edit_build_scenes add).' (was: 'Opens a .scene file "
+                         "(adding it to the project if unlisted)')",
+        "source": "S98 REQ-28 (ENGINE_LIMITATIONS.md E8, paraphrased)",
+        "prompt": "Open scenes/Bonus.scene so I can work on it, and make sure it ships with the game.",
+        "mocks": [
+            {"tool": "open_scene", "args": {"scene": "re:Bonus"}, "result": ok(
+                "Opened scene 4 \"Bonus\" and selected it.",
+                {"scene": {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "type": "3D", "opened": True, "modified": False,
+                           "selected": True, "start_scene": False, "entity_count": 3},
+                 "recovery": {"available": False, "autosaved_at": "", "status": "none", "applied": "none"},
+                 "load_report": {"skipped": 0, "preserved": 0, "dropped": 0}})},
+            {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}, "result": ok(
+                "Added \"Bonus\". Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "after": {"tool": "edit_build_scenes", "args": {"action": "add"}}, "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene). Open, not in the build (add puts one in): Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True}],
+                 "untitled_scenes": [], "open_not_in_build": [{"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+        ],
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Bonus"}},
+                             {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}}],
+                   "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 10,
+    },
 ]

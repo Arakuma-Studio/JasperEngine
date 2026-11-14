@@ -601,6 +601,7 @@ bool editor::Exporter::writeGameConfig() {
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
     game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
+        if (!scene.inBuild) continue;   // opened without being listed (S98 REQ-28)
         player::GameScene item;
         item.id = scene.id;
         item.name = scene.name;
@@ -842,8 +843,9 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     manifest.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     {
         const std::vector<SceneProject>& scenes = project->getScenes();
-        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
-        if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
+        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene && scene.inBuild; });
+        const auto first = std::find_if(scenes.begin(), scenes.end(), [](const SceneProject& scene) { return scene.inBuild; });
+        if (!known && first != scenes.end()) manifest.startScene = first->id;
     }
     // the modules the content needs (S34 R3): a player without one of them refuses to start
     manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();

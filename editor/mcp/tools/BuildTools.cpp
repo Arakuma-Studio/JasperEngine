@@ -804,7 +804,7 @@ void buildProjectTool(const CallPtr& call) {
 
     // ---- scenes
     bool hasSavedScene = false;
-    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || !scene.filepath.empty();
+    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || (!scene.filepath.empty() && scene.inBuild);
     if (!hasSavedScene) {
         call->fail("No saved scene is in the build: save a scene first (save_project saves untitled scenes).");
         return;
@@ -829,13 +829,17 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("start_scene \"" + scene->name + "\" is untitled: save it first.");
             return;
         }
+        if (!scene->inBuild) {
+            call->fail("start_scene \"" + scene->name + "\" is not in the build: edit_build_scenes add puts it in.");
+            return;
+        }
         startScene = scene->id;
     }
     const SceneProject* start = project->getScene(startScene);
-    if (!start || start->filepath.empty()) {
+    if (!start || start->filepath.empty() || !start->inBuild) {
         startScene = NULL_PROJECT_SCENE;
         for (const SceneProject& scene : project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 startScene = scene.id;
                 break;
             }
@@ -1383,7 +1387,7 @@ void getBuildInfoTool(const CallPtr& call) {
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
-        if (scene.filepath.empty()) continue;
+        if (scene.filepath.empty() || !scene.inBuild) continue;
         scenes.push_back({{"id", scene.id}, {"name", scene.name}, {"start", scene.id == startId}});
     }
     data["scenes"] = scenes;

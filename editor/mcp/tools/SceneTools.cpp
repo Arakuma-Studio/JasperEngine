@@ -2033,7 +2033,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "open_scene";
         tool.title = "Open Scene";
         tool.description =
-            "Opens a .scene file (adding it to the project if unlisted) and selects it; an open scene is just selected.";
+            "Opens a .scene file and selects it; an open scene is just selected. An unlisted one stays out of the build "
+            "(edit_build_scenes add).";
         tool.inputSchema = object({
             {"scene", sceneRef(".scene path, or id/name of a project scene.")},
             {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
