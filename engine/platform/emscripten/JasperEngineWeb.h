@@ -38,6 +38,8 @@ private:
 
     static double mousePosX;
     static double mousePosY;
+    // the engine mouse buttons pressed on the canvas whose release it has not had yet (bit per button)
+    static unsigned int canvasButtonsDown;
 
     static int sampleCount;
 
@@ -59,6 +61,7 @@ private:
 
     static EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData);
     static EM_BOOL mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData);
+    static EM_BOOL window_mouseup_callback(int eventType, const EmscriptenMouseEvent *e, void *userData);
     static EM_BOOL wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData);
     static EM_BOOL touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data);
 
