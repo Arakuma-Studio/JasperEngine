@@ -41,6 +41,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #elif defined(__linux__) && !defined(__ANDROID__)
 #include <unistd.h>
@@ -92,7 +95,9 @@ namespace {
         wchar_t path[32768];
         const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
         if (length == 0 || length >= std::size(path)) return ".";
-        return std::filesystem::path(std::wstring(path, length)).parent_path().u8string();
+        // (UTF-8 bytes: C++20's u8string is std::u8string)
+        const std::u8string utf8 = std::filesystem::path(std::wstring(path, length)).parent_path().u8string();
+        return std::string(utf8.begin(), utf8.end());
 #else
         char path[4096];
         const ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
