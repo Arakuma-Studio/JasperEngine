@@ -4,6 +4,9 @@
 #include "util/FbxImporter.h"
 #include "io/AtomicFile.h"
 
+#include "command/type/SetAssetMetaCmd.h"
+#include "model/ModelImportSettings.h"
+
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/GlbBuilder.h"
@@ -18,7 +21,9 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -31,8 +36,12 @@ namespace jasperengine::editor {
 
 namespace {
 
-// Bump when the output changes, to redo existing imports
-constexpr int IMPORTER_VERSION = 1;
+// Bump when the output changes, to redo existing imports (2: submeshes follow the material slots,
+// spec S94 F42)
+constexpr int IMPORTER_VERSION = 2;
+// Bump when the model parts a scene saves (node entities, submesh indices) change for every file:
+// part of the source id, which tells an export that a saved scene's parts are old
+constexpr int PARTS_VERSION = 1;
 constexpr const char* IMPORT_EXTRAS_KEY = "jasperengineFbxImport";
 
 constexpr size_t MAX_UFBX_WARNINGS = 10;
@@ -59,6 +68,7 @@ struct ImportInfo {
     int version = 0;
     std::vector<Dependency> files; // the FBX first
     std::vector<TextureEntry> textures;
+    std::string options;           // FbxImporter::Options::canonical
 };
 
 struct CachedInfo {
@@ -170,6 +180,7 @@ ImportInfo readImportInfo(const fs::path& glbPath) {
         try {
             const Json& data = doc.at("asset").at("extras").at(IMPORT_EXTRAS_KEY);
             info.version = data.value("version", 0);
+            info.options = data.value("options", "");
             for (const Json& entry : data.value("files", Json::array())) {
                 Dependency dependency;
                 dependency.path = entry.at("path").get<std::string>();
@@ -204,6 +215,7 @@ ImportInfo readImportInfo(const tinygltf::Model& model) {
     if (data.Has("version")) {
         info.version = data.Get("version").GetNumberAsInt();
     }
+    info.options = text(data, "options");
     const tinygltf::Value& files = data.Get("files");
     for (size_t i = 0; i < files.ArrayLen(); i++) {
         const tinygltf::Value& entry = files.Get(i);
@@ -240,12 +252,66 @@ fs::path resolveDependency(const fs::path& fbxPath, const std::string& path) {
     return file.lexically_normal();
 }
 
-std::string makeSourceId(int version, const std::string& hash) {
-    return hash.empty() ? std::string() : std::to_string(version) + "-" + hash;
+std::string optionsHash(const std::string& text) {
+    uint32_t hash = 2166136261u;
+    for (unsigned char c : text) {
+        hash ^= c;
+        hash *= 16777619u;
+    }
+    char out[9];
+    std::snprintf(out, sizeof(out), "%08x", static_cast<unsigned>(hash));
+    return out;
+}
+
+// Options that change the parts (a rest pose moves the nodes) give another id
+std::string makeSourceId(const std::string& hash, const std::string& options) {
+    if (hash.empty()) {
+        return {};
+    }
+    return std::to_string(PARTS_VERSION) + "-" + hash + (options.empty() ? std::string() : "-" + optionsHash(options));
+}
+
+// The glTF JSON of .glb bytes
+bool glbJsonOf(const std::vector<unsigned char>& bytes, Json& out) {
+    uint32_t header[5];
+    if (bytes.size() < sizeof(header)) {
+        return false;
+    }
+    std::memcpy(header, bytes.data(), sizeof(header));
+    if (header[0] != 0x46546C67u || header[4] != 0x4E4F534Au || bytes.size() < sizeof(header) + header[3]) {
+        return false;
+    }
+    out = Json::parse(bytes.begin() + sizeof(header), bytes.begin() + sizeof(header) + header[3], nullptr, false);
+    return !out.is_discarded();
+}
+
+// Each mesh's submeshes by material name, to tell what a reimport moved
+std::vector<std::pair<std::string, std::vector<std::string>>> submeshMaterials(const Json& doc) {
+    std::vector<std::pair<std::string, std::vector<std::string>>> out;
+    const Json materials = doc.value("materials", Json::array());
+    for (const Json& mesh : doc.value("meshes", Json::array())) {
+        std::vector<std::string> names;
+        for (const Json& primitive : mesh.value("primitives", Json::array())) {
+            const bool empty = primitive.contains("extras") && primitive["extras"].value("fbxEmptySlot", false);
+            const int material = primitive.value("material", -1);
+            names.push_back(empty ? std::string("(empty slot)") : material >= 0 && material < static_cast<int>(materials.size())
+                ? materials[static_cast<size_t>(material)].value("name", std::string()) : std::string());
+        }
+        out.emplace_back(mesh.value("name", std::string()), names);
+    }
+    return out;
+}
+
+std::string joinedNames(const std::vector<std::string>& names) {
+    std::string out;
+    for (const std::string& name : names) {
+        out += (out.empty() ? "" : ", ") + (name.empty() ? std::string("(no material)") : name);
+    }
+    return out;
 }
 
 // The marker that ties a .glb to the files it was imported from
-tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPath, const fs::path& assetsRoot) {
+tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPath, const fs::path& assetsRoot, const std::string& options) {
     const fs::path fbxDir = fbxPath.parent_path().lexically_normal();
     // Relative to the FBX when part of the project
     auto pathOf = [&](const fs::path& path) {
@@ -276,6 +342,9 @@ tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPat
     tinygltf::Value::Object marker;
     marker["version"] = tinygltf::Value(IMPORTER_VERSION);
     marker["files"] = tinygltf::Value(files);
+    if (!options.empty()) {
+        marker["options"] = tinygltf::Value(options);
+    }
     if (!textures.empty()) {
         marker["textures"] = tinygltf::Value(textures);
     }
@@ -283,6 +352,34 @@ tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPat
 }
 
 } // namespace
+
+std::string FbxImporter::Options::canonical() const {
+    std::string out;
+    if (firstFrameRestPose) {
+        out += "restPose=first_frame;take=" + restPoseTake + ";";
+    }
+    if (smoothingGroups) {
+        out += "smoothingGroups;";
+    }
+    return out;
+}
+
+FbxImporter::Options FbxImporter::readOptions(const fs::path& fbxPath) {
+    Options options;
+    ModelImportSettings settings;
+    const YAML::Node section = SetAssetMetaCmd::read(fbxPath, ModelImportSettings::metaKey);
+    // a malformed section imports with the defaults (its error is the Inspector's and the audit's)
+    if (!section || section.IsNull() || !ModelImportSettings::parse(section, settings)) {
+        return options;
+    }
+    const ModelSettingValues& values = settings.values;
+    options.firstFrameRestPose = values.restPose == RestPose::FirstFrame;
+    if (options.firstFrameRestPose && values.restPoseTake) {
+        options.restPoseTake = *values.restPoseTake;
+    }
+    options.smoothingGroups = values.smoothnessSource && *values.smoothnessSource != SmoothnessSource::FromAngle;
+    return options;
+}
 
 bool FbxImporter::isFbxFile(const fs::path& path) {
     std::string ext = path.extension().string();
@@ -297,7 +394,7 @@ FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path
     }
 
     const ImportInfo info = readImportInfo(glbPath);
-    if (info.files.empty() || info.version != IMPORTER_VERSION) {
+    if (info.files.empty() || info.version != IMPORTER_VERSION || info.options != readOptions(fbxPath).canonical()) {
         return State::Stale;
     }
     for (const Dependency& file : info.files) {
@@ -318,18 +415,19 @@ FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path
 }
 
 std::string FbxImporter::getSourceId(const fs::path& fbxPath) {
-    return makeSourceId(IMPORTER_VERSION, hashFile(fbxPath));
+    return makeSourceId(hashFile(fbxPath), readOptions(fbxPath).canonical());
 }
 
 std::string FbxImporter::getImportId(const tinygltf::Model& model) {
     const ImportInfo info = readImportInfo(model);
-    return info.files.empty() ? std::string() : makeSourceId(info.version, info.files.front().hash);
+    return info.files.empty() ? std::string() : makeSourceId(info.files.front().hash, info.options);
 }
 
 bool FbxImporter::isCurrentImport(const tinygltf::Model& model, const fs::path& glbPath) {
     const ImportInfo loaded = readImportInfo(model);
     const ImportInfo current = readImportInfo(glbPath);
-    return !loaded.files.empty() && loaded.version == current.version && loaded.files.size() == current.files.size() &&
+    return !loaded.files.empty() && loaded.version == current.version && loaded.options == current.options &&
+        loaded.files.size() == current.files.size() &&
         std::equal(loaded.files.begin(), loaded.files.end(), current.files.begin(), [](const Dependency& a, const Dependency& b) {
             return a.path == b.path && a.hash == b.hash && a.linked == b.linked;
         });
@@ -357,6 +455,7 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
         return result;
     }
 
+    const Options importOptions = readOptions(fbxPath);
     ufbx_load_opts options = {};
     options.target_axes = ufbx_axes_right_handed_y_up;
     options.target_unit_meters = 1.0;
@@ -374,6 +473,8 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
     options.clean_skin_weights = true;
     options.generate_missing_normals = true;
     options.use_blender_pbr_material = true;
+    // ByPolygon smoothing groups are bit masks ufbx keeps only in the DOM
+    options.retain_dom = importOptions.smoothingGroups;
 
     ufbx_error error;
     ufbx_scene* scene = ufbx_load_file(FileUtils::pathToUtf8(fbxPath).c_str(), &options, &error);
@@ -392,15 +493,46 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
         result.warnings.emplace_back(warning.description.data, warning.description.length);
     }
 
+    GlbBuilder::Options buildOptions;
+    buildOptions.smoothingGroups = importOptions.smoothingGroups;
+    if (importOptions.firstFrameRestPose) {
+        // the named take, else the first (Unity's default clip)
+        std::string takes;
+        for (size_t i = 0; i < scene->anim_stacks.count; i++) {
+            const std::string name(scene->anim_stacks.data[i]->name.data, scene->anim_stacks.data[i]->name.length);
+            takes += (takes.empty() ? "" : ", ") + name;
+            if (buildOptions.restPoseStack < 0 && (importOptions.restPoseTake.empty() || name == importOptions.restPoseTake)) {
+                buildOptions.restPoseStack = static_cast<int>(i);
+            }
+        }
+        if (scene->anim_stacks.count == 0) {
+            result.warnings.emplace_back("Rest Pose is First Frame, but the file has no animation take: the nodes keep their values");
+        } else if (buildOptions.restPoseStack < 0) {
+            result.warnings.emplace_back("Rest Pose Take '" + importOptions.restPoseTake + "' is not in the file (its takes: " + takes +
+                "): the first take's first frame is used");
+            buildOptions.restPoseStack = 0;
+        }
+    }
+
+    // what the last import drew, by mesh and submesh
+    Json previous;
+    {
+        std::ifstream oldFile(glbPath, std::ios::binary);
+        std::vector<unsigned char> oldBytes((std::istreambuf_iterator<char>(oldFile)), std::istreambuf_iterator<char>());
+        if (!glbJsonOf(oldBytes, previous)) {
+            previous = Json();
+        }
+    }
+
     std::vector<unsigned char> glb;
     try {
-        GlbBuilder builder(scene, fbxPath, assetsRoot);
+        GlbBuilder builder(scene, fbxPath, assetsRoot, buildOptions);
         const bool built = builder.build(result.error);
         result.warnings.insert(result.warnings.end(), builder.getWarnings().begin(), builder.getWarnings().end());
         if (!built) {
             return result;
         }
-        glb = builder.write(describeImport(builder, fbxPath, assetsRoot));
+        glb = builder.write(describeImport(builder, fbxPath, assetsRoot, importOptions.canonical()));
     } catch (const std::exception& e) {
         result.error = e.what();
         return result;
@@ -408,6 +540,19 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
     if (glb.empty()) {
         result.error = "the glTF data could not be encoded";
         return result;
+    }
+    // Submeshes follow the FBX material slots since importer version 2: a mesh whose order moved
+    // is named, so a material set on a submesh by its index can be checked (spec S94 F42)
+    Json current;
+    if (previous.is_object() && glbJsonOf(glb, current)) {
+        const auto before = submeshMaterials(previous);
+        const auto after = submeshMaterials(current);
+        for (size_t i = 0; i < before.size() && i < after.size(); i++) {
+            if (before[i].first == after[i].first && before[i].second != after[i].second) {
+                result.notes.push_back("mesh '" + after[i].first + "': its submeshes are now " + joinedNames(after[i].second) +
+                    " (were " + joinedNames(before[i].second) + "): submeshes follow the FBX material slots");
+            }
+        }
     }
 
     if (!writeFile(glbPath, glb, result.error)) {
