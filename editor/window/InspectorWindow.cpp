@@ -8328,6 +8328,8 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     drawBlendShapes(sceneProject, entities);
 
     drawCustomShaderRow(cpType, ShaderType::MESH, sceneProject, entities);
+    // over every submesh's material (S94 F7)
+    drawPropertyOverridesRows(cpType, sceneProject, entities, -1);
 
     unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entities[0]).numSubmeshes;
     for (Entity& entity : entities){
@@ -8469,6 +8471,9 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
         propertyRow(RowPropertyType::Vector4, cpType, "submeshes["+std::to_string(s)+"].textureRect", "Texture Rect", sceneProject, entities, settingsTextureRect);
 
         endTable();
+        // a mesh of several submeshes: each one's over the Mesh's
+        if (numSubmeshes > 1)
+            drawPropertyOverridesRows(cpType, sceneProject, entities, s);
 
         if (submeshGenerated) ImGui::EndDisabled();
         ImGui::PopID();

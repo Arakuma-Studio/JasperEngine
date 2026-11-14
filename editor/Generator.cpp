@@ -2783,8 +2783,19 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "});\n";
     }
-    if (tagsAndLayers.transparencySortMode == TransparencySortMode::CUSTOM_AXIS)
-        mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::CUSTOM_AXIS);\n";
+    switch (tagsAndLayers.transparencySortMode) {
+        case TransparencySortMode::CUSTOM_AXIS:
+            mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::CUSTOM_AXIS);\n";
+            break;
+        case TransparencySortMode::PERSPECTIVE:
+            mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::PERSPECTIVE);\n";
+            break;
+        case TransparencySortMode::ORTHOGRAPHIC:
+            mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::ORTHOGRAPHIC);\n";
+            break;
+        default:
+            break;
+    }
     if (tagsAndLayers.transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f)) {
         mainContent += "    SortingLayers::setTransparencySortAxis(Vector3(" + Factory::formatFloat(tagsAndLayers.transparencySortAxis.x) + ", " +
                        Factory::formatFloat(tagsAndLayers.transparencySortAxis.y) + ", " + Factory::formatFloat(tagsAndLayers.transparencySortAxis.z) + "));\n";

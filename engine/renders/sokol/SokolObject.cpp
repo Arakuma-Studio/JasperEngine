@@ -428,6 +428,20 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
             target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
             return;
+        // a material's own factors (Blend Mode Custom), alpha included offscreen or not: MIN
+        // and MAX take ONE for every factor of their channel (sokol validates it)
+        case BlendMode::CUSTOM:{
+            const BlendState& custom = loadState.customBlend;
+            const bool minMaxRGB = custom.opRGB == BlendOperation::MIN || custom.opRGB == BlendOperation::MAX;
+            const bool minMaxAlpha = custom.opAlpha == BlendOperation::MIN || custom.opAlpha == BlendOperation::MAX;
+            target.blend.op_rgb = getBlendOp(custom.opRGB);
+            target.blend.op_alpha = getBlendOp(custom.opAlpha);
+            target.blend.src_factor_rgb = minMaxRGB ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.srcFactorRGB);
+            target.blend.dst_factor_rgb = minMaxRGB ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.dstFactorRGB);
+            target.blend.src_factor_alpha = minMaxAlpha ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.srcFactorAlpha);
+            target.blend.dst_factor_alpha = minMaxAlpha ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.dstFactorAlpha);
+            return;
+        }
         case BlendMode::ERASE_PREMULTIPLIED:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -733,6 +747,7 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     case BlendOperation::SUBTRACT: return SG_BLENDOP_SUBTRACT;
     case BlendOperation::REVERSE_SUBTRACT: return SG_BLENDOP_REVERSE_SUBTRACT;
     case BlendOperation::MAX: return SG_BLENDOP_MAX;
+    case BlendOperation::MIN: return SG_BLENDOP_MIN;
     }
     return _SG_BLENDOP_DEFAULT;
 }

@@ -177,12 +177,28 @@ namespace {
 
     constexpr uint64_t kSubmeshAll = UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms;
 
+    // Property Overrides (S94 F7): values rewrite the uniform blocks, a texture is bound at load
+    constexpr FieldDesc kPropertyOverridesFields[] = {
+        JE_FIELD(ShaderPropertyOverrides, values, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
+        JE_FIELD(ShaderPropertyOverrides, textures, .ops = &ops::ShaderTextures, .updateFlags = UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture),
+    };
+    const StructDesc kPropertyOverridesStruct = JE_STRUCT_DESC(ShaderPropertyOverrides, "ShaderPropertyOverrides", kPropertyOverridesFields);
+
+    // out of line (OutOfLineValue): made on an edit, read as the empty defaults while unset
+    void* submeshOverridesRef(void* submesh) { return &static_cast<Submesh*>(submesh)->propertyOverrides.edit(); }
+    const void* submeshOverridesPeek(const void* submesh) { return &static_cast<const Submesh*>(submesh)->propertyOverrides.get(); }
+    void* meshOverridesRef(void* mesh) { return &static_cast<MeshComponent*>(mesh)->propertyOverrides.edit(); }
+    const void* meshOverridesPeek(const void* mesh) { return &static_cast<const MeshComponent*>(mesh)->propertyOverrides.get(); }
+
     constexpr FieldDesc kSubmeshFields[] = {
         JE_FIELD(Submesh, material, .ops = &ops::MaterialStruct<Material>, .flags = ListWhole, .updateFlags = kSubmeshAll),
         JE_FIELD(Submesh, primitiveType, .enumDesc = &enums::kPrimitiveType, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, faceCulling, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureShadow, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureRect),
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &submeshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &submeshOverridesPeek}),
     };
 
 }
@@ -242,6 +258,10 @@ namespace {
         JE_FIELD(MeshComponent, customShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, customDepthShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
+        // Unity's MaterialPropertyBlock, saved (S94 F7): over every submesh's material
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &meshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &meshOverridesPeek}),
         JE_FIELD(MeshComponent, numSubmeshes),
         JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
@@ -358,7 +378,7 @@ namespace {
         JE_FIELD(PointsComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(PointsComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
@@ -378,7 +398,7 @@ namespace {
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(LineRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
@@ -650,7 +670,7 @@ namespace {
                                               "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices",
                                               "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode",
                                               "lodFadeTransitionWidth", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
-                                              "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
+                                              "normAdjustWeight", "propertyOverrides", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
                                               "shaderUniforms", "shadowsBillboard", "sortingLayer", "sortingOrder", "staticShadowCaster",
                                               "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
