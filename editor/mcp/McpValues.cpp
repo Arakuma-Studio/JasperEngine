@@ -623,6 +623,14 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& ambientModeOptions() {
+    static const EnumOptions options = {
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
+    };
+    return options;
+}
+
 const EnumOptions& planarReflectionResolutionOptions() {
     static const EnumOptions options = {
         {(int)PlanarReflectionResolution::OFF, "off", "Off"},
@@ -838,6 +846,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps

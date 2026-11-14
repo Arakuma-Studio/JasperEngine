@@ -1980,6 +1980,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
+    // the Environment Lighting Source (scene.ambientMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AmbientMode")
+        .addVariable("COLOR", AmbientMode::COLOR)
+        .addVariable("GRADIENT", AmbientMode::GRADIENT)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
@@ -2063,6 +2070,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ACESCCT", LutInputEncoding::ACESCCT)
         .addVariable("CINEON", LutInputEncoding::CINEON)
         .addVariable("DAVINCI_INTERMEDIATE", LutInputEncoding::DAVINCI_INTERMEDIATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VignetteFalloff")
+        .addVariable("SMOOTHNESS", VignetteFalloff::SMOOTHNESS)
+        .addVariable("RADII", VignetteFalloff::RADII)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2512,6 +2525,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
         .addProperty("lutInputEncoding", &PostProcessingSettings::lutInputEncoding, &PostProcessingSettings::lutInputEncoding)
         .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
+        .addProperty("lutFlipGreen", &PostProcessingSettings::lutFlipGreen, &PostProcessingSettings::lutFlipGreen)
         .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
         .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
         .addProperty("monochromeIntensity", &PostProcessingSettings::monochromeIntensity, &PostProcessingSettings::monochromeIntensity)
@@ -2520,6 +2534,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("vignetteSmoothness", &PostProcessingSettings::vignetteSmoothness, &PostProcessingSettings::vignetteSmoothness)
         .addProperty("vignetteRoundness", &PostProcessingSettings::vignetteRoundness, &PostProcessingSettings::vignetteRoundness)
         .addProperty("vignetteColor", &PostProcessingSettings::vignetteColor, &PostProcessingSettings::vignetteColor)
+        .addProperty("vignetteFalloff", &PostProcessingSettings::vignetteFalloff, &PostProcessingSettings::vignetteFalloff)
+        .addProperty("vignetteStart", &PostProcessingSettings::vignetteStart, &PostProcessingSettings::vignetteStart)
+        .addProperty("vignetteEnd", &PostProcessingSettings::vignetteEnd, &PostProcessingSettings::vignetteEnd)
         .addProperty("ditherEnabled", &PostProcessingSettings::ditherEnabled, &PostProcessingSettings::ditherEnabled)
         .addProperty("fxaaEnabled", &PostProcessingSettings::fxaaEnabled, &PostProcessingSettings::fxaaEnabled)
         .addProperty("chromaticAberrationEnabled", &PostProcessingSettings::chromaticAberrationEnabled, &PostProcessingSettings::chromaticAberrationEnabled)
@@ -3403,6 +3420,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        // the Environment Lighting Source (AmbientMode.COLOR, GRADIENT) and the gradient's colours
+        // (sRGB; globalIlluminationIntensity scales them)
+        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
+        .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
+        .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
+        .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)
+        .addFunction("setAmbientGradient", &Scene::setAmbientGradient)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
         // physical units are drawn at (EV100)

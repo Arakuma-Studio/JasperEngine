@@ -186,6 +186,8 @@ namespace jasperengine{
         LightDataTail lightDataTail;
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
+        int slotVSAmbientGradient = -1;
+        int slotFSAmbientGradient = -1;
         int slotFSLighting2D = -1;
         int slotVSSprite = -1;
         int slotVSSkinning = -1;
@@ -303,6 +305,8 @@ namespace jasperengine{
         unsigned int sizeFSObjectLights = 0;
         int slotFSLitFrame = -1;        // includes/lit_frame.glsl (built-in Lit)
         unsigned int sizeFSLitFrame = 0; // reflected: the prefix the variant declares
+        int slotVSAmbientGradient = -1; // includes/ambient.glsl ('Agr', S94)
+        int slotFSAmbientGradient = -1;
         int slotFSReflectionProbe = -1;
         int slotFSLighting2D = -1;
         int slotFSFog = -1;
