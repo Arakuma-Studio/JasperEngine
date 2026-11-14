@@ -210,6 +210,11 @@ command line, or `allow_missing_assets` for `build_project` to build anyway. The
 the `Asset` Lua API. It is loaded on the first query and costs nothing until then. Metas and
 the asset database never ship.
 
+Under Asset Stripping: Referenced Only (`player.asset_stripping`) an asset ships when a
+reference reaches it from the build's scenes or project settings, or a Lua or C++ string literal
+names its path (`Texture("ui/logo.png")`); an asset only a GUID query or a computed path finds
+needs `player.always_include`. `Asset.exists` answers false for one the build left out.
+
 ## Command line
 
 ```
