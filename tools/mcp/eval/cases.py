@@ -5242,4 +5242,42 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S98 WP-5: FBX imports never block the tool server; a pending import is no failure
+    {
+        "id": "guard_model_import_pending",
+        "kind": "guard",
+        "what_happened": "New result text (S98 REQ-33): the models of a fresh clone appear once their first FBX import lands. "
+                         "editor_status lists the model_import job with done/total and says the models appear when ready, so an "
+                         "agent asked why they are missing waits for the job (get_job) instead of importing or placing them again.",
+        "text_at_issue": "editor_status: jobs[] {kind: model_import, done, total} and 'Importing models: 1/3 (job 4); they appear "
+                         "when ready.'; edit_terrain_details note '<mesh> is importing (job N): its layer draws once the import lands.'",
+        "source": "docs/specs/S98-editor-tooling-gaps.md E15, E21 (the JasperArcade port: 'Model load failed' before the FBX "
+                  "import ends, tools blocked during the first import)",
+        "prompt": "I just cloned the project and opened scenes/Hall.scene, but the three statues in it are invisible. Find out why "
+                  "and fix whatever is broken.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Hall\". Running jobs: 1. Importing "
+                "models: 1/3 (job 4); they appear when ready.",
+                {"project": {"name": "Space Dodge"}, "playing": False,
+                 "scenes": [{"id": 1, "name": "Hall", "path": "scenes/Hall.scene", "selected": True, "opened": True}],
+                 "jobs": [{"job_id": "4", "kind": "model_import", "title": "Importing FBX models", "status": "running",
+                           "message": "1/3 models imported", "progress": 0.3333, "elapsed_seconds": 12.5, "log_tail": [],
+                           "done": 1, "total": 3}]})},
+            {"tool": "get_job", "result": ok(
+                "Importing FBX models: succeeded - Imported 3/3 model(s).",
+                {"job_id": "4", "kind": "model_import", "status": "succeeded", "message": "Imported 3/3 model(s).",
+                 "result": {"done": 3, "total": 3, "failed": 0}})},
+            {"tool": "read_console", "result": ok(
+                "3 entries:\n[info] Importing 3 models (first open): they appear when ready\n[info] Importing Statue.fbx\n"
+                "[info] Importing Statue2.fbx",
+                {"entries": [{"id": 1, "type": "info", "message": "Importing 3 models (first open): they appear when ready"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Hall\" (3D, 4 GameObjects).\nMain Camera [10] camera\nStatue [11] model\nStatue2 [12] model\n"
+                "Statue3 [13] model\n", {"scene_id": 1, "entity_count": 4})},
+        ],
+        "checks": {"must_not_call": ["import_files", "set_model", "create_entity", "delete_entities", "set_model_import_settings"],
+                   "reply_must": [r"(?i)import"]},
+        "max_turns": 10,
+    },
 ]

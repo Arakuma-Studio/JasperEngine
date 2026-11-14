@@ -89,6 +89,7 @@ namespace jasperengine::editor{
     namespace prefabinternal { struct ScratchEntity; }
     class ScriptPropertyCache;  // editor/util/ScriptPropertyCache.h
     class ScriptAttach;         // editor/util/ScriptAttach.h
+    class FbxImportQueue;       // editor/model/FbxImportQueue.h
     struct BakedPrefab;
     namespace vcs {
         class VcsService;
@@ -1387,22 +1388,24 @@ namespace jasperengine::editor{
         // one whose prefab moved, went or came back is written again (from its file)
         void invalidateClosedSceneSources(const std::function<bool(const PrefabSceneInfo&)>& affected);
 
-        // FBX imports run on any thread; their models reload on the main one
-        struct FbxImportFailure {
-            uintmax_t size = 0;
-            std::filesystem::file_time_type time;
-        };
+        // FBX imports run on any thread but the main one (S98 D10: FbxImportQueue); their models
+        // reload on the main one
         std::mutex fbxImportMutex;
-        std::mutex fbxImportCallMutex; // held for a whole importFbxModel call
         std::atomic<bool> fbxImportsPaused{false};
         std::set<std::filesystem::path> exportedImports; // FBX an export's scenes use, kept as they are
         std::set<std::filesystem::path> modelReloads; // FBX whose loaded models may be out of date
-        std::map<std::filesystem::path, FbxImportFailure> failedFbxImports;
+        std::set<std::filesystem::path> modelLoadRetries; // FBX whose import failed: their waiting loads run
+        // what waits on the main thread for an FBX's import to end (whenModelImported)
+        std::vector<std::pair<std::filesystem::path, std::function<void()>>> modelImportWaiters;
         std::chrono::steady_clock::time_point lastFbxImportCheck;
         static constexpr double fbxImportCheckIntervalSec = 1.0;
-        // A Background job (S06); ~Project waits for it before the members it uses go
-        jobs::Task<std::map<std::filesystem::path, FbxImportFailure>> fbxImportScan;
+        // its job captures the project: ~Project waits for it before the members it uses go
+        std::unique_ptr<FbxImportQueue> fbxImports;
 
+        // Converts an FBX on the calling thread (FbxImportQueue's hook); true when its .glb is current
+        bool convertFbxModel(const std::filesystem::path& fbxPath, bool force);
+        // The engine's question for a model about to load (MeshSystem::setModelImportGate)
+        bool isModelLoadWaiting(const std::string& filename);
         void queueModelReload(const std::filesystem::path& fbxPath);
         // Reloads the models loaded from an older import; false while one of them is still loading
         bool reloadModelFile(const std::filesystem::path& fbxPath, bool synchronous = false);
@@ -1411,8 +1414,6 @@ namespace jasperengine::editor{
         // FBX files the loaded scenes use, with the scenes where a model of one is not loaded
         std::map<std::filesystem::path, std::vector<const SceneProject*>> collectSceneModelFiles() const;
         void updateSceneImports(SceneProject* sceneProject);
-        // Imports every FBX in the assets, since scripts can load any of them by path
-        void importFbxModels();
 
         std::string libName;
 
@@ -2399,12 +2400,37 @@ namespace jasperengine::editor{
         // deleted (R16), the lock released
         void endProjectSession();
 
-        // Reimports changed FBX files of the scenes' models and reloads them
+        // Once a frame: starts the queued FBX imports, reimports the scenes' changed FBX files and
+        // reloads their models
         void refreshFbxImports();
-        // Imports an FBX into its .glb when that is missing or stale, or always when forced. Any thread.
+        enum class ModelImport { Ready, Pending, Failed };
+        // Queues an FBX's import and never waits (S98 REQ-32): Ready when its .glb loads (an old one
+        // is reimported in the background and reloads), Pending while it is queued or converting,
+        // Failed when there is nothing to load. Any thread.
+        ModelImport requestModelImport(const std::filesystem::path& fbxPath, bool force = false);
+        // Queued or converting
+        bool isModelImportPending(const std::filesystem::path& fbxPath) const;
+        // Imports an FBX into its .glb when that is missing or stale, or always when forced, on the
+        // calling thread; false when there is nothing to load. Never waits on the main thread, where
+        // it only queues (requestModelImport).
         bool importFbxModel(const std::filesystem::path& fbxPath, bool force = false);
-        // An FBX model is imported when needed; false when it has nothing to load
-        bool prepareModelFile(const std::string& modelPath);
+        // Imports every FBX in the assets, since scripts can load any of them by path. Not on the
+        // main thread (Play startup, an export).
+        void importFbxModels();
+        // requestModelImport for a model path; Ready for a file that needs no import
+        ModelImport prepareModelFile(const std::string& modelPath);
+        // Runs `then` on the main thread once the FBX is no longer queued or converting (at once
+        // if it is not). Any thread.
+        void whenModelImported(const std::filesystem::path& fbxPath, std::function<void()> then);
+        // The import batch: conversions done and to do (editor_status, the MCP import job)
+        struct ModelImportProgress {
+            uint64_t batch = 0;
+            size_t done = 0;
+            size_t total = 0;
+            size_t failed = 0;
+            bool active = false;
+        };
+        ModelImportProgress getModelImportProgress() const;
         // The .glb an FBX is imported into
         std::filesystem::path getImportedModelPath(const std::filesystem::path& fbxPath) const;
         // Stops the reimports while an export reads the scenes

@@ -2129,7 +2129,10 @@ bool stringArray(const CallPtr& call, const char* key, std::vector<std::string>&
 }
 
 // Copies local files and folders into to_dir (one project undo step); false after failing the call
-bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local, Json& data, std::string& text) {
+// The FBX files a copy brought: queued for their import, which the call waits for off the main
+// thread (S98 REQ-32)
+bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local, Json& data, std::string& text,
+                      std::vector<fs::path>& fbxQueued) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     if (!args.contains("to_dir") || args["to_dir"].is_null()) {
@@ -2192,12 +2195,12 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     for (const Json& rel : imported) changed.push_back(project->getProjectPath() / FileUtils::pathFromUtf8(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
-    // An FBX loads from the glTF it is converted into, made now so the next tool can use it
-    Json fbxImports = Json::array();
-    Json fbxFailed = Json::array();
+    // An FBX loads from the glTF it is converted into: queued now, and the call replies once it
+    // is made, so the next tool can use it
     auto importFbx = [&](const fs::path& fbxPath) {
         if (!FbxImporter::isFbxFile(fbxPath) || !project->isInsideAssetsPath(fbxPath)) return;
-        (project->importFbxModel(fbxPath) ? fbxImports : fbxFailed).push_back(projectRelative(project, fbxPath));
+        project->requestModelImport(fbxPath);
+        fbxQueued.push_back(fbxPath);
     };
     for (const fs::path& path : changed) {
         if (fs::is_directory(path, ec)) {
@@ -2210,8 +2213,6 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
             importFbx(path);
         }
     }
-    if (!fbxImports.empty()) data["fbx_imports"] = fbxImports;
-    if (!fbxFailed.empty()) data["fbx_import_failed"] = fbxFailed;
     Json importedGuids = Json::object();
     for (const Json& rel : imported) {
         const Guid guid = project->getAssetDatabase().getAssetGuid(rel.get<std::string>());
@@ -2219,16 +2220,29 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     }
     data["imported_guids"] = importedGuids;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
-    if (!fbxImports.empty()) {
-        text += " Converted " + std::to_string(fbxImports.size()) + " FBX model(s) to glTF.";
-    }
-    if (!fbxFailed.empty()) {
-        text += " " + std::to_string(fbxFailed.size()) + " FBX model(s) could not be converted (fbx_import_failed; the console has details).";
-    }
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
     }
     return true;
+}
+
+// What became of the FBX imports importLocalFiles queued, once none is pending
+void addFbxImportResults(Project* project, const std::vector<fs::path>& fbxQueued, Json& data, std::string& text) {
+    Json fbxImports = Json::array();
+    Json fbxFailed = Json::array();
+    for (const fs::path& fbxPath : fbxQueued) {
+        const bool current = FbxImporter::getState(fbxPath, project->getImportedModelPath(fbxPath), project->getAssetsPath()) ==
+                             FbxImporter::State::UpToDate;
+        (current ? fbxImports : fbxFailed).push_back(projectRelative(project, fbxPath));
+    }
+    if (!fbxImports.empty()) {
+        data["fbx_imports"] = fbxImports;
+        text += " Converted " + std::to_string(fbxImports.size()) + " FBX model(s) to glTF.";
+    }
+    if (!fbxFailed.empty()) {
+        data["fbx_import_failed"] = fbxFailed;
+        text += " " + std::to_string(fbxFailed.size()) + " FBX model(s) could not be converted (fbx_import_failed; the console has details).";
+    }
 }
 
 // Every occurrence of `from` (also HTML-escaped, & as &amp;) in text replaced by `to`; the count
@@ -2386,6 +2400,8 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     call->ok(text, data);
 }
 
+void continueImport(const CallPtr& call, const std::shared_ptr<RemoteImport>& state, bool remote, Json data, std::string text);
+
 void importFilesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -2507,7 +2523,29 @@ void importFilesTool(const CallPtr& call) {
 
     Json data = Json::object();
     std::string text;
-    if (!local.empty() && !importLocalFiles(call, local, data, text)) return;
+    std::vector<fs::path> fbxQueued;
+    if (!local.empty() && !importLocalFiles(call, local, data, text, fbxQueued)) return;
+    if (!fbxQueued.empty()) {
+        // the conversions run on the import queue's job: other calls answer meanwhile
+        call->waitUntil([call, fbxQueued]() {
+            Project* current = call->ctx().project();
+            return std::none_of(fbxQueued.begin(), fbxQueued.end(), [current](const fs::path& fbx) { return current->isModelImportPending(fbx); });
+        }, 600000, [call, state, remote, fbxQueued, data, text](bool timedOut) mutable {
+            if (timedOut) {
+                data["next"] = "The FBX import still runs (editor_status lists its model_import job): its models load once it ends.";
+                text += " " + data["next"].get<std::string>();
+            } else {
+                addFbxImportResults(call->ctx().project(), fbxQueued, data, text);
+            }
+            continueImport(call, state, remote, std::move(data), std::move(text));
+        });
+        return;
+    }
+    continueImport(call, state, remote, std::move(data), std::move(text));
+}
+
+// import_files after the local copies: the remote downloads and video conversions, if any
+void continueImport(const CallPtr& call, const std::shared_ptr<RemoteImport>& state, bool remote, Json data, std::string text) {
     if (!remote && state->videos.empty()) {
         call->ok(text, data);
         return;

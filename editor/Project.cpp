@@ -163,6 +163,7 @@
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "model/FbxImportQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/HitStop.h"
 #include "pixelart/PixelFxPlayer.h"
@@ -368,11 +369,31 @@ static void installShaderForkReader(const editor::Project* project){
 
 bool editor::Project::recordSelectionInUndo = true;
 
+// The project MeshSystem asks about pending FBX imports (the last one made): it takes the gate
+// back when it goes
+static const editor::Project* modelImportGateProject = nullptr;
+
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
     resetConfigs();
     installUndoHooks();
     // a volume's file holds its base's description: presets and Noise Graphs are rebuilt from it (T6 R33)
     VoxelAssets::setBaseResolver(&resolveVoxelBase);
+    // S98 D10: one queue converts the FBX models; the main thread only queues and asks
+    FbxImportQueue::Hooks importHooks;
+    importHooks.need = [this](const fs::path& fbxPath) {
+        switch (FbxImporter::getState(fbxPath, getImportedModelPath(fbxPath), getAssetsPath())) {
+            case FbxImporter::State::UpToDate: return FbxImportQueue::Need::None;
+            case FbxImporter::State::Missing: return FbxImportQueue::Need::Create;
+            default: return FbxImportQueue::Need::Update;
+        }
+    };
+    importHooks.convert = [this](const fs::path& fbxPath, bool force) { return convertFbxModel(fbxPath, force); };
+    // the idle editor loop wakes to reload the models and report the batch
+    importHooks.changed = []() { getEditorHost().enqueueMainThreadTask([]() {}); };
+    fbxImports = std::make_unique<FbxImportQueue>(std::move(importHooks));
+    // a model whose import is queued or converting waits for it, without an error (REQ-33)
+    MeshSystem::setModelImportGate([this](const std::string& filename) { return isModelLoadWaiting(filename); });
+    modelImportGateProject = this;
     // a mesh job's result waits for the system's next update, which an idle editor would not run
     voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
 }
@@ -384,7 +405,11 @@ editor::Project::~Project(){
     vcsService->close();
     removeVcsBackups();
     // the jobs capture the project (the asset walk its database)
-    fbxImportScan.wait();
+    if (modelImportGateProject == this) {
+        MeshSystem::setModelImportGate(nullptr);
+        modelImportGateProject = nullptr;
+    }
+    fbxImports->wait();
     waitForAssetScan();
     playStartupTask.wait();
     playStopTask.wait();
@@ -1167,28 +1192,103 @@ fs::path editor::Project::getImportedModelPath(const fs::path& fbxPath) const {
     return FileUtils::pathFromUtf8(MeshSystem::getFbxImportPath(FileUtils::pathToUtf8(fbxPath)));
 }
 
-bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
-    // The import mirrors the assets directory
-    if (!isInsideAssetsPath(fbxPath)) {
-        Out::error("Cannot import %s: it is outside the project assets", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
-        return false;
-    }
-    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+bool editor::Project::convertFbxModel(const fs::path& fbxPath, bool force) {
     bool exported;
     {
         std::lock_guard<std::mutex> lock(fbxImportMutex);
         exported = exportedImports.count(fbxPath.lexically_normal()) > 0;
     }
+    const fs::path glbPath = getImportedModelPath(fbxPath);
     bool written = false;
-    const bool loadable = importFbx(fbxPath, getImportedModelPath(fbxPath), getAssetsPath(), force, !exported, written);
+    importFbx(fbxPath, glbPath, getAssetsPath(), force, !exported, written);
     if (written) {
         queueModelReload(fbxPath);
+        return true;
     }
-    return loadable;
+    // kept as it is while an export reads it: no failure, the next check after it reimports it
+    std::error_code ec;
+    if (exported && fs::exists(glbPath, ec)) {
+        return true;
+    }
+    const bool current = FbxImporter::getState(fbxPath, glbPath, getAssetsPath()) == FbxImporter::State::UpToDate;
+    if (!current) {
+        // the loads that waited for it run now, and say why they fail
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        modelLoadRetries.insert(fbxPath.lexically_normal());
+    }
+    return current;
 }
 
-bool editor::Project::prepareModelFile(const std::string& modelPath) {
-    return !FbxImporter::isFbxFile(modelPath) || importFbxModel(resolveAssetPath(FileUtils::pathFromUtf8(modelPath)));
+editor::Project::ModelImport editor::Project::requestModelImport(const fs::path& fbxPath, bool force) {
+    // The import mirrors the assets directory
+    if (!isInsideAssetsPath(fbxPath)) {
+        Out::error("Cannot import %s: it is outside the project assets", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
+        return ModelImport::Failed;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(fbxPath, ec)) {
+        Out::error("Cannot import %s: the file does not exist", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
+        return ModelImport::Failed;
+    }
+    const bool imported = fs::exists(getImportedModelPath(fbxPath), ec);
+    if (!force && !imported && fbxImports->hasFailed(fbxPath)) {
+        return ModelImport::Failed;
+    }
+    if (force || !imported || !fbxImports->isPending(fbxPath)) {
+        fbxImports->request(fbxPath, force);
+    }
+    return imported && !force ? ModelImport::Ready : ModelImport::Pending;
+}
+
+bool editor::Project::isModelImportPending(const fs::path& fbxPath) const {
+    return fbxImports->isPending(fbxPath);
+}
+
+bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
+    // REQ-32: the main thread never converts a model (nor waits for one)
+    if (getEditorHost().isMainThread()) {
+        return requestModelImport(fbxPath, force) != ModelImport::Failed;
+    }
+    if (!isInsideAssetsPath(fbxPath)) {
+        Out::error("Cannot import %s: it is outside the project assets", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
+        return false;
+    }
+    std::error_code ec;
+    // A stale import still loads
+    return fbxImports->convertNow(fbxPath, force) || fs::exists(getImportedModelPath(fbxPath), ec);
+}
+
+editor::Project::ModelImport editor::Project::prepareModelFile(const std::string& modelPath) {
+    if (!FbxImporter::isFbxFile(modelPath)) {
+        return ModelImport::Ready;
+    }
+    return requestModelImport(resolveAssetPath(FileUtils::pathFromUtf8(modelPath)));
+}
+
+bool editor::Project::isModelLoadWaiting(const std::string& filename) {
+    const fs::path fbxPath = resolveAssetPath(FileUtils::pathFromUtf8(filename)).lexically_normal();
+    std::error_code ec;
+    // an old import loads and reloads when the new one lands; a missing FBX fails as before
+    if (fs::exists(getImportedModelPath(fbxPath), ec) || !isInsideAssetsPath(fbxPath) || !fs::is_regular_file(fbxPath, ec)) {
+        return false;
+    }
+    return requestModelImport(fbxPath) == ModelImport::Pending;
+}
+
+void editor::Project::whenModelImported(const fs::path& fbxPath, std::function<void()> then) {
+    std::lock_guard<std::mutex> lock(fbxImportMutex);
+    modelImportWaiters.emplace_back(fbxPath.lexically_normal(), std::move(then));
+}
+
+editor::Project::ModelImportProgress editor::Project::getModelImportProgress() const {
+    const FbxImportQueue::Progress progress = fbxImports->progress();
+    ModelImportProgress result;
+    result.batch = progress.batch;
+    result.done = progress.done;
+    result.total = progress.total;
+    result.failed = progress.failed;
+    result.active = progress.active;
+    return result;
 }
 
 void editor::Project::queueModelReload(const fs::path& fbxPath) {
@@ -1278,9 +1378,11 @@ void editor::Project::importFbxModels() {
             continue;
         }
         if (FbxImporter::isFbxFile(it->path()) && it->is_regular_file(ec)) {
-            importFbxModel(it->path());
+            fbxImports->request(it->path());
         }
     }
+    // with the imports already running: their reloads are queued once this returns
+    fbxImports->drain();
 }
 
 void editor::Project::setFbxImportsPaused(bool paused) {
@@ -1292,17 +1394,7 @@ void editor::Project::setFbxImportsPaused(bool paused) {
 }
 
 bool editor::Project::flushFbxReloads(std::string& error) {
-    if (fbxImportScan.isValid()) {
-        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
-            failedFbxImports[fbxPath] = failure;
-        }
-        fbxImportScan.reset();
-    }
-    // An import started before the pause queues its reload when it returns
-    {
-        std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
-    }
-
+    // The export's thread imported every FBX before (importFbxModels), so none is left to wait for
     const fs::path waiting = applyModelReloads(true);
     if (!waiting.empty()) {
         error = "Cannot export: " + FileUtils::pathToUtf8(waiting.filename()) + " is still loading. Export again once it finishes.";
@@ -1417,19 +1509,11 @@ bool editor::Project::prepareFbxModelsForExport(std::string& error) {
             return false;
         }
 
+        // the export's thread imported it (importFbxModels): this thread converts nothing (S98 REQ-32)
         const fs::path glbPath = getImportedModelPath(fbxPath);
         if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
-            bool written = false;
-            importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
-            if (!written) {
-                error = "Cannot export: " + fbxName + " could not be imported";
-                return false;
-            }
-            if (!reloadModelFile(fbxPath, true)) {
-                queueModelReload(fbxPath);
-                error = "Cannot export: " + fbxName + " is still loading. Export again once it finishes.";
-                return false;
-            }
+            error = "Cannot export: " + fbxName + " could not be imported";
+            return false;
         }
         for (const fs::path& missing : FbxImporter::findMissingLinkedFiles(fbxPath, glbPath)) {
             Out::warning("%s uses %s, which is missing, so it is exported without that texture",
@@ -1440,12 +1524,8 @@ bool editor::Project::prepareFbxModelsForExport(std::string& error) {
 }
 
 void editor::Project::refreshFbxImports() {
-    if (fbxImportScan.isReady()) {
-        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
-            failedFbxImports[fbxPath] = failure;
-        }
-        fbxImportScan.reset();
-    }
+    // the requests of a frame (a scene's models) make one batch
+    fbxImports->start();
 
     // A playing scene would restore its snapshot over the reload on Stop
     if (fbxImportsPaused || isAnyScenePlaying()) {
@@ -1454,65 +1534,43 @@ void editor::Project::refreshFbxImports() {
 
     applyModelReloads(false);
 
+    std::set<fs::path> retries;
+    std::vector<std::function<void()>> landed;
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        retries.swap(modelLoadRetries);
+        for (auto it = modelImportWaiters.begin(); it != modelImportWaiters.end();) {
+            if (fbxImports->isPending(it->first)) {
+                ++it;
+                continue;
+            }
+            landed.push_back(std::move(it->second));
+            it = modelImportWaiters.erase(it);
+        }
+    }
+    for (const fs::path& fbxPath : retries) {
+        for (SceneProject& sceneProject : scenes) {
+            if (sceneProject.scene) {
+                sceneProject.scene->getSystem<MeshSystem>()->retryFailedModelLoads(FileUtils::pathToUtf8(fbxPath));
+            }
+        }
+    }
+    for (const std::function<void()>& then : landed) {
+        then();
+    }
+
     const auto now = std::chrono::steady_clock::now();
-    if (fbxImportScan.isValid() || projectPath.empty() ||
+    if (fbxImports->progress().active || projectPath.empty() ||
         std::chrono::duration<double>(now - lastFbxImportCheck).count() < fbxImportCheckIntervalSec) {
         return;
     }
     lastFbxImportCheck = now;
 
-    // FBX -> its .glb
-    std::map<fs::path, fs::path> files;
+    // The scenes' FBX files that changed (hashing them is the queue's job); a failed one is tried
+    // again once it changes
     for (const auto& entry : collectSceneModelFiles()) {
-        files[entry.first] = getImportedModelPath(entry.first);
+        fbxImports->request(entry.first);
     }
-    if (files.empty()) {
-        return;
-    }
-
-    // Hashing and converting can take seconds, so the check runs off the main thread: a
-    // Background job (S06), Heavy (a conversion parses the whole model)
-    jobs::SubmitOptions options;
-    options.lane = jobs::Lane::Background;
-    options.gate = jobs::GateClass::Heavy;
-    options.name = "fbx-import-scan";
-    fbxImportScan = jobs::submit(
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots(), writeStrict = safewrite::Scope::currentStrict()]() {
-            // the conversions write in the write scope of the thread that started the scan
-            safewrite::Scope scope(writeRoot, writeStrict);
-            std::map<fs::path, FbxImportFailure> failures;
-            for (const auto& [fbxPath, glbPath] : files) {
-                std::error_code ec;
-                FbxImportFailure stamp;
-                stamp.size = fs::file_size(fbxPath, ec);
-                if (ec) {
-                    continue;
-                }
-                stamp.time = fs::last_write_time(fbxPath, ec);
-                // A failed file is retried once it changes again
-                auto failed = known.find(fbxPath);
-                if (failed != known.end() && failed->second.size == stamp.size && failed->second.time == stamp.time) {
-                    continue;
-                }
-                // A missing .glb (a fresh clone, or a cleared cache) is built like a changed one
-                const FbxImporter::State state = FbxImporter::getState(fbxPath, glbPath, assetsRoot);
-                if (state == FbxImporter::State::UpToDate) {
-                    continue;
-                }
-                bool written = false;
-                {
-                    // One import of a file at a time, with importFbxModel (Play startup, a drop...)
-                    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
-                    importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
-                }
-                if (written) {
-                    queueModelReload(fbxPath);
-                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
-                    failures[fbxPath] = stamp;
-                }
-            }
-            return failures;
-        }, options);
 }
 
 editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* scene) const {
