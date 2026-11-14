@@ -1050,8 +1050,8 @@ Third-party notices are credits, not a gate: `tools/ci/check-notices.py` stages 
 files and `NOTICE.md` rows exist into the editor install and exported games; CI does not fail on a
 library without them.
 
-The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
-`docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
+The Chrome for Testing headless shell in `docker/web.Dockerfile`, and `uv` and Kitware's CMake in
+`docker/linux.Dockerfile`, are pinned by version and sha256 and bumped by hand, as are the MCP
 harness's packages (`tools/mcp/requirements.txt`). Every workflow action is pinned by its full commit
 SHA, with its version in a comment.
 
