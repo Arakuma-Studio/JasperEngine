@@ -36,8 +36,8 @@ namespace jasperengine{
         void draw() override {}
 
         void renderOffscreen(const Rect&) {}
-        void drawComposite(PipelineType, bool, int = 1) {}
-        void drawComposite(CameraComponent&, Transform&, PipelineType, bool, int = 1, bool = false) {}
+        void drawComposite(PipelineType, bool, int = 1, float = 0.0f, float = 0.0f) {}
+        void drawComposite(CameraComponent&, Transform&, PipelineType, bool, int = 1, bool = false, float = 0.0f, float = 0.0f) {}
         bool isAllLoaded() const { return true; }
         const HtmlUIRenderStats& getRenderStats() const { static const HtmlUIRenderStats none; return none; }
 

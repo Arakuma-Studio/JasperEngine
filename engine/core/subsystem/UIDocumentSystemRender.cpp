@@ -46,6 +46,19 @@ namespace jasperengine{
         return stats;
     }
 
+    // the screen documents' quad in the viewport: all of it, or, in a view showing another canvas
+    // than the documents' frame (the editor's Game view outside Play lays them out in the
+    // project's canvas), the frame's part of the view's canvas from its top-left corner: canvas
+    // pixels keep their size and the view crops the rest, as the game shows them
+    Rml::Matrix4f screenQuadMatrix(bool flipY, float frameWidth, float frameHeight, float viewCanvasWidth, float viewCanvasHeight){
+        Rml::Matrix4f matrix = Rml::Matrix4f::Identity();
+        if (frameWidth > 0.0f && frameHeight > 0.0f && viewCanvasWidth > 0.0f && viewCanvasHeight > 0.0f){
+            const float sx = frameWidth / viewCanvasWidth, sy = frameHeight / viewCanvasHeight;
+            matrix = Rml::Matrix4f::Translate(sx - 1.0f, 1.0f - sy, 0.0f) * Rml::Matrix4f::Scale(sx, sy, 1.0f);
+        }
+        return flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) * matrix : matrix;
+    }
+
     struct HtmlUIRenderState {
         HtmlUIRenderStats stats;   // the last renderOffscreen, summed over the scene's contexts
 
@@ -121,23 +134,30 @@ HtmlUIRenderStats UIDocumentSystem::getRenderStats(Entity entity) const{
     return context ? contextStats(*context) : HtmlUIRenderStats();
 }
 
-void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY, int msaaSamples){
+void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY, int msaaSamples, float viewCanvasWidth, float viewCanvasHeight){
     HtmlUIContext* screen = getContext();
-    if (screen)
-        screen->composite(colorPipeline, flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity(), msaaSamples);
+    if (!screen)
+        return;
+    float w = 0.0f, h = 0.0f;
+    if (viewCanvasWidth > 0.0f && viewCanvasHeight > 0.0f)
+        getFrameSize(w, h);
+    screen->composite(colorPipeline, screenQuadMatrix(flipY, w, h, viewCanvasWidth, viewCanvasHeight), msaaSamples);
 }
 
 void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
-                                     int msaaSamples, bool sceneView){
+                                     int msaaSamples, bool sceneView, float viewCanvasWidth, float viewCanvasHeight){
     (void)cameraTransform;
     HtmlUIContext* screen = getContext();
     if (!screen)
         return;
 
     // a 3D camera has no canvas, and a game view shows the documents in screen space under any
-    // camera (Unity's overlay canvas ignores it, R57): the document fills the viewport
+    // camera (Unity's overlay canvas ignores it, R57): the document fills the viewport (or its
+    // part of the view's canvas)
+    float w = 0.0f, h = 0.0f;
+    getFrameSize(w, h);
     if (!sceneView || camera.type == CameraType::CAMERA_PERSPECTIVE){
-        screen->composite(colorPipeline, flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity(), msaaSamples);
+        screen->composite(colorPipeline, screenQuadMatrix(flipY, w, h, viewCanvasWidth, viewCanvasHeight), msaaSamples);
         return;
     }
 
@@ -145,8 +165,6 @@ void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraT
     // space where RectTransform UI lives, through the camera, so a panned or zoomed view shows
     // the document in place. The document's top edge is at y = 0 under a
     // UI camera (y down) and at y = height under an orthographic one (y up, UI flipped)
-    float w = 0.0f, h = 0.0f;
-    getFrameSize(w, h);
     if (w <= 0.0f || h <= 0.0f)
         return;
 

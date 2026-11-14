@@ -3540,6 +3540,11 @@ namespace jasperengine{
 		bool overlayDocumentsPending = false;
 		bool writesView(const FramebufferRender* destination) const;
 		void drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip);
+		// the canvas the main camera's documents are placed in (UIDocumentSystem::drawComposite), held
+		// with overlayDocumentsPending
+		float overlayCanvasWidth = 0.0f;
+		float overlayCanvasHeight = 0.0f;
+		void documentsCanvas(const CameraComponent& camera, float& width, float& height) const;
 
 		// user post-process chain
 		void loadPostProcess();

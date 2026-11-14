@@ -12877,7 +12877,27 @@ void RenderSystem::drawOverlayDocuments(const FramebufferRender* destination, Pi
     overlayDocumentsPending = false;
     // the view's framebuffer is stored bottom row first on GL, as the camera pass draws into it
     // (isRenderingFlipped); the swapchain is not
-    scene->getSystem<UIDocumentSystem>()->drawComposite(pip, pip != PIP_DEFAULT && Engine::isOpenGL());
+    scene->getSystem<UIDocumentSystem>()->drawComposite(pip, pip != PIP_DEFAULT && Engine::isOpenGL(), 1, overlayCanvasWidth,
+                                                        overlayCanvasHeight);
+}
+
+void RenderSystem::documentsCanvas(const CameraComponent& camera, float& width, float& height) const{
+    width = 0.0f;
+    height = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    // the editor's Game view outside Play frames the project canvas while the documents keep the
+    // layout the editor gave them: an Auto Resize UI or 2D camera's clip rectangle is the canvas
+    // the view shows, which the documents' canvas pixels are placed in. A game lays its documents
+    // out in the canvas its camera covers (they fill the viewport), and a Pixel Perfect Camera
+    // spans its own rectangle
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE && camera.autoResize && !camera.renderToTexture && camera.leftClip == 0.0f
+        && camera.bottomClip == 0.0f && !findPixelPerfectDrive(camera)){
+        width = camera.rightClip;
+        height = camera.topClip;
+    }
+#else
+    (void)camera;
+#endif
 }
 
 void RenderSystem::needReloadPostProcess(){
@@ -20199,10 +20219,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         || useMsaaRedirect;
     overlayDocumentsPending = drawDocuments && !documentsSceneView && laterOutputPass
         && scene->getHtmlUiRenderMode() == UIRenderMode::OVERLAY;
+    if (drawDocuments)
+        documentsCanvas(camera, overlayCanvasWidth, overlayCanvasHeight);
     if (drawDocuments && !overlayDocumentsPending){
         camera.render.applyScissor(colorPassViewport);
         scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa,
-                                                            documentsSceneView);
+                                                            documentsSceneView, overlayCanvasWidth, overlayCanvasHeight);
     }
 
     camera.render.endRenderPass();
