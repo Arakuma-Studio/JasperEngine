@@ -59,8 +59,9 @@ Settings window shows it while open). `build_project shaders` does the same befo
 a variant only when nothing draws with it: an excluded shader the game needs draws nothing.
 
 Every mode's result carries `warnings[{code, message}]` and `notes[]`: `W-EXPORT-FOLDER-SKIPPED`
-(an earlier export inside the project, left out: move it out), `W-SCENE-NOT-SAVED` (an untitled
-scene shipped as it is: save_scene with a path), `W-SHADER-FORK-MISSING` (variants of a deleted
+(an earlier export inside the project, left out: move it out), `W-SCENE-UNSAVED` (a scene or
+prefab with unsaved changes, or an untitled scene, shipped as the editor shows it; its file is not
+written: save_scene to keep it), `W-SHADER-FORK-MISSING` (variants of a deleted
 fork left out), `W-UNREADABLE-FOLDER`; a note when D3D11 shaders ship as HLSL source (built off
 Windows). A failed build's message names what failed: the file a copy or write could not make, or
 the first compiler error (`errors[]` lists them with file and line). `output_dir` inside the

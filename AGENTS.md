@@ -65,7 +65,7 @@ Before editing these paths, read the rule file:
 - `docker`: the build images.
 
 A game is a prebuilt player plus cooked scenes and assets, or, when compiled, `engine/project` plus
-C++ the editor generates (scene factories, script bindings).
+the same cooked content and the C++ script bindings the editor generates.
 
 ## Generated files
 

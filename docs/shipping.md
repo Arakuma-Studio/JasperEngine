@@ -12,8 +12,12 @@ macOS, Android, iOS or the web. It picks one of two methods:
   into a binary form (`.jscn`, `.jpfb`), writes `game.json` and `content-manifest.json`, and puts
   them next to a ready-made player executable, the *player runtime* of that platform. Seconds,
   with no C++ toolchain, Android NDK, Gradle or emsdk.
-- **Compile from source**. The editor generates the C++ project and compiles the engine with
-  the game, as before. It is needed when the project has
+- **Compile from source**. The editor exports the C++ project and compiles the engine with the
+  game. The game is the prebuilt player's, compiled with the project's native code: it reads the
+  same cooked scenes and prefabs and `game.json` (under the exported project's `content/`, put
+  beside `assets/` and `lua/` by every platform's build), and the only C++ generated for it is
+  the C++ scripts' entry points (`main.cpp`, `scene_scripts.cpp`), whatever the size of the scenes.
+  It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
   - native plugins the prebuilt player cannot carry (Java/Kotlin, Gradle dependencies, C++ plugins:
@@ -34,9 +38,18 @@ scripts (Player.cpp)"); its combo forces Auto, Prebuilt or Compile (`export.meth
 project.yaml). Both methods write the same `content-manifest.json` and `licenses/`, so releases
 treat them alike.
 
-A build replaces its output folder only once it is complete: it is made in
+A build replaces its output folder only once it is complete, by either method: it is made in
 `<folder>.staging-<pid>` and swapped in at the end, so a failed or cancelled build leaves the
-previous one as it was.
+previous one as it was, and a file the new build does not write is gone.
+
+**A build writes nothing in the project** but its output folder and the editor's `.jasperengine/`
+(the FBX imports it needs go to the import cache there). It cooks the scenes and prefabs as the
+editor holds them: an open scene or a Prefab Mode stage with unsaved changes ships as it is shown,
+its file stays as it was, and the build warns `W-SCENE-UNSAVED` naming it. Two builds of an
+unchanged project give the same bytes.
+
+The project's own CMake build (its `CMakeLists.txt` opened in an IDE) reads what the editor cooks
+into `.jasperengine/cooked/` whenever a scene is saved: `game.json`, `scenes/` and `prefabs/`.
 
 ## What a build checks
 
@@ -57,11 +70,12 @@ something missing.
   `build/`, `xcuserdata`, `DerivedData`, `*.iml`), and a re-export leaves the IDE state of an
   exported workspace alone: Android Studio keeps its `local.properties` and caches.
 - **Shader variants**: a scene's saved variants of a fork whose files were deleted go at its next
-  save (the build saves every scene); one that only Build Settings or the warm-up list still names is
+  save; one that only Build Settings or the warm-up list still names is
   left out with `W-SHADER-FORK-MISSING`. Stop saves the variants of what scripts made during Play
   (also in scenes a load replaced), so the build ships them.
-- **A scene never saved** ships as the editor holds it (`W-SCENE-NOT-SAVED`; Build Settings lists it
-  with a **Save...** button). One that is not open either fails the build.
+- **A scene never saved**, or one with unsaved changes, ships as the editor holds it (`W-SCENE-UNSAVED`;
+  Build Settings lists a never-saved one with a **Save...** button). A never-saved scene that is not
+  open fails the build.
 - **Build errors**: a failed compile names its first error in the message ("Compiling failed with 2
   error(s). First: scripts/Player.cpp:12: ..."), lists up to 20 in the Build dialog (each opens the
   file at the line; **Copy Errors** copies them) and repeats them at the end of the log. The Console
