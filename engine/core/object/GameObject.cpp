@@ -15,6 +15,7 @@
 #include "object/spline/SplineInstantiate.h"
 
 #include "subsystem/RenderSystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "subsystem/PhysicsSystem.h"
 #include "manager/ObjectManager.h"
 #include "Engine.h"
@@ -115,9 +116,12 @@ Vector3 GameObject::getPosition() const{
     return transform.position;
 }
 
+// the world getters are current (S95 REQ-6): a pose moved since the last transform pass is
+// composed from the local values, nothing is written. getComponent: the error of an entity without
+// a Transform, as the other members give it
 Vector3 GameObject::getWorldPosition() const{
-    Transform& transform = getComponent<Transform>();
-    return transform.worldPosition;
+    (void)getComponent<Transform>();
+    return computeWorldPose(*scene, entity).position;
 }
 
 void GameObject::setRotation(Quaternion rotation){
@@ -141,8 +145,8 @@ Quaternion GameObject::getRotation() const{
 }
 
 Quaternion GameObject::getWorldRotation() const{
-    Transform& transform = getComponent<Transform>();
-    return transform.worldRotation;
+    (void)getComponent<Transform>();
+    return computeWorldPose(*scene, entity).rotation;
 }
 
 void GameObject::setScale(const float factor){
@@ -166,8 +170,8 @@ Vector3 GameObject::getScale() const{
 }
 
 Vector3 GameObject::getWorldScale() const{
-    Transform& transform = getComponent<Transform>();
-    return transform.worldScale;
+    (void)getComponent<Transform>();
+    return computeWorldPose(*scene, entity).scale;
 }
 
 void GameObject::setVisible(bool visible){
@@ -280,8 +284,8 @@ Matrix4 GameObject::getLocalMatrix() const{
 }
 
 Matrix4 GameObject::getModelMatrix() const{
-    Transform& transform = getComponent<Transform>();
-    return transform.modelMatrix;
+    (void)getComponent<Transform>();
+    return computeWorldPose(*scene, entity).modelMatrix;
 }
 
 Matrix4 GameObject::getNormalMatrix() const{

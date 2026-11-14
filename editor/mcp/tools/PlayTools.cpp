@@ -70,6 +70,7 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/NavigationSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
@@ -2579,8 +2580,19 @@ void getRuntimeEntityTool(const CallPtr& call) {
         ctx.entity = entity;
         ctx.component = type;
         if (type != ComponentType::ScriptComponent || !onlyProps.empty() || !only.empty()) {
-            for (const auto& [name, property] : Catalog::findEntityProperties(sp->scene, entity, type)) {
+            // the world values as a script's getWorldPosition() reads them now (S95 REQ-6), not the
+            // last transform pass's: what eval_lua or set_runtime_property moved since shows
+            TransformPose pose;
+            if (type == ComponentType::Transform) pose = computeWorldPose(*sp->scene, entity);
+            for (const auto& [name, listed] : Catalog::findEntityProperties(sp->scene, entity, type)) {
                 if (!onlyProps.empty() && !onlyProps.count(name)) continue;
+                PropertyData property = listed;
+                if (type == ComponentType::Transform) {
+                    if (name == "worldPosition") property.ref = &pose.position;
+                    else if (name == "worldRotation") property.ref = &pose.rotation;
+                    else if (name == "worldScale") property.ref = &pose.scale;
+                    else if (name == "modelMatrix") property.ref = &pose.modelMatrix;
+                }
                 try {
                     // context reads give enum names and resolvable entity refs; custom values stay
                     // out of this listing (they can be large)

@@ -4,13 +4,16 @@
 // Unity's Transform hierarchy on GameObject, C++ and Lua (scripting catch-up, Doriax 04501b15b
 // field gaps): parent, setParent(p, worldPositionStays), childCount, getChild, getChildren,
 // findChild("a/b"), and the parents a GameObject refuses. S95: the transform members of an
-// entity without a Transform (REQ-3) and lookups among children of the same name (S16).
+// entity without a Transform (REQ-3), lookups among children of the same name (S16), and world
+// getters that are current after a move (REQ-6).
 
 #include "Scene.h"
 #include "action/Action.h"
 #include "component/Transform.h"
 #include "object/GameObject.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/TransformPropagation.h"
+#include "Engine.h"
 #include "script/LuaBinding.h"
 #include "../ecs/EcsTestUtil.h"
 #include "LogCapture.h"
@@ -20,6 +23,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <string>
 
 using namespace jasperengine;
@@ -234,4 +238,93 @@ TEST(LuaHierarchy, FindEntityUnderParent){
         assert(found and found.entity == BLUE_B, "findChild agrees")
         assert(found.parent.entity == B_ID, "its parent is B")
     )lua"), "");
+}
+
+namespace {
+
+    // the world values a frame's transform pass computes, its flags cleared after (as
+    // RenderSystem::update leaves them)
+    void propagateAndClear(Scene& scene){
+        auto transforms = scene.getComponentArray<Transform>();
+        propagateTransforms(scene, [&scene](Transform& transform, Entity entity){
+            computeWorldTransform(scene, transform, entity);
+        });
+        for (size_t i = 0; i < transforms->size(); i++){
+            transforms->getComponentFromIndex(i).needUpdate = false;
+        }
+    }
+
+    bool sameWorldBits(const void* a, const void* b, size_t size){
+        return std::memcmp(a, b, size) == 0;
+    }
+
+}
+
+// S95 AC-10 (REQ-6, S26): a parent moved in onUpdate; its child's getWorldPosition, Rotation,
+// Scale and modelMatrix read in the same call are the values the transform pass gives after it,
+// bit for bit, and reading them changes nothing (no flag, no stored value). Red: last frame's
+TEST(LuaHierarchy, WorldPoseFreshAfterParentMove){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    Scene scene;
+    const Entity root = named(scene, "Root");
+    const Entity parent = named(scene, "Parent", root);
+    const Entity child = named(scene, "Child", parent);
+    Transform& rootTransform = scene.getComponent<Transform>(root);
+    rootTransform.position = Vector3(-4.0f, 1.5f, 2.0f);
+    rootTransform.rotation = Quaternion(20.0f, Vector3(0.0f, 1.0f, 0.0f));
+    Transform& childTransform = scene.getComponent<Transform>(child);
+    childTransform.position = Vector3(1.0f, 2.0f, -3.0f);
+    childTransform.rotation = Quaternion(35.0f, Vector3(0.3f, 1.0f, 0.2f).normalize());
+    childTransform.scale = Vector3(1.5f, 0.5f, 2.0f);
+    propagateAndClear(scene);
+
+    luabridge::setGlobal(L, GameObject(&scene, parent), "poseParent");
+    luabridge::setGlobal(L, GameObject(&scene, child), "poseChild");
+    ASSERT_EQ(runLua(L, R"lua(
+        Engine.onUpdate:add("worldPoseFresh", function()
+            poseParent.position = Vector3(7, -2, 5)
+            poseParent:setRotation(10, 70, -30)
+            poseParent.scale = Vector3(2, 3, 0.5)
+            poseSeen = {
+                position = poseChild:getWorldPosition(),
+                rotation = poseChild:getWorldRotation(),
+                scale = poseChild:getWorldScale(),
+                model = poseChild.modelMatrix,
+            }
+        end)
+    )lua"), "");
+    const Transform before = scene.getComponent<Transform>(child);
+    Engine::onUpdate.call();
+    Engine::onUpdate.remove("worldPoseFresh");
+
+    // nothing written: the child is as it was, its parent still waits for the pass
+    const Transform& after = scene.getComponent<Transform>(child);
+    EXPECT_FALSE(after.needUpdate);
+    EXPECT_TRUE(scene.getComponent<Transform>(parent).needUpdate);
+    EXPECT_TRUE(sameWorldBits(&after.worldPosition, &before.worldPosition, sizeof(Vector3)));
+    EXPECT_TRUE(sameWorldBits(&after.modelMatrix, &before.modelMatrix, sizeof(Matrix4)));
+
+    ASSERT_EQ(runLua(L, "poseSeenPosition = poseSeen.position; poseSeenRotation = poseSeen.rotation; "
+                        "poseSeenScale = poseSeen.scale; poseSeenModel = poseSeen.model; poseSeen = nil"), "");
+    const Vector3 seenPosition = luabridge::getGlobal(L, "poseSeenPosition").cast<Vector3>().value();
+    const Quaternion seenRotation = luabridge::getGlobal(L, "poseSeenRotation").cast<Quaternion>().value();
+    const Vector3 seenScale = luabridge::getGlobal(L, "poseSeenScale").cast<Vector3>().value();
+    const Matrix4 seenModel = luabridge::getGlobal(L, "poseSeenModel").cast<Matrix4>().value();
+
+    propagateAndClear(scene);
+    const Transform& world = scene.getComponent<Transform>(child);
+    EXPECT_TRUE(sameWorldBits(&seenPosition, &world.worldPosition, sizeof(Vector3)))
+        << "position " << seenPosition.x << " " << seenPosition.y << " " << seenPosition.z << " after the pass "
+        << world.worldPosition.x << " " << world.worldPosition.y << " " << world.worldPosition.z;
+    EXPECT_TRUE(sameWorldBits(&seenRotation, &world.worldRotation, sizeof(Quaternion))) << "rotation";
+    EXPECT_TRUE(sameWorldBits(&seenScale, &world.worldScale, sizeof(Vector3))) << "scale";
+    EXPECT_TRUE(sameWorldBits(&seenModel, &world.modelMatrix, sizeof(Matrix4))) << "modelMatrix";
+    // the values did move: the check compares this frame's pose, not two stale ones
+    EXPECT_FALSE(sameWorldBits(&before.worldPosition, &world.worldPosition, sizeof(Vector3)));
+
+    ASSERT_EQ(runLua(L, "poseParent = nil; poseChild = nil; poseSeenPosition = nil; poseSeenRotation = nil; "
+                        "poseSeenScale = nil; poseSeenModel = nil"), "");
+    EXPECT_NO_ENGINE_ERRORS();
 }
