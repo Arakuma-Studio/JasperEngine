@@ -89,6 +89,7 @@ TEST(Physics3DCompound, MovedChildRecomposesOnceKeepingBodyAndVelocity) {
     world.step();
     EXPECT_EQ(world.component(car).body, id) << "the shape swapped, the body kept";
     EXPECT_EQ(world.component(car).attachedRecomposeSteps, 1) << "composed once in that step";
+    ASSERT_EQ(world.component(car).attachedColliders.size(), 1u);
     EXPECT_NEAR(world.component(car).attachedColliders[0].collider.position.x, 3.0f, 1e-5f);
     EXPECT_NEAR(world.rb(car).getLinearVelocity().x, 1.0f, 1e-3f);
 

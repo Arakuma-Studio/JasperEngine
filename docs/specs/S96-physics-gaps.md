@@ -725,5 +725,11 @@ WP-C (bodies and colliders):
   child's; `query_physics` cast hits name the child and add `body`.
 - REQ-44: the Scene view draws every body's colliders in one colour already, attached children
   included; the runtime `Physics.debugDraw` draws an attached child's colliders in its body's colour.
+- REQ-24's shape builder part was already done: Jolt's `CapsuleShapeSettings::Create` and
+  `TaperedCapsuleShapeSettings::Create` make a sphere (of the larger radius) when the half height
+  is 0 (`IsSphere()`), so `JoltShapeBuilder.cpp` gives a sphere unchanged (§3.1's "returns NULL"
+  was wrong; `Physics3DBody.ZeroHalfHeightCapsuleIsSphere` pins it and stays green without
+  WP-C). The gap was the refusals: `edit_colliders` ("must be positive"), the Inspector row, and a
+  negative `setColliderHalfHeight` now raising.
 - REQ-24's CharacterController part was already done (`CharacterControllerSystem::makeShape` uses a
   sphere when `height <= 2 radius`); unchanged.

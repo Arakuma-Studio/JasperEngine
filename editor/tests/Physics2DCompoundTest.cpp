@@ -92,6 +92,7 @@ TEST(Physics2DCompound, MovedChildRecomposesOnceKeepingBodyAndVelocity) {
     world.step();
     EXPECT_TRUE(B2_ID_EQUALS(world.component(car).body, id)) << "the body kept";
     EXPECT_EQ(world.component(car).attachedRecomposeSteps, 1) << "made again once in that step";
+    ASSERT_EQ(world.component(car).attachedColliders.size(), 1u);
     EXPECT_NEAR(world.component(car).attachedColliders[0].collider.points[0].x, 160.0f - 32.0f, 1e-3f);
     EXPECT_NEAR(world.rb(car).getLinearVelocity().x, 64.0f, 0.5f);
     world.step();
