@@ -816,4 +816,25 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 
 ## Deviations
 
-(none yet)
+- **P5, F24 vertical alignment on a UI camera.** The modes are measured along the Text's local +y.
+  In a y-up world view that is the screen's up, as specified. A UI camera draws y down, so there
+  Top and Bottom swap on screen; Baseline, Capline, Midline and Middle do not. The other choice
+  (screen-up everywhere) would have moved every existing UI-camera Text, whose stored default is
+  Bottom.
+- **P5, F24 Capline and Midline** put the middle of the first line's capitals (cap height / 2) and
+  of its lowercase letters (x-height / 2) on the origin, as TextMesh Pro's Capline centres the
+  capitals. That is what centring a number on a point needs (R42's door numbers).
+- **P5, F24 metrics fallbacks.** Cap height: OS/2 `sCapHeight`, else the `H` glyph's box, else
+  0.7 em. x-height keeps `FontFace::getXHeight`'s fallback (`x` box, then ascender / 2), which the
+  HTML UI's `ex` unit shares. Bitmap fonts use 0.7 / 0.5 of their native size.
+- **P5, F24 Center and Right align each line inside the box** (TextMesh Pro's), besides placing the
+  box. A migrated multi-line `pivotCentered` text now centres each line; a single line draws as
+  before.
+- **P5, F26 AC26** measures the built-in Roboto (its own unitsPerEm and ascender - descender)
+  instead of LiberationSans, which is not in the repository; the formulas checked are the same.
+- **P5, F27** also turns the Orthographic Size off on a bound written by hand (Lua setters, MCP,
+  Inspector), for the same reason as Auto Resize. The MCP names of the bounds are the reflected
+  `camera.left`, `right`, `bottom`, `top` (`leftClip`... are their YAML keys).
+- **P5, F28** applies to Orthographic cameras only; a UI camera keeps its pixel bounds.
+- **P5, F30 Size** is per axis: an axis at 0 keeps width or height over Pixels Per Unit.
+- **P5, AC28** HTML UI under an Orthographic Size camera: pending S92's R57 (not on this base).
