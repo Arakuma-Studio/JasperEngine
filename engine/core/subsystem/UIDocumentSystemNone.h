@@ -43,6 +43,7 @@ namespace jasperengine{
         // the project's MSAA and glyph settings have nothing to apply to
         static void setPreferredSampleCount(int) {}
         static void setHtmlUiRenderOptions(int, bool, bool) {}
+        static void setHtmlUiImageCacheMiB(int) {}
 
         bool eventOnPointerDown(int, int, float, float, int, bool, bool = true) { return false; }
         bool eventOnPointerUp(int, int, float, float, int, bool, bool = true) { return false; }

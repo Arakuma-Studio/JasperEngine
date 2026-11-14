@@ -13,6 +13,7 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/RmlFontEngine.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -711,6 +712,8 @@ void UIDocumentSystem::reloadTexture(const std::string& path){
     // document's image, an asset:// URL from the compat layer, either with a query (the
     // sampling filter of image-rendering, an SVG scale). Every spelling of the file goes.
     const std::string file = normalizeHtmlUIPath(path);
+    // the shared image of the file (and its regions) is decoded again
+    HtmlUIImageCache::get().invalidate(file);
     for (const Rml::String& source : Rml::GetTextureSourceList()){
         if (normalizeHtmlUIPath(source.substr(0, source.find('?'))) == file)
             Rml::ReleaseTexture(source);

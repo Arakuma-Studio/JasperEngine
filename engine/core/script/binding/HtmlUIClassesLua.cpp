@@ -25,7 +25,9 @@
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "script/LuaFunction.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -1569,6 +1571,47 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
         .endClass();
+
+    // S93 R15 (images, P4): HtmlUI.prewarmImage(path | {paths}) decodes images on the Background
+    // lane and uploads them a few a frame; the UIPrewarm it returns says when they are ready
+    luabridge::getGlobalNamespace(L)
+        .beginClass<HtmlUIImageCache::PrewarmJob>("UIPrewarm")
+        .addProperty("done", [](const HtmlUIImageCache::PrewarmJob* self) -> bool { return self->done; })
+        .addProperty("progress", [](const HtmlUIImageCache::PrewarmJob* self) -> float { return self->progress(); })
+        .addProperty("onDone", [](const HtmlUIImageCache::PrewarmJob*, lua_State* L) -> luabridge::LuaRef { return luabridge::LuaRef(L); },
+                     [](HtmlUIImageCache::PrewarmJob* self, lua_State* L){
+                         if (!lua_isfunction(L, -1)){
+                             self->onDone = nullptr;
+                             return;
+                         }
+                         self->onDone = LuaFunction<void>(L);
+                         // set after the job finished: called at once
+                         if (self->done){
+                             std::function<void()> onDone = std::move(self->onDone);
+                             self->onDone = nullptr;
+                             onDone();
+                         }
+                     })
+        .endClass()
+        .beginNamespace("HtmlUI")
+        .addFunction("prewarmImage", [](lua_State* L) -> std::shared_ptr<HtmlUIImageCache::PrewarmJob> {
+            std::vector<std::string> paths;
+            if (lua_type(L, 1) == LUA_TSTRING){
+                paths.push_back(lua_tostring(L, 1));
+            }else if (lua_type(L, 1) == LUA_TTABLE){
+                const int count = (int)lua_rawlen(L, 1);
+                for (int i = 1; i <= count; i++){
+                    lua_rawgeti(L, 1, i);
+                    if (lua_type(L, -1) == LUA_TSTRING)
+                        paths.push_back(lua_tostring(L, -1));
+                    lua_pop(L, 1);
+                }
+            }else{
+                luaL_error(L, "HtmlUI.prewarmImage: expected an image path or a table of paths");
+            }
+            return HtmlUIImageCache::get().prewarm(paths);
+        })
+        .endNamespace();
 
 #endif //DISABLE_LUA_BINDINGS
 }

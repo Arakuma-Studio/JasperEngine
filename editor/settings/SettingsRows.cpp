@@ -2241,6 +2241,27 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // S93 R19: the image cache's budget of released images
+        {
+            Setting s;
+            s.key = "graphics.html_ui_image_cache_mib";
+            s.type = "int";
+            s.description = "MiB of HTML/CSS UI images kept on the GPU after no document draws them (an LRU), so the next "
+                            "scene that shows them neither decodes nor uploads them; -1 = the platform's default (64 on desktop, "
+                            "32 on Android, iOS and the web), 0 keeps none, else up to 1024.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getHtmlUiRenderSettings().imageCacheMiB); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, -1, Project::maxHtmlUiImageCacheMiB, v, error)) return false;
+                if (apply) {
+                    HtmlUiRenderSettings settings = ctx.project()->getHtmlUiRenderSettings();
+                    settings.imageCacheMiB = static_cast<int>(v);
+                    ctx.project()->setHtmlUiRenderSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("graphics.html_ui_sdf_primitives",
                         "HTML/CSS UI: solid backgrounds, borders, outlines and box shadows drawn as antialiased shapes in batched "
                         "draws (no shadow textures or layers); false draws them as meshes.",
@@ -4337,6 +4358,7 @@ const Placement placements[] = {
     {"graphics.light_mode", "Graphics", "", "Light Mode", "forward+ forward plus tiled clustered per object pixel lights max lights"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
+    {"graphics.html_ui_image_cache_mib", "Graphics", "", "HTML UI Image Cache", "images textures decode memory budget mib lru"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
     {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
