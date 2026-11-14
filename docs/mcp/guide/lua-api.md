@@ -3269,6 +3269,11 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `UIDocument.markdownToHtml(text)`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
+- Prewarm (glyphs made before text shows; `jasper://docs/html-ui` "Prewarming text"):
+  `doc:prewarm()` (every text, `display: none` parts too, and `data-warm` attributes) and
+  `HtmlUI.prewarmText{family, size, weight, style, effect, text}` return a `UIPrewarm`: ro `done`,
+  `progress` (0..1), rw `onDone` (a function, called once when done); rw
+  `HtmlUI.prewarmBudgetMs` (main-thread ms a frame for placing glyphs, default 2).
 - `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
   `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
   `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first

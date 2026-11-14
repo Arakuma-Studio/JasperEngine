@@ -10,6 +10,8 @@
 #include "LogCapture.h"
 #include "TestPaths.h"
 #if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
+#include "HtmlUI.h"
+#include "RmlFontEngine.h"
 #include "media/VideoSourceFactory.h"
 #endif
 
@@ -30,6 +32,18 @@ namespace {
             jasperengine::test::LogCapture::markTestStart();
         }
     };
+
+#if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
+    // The engine's glyph cache outlives RmlUi (S93 R13): each HTML UI test starts with an empty one, as
+    // its counters and atlas expectations assume, unless RmlUi is still up from an earlier test
+    class FontCacheReset : public ::testing::EmptyTestEventListener {
+    public:
+        void OnTestStart(const ::testing::TestInfo&) override{
+            if (!jasperengine::HtmlUI::isInitialized())
+                jasperengine::HtmlUI::getFontEngine().ReleaseFontResources();
+        }
+    };
+#endif
 
     void setDefaultEnv(const char* name, const char* value){
 #if defined(_WIN32)
@@ -73,6 +87,9 @@ int main(int argc, char** argv){
 #endif
     ::testing::AddGlobalTestEnvironment(new jasperengine::test::GpuTestEnvironment());
     ::testing::UnitTest::GetInstance()->listeners().Append(new LogMarker());
+#if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
+    ::testing::UnitTest::GetInstance()->listeners().Append(new FontCacheReset());
+#endif
 
     return RUN_ALL_TESTS();
 }

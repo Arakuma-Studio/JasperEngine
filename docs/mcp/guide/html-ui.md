@@ -546,8 +546,10 @@ colour is multiplied by the element's `opacity`):
 
 Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are drawn on the GPU
 from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
-first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
-glyphs.
+first frame before those glyphs exist) are drawn from CPU glyphs, made in time linear in the
+glyph's area whatever the width (a 324 px glyph's 15 px outline in about a millisecond). Effects of
+one shape share their CPU glyphs: an `outline(4px red)` and a `glow(4px 0px 3px 2px blue)` draw
+from the same bitmaps, moved and tinted.
 
 ### Animated text: `text-effect`
 
@@ -1435,9 +1437,34 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 - C++ can load a face before documents use it: `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")`
   (`#include "htmlui/HtmlUI.h"`).
+- A character the first available face of `font-family` lacks comes from the next family of
+  the list that has it, then the registered fallback fonts, then Roboto and Noto Sans Arabic,
+  each in the text's weight and style (synthesized when the family has no such face), with the
+  text's `font-effect` and `text-effect`. `HTMLUI-FONT-0001` names such characters: an info in
+  `doc:getDiagnostics()` once the text is drawn, a warning from `check --ui` for static text.
+  Fix it with a font that has them, or name one after the first in `font-family`.
 - A character no loaded font covers draws a missing-glyph box; control characters draw
   nothing. Text is rasterized at each context's pixel ratio (the screen's, or `pixelRatio` for
   documents on meshes), so it stays sharp.
+
+### Prewarming text
+
+The glyph cache outlives documents, scenes and a lost view: a screen shown a second time makes no
+glyph. The first show makes them in its frame; when a screen must appear whole on its first frame
+(a pause menu, a big outlined countdown), make its glyphs before:
+
+```lua
+local job = doc:prewarm()              -- every text of the document, display: none parts too
+job.onDone = function() print("ready") end   -- also job.done, job.progress (0..1)
+HtmlUI.prewarmText{ family = "Title", size = 324, weight = 700,
+                    effect = "outline(15px #000)", text = "GO!0123456789" }
+```
+
+- `doc:prewarm()` reads each element's font, size and `font-effect` as styled now, and the text of
+  `data-warm="0123456789:"` attributes (characters a script will write later).
+- The glyphs are made on background jobs and put in the atlas within `HtmlUI.prewarmBudgetMs` a
+  frame (default 2). With a fixed clock (play's `fixed_fps`, a fixed UI time) a prewarm is done at
+  the next update.
 
 ### Icons
 
@@ -1991,6 +2018,9 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `geometricPrecision` always draws distance fields (any size, 3D, no re-rasterization).
   `text-shadow` blurs and `font-effect` outlines, glows and blurs up to 0.3 em are drawn from the
   distance glyphs without layers; larger ones fall back to layers (or CPU glyphs).
+- **Glyphs are made once.** The glyph cache outlives documents and scenes; a screen's first show
+  makes its glyphs in its frame (`glyphsRasterized`, `textEffectFallbacks` in `inspect_ui`
+  `render_stats`): `doc:prewarm()` makes them before (Prewarming text, above).
 - **Keep documents small**: hundreds of elements, not thousands. Long lists: page or window
   them in Lua. One document per screen; hide the screens you do not show (`doc:hide()`, or a
   class with `display: none`) instead of destroying and rebuilding them.

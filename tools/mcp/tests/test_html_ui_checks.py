@@ -392,6 +392,30 @@ async def test_cli_ui_widget_codes():
     check_eq(code, 1, "an error exits 1")
 
 
+async def test_check_ui_reports_fallback_glyphs():
+    """S93 R17 (AC21): static text whose first available face lacks characters a fallback face draws:
+    HTMLUI-FONT-0001 at the element's line, a warning at check level (an info at runtime), naming the
+    characters. A face that has them all reports nothing."""
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>t</title><style>\n"
+            "@font-face { font-family: 'AhemNoO'; src: url('ahem-no-oacute.ttf'); }\n"
+            "#title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+            "#plain { font-family: sans-serif; }\n"
+            "</style></head>\n<body>\n"
+            "<div id=\"title\">CA\u00d1\u00d3N</div>\n"
+            "<div id=\"plain\">CA\u00d1\u00d3N</div>\n"
+            "</body>\n</html>\n")
+    with scratch_project() as project:
+        (project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / "engine" / "tests" / "htmlui" / "fixtures" / "fonts" / "Ahem-no-Oacute.ttf", project / "assets" / "ui" / "ahem-no-oacute.ttf")
+        write(project, "assets/ui/title.html", html)
+        code, data = run_json(project, "--ui", "--files", "assets/ui/title.html")
+    found = [f for f in data["findings"] if f["code"] == "HTMLUI-FONT-0001"]
+    check_eq([(f["path"], f["line"], f["severity"]) for f in found], [("assets/ui/title.html", line_of(html, 'id="title"'), "warning")],
+             f"one finding at the title, none for the face that has every letter: {data['findings']}")
+    check("U+00D3" in found[0]["message"] and "AhemNoO" in found[0]["message"], f"it names the character and the family: {found}")
+    check_eq(code, 0, "a warning does not fail the check")
+
+
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
         write(project, "assets/ui/x.css", ".x { mix-blend-mode: multiply; }\n")

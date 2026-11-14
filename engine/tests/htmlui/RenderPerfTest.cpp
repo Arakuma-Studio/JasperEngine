@@ -525,4 +525,48 @@ TEST(HtmlUIRenderPerf, ProfileTarget){
     std::printf("[ profile  ] %d frames\n", frames);
 }
 
+// S93 R39 (AC14): the first draw of a cold "GO!" at 324 px with the port's outline and glow, the main thread's text
+// generation (RmlFontEngine::GenerateString) in that frame <= 8 ms: with GPU effects while the distance glyphs are pending,
+// and with transform-aware text off (the CPU path). Effects drawn on the CPU while pending: the distance-transform outline
+// and the recursive blur (R11), a big text's glyphs side by side on the workers; the dense kernel took 1.3-3 s (the port's
+// measure). The least of 3 cold runs, enforced by the benchmark run (JASPER_HTMLUI_PERF_SLACK set: a quiet machine; the
+// workers this needs are the ones a loaded host lacks), elsewhere printed.
+TEST(GlyphEffectPerf, OutlinedGoFirstDraw){
+    JASPER_REQUIRE_GPU();
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    const std::string rml = "<rml><head><style>body { margin: 0; font-family: sans-serif; font-weight: bold; color: #ffffff; } "
+                            "p { margin: 0; font-size: 324px; line-height: 340px; "
+                            "font-effect: outline(15px #000000), glow(4px 12px 0px 8px #000000); }</style></head>"
+                            "<body><p>GO!</p></body></rml>";
+    const double slack = compat::benchmarkPerfSlack();
+    const double budget = 8.0 * (slack > 0.0 ? slack : 1.0);
+    // the engine's way: distance glyphs on the background lane (this binary makes them at once for its goldens)
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(false);
+    for (const bool gpu : {true, false}){
+        S16Mode mode(gpu);   // off: no transform-aware text, so no GPU effects
+        double least = 1e9;
+        uint32_t fallbacks = 0;
+        for (int run = 0; run < 3 && least > budget; run++){
+            RenderTestContext test(1280, 720);
+            ASSERT_TRUE(test.isValid());
+            fonts.ReleaseFontResources();
+            ASSERT_NE(test.loadFromMemory(rml, "render/go.rml"), nullptr);
+            const double before = fonts.getGenerateStringMs();
+            test.renderFrame();
+            least = std::min(least, fonts.getGenerateStringMs() - before);
+            fallbacks = test.renderer.getStats().textEffectFallbacks;
+        }
+        std::printf("[ ui-bench ] GO! 324 px, outline 15 px and glow, first draw (%s): %.3f ms of text generation, %u CPU effects "
+                    "(budget 8 ms%s)\n", gpu ? "GPU effects, distance glyphs pending" : "CPU path", least, fallbacks,
+                    slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+        EXPECT_GT(fallbacks, 0u) << "the effects were not drawn the CPU way";
+        if (slack > 0.0){
+            EXPECT_LE(least, budget) << (gpu ? "GPU effects pending" : "CPU path");
+        }
+        results()[gpu ? "S93 GO first draw (GPU pending)" : "S93 GO first draw (CPU)"] = {{"textMs", least}};
+    }
+    fonts.ReleaseFontResources();
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true);
+}
+
 #endif

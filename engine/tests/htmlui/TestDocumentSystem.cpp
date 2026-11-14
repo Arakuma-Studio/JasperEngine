@@ -8,7 +8,10 @@
 #include "TestDocumentCommon.h"
 
 #include "Engine.h"
+#include "HtmlUITexture.h"
+#include "RmlRenderer.h"
 #include "RmlFontEngine.h"
+#include "compat/PerfFixtures.h"
 #include "object/GameObject.h"
 #include "registry/EntityCloner.h"
 
@@ -17,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <memory>
 
 using namespace jasperengine;
@@ -636,5 +640,101 @@ TEST_F(UIDocumentClonerTest, InstantiateCopiesFields){
     scene.destroyEntity(hidden[0]);
     updateDocuments(scene);
     EXPECT_EQ(documentCount(scene), 1);
+    EXPECT_EQ(errors(), 0u);
+}
+
+// S93 R13, R14 (AC17, AC18): the glyph cache outlives HTML UI contexts, RmlUi itself (shut down with the last context) and
+// a view loss. The arcade shell (fixtures/arcade-shell: outlined and glowing bold text up to 324 px, a 2048x2048 atlas)
+// shown a second time rasterizes no glyph and draws no effect the slow way.
+namespace {
+
+    struct ShellFrames {
+        uint32_t glyphsRasterized = 0;
+        uint32_t textEffectFallbacks = 0;
+        double firstFrameTextMs = 0.0;   // GenerateString in the first frame that drew text
+    };
+
+    // frames one at a time until the shell is loaded and drawn, then 2 more, adding up each frame's text statistics
+    ShellFrames drawShell(SceneFixture& fixture, UIDocument& document){
+        ShellFrames frames;
+        RmlFontEngine& fonts = HtmlUI::getFontEngine();
+        Scene* scene = &fixture.getScene();
+        int after = -1;
+        for (int frame = 0; frame < 300 && after != 0; frame++){
+            const double before = fonts.getGenerateStringMs();
+            GpuEnvironment::drawFrames(1);
+            const HtmlUIRenderStats stats = document.getRenderStats();
+            frames.glyphsRasterized += stats.glyphsRasterized;
+            frames.textEffectFallbacks += stats.textEffectFallbacks;
+            if (frames.firstFrameTextMs == 0.0)
+                frames.firstFrameTextMs = fonts.getGenerateStringMs() - before;
+            const bool loaded = document.isLoaded() && scene->getSystem<UIDocumentSystem>()->isAllLoaded() && stats.textRegenerations == 0 &&
+                                fonts.getGenerateStringMs() > 0.0;
+            if (after > 0)
+                after--;
+            else if (after < 0 && loaded)
+                after = 2;
+        }
+        return frames;
+    }
+
+}
+
+TEST_F(UIDocumentSystemTest, GlyphCacheSurvivesContext){
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    {
+        SceneFixture fixture;
+        UIDocument document = fixture.addDocument("arcade-shell/shell.html");
+        const ShellFrames cold = drawShell(fixture, document);
+        // the first time: every glyph is made, effects the CPU way while the distance glyphs are pending
+        EXPECT_GT(cold.glyphsRasterized, 0u);
+        fonts.finishDistanceGlyphsForTesting();
+    }
+    // the scene and its context are gone, and RmlUi with them (the last context)
+    ASSERT_EQ(HtmlUI::getReferenceCount(), 0);
+    EXPECT_GT(fonts.getPageCount(), 0u);
+
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("arcade-shell/shell.html");
+    const ShellFrames warm = drawShell(fixture, document);
+    EXPECT_EQ(warm.glyphsRasterized, 0u);
+    EXPECT_EQ(warm.textEffectFallbacks, 0u);
+    // R41: the text of the shell's first frame in 2 ms (enforced by the benchmark run, JASPER_HTMLUI_PERF_SLACK)
+    const double slack = test::compat::benchmarkPerfSlack();
+    std::printf("[bench] DocumentSystem.GlyphCacheSurvivesContext: first frame's text %.3f ms (budget 2 ms%s)\n", warm.firstFrameTextMs,
+                slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+    if (slack > 0.0){
+        EXPECT_LE(warm.firstFrameTextMs, 2.0 * slack);
+    }
+    EXPECT_EQ(errors(), 0u);
+}
+
+TEST_F(UIDocumentSystemTest, GlyphCacheSurvivesViewLoss){
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument("arcade-shell/shell.html");
+    EXPECT_GT(drawShell(fixture, document).glyphsRasterized, 0u);
+    fonts.finishDistanceGlyphsForTesting();
+
+    // the platform drops the view (Android background, a lost GL context): every context and RmlUi go
+    Engine::systemViewDestroyed();
+    EXPECT_FALSE(HtmlUI::isInitialized());
+    EXPECT_GT(fonts.getPageCount(), 0u);
+    Engine::systemViewLoaded();
+    Engine::systemViewChanged();
+
+    const ShellFrames back = drawShell(fixture, document);
+    EXPECT_EQ(back.glyphsRasterized, 0u);
+    EXPECT_EQ(back.textEffectFallbacks, 0u);
+    // the pages are textures of the new context's renderer again, each uploaded
+    HtmlUIContext* context = documentSystem(scene).getContext();
+    ASSERT_NE(context, nullptr);
+    const std::vector<const HtmlUITexture*> pages = context->getRenderer().getAtlasTextures();
+    EXPECT_FALSE(pages.empty());
+    for (const HtmlUITexture* page : pages){
+        ASSERT_TRUE(page->atlasGeneration);
+        EXPECT_EQ(page->uploadedGeneration, *page->atlasGeneration);
+    }
     EXPECT_EQ(errors(), 0u);
 }
