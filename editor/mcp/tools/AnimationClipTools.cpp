@@ -59,6 +59,7 @@
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
+#include "unity/UnityControllerImport.h"
 
 #include "command/type/ClipSceneActions.h"
 
@@ -2183,6 +2184,8 @@ void editClip(const CallPtr& call) {
     bool makeFolder = false;
     bool humanoidCreate = false;    // create.humanoid: Convert to Humanoid Clip (anim-retarget 10)
     std::string humanoidModel;
+    fs::path unityFile;             // create.unity: a Unity .anim imported (S94 F35)
+    bool unityMirrorX = true;
     if (creating) {
         const Json& create = args["create"];
         if (create.is_boolean() && create.get<bool>()) {
@@ -2192,10 +2195,31 @@ void editClip(const CallPtr& call) {
             return;
         } else {
             for (auto it = create.begin(); it != create.end(); ++it) {
-                if (it.key() != "from" && it.key() != "remove_tracks" && it.key() != "humanoid") {
-                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?, humanoid?}).");
+                if (it.key() != "from" && it.key() != "remove_tracks" && it.key() != "humanoid" && it.key() != "unity" && it.key() != "mirror_x") {
+                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?, humanoid?, unity?, mirror_x?}).");
                     return;
                 }
+            }
+            if (create.contains("unity")) {
+                // a Unity YAML .anim, imported (S94 F35)
+                if (!create["unity"].is_string() || create.contains("from") || create.contains("humanoid") || create.contains("remove_tracks")) {
+                    call->fail("create.unity is the absolute path of a Unity .anim (alone: not with from, humanoid or remove_tracks).");
+                    return;
+                }
+                if (create.contains("mirror_x") && !create["mirror_x"].is_boolean()) {
+                    call->fail("create.mirror_x must be true (the default: Unity's left-handed X mirrored) or false.");
+                    return;
+                }
+                unityFile = FileUtils::pathFromUtf8(create["unity"].get<std::string>());
+                if (!unityFile.is_absolute() || !unity::isUnityAnimationAsset(unityFile) || lower(unityFile.extension().string()) != ".anim") {
+                    call->fail("create.unity: \"" + create["unity"].get<std::string>() + "\" is not a Unity YAML .anim at an absolute path "
+                               "(an engine clip is copied with move_asset {path, to, copy: true}).");
+                    return;
+                }
+                unityMirrorX = create.value("mirror_x", true);
+            } else if (create.contains("mirror_x")) {
+                call->fail("create.mirror_x applies to create.unity (a Unity .anim).");
+                return;
             }
             if (create.contains("from")) from = create["from"];
             if (create.contains("humanoid")) {
@@ -2255,7 +2279,18 @@ void editClip(const CallPtr& call) {
     std::vector<ClipWarning> sourceWarnings;
     std::string extractedFrom;      // Extract: the model clip (project-relative)
     Json humanoidReport;
-    if (creating && humanoidCreate) {
+    Json unityReport;
+    if (creating && !unityFile.empty()) {
+        const unity::AnimImportResult imported = unity::importUnityClip(unityFile, unityMirrorX);
+        if (!imported.ok) {
+            call->fail("create.unity: " + imported.error);
+            return;
+        }
+        data = imported.clip;
+        unityReport = imported.report;
+        ctx.changes.push_back("imported the Unity clip " + imported.report.value("source", std::string()) + " (" +
+                              plural(data.tracks.size(), "track") + ", " + plural(data.events.size(), "event") + ")");
+    } else if (creating && humanoidCreate) {
         // the source clip (a file or a model clip) converted on its source rig
         std::string fromRelative;
         fs::path fromAbsolute;
@@ -2450,6 +2485,7 @@ void editClip(const CallPtr& call) {
         // written by the scene step above
     } else if (creating) {
         document = AnimationClipDocument::create(project, relative, data, humanoidCreate ? "Convert to Humanoid Clip" :
+                                                 !unityFile.empty() ? "Import Unity Animation" :
                                                  from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
         if (!document) {
             madeFolders.removeNow();
@@ -2469,6 +2505,13 @@ void editClip(const CallPtr& call) {
     out["created"] = creating;
     out["changes"] = ctx.changes;
     if (!humanoidReport.is_null()) out["humanoid"] = humanoidReport;
+    if (!unityReport.is_null()) {
+        out["unity"] = unityReport;
+        if (!unityReport["unmapped"].empty()) {
+            out["next"] = "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                          "(get_animation {root, list_properties} lists what a GameObject can animate)";
+        }
+    }
     Json warningList = warningsJson(warnings);
     if (!insideAssets(project, absolute)) {
         warningList.push_back(relative + " is outside the assets folder: an Animation Player in a game cannot load it");

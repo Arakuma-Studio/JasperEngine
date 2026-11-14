@@ -1233,8 +1233,8 @@ bool anim::isUnityYamlController(const std::string& text){
 }
 
 const char* anim::unityYamlControllerRefusal(){
-    return "This is a Unity .controller (YAML). Create a JasperEngine Animator Controller (Assets > Create > Animator Controller, "
-           "or MCP edit_animator_controller {path, create: true}).";
+    return "This is a Unity .controller (YAML). Import it with Assets > Import Unity Animation... or MCP edit_animator_controller "
+           "{path, create: {unity: \"<absolute .controller path>\"}}.";
 }
 
 bool anim::isUnityYamlMask(const std::string& text){
@@ -1242,7 +1242,8 @@ bool anim::isUnityYamlMask(const std::string& text){
 }
 
 const char* anim::unityYamlMaskRefusal(){
-    return "This is a Unity .mask (YAML). Create a JasperEngine Avatar Mask (Assets > Create > Avatar Mask, or MCP edit_avatar_mask {path, create: true}).";
+    return "This is a Unity .mask (YAML). Import it with Assets > Import Unity Animation... or MCP edit_avatar_mask "
+           "{path, create: {unity: \"<absolute .mask path>\"}}.";
 }
 
 // ---------------------------------------------------------------- public: controller

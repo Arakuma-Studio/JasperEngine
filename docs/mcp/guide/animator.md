@@ -21,7 +21,9 @@ says `animator.hands_over`).
 
 Tools (group `animation`): `get_animator` (read), `edit_animator_controller`, `edit_avatar_mask`,
 `edit_montage` (each call one project undo step: `undo {scope: "project"}`), `control_animator`
-(drive it: play mode or the edit preview) and `sample_animation_pose` (bone world transforms). The
+(drive it: play mode or the edit preview) and `sample_animation_pose` (bone world transforms). A
+Unity `.controller` or `.mask` comes in with `create: {unity: "<absolute path>"}`, its clips and masks
+beside it. The
 files are canonical JSON: read them if you like, edit them with the tools (they validate, keep
 unknown keys and the undo history).
 

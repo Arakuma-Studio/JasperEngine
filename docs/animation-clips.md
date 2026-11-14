@@ -748,8 +748,9 @@ with an Animator playing that controller and the player disabled (the Console sa
 - **A `once` clip doesn't snap back.** It holds its last pose (Unity does too). Use `stop`, crossfade
   to another state, or set the wrap to loop.
 - **The preview loops a `once` clip.** The window's Play always loops. Play mode follows the wrap.
-- **"This is a Unity .anim (YAML)".** Unity clips are not read. Create a JasperEngine clip (Assets >
-  Create > Animation Clip) and key it, or import the animation in a glTF/FBX model and extract it.
+- **"This is a Unity .anim (YAML)".** The runtime does not read Unity clips: import it with Assets >
+  Import Unity Animation... (or drop it into the Project window), or MCP `edit_animation {clip,
+  create: {unity}}`. See [Importing from Unity](animator.md#importing-from-unity).
 - **"the file on disk is not a valid animation clip ... showing its last valid content".** A
   hand-edited file has a JSON error at that `line:col`. The window and the running players keep the
   last valid version until you fix it. `jasperengine-editor check --project . --anims` lists every
