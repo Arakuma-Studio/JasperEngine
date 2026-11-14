@@ -22,8 +22,9 @@ fragment shaders only: no compute.
 
 | Inspector | Field | Meaning |
 |---|---|---|
-| Color Mode | `colorMode` | Constant Color: the fog takes its Color. Sky Color: the sky's colour at the horizon, from a cube map Skybox (4 directions, the Skybox's colour and rotation applied) or a sky shader with a `horizonColor` property; any other sky uses the Color and the Inspector says so |
-| Color | `color` | linear colour |
+| Color Mode | `colorMode` | Constant Color: the fog takes its Color. Sky Color: the sky's colour at the horizon, from a cube map Skybox (4 directions, the Skybox's colour and rotation applied) or a sky shader with a `horizonColor` property; any other sky uses the Color and the Inspector says so. Lit: see below |
+| Color | `color` | linear colour (not in Lit) |
+| Albedo, Ambient Multiplier, Emissive | `albedo`, `ambientMultiplier`, `emissive` | Lit only (below) |
 | Attenuation Distance | `attenuationDistance` | metres light travels below the Base Height before 63% is absorbed (extinction = 1 / distance) |
 | Base Height | `baseHeight` | uniform density below this height (m) |
 | Maximum Height | `maximumHeight` | the height where the density has fallen to 1/1000 |
@@ -38,6 +39,24 @@ fragment shaders only: no compute.
 The light of the medium is `L = fog colour + sun colour × Intensity × 4π HG(Anisotropy, cos θ) ×
 visibility` (visibility is the shadow term in the volumetric fog, 1 elsewhere). A part of a ray
 lets `T = exp(-optical depth)` through and adds `S = L (1 - T)`.
+
+### Lit colour mode
+
+With Color Mode **Lit** (`colorMode: "lit"`) the fog has no colour of its own: it scatters the
+scene's light, so one look holds from noon to night as the sun and the ambient change. Its light
+is `albedo × (sun colour × Intensity × 4π HG × visibility + scene ambient × ambientMultiplier) +
+emissive`; the scene ambient is the Lighting's ambient colour × intensity, as meshes get it.
+
+- `albedo` (linear, default white): the share of the light the fog scatters, per channel. Dark
+  values make a murky fog; a tint colours the fog only, never the Local Volumetric Fog volumes
+  inside it (each scatters by its own albedo).
+- `ambientMultiplier` (default 1): the ambient's weight; 0 lights the fog by the sun alone.
+- `emissive` (linear HDR, default black): light the fog gives off whatever lights it (a
+  glowing, toxic or infernal fog). It is the only thing that shows with no sun and no ambient.
+
+Use Lit for a scene whose lighting changes (day-night cycles, a sun that sets) or a fog that must
+match its lighting; use Constant Color for a fixed look. The analytic fog, the sky fill and the
+volumetric fog all take it.
 
 Presets (Inspector > Preset, MCP `apply_atmosphere_preset`, Lua `fog:applyPreset(id)`) make the
 Fog a height fog of that look and keep its Color Mode and volumetric settings:

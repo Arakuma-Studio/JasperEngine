@@ -405,6 +405,12 @@ void AtmosphereRenderer::updateHorizon(){
     }
 }
 
+LitFogLight AtmosphereRenderer::passLitLight() const{
+    const frame_t& frame = rs->passFrame;
+    const Vector3 sunColor = Vector3(frame.mainLightColor.x, frame.mainLightColor.y, frame.mainLightColor.z) * frame.mainLightDirection.w;
+    return AtmosphereMath::litLight(*fog, Vector3(frame.ambient.x, frame.ambient.y, frame.ambient.z), sunColor);
+}
+
 void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponent& camera, const Transform& cameraTransform,
                                        const Rect& viewport, unsigned int targetHeight, bool flipped, float volumetricDistance) const{
     clearHeightFog(block);
@@ -437,7 +443,15 @@ void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponen
         return;
 #endif
     const HeightFogMedium medium = AtmosphereMath::makeMedium(*fog);
-    block.color_colorMode = Vector4(fog->color, fog->colorMode == FogColorMode::SKY ? 1.0f : 0.0f);
+    if (fog->colorMode == FogColorMode::LIT){
+        // the analytic fog reads one fog colour and one sun colour: the albedo goes into both
+        // (the volumetric march takes them untinted, renderFog)
+        const LitFogLight lit = passLitLight();
+        block.color_colorMode = Vector4(lit.color, 0.0f);
+        block.sunColor_skyFillSin = Vector4(lit.sunColor, 0.0f);
+    }else{
+        block.color_colorMode = Vector4(fog->color, fog->colorMode == FogColorMode::SKY ? 1.0f : 0.0f);
+    }
     block.extinction_base_H_maxOpacity = Vector4(medium.extinction, medium.baseHeight, medium.scaleHeight, medium.maxOpacity);
     block.start_volumetric_maxDist_inscatter = Vector4(medium.startDistance, volumetricDistance, medium.maxDistance,
                                                        std::max(fog->directionalInscattering, 0.0f));
@@ -701,6 +715,20 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     }
     block.noiseOffset = Vector4(fogNoiseOffset, 0.0f);
 
+    // the Lit colour mode: the march scatters the ambient and the sun by each medium's albedo
+    // per step, so its height fog block carries them untinted (volumetric_fog.frag)
+    const height_fog_t* marchFog = &passFog;
+    height_fog_t litFog;
+    if (fog->colorMode == FogColorMode::LIT){
+        const LitFogLight lit = passLitLight();
+        litFog = passFog;
+        litFog.color_colorMode = Vector4(lit.ambient, 0.0f);
+        litFog.sunColor_skyFillSin = Vector4(lit.sun, passFog.sunColor_skyFillSin.w);
+        block.fogAlbedo = Vector4(lit.albedo, 1.0f);
+        block.fogEmissive = Vector4(lit.emissive, 0.0f);
+        marchFog = &litFog;
+    }
+
     passRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     passRender.setLabel(PASS_LABELS[1]);
     passRender.startRenderPass(&target.getRender());
@@ -719,7 +747,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
         bindTexture(program.render, data, "u_shadowAtlas", atlas);
         bindTexture(program.render, data, "u_blueNoise", &blueNoise);
         applyBlock(program.render, data, "u_fs_volumetricFog", sizeof(block), &block);
-        applyBlock(program.render, data, "u_fs_heightFog", sizeof(passFog), &passFog);
+        applyBlock(program.render, data, "u_fs_heightFog", sizeof(height_fog_t), marchFog);
         applyBlock(program.render, data, "u_fs_shadow_data", sizeof(shadowData), &shadowData);
         program.render.draw(0, 3, 1);
     }

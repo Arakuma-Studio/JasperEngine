@@ -1,11 +1,14 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest e359f19a5398693a
+digest b7486ae8cdb780d5
 --- 0
 type: exponential
 color: [3e+38, 1e-45, 0]
 density: -36
 linearStart: -114.14286
 linearEnd: -0
+albedo: [0, 0, 0]
+ambientMultiplier: 9.142858
+emissive: [-0, 56, 3e+38]
 attenuationDistance: -0.11568755
 baseHeight: -135.85715
 maximumHeight: -.inf
@@ -28,11 +31,14 @@ color: [-0, 6596.815, 5]
 density: -68.71429
 linearStart: -0.5296022
 linearEnd: 0.17812985
+colorMode: sky
 attenuationDistance: -0.19196437
-maxFogDistance: 8144.824
+maximumHeight: 2482.8918
 directionalInscattering: .nan
+skyFillAngle: 1e-45
 volumetricDistance: 0
-wind: [0, 1e-45, 1e-45]
+lightShafts: false
+noiseScale: 3e+38
 qualityOverride: medium
 --- 2
 type: linear
@@ -40,7 +46,9 @@ color: [0, -89, 3e+38]
 density: -0.7634605
 linearStart: .inf
 linearEnd: 1e-45
-colorMode: sky
+albedo: [1e-45, -65, -0.05323702]
+ambientMultiplier: 3331.3357
+emissive: [-47, 3e+38, 0.5254942]
 attenuationDistance: 3887.206
 baseHeight: 50
 maximumHeight: 1e-45
@@ -63,15 +71,18 @@ color: [-11, -0.20482007, 0.70034796]
 density: 3e+38
 linearStart: -60
 linearEnd: -8
+albedo: [0, -25.285715, 0]
 attenuationDistance: 1e-45
+baseHeight: -14
+maximumHeight: 1e-45
 startDistance: -126
 maxFogDistance: 0.7584966
-maxOpacity: -3.857143
 directionalInscattering: -0.61563355
 anisotropy: -0.1448683
 skyFillAngle: -72
-volumetricDistance: 0.30229226
+noiseIntensity: .nan
 noiseScale: -31
+wind: [60, 6145.2217, 94]
 qualityOverride: low
 --- 4
 type: linear
@@ -79,7 +90,10 @@ color: [0.26046163, -0, 3e+38]
 density: -9
 linearStart: -21
 linearEnd: .inf
-colorMode: sky
+colorMode: lit
+albedo: [0.6598669, 5466.528, -0.26706138]
+ambientMultiplier: 3e+38
+emissive: [3e+38, 90, 116.28571]
 attenuationDistance: 28
 baseHeight: .nan
 maximumHeight: -56
@@ -103,23 +117,27 @@ density: -0.9372643
 linearStart: 2748.7383
 linearEnd: -2
 colorMode: sky
+ambientMultiplier: 3e+38
 baseHeight: 3e+38
-maxFogDistance: -76
+maximumHeight: .nan
+startDistance: -5
 maxOpacity: 0.9715076
-directionalInscattering: 3545.6536
-skyFillAngle: 96.28571
+anisotropy: 129.14285
+volumetric: true
 volumetricDistance: -0
+lightShafts: false
 noiseIntensity: -6.285714
-noiseScale: 81.71429
 wind: [-79.42857, 562.27496, 52]
-qualityOverride: medium
 --- 6
 type: exponential_squared
 color: [-90.28571, 58, 91]
 density: 60
 linearStart: 1e-45
 linearEnd: 9122.222
-colorMode: sky
+colorMode: lit
+albedo: [0.73147094, -0, -105.85714]
+ambientMultiplier: 3e+38
+emissive: [3e+38, -0.45635462, 16.428572]
 attenuationDistance: -.inf
 baseHeight: 3993.2378
 maximumHeight: -113.42857
@@ -142,13 +160,15 @@ density: 102.42857
 linearStart: 11.285714
 linearEnd: -76.85714
 colorMode: sky
-maximumHeight: -0.6951028
+ambientMultiplier: 4183.193
+emissive: [-56.857143, 0, -96.57143]
+attenuationDistance: 0.47815678
 startDistance: 3401.743
 maxFogDistance: -0.93244815
+maxOpacity: 6757.0303
 directionalInscattering: -119.71429
 anisotropy: 76
 skyFillAngle: 3e+38
 volumetricDistance: .inf
-noiseIntensity: .inf
 noiseScale: 3e+38
 wind: [0, 2680.7104, 0.27497387]

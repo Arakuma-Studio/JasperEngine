@@ -12,6 +12,11 @@
 // volumes' and noise's, and its light is integrated energy-conserving (S += T L (1 - e^-tau)).
 // Without shadow, noise and volumes the steps telescope to L (1 - T) exactly: the image
 // equals the analytic fog's (docs/specs/S12-atmosphere.md R6).
+//
+// The Lit colour mode (docs/specs/vapor.md R12): the height fog block of this pass carries the
+// light untinted (ambient as the fog colour, the sun as it is), and each step scatters it by
+// the albedo of the media there, mixed by their share of the extinction; the fog's emissive is
+// added by the global medium's share alone. A volume is so tinted by its own albedo only.
 
 #define ATMOSPHERE_BLUE_NOISE
 #define MAX_FOG_STEPS 64
@@ -34,6 +39,8 @@ uniform u_fs_volumetricFog {
     vec4 depthInfo;           // x far clip, y near clip, z 1: RGBA8 output (compressed), w 1: light shafts
     vec4 noise;               // x intensity, y 1 / scale, z volumes, w lights
     vec4 noiseOffset;         // xyz wind offset (m)
+    vec4 fogAlbedo;           // rgb the global medium's albedo (linear), w 1: Lit colour mode (else rgb 1)
+    vec4 fogEmissive;         // rgb the global medium's emissive (linear, HDR; Lit colour mode)
     vec4 volumeFrame[MAX_FOG_VOLUMES * 3]; // rows of each volume's world -> volume frame (meters)
     vec4 volumeShape[MAX_FOG_VOLUMES];     // xyz half extents (m), w 0 box / 1 sphere
     vec4 volumeMedium[MAX_FOG_VOLUMES];    // x extinction, y blend distance, z 0 linear / 1 exponential falloff, w noise intensity
@@ -124,6 +131,7 @@ void main(){
     float noiseIntensity = volFog.noise.x;
     int volumes = int(volFog.noise.z);
     bool shafts = volFog.depthInfo.w > 0.5;
+    bool lit = volFog.fogAlbedo.w > 0.5;
 
     vec3 fogColor = heightFogColor(dir);
     vec3 sunLight = heightFogSunInscatter(dir);
@@ -174,10 +182,14 @@ void main(){
         vec3 light = fogColor + sunLight * visibility;
         if (volFog.noise.w > 0.0)
             light += localLights(p, dir);
-        // the share of the extinction that scatters, per channel (the fog's albedo is 1)
-        vec3 albedo = (vec3(fogDepth) + volumeScatter) / tau;
+        // the share of the extinction that scatters, per channel (the fog's albedo is 1 outside
+        // the Lit colour mode)
+        vec3 fogScatter = lit ? volFog.fogAlbedo.rgb * fogDepth : vec3(fogDepth);
+        vec3 albedo = (fogScatter + volumeScatter) / tau;
         float extinction = exp(-tau);
         scattering += transmittance * light * albedo * (1.0 - extinction);
+        if (lit)
+            scattering += transmittance * volFog.fogEmissive.rgb * (fogDepth / tau) * (1.0 - extinction);
         transmittance *= extinction;
         if (transmittance < 1e-3)
             break;

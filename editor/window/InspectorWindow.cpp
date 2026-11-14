@@ -11736,10 +11736,24 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
     const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(0);
 
     if (beginFoldout("Height Fog")){
+        // the tooltips of the reflected fields (editor/reflect/components/LightingReflect.cpp)
+        const reflect::ComponentDesc* fogDesc = reflect::find(cpType);
+        auto reflectedHelp = [fogDesc](const char* id){
+            const reflect::FieldDesc* field = fogDesc ? reflect::findField(*fogDesc, id) : nullptr;
+            return field ? reflect::tooltip(*field) : std::string();
+        };
         RowSettings settingsColorMode;
         settingsColorMode.enumEntries = &entriesFogColorMode;
-        settingsColorMode.help = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
-                                 "sky shader with a horizonColor property).";
+        settingsColorMode.help = reflectedHelp("colorMode");
+        // the Lit colour mode's rows (docs/specs/vapor.md R30); its Color is unused
+        const bool lit = fog.colorMode == FogColorMode::LIT;
+        RowSettings settingsAlbedo;
+        settingsAlbedo.help = reflectedHelp("albedo");
+        RowSettings settingsAmbientMultiplier = settingsFloat;
+        settingsAmbientMultiplier.help = reflectedHelp("ambientMultiplier");
+        RowSettings settingsEmissive;
+        settingsEmissive.colorHdr = true;
+        settingsEmissive.help = reflectedHelp("emissive");
         RowSettings settingsAttenuation = settingsFloat;
         settingsAttenuation.help = "The distance (m) light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.";
         RowSettings settingsBase = settingsFloat;
@@ -11755,7 +11769,13 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
 
         beginTable(cpType, labelSize, "height_fog");
         propertyRow(RowPropertyType::Enum, cpType, "colorMode", "Color Mode", sceneProject, entities, settingsColorMode);
-        propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+        if (lit){
+            propertyRow(RowPropertyType::Color3L, cpType, "albedo", "Albedo", sceneProject, entities, settingsAlbedo);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "ambientMultiplier", "Ambient Multiplier", sceneProject, entities, settingsAmbientMultiplier);
+            propertyRow(RowPropertyType::Color3L, cpType, "emissive", "Emissive", sceneProject, entities, settingsEmissive);
+        }else{
+            propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+        }
         propertyRow(RowPropertyType::FloatPositive, cpType, "attenuationDistance", "Attenuation Distance", sceneProject, entities, settingsAttenuation);
         propertyRow(RowPropertyType::Float, cpType, "baseHeight", "Base Height", sceneProject, entities, settingsBase);
         propertyRow(RowPropertyType::Float, cpType, "maximumHeight", "Maximum Height", sceneProject, entities, settingsMaximum);

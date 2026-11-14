@@ -65,6 +65,8 @@ namespace jasperengine{
         Vector4 depthInfo;
         Vector4 noise;
         Vector4 noiseOffset;
+        Vector4 fogAlbedo = Vector4(1.0f, 1.0f, 1.0f, 0.0f);   // rgb the global medium's albedo, w 1 Lit
+        Vector4 fogEmissive = Vector4(0.0f, 0.0f, 0.0f, 0.0f);  // rgb its emissive (Lit)
         Vector4 volumeFrame[ATMOSPHERE_MAX_FOG_VOLUMES * 3];
         Vector4 volumeShape[ATMOSPHERE_MAX_FOG_VOLUMES];
         Vector4 volumeMedium[ATMOSPHERE_MAX_FOG_VOLUMES];
@@ -355,6 +357,8 @@ namespace jasperengine{
         bool cloudsReady();
         TextureRender* weatherTexture();
         void updateHorizon();
+        // the scene fog's Lit colour mode light under the pass's scene ambient and main light (passFrame)
+        LitFogLight passLitLight() const;
         void fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
                         bool skyMap, float cameraAltitudeFade);
         void renderDepth(Framebuffer& target, TextureRender* sceneDepth, int factor, const CameraComponent& camera);

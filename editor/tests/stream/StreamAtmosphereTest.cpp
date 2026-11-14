@@ -185,8 +185,40 @@ TEST(StreamAtmosphere, SerializeLightVolumetricIntensity){
     EXPECT_FLOAT_EQ(back.volumetricIntensity, 2.5f);
 }
 
+// docs/specs/vapor.md R12, R39: the Lit colour mode's fields are written only away from their
+// defaults (a scene without Lit is written as it was) and read back when set
+TEST(StreamAtmosphere, SerializeLitFieldsOmitIfDefault){
+    FogComponent fog = everyHeightFogField();
+    const YAML::Node plain = reflect::encodeValue(ComponentType::FogComponent, &fog);
+    for (const char* key : {"albedo", "ambientMultiplier", "emissive"})
+        EXPECT_FALSE(plain[key].IsDefined()) << key;
+
+    fog.colorMode = FogColorMode::LIT;
+    fog.albedo = Vector3(0.05f, 0.4f, 0.1f);
+    fog.ambientMultiplier = 3.0f;
+    fog.emissive = Vector3(2.5f, 0.0f, 0.75f);
+    const YAML::Node lit = reflect::encodeValue(ComponentType::FogComponent, &fog);
+    EXPECT_EQ(lit["colorMode"].as<std::string>(), "lit");
+    for (const char* key : {"albedo", "ambientMultiplier", "emissive"})
+        EXPECT_TRUE(lit[key].IsDefined()) << key;
+    const FogComponent back = reflect::decodeValue<FogComponent>(ComponentType::FogComponent, YAML::Load(YAML::Dump(lit)));
+    EXPECT_EQ(back.colorMode, FogColorMode::LIT);
+    EXPECT_TRUE(back.albedo == fog.albedo);
+    EXPECT_FLOAT_EQ(back.ambientMultiplier, 3.0f);
+    EXPECT_TRUE(back.emissive == fog.emissive);
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FogComponent, &back)), YAML::Dump(lit));
+
+    // an old scene's Fog loads with the defaults
+    const FogComponent old = reflect::decodeValue<FogComponent>(ComponentType::FogComponent, YAML::Load("{type: height, colorMode: color}"));
+    const FogComponent defaults;
+    EXPECT_TRUE(old.albedo == defaults.albedo);
+    EXPECT_FLOAT_EQ(old.ambientMultiplier, defaults.ambientMultiplier);
+    EXPECT_TRUE(old.emissive == defaults.emissive);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST(StreamAtmosphere, SchemaKnowsTheNewKeysAndNames){
-    for (const char* key : {"colorMode", "attenuationDistance", "volumetric", "qualityOverride", "wind"})
+    for (const char* key : {"colorMode", "albedo", "ambientMultiplier", "emissive", "attenuationDistance", "volumetric", "qualityOverride", "wind"})
         EXPECT_TRUE(StreamSchema::isKnownFieldKey(ComponentType::FogComponent, key)) << key;
     EXPECT_TRUE(StreamSchema::isKnownFieldKey(ComponentType::LocalVolumetricFogComponent, "blendDistance"));
     EXPECT_TRUE(StreamSchema::isKnownFieldKey(ComponentType::VolumetricCloudsComponent, "weatherMap"));
