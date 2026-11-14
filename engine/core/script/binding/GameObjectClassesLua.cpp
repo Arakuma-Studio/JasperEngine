@@ -490,6 +490,23 @@ bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::s
     return false;
 }
 
+// GameObject's transform members on an entity without a Transform (an action, a tween, the
+// scene's own entities): the getters give nil, the setters raise an error (S95 REQ-3), never the
+// engine error and C++ exception of getComponent
+static const Transform* luaTransform(const GameObject* self){
+    Scene* scene = self->getScene();
+    return scene ? scene->findComponent<Transform>(self->getEntity()) : nullptr;
+}
+
+static GameObject& requireTransform(GameObject* self){
+    if (!luaTransform(self)){
+        Scene* scene = self->getScene();
+        const std::string name = scene ? scene->getEntityNameRef(self->getEntity()) : std::string();
+        throw std::runtime_error("GameObject '" + name + "' has no Transform");
+    }
+    return *self;
+}
+
 // GameObject:setParent / parent = : any GameObject handle, a script instance or nil (the root)
 static void luaSetParent(GameObject* self, const luabridge::LuaRef& value, bool worldPositionStays){
     if (value.isNil()){
@@ -1513,9 +1530,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // setParent(p [, worldPositionStays = true]), childCount, getChild(i) (0-based), getChildren(),
         // findChild("Arm/Hand")
         .addProperty("parent", &GameObject::getParent,
-            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(self, value, true); })
+            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(&requireTransform(self), value, true); })
         .addFunction("setParent", [](GameObject* self, luabridge::LuaRef parent, std::optional<bool> worldPositionStays) {
-            luaSetParent(self, parent, worldPositionStays.value_or(true));
+            luaSetParent(&requireTransform(self), parent, worldPositionStays.value_or(true));
         })
         .addProperty("childCount", &GameObject::getChildCount)
         .addFunction("getChild", &GameObject::getChild)
@@ -1525,17 +1542,34 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("moveUp", &GameObject::moveUp)
         .addFunction("moveDown", &GameObject::moveDown)
         .addFunction("moveToBottom", &GameObject::moveToBottom)
-        .addProperty("position", &GameObject::getPosition, (void(GameObject::*)(Vector3))&GameObject::setPosition)
-        .addFunction("setPosition", 
-            luabridge::overload<const float, const float, const float>(&GameObject::setPosition),
-            luabridge::overload<const float, const float>(&GameObject::setPosition))
-        .addFunction("getWorldPosition", &GameObject::getWorldPosition)
-        .addProperty("rotation", &GameObject::getRotation, (void(GameObject::*)(Quaternion))&GameObject::setRotation)
-        .addFunction("setRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setRotation)
-        .addFunction("getWorldRotation", &GameObject::getWorldRotation)
-        .addProperty("scale", &GameObject::getScale, (void(GameObject::*)(Vector3))&GameObject::setScale)
-        .addFunction("setScale", (void(GameObject::*)(const float))&GameObject::setScale)
-        .addFunction("getWorldScale", &GameObject::getWorldScale)
+        // nil without a Transform (an action, a tween); the setters raise an error then
+        .addProperty("position", [](const GameObject* self) -> std::optional<Vector3> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getPosition(); },
+            [](GameObject* self, Vector3 position) { requireTransform(self).setPosition(position); })
+        // (x, y [, z = 0])
+        .addFunction("setPosition", [](GameObject* self, float x, float y, std::optional<float> z) {
+            requireTransform(self).setPosition(x, y, z.value_or(0.0f)); })
+        .addFunction("getWorldPosition", [](const GameObject* self) -> std::optional<Vector3> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldPosition(); })
+        .addProperty("rotation", [](const GameObject* self) -> std::optional<Quaternion> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getRotation(); },
+            [](GameObject* self, Quaternion rotation) { requireTransform(self).setRotation(rotation); })
+        .addFunction("setRotation", [](GameObject* self, float xAngle, float yAngle, float zAngle) {
+            requireTransform(self).setRotation(xAngle, yAngle, zAngle); })
+        .addFunction("getWorldRotation", [](const GameObject* self) -> std::optional<Quaternion> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldRotation(); })
+        .addProperty("scale", [](const GameObject* self) -> std::optional<Vector3> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getScale(); },
+            [](GameObject* self, Vector3 scale) { requireTransform(self).setScale(scale); })
+        .addFunction("setScale", [](GameObject* self, float factor) { requireTransform(self).setScale(factor); })
+        .addFunction("getWorldScale", [](const GameObject* self) -> std::optional<Vector3> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldScale(); })
         .addProperty("visible", &GameObject::isVisible, &GameObject::setVisible)
         .addFunction("setVisibleOnly", &GameObject::setVisibleOnly)
         .addFunction("setBillboard", (void(GameObject::*)(bool, bool, bool))&GameObject::setBillboard)
@@ -1544,9 +1578,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setBillboardRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setBillboardRotation)
         .addProperty("fakeBillboard", &GameObject::isFakeBillboard, &GameObject::setFakeBillboard)
         .addProperty("cylindricalBillboard", &GameObject::isCylindricalBillboard, &GameObject::setCylindricalBillboard)
-        .addProperty("localMatrix", &GameObject::getLocalMatrix, &GameObject::setLocalMatrix)
-        .addProperty("modelMatrix", &GameObject::getModelMatrix)
-        .addProperty("normalMatrix", &GameObject::getNormalMatrix)
+        .addProperty("localMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getLocalMatrix(); },
+            [](GameObject* self, Matrix4 localMatrix) { requireTransform(self).setLocalMatrix(localMatrix); })
+        .addProperty("modelMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getModelMatrix(); })
+        .addProperty("normalMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getNormalMatrix(); })
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
         // the Mixer Snapshot action's component (S40 R24), nil without one
@@ -3485,6 +3526,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
         .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
         .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
+        .addProperty("localizationKey", &Text::getLocalizationKey, &Text::setLocalizationKey)
         .addProperty("outlineNeighbors", &Text::getOutlineNeighbors, &Text::setOutlineNeighbors)
         .addProperty("pixelScale", &Text::getPixelScale)
         .addProperty("effectiveFontSize", &Text::getEffectiveFontSize)

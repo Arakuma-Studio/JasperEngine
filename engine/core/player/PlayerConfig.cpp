@@ -5,6 +5,7 @@
 #include "pixelart/PixelColor.h"
 
 #include "audio/AudioMixer.h"
+#include "util/TitleArtLanguage.h"
 #include "subsystem/AudioSystem.h"
 
 #include <algorithm>
@@ -154,6 +155,8 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    out["localization"] = {{"defaultLanguage", defaultLanguage}, {"languages", localization.languages},
+                           {"rememberLanguage", localization.rememberLanguage}, {"tables", localization.tables}};
     return out;
 }
 
@@ -380,6 +383,13 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
             }
         }
+        // absent (an older editor's game.json): English, no String Tables
+        if (const auto localization = in.find("localization"); localization != in.end() && localization->is_object()) {
+            config.defaultLanguage = localization->value("defaultLanguage", config.defaultLanguage);
+            config.localization.languages = localization->value("languages", std::vector<std::string>());
+            config.localization.rememberLanguage = localization->value("rememberLanguage", config.localization.rememberLanguage);
+            config.localization.tables = localization->value("tables", std::vector<std::string>());
+        }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
         out = std::move(config);
@@ -430,4 +440,10 @@ const GameScene* PlayerConfig::findScene(const std::string& nameOrId) const {
     } catch (...) {
     }
     return nullptr;
+}
+
+void jasperengine::player::applyLocalization(const PlayerConfig& game) {
+    TitleArtLanguage::setProjectDefault(game.defaultLanguage);
+    Localization::configure(game.localization);
+    Localization::start();
 }

@@ -5,7 +5,11 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "dataasset/DataAssets.h"
+#include "script/DataAsset.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/Localization.h"
+#include "localization/StringTable.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -287,6 +291,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const AssetRef* b = std::get_if<AssetRef>(&rhs);
             return a && b && *a == *b;
         }
+        case ScriptPropertyType::List: {
+            const ScriptPropertyList* a = std::get_if<ScriptPropertyList>(&lhs);
+            const ScriptPropertyList* b = std::get_if<ScriptPropertyList>(&rhs);
+            return a && b && *a == *b;
+        }
     }
 
     return false;
@@ -309,7 +318,9 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         }
 
         const size_t currentIndex = static_cast<size_t>(currentIt - properties.begin());
-        const bool sameType = currentIt->type == parsedProp.type;
+        // a list of another element type, or a reference to another kind of asset, is another type
+        const bool sameType = currentIt->type == parsedProp.type && currentIt->assetType == parsedProp.assetType &&
+            (parsedProp.type != ScriptPropertyType::List || currentIt->elementType == parsedProp.elementType);
         const bool defaultChanged = sameType &&
             !scriptPropertyValuesEqual(currentIt->type, currentIt->defaultValue, parsedProp.defaultValue);
         const bool updateValue = !sameType || (defaultChanged &&
@@ -327,6 +338,8 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         merged.displayName = parsedProp.displayName;
         merged.type = parsedProp.type;
         merged.ptrTypeName = parsedProp.ptrTypeName;
+        merged.assetType = parsedProp.assetType;
+        merged.elementType = parsedProp.elementType;
         merged.defaultValue = parsedProp.defaultValue;
 
         if (updateValue) {
@@ -2480,6 +2493,8 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S95: Play's data classes and their assets, as the project has them when a run first asks
+    DataAsset::setIndexProvider([this]() { return DataAssets::buildIndex(this); });
     // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
     // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
     jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
@@ -3505,6 +3520,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
+    settings.localization = getLocalizationConfig();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3521,6 +3537,32 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     return settings;
 }
 
+LocalizationConfig editor::Project::getLocalizationConfig() const{
+    LocalizationConfig config;
+    config.languages = localizationSettings.languages;
+    config.rememberLanguage = localizationSettings.rememberLanguage;
+    for (const std::filesystem::path& file : ProjectChecks::findProjectFiles(getAssetsPath(), {StringTable::EXTENSION})) {
+        config.tables.push_back(normalizeToAssetsRelative(file).generic_string());
+    }
+    return config;
+}
+
+void editor::Project::applyLocalization(){
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    Localization::configure(getLocalizationConfig());
+}
+
+void editor::Project::localizationFilesChanged(const std::vector<std::filesystem::path>& changed){
+    for (const std::filesystem::path& path : changed) {
+        if (Util::isStringTableFile(path.string())) {
+            // the list (a table added or removed), then the contents
+            applyLocalization();
+            Localization::reloadTables();
+            return;
+        }
+    }
+}
+
 void editor::Project::applyPresentationSettings(){
     // what an earlier Play changed (focus, pause, frame rate) does not carry over
     Engine::resetApplicationState();
@@ -3530,7 +3572,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
     // S87: a Play starts in the device's language with the project's default
     TitleArtLanguage::setGlobal("");
-    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    // S95 REQ-27: the String Tables, and the language a previous Play chose when it is remembered
+    applyLocalization();
+    Localization::start();
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -6601,6 +6645,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    DataAsset::setIndexProvider(nullptr);
     jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
@@ -7842,6 +7887,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         // unlike the other settings it applies while editing too, textures are shared with Play
         Engine::setTextureStrategy(textureStrategy);
+        // the String Tables show in Edit mode too (a Text's Localization Key, data-loc)
+        applyLocalization();
         editor::getEditorHost().reportLoadingProgress("Finishing project load...");
 
         // Guarantee a non-empty name: project.yaml files without a "name" field
@@ -11727,6 +11774,9 @@ void editor::Project::stop(uint32_t sceneId) {
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
 
+            // the language the game chose lasts for the Play (Remember Language Choice stored it)
+            Localization::stop();
+            TitleArtLanguage::setGlobal("");
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();
 

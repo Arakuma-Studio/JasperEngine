@@ -454,7 +454,7 @@ namespace {
         return tail.data().size();
     }
 
-    // the bytes format 1.6 appends after them (the Fixed Timestep override)
+    // the bytes format 1.7 appends after them (the Fixed Timestep override)
     size_t fixedTimestepTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -503,7 +503,7 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, (1.5) the Water Wakes' map and (1.6) the Fixed Timestep after them
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map and (1.7) the Fixed Timestep after them
     const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + fixedTimestepTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
@@ -636,7 +636,7 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     EXPECT_FLOAT_EQ(player.scene->scene->getPlanarReflectionClipOffset(), 0.2f);
     EXPECT_EQ(player.scene->scene->getMaxPlanarReflections(), 3);
 
-    // the 1.3 record: the same bytes without the planar reflections (and the 1.5 and 1.6 values)
+    // the 1.3 record: the same bytes without the planar reflections (and the 1.5 and 1.7 values)
     DecodedScene older = emptyScene();
     jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene)
                                                                 - fixedTimestepTailBytes(*scene)),
@@ -686,7 +686,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(player.scene->scene->getWaterWakeArea(), 32.0f);
     EXPECT_FLOAT_EQ(player.scene->scene->getWaterWakeFade(), 4.0f);
 
-    // the 1.4 record: the same bytes without the wake settings (and the 1.6 value); the planar
+    // the 1.4 record: the same bytes without the wake settings (and the 1.7 value); the planar
     // reflections still read
     DecodedScene older = emptyScene();
     jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - fixedTimestepTailBytes(*scene)),
@@ -701,8 +701,8 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
-// S95 REQ-13: the scene's Fixed Timestep survives a cook (format 1.6, after the Water Wakes); a 1.5
-// record leaves the project's (0)
+// S95 REQ-13: the scene's Fixed Timestep survives a cook (format 1.7, after the Water Wakes); a 1.5
+// or 1.6 record leaves the project's (0)
 TEST(CookedScene, SceneSettingsKeepFixedTimestep) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
@@ -768,12 +768,13 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
 }
 
-// What a 1.4 editor cooked loads: the file as its writer laid it out (1.6's without the Water Wakes
+// What a 1.4 editor cooked loads: the file as its writer laid it out (1.7's without the Water Wakes
 // and Fixed Timestep values that end the settings record, the record's length and the string table
 // offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.6's without its Water Wakes and Fixed Timestep values: cut the newer minor's values too";
+    // 1.6 (S95 REQ-20) adds only to Script components, which this scene has none of
+    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes and Fixed Timestep values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);

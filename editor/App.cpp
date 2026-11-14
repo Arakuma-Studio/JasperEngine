@@ -24,6 +24,7 @@
 #include "window/AudioMixerWindow.h"
 #include "window/ParticleEffectWindow.h"
 #include "window/AudioCapturesWindow.h"
+#include "window/StringTablesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/GraphEditorWindow.h"
 #include "window/ProceduralMaterialWindow.h"
@@ -34,6 +35,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
+#include "dataasset/DataAssets.h"
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
@@ -289,6 +291,7 @@ editor::App::App(){
     graphEditorWindow = new GraphEditorWindow(&project);
     proceduralMaterialWindow = new ProceduralMaterialWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
+    stringTablesWindow = new StringTablesWindow(&project);
     applyPaletteDialog = new ApplyPaletteDialog(&project);
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
@@ -750,6 +753,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         // Sprite Atlas and Palette: in Create > 2D below
         if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette || item.kind == AssetCreateKind::Tileset) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        if (item.kind == AssetCreateKind::DataAsset) {
+            // Data Asset > <each data class> (S95 REQ-21), the classes looked at once a second
+            std::vector<PlatformMenuItem> classItems;
+            for (const std::string& name : DataAssets::classNamesThrottled(project.getLuaPath())) {
+                classItems.push_back(menuPayloadCommand(AppMenuCommand::AssetsCreateDataAsset, name, name, !isProjectBusy));
+            }
+            if (classItems.empty()) classItems.push_back(menuCommand(AppMenuCommand::AssetsCreateDataAsset, "No data class (---@dataasset)", false));
+            assetsCreateItems.push_back(menuSubmenu(item.label, std::move(classItems)));
+            continue;
+        }
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
@@ -850,6 +863,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME))
         }),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
+        menuSubmenu("Localization", {
+            catalogItem("window.stringTables", windowMenuLabel(StringTablesWindow::WINDOW_NAME))
+        }),
         menuSubmenu("AI", {
             catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
         }),
@@ -1120,6 +1136,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateNoiseGraph:
             projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
             break;
+        case AppMenuCommand::AssetsCreateDataAsset:
+            if (!command.payload.empty()) projectWindow->assetsCreateDataAsset(command.payload, projectWindow->createTargetDirectory());
+            break;
         case AppMenuCommand::ToggleVoxelVolume:
             showEditorWindow(voxelEditWindow);
             break;
@@ -1171,6 +1190,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();
+            break;
+        case AppMenuCommand::ToggleStringTables:
+            stringTablesWindow->open();
             break;
         case AppMenuCommand::ResetLoudness:
             LoudnessMonitor::get().reset();
@@ -1386,6 +1408,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateSoundEvent:
             projectWindow->createAsset(AssetCreateKind::SoundEvent, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateStringTable:
+            projectWindow->createAsset(AssetCreateKind::StringTable, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateSoundEventFromClips:
             projectWindow->assetsCreateSoundEventFromClips();
@@ -3206,6 +3231,7 @@ void editor::App::show(){
     particleEffectWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    stringTablesWindow->show();
     // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
     paletteWindow->show();
     pixelArtCheckWindow->show();
@@ -5561,6 +5587,7 @@ void editor::App::prepareForProjectSwitch() {
     soundBrowserWindow->resetForProjectSwitch();
     GraphEditorWindow::prepareAllForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
+    stringTablesWindow->resetForProjectSwitch();
     // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
     paletteWindow->resetForProjectSwitch();
     pixelArtCheckWindow->resetForProjectSwitch();

@@ -110,6 +110,7 @@ Projects made before the rename are migrated once with
 | `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
 | `transform.parent`, `SetParent(p, worldPositionStays)`, `childCount`, `GetChild(i)`, `Find("a/b")` -> `go.parent`, `go:setParent(p [, worldPositionStays])`, `go.childCount`, `go:getChild(i)` (0-based), `go:findChild("a/b")`, plus `go:getChildren()`; C++ `getParent()`, `setParent`, `getChildCount()`, `getChild`, `getChildren`, `findChild` | `addChild`, `removeParent` only (no way to read the parent or the children) |
 | `Vector3.Lerp` (t clamped), `Vector3.LerpUnclamped`, `Vector3.MoveTowards` (also Vector2, Vector4) -> `a:lerp(b, t)` / `Vector3.lerp(a, b, t)`, `lerpUnclamped`, `moveTowards`; C++ the same | `Vector3::lerp` unclamped, C++ only |
+| `Quaternion.Euler(x, y, z)`, `Quaternion.AngleAxis(angle, axis)` -> `Quaternion.euler(x, y, z, RotationOrder.YXZ)`, `Quaternion.angleAxis(angle, axis)`; C++ `Quaternion(x, y, z, RotationOrder::YXZ)`, `Quaternion(angle, axis)` | `Quaternion(x, y, z, RotationOrder)` (from Lua it never ran: four numbers are `(w, x, y, z)`) |
 | `Bounds` corners (`GetCorners` of a hand-written helper) -> `AABB:getCorners()` / `OBB:getCorners()` (8 `Vector3`) | one corner |
 | `Rigidbody2D.AddForce` (always wakes the body) -> `applyForce(f, p [, wake = true])` and the other force/impulse methods | `wake` read as false when left out |
 | Add Component > Scripts > a script, dragging a script onto a GameObject (Inspector or Hierarchy) -> the same: Add Component and the Script component's Add Script list the project's scripts; drops attach | Add Script added an empty C++ entry |
@@ -188,7 +189,9 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 |---|---|
 | `Application.OpenURL(url)` | `System.openURL(url)` (returns whether the system took it) |
 | `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
-| Unity Localization `LocalizationSettings.SelectedLocale` (titles only) | `TitleArt.setLanguage(code)`, `TitleArt.getLanguage()`, `TitleArt.onLanguageChanged`; a Title Art Renderer's `language`; Project Settings > Localization (`localization.languages`, `localization.default_language`) |
+| Unity Localization `LocalizationSettings.SelectedLocale` | `Localization.language` (the same value as `TitleArt.setLanguage(code)` / `TitleArt.getLanguage()`), `Localization.onLanguageChanged` (= `TitleArt.onLanguageChanged`); a Title Art Renderer's `language`; Project Settings > Localization (`localization.languages`, `localization.default_language`, `localization.remember_language`) |
+| Unity Localization String Table Collection, `LocalizedString.GetLocalizedString`, Smart Strings | a `.stringtable` (Window > Localization > String Tables; MCP `edit_string_table`), `Localization.get(key, args)` with `{0}`, `{name}` and plural forms; `"Table:key"` |
+| Unity `LocalizeStringEvent` on a TextMeshPro text | Text `localizationKey` (Inspector: Localization Key); HTML UI `data-loc="key"`, `el:setLocalized(key, args)` |
 | `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
 | `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
 | `QualitySettings.terrainDetailDistanceFactor` | `Engine.foliageDistanceScale` (starts from Quality > Foliage Distance; [instancing.md](rendering/instancing.md)) |
@@ -292,7 +295,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
-| ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
+| ScriptableObject, `[CreateAssetMenu]`, `List<T>` fields | Data Asset: a `.dataasset` of a data class (a Lua module marked `---@dataasset`, its `properties` the fields; `type = "list", of = ...`); Assets > Create > Data Asset > <class>; a script property typed with the class; Lua `DataAsset.load/loadAll/create`; MCP `edit_data_asset`: jasper://docs/lua-api 2.4.3 |
 
 ## Debugging
 

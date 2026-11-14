@@ -684,6 +684,7 @@ const EnumTable<ScriptPropertyType>& StreamSchema::scriptPropertyType() {
         {ScriptPropertyType::EntityReference, "EntityReference"},
         {ScriptPropertyType::Prefab, "Prefab"},
         {ScriptPropertyType::Asset, "Asset"},
+        {ScriptPropertyType::List, "List"},
     }, ScriptPropertyType::Bool);
     return table;
 }

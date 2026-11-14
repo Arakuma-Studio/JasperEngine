@@ -633,6 +633,12 @@ namespace jasperengine::editor {
         // the Create list's Noise Graph entry: a submenu of Blank and the presets
         void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
+        void assetsCreateStringTable(const fs::path& directory);
+        // Create > Data Asset > <class> (S95 REQ-21): "New <class>.dataasset" with the class's defaults,
+        // one project undo step, then renamed in place; refused (an alert) outside the assets folder
+        void assetsCreateDataAsset(const std::string& className, const fs::path& directory);
+        // the Create list's Data Asset entry: a submenu of the project's data classes
+        void renderDataAssetCreateMenu(const std::string& label, const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;

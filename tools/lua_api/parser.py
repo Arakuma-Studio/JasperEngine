@@ -1968,6 +1968,10 @@ OVERRIDES = {
     },
 }
 
+# S95 REQ-1: Quaternion.euler reads its order by hand (an enum argument takes any value)
+OVERRIDES[('Quaternion', 'euler')] = {
+    'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -3178,6 +3182,18 @@ OVERRIDES[('UIDataTransfer', 'setDragImage')] = {
     'doc': ['The ghost: a copy of `element` with the pointer at (x, y) in it; nil draws none.'],
     'overloads': [([('element', 'UIElement|nil'), ('x?', 'number'), ('y?', 'number')], '')]}
 PROPERTY_OVERRIDES[('UIDataTransfer', 'types')] = ('string[]', True)
+# S95 String Tables (LocalizationClassesLua.cpp; LocalizationArgs in stubs/Localization.lua)
+PROPERTY_OVERRIDES[('Localization', 'languages')] = ('string[]', True)
+PROPERTY_OVERRIDES[('Localization', 'onLanguageChanged')] = ('FunctionSubscribe', False)
+OVERRIDES[('Localization', 'get')] = {
+    'doc': ["`key`'s value in the game's language (else its base language, else the project default, else the key,",
+            'warned once). "Table:key" looks in one table. `args` fill {0} {1} and {name}; a plural value picks its',
+            'form by `count`. Raises on an argument that is not a string, number or boolean.'],
+    'overloads': [([('key', 'string'), ('args?', 'LocalizationArgs')], 'string')]}
+OVERRIDES[('UIElement', 'setLocalized')] = {
+    'doc': ['The element shows `key` (Localization.get with `args`) as its text, now and at every language change:',
+            'its data-loc and data-loc-args attributes. Raises on an argument that is not a string, number or boolean.'],
+    'overloads': [([('key', 'string'), ('args?', 'LocalizationArgs')], '')]}
 OVERRIDES[('UIDrag', 'begin')] = {
     'doc': ['Starts a drag from `source` without a pointer (gamepad, scripts): dragstart and drag fire on it.',
             '`options.data` is a table of type -> value, `options.effectAllowed` a DataTransfer effect. False when',

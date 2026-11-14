@@ -30,6 +30,7 @@
 #include "DocumentFile.h"
 #include "audio/AudioMixerDocument.h"
 #include "audio/SoundEventDocument.h"
+#include "dataasset/DataAssets.h"
 #include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
@@ -84,6 +85,8 @@
 #include "util/PhysicsMaterialAssets.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
+#include "window/StringTablesWindow.h"
+#include "localization/StringTables.h"
 #include "tilemap/TilesetEdit.h"
 #include "tilemap/TilesetEditorWindow.h"
 #include "tilemap/TilesetPool.h"
@@ -1378,6 +1381,10 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
         const std::string label = std::string(item.icon) + " " + item.label;
         if (item.kind == AssetCreateKind::NoiseGraph) {
             renderNoiseGraphCreateMenu(label, directory);
+            continue;
+        }
+        if (item.kind == AssetCreateKind::DataAsset) {
+            renderDataAssetCreateMenu(label, directory);
             continue;
         }
         const bool chosen = ImGui::MenuItem(label.c_str(), nullptr, false, refused.empty());
@@ -5339,6 +5346,60 @@ void editor::ProjectWindow::renderNoiseGraphCreateMenu(const std::string& label,
     ImGui::EndMenu();
 }
 
+void editor::ProjectWindow::renderDataAssetCreateMenu(const std::string& label, const fs::path& directory) {
+    const bool open = ImGui::BeginMenu(label.c_str());
+    UIProbe::item("project.create.dataasset");
+    if (!open) return;
+    const std::vector<DataAssets::Class> classes = DataAssets::listClasses(project->getLuaPath());
+    if (classes.empty()) {
+        ImGui::MenuItem("No data class", nullptr, false, false);
+        ImGui::SetItemTooltip("A data class is a Lua module whose first lines hold ---@dataasset; its properties are the fields of its assets");
+    }
+    for (const DataAssets::Class& dataClass : classes) {
+        if (ImGui::MenuItem(dataClass.name.c_str())) {
+            assetsCreateDataAsset(dataClass.name, directory);
+            ImGui::CloseCurrentPopup();
+        }
+        UIProbe::item("project.create.dataasset." + dataClass.name);
+        ImGui::SetItemTooltip("%s", dataClass.luaPath.c_str());
+    }
+    ImGui::EndMenu();
+}
+
+void editor::ProjectWindow::assetsCreateDataAsset(const std::string& className, const fs::path& directory) {
+    std::error_code ec;
+    if (!fs::is_directory(directory, ec)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    // a game loads assets from its assets folder only
+    if (!project->isInsideAssetsPath(directory / "x")) {
+        Backend::getApp().registerAlert("Create Data Asset", "A Data Asset goes in the assets folder (" +
+                                        FileUtils::pathToUtf8(project->getAssetsPath()) + "): games load nothing else.");
+        return;
+    }
+    DataAssets::Class dataClass;
+    std::vector<ScriptProperty> schema;
+    std::string error;
+    if (!DataAssets::findClass(project->getLuaPath(), className, dataClass)) {
+        error = "No data class '" + className + "': a Lua module whose first lines hold ---@dataasset.";
+    } else if (!DataAssets::readSchema(dataClass, schema, error)) {
+        error = dataClass.luaPath + ": " + error;
+    }
+    if (!error.empty()) {
+        Backend::getApp().registerAlert("Create Data Asset", error);
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New " + className, DataAsset::EXTENSION);
+    if (!DataAssets::commit(project, project->getProjectPath() / relative, DataAssets::create(project, className, schema),
+                            "Create " + className, "", &error)) {
+        Backend::getApp().registerAlert("Create Data Asset", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateNoiseGraph(const std::string& presetId, const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5357,6 +5418,17 @@ void editor::ProjectWindow::assetsCreateNoiseGraph(const std::string& presetId, 
     // the asset database gives it its GUID (a sidecar, T2 R13)
     ProjectFileWrites::refresh(project, {absolute});
     selectCreated(directory, relative.filename().string(), true);
+}
+
+void editor::ProjectWindow::assetsCreateStringTable(const fs::path& directory) {
+    focusProjectPanel(this);
+    std::string error;
+    const fs::path created = stringtables::createNew(project, directory, error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create String Table", error);
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
 }
 
 void editor::ProjectWindow::assetsCreateSoundEvent(const fs::path& directory) {
@@ -5712,6 +5784,9 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
     } else if (file.type == FileType::TILESET) {
         if (tilemap::TilesetEditorWindow* editorWindow = Backend::getApp().getTilesetEditorWindow()) editorWindow->open(filePath);
+    } else if (Util::isStringTableFile(filePath.string()) && project->isInsideAssetsPath(filePath)) {
+        // Window > Localization > String Tables on it (S95 REQ-29)
+        if (StringTablesWindow* strings = Backend::getApp().getStringTablesWindow()) strings->open(filePath);
     } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
         // a graph kind's file: the window of its kind (S90 R26)
     } else {
@@ -5841,6 +5916,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
         case AssetCreateKind::NoiseGraph: assetsCreateNoiseGraph(std::string(), directory); break;
         case AssetCreateKind::Tileset: assetsCreateTileset(directory); break;
+        case AssetCreateKind::StringTable: assetsCreateStringTable(directory); break;
         default: break;
     }
 }

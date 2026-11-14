@@ -179,9 +179,14 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
 | `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
+| `"list"` with `of = <any type of this table but list>` (Unity's `List<T>`) | a Lua array of `of` values; an unassigned reference in it is `false` | an array of `of`'s defaults (`{1, 2}`, `{{0, 1, 0}}`), or none (empty) |
+| a data class name (`"ItemData"`), or `"asset"` with `assetType = "dataasset"` (any class) | that Data Asset's shared table (2.4.3), or `nil` when left None | a path (`"items/sword.dataasset"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
+
+A data class name wins over a script of the same name. The Inspector shows a list as rows with Add (+),
+reorder and Remove, and a Data Asset field as a picker of the class's assets.
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
@@ -855,21 +860,92 @@ most 3 s), so `init` reads them; if the restore takes longer, `data://` writes r
 them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
 paths, but on Web call `System.syncFileSystem()` after writing.
 
-Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
-(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
-{allowComments = true})`), exported with them; or a Lua data module shared by every
-script that requires it:
+Data assets (Unity ScriptableObjects) are the `.dataasset` files of 2.4.3; plain data a game only
+reads can also be a JSON file (`Json.readFile("asset://levels/1.json", {allowComments = true})`)
+or a Lua module every script `require`s.
+
+### 2.4.3 DataAsset (static): Data Assets, Unity's ScriptableObject
+
+A **data class** is a Lua module whose first lines hold `---@dataasset`: its `properties` (1.2,
+without GameObject references: an asset outlives the scenes) are the fields of its assets, its
+functions their methods. Make an asset with Assets > Create > Data Asset > <class> (or MCP
+`edit_data_asset`); the Inspector edits its values, with undo. A script property typed with the
+class name holds one.
 
 ```lua
--- lua/data/items.lua
-return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- lua/data/ItemData.lua
+---@dataasset
+local ItemData = {
+    properties = {
+        { name = "displayName", type = "string", default = "Item" },
+        { name = "price", type = "int", default = 10 },
+        { name = "icon", type = "asset", assetType = "texture" },
+        { name = "upgrade", type = "ItemData" },
+        { name = "tags", type = "list", of = "string" },
+    }
+}
+function ItemData:label() return self.displayName .. " (" .. self.price .. ")" end
+return ItemData
 ```
 
+| Function | Returns |
+|---|---|
+| `DataAsset.load(pathOrGuid)` | the asset's table (path relative to the assets folder, `asset://`, or its GUID), or `nil, message` |
+| `DataAsset.loadAll(className)` | every asset of the class the game ships, sorted by path (one that does not load is left out, warned), or `nil, message` |
+| `DataAsset.create(className)` | a new table of the class with its defaults, of no file, or `nil, message` |
+| `DataAsset.classOf(t)` / `DataAsset.pathOf(t)` | the class / file of an asset's table, `nil` for anything else (`pathOf` of a created one) |
+
 ```lua
--- in a script
-local Items = require("data.items")
-local price = Items.sword.price
+local Shop = { properties = { { name = "featured", type = "ItemData" }, { name = "stock", type = "list", of = "ItemData" } } }
+function Shop:start()
+    print(self.featured:label())
+    for _, item in ipairs(DataAsset.loadAll("ItemData")) do print(item.displayName, item.price) end
+end
+return Shop
 ```
+
+- One table per asset and run: every property, list and `load` gets the same table, made on its first
+  use (an asset's references to other Data Assets are their tables too; cycles are fine).
+- Changes made to a table in the game stay in that run and are never written to the file (Unity's
+  editor keeps them; JasperEngine never does). The next Play reads the files again.
+- A field the file lacks has its class default; a value of no field (a field renamed in the class)
+  stays in the file, unused, and the Inspector and `edit_data_asset` report it.
+- Exports ship every `.dataasset` (references at their current paths) and an index of the classes
+  (`je-dataassets.json`) for `loadAll`; C++ games read the JSON themselves.
+
+### 2.4.4 Localization (static): String Tables
+
+Unity's Localization package. Texts live in `.stringtable` assets (Assets > Create > String
+Table; Window > Localization > String Tables; MCP `edit_string_table`): keys, with a value per
+language of Project Settings > Localization.
+
+| Member | What |
+|---|---|
+| `Localization.get(key [, args])` | the key's value in the game's language, else its base language (`pt-BR` -> `pt`), else the project default, else the key itself (warned once per key). `"Table:key"` looks in one table (its file name); a bare key in every table (a key two tables define is a `check` error) |
+| `Localization.has(key)` | boolean |
+| `Localization.language` | rw: the game's language (the resolved one, never `""`). It is TitleArt's: setting it is `TitleArt.setLanguage`, so titles and strings switch together; `""` goes back to the device's languages; an invalid tag raises |
+| `Localization.languages` | ro: the project's languages (else the tables') |
+| `Localization.onLanguageChanged` | the event of `TitleArt.onLanguageChanged`: `(code)` once per change |
+
+`args`: the list part fills `{0}`, `{1}`, the string keys fill `{name}`; `{{` and `}}` are
+braces. A plural value (forms `zero`, `one`, `two`, `few`, `many`, `other`) picks its form by
+the `count` argument (else the first of the list) under the CLDR rules of the value's
+language; without a number it shows `other`. The start language is the device's (the Game
+view's Device > Language in Play) matched against the project's languages; with Project
+Settings > Localization > Remember Language Choice (default on) a language the game chose is
+stored in UserSettings and applied at the next start.
+
+```lua
+Localization.language = "es"                                  -- titles follow
+local label = Localization.get("menu.play")                   -- "Jugar"
+local coins = Localization.get("hud.coins", { count = 3 })    -- "3 monedas"
+local hello = Localization.get("greet", { "Ana" })            -- "Hola {0}" -> "Hola Ana"
+Localization.onLanguageChanged:add("hud", function(code) Log.info("language " .. code) end)
+```
+
+Bound text: a Text's `localizationKey` (Inspector: Localization Key) shows the key's value and
+follows the language; an HTML UI element with `data-loc="key"` (and `data-loc-args='{"count":
+3}'`) too, and `el:setLocalized(key [, args])` does it from Lua.
 
 ### 2.5 System (static)
 
@@ -1779,15 +1855,30 @@ assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
 | `Quaternion()` | identity (w=1); same as `Quaternion.IDENTITY` |
 | `Quaternion(w, x, y, z)` | raw components (w first) |
 | `Quaternion(xDeg, yDeg, zDeg)` | Euler angles in default units (degrees), ZYX order |
-| `Quaternion(x, y, z, RotationOrder.XYZ)` | Euler with explicit order |
-| `Quaternion(angle, axisVector3)` | angle-axis |
+| `Quaternion.euler(x, y, z [, order])` | Euler angles with an order (`RotationOrder.*`, default ZYX, as `Quaternion(x, y, z)`); four numbers to the constructor are always `(w, x, y, z)` |
+| `Quaternion(angle, axisVector3)` | angle-axis (a unit axis); `Quaternion.angleAxis(angle, axis)` normalizes the axis (Unity's `AngleAxis`) |
 | `Quaternion(Matrix3)`, `Quaternion(Matrix4)`, `Quaternion(xAxis, yAxis, zAxis)` | |
 | `Quaternion.IDENTITY` | static |
 | fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector, `* number` / `number *` scales; `+ - unary- == tostring` | |
 | methods | `fromEulerAngles(x, y, z, order)`, `getEulerAngles(order)`, `fromAngle(a)` (Z axis), `fromAngleAxis(a, axis)`, `fromAxes(...)`, `fromRotationMatrix(m)`, `getRotationMatrix()`, `xAxis() yAxis() zAxis()`, `dot(q) norm() inverse() unitInverse() exp() log()`, `normalize() normalized() normalizeL()`, `getRoll() getPitch() getYaw()` (default units) |
 | static | `Quaternion.slerp(t, a, b [, shortestPath])`, `Quaternion.nlerp(t, a, b [, shortestPath])`, `Quaternion.squad(...)`, `Quaternion.slerpExtraSpins(...)`, `Quaternion.lookRotation(forward [, up])` |
 
-`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`.
+`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`. An order names the product of the three
+axis rotations, left to right, so the last letter turns a vector first:
+
+| Unity | JasperEngine |
+|---|---|
+| `Quaternion.Euler(x, y, z)` (z, then x, then y) | `Quaternion.euler(x, y, z, RotationOrder.YXZ)` |
+| `Quaternion.AngleAxis(angle, axis)` | `Quaternion.angleAxis(angle, axis)` |
+
+```lua run
+local unity = Quaternion.angleAxis(45, Vector3(0, 1, 0)) * Quaternion.angleAxis(10, Vector3(1, 0, 0))
+local q = Quaternion.euler(10, 45, 0, RotationOrder.YXZ)
+assert(math.abs(q:dot(unity)) > 0.99999)
+```
+
+A wrong argument (nil, another class, an order that is not a `RotationOrder`, a matrix index
+outside 0..2 or 0..3) raises an error.
 
 ### 3.3 Other math types (partial)
 
@@ -1888,7 +1979,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | Member | Kind | Notes |
 |---|---|---|
 | `position` | rw `Vector3` | local position |
-| `setPosition(x, y, z)`, `setPosition(x, y)` | method | |
+| `setPosition(x, y [, z])` | method | z 0 when left out |
 | `getWorldPosition()` | method | Vector3 |
 | `rotation` | rw `Quaternion` | |
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
@@ -1905,6 +1996,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
+| (no Transform) | | On a GameObject without a Transform (an action, a tween) `position`, `rotation`, `scale`, `parent`, the matrices and `getWorld*()` are nil; setting one raises `GameObject '<name>' has no Transform` |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
@@ -2656,7 +2748,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); `localizationKey` (a String Tables key the text follows, §2.4.4); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |

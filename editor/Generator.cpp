@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "script/DataAsset.h"
 #include "object/FluidSimulation.h"
 #include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
@@ -1572,6 +1573,19 @@ std::set<std::string> fieldsDeclaredInScript(const std::string& code, const std:
 // reading a property does not need a nil check per use.
 std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::string, std::string>& wrappers,
                             const std::set<std::string>& scriptClasses) {
+    // a list: its element type, an array (S95 REQ-20); an unassigned reference in it is false
+    if (prop.type == ScriptPropertyType::List) {
+        ScriptProperty element = prop;
+        element.type = prop.elementType;
+        const std::string type = luaPropertyType(element, wrappers, scriptClasses);
+        const bool reference = prop.elementType == ScriptPropertyType::EntityReference || prop.elementType == ScriptPropertyType::Prefab ||
+                               prop.elementType == ScriptPropertyType::Asset;
+        return reference ? "(" + type + "|false)[]" : type.find('|') != std::string::npos ? "(" + type + ")[]" : type + "[]";
+    }
+    // a Data Asset: the table of its class (S95 REQ-22)
+    if (prop.type == ScriptPropertyType::Asset && prop.assetType == DataAsset::ASSET_TYPE) {
+        return prop.ptrTypeName.empty() ? std::string("table") : prop.ptrTypeName;
+    }
     switch (prop.type) {
         case ScriptPropertyType::Bool: return "boolean";
         case ScriptPropertyType::Int: return "integer";
@@ -1584,7 +1598,8 @@ std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::stri
         case ScriptPropertyType::Color4: return "Vector4";
         case ScriptPropertyType::Prefab: return "PrefabAsset";
         case ScriptPropertyType::Asset: return "AssetRef";
-        case ScriptPropertyType::EntityReference: break;
+        case ScriptPropertyType::EntityReference:
+        case ScriptPropertyType::List: break;
     }
     // "entity": the GameObject's first Lua script instance, else an EntityHandle
     if (prop.ptrTypeName.empty()) return "ScriptInstance|EntityHandle";
@@ -2742,6 +2757,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
         // Project Settings > Localization > Default Language (S87 R12 step 4)
         mainContent += "    TitleArtLanguage::setProjectDefault(" + Factory::formatString(playerSettings.defaultLanguage) + ");\n";
+        // ... and its String Tables, the remembered language applied before any script (S95 REQ-27)
+        {
+            auto list = [](const std::vector<std::string>& values) {
+                std::string out = "{";
+                for (size_t i = 0; i < values.size(); i++) out += (i ? ", " : "") + Factory::formatString(values[i]);
+                return out + "}";
+            };
+            const LocalizationConfig& localization = playerSettings.localization;
+            mainContent += "    Localization::configure({" + list(localization.languages) + ", " + (localization.rememberLanguage ? "true" : "false") +
+                ", " + list(localization.tables) + "});\n";
+            mainContent += "    Localization::start();\n";
+        }
         // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
         if (!playerSettings.dynamicBatching)
             mainContent += "    Engine::setDynamicBatchingDefault(false);\n";

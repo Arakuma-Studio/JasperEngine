@@ -467,6 +467,12 @@ namespace jasperengine::editor {
         bool checkMissingAssets();
         // S04: assetmap.bin at the exported assets root, the runtime's GUID <-> path map
         bool writeAssetMap();
+        // S95 REQ-24: je-dataassets.json at the exported assets root (the data classes and their
+        // assets: DataAsset.loadAll); a Data Asset whose class is missing or does not ship is warned
+        bool writeDataAssetIndex();
+        // S95: a .dataasset written with its references' current paths (their GUIDs resolved), so a
+        // game finds them by path too; false (it ships as it is) when it does not parse or write
+        bool writeResolvedDataAsset(const fs::path& source, const fs::path& destination);
         // Runtime shader compilation builds a fork's variants from its sources, which it
         // reads from the build's assets at their project-relative paths: a script can
         // put any fork of the project on a mesh, so all of them ship

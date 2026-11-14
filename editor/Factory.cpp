@@ -990,6 +990,7 @@ std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
         case ScriptPropertyType::EntityReference: return "ScriptPropertyType::EntityReference";
         case ScriptPropertyType::Prefab: return "ScriptPropertyType::Prefab";
         case ScriptPropertyType::Asset: return "ScriptPropertyType::Asset";
+        case ScriptPropertyType::List: return "ScriptPropertyType::List";
         default: return "ScriptPropertyType::Bool";
     }
 }
@@ -1022,6 +1023,13 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
         // the path resolved at export; the GUID for Asset.guid / AssetRef.guid in scripts
         const auto& ref = std::get<AssetRef>(value);
         return "AssetRef(" + formatString(ref.path) + ", Guid::parse(" + formatString(ref.guid.str()) + "))";
+    } else if (std::holds_alternative<ScriptPropertyList>(value)) {
+        // a list property (S95): its elements, each written as a single value is
+        std::string items;
+        for (const ScriptPropertyElement& item : std::get<ScriptPropertyList>(value).items) {
+            items += (items.empty() ? "" : ", ") + std::string("ScriptPropertyElement(") + formatScriptPropertyValue(scriptPropertyValueOf(item), entityVarNames) + ")";
+        }
+        return "ScriptPropertyList{{" + items + "}}";
     }
     return "ScriptPropertyValue{}";
 }
@@ -1983,6 +1991,13 @@ std::string editor::Factory::createScriptComponent(int indentSpaces, EntityRegis
             code << ind << "script.scripts[" << idx << "].properties[" << pidx << "].defaultValue = " << formatScriptPropertyValue(prop.defaultValue, entityVarNames) << ";\n";
             if (!prop.ptrTypeName.empty()) {
                 code << ind << "script.scripts[" << idx << "].properties[" << pidx << "].ptrTypeName = " << formatString(prop.ptrTypeName) << ";\n";
+            }
+            // a Data Asset reference is pushed as the asset's table, a list by its element type (S95)
+            if (prop.isDataAssetReference()) {
+                code << ind << "script.scripts[" << idx << "].properties[" << pidx << "].assetType = " << formatString(prop.assetType) << ";\n";
+            }
+            if (prop.type == ScriptPropertyType::List) {
+                code << ind << "script.scripts[" << idx << "].properties[" << pidx << "].elementType = " << formatScriptPropertyType(prop.elementType) << ";\n";
             }
         }
     }

@@ -3612,10 +3612,17 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
                                "TitleArt.setLanguage and the device's languages come first.");
             }
+            if (settingsui::beginRow("localization.remember_language")) {
+                if (projectBeginSettingsRow("Remember Language Choice", !m_localization.rememberLanguage)) m_localization.rememberLanguage = true;
+                ImGui::Checkbox("##LocalizationRemember", &m_localization.rememberLanguage);
+                endSettingsRow("A language the game chooses (Localization.language, TitleArt.setLanguage) is stored in UserSettings "
+                               "and applied at its next start.");
+            }
             ImGui::EndTable();
         }
-        drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
-                        "language with the Game view's Device > Language.");
+        drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language); other texts in "
+                        "String Tables (Window > Localization > String Tables). Play simulates a device language with the Game "
+                        "view's Device > Language.");
     }
     endSettingsPanel();
 }
@@ -6100,6 +6107,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setWindowIcon(m_windowIcon);
 
     m_project->getLocalizationSettings() = m_localization;
+    m_project->applyLocalization();
 
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
