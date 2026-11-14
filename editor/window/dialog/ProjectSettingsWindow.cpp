@@ -2049,6 +2049,17 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                                "0 is the platform's default (24 MiB on desktop, 12 on Android, iOS and the web). When text needs "
                                "more, pages not drawn lately are cleared and their glyphs made again.");
             }
+            if (settingsui::beginRow("graphics.html_ui_image_cache_mib")) {
+                if (projectBeginSettingsRow("HTML UI Image Cache (MiB)", m_htmlUiRender.imageCacheMiB != defaults.imageCacheMiB)) {
+                    m_htmlUiRender.imageCacheMiB = defaults.imageCacheMiB;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt("##HtmlUiImageCache", &m_htmlUiRender.imageCacheMiB);
+                m_htmlUiRender.imageCacheMiB = std::clamp(m_htmlUiRender.imageCacheMiB, -1, Project::maxHtmlUiImageCacheMiB);
+                endSettingsRow("GPU memory of HTML UI images kept after no document draws them, so the next scene that shows "
+                               "them neither decodes nor uploads them. -1 is the platform's default (64 MiB on desktop, 32 on "
+                               "Android, iOS and the web); 0 keeps none.");
+            }
             if (settingsui::beginRow("graphics.html_ui_sdf_primitives")) {
                 if (projectBeginSettingsRow("HTML UI SDF Primitives", m_htmlUiRender.sdfPrimitives != defaults.sdfPrimitives)) {
                     m_htmlUiRender.sdfPrimitives = defaults.sdfPrimitives;

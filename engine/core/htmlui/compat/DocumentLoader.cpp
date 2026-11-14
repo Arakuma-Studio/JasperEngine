@@ -15,6 +15,7 @@
 #include "htmlui/compat/html/HtmlParser.h"
 #include "htmlui/compat/html/HtmlTransform.h"
 #include "htmlui/compat/html/RmlSerializer.h"
+#include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include "htmlui/HtmlUI.h"
@@ -578,6 +579,9 @@ namespace {
         return map;
     }
 
+    // the binding of the document DocumentLoader::load is building (main thread), until it is bound
+    Binding* loadingBinding = nullptr;
+
     const std::vector<Diagnostic>& noDiagnostics(){
         static const std::vector<Diagnostic> none;
         return none;
@@ -836,7 +840,14 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     const std::vector<Diagnostic> registration =
         CompatAtProperty::registerFor(binding->propertyOwner, compiled->sourcePath, compiled->registeredProperties, compiled->files);
 
+    // clip-path (written as html-shape() masks) clips the context's hit testing (S93 R7)
+    context->SetHitTestShape(&clipPathHitTest);
+    // runtime diagnostics of the load (an image region decorators::Image reports while the document
+    // is built) go into its binding before it is bound
+    Binding* const outerLoading = loadingBinding;
+    loadingBinding = binding.get();
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
+    loadingBinding = outerLoading;
     if (!document){
         CompatAtProperty::release(binding->propertyOwner);
         unregisterDocument(binding->translatorHandle);
@@ -882,6 +893,8 @@ void DocumentLoader::addRuntimeDiagnostic(const Rml::ElementDocument* document, 
     auto it = bindings().find(document);
     if (it != bindings().end())
         it->second->diagnostics.push_back(diagnostic);
+    else if (loadingBinding)
+        loadingBinding->diagnostics.push_back(diagnostic);
 }
 
 // ---- restyle ----

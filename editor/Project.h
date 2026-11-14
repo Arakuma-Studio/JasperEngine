@@ -1662,6 +1662,8 @@ namespace jasperengine::editor{
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
         static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
+        // htmlUiImageCacheMiB: -1 (the platform's default) or 0-this
+        static constexpr int maxHtmlUiImageCacheMiB = 1024;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;
         static constexpr unsigned int defaultWindowHeight = defaultCanvasHeight;
@@ -1840,7 +1842,8 @@ namespace jasperengine::editor{
         int getBitmapTextCacheMiB() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
         // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
-        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
+        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText, and S93's
+        // htmlUiImageCacheMiB (-1 = the platform's default, clamped to 1024); applied to the
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;

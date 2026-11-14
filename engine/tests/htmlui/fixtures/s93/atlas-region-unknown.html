@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>an unknown sprite and a region outside the image draw nothing</title>
+  <style>
+    body { margin: 0; }
+    img { position: absolute; top: 20px; width: 64px; height: 64px; }
+  </style>
+</head>
+<body>
+  <img id="unknown" style="left: 20px" src="images/atlas@16x16.png#sprite=nope">
+  <img id="outside" style="left: 100px" src="images/atlas@16x16.png#xywh=24,24,16,16">
+  <img id="whole" style="left: 180px" src="images/atlas@16x16.png">
+</body>
+</html>

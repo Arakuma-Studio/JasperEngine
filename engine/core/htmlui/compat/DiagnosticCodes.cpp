@@ -39,6 +39,11 @@ namespace {
          "The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and "
          "their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas "
          "Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once."},
+        {codes::ImageRegion, W, false, "image-region", "Image region not found",
+         "An image URL's fragment names a region the image does not have: #xywh=x,y,w,h (image pixels) or "
+         "#xywh=percent:x,y,w,h outside the image, a malformed xywh, or #sprite=<name> naming no frame of the texture's Sprite "
+         "Mode sheet. Nothing is drawn for it. Fix the numbers, or the sprite name (the texture's Import Settings list its "
+         "frames)."},
 
         // ---- HTML
         {codes::HtmlParseError, I, false, "html-parse-error", "HTML parse error",

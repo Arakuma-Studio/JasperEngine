@@ -23,7 +23,12 @@ public:
 
 	void ActivateAutoscroll(Element* target, Vector2i start_position);
 	void ActivateSmoothscroll(Element* target, Vector2f delta_distance, ScrollBehavior scroll_behavior);
-	void ActivateInertia(Element* target, Vector2f velocity);
+	// Inertia with the default physics keeps 6.3's friction; other physics (fork, S93 R9) decelerate as uGUI's ScrollRect
+	// and spring an elastic overscroll back (also with no velocity).
+	void ActivateInertia(Element* target, Vector2f velocity, const ScrollPhysics& physics = ScrollPhysics());
+	// Fork (S93 R10): the inertia's velocity (0 in the other modes), and a stop that keeps an elastic return going.
+	Vector2f GetVelocity() const { return mode == Mode::Inertia ? inertia_scroll_velocity : Vector2f(0.f); }
+	void StopInertia();
 
 	void InstantScrollOnTarget(Element* target, Vector2f delta_distance);
 
@@ -54,6 +59,10 @@ private:
 	void UpdateSmoothscroll(float dt, float dp_ratio);
 
 	void UpdateInertia(float dt);
+	// Fork (S93 R9): the inertia of non-default physics.
+	void UpdatePhysics(float dt);
+	// Fork (S93 R9): another scroll mode takes over the target: an elastic overscroll ends at rest.
+	void SettleOverscroll();
 
 	bool HasSmoothscrollReachedTarget() const;
 
@@ -76,6 +85,9 @@ private:
 	Vector2f smoothscroll_accumulated_fractional_distance;
 
 	Vector2f inertia_scroll_velocity;
+	// Fork (S93 R9): the physics of the inertia, and its exact scroll position (scroll offsets are whole pixels).
+	ScrollPhysics inertia_physics;
+	Vector2f inertia_position;
 };
 
 } // namespace Rml

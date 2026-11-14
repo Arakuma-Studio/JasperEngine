@@ -25,7 +25,9 @@
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "script/LuaFunction.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -1254,6 +1256,10 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("disabled", &UIElement::getDisabled, &UIElement::setDisabled)
         .addProperty("scrollTop", &UIElement::getScrollTop, &UIElement::setScrollTop)
         .addProperty("scrollLeft", &UIElement::getScrollLeft, &UIElement::setScrollLeft)
+        // the scroll container's velocity in px/s, positive towards the end (its inertia, or the drag panning it); set it to fling
+        .addProperty("scrollVelocity", &UIElement::getScrollVelocity, &UIElement::setScrollVelocity)
+        // stops the container's inertia and smooth scroll (an elastic overscroll still springs back)
+        .addFunction("stopScrolling", &UIElement::stopScrolling)
         .addProperty("scrollWidth", &UIElement::getScrollWidth)
         .addProperty("scrollHeight", &UIElement::getScrollHeight)
         .addProperty("clientWidth", &UIElement::getClientWidth)
@@ -1466,11 +1472,20 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     guardClass<UIStyle>(L);
     guardClass<UIDataset>(L);
 
-    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture()
+    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture(); S93 R36:
+    // WORLD, that texture as a quad at the GameObject (Canvas World Space)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("UIDocumentRenderMode")
         .addVariable("SCREEN", UIDocumentRenderMode::SCREEN)
         .addVariable("TEXTURE", UIDocumentRenderMode::TEXTURE)
+        .addVariable("WORLD", UIDocumentRenderMode::WORLD)
+        .endNamespace();
+
+    // S93 R35: the clock of a document's animations (doc.updateMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIDocumentUpdateMode")
+        .addVariable("UNSCALED_TIME", UIDocumentUpdateMode::UNSCALED_TIME)
+        .addVariable("GAME_TIME", UIDocumentUpdateMode::GAME_TIME)
         .endNamespace();
 
     // the component of a UIDocument (UIDocument:getUIDocumentComponent())
@@ -1488,6 +1503,11 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &setTrackedMember<&UIDocumentComponent::textureHeight>)
         .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &setTrackedMember<&UIDocumentComponent::inputSurface>)
         .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &setTrackedMember<&UIDocumentComponent::pixelRatio>)
+        // S93: the Update Mode (applied at the next update; UIDocument.updateMode at once), and
+        // WORLD mode's size (texture pixels per unit) and billboard, both live
+        .addProperty("updateMode", &UIDocumentComponent::updateMode, &setTrackedMember<&UIDocumentComponent::updateMode>)
+        .addProperty("pixelsPerUnit", &UIDocumentComponent::pixelsPerUnit, &setTrackedMember<&UIDocumentComponent::pixelsPerUnit>)
+        .addProperty("billboard", &UIDocumentComponent::billboard, &setTrackedMember<&UIDocumentComponent::billboard>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
@@ -1505,6 +1525,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("hide", &UIDocument::hide)
         .addProperty("visible", &UIDocument::isVisible, &UIDocument::setVisible)
         .addProperty("sortOrder", &UIDocument::getSortOrder, &UIDocument::setSortOrder)
+        .addProperty("updateMode", &UIDocument::getUpdateMode, &UIDocument::setUpdateMode)
         .addFunction("getElementById", [](const UIDocument* self, const std::string& id) -> std::optional<UIElement> {
             return optionalElement(self->getElementById(id));
         })
@@ -1569,6 +1590,47 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
         .endClass();
+
+    // S93 R15 (images, P4): HtmlUI.prewarmImage(path | {paths}) decodes images on the Background
+    // lane and uploads them a few a frame; the UIPrewarm it returns says when they are ready
+    luabridge::getGlobalNamespace(L)
+        .beginClass<HtmlUIImageCache::PrewarmJob>("UIPrewarm")
+        .addProperty("done", [](const HtmlUIImageCache::PrewarmJob* self) -> bool { return self->done; })
+        .addProperty("progress", [](const HtmlUIImageCache::PrewarmJob* self) -> float { return self->progress(); })
+        .addProperty("onDone", [](const HtmlUIImageCache::PrewarmJob*, lua_State* L) -> luabridge::LuaRef { return luabridge::LuaRef(L); },
+                     [](HtmlUIImageCache::PrewarmJob* self, lua_State* L){
+                         if (!lua_isfunction(L, -1)){
+                             self->onDone = nullptr;
+                             return;
+                         }
+                         self->onDone = LuaFunction<void>(L);
+                         // set after the job finished: called at once
+                         if (self->done){
+                             std::function<void()> onDone = std::move(self->onDone);
+                             self->onDone = nullptr;
+                             onDone();
+                         }
+                     })
+        .endClass()
+        .beginNamespace("HtmlUI")
+        .addFunction("prewarmImage", [](lua_State* L) -> std::shared_ptr<HtmlUIImageCache::PrewarmJob> {
+            std::vector<std::string> paths;
+            if (lua_type(L, 1) == LUA_TSTRING){
+                paths.push_back(lua_tostring(L, 1));
+            }else if (lua_type(L, 1) == LUA_TTABLE){
+                const int count = (int)lua_rawlen(L, 1);
+                for (int i = 1; i <= count; i++){
+                    lua_rawgeti(L, 1, i);
+                    if (lua_type(L, -1) == LUA_TSTRING)
+                        paths.push_back(lua_tostring(L, -1));
+                    lua_pop(L, 1);
+                }
+            }else{
+                luaL_error(L, "HtmlUI.prewarmImage: expected an image path or a table of paths");
+            }
+            return HtmlUIImageCache::get().prewarm(paths);
+        })
+        .endNamespace();
 
 #endif //DISABLE_LUA_BINDINGS
 }

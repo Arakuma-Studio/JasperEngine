@@ -142,6 +142,12 @@ namespace jasperengine {
                         unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
                         std::vector<TextGlyphInfo>* glyphInfo = nullptr);
 
+        // S93 Auto Size: the size of the text laid out at another font size, without a glyph
+        // raster or an atlas: its widest line's advances and its lines' height (text pixels);
+        // width wraps it as createText does
+        void measure(const std::string& text, unsigned int fontSize, unsigned int width, bool fixedWidth, bool multiline,
+                     float& outWidth, float& outHeight);
+
         TextureData* getTextureData();
         
     };

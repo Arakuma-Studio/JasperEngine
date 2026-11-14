@@ -13,9 +13,12 @@
 
 #include "SubSystem.h"
 #include "UIDocumentInput.h"
+#include "math/Matrix4.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/UIWorldRaycast.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
@@ -142,6 +145,10 @@ namespace jasperengine{
         // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
         // their backgrounds and text again
         static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
+        // S93 R19: MiB of released images the process's image cache keeps (negative: the platform's
+        // default, 64 on desktop and 32 on Android, iOS and the web; 0: none); the exported entry
+        // for the project's htmlUiImageCacheMiB
+        static void setHtmlUiImageCacheMiB(int mib);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document
@@ -250,6 +257,17 @@ namespace jasperengine{
         // the texture-mode document that took the last pointer-down (it gets keys and text);
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
+
+        // --- S93 R36 World Space (UIDocumentSystemWorld.cpp) ---
+        // a WORLD-mode document in the scene (RenderSystem then looks for their GameObjects)
+        bool hasWorldDocuments() const;
+        // a World Space document's quad: maps its corners (-1,1) top-left .. (1,-1)
+        // bottom-right to the world (Billboard: turned to camera's view; no camera: unturned).
+        // False when the entity has no WORLD-mode document with a target
+        bool getWorldQuad(Entity entity, const CameraComponent* camera, Matrix4& worldFromQuad) const;
+        // RenderSystem's transparent queue: the shown document's quad inside camera's pass of
+        // format target (flipY: the pass renders flipped, as drawComposite's)
+        void drawWorldDocument(Entity entity, CameraComponent& camera, const RenderTargetFormat& target, bool flipY);
 
         // --- p2-html (UIDocumentSystemCompat.cpp, phase-2 §3.12, hooks H1b/H4) ---
         // the compile of an .html document (the compat layer's RML, source map, diagnostics);
@@ -386,6 +404,9 @@ namespace jasperengine{
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
         void textureCancelAll();   // ui-multitouch D6: pause, focus loss
+        // where a ray hits a document's input surface: a WORLD document's quad (unless a mesh
+        // in front of it takes the ray, as its depth test does), else its mesh's uv
+        UIWorldHit raycastDocumentSurface(Entity entity, const UIDocumentComponent& document, const Ray& ray) const;
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;

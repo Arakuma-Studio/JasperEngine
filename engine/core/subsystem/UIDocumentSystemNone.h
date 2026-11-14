@@ -14,6 +14,7 @@
 
 #include "ecs/SubSystem.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
@@ -43,6 +44,7 @@ namespace jasperengine{
         // the project's MSAA and glyph settings have nothing to apply to
         static void setPreferredSampleCount(int) {}
         static void setHtmlUiRenderOptions(int, bool, bool) {}
+        static void setHtmlUiImageCacheMiB(int) {}
 
         bool eventOnPointerDown(int, int, float, float, int, bool, bool = true) { return false; }
         bool eventOnPointerUp(int, int, float, float, int, bool, bool = true) { return false; }
@@ -65,6 +67,8 @@ namespace jasperengine{
         bool eventOnGamepadKeyUp(int, GamepadUIKey) { return false; }
         bool hasGamepadFocus() const { return false; }
         bool dispatchWorldPointer(int, int, float, float, int, PointerPhase, bool, bool = false) { return false; }
+        bool hasWorldDocuments() const { return false; }
+        void drawWorldDocument(Entity, CameraComponent&, const RenderTargetFormat&, bool) {}
 
         void startDocumentScripts() {}
         void releaseScriptState() {}

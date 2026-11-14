@@ -653,6 +653,7 @@ bool editor::Exporter::writeGameConfig() {
     game.glyphAtlasMiB = project->getHtmlUiRenderSettings().glyphAtlasMiB;
     game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
+    game.imageCacheMiB = project->getHtmlUiRenderSettings().imageCacheMiB;
     game.mobilePbrTier = project->getMobilePbrTier();
     game.dynamicBatching = project->isDynamicBatching();
     game.lightMode = project->getLightMode();

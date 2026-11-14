@@ -2602,6 +2602,9 @@ void Engine::runFrame(bool draw){
             scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
+        // the Game Time UI Documents' clock (S93 R35): the scaled delta, while the game clocks run
+        if (gameClocks)
+            HtmlUIClock::advanceGame(frameDelta);
 
         unscaledTime += unscaledDeltatime;
         smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);

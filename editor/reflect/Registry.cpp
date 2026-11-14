@@ -358,6 +358,7 @@ namespace {
         &enums::kProgressbarType, &enums::kReflectionProbeMode, &enums::kReflectionProbeUpdateMode, &enums::kRigidbodyMotionQuality,
         &enums::kButtonTransition, &enums::kNavigationMode, &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
         &enums::kTextureAlphaBorder, &enums::kTextureFilter, &enums::kTextureWrap, &enums::kUIDocumentRenderMode,
+        &enums::kUIDocumentUpdateMode, &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment,
         &enums::kUIEventState, &enums::kWindingOrder,
         &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,
         &enums::kNavObstacleShape, &enums::kNavModifierInclusion, &enums::kNavGridLayout, &enums::kNavGridMovement, &enums::kNavGridSource,
