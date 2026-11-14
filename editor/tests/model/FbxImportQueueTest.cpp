@@ -56,6 +56,15 @@ namespace {
         }
     };
 
+    // lines of any level containing `text` (the editor's info lines)
+    size_t importLines(const test::LogCapture& log, const std::string& text) {
+        size_t count = 0;
+        for (const auto& entry : log.entries()) {
+            if (entry.message.find(text) != std::string::npos) count++;
+        }
+        return count;
+    }
+
 }
 
 TEST(FbxImportQueue, AQueuedFileIsPendingUntilConverted) {
@@ -99,7 +108,7 @@ TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
     importer.needs[current] = FbxImportQueue::Need::None;
     importer.needs[c] = FbxImportQueue::Need::Update;
     FbxImportQueue queue(importer.hooks());
-    LogCapture log;
+    test::LogCapture log;
     for (const fs::path& fbx : {a, b, c, current}) queue.request(fbx);
     queue.drain();
     const FbxImportQueue::Progress progress = queue.progress();
@@ -108,8 +117,8 @@ TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
     EXPECT_EQ(progress.failed, 0u);
     EXPECT_EQ(importer.count(current), 0);
     // one line, counting the models not imported before (an update replaces a model shown already)
-    EXPECT_EQ(log.count(D_LOG_INFO, "(first open)"), 1u);
-    EXPECT_EQ(log.count(D_LOG_INFO, "Importing 2 models (first open): they appear when ready"), 1u);
+    EXPECT_EQ(importLines(log, "(first open)"), 1u);
+    EXPECT_EQ(importLines(log, "Importing 2 models (first open): they appear when ready"), 1u);
 
     // the next batch starts its own counts
     const uint64_t batch = progress.batch;
@@ -118,7 +127,7 @@ TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
     EXPECT_GT(queue.progress().batch, batch);
     queue.drain();
     EXPECT_EQ(queue.progress().total, 1u);
-    EXPECT_EQ(log.count(D_LOG_INFO, "Importing 1 model (first open): it appears when ready"), 1u);
+    EXPECT_EQ(importLines(log, "Importing 1 model (first open): it appears when ready"), 1u);
 }
 
 TEST(FbxImportQueue, AFailedFileWaitsForAChange) {

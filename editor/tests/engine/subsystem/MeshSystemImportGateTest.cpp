@@ -11,6 +11,7 @@
 #include "LogCapture.h"
 #include "support/EditorTestSupport.h"
 
+#include "Engine.h"
 #include "Scene.h"
 #include "System.h"
 #include "component/ModelComponent.h"
@@ -29,9 +30,16 @@ namespace {
         static void SetUpTestSuite() {
             editor::test::ensureEngine();
         }
+        // a synchronous load fails at once (an asynchronous one later): the failure is seen in the test
+        void SetUp() override {
+            wasAsync = Engine::isAsyncLoading();
+            Engine::setAsyncLoading(false);
+        }
         void TearDown() override {
             MeshSystem::setModelImportGate(nullptr);
+            Engine::setAsyncLoading(wasAsync);
         }
+        bool wasAsync = false;
     };
 
 }
@@ -50,7 +58,7 @@ TEST_F(MeshSystemImportGate, APendingImportWaitsWithoutAnError) {
     component.filename = "models/importing.fbx";
     component.needUpdateModel = true;
 
-    LogCapture log;
+    test::LogCapture log;
     scene.getSystem<MeshSystem>()->update(0);
     EXPECT_EQ(log.count(D_LOG_ERROR, "Model file not found"), 0u) << log.describeErrors();
     EXPECT_EQ(log.count(D_LOG_ERROR, "not retrying"), 0u) << log.describeErrors();
