@@ -162,6 +162,8 @@ async def test_create_entity_animation_entities_false(ed: Editor):
                          values={"model": {"animationEntities": False}}))["entity_id"]
     info = await model_info(ed, rig)
     ed.check_eq(info["animations"], [], f"no per-clip GameObject was ever made: {info!r}")
+    found = harness.find_entities(await ed.call("find_entities", component="animation"))
+    ed.check_eq(found, [], "no Animation GameObject exists in the scene (none made, then removed)")
     # a later write reloads the model in the same undo step
     await ed.call("set_properties", entity=rig, values={"model": {"animationEntities": True}})
     info = await model_info(ed, rig)
