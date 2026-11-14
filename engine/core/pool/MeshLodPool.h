@@ -60,7 +60,7 @@ namespace jasperengine{
 
     // How the levels of a mesh are cut: the runtime's (when nothing baked them) or, in the model
     // cook, the importer's LOD Count and Reduction
-    struct MeshLodRecipe{
+    struct JASPERENGINE_API MeshLodRecipe{
         unsigned int levels = MAX_MESH_LODS - 1; // levels after LOD 0, at most MAX_MESH_LODS - 1
         float ratio = 0.5f;                      // share of the triangles of the level before that a level keeps
         float targetError = 0.15f;               // the most a level may deviate, as a share of the mesh's size

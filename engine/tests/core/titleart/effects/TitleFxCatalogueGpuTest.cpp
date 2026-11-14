@@ -403,9 +403,11 @@ TEST_F(LightGlowGpu, RadiusKeepsEnergy) {
         for (size_t i = 0; i < out.rgba.size(); i += 4) sum += out.rgba[i + 1] - dot.rgba[i + 1];
         return sum;
     };
-    const double a = glowEnergy(40.0), b = glowEnergy(80.0);
+    const double a = glowEnergy(40.0);
+    const double b = glowEnergy(80.0);
     ASSERT_GT(a, 0.0);
-    EXPECT_NEAR(b / a, 1.0, 0.01);
+    // b / a within 1 +- 0.01, without the division MSVC refused (C2124)
+    EXPECT_NEAR(b, a, 0.01 * a);
 }
 
 // AC4: Pachislop parity of the ported effects. The exceptions (at most ten, §7) are the effects

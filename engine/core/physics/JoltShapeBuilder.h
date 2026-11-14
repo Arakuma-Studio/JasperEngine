@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "Export.h"
 #include "Entity.h"
 #include "buffer/Buffer.h"
 #include "math/Matrix4.h"
@@ -36,7 +37,7 @@ namespace jasperengine {
     struct TerrainComponent;
     struct Collider3D;
 
-    class JoltShapeBuilder {
+    class JASPERENGINE_API JoltShapeBuilder {
     public:
         // Source vertices are in their own entity's space, which is the body's only when one
         // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.

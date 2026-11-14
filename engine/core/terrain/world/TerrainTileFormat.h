@@ -70,7 +70,7 @@ namespace jasperengine::terraincore {
         std::vector<uint8_t> stored;
     };
 
-    struct WorldTile {
+    struct JASPERENGINE_API WorldTile {
         TileCoord coord;
         int tileQuads = 0;
         float spacing = 0.0f;

@@ -24,7 +24,7 @@
 
 namespace jasperengine::titleart {
 
-    struct Mat4 {
+    struct JASPERENGINE_API Mat4 {
         std::array<float, 16> m{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};   // column-major
 
         float& at(int row, int col) { return m[(size_t)(col * 4 + row)]; }

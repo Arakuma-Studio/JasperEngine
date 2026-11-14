@@ -78,7 +78,7 @@ namespace jasperengine::titleart {
         float acmrBefore = 0.0f, acmrAfter = 0.0f;  // meshoptimizer's vertex-cache miss ratio (32-entry FIFO)
     };
 
-    struct TitleMesh {
+    struct JASPERENGINE_API TitleMesh {
         std::vector<TitleMeshVertex> vertices;
         std::vector<uint16_t> wrap;             // half2 per vertex (texture/TexturePrepare.h floatToHalf), or empty
         std::vector<uint16_t> indices16;        // one of the two, by `wideIndices`

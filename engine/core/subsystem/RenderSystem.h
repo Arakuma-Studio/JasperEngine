@@ -364,7 +364,7 @@ namespace jasperengine{
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
 	// probes of its drawn meshes and the slots the composite rebuilds them in
-	struct SSRViewStats {
+	struct JASPERENGINE_API SSRViewStats {
 		struct Probe {
 			Entity entity = NULL_ENTITY;
 			int slot = -1;          // -1: no slot, its surfaces keep the probe reflection without SSR
