@@ -432,8 +432,11 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["height"] = YamlNumbers::integerText(sprite.height);
     node["automaticFlipY"] = YamlNumbers::text(sprite.automaticFlipY);
     node["flipY"] = YamlNumbers::text(sprite.flipY);
+    // S94: written only when set (a scene of before is unchanged)
+    if (sprite.flipX) node["flipX"] = YamlNumbers::text(sprite.flipX);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    if (sprite.size.x != 0.0f || sprite.size.y != 0.0f) node["size"] = encodeVector2(sprite.size);
     // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
     if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
     // S41: written only away from their defaults (a scene of before is unchanged)
@@ -481,6 +484,13 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["height"]) sprite.height = YamlNumbers::as<unsigned int>(node["height"]);
     if (node["automaticFlipY"]) sprite.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
+    sprite.flipX = node["flipX"] ? YamlNumbers::as<bool>(node["flipX"]) : false;
+    if (node["size"]){
+        const Vector2 size = decodeVector2(node["size"]);
+        sprite.size = Vector2(std::isfinite(size.x) ? std::max(0.0f, size.x) : 0.0f, std::isfinite(size.y) ? std::max(0.0f, size.y) : 0.0f);
+    }else{
+        sprite.size = Vector2(0.0f, 0.0f);
+    }
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
     if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());

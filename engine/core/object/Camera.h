@@ -43,6 +43,11 @@ namespace jasperengine{
         void setAutoResize(bool autoResize);
         bool isAutoResize() const;
 
+        // Unity's orthographic Size (S94 F28): half the view's height in world units, the width
+        // following the aspect; 0 turns it off (the clips stay as set)
+        void setOrthographicSize(float size);
+        float getOrthographicSize() const;
+
         void setNearClip(float nearValue);
         float getNearClip() const;
 

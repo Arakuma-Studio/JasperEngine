@@ -60,6 +60,15 @@ namespace jasperengine{
         void setFlipY(bool flipY);
         bool isFlipY() const;
 
+        // Unity's Flip X (S94 F29): mirrored about the pivot
+        void setFlipX(bool flipX);
+        bool isFlipX() const;
+
+        // Unity's SpriteRenderer.size (S94 F30): the quad in world units; an axis at 0 follows
+        // width / height and the Pixels Per Unit
+        void setQuadSize(Vector2 size);
+        Vector2 getQuadSize() const;
+
         void setTextureScaleFactor(float textureScaleFactor);
         float getTextureScaleFactor() const;
 

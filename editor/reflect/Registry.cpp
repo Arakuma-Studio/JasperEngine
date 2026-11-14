@@ -374,6 +374,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // Text alignment (S94)
+        &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment, &enums::kTextFontSizeUnit,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

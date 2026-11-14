@@ -1,5 +1,5 @@
-formatVersion: 8
-guid: 6ae1376c14107d910f5730d8479f6f78
+formatVersion: 9
+guid: a121d47716aa85a089b695f0ac135fef
 id: 2026080800
 name: AllComponents
 scene:
@@ -1382,8 +1382,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        pivotBaseline: true
-        pivotCentered: true
+        horizontalAlignment: center
+        verticalAlignment: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent

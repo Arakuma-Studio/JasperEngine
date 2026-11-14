@@ -52,6 +52,10 @@ namespace jasperengine::editor::reflect::enums {
     // pixel art (PixelArtReflect.cpp, S41)
     extern const EnumDesc kPixelUpscaleMode;
     extern const EnumDesc kPixelRotation;
+    // Text alignment and font size unit (UIReflect.cpp, S94)
+    extern const EnumDesc kTextHorizontalAlignment;
+    extern const EnumDesc kTextVerticalAlignment;
+    extern const EnumDesc kTextFontSizeUnit;
     // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
     extern const EnumDesc kSpriteSortPoint;
     extern const EnumDesc kSpriteBatchMode;

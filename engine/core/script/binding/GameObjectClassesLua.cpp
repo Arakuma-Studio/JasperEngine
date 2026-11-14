@@ -14,6 +14,7 @@
 #include "component/PanelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/TextComponent.h"
 #include "component/ActionComponent.h"
 
 #include "lua.hpp"
@@ -1534,7 +1535,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setRotation)
         .addFunction("getWorldRotation", &GameObject::getWorldRotation)
         .addProperty("scale", &GameObject::getScale, (void(GameObject::*)(Vector3))&GameObject::setScale)
-        .addFunction("setScale", (void(GameObject::*)(const float))&GameObject::setScale)
+        // uniform, or per axis (S94 F31: distinct arities, no userdata miss)
+        .addFunction("setScale",
+            luabridge::overload<const float>(&GameObject::setScale),
+            luabridge::overload<const float, const float, const float>(&GameObject::setScale))
         .addFunction("getWorldScale", &GameObject::getWorldScale)
         .addProperty("visible", &GameObject::isVisible, &GameObject::setVisible)
         .addFunction("setVisibleOnly", &GameObject::setVisibleOnly)
@@ -1785,6 +1789,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
         .addProperty("autoResize",  &Camera::isAutoResize, &Camera::setAutoResize)
+        // Unity's orthographic Size: half the view's height, the width follows the aspect (0 off)
+        .addProperty("orthographicSize",  &Camera::getOrthographicSize, &Camera::setOrthographicSize)
         .addProperty("nearClip",  &Camera::getNearClip, &Camera::setNearClip)
         .addProperty("farClip",  &Camera::getFarClip, &Camera::setFarClip)
         .addProperty("leftClip",  &Camera::getLeftClip, &Camera::setLeftClip)
@@ -3093,6 +3099,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("width", &Sprite::getWidth, &Sprite::setWidth)
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
         .addProperty("flipY", &Sprite::isFlipY, &Sprite::setFlipY)
+        // Unity's Flip X and SpriteRenderer.size (world units; an axis at 0 follows width/height)
+        .addProperty("flipX", &Sprite::isFlipX, &Sprite::setFlipX)
+        .addProperty("size", &Sprite::getQuadSize, &Sprite::setQuadSize)
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
         .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
         .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
@@ -3411,6 +3420,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Text, RectTransform>("Text")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        // the box, laid out first when the text, font or size changed (S94 F25)
+        .addProperty("width", &Text::getWidth, +[](Text* self, unsigned int width) { self->setWidth(width); })
+        .addProperty("height", &Text::getHeight, +[](Text* self, unsigned int height) { self->setHeight(height); })
+        .addFunction("updateLayout", &Text::updateLayout)
+        .addProperty("horizontalAlignment", &Text::getHorizontalAlignment, &Text::setHorizontalAlignment)
+        .addProperty("verticalAlignment", &Text::getVerticalAlignment, &Text::setVerticalAlignment)
+        .addProperty("fontSizeUnit", &Text::getFontSizeUnit, &Text::setFontSizeUnit)
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
         .addProperty("fixedHeight", &Text::isFixedHeight, &Text::setFixedHeight)
@@ -3474,6 +3490,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
         .addProperty("stencil", &Text::getStencil, &Text::setStencil)
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
+        // deprecated aliases of verticalAlignment Baseline and horizontalAlignment Center
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)

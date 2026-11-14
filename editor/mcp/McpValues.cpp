@@ -4,6 +4,7 @@
 #include "pixelart/PixelArtAssign.h"
 #include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
+#include "component/CameraComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
@@ -3942,6 +3943,28 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
     return out;
 }
 
+// A camera's bounds written by hand (S94 F27): Auto Resize and an Orthographic Size would overwrite
+// them on the next canvas change, so they go off in the same command, as Camera's Lua setters do
+static std::vector<McpValues::Change> withCameraClipWrites(Scene* scene, Entity entity, const std::vector<McpValues::Change>& changes) {
+    const CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+    if (!camera || (!camera->autoResize && camera->orthographicSize == 0.0f)) return changes;
+    bool clips = false;
+    bool autoResize = false;
+    bool size = false;
+    for (const McpValues::Change& change : changes) {
+        if (change.component != ComponentType::CameraComponent) continue;
+        const std::string& name = change.property;
+        clips = clips || (change.op == "set" && (name == "left" || name == "right" || name == "bottom" || name == "top"));
+        autoResize = autoResize || name == "autoResize";
+        size = size || name == "orthographicSize";
+    }
+    if (!clips) return changes;
+    std::vector<McpValues::Change> out = changes;
+    if (camera->autoResize && !autoResize) out.push_back({ComponentType::CameraComponent, "autoResize", "set", Json(false), -1});
+    if (camera->orthographicSize != 0.0f && !size) out.push_back({ComponentType::CameraComponent, "orthographicSize", "set", Json(0.0), -1});
+    return out;
+}
+
 namespace {
 
     // The numbers of a value outside [min, max] (a number, or the lanes of a vector or colour)
@@ -4041,7 +4064,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
     }
     for (Entity entity : entities) {
         const std::string label = "GameObject " + std::to_string(entity) + " \"" + scene->scene->getEntityName(entity) + "\"";
-        const std::vector<Change> changes = withPlayerLayerList(project, scene->scene, entity, allChanges);
+        const std::vector<Change> changes = withCameraClipWrites(scene->scene, entity, withPlayerLayerList(project, scene->scene, entity, allChanges));
         // an entry's layer is one of the player's layers after this edit (anim layers spec 10)
         if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity)) {
             int layers = (int)anim::playerLayers(*player).size();
