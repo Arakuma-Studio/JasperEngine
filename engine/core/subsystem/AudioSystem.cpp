@@ -12,6 +12,7 @@
 #include "audio/AudioClock.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioTap.h"
+#include "audio/SourceEffects.h"
 #include "audio/MusicPlayer.h"
 #include "audio/SoundEvent.h"
 #if JASPERENGINE_SOUND_LAYER
@@ -992,6 +993,8 @@ void AudioSystem::moveSourceVoices(Scene* from, AudioSourceComponent& source, Sc
     target.startTrigger = source.startTrigger;
     target.pauseTrigger = source.pauseTrigger;
     target.stopTrigger = source.stopTrigger;
+    // its voices' effects go with them (S97)
+    target.effectRuntime = std::move(source.effectRuntime);
 
     // the source keeps nothing that could stop them
     source.handle = 0;
@@ -1475,9 +1478,17 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     // a delay is SoLoud's delay of a voice not started yet; a clocked play has its own. On the
     // deterministic driver every start of a frame is queued before that frame's mix, at its first sample
     const bool clocked = mainVoice && audio.enableClocked && extras.delayFrames == 0 && !deterministicDriver;
+    // ---- S97 WP-B: the source's own effects (REQ-2, REQ-4): its voices play through its wrapper
+    // of the sample, or the sample itself while no effect is on
+    SoLoud::AudioSource* played = &sample;
+    if (!audio.effects.empty() && extras.sampleRef) {
+        if (SoLoud::AudioSource* wrapped = SourceEffects::wrap(audio, *extras.sampleRef)) played = wrapped;
+    }
     // the game time it was played at: SoLoud delays it from the first clocked start of the buffer
-    unsigned int handle = AudioMixer::play(groupId, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
+    unsigned int handle = AudioMixer::play(groupId, *played, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
+    if (played != &sample) SourceEffects::started(audio, *played, handle);
+    // ---- end S97 WP-B
 
     applyVoiceParameters(audio, handle, mainVoice, use3D, extras.speedScale, extras.eventLoop, &sample);
     if (use3D) {
@@ -1729,6 +1740,7 @@ AudioSystem::StartedPlay AudioSystem::startEvent(const SoundEventAsset& event, c
         extras.variation = index;
         extras.layer = (int)layer;
         extras.instance = instance;
+        extras.sampleRef = &loaded.data;
         const unsigned int handle = startVoice(audio, *loaded.data, (float)audio.volume * volumeScale, play.use3D, play.position, !oneShot, extras);
         if (handle == 0) continue;
 
@@ -1891,6 +1903,7 @@ void AudioSystem::startPendingOneShots(AudioSourceComponent& audio, Entity entit
         extras.loadDelay = (uint32_t)std::llround(shot.waited * deterministicRate);
         extras.entity = entity;
         extras.clip = shot.filename.c_str();
+        extras.sampleRef = &result.data;
         unsigned int handle = startVoice(audio, *result.data, volume, use3D, position, false, extras);
         if (handle == 0) continue;
         AudioOneShot oneShot;
@@ -2460,6 +2473,7 @@ void AudioSystem::update(double dt){
                         extras.cause = cause;
                         extras.entity = entity;
                         extras.clip = audio.filename.c_str();
+                        extras.sampleRef = &audio.sample;
                         audio.handle = startVoice(audio, *audio.sample, (float)audio.volume * audio.mainVolumeScale, use3DAudio, worldPosition, true, extras);
                     }
                     audio.timelineStart = false;
@@ -2478,6 +2492,8 @@ void AudioSystem::update(double dt){
             }
         }
         startPendingOneShots(audio, entity, use3DAudio, worldPosition, unscaledDt);
+        // S97 WP-B: timed effect changes and new values reach its voices (only while it has an effect runtime)
+        if (audio.effectRuntime) SourceEffects::update(audio, dt, unscaledDt);
 
         // the group changed (the mixer was edited, outputGroup set): the voices move to its bus
         if (inited && groupBefore != audio.resolvedGroup) {

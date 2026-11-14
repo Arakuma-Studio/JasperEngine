@@ -2372,6 +2372,44 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_muffle_one_source_with_a_group",
+        "kind": "bad",
+        "what_happened": "S97: muffling one sound (a radio, a voice behind a door) took a new mixer group with a low-pass and "
+                         "a reroute, since sources had no effects; that group's filter then catches every other source sent "
+                         "to it. A source now holds its own effects (Unity's Audio Low Pass Filter).",
+        "text_at_issue": "docs/mcp/guide/audio.md 7: 'Effects on one source' (to muffle one source, its own effects)",
+        "source": "S97 REQ-43 (a), spec-first",
+        "groups_enabled": ["audio"],
+        "prompt": "The Radio GameObject plays a song through its Audio Source, on the Music group with the level's music. "
+                  "Make the radio sound muffled, as if it were in the next room. The level's music must stay clear.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "Radio (entity 7): Transform, AudioSource {filename: music/radio.ogg, outputGroup: Music, looping: true}",
+                {"entity": 7, "name": "Radio", "components": {"transform": {}, "audiosource": {
+                    "filename": "music/radio.ogg", "outputGroup": "Music", "looping": True, "volume": 1}}})},
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master, Music, SFX. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [{"type": "limiter"}]},
+                                                         {"name": "Music", "effects": []}, {"name": "SFX", "effects": []}]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"entity": 7, "name": "Radio"}]})},
+            {"tool": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"added": [{"entity": 7, "component": "audiosource", "effect": "lowpass"}], "skipped": []})},
+        ],
+        # the source's own effects, by any spelling of the component (set_properties' values or changes), or
+        # Unity's filter by name; never a group edit
+        "checks": {"any_of": [
+            *[{"calls": [{"tool": "set_properties", "args": {"values": {key: {"effects": "*"}}}}],
+               "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}
+              for key in ("audiosource", "AudioSource", "AudioSourceComponent", "audio_source", "Audio Source")],
+            {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:^effects"}]}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]},
+            {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)low ?pass"}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_sound_too_quiet_no_measure",
         "groups_enabled": ["audio"],
         "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
