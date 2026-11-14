@@ -132,6 +132,9 @@ namespace jasperengine {
         void invalidate(const std::string& path);
         // the view went (every GPU object with it): released images go, held ones upload again
         void releaseGpuResources();
+        // hears the view go while no HtmlUI context is up (HtmlUI's own view-loss handler calls releaseGpuResources
+        // otherwise): from the first upload, again at HtmlUI's shutdown
+        void watchViewLoss();
         // every released image goes (shutdown, tests)
         void clear();
 
@@ -162,6 +165,7 @@ namespace jasperengine {
         void trim();
         void forget(Entry& entry);
         void scheduleTick();
+        static constexpr const char* viewLossTag = "jasperengine::HtmlUIImageCache_onViewDestroyed";
 
         struct Source;
         std::map<std::string, std::shared_ptr<Entry>> entries;      // by key

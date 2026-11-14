@@ -9,6 +9,7 @@
 #include "effects/EffectRuntime.h"
 
 #include "Engine.h"
+#include "HtmlUI.h"
 #include "Log.h"
 #include "io/Data.h"
 #include "io/File.h"
@@ -432,6 +433,7 @@ TextureRender* HtmlUIImageCache::Reference::texture(){
     e.height = height;
     e.bytes = (size_t)width * (size_t)height * 4;
     cache.counters.uploads++;
+    cache.watchViewLoss();
     // an atlas keeps its decode for the next regions cut from it (while the budget has room)
     if (e.region && getBudgetBytes() > 0){
         e.source->usedAt = ++cache.releaseTick;
@@ -703,6 +705,17 @@ void HtmlUIImageCache::invalidate(const std::string& path){
         else
             ++it;
     }
+}
+
+void HtmlUIImageCache::watchViewLoss(){
+    // HtmlUI drops the textures with its contexts' while it is up (in that order: the renderers hold handles onto these);
+    // the cache outlives HtmlUI, so it hears the view go by itself too: a texture of a dead view would be reused by the
+    // next document. (add() replaces the subscription: every upload and every HtmlUI shutdown puts it back, as
+    // Engine::clearAllSubscriptions may have dropped it.)
+    Engine::onViewDestroyed.add(viewLossTag, std::function<void()>([](){
+        if (!HtmlUI::isInitialized())
+            HtmlUIImageCache::get().releaseGpuResources();
+    }));
 }
 
 void HtmlUIImageCache::releaseGpuResources(){
