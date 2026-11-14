@@ -294,7 +294,13 @@ async def test_cli_default_includes_ui():
 
         r = run_check(project)
         check_eq(r.returncode, 0, r.stderr)
-        check(re.search(r"\(lua \d+ files?, (navigation \d+ surfaces?, )?shaders \d+ forks?, (texture_imports \d+ textures?, )?ui 2 files(, textures \d+ recipes?)?(, anims \d+ clips?)?(, vat \d+ files?)?(, normals \d+ maps?)?(, videos \d+ Video Players?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
+        # the summary lists every category the default ran ("(lua 0 files, ..., ui 2 files, titles 0 titles, ...)");
+        # other checks add categories, so it is read as a list rather than matched whole
+        summary = re.search(r"^check: .*\((.*)\) in [\d.]+s$", r.stderr, re.M)
+        check(summary, f"a summary line: {r.stderr}")
+        entries = summary.group(1).split(", ")
+        check("ui 2 files" in entries, f"summary names ui files: {entries}")
+        check(any(e.startswith("lua ") for e in entries) and any(e.startswith("shaders ") for e in entries), f"summary keeps lua and shaders: {entries}")
 
 
 # ---------------------------------------------------------------------------- 3. findings
