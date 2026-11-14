@@ -95,9 +95,9 @@ std::string relText(Project* project, const fs::path& path) {
 // The start scene the build uses: the project's, or the first saved scene (Build Settings rule)
 uint32_t effectiveStartScene(Project* project) {
     const SceneProject* start = project->getScene(project->getStartSceneId());
-    if (start && !start->filepath.empty()) return start->id;
+    if (start && !start->filepath.empty() && start->inBuild) return start->id;
     for (const SceneProject& scene : project->getScenes()) {
-        if (!scene.filepath.empty()) return scene.id;
+        if (!scene.filepath.empty() && scene.inBuild) return scene.id;
     }
     return NULL_PROJECT_SCENE;
 }
@@ -108,7 +108,7 @@ std::vector<uint32_t> buildSceneOrder(Project* project) {
     const uint32_t start = effectiveStartScene(project);
     if (start != NULL_PROJECT_SCENE) order.push_back(start);
     for (const SceneProject& scene : project->getScenes()) {
-        if (!scene.filepath.empty() && scene.id != start) order.push_back(scene.id);
+        if (!scene.filepath.empty() && scene.inBuild && scene.id != start) order.push_back(scene.id);
     }
     return order;
 }
@@ -124,6 +124,17 @@ Json buildScenesJson(Project* project) {
         item["index"] = i;
         item["start"] = i == 0;
         list.push_back(item);
+    }
+    return list;
+}
+
+// Open in a tab from a file project.yaml does not list (S98 REQ-28): in no build until added
+Json openNotInBuildJson(Project* project) {
+    Json list = Json::array();
+    for (uint32_t id : project->getOpenScenesNotInBuild()) {
+        if (const SceneProject* scene = project->getScene(id)) {
+            list.push_back({{"id", scene->id}, {"name", scene->name}, {"path", relText(project, scene->filepath)}});
+        }
     }
     return list;
 }
@@ -1086,6 +1097,8 @@ void editBuildScenesTool(const CallPtr& call) {
 
     auto reply = [&](const std::string& prefix) {
         Json data = {{"scenes_in_build", buildScenesJson(project)}, {"untitled_scenes", untitledScenesJson(project)}};
+        const Json notInBuild = openNotInBuildJson(project);
+        if (!notInBuild.empty()) data["open_not_in_build"] = notInBuild;
         std::string text = prefix + "Scenes in build:";
         if (data["scenes_in_build"].empty()) text += " none";
         for (const Json& scene : data["scenes_in_build"]) {
@@ -1093,6 +1106,13 @@ void editBuildScenesTool(const CallPtr& call) {
                     " (" + scene["path"].get<std::string>() + ")";
         }
         text += ".";
+        if (!notInBuild.empty()) {
+            text += " Open, not in the build (add puts one in):";
+            for (const Json& scene : notInBuild) {
+                text += " " + scene["name"].get<std::string>() + " (" + scene["path"].get<std::string>() + ")";
+            }
+            text += ".";
+        }
         if (!data["untitled_scenes"].empty()) text += " Untitled scenes (not in the build until saved): " + data["untitled_scenes"].dump() + ".";
         call->ok(text, data);
     };
@@ -1125,7 +1145,8 @@ void editBuildScenesTool(const CallPtr& call) {
             if (!McpRefs::resolveProjectPath(project, pathText, absolute, error, true)) {
                 std::string files;
                 for (const fs::path& file : project->findSceneFiles()) {
-                    if (project->findSceneByPath(file) == NULL_PROJECT_SCENE) files += " " + relText(project, file);
+                    const SceneProject* known = project->getScene(project->findSceneByPath(file));
+                    if (!known || !known->inBuild) files += " " + relText(project, file);
                 }
                 call->fail(error + (files.empty() ? " Every .scene file is listed already." : " Unlisted .scene files:" + files + "."));
                 return;
@@ -1166,6 +1187,10 @@ void editBuildScenesTool(const CallPtr& call) {
     const std::string sceneName = scene->name;
 
     if (action == "remove") {
+        if (!scene->inBuild) {
+            call->fail("Scene \"" + sceneName + "\" is not in the build (it is only open).");
+            return;
+        }
         if (project->getScenes().size() <= 1) {
             call->fail("The project's last scene can't be removed.");
             return;
@@ -1189,6 +1214,14 @@ void editBuildScenesTool(const CallPtr& call) {
         return;
     }
 
+    if (action == "add") {
+        // open without being listed (S98 REQ-28): it joins, its child scenes with it
+        project->addSceneToBuild(sceneId);
+    } else if (!scene->inBuild) {
+        call->fail("Scene \"" + sceneName + "\" is not in the build: edit_build_scenes add puts it in first.");
+        return;
+    }
+
     if (action == "set_start") {
         project->setStartSceneId(sceneId);
     } else if (action == "move") {
@@ -1204,7 +1237,7 @@ void editBuildScenesTool(const CallPtr& call) {
         }
         moveBuildScene(project, sceneId, static_cast<size_t>(index));
     }
-    // add: loading it listed it
+    // add: loading it listed it, or addSceneToBuild did
 
     if (action == "add" && args.contains("index") && args["index"].is_number_integer()) {
         const long long last = static_cast<long long>(buildSceneOrder(project).size()) - 1;

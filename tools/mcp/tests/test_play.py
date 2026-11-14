@@ -1,5 +1,8 @@
 """Public console, play-session, Lua evaluation and input contracts on an owned empty project."""
 
+import hashlib
+import json
+
 import harness
 from harness import Editor, skip
 from htmlui_pixels import decode_png
@@ -352,3 +355,74 @@ async def test_play_change_review():
         ed.check(stopped.get("kept_changes", {}).get("kept", 0) >= 1, f"kept: {stopped}")
         found = await ed.call("find_entities", scene=scene, name="Kept From Play")
         ed.check(found["entities"], f"the GameObject made while playing exists after Stop: {found}")
+
+
+STOP_MAKER = """local StopMaker = {}
+function StopMaker:init()
+  -- an object no authored GameObject draws like: its variant exists only during Play
+  local sphere = Primitive(self.scene)
+  sphere:createSphere(1)
+  local m = sphere:getMaterial()
+  m.clearcoatEnabled = true
+  m.clearcoatFactor = 1
+  sphere:setMaterial(m)
+  _G.stopMakerReady = true
+end
+return StopMaker
+"""
+
+
+async def test_stop_writes_no_scene(ed: Editor):
+    """S98 REQ-27 (AC27): Stop writes no scene file. The variant a script's object drew with, which
+    no scene lists, goes to ShaderWarmup.json, written only when it gains a key; the build list
+    (get_build_info, what an export ships) has it."""
+    played = (await ed.call("create_scene", name="StopPlayed", type="3D", path="scenes/StopPlayed"))["scene"]["id"]
+    await ed.call("create_entity", scene=played, type="empty", name="Maker")
+    await ed.call("create_script", kind="lua", name="StopMaker", entity="Maker", scene=played, content=STOP_MAKER)
+    other = (await ed.call("create_scene", name="StopOther", type="3D", path="scenes/StopOther"))["scene"]["id"]
+    await ed.call("create_entity", scene=other, type="cube", name="OtherBox")
+    await ed.call("save_scene", all=True)
+    await ed.call("select_scene", scene=played)
+
+    def scene_hashes() -> dict:
+        return {p.relative_to(ed.project).as_posix(): hashlib.sha1(p.read_bytes()).hexdigest()
+                for p in ed.project.rglob("*.scene") if ".jasperengine" not in p.parts}
+
+    warmup = ed.project / "ShaderWarmup.json"
+
+    def clearcoat_listed() -> bool:
+        if not warmup.exists():
+            return False
+        return any("PBR_CLEARCOAT" in s.get("custom", "") for s in json.loads(warmup.read_text())["shaders"])
+
+    async def build_names() -> list:
+        info = await ed.call("get_build_info", include_shaders=True)
+        return [s["name"] for s in info.get("shaders", [])]
+
+    ed.check(not any("PBR_CLEARCOAT" in n for n in await build_names()), "no scene draws a clear coat before Play")
+    before = scene_hashes()
+    ed.check({"scenes/StopPlayed.scene", "scenes/StopOther.scene"} <= set(before), f"the scene files: {sorted(before)}")
+
+    async def play_once():
+        await ed.call("play", action="start", scene=played)
+        await ed.call("wait", until="stopMakerReady == true", timeout_seconds=120)
+        await ed.call("wait", frames=10)
+        stopped = await ed.call("play", action="stop", keep_changes="none")
+        ed.check_eq(stopped["state"], "stopped", "stop")
+        # what Stop finishes runs on the editor's main thread after the call returns
+        for _ in range(50):
+            if clearcoat_listed():
+                break
+            await ed.call("editor_status")
+        for _ in range(3):
+            await ed.call("editor_status")
+
+    await play_once()
+    ed.check(clearcoat_listed(), f"ShaderWarmup.json gained the clear coat variant: {warmup.read_text() if warmup.exists() else 'absent'}")
+    ed.check_eq(scene_hashes(), before, "Stop changed no .scene file")
+    listed = warmup.read_bytes()
+
+    await play_once()
+    ed.check(warmup.read_bytes() == listed, "a second identical Play leaves ShaderWarmup.json as it was")
+    ed.check_eq(scene_hashes(), before, "nor any .scene file")
+    ed.check(any("PBR_CLEARCOAT" in n for n in await build_names()), "the build ships the variant")

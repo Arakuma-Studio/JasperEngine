@@ -1076,10 +1076,63 @@ std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
     return result;
 }
 
+namespace {
+
+    // The .material files a registry's submeshes name (Material::name)
+    void collectRegistryMaterialFiles(jasperengine::EntityRegistry* registry, std::set<std::string>& files) {
+        if (!registry) return;
+        auto meshes = registry->getComponentArray<jasperengine::MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++) {
+            const jasperengine::MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+                if (!mesh.submeshes[s].material.name.empty()) {
+                    files.insert(std::filesystem::path(mesh.submeshes[s].material.name).lexically_normal().generic_string());
+                }
+            }
+        }
+    }
+
+    // Every submesh of `registry` naming `filePath` takes `fileMaterial` (its own GUID kept); true
+    // when one changed
+    bool applyMaterialFileToRegistry(jasperengine::EntityRegistry* registry, const std::string& filePath,
+                                     const jasperengine::Material& fileMaterial, bool updateRender) {
+        if (!registry) return false;
+        bool changed = false;
+        auto meshes = registry->getComponentArray<jasperengine::MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++) {
+            jasperengine::MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            uint64_t updateFlags = 0;
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+                jasperengine::Material& material = mesh.submeshes[s].material;
+                if (material.name.empty() || std::filesystem::path(material.name).lexically_normal().generic_string() != filePath) continue;
+                jasperengine::Material updated = fileMaterial;
+                updated.name = jasperengine::AssetRef(filePath, material.name.guid);
+                if (material == updated) continue;
+                updateFlags |= jasperengine::editor::Catalog::getMaterialUpdateFlags(material, updated);
+                material = updated;
+                mesh.submeshes[s].needUpdateTexture = true;
+                changed = true;
+            }
+            if (updateFlags && updateRender) {
+                jasperengine::editor::Catalog::updateEntity(registry, meshes->getEntity(i), updateFlags);
+            }
+        }
+        return changed;
+    }
+
+}
+
 std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
     std::set<std::string> files;
     for (const auto& [key, entry] : materialFileLinks) {
         files.insert(entry.filePath);
+    }
+    // what the loaded prefab assets and their Prefab Mode stages name follows the files too (S98 REQ-29)
+    for (const auto& [path, prefab] : prefabAssets) {
+        collectRegistryMaterialFiles(prefab.registry.get(), files);
+    }
+    for (const auto& stage : prefabStages) {
+        collectRegistryMaterialFiles(stage->sceneProject.scene, files);
     }
     return std::vector<std::string>(files.begin(), files.end());
 }
@@ -1123,6 +1176,33 @@ void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, c
             sceneProject->isModified = true;
         }
         ++it;
+    }
+
+    // The prefab assets follow (S98 REQ-29), unmodified: their files are written only when they
+    // are saved, and what the instances read from them now matches what the instances show. A
+    // Prefab Mode stage of one shows the file too; one that matched its asset still does.
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        std::vector<std::pair<PrefabStage*, bool>> stages;
+        for (const auto& stage : prefabStages) {
+            if (stage->assetPath.lexically_normal() == prefabPath.lexically_normal()) {
+                stages.emplace_back(stage.get(), false);
+            }
+        }
+        if (!stages.empty()) {
+            const std::string before = YAML::Dump(encodePrefabNode(prefabPath));
+            for (auto& [stage, synced] : stages) synced = stage->syncedAsset == before;
+        }
+        if (!applyMaterialFileToRegistry(prefab.registry.get(), filePath, fileMaterial, false)) {
+            continue;
+        }
+        for (auto& [stage, synced] : stages) {
+            if (applyMaterialFileToRegistry(stage->sceneProject.scene, filePath, fileMaterial, true)) {
+                stage->sceneProject.needUpdateRender = true;
+            }
+            if (synced) {
+                stage->syncedAsset = YAML::Dump(encodePrefabNode(prefabPath));
+            }
+        }
     }
 }
 
@@ -3919,24 +3999,10 @@ void editor::Project::finishShaderWarmupRecording(){
     if (!ShaderWarmup::isRecording())
         return;
     ShaderWarmup::stopRecording();
-    const std::filesystem::path path = getShaderWarmupPath();
     // what earlier runs recorded stays: this run's entries are added to the file's
-    std::ifstream file(path, std::ios::binary);
-    if (file) {
-        std::stringstream text;
-        text << file.rdbuf();
-        std::string error;
-        if (!ShaderWarmup::mergeFromString(text.str(), &error))
-            Out::warning("Shader warm-up list %s was not readable (%s): it is replaced", path.string().c_str(), error.c_str());
-    }
-    std::string error;
-    if (ShaderWarmup::save(path.string(), &error)) {
-        Out::info("Shader warm-up list: %zu shaders, %zu pipelines (%s)", ShaderWarmup::getShaderCount(),
-                  ShaderWarmup::getPipelineCount(), path.filename().string().c_str());
-    } else {
-        Out::error("Shader warm-up list not saved: %s", error.c_str());
-    }
+    const std::string recorded = ShaderWarmup::saveToString();
     ShaderWarmup::clear();
+    mergeIntoShaderWarmup(recorded, {});
 }
 
 bool editor::Project::clearShaderWarmup(){
@@ -4584,11 +4650,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
 void editor::Project::collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
     // What the content needs (derived from it without drawing: ShaderVariantCollector) and the
-    // keys the scene had: its file's, and what Play's run loaded (added at Stop, a recording the
-    // user made). Never the variants its objects were loaded with in the editor: those depend on
-    // what has drawn and when (a depth variant only while shadows or SSAO ran), so the same scene
-    // would save a different list. An export adds them where they are loaded
-    // (Exporter::resolveShaderKeys, collectSceneShaderKeys).
+    // keys the scene had: its file's (an older editor's Stop added what Play loaded; Play's keys go
+    // to the warm-up list now, S98 REQ-27). Never the variants its objects were loaded with in the
+    // editor: those depend on what has drawn and when (a depth variant only while shadows or SSAO
+    // ran), so the same scene would save a different list. An export adds them where they are
+    // loaded (Exporter::resolveShaderKeys, collectSceneShaderKeys).
     collectRequiredShaderKeys(sceneProject, keys);
     if (sceneProject)
         keys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
@@ -4619,6 +4685,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         if (!loadedPrefab || !loadedPrefab->registry) {
             try {
                 fromFile.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
+                // the variants its linked .material files make, as the build reads it (S98 REQ-29)
+                applyLinkedMaterialFiles(fromFile.registry.get());
             } catch (const std::exception& e) {
                 Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
                 continue;
@@ -5306,21 +5374,17 @@ void editor::Project::openSceneInternal(fs::path filepath, uint32_t sceneToClose
         return;
     }
 
-    // Scene is not in project
-    editor::getEditorHost().registerConfirmAlert(
-        "Add Scene",
-        "This scene is not part of the current project. Do you want to add it?",
-        [this, filepath, sceneToClose]() {
-            if (sceneToClose != NULL_PROJECT_SCENE) {
-                closeScene(sceneToClose, true);
-            }
-            loadScene(filepath, true, true, true);
-            saveProjectFile();
-        },
-        []() {
-            // Do nothing
+    // A file project.yaml does not list opens out of the build, as Unity's File > Open Scene
+    // leaves Build Settings alone (S98 REQ-28): Build Settings offers Add Open Scenes
+    if (sceneToClose != NULL_PROJECT_SCENE) {
+        closeScene(sceneToClose, true);
+    }
+    if (loadScene(filepath, true, true, true)) {
+        if (SceneProject* opened = getScene(findSceneByPath(filepath))) {
+            opened->inBuild = false;
         }
-    );
+    }
+    saveWorkspaceFile();
 }
 
 bool editor::Project::reloadSceneFromDisk(uint32_t sceneId, std::string* error) {
@@ -5398,8 +5462,10 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
         }
     }
 
-    // a never-saved scene leaves the project as it closes, and the played one is in use
-    if ((it->filepath.empty() || it->id == getPlaySessionSceneId()) &&
+    // a never-saved scene (or one out of the build) leaves the editor as it closes, and the played
+    // one is in use
+    const bool leaves = it->filepath.empty() || !it->inBuild;
+    if ((leaves || it->id == getPlaySessionSceneId()) &&
         refuseSceneRemovalWhilePlaying("close scene '" + it->name + "'")) {
         return;
     }
@@ -5433,11 +5499,16 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     // Notify parent scenes so they rebuild their layers without the deleted scene
     markParentScenesNeedUpdate(sceneId);
 
-    // If the scene was never saved, remove it entirely
-    const bool removedFromProject = it->filepath.empty();
+    // If the scene was never saved, or project.yaml does not list it, remove it entirely
+    const bool removedFromProject = leaves;
+    const bool untitled = it->filepath.empty();
     if (removedFromProject) {
-        // Nothing may stay pointing at an id no scene answers to any more
-        purgeReferencesToScene(it->id);
+        // Nothing may stay pointing at an id no scene answers to any more. A file's id stays in
+        // the files that name it (an open scene out of the build using it as a child): its file
+        // keeps it, so it opens again with the same id
+        if (untitled) {
+            purgeReferencesToScene(it->id);
+        }
         unlinkAllMaterialFiles(it->id);
         CommandHandle::remove(it->id);
 
@@ -5464,7 +5535,7 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     editor::getEditorHost().clearSceneWindowState(sceneId);
 
     if (!systemClose){
-        if (removedFromProject) {
+        if (untitled) {
             saveProjectFile();
         } else {
             saveWorkspaceFile();
@@ -5532,6 +5603,40 @@ std::vector<std::filesystem::path> editor::Project::findSceneFiles() const {
 
 uint32_t editor::Project::findSceneByPath(const std::filesystem::path& filepath) const {
     return findOtherSceneUsingFile(filepath, NULL_PROJECT_SCENE);
+}
+
+bool editor::Project::addSceneToBuild(uint32_t sceneId) {
+    bool changed = false;
+    std::vector<uint32_t> pending = {sceneId};
+    std::unordered_set<uint32_t> visited;
+    while (!pending.empty()) {
+        const uint32_t id = pending.back();
+        pending.pop_back();
+        if (!visited.insert(id).second) continue;
+        SceneProject* sceneProject = findScene<SceneProject>(id);
+        if (!sceneProject || sceneProject->filepath.empty()) continue;
+        if (!sceneProject->inBuild) {
+            sceneProject->inBuild = true;
+            changed = true;
+        }
+        for (const ChildSceneRef& child : sceneProject->childScenes) {
+            pending.push_back(child.id);
+        }
+    }
+    if (changed) {
+        saveProjectFile();
+    }
+    return changed;
+}
+
+std::vector<uint32_t> editor::Project::getOpenScenesNotInBuild() const {
+    std::vector<uint32_t> ids;
+    for (const SceneProject& sceneProject : scenes) {
+        if (!sceneProject.inBuild && sceneProject.opened && !sceneProject.filepath.empty()) {
+            ids.push_back(sceneProject.id);
+        }
+    }
+    return ids;
 }
 
 void editor::Project::giveSceneFileItsOwnId(SceneProject& sceneProject, const fs::path& fullPath) {
@@ -5838,8 +5943,12 @@ uint32_t editor::Project::openSceneNow(const fs::path& path, bool closePrevious,
             loaded = loadScene(fullPath, true, false, true);
             if (loaded) saveWorkspaceFile();
         } else {
+            // out of the build until it is added (S98 REQ-28): only the workspace learns of it
             loaded = loadScene(fullPath, true, true, true);
-            if (loaded) saveProjectFile();
+            if (SceneProject* opened = loaded ? getScene(findSceneByPath(fullPath)) : nullptr) {
+                opened->inBuild = false;
+                saveWorkspaceFile();
+            }
         }
         sceneId = findSceneByPath(fullPath);
         if (!loaded || sceneId == NULL_PROJECT_SCENE) {
@@ -5899,6 +6008,7 @@ bool editor::Project::closeSceneNow(uint32_t sceneId, UnsavedChoice unsaved, std
     if (SceneProject* closed = getScene(sceneId)) {
         closed->isModified = false;  // reloads from its file when opened again
     }
+    // one out of the build left the editor, which project.yaml never knew of
     if (untitled) {
         saveProjectFile();
     } else {
@@ -6239,6 +6349,10 @@ bool editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, boo
     childScenes.push_back({childSceneId, startActive});
     sceneProject->isModified = true;
     Out::info("Added child scene '%s' to scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
+    // a scene of the build loads its child scenes, so they are in the build too
+    if (sceneProject->inBuild && !childScene->inBuild) {
+        addSceneToBuild(childSceneId);
+    }
     return true;
 }
 
@@ -7062,8 +7176,9 @@ void editor::Project::collectPlayShaderKeys(PlaySession& session, const std::vec
 
 void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes,
                                    const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys) {
-    bool saveMainOnStop = false;
-    bool keepMainModified = false;
+    // what each played scene drew with, by the editor scene it ran for: the warm-up list's, once
+    // every scene is back to its edit-time state
+    std::map<uint32_t, std::set<ShaderKey>> discoveredKeys;
     // before the snapshots are decoded: textures made from here on are edit-mode ones (S42 R3)
     Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 
@@ -7096,9 +7211,6 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
             sceneProject->selectedEntities.clear();
         }
-
-        bool saveOnStop = false;
-        bool keepModified = false;
 
         // What the scene got while playing goes back with the snapshot below, and with it
         // the unsaved mark those edits put on it (as Unity leaves no Play mode change)
@@ -7136,32 +7248,14 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             discardPlayRuntimeState(runtimeId, entry.sourceSceneId, mainSceneProject ? mainSceneProject->id : NULL_PROJECT_SCENE);
         }
 
-        // Collect shader keys while components are still loaded (before snapshot restore wipes loaded state).
-        // Merge newly discovered keys into the editor-side scene and mark it modified so the file is saved.
+        // The shader keys, while the components are still loaded (the snapshot's restore wipes the
+        // loaded state). Stop writes no scene file (S98 REQ-27): they go to the warm-up list below.
         if (entry.sourceSceneId != NULL_PROJECT_SCENE) {
-            std::set<ShaderKey> playKeys;
+            std::set<ShaderKey>& playKeys = discoveredKeys[entry.sourceSceneId];
             collectSceneShaderKeys(sceneProject, playKeys);
             // and what the session's objects drew with, collected before the scripts went
             if (auto collected = playShaderKeys.find(entry.sourceSceneId); collected != playShaderKeys.end()) {
                 playKeys.insert(collected->second.begin(), collected->second.end());
-            }
-            if (!playKeys.empty()) {
-                SceneProject* editorScene = entry.ownedRuntime ? getScene(entry.sourceSceneId) : sceneProject;
-                if (editorScene) {
-                    const bool wasModified = editorScene->isModified;
-                    const size_t prevSize = editorScene->shaderKeys.size();
-                    editorScene->shaderKeys.insert(playKeys.begin(), playKeys.end());
-                    if (editorScene->shaderKeys.size() > prevSize) {
-                        editorScene->isModified = true;
-                        saveOnStop = true;
-                        keepModified = wasModified;
-
-                        if (mainSceneProject && entry.sourceSceneId == mainSceneProject->id) {
-                            saveMainOnStop = true;
-                            keepMainModified = wasModified;
-                        }
-                    }
-                }
             }
         }
 
@@ -7203,12 +7297,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         if (sceneProject != mainSceneProject) {
-            editor::getEditorHost().enqueueMainThreadTask([this, sceneProject, entry, saveOnStop, keepModified]() {
-                SceneProject* editorScene = entry.ownedRuntime ? getScene(entry.sourceSceneId) : sceneProject;
-                if (saveOnStop && editorScene && !editorScene->filepath.empty()) {
-                    saveLoadedSceneOnStop(sceneProject, editorScene, keepModified);
-                }
-
+            editor::getEditorHost().enqueueMainThreadTask([this, sceneProject, entry]() {
                 Engine::removeScene(sceneProject->scene);
 
                 // Delete runtime clones that aren't opened in the editor.
@@ -7219,6 +7308,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             });
         }
     }
+
+    addPlayShaderKeysToWarmup(discoveredKeys);
 
     // every played scene's sounds and the music stopped, so their voice_stop lines are written
     MusicPlayer::reset();
@@ -7238,15 +7329,6 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
     if (mainSceneProject) {
         Out::success("Scene '%s' stopped", mainSceneProject->name.c_str());
-        if (saveMainOnStop && !mainSceneProject->filepath.empty()) {
-            uint32_t mainSceneId = mainSceneProject->id;
-            editor::getEditorHost().enqueueMainThreadTask([this, mainSceneId, keepMainModified]() {
-                SceneProject* sceneProject = getScene(mainSceneId);
-                if (sceneProject) {
-                    saveLoadedSceneOnStop(sceneProject, sceneProject, keepMainModified);
-                }
-            });
-        }
     }
 }
 
@@ -7929,89 +8011,6 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
     }
 }
 
-bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified) {
-    if (!loadedSceneProject || !editorScene || editorScene->filepath.empty()) {
-        return true;
-    }
-
-    bool success = false;
-    if (loadedSceneProject == editorScene) {
-        success = saveSceneFile(editorScene, editorScene->filepath, false);
-    } else {
-        // A Play copy has no snapshot to go back to and holds the played state, so only the
-        // shader keys it found reach the file
-        success = saveSceneShaderKeys(editorScene);
-    }
-
-    if (success) {
-        editorScene->isModified = keepModified;
-        Out::info("Auto-saved scene '%s' on stop", editorScene->name.c_str());
-    }
-
-    return success;
-}
-
-// The scene's shaderKeys written into its file as it is on disk, the rest of the file untouched
-bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
-    fs::path fullPath = sceneProject->filepath;
-    if (fullPath.is_relative()) {
-        fullPath = getProjectPath() / fullPath;
-    }
-
-    try {
-        YAML::Node root = YAML::LoadFile(fullPath.string());
-        if (!root.IsMap()) {
-            Out::error("Failed to save shader keys of scene '%s': %s is not a scene file", sceneProject->name.c_str(), fullPath.string().c_str());
-            return false;
-        }
-
-        const YAML::Node& onDisk = root;
-
-        // The file's keys stay, as a full save keeps the ones saved before
-        for (ShaderKey key : Stream::decodeShaderKeys(onDisk["shaderKeys"])) {
-            sceneProject->shaderKeys.insert(key);
-        }
-        const YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
-
-        std::string content;
-        if (!shaderKeysNode.size()) {
-            root.remove("shaderKeys");
-            content = YAML::Dump(root);
-        } else if (onDisk["shaderKeys"] || (!onDisk["maxValues"] && !onDisk["mainCamera"])) {
-            root["shaderKeys"] = shaderKeysNode;
-            content = YAML::Dump(root);
-        } else {
-            // After maxValues (a scene saved by an older editor keeps it) or else mainCamera, where
-            // encodeSceneProject() puts them, so the next full save moves nothing
-            const std::string after = onDisk["maxValues"] ? "maxValues" : "mainCamera";
-            YAML::Node ordered(YAML::NodeType::Map);
-            for (const auto& item : onDisk) {
-                const std::string key = item.first.as<std::string>();
-                ordered[key] = item.second;
-                if (key == after) {
-                    ordered["shaderKeys"] = shaderKeysNode;
-                }
-            }
-            content = YAML::Dump(ordered);
-        }
-
-        // a Document write with the file's line endings; the hash the crash backups compare
-        // against follows the bytes on disk (S03 R13)
-        const std::string text = FileUtils::withLineEndings(fullPath, content + "\n");
-        const io::WriteResult written = DocumentFiles::write(fullPath, text);
-        if (!written.ok()) {
-            Out::error(DocumentFiles::saveFailureMessage(fullPath, written));
-            return false;
-        }
-        sceneProject->diskSha1 = DocumentFiles::sha1(text);
-    } catch (const std::exception& e) {
-        Out::error("Failed to save shader keys of scene '%s': %s", sceneProject->name.c_str(), e.what());
-        return false;
-    }
-
-    return true;
-}
-
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
     // Prefab Mode: saving its scene saves the prefab asset
     if (isPrefabStage(sceneId)) {
@@ -8499,10 +8498,15 @@ void editor::Project::writeMissingSceneSources() {
 void editor::Project::configureGenerator() {
     // the standalone build starts the selected scene (in Prefab Mode, the scene behind it)
     const uint32_t selectedRegular = getSceneBehindPrefabStage(selectedScene);
-    const uint32_t startId = getScene(selectedRegular) ? selectedRegular : startSceneId;
+    const SceneProject* selectedProject = getScene(selectedRegular);
+    const uint32_t startId = selectedProject && selectedProject->inBuild ? selectedRegular : startSceneId;
 
     std::vector<editor::SceneBuildInfo> scenesToConfig;
     for (SceneProject& sceneConf : scenes) {
+        // a scene opened without being listed is in no build (S98 REQ-28)
+        if (!sceneConf.inBuild) {
+            continue;
+        }
         bool isMain = (startId == sceneConf.id);
         std::vector<uint32_t> involvedSceneIds;
         std::vector<uint32_t> activeSceneIds;
