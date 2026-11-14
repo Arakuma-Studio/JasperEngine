@@ -180,6 +180,9 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        // PipelineState has no factors to carry: Blend Mode Custom exists only for material
+        // pipelines (SokolObject), so a cached pipeline asked for it blends as its default
+        case BlendMode::CUSTOM:
         case BlendMode::PREMULTIPLIED:
             blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
             blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
