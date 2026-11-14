@@ -69,7 +69,9 @@ TEST_F(AnimationPlayerRootMotionTest, MovesTheRoot){
 TEST_F(AnimationPlayerRootMotionTest, TurnsTheRoot){
     ClipData data;
     data.wrap = ClipWrapMode::Once;
-    data.tracks = {track("Hips", ClipChannel::Rotation, {key(0, {0, 0, 0, 1}), key(1, {0, 0.7071068f, 0, 0.7071068f})})};
+    // the root bone is the one the clip positions (the Animator's rule): the hips held in place
+    data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {0, 1, 0})}),
+                   track("Hips", ClipChannel::Rotation, {key(0, {0, 0, 0, 1}), key(1, {0, 0.7071068f, 0, 0.7071068f})})};
     play(clip("turn", data), true);
     scene.getSystem<ActionSystem>()->update(0.0);
     frames(80);
