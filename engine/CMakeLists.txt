@@ -1555,6 +1555,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
+    core/htmlui/HtmlUIImageCache.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp

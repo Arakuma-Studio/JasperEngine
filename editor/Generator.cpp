@@ -2637,6 +2637,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // the HTML UI's glyph atlas budget, SDF primitives and transform-aware text (S16)
     mainContent += "    UIDocumentSystem::setHtmlUiRenderOptions(" + std::to_string(htmlUiRender.glyphAtlasMiB) + ", " +
                    (htmlUiRender.sdfPrimitives ? "true" : "false") + ", " + (htmlUiRender.transformAwareText ? "true" : "false") + ");\n";
+    // the HTML UI's image cache (S93), when not the platform's default
+    if (htmlUiRender.imageCacheMiB >= 0)
+        mainContent += "    UIDocumentSystem::setHtmlUiImageCacheMiB(" + std::to_string(htmlUiRender.imageCacheMiB) + ");\n";
     // the lobes a mobile or web build draws (Project Settings > Graphics > Mobile PBR Tier);
     // Reduced is the engine's default, desktop always draws them all
     if (mobilePbrTier != PbrTier::REDUCED)

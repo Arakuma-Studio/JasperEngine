@@ -25,6 +25,7 @@
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/HtmlUIPrewarm.h"
 
@@ -1064,6 +1065,60 @@ namespace {
         return luaL_error(L, "%s", error);
     }
 
+    // doc:prewarm([{images = false}])
+    int documentPrewarm(lua_State* L){
+        UIDocument* self = luabridge::detail::Userdata::get<UIDocument>(L, 1, false);
+        if (!self || !(lua_isnoneornil(L, 2) || lua_istable(L, 2)))
+            return luaL_error(L, "UIDocument.prewarm: an options table {images = boolean} (or nothing) expected");
+        bool images = true;
+        if (lua_istable(L, 2)){
+            lua_getfield(L, 2, "images");
+            if (!lua_isnil(L, -1))
+                images = lua_toboolean(L, -1) != 0;
+            lua_pop(L, 1);
+        }
+        {
+            const UIPrewarm made = self->prewarm(images);
+            if (!luabridge::push(L, made))
+                lua_pushnil(L);
+        }
+        return 1;
+    }
+
+    // HtmlUI.prewarmImage(path | {paths}), the paths read off the stack (C++ objects die before an error)
+    bool prewarmImageFromLua(lua_State* L, ErrorText error, UIPrewarm& made){
+        std::vector<std::string> paths;
+        if (lua_type(L, 1) == LUA_TSTRING){
+            paths.push_back(lua_tostring(L, 1));
+        }else if (lua_type(L, 1) == LUA_TTABLE){
+            const int count = (int)lua_rawlen(L, 1);
+            for (int i = 1; i <= count; i++){
+                lua_rawgeti(L, 1, i);
+                if (lua_type(L, -1) == LUA_TSTRING)
+                    paths.push_back(lua_tostring(L, -1));
+                lua_pop(L, 1);
+            }
+        }else{
+            setError(error, "HtmlUI.prewarmImage: an image path or a table of paths expected");
+            return false;
+        }
+        made = UIPrewarm::prewarmImages(paths);
+        return true;
+    }
+
+    int htmlUIPrewarmImage(lua_State* L){
+        ErrorText error;
+        {
+            UIPrewarm made;
+            if (prewarmImageFromLua(L, error, made)){
+                if (!luabridge::push(L, made))
+                    lua_pushnil(L);
+                return 1;
+            }
+        }
+        return luaL_error(L, "%s", error);
+    }
+
     // UIPrewarm.onDone = function: called once when it is done (next frame if it already is); nil removes it
     int prewarmSetOnDone(lua_State* L){
         UIPrewarm* self = luabridge::detail::Userdata::get<UIPrewarm>(L, 1, false);
@@ -1671,16 +1726,16 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("setReducedMotion", &UIDocument::setReducedMotion)
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
-        // S93 R15: the glyphs of every text (hidden parts too) and data-warm attribute, made before they show
-        .addFunction("prewarm", &UIDocument::prewarm)
+        // S93 R15: the glyphs of every text (hidden parts too) and data-warm attribute, and the images, made before they show
+        .addFunction("prewarm", &documentPrewarm)
         .endClass();
 
     // S93 R15: what doc:prewarm and HtmlUI.prewarmText return
     luabridge::getGlobalNamespace(L)
         .beginClass<UIPrewarm>("UIPrewarm")
-        // true once every glyph it asked for is in the atlas
+        // true once every glyph it asked for is in the atlas and every image uploaded (or failed)
         .addProperty("done", &UIPrewarm::isDone)
-        // 0..1 of its glyphs
+        // 0..1 of its glyphs and images
         .addProperty("progress", &UIPrewarm::getProgress)
         // a function called once when it is done (the next frame if it already is)
         .addProperty("onDone", &prewarmGetOnDone, &prewarmSetOnDone)
@@ -1691,9 +1746,12 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .beginClass<HtmlUILuaNamespace>("HtmlUI")
         // {family, size, weight, style, effect, text}: that text's glyphs made before it shows
         .addStaticFunction("prewarmText", &htmlUIPrewarmText)
+        // path or {paths}: images decoded in the background and uploaded a few a frame before they show
+        .addStaticFunction("prewarmImage", &htmlUIPrewarmImage)
         // ms of the main thread per frame for placing prewarmed glyphs (default 2)
         .addStaticProperty("prewarmBudgetMs", &UIPrewarm::getBudgetMs, &UIPrewarm::setBudgetMs)
         .endClass();
+
 
 #endif //DISABLE_LUA_BINDINGS
 }

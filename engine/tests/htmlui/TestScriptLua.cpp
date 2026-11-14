@@ -504,8 +504,9 @@ TEST_F(ScriptLuaTest, LuaFunctionBaseReleasesItsReference){
 
 TEST_F(ScriptLua, PrewarmMakesFirstShowColdFree){
     // S93 R15 (AC19): doc:prewarm() makes the glyphs of the hidden pause panel (display: none: "PAUSED" with an outline and
-    // a glow, its line and the data-warm digits) on background jobs, placed within HtmlUI.prewarmBudgetMs a frame; the
-    // frame that shows the panel then rasterizes nothing and draws no effect the slow way
+    // a glow, its line and the data-warm digits) on background jobs, placed within HtmlUI.prewarmBudgetMs a frame, and
+    // decodes its image; the frames that show the panel then rasterize nothing, draw no effect the slow way and decode
+    // nothing
     ASSERT_TRUE(fixture->waitUntilLoaded());
     // the engine's way: distance glyphs on the background lane (this binary makes them at once for its goldens)
     struct AsyncDistanceGlyphs {
@@ -541,18 +542,22 @@ TEST_F(ScriptLua, PrewarmMakesFirstShowColdFree){
         doc:getElementById("pause"):querySelector("p").textContent = "12:34 0987"
     )");
     // the panel's first frames: nothing rasterized, no effect drawn the slow way
-    auto drawn = [this](uint32_t& glyphs, uint32_t& fallbacks){
-        glyphs = fallbacks = 0;
+    uint32_t decoded = 0;
+    auto drawn = [this, &decoded](uint32_t& glyphs, uint32_t& fallbacks){
+        glyphs = fallbacks = decoded = 0;
         for (int frame = 0; frame < 3; frame++){
             GpuEnvironment::drawFrames(1);
             glyphs += document->getRenderStats().glyphsRasterized;
             fallbacks += document->getRenderStats().textEffectFallbacks;
+            decoded += document->getRenderStats().imagesDecoded;
         }
     };
     uint32_t glyphs = 0, fallbacks = 0;
     drawn(glyphs, fallbacks);
     EXPECT_EQ(glyphs, 0u);
     EXPECT_EQ(fallbacks, 0u);
+    EXPECT_EQ(decoded, 0u);
+    EXPECT_GT(document->getElementById("pause-icon").getBoundingClientRect().width, 0.0f);
     EXPECT_GT(document->getElementById("pause").getBoundingClientRect().height, 0.0f);
     // the control: characters no prewarm asked for are rasterized when they show
     EXPECT_LUA(R"(doc:getElementById("pause"):querySelector("p").textContent = "QWXZ jkv")");

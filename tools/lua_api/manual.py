@@ -68,7 +68,11 @@ MANUAL_SYMBOLS = [
     ('UIDocument', 'getTargetTexture', 'Method', 'UIDocument:getTargetTexture() -> Framebuffer or nil (TEXTURE render mode)'),
     ('UIDocument', 'getLiveLuaRefCount', 'StaticMethod', 'UIDocument.getLiveLuaRefCount() -> integer'),
     ('UIDocument', 'prewarm', 'Method',
-     'UIDocument:prewarm() -> UIPrewarm (the glyphs of every text, hidden ones too, and data-warm attributes, made before they show)'),
+     'UIDocument:prewarm([{images = false}]) -> UIPrewarm (the glyphs of every text, hidden ones too, data-warm attributes and '
+     'the images, made before they show)'),
+    ('HtmlUI', 'prewarmImage', 'StaticMethod',
+     'HtmlUI.prewarmImage(path or {paths}) -> UIPrewarm (done, progress, onDone = fn): images decoded off the main thread '
+     'and uploaded a few a frame, so the first frame that shows them is complete'),
     ('HtmlUI', 'prewarmText', 'StaticMethod',
      'HtmlUI.prewarmText({family = "LINESeedSans", size = 324, weight = 700, style = "normal", effect = "outline(15px #000)", '
      'text = "GO!0123456789"}) -> UIPrewarm'),

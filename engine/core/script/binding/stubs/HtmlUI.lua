@@ -63,4 +63,3 @@ function UIDataModel:set(path, value) end
 ---@field style "normal"|"italic"|nil
 ---@field effect string|nil a font-effect value: "outline(15px #000)", "glow(4px 12px 0px 8px #000)"
 ---@field text string the characters to make ready
-

@@ -134,8 +134,9 @@ namespace jasperengine{
 
         // --- S93 ---
         // R15: the glyphs of every text of the document, hidden and display: none parts too, and of its data-warm
-        // attributes, made before they are shown (UIPrewarm); done at once when the document is not loaded
-        UIPrewarm prewarm() const;
+        // attributes, and its images (unless images is false), made before they are shown (UIPrewarm); done at once when
+        // the document is not loaded
+        UIPrewarm prewarm(bool images = true) const;
     };
 
 }

@@ -1968,7 +1968,16 @@ OVERRIDES = {
     },
 }
 
-# S93 R15: HtmlUI.prewarmText reads its options table by hand
+# S93 R15: HtmlUI.prewarmImage and prewarmText read their arguments by hand
+OVERRIDES[('UIDocument', 'prewarm')] = {
+    'doc': ['Makes the glyphs of every text of the document (display: none parts too) and of its data-warm attributes, and its',
+            'images, before they show. `{images = false}`: the text only.'],
+    'overloads': [([('options?', '{images: boolean?}')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmImage')] = {
+    'doc': ['Decodes images on a background thread and uploads a few a frame, so the first frame that shows them is complete.',
+            'Paths as in CSS: an asset path, with a `#xywh=x,y,w,h` or `#sprite=<name>` region. The images stay cached while',
+            'the UIPrewarm lives.'],
+    'overloads': [([('paths', 'string|string[]')], 'UIPrewarm')]}
 OVERRIDES[('HtmlUI', 'prewarmText')] = {
     'doc': ['Makes the glyphs of a text (base, distance and font-effect glyphs) on background jobs before it is shown, at the',
             'scale of every context drawing now; raises an error for bad options or a font-effect that does not parse.'],

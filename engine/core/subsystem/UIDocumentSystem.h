@@ -142,6 +142,10 @@ namespace jasperengine{
         // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
         // their backgrounds and text again
         static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
+        // S93 R19: MiB of released images the process's image cache keeps (negative: the platform's
+        // default, 64 on desktop and 32 on Android, iOS and the web; 0: none); the exported entry
+        // for the project's htmlUiImageCacheMiB
+        static void setHtmlUiImageCacheMiB(int mib);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document

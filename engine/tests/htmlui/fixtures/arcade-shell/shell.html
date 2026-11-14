@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- S93 (AC17, AC18, AC19, R41): a JasperArcade-like shell. Outlined and glowing bold text as the port draws it (its
-     LINESeedSans stands in as Roboto Bold), a 2048x2048 sprite atlas, a score, buttons and a pause panel that is
-     display: none until a script shows it. -->
+     LINESeedSans stands in as Roboto Bold), a 2048x2048 sprite atlas, a score, buttons and a pause panel (with an
+     image of its own) that is display: none until a script shows it. -->
 <html><head><style>
   @font-face { font-family: "ShellSans"; src: url("../fonts/Roboto-Bold.ttf") format("truetype"); font-weight: 700; }
   html, body { margin: 0; width: 640px; height: 360px; overflow: hidden; background: #14161c; font-family: "ShellSans", sans-serif;
@@ -22,5 +22,5 @@
 <div id="go">GO!</div>
 <div class="button" id="play">PLAY</div>
 <div class="button" id="options">SETTINGS</div>
-<div id="pause"><h1>PAUSED</h1><p data-warm="0123456789:">Resume or quit?</p></div>
+<div id="pause"><img id="pause-icon" src="pause-icon.png" width="64" height="64"><h1>PAUSED</h1><p data-warm="0123456789:">Resume or quit?</p></div>
 </body></html>

@@ -209,7 +209,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-e
+### Attributes: a-d
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -264,6 +264,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `data-lucide` | `*` | rewritten | Lucide icon expansion |  |
 | `dead-zone` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `decoding` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `decoding` | `img` | native | async (default): decoded on a background thread, drawn once decoded; sync: decoded before the first frame that shows it |  |
 | `dir` | `*` | rewritten | presentational hint |  |
 | `direction` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `direction` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -274,17 +275,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
 | `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
 | `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
+
+### Attributes: e-l
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
-
-### Attributes: f-l
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
@@ -2341,6 +2342,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-GEN-0005` | warning | **Charset other than UTF-8** (`non-utf8-charset`): The document or stylesheet declares a character encoding other than UTF-8 (<meta charset>, @charset). The engine always decodes UTF-8: save the file as UTF-8 and declare utf-8. |
 | `HTMLUI-GEN-0006` | warning | **RmlUi message** (`rmlui-message`): RmlUi, the engine's layout library, rejected or warned about the converted document or stylesheet. The location is mapped back to your file. Simplify the construct or report the case: converted output should always be accepted. |
 | `HTMLUI-GEN-0007` | warning | **Glyph atlas budget too small** (`glyph-atlas-budget`): The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once. |
+| `HTMLUI-GEN-0008` | warning | **Image region not found** (`image-region`): An image URL's fragment names a region the image does not have: #xywh=x,y,w,h (image pixels) or #xywh=percent:x,y,w,h outside the image, a malformed xywh, or #sprite=<name> naming no frame of the texture's Sprite Mode sheet. Nothing is drawn for it. Fix the numbers, or the sprite name (the texture's Import Settings list its frames). |
 
 ### HTML
 

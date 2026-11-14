@@ -113,7 +113,7 @@ json PlayerConfig::toJson() const {
         textures.push_back({{"quality", group.quality}, {"memoryBudgetMB", group.memoryBudgetMB}, {"lowMemoryFallback", group.lowMemoryFallback}});
     out["textureDefaults"] = textures;
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
-                     {"transformAwareText", transformAwareText}};
+                     {"transformAwareText", transformAwareText}, {"imageCacheMiB", imageCacheMiB}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
@@ -283,6 +283,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.glyphAtlasMiB = htmlUi->value("glyphAtlasMiB", config.glyphAtlasMiB);
             config.sdfPrimitives = htmlUi->value("sdfPrimitives", config.sdfPrimitives);
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
+            config.imageCacheMiB = htmlUi->value("imageCacheMiB", config.imageCacheMiB);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);

@@ -288,8 +288,8 @@ std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
     return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
 }
 
-UIPrewarm UIDocument::prewarm() const{
-    return UIPrewarm(HtmlUIPrewarm::prewarmDocument(loadedDocument(scene, entity)));
+UIPrewarm UIDocument::prewarm(bool images) const{
+    return UIPrewarm(HtmlUIPrewarm::prewarmDocument(loadedDocument(scene, entity), images));
 }
 
 HtmlUIRenderStats UIDocument::getRenderStats() const{

@@ -16,6 +16,7 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "htmlui/HtmlUIFontDiagnostics.h"
@@ -498,8 +499,10 @@ bool UIDocumentSystem::isAllLoaded() const{
             anyVisible = true;
     }
 
-    // a shown document is loaded once it has been drawn
-    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered();
+    // a shown document is loaded once it has been drawn, its images decoded (S93 R18: a decoded
+    // image is uploaded by the next frame that draws it)
+    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered() &&
+           HtmlUIImageCache::get().getDecodingCount() == 0;
 }
 
 bool UIDocumentSystem::setDebuggerVisible(bool visible){
@@ -560,4 +563,8 @@ void UIDocumentSystem::setVerboseDiagnostics(bool verbose){
 
 bool UIDocumentSystem::getVerboseDiagnostics(){
     return htmlUiVerboseDiagnostics;
+}
+
+void UIDocumentSystem::setHtmlUiImageCacheMiB(int mib){
+    HtmlUIImageCache::setBudgetMiB(mib);
 }

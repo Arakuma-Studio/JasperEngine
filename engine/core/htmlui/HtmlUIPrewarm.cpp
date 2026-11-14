@@ -7,6 +7,7 @@
 #include "HtmlUI.h"
 #include "HtmlUIContext.h"
 #include "Log.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 
@@ -22,6 +23,8 @@
 #include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <RmlUi/Core/StyleSheetTypes.h>
+#include <RmlUi/Core/SystemInterface.h>
+#include <RmlUi/Core/URL.h>
 
 #include <algorithm>
 #include <atomic>
@@ -84,18 +87,57 @@ namespace {
 }
 
 size_t HtmlUIPrewarmState::total() const{
-    return glyphs ? glyphs->total : 0;
+    return (glyphs ? glyphs->total : 0) + (images ? images->total : 0);
 }
 
 size_t HtmlUIPrewarmState::ready() const{
-    return glyphs ? std::min(glyphs->ready, glyphs->total) : 0;
+    size_t ready = glyphs ? std::min(glyphs->ready, glyphs->total) : 0;
+    if (images)
+        ready += images->done ? images->total : std::min(images->completed, images->total);
+    return ready;
 }
 
 bool HtmlUIPrewarmState::done() const{
     return ready() >= total();
 }
 
-std::shared_ptr<HtmlUIPrewarmState> HtmlUIPrewarm::prewarmDocument(Rml::ElementDocument* document){
+namespace {
+
+    bool isRasterImage(const std::string& path){
+        std::string extension;
+        const size_t dot = path.find_last_of('.');
+        if (dot != std::string::npos)
+            extension = Rml::StringUtilities::ToLower(path.substr(dot + 1));
+        return extension == "png" || extension == "jpg" || extension == "jpeg" || extension == "webp" || extension == "bmp" ||
+               extension == "tga" || extension == "gif" || extension == "ktx2";
+    }
+
+    // the <img> sources as RmlUi loads them (ElementImage: joined with the document's directory)
+    void collectImages(Rml::Element* element, const std::string& directory, std::vector<std::string>& paths){
+        if (element->GetTagName() == "img"){
+            const Rml::String source = element->GetAttribute<Rml::String>("src", "");
+            if (!source.empty() && source.find(':') == std::string::npos){
+                Rml::String joined;
+                Rml::GetSystemInterface()->JoinPath(joined, directory, source);
+                const std::string file = joined.substr(0, joined.find_first_of("?#"));
+                if (isRasterImage(file) && std::find(paths.begin(), paths.end(), joined) == paths.end())
+                    paths.push_back(joined);
+            }
+        }
+        for (int i = 0; i < element->GetNumChildren(); i++)
+            collectImages(element->GetChild(i), directory, paths);
+    }
+
+}
+
+std::shared_ptr<HtmlUIPrewarmState> HtmlUIPrewarm::prewarmImages(const std::vector<std::string>& paths){
+    std::shared_ptr<HtmlUIPrewarmState> state = std::make_shared<HtmlUIPrewarmState>();
+    state->images = HtmlUIImageCache::get().prewarm(paths);
+    track(state);
+    return state;
+}
+
+std::shared_ptr<HtmlUIPrewarmState> HtmlUIPrewarm::prewarmDocument(Rml::ElementDocument* document, bool images){
     std::shared_ptr<HtmlUIPrewarmState> state = std::make_shared<HtmlUIPrewarmState>();
     if (!document)
         return state;
@@ -107,6 +149,19 @@ std::shared_ptr<HtmlUIPrewarmState> HtmlUIPrewarm::prewarmDocument(Rml::ElementD
     if (Rml::Context* context = document->GetContext())
         managers.push_back(&context->GetRenderManager());
     state->glyphs = HtmlUI::getFontEngine().prewarm(texts, managers);
+    if (images){
+        std::vector<std::string> paths;
+        collectImages(document, Rml::URL(document->GetSourceURL()).GetPath(), paths);
+        // the images the compile read (an .html document's style sheets: backgrounds, border images, masks)
+        if (std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document)){
+            for (const std::string& file : compiled->dependencies){
+                if (isRasterImage(file) && std::find(paths.begin(), paths.end(), file) == paths.end())
+                    paths.push_back(file);
+            }
+        }
+        if (!paths.empty())
+            state->images = HtmlUIImageCache::get().prewarm(paths);
+    }
     track(state);
     return state;
 }
@@ -226,6 +281,10 @@ bool UIPrewarm::isDone() const{
 float UIPrewarm::getProgress() const{
     const size_t total = state->total();
     return total == 0 ? 1.0f : (float)state->ready() / (float)total;
+}
+
+UIPrewarm UIPrewarm::prewarmImages(const std::vector<std::string>& paths){
+    return UIPrewarm(HtmlUIPrewarm::prewarmImages(paths));
 }
 
 UIPrewarm UIPrewarm::prewarmText(const UIPrewarmText& text){

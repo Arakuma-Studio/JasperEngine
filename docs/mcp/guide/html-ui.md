@@ -1255,7 +1255,10 @@ transforms, clipping and filters apply to them as to `<img>`.
 | `<img src="icons/play.svg" width="24" height="24">` | a vector image rasterized at its size (crisp at any size); `currentColor` in it follows the CSS `color` |
 | `<svg width="48" height="48" viewBox="0 0 24 24"> <path .../> </svg>` | inline SVG |
 | `background: url(icons/bg.svg) center / contain no-repeat;` | an SVG background, rasterized at its drawn size |
-| `image-color: #ff8000;` | (engine property) multiplies every pixel of an image, SVG or Lottie by the colour |
+| `image-color: #ff8000;` | (engine property) multiplies every pixel of an `<img>`, `background-image`, `border-image`, SVG or Lottie by the colour (not a `mask-image`) |
+| `url("ui/atlas.png#xywh=32,0,16,16")` | a region of the file in image pixels (`#xywh=percent:50,0,25,25` in percent), in `<img src>`, `background-image`, `border-image`, `mask-image`, `list-style-image` and `content` |
+| `url("ui/atlas.png#sprite=coin")` | the frame `coin` of the texture's Sprite Mode sheet (its Import Settings; a `name@16x16.png` file is a grid named `name_0`, `name_1`, ...) |
+| `<img src="ui/splash.png" decoding="sync">` | decoded before the first frame that shows it |
 
 - Paths, shapes, strokes, gradients, patterns, `clipPath`, masks, markers, `<use>`/`<symbol>`,
   CSS inside the SVG, `<text>` (in Roboto) work. `currentColor` follows the element's `color`
@@ -1266,6 +1269,19 @@ transforms, clipping and filters apply to them as to `<img>`.
   (`HTMLUI-SVG-0003`).
 - Not supported: SVG filters, SMIL animation, scripts, `<foreignObject>` (`HTMLUI-SVG-0002`),
   external `<image href>` files (`data:` URIs only).
+- Raster images decode on a background thread: the first frame lays the image out at its size
+  and draws nothing for it, the frame after its decode draws it (a 2048 px PNG in a few frames).
+  A screen that must appear whole uses `decoding="sync"` on its `<img>`, or `doc:prewarm()` /
+  `HtmlUI.prewarmImage(paths)` while the player is elsewhere (Prewarming text and images). Play with `fixed_fps`, a fixed UI time
+  and screenshots wait for the decode, so goldens and `screenshot` never catch an image missing.
+- A region is cut into its own texture, so `repeat`, `round` and `space` tile the region alone. A
+  region outside the image or an unknown sprite draws nothing, with a warning `HTMLUI-GEN-0008`
+  in the Console and `doc:getDiagnostics()`.
+- One cache holds every document's images: a second document, scene or texture-mode document
+  showing a file neither decodes nor uploads it. Released images stay within Project Settings >
+  Graphics > *HTML UI Image Cache (MiB)* (`graphics.html_ui_image_cache_mib`: -1 = the platform's
+  default, 64 on desktop and 32 on Android, iOS and the web; 0 keeps none). Changing a file on disk
+  shows the new pixels (hot reload).
 - RmlUi's own `<svg src="icons/play.svg">` element also works (`crop-to-content` trims it to
   the drawing). `.svg` textures outside HTML UI (`Image`, `Sprite`, materials;
   `path.svg?svgScale=2`) use the same rasterizer.
@@ -1447,24 +1463,26 @@ about 1000 particles (one mesh is rebuilt each frame).
   nothing. Text is rasterized at each context's pixel ratio (the screen's, or `pixelRatio` for
   documents on meshes), so it stays sharp.
 
-### Prewarming text
+### Prewarming text and images
 
-The glyph cache outlives documents, scenes and a lost view: a screen shown a second time makes no
-glyph. The first show makes them in its frame; when a screen must appear whole on its first frame
-(a pause menu, a big outlined countdown), make its glyphs before:
+The glyph and image caches outlive documents, scenes and a lost view: a screen shown a second time
+makes no glyph and decodes no image. The first show makes them in its frame; when a screen must
+appear whole on its first frame (a pause menu, a big outlined countdown), make them before:
 
 ```lua
-local job = doc:prewarm()              -- every text of the document, display: none parts too
+local job = doc:prewarm()              -- every text and image of the document, display: none parts too
 job.onDone = function() print("ready") end   -- also job.done, job.progress (0..1)
 HtmlUI.prewarmText{ family = "Title", size = 324, weight = 700,
                     effect = "outline(15px #000)", text = "GO!0123456789" }
+HtmlUI.prewarmImage({ "ui/power-ups.png", "ui/atlas.png#sprite=star" })
 ```
 
-- `doc:prewarm()` reads each element's font, size and `font-effect` as styled now, and the text of
-  `data-warm="0123456789:"` attributes (characters a script will write later).
+- `doc:prewarm()` reads each element's font, size and `font-effect` as styled now, the text of
+  `data-warm="0123456789:"` attributes (characters a script will write later), and the images of
+  its `<img>` elements and style sheets (`doc:prewarm{ images = false }`: text only).
 - The glyphs are made on background jobs and put in the atlas within `HtmlUI.prewarmBudgetMs` a
-  frame (default 2). With a fixed clock (play's `fixed_fps`, a fixed UI time) a prewarm is done at
-  the next update.
+  frame (default 2); images decode in the background and upload a few a frame. With a fixed clock
+  (play's `fixed_fps`, a fixed UI time) a prewarm is done at the next update.
 
 ### Icons
 
@@ -1836,7 +1854,8 @@ Read-only, edit mode and play. Returns:
   (`drawCalls`, `geometrySubmitted`, `runsMerged`, `runCacheHits`, `instancesDrawn`,
   `stencilDraws`, `stencilClipsElided`, `analyticClips`, `boxShadowTextures`, `layersPushed`,
   `glyphsRasterized`, `msdfGlyphsPending`, `textRegenerations`, `textEffectFallbacks`,
-  `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
+  `atlasBytes`, `atlasEvictions`, `imagesDecoded`, `imageCacheHits`, `imagesPending`, ...); with
+  `"detail": "full"` each element also has
   `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
   "stretched", scale}`;
 - a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
@@ -2026,7 +2045,10 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   class with `display: none`) instead of destroying and rebuilding them.
 - **Change the least**: assigning one data-model field or `textContent` updates one element;
   replacing `innerHTML` rebuilds the subtree and drops its listeners.
-- **Images**: an SVG is rasterized once per size and colour; a Lottie element re-rasterizes
+- **Images**: a raster file is decoded once per process and shared by every document
+  (`imagesDecoded` 0 and `imageCacheHits` > 0 in `inspect_ui` render stats when a screen reuses
+  them); an atlas with `#sprite=` regions decodes once for all its sprites. An SVG is rasterized
+  once per size and colour; a Lottie element re-rasterizes
   only when its frame changes (a 30 fps animation 30 times a second; paused, never). Texture
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:

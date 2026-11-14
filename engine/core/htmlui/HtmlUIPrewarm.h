@@ -6,6 +6,7 @@
 
 // Engine-internal (RmlUi types): S93 R15, doc:prewarm and HtmlUI.prewarmText.
 
+#include "HtmlUIImageCache.h"
 #include "RmlFontEngine.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "object/ui/UIPrewarm.h"
@@ -20,9 +21,11 @@ namespace Rml {
 
 namespace jasperengine {
 
-    // What a UIPrewarm handle reads, and the Lua function called once it is done
+    // What a UIPrewarm handle reads, and the Lua function called once it is done: its glyphs, and its images (P4's job:
+    // decoded in the background, uploaded a few a frame, cached while the state holds them)
     struct HtmlUIPrewarmState {
         std::shared_ptr<const RmlFontEngine::GlyphPrewarm> glyphs;
+        std::shared_ptr<HtmlUIImageCache::PrewarmJob> images;
         HtmlUILuaRef onDone;
         bool notified = false;   // onDone ran (or there was none when it was done)
 
@@ -34,8 +37,11 @@ namespace jasperengine {
     class JASPERENGINE_INTERNAL HtmlUIPrewarm {
     public:
         // every text of the document and every data-warm attribute, hidden and display: none subtrees included (their
-        // styles are resolved), with each element's font and font-effect, at its context's raster scale
-        static std::shared_ptr<HtmlUIPrewarmState> prewarmDocument(Rml::ElementDocument* document);
+        // styles are resolved), with each element's font and font-effect, at its context's raster scale; with images, the
+        // raster images of its <img> elements and of the files its compile read (style sheets' images)
+        static std::shared_ptr<HtmlUIPrewarmState> prewarmDocument(Rml::ElementDocument* document, bool images);
+        // asset paths as CSS names them (#xywh= and #sprite= regions too): HtmlUIImageCache::prewarm
+        static std::shared_ptr<HtmlUIPrewarmState> prewarmImages(const std::vector<std::string>& paths);
         // error set (and a done state) when the effect does not parse
         static std::shared_ptr<HtmlUIPrewarmState> prewarmText(const UIPrewarmText& text, std::string* error);
         // once per frame (UIDocumentSystem::update, every scene calls it): places prewarmed glyphs within the budget, then
