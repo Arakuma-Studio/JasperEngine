@@ -1259,6 +1259,91 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_physics_overlap_query",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S96 REQ-17/REQ-47 added query_physics (physics group): an agent asked what is near a GameObject "
+                         "in the running game overlaps the colliders once instead of casting a fan of rays from eval_lua.",
+        "text_at_issue": "query_physics description ('ray/sphere/box/capsule/point cast, cast_all, overlap or check'); the "
+                         "physics group's line ('physics queries in Play'); docs/mcp/guide/physics.md 'Shape casts and overlaps'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-47 (new tool; the port's scripts cast ray fans for proximity)",
+        "prompt": "The game is playing. Is anything within 2 m of the Player right now? Check the physics colliders and "
+                  "name what you find.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere"}, "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Player", "collider": 0}, {"entity": 15, "name": "Crate", "collider": 0}]})},
+            {"tool": "query_physics", "result": ok(
+                "1 hit(s), nearest Crate at 1.4.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 15, "name": "Crate", "collider": 0,
+                 "point": [1.4, 0.5, 0], "normal": [-1, 0, 0], "distance": 1.4}]})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "GameObject 12 \"Player\" (playing): transform position [0, 0.5, 0], rigidbody dynamic.",
+                {"id": 12, "components": {"transform": {"position": [0, 0.5, 0]}}})},
+            {"tool": "list_runtime_entities", "result": ok(
+                "5 GameObjects: 10 Camera, 11 Ground, 12 Player, 14 Enemy, 15 Crate.",
+                {"entities": [{"id": 12, "name": "Player", "path": "Player"}, {"id": 15, "name": "Crate", "path": "Crate"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere", "radius": 2}}]},
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap"}}]},
+                       {"calls": [{"tool": "eval_lua", "args": {"code": "re:overlapSphere|checkSphere"}}]}],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:raycast"}}],
+                   "reply_must": [r"Crate"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_decompose_mesh_collider",
+        "kind": "guard",
+        "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
+                         "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
+                         "decompose) instead of one convex hull or a box that changes the shape.",
+        "text_at_issue": "edit_colliders 'Add/update/remove/decompose' and its `decompose` parameter ('mesh to hulls'); "
+                         "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
+        "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "
+                  "collider 0 (Mesh) is static-only. Fix its collider so it can be dynamic, keeping its concave shape "
+                  "as close as you can.",
+        "mocks": [
+            {"tool": "edit_colliders", "args": {"decompose": {}}, "result": ok(
+                "Decomposed into 7 convex hull collider(s) (undo: Decompose Collider (Rock)).",
+                {"job_id": "3", "status": "succeeded", "hulls": 7, "undo_name": "Decompose Collider (Rock)",
+                 "colliders": [{"shape": "convex_hull", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000, "vertices": 48}]})},
+            {"tool": "edit_colliders", "result": ok(
+                "\"Rock\" has 1 collider(s).",
+                {"entity": {"id": 9, "name": "Rock", "path": "Rock"}, "dimension": "3d", "body_type": "dynamic",
+                 "colliders": [{"shape": "mesh", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000,
+                                "source": {"id": 9, "name": "Rock", "path": "Rock"}}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_colliders", "args": {"decompose": {"index": 0}}}]}],
+                   "must_not_call": [{"tool": "edit_colliders", "args": {"update": [{"shape": "convex_hull"}]}},
+                                     {"tool": "edit_colliders", "args": {"add": [{"shape": "box"}]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_query_physics_needs_play",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "S96 REQ-17: query_physics reads the bodies the running game built (none exist at edit time); its "
+                         "error names play, so the agent starts Play and asks again instead of giving up or guessing from "
+                         "the Transforms.",
+        "text_at_issue": "query_physics error: 'query_physics reads the running physics world: start Play first (play).'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-17, AC-16 (new tool; no failure on record)",
+        "prompt": "Using the physics colliders, tell me which GameObject a ray straight down from (0, 10, 0) hits first.",
+        "mocks": [
+            {"tool": "query_physics", "after": "play", "result": ok(
+                "1 hit(s), nearest Ground at 10.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 11, "name": "Ground", "collider": 0,
+                 "point": [0, 0, 0], "normal": [0, 1, 0], "distance": 10.0}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "play", "result": ok("Playing scene 1 \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"order": [[{"tool": "play", "args": {"action": "start"}}, {"tool": "query_physics", "args": {"shape": "ray"}}]],
+                   "reply_must": [r"Ground"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_shader_library_first",
         "kind": "guard",
         "what_happened": "A forked shader was edited without reading it and lost its samplers (git cf12fd6cc); the guide says "
@@ -5241,5 +5326,41 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_drivable_car_wheel_colliders",
+        "kind": "guard",
+        "what_happened": "A drivable car is a dynamic body with a Wheel Collider on a child at each wheel (suspension and "
+                         "tire friction on Jolt's vehicle constraint), not four wheel bodies on hinge joints, which bounce and "
+                         "slide sideways.",
+        "text_at_issue": "component Wheel Collider 'A car wheel with suspension and tire friction, below a dynamic Rigidbody'; "
+                         "physics guide 'Vehicles (Wheel Collider)': 'A drivable car is a dynamic Rigidbody ... with a Wheel "
+                         "Collider ... on a child GameObject at each wheel: not four bodies on hinge joints'",
+        "source": "S96 REQ-47 (WP-A); no failure on record",
+        "prompt": "The Kart in the current scene is just a box mesh. Make it a drivable car with four wheels.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 21 Kart (mesh)", {"entities": [{"id": 21, "path": "Kart"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 21 \"Kart\": transform, mesh (cube, scale 2 1 4).", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Rigidbody (rigidbody): Rigidbody with colliders, simulated by Jolt; Joint 3D (joint3d): Connects two "
+                "Rigidbodies; Character Controller (charactercontroller): A capsule moved by script that climbs steps and "
+                "slopes; Wheel Collider (wheelcollider): A car wheel with suspension and tire friction, below a dynamic "
+                "Rigidbody; Vehicle Drivetrain (vehicledrivetrain): An engine, gear box and differentials driving the body's "
+                "Wheel Colliders ...",
+                {"components": [{"key": "rigidbody", "name": "Rigidbody"}, {"key": "joint3d", "name": "Joint 3D"},
+                                {"key": "wheelcollider", "name": "Wheel Collider"},
+                                {"key": "vehicledrivetrain", "name": "Vehicle Drivetrain"}]})},
+            {"tool": "edit_colliders", "result": ok("Kart: dynamic body, 1 collider (box 2 x 1 x 4).", {"entity": {"id": 21}})},
+            {"tool": "create_entity", "result": ok("Created GameObject 30 \"Wheel\" under 21 \"Kart\".",
+                                                   {"entity_id": 30, "entity": {"id": 30}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
+                "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3DObject.vehicle"})},
+            {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
+                   "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
+        "max_turns": 16,
     },
 ]

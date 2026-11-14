@@ -4919,6 +4919,40 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E473BBFA78FB6C0C915 /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E476E579B2C1F79BEA7 /* PhysicsQueries3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */; };
+		4A534E47D29CEE5B8C15A3A9 /* PhysicsQueries3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */; };
+		4A534E47851B10C35A83E6A9 /* WorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478B432BBA648C03AD /* WorldSettings.cpp */; };
+		4A534E4784EFA42221E2F9E0 /* WorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478B432BBA648C03AD /* WorldSettings.cpp */; };
+		4A534E477487F79D16498391 /* PhysicsQueriesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */; };
+		4A534E47A51D00E6AB5C830D /* PhysicsQueriesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */; };
+		4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */; };
+		4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */; };
+		4A534E47B0ACCE2C50EB2E86 /* PhysicsQueries2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */; };
+		4A534E479A618D33EE985DFE /* PhysicsQueries3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */; };
+		4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */; };
+		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
+		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
+		4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
+		4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
+		4A534E47A958CDF313E1B350 /* AttachedColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */; };
+		4A534E4738E68F971FFC664A /* VehicleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */; };
+		4A534E473F86472F346E21DB /* VehicleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */; };
+		4A534E47C4133498721C1C02 /* WheelColliderController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73CB24BD754CA3B /* WheelColliderController.cpp */; };
+		4A534E4762EC97F90F08B7FF /* WheelColliderController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73CB24BD754CA3B /* WheelColliderController.cpp */; };
+		4A534E47D77465977540D2A2 /* WheelCollider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9920FA46BAB10E7 /* WheelCollider.cpp */; };
+		4A534E47B415BDACEC35BCE5 /* WheelCollider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9920FA46BAB10E7 /* WheelCollider.cpp */; };
+		4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4711D801AD66B4DC30 /* VehicleDrivetrain.cpp */; };
+		4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4711D801AD66B4DC30 /* VehicleDrivetrain.cpp */; };
+		4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */; };
+		4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */; };
+		4A534E47946C68330BA202BD /* VehicleDrivetrainComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713532B8D1DB19F2B /* VehicleDrivetrainComponent.h */; };
+		4A534E47EED28576C5085AC2 /* WheelColliderComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47367FF921CC4C6947 /* WheelColliderComponent.h */; };
+		4A534E470D50327A4342A2AF /* VehicleDrivetrain.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47612F9BA7F036FB40 /* VehicleDrivetrain.h */; };
+		4A534E4727370A5CBB1D8E15 /* WheelCollider.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CEB591C3FC7A6D13 /* WheelCollider.h */; };
+		4A534E4751EC2FD07C812216 /* WheelColliderController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B1161EE9F9B72D7 /* WheelColliderController.h */; };
+		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9530,29 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries2D.cpp; sourceTree = "<group>"; };
+		4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries3D.cpp; sourceTree = "<group>"; };
+		4A534E478B432BBA648C03AD /* WorldSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WorldSettings.cpp; sourceTree = "<group>"; };
+		4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueriesLua.cpp; sourceTree = "<group>"; };
+		4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemWorldSettings.cpp; sourceTree = "<group>"; };
+		4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueries2D.h; sourceTree = "<group>"; };
+		4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueries3D.h; sourceTree = "<group>"; };
+		4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryOptions.h; sourceTree = "<group>"; };
+		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
+		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
+		4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AttachedColliders.cpp; sourceTree = "<group>"; };
+		4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AttachedColliders.h; sourceTree = "<group>"; };
+		4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VehicleSystem.cpp; sourceTree = "<group>"; };
+		4A534E47B73CB24BD754CA3B /* WheelColliderController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WheelColliderController.cpp; sourceTree = "<group>"; };
+		4A534E47C9920FA46BAB10E7 /* WheelCollider.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WheelCollider.cpp; sourceTree = "<group>"; };
+		4A534E4711D801AD66B4DC30 /* VehicleDrivetrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VehicleDrivetrain.cpp; sourceTree = "<group>"; };
+		4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VehicleClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E4713532B8D1DB19F2B /* VehicleDrivetrainComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleDrivetrainComponent.h; sourceTree = "<group>"; };
+		4A534E47367FF921CC4C6947 /* WheelColliderComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WheelColliderComponent.h; sourceTree = "<group>"; };
+		4A534E47612F9BA7F036FB40 /* VehicleDrivetrain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleDrivetrain.h; sourceTree = "<group>"; };
+		4A534E47CEB591C3FC7A6D13 /* WheelCollider.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WheelCollider.h; sourceTree = "<group>"; };
+		4A534E473B1161EE9F9B72D7 /* WheelColliderController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WheelColliderController.h; sourceTree = "<group>"; };
+		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10065,6 +10122,9 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */,
+				4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */,
+				4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10922,6 +10982,17 @@
 				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 				54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */,
 				54574C442B54D4346813C175 /* TerrainWorldCollision.h */,
+				4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */,
+				4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */,
+				4A534E478B432BBA648C03AD /* WorldSettings.cpp */,
+				4A534E47F6121CADEB5F9021 /* PhysicsQueries2D.h */,
+				4A534E47C202EEFB4A5B2DC8 /* PhysicsQueries3D.h */,
+				4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */,
+				4A534E47C03036C6074531C9 /* WorldSettings.h */,
+				4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */,
+				4A534E473B4D0EC5FD2E7A0D /* AttachedColliders.h */,
+				4A534E47B73CB24BD754CA3B /* WheelColliderController.cpp */,
+				4A534E473B1161EE9F9B72D7 /* WheelColliderController.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -11987,6 +12058,8 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E4713532B8D1DB19F2B /* VehicleDrivetrainComponent.h */,
+				4A534E47367FF921CC4C6947 /* WheelColliderComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12337,6 +12410,9 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */,
+				4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */,
+				4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -13872,6 +13948,10 @@
 				4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */,
 				4A534E4733724F6EEF14DB82 /* Collision.h */,
 				4A534E474FA579066E077C7A /* Collision2D.h */,
+				4A534E47C9920FA46BAB10E7 /* WheelCollider.cpp */,
+				4A534E4711D801AD66B4DC30 /* VehicleDrivetrain.cpp */,
+				4A534E47612F9BA7F036FB40 /* VehicleDrivetrain.h */,
+				4A534E47CEB591C3FC7A6D13 /* WheelCollider.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -16843,6 +16923,18 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E47B0ACCE2C50EB2E86 /* PhysicsQueries2D.h in Headers */,
+				4A534E479A618D33EE985DFE /* PhysicsQueries3D.h in Headers */,
+				4A534E47318328D409982204 /* PhysicsQueryOptions.h in Headers */,
+				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
+				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
+				4A534E47A958CDF313E1B350 /* AttachedColliders.h in Headers */,
+				4A534E47946C68330BA202BD /* VehicleDrivetrainComponent.h in Headers */,
+				4A534E47EED28576C5085AC2 /* WheelColliderComponent.h in Headers */,
+				4A534E470D50327A4342A2AF /* VehicleDrivetrain.h in Headers */,
+				4A534E4727370A5CBB1D8E15 /* WheelCollider.h in Headers */,
+				4A534E4751EC2FD07C812216 /* WheelColliderController.h in Headers */,
+				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19603,17 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */,
+				4A534E476E579B2C1F79BEA7 /* PhysicsQueries3D.cpp in Sources */,
+				4A534E47851B10C35A83E6A9 /* WorldSettings.cpp in Sources */,
+				4A534E477487F79D16498391 /* PhysicsQueriesLua.cpp in Sources */,
+				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */,
+				4A534E4738E68F971FFC664A /* VehicleSystem.cpp in Sources */,
+				4A534E47C4133498721C1C02 /* WheelColliderController.cpp in Sources */,
+				4A534E47D77465977540D2A2 /* WheelCollider.cpp in Sources */,
+				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
+				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20573,17 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E473BBFA78FB6C0C915 /* PhysicsQueries2D.cpp in Sources */,
+				4A534E47D29CEE5B8C15A3A9 /* PhysicsQueries3D.cpp in Sources */,
+				4A534E4784EFA42221E2F9E0 /* WorldSettings.cpp in Sources */,
+				4A534E47A51D00E6AB5C830D /* PhysicsQueriesLua.cpp in Sources */,
+				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */,
+				4A534E473F86472F346E21DB /* VehicleSystem.cpp in Sources */,
+				4A534E4762EC97F90F08B7FF /* WheelColliderController.cpp in Sources */,
+				4A534E47B415BDACEC35BCE5 /* WheelCollider.cpp in Sources */,
+				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
+				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

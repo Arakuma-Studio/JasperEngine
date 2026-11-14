@@ -53,6 +53,13 @@ namespace jasperengine {
         static float getMaximumDeltaTime();
         static void setMaximumDeltaTime(float seconds);
 
+        // Fixed steps a frame may run; 0 (default) automatic: as many as maximumDeltaTime lets
+        // through (Engine::getFixedStepCap). Past it the frame's other steps are dropped
+        static int getMaximumFixedStepsPerFrame();
+        static void setMaximumFixedStepsPerFrame(int steps);
+        // Fixed steps dropped since the Play (editor) or the game started
+        static uint64_t getDroppedFixedSteps();
+
         // When > 0 every frame advances exactly this many seconds (before timeScale) whatever the
         // wall clock measured; 0 (default) = measured frames. Engine::fixedDeltatime.
         static double getCaptureDeltaTime();

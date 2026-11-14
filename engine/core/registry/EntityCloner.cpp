@@ -86,6 +86,8 @@
 #include "component/CameraComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -1089,6 +1091,17 @@ void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneCont
     body.needReloadBody = true;
     body.needUpdateColliders = true;
     body.newBody = true;
+    // S96 WP-C: the copy gathers its own attached children; a move target was the original's
+    const Rigidbody2DComponent defaults;
+    body.attachedColliders.clear();
+    body.attachedTo = defaults.attachedTo;
+    body.attachedRecomposeSteps = defaults.attachedRecomposeSteps;
+    body.warnedAttachedRecompose = defaults.warnedAttachedRecompose;
+    body.hasMovePosition = defaults.hasMovePosition;
+    body.hasMoveRotation = defaults.hasMoveRotation;
+    body.moveStepsLeft = defaults.moveStepsLeft;
+    body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>
@@ -1135,6 +1148,42 @@ void prepare<CharacterControllerComponent>(CharacterControllerComponent& control
     controller.refusedWithRigidbody = defaults.refusedWithRigidbody;
 }
 
+// S96 WP-A: the copy is a wheel of the copied body's vehicle (made at its next step), with the
+// copy's own pose; the original's last step is not its own
+template<>
+void prepare<WheelColliderComponent>(WheelColliderComponent& wheel, Entity, CloneContext&) {
+    const WheelColliderComponent defaults;
+    wheel.isGrounded = defaults.isGrounded;
+    wheel.rpm = defaults.rpm;
+    wheel.sprungMass = defaults.sprungMass;
+    wheel.suspensionCompression = defaults.suspensionCompression;
+    wheel.hit = defaults.hit;
+    wheel.worldPosePosition = defaults.worldPosePosition;
+    wheel.worldPoseRotation = defaults.worldPoseRotation;
+    wheel.vehicleBody = defaults.vehicleBody;
+    wheel.wheelIndex = defaults.wheelIndex;
+    wheel.hasRestPose = defaults.hasRestPose;
+    wheel.hasWrittenPose = defaults.hasWrittenPose;
+}
+
+// the differentials and anti-roll bars name the copy's wheels
+template<>
+void prepare<VehicleDrivetrainComponent>(VehicleDrivetrainComponent& drivetrain, Entity, CloneContext& ctx) {
+    for (VehicleDifferential& differential : drivetrain.differentials) {
+        differential.leftWheel = ctx.remap(differential.leftWheel);
+        differential.rightWheel = ctx.remap(differential.rightWheel);
+    }
+    for (VehicleAntiRollBar& bar : drivetrain.antiRollBars) {
+        bar.leftWheel = ctx.remap(bar.leftWheel);
+        bar.rightWheel = ctx.remap(bar.rightWheel);
+    }
+    const VehicleDrivetrainComponent defaults;
+    drivetrain.rpm = defaults.rpm;
+    drivetrain.gear = defaults.gear;
+    drivetrain.speed = defaults.speed;
+    drivetrain.gearRequested = defaults.gearRequested;
+}
+
 template<>
 void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext& ctx) {
     Scene* sourceScene = ctx.move ? dynamic_cast<Scene*>(ctx.source) : nullptr;
@@ -1168,6 +1217,17 @@ void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext&
     body.hasPendingType = false;
     body.appliedMaterialRevision = 0;
     body.newBody = true;
+    // S96 WP-C: the copy gathers its own attached children; a move target was the original's
+    const RigidbodyComponent defaults;
+    body.attachedColliders.clear();
+    body.attachedTo = defaults.attachedTo;
+    body.attachedRecomposeSteps = defaults.attachedRecomposeSteps;
+    body.warnedAttachedRecompose = defaults.warnedAttachedRecompose;
+    body.hasMovePosition = defaults.hasMovePosition;
+    body.hasMoveRotation = defaults.hasMoveRotation;
+    body.moveStepsLeft = defaults.moveStepsLeft;
+    body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>
@@ -1420,6 +1480,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<Joint3DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CharacterControllerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<RagdollComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<WheelColliderComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VehicleDrivetrainComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
     copyComponent<WaterVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<WaterExcluderComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

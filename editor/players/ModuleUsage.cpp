@@ -27,6 +27,8 @@
 #include "component/WaterExcluderComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -408,6 +410,8 @@ namespace {
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
+                if (has(registry->findComponent<WheelColliderComponent>(entity))) add("physics3d", content.label, "Wheel Collider on " + object);
+                if (has(registry->findComponent<VehicleDrivetrainComponent>(entity))) add("physics3d", content.label, "Vehicle Drivetrain on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
                     // T1 R54: a terrain a game may edit loads its maps for edits and uploads them

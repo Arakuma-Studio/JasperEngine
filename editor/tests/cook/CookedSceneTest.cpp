@@ -21,6 +21,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -28,6 +29,7 @@
 #include "serialization/CookedScene.h"
 #include "serialization/SceneSettingsCodec.h"
 #include "serialization/codecs/CustomCodecs.h"
+#include "util/Angle.h"
 #include "util/ProjectUtils.h"
 
 #include <gtest/gtest.h>
@@ -363,6 +365,65 @@ entities:
     EXPECT_EQ(polygon.groupIndex, -2);
 }
 
+// A prebuilt player keeps the scene's hierarchy: a child stays under its parent with its local
+// pose (S96 AC-32: a Wheel Collider finds its car's Rigidbody through it)
+TEST(CookedScene, SceneKeepsItsHierarchy) {
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Hierarchy
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Car
+    components:
+      transform:
+        position: [0, 1, 0]
+    children:
+      - type: Entity
+        entity: 1002
+        name: Axle
+        components:
+          transform:
+            position: [0, -0.25, 1.3]
+        children:
+          - type: Entity
+            entity: 1003
+            name: Wheel
+            components:
+              transform:
+                position: [-0.8, 0, 0]
+  - type: Entity
+    entity: 1004
+    name: Floor
+    components:
+      transform:
+        position: [0, -0.5, 0]
+)";
+    DecodedScene source = decodeSceneText(text, "Hierarchy.scene");
+    Scene* scene = source.scene->scene;
+    ASSERT_EQ(source.scene->entities.size(), 4u);
+    const Entity car = source.scene->entities[0], axle = source.scene->entities[1], wheel = source.scene->entities[2],
+                 floor = source.scene->entities[3];
+    ASSERT_EQ(scene->getComponent<Transform>(wheel).parent, axle);
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, source.scene->entities, loaded, error)) << error;
+    Scene* game = loaded.scene->scene;
+    EXPECT_EQ(game->getComponent<Transform>(car).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(axle).parent, car);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).parent, axle);
+    EXPECT_EQ(game->getComponent<Transform>(floor).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).position, Vector3(-0.8f, 0.0f, 0.0f));
+    // parents before their children in the Transform array, as the runtime keeps them
+    auto transforms = game->getComponentArray<Transform>();
+    EXPECT_LT(transforms->getIndex(car), transforms->getIndex(axle));
+    EXPECT_LT(transforms->getIndex(axle), transforms->getIndex(wheel));
+}
+
 // S27: a Tween eased along its curve keeps the curve whole in a cooked scene (keys, tangent
 // modes, wraps), and a curve cooked before the modes (keys only) reads as clamp, free tangents
 TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
@@ -453,6 +514,26 @@ namespace {
         tail.f32(scene.getWaterWakeFade());
         return tail.data().size();
     }
+
+    // the bytes format 1.6 appends after them (the Box2D sub-steps and the physics world
+    // settings, a record per field and a 0 ending them)
+    size_t physicsWorldTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.svarint(scene.getPhysics2DSubSteps());
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            tail.u32(1);
+            tail.u8(0);
+            const size_t at = tail.beginLength();
+            const double value = getPhysicsWorldSetting(field, scene.getPhysics2DWorldSettings(), scene.getPhysics3DWorldSettings());
+            if (field.type == PhysicsWorldSettingField::Type::Float) tail.f32(static_cast<float>(value));
+            else if (field.type == PhysicsWorldSettingField::Type::Int) tail.svarint(static_cast<int>(value));
+            else tail.boolean(value != 0.0);
+            tail.endLength(at);
+        }
+        tail.u32(0);
+        return tail.data().size();
+    }
 }
 
 // S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
@@ -495,8 +576,8 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, and (1.5) the Water Wakes' map after them
-    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene);
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map and (1.6) the physics world after them
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -630,7 +711,7 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
 
     // the 1.3 record: the same bytes without the planar reflections (and the 1.5 values)
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene) - physicsWorldTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -679,7 +760,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 
     // the 1.4 record: the same bytes without the wake settings; the planar reflections still read
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - physicsWorldTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
     ASSERT_FALSE(r14.failed()) << r14.error();
@@ -689,6 +770,46 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// S96 (format 1.6): the Box2D sub-steps and the physics world settings reach a prebuilt player; a 1.5
+// record (without them) leaves them at their defaults
+TEST(CookedScene, SceneSettingsKeepPhysicsWorld) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPhysics2DSubSteps(8);
+    scene->setPhysics2DPointsPerMeter(100.0f);
+    scene->setPhysics2DMaxRotation(Angle::degToDefault(360.0f));
+    scene->setPhysics2DBounceThreshold(5.0f);
+    scene->setPhysics2DWarmStarting(false);
+    scene->setPhysics3DVelocityIterations(4);
+    scene->setPhysics3DCollisionSteps(2);
+    scene->setPhysics3DSpeculativeDistance(0.05f);
+
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    const Scene& loaded = *player.scene->scene;
+    EXPECT_EQ(loaded.getPhysics2DSubSteps(), 8);
+    EXPECT_TRUE(loaded.getPhysics2DWorldSettings() == scene->getPhysics2DWorldSettings());
+    EXPECT_TRUE(loaded.getPhysics3DWorldSettings() == scene->getPhysics3DWorldSettings());
+    EXPECT_FLOAT_EQ(loaded.getPhysics2DPointsPerMeter(), 100.0f);
+    EXPECT_EQ(loaded.getPhysics3DCollisionSteps(), 2);
+
+    // the 1.5 record: the same bytes without the physics world tail
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - physicsWorldTailBytes(*scene)), strings.strings(),
+                                   [](uint32_t id) { return static_cast<Entity>(id); });
+    jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
+    ASSERT_FALSE(r15.failed()) << r15.error();
+    const SceneSettings defaults;
+    EXPECT_EQ(older.scene->scene->getPhysics2DSubSteps(), defaults.physics2DSubSteps);
+    EXPECT_TRUE(older.scene->scene->getPhysics2DWorldSettings() == defaults.physics2DWorld);
+    EXPECT_TRUE(older.scene->scene->getPhysics3DWorldSettings() == defaults.physics3DWorld);
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
@@ -723,11 +844,12 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
 }
 
-// What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them)
+// What a 1.4 editor cooked loads: the file as its writer laid it out (1.6's without the Water Wakes
+// and physics world values that end the settings record, the record's length and the string table
+// offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.6's without its Water Wakes and physics world values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
@@ -735,7 +857,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     scene->setWaterWakeArea(32.0f);
     const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
     auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
-    const size_t cut = waterWakeTailBytes(*scene);
+    const size_t cut = waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene);
     const uint32_t settingsLength = le32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
 

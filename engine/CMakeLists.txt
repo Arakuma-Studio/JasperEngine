@@ -1766,15 +1766,19 @@ set(JASPERENGINE_SRCS
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
     core/registry/SortingLayers.cpp
+    core/physics/AttachedColliders.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/PhysicsQueries2D.cpp
+    core/physics/PhysicsQueries3D.cpp
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/physics/WorldSettings.cpp
     core/render/AtmosphereMath.cpp
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
@@ -1837,6 +1841,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/PhysicsQueriesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
@@ -1901,6 +1906,13 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
+    # S96 vehicles: their 3D parts are under JASPERENGINE_PHYSICS_3D inside the files
+    core/subsystem/VehicleSystem.cpp
+    core/physics/WheelColliderController.cpp
+    core/object/physics/WheelCollider.cpp
+    core/object/physics/VehicleDrivetrain.cpp
+    core/script/binding/VehicleClassesLua.cpp
+    core/subsystem/PhysicsSystemWorldSettings.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
     core/subsystem/RenderSystemFoliage.cpp

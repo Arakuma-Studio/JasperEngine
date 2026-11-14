@@ -1195,6 +1195,9 @@ Entities are plain integers (`0` = none).
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
+| `physics2DPointsPerMeter`, `physics2DMaxRotation` (number, rw) | canvas points in a 2D metre (64; a change rebuilds the bodies where they are) and a 2D body's rotation per fixed step at most (45 degrees); `jasper://docs/physics` "World settings" |
+| `physics2DContactHertz`, `physics2DContactDampingRatio`, `physics2DContactPushSpeed`, `physics2DJointHertz`, `physics2DJointDampingRatio`, `physics2DBounceThreshold`, `physics2DMaxLinearSpeed` (number, rw); `physics2DWarmStarting`, `physics2DContinuous`, `physics2DSleep` (bool, rw) | the 2D solver's tuning (Box2D's defaults) |
+| `physics3DVelocityIterations`, `physics3DPositionIterations`, `physics3DCollisionSteps` (integer, rw); `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (number, rw) | the 3D solver's settings (Jolt's defaults); out of range values are clamped |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
@@ -1207,7 +1210,7 @@ Entities are plain integers (`0` = none).
 | `getCanvasScaler()` | the scene's `CanvasScaler` (UI scale, `jasper://docs/ui`): rw `uiScaleMode` (`UIScaleMode.FollowGameCanvas`/`ConstantPixelSize`/`ScaleWithScreenSize`/`ConstantPhysicalSize`), `scaleFactor`, `referenceResolution` (Vector2), `screenMatchMode` (`ScreenMatchMode.MatchWidthOrHeight`/`Expand`/`Shrink`), `matchWidthOrHeight` (0 width..1 height), `physicalUnit` (`PhysicalUnit.Centimeters`/`Millimeters`/`Inches`/`Points`/`Picas`), `fallbackScreenDPI`, `useProjectDefault`; ro `canvasSize` (Vector2, UI units now), `appliedScaleFactor`. Reads give what applies; setting a field of a scene on the project default overrides from it. Applies from the next frame |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw, as `scene.physics2DPointsPerMeter`),
 `subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`,
 `removeSubscriptionsByTag(substring)` (the scene's physics event callbacks whose tag holds it),
@@ -1312,21 +1315,57 @@ time (default: the mixer's update mode, scaled). `AudioMixerGroup`: `name`, `id`
 |---|---|
 | `LayerMask.nameToLayer(name)`, `LayerMask.layerToName(n)` | layers 0..31 from Project Settings |
 | `LayerMask.getMask("A", "B")` or `LayerMask.getMask({"A", "B"})` | -> integer mask |
-| `Physics2D.raycast(scene, origin, direction, maxDistance [, mask])` | Vector2 origin/dir -> `RayReturn` |
-| `Physics2D.raycast(scene, ray [, mask])` | `Ray` (Vector3) form |
+| `Physics2D.raycast(scene, origin, direction, maxDistance [, mask [, options]])` | Vector2 origin/dir -> `RayReturn` |
+| `Physics2D.raycast(scene, ray [, mask [, options]])` | `Ray` (Vector3) form |
 | `Physics2D.raycastAll(...)` | same args -> table of `RayReturn` |
-| `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
+| `Physics.raycast(scene, origin, direction, maxDistance [, mask [, options]])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir; a collider around the origin is no hit unless `options.hitFromInside` |
+| shape casts, overlaps, checks, `closestPoint`, `rigidbody:sweepTest`, `rigidbody2d:cast` | 2.10.3 |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
 | `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
-`RayReturn` (ro): `hit` (bool), `distance`, `point` (Vector3), `normal` (Vector3), `body`
-(Entity), `colliderIndex`.
+`RayReturn` (ro, Unity's `RaycastHit`): `hit` (bool), `distance`, `point` (Vector3), `normal`
+(Vector3), `body` (Entity), `colliderIndex`, `collider` (`Collider` / `Collider2D`, nil without a
+body), `gameObject`, `rigidbody` (`Rigidbody` / `Rigidbody2D`, nil for a CharacterController),
+`transform` (the GameObject).
 
 ```lua
 local hit = Physics2D.raycast(self.scene, Vector2(x, y), Vector2(0, -1), 100)
 if hit.hit then local e = hit.body end
+```
+
+### 2.10.3 Shape casts and overlaps (Physics, Physics2D)
+
+Every query ends with `[, layerMask [, options]]`; options: `ignore` (GameObjects, bodies or
+entities), `triggers` (`QueryTriggerInteraction.USE_GLOBAL`, `IGNORE`, `COLLIDE`), 3D
+`hitFromInside`, `hitBackfaces`, 2D `startInColliders`, `maxHits` (256). Casts return the nearest
+`RayReturn` or nil; `...All` a table, nearest first, one hit per collider. Bad sizes, distances
+or directions raise an error naming the argument.
+
+| Name | Notes |
+|---|---|
+| `Physics.sphereCast(scene, origin, radius, direction, maxDistance)`, `sphereCastAll` | a collider the sphere starts in is skipped unless `hitFromInside` (then distance 0, normal -direction) |
+| `Physics.boxCast(scene, center, halfExtents, direction, orientation, maxDistance)`, `boxCastAll` | `orientation` a Quaternion (nil: identity) |
+| `Physics.capsuleCast(scene, point1, point2, radius, direction, maxDistance)`, `capsuleCastAll` | the centres of the capsule's two spheres |
+| `Physics.overlapSphere(scene, center, radius)`, `overlapBox(scene, center, halfExtents [, orientation])`, `overlapCapsule(scene, point1, point2, radius)` | -> table of `Collider`, each once |
+| `Physics.checkSphere`, `checkBox`, `checkCapsule` | the overlap's arguments -> boolean |
+| `Physics.closestPoint(scene, point, collider)` | -> Vector3 on a convex `Collider`, `point` when inside; error for a mesh |
+| `Physics.queriesHitTriggers` (true), `Physics.queriesHitBackfaces` (false) | rw statics: the defaults of `triggers` and `hitBackfaces` |
+| `rigidbody:sweepTest(direction, maxDistance [, options])`, `sweepTestAll` | the body's solid colliders moved; never hits the body |
+| `Physics2D.circleCast(scene, origin, radius, direction, distance)`, `circleCastAll` | points |
+| `Physics2D.boxCast(scene, origin, size, angle, direction, distance)`, `boxCastAll` | `size` the whole box |
+| `Physics2D.capsuleCast(scene, origin, size, capsuleDirection, angle, direction, distance)`, `capsuleCastAll` | `CapsuleDirection2D.VERTICAL` / `HORIZONTAL` |
+| `Physics2D.overlapCircle(scene, point, radius)`, `overlapBox(scene, point, size, angle)`, `overlapCapsule(scene, point, size, capsuleDirection, angle)`, `overlapPoint(scene, point)`, `overlapArea(scene, pointA, pointB)` | -> the first `Collider2D` (lowest GameObject, then index) or nil; `...All` -> table |
+| `Physics2D.queriesHitTriggers` (true), `Physics2D.queriesStartInColliders` (false) | rw statics; Unity's start-in-colliders default is true |
+| `rigidbody2d:cast(direction, distance [, options])`, `castAll` | the body's shapes moved; never hits the body |
+
+```lua
+-- grounded: a sphere just below the feet, never the player's own body
+local feet = self.gameObject.position - Vector3(0, 0.9, 0)
+local grounded = Physics.checkSphere(self.scene, feet, 0.2, Physics.DEFAULT_RAYCAST_LAYERS, {ignore = {self.gameObject}})
+local hit = Physics.sphereCast(self.scene, self.gameObject.position, 0.3, Vector3(0, 0, 1), 10)
+if hit then Log.print(hit.gameObject.name .. " at " .. hit.distance) end
 ```
 
 ### 2.10.1 Water (static)
@@ -1543,6 +1582,8 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
 | `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `maximumFixedStepsPerFrame` | rw | fixed steps a frame may run; 0 (default) automatic: as many as `maximumDeltaTime` lets through, none dropped. A lower cap drops the rest of a long frame (one warning per Play) |
+| `droppedFixedSteps` | ro | fixed steps the cap dropped since Play (or the game) started |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
 | `smoothDeltaTime` | ro | exponential average of `deltaTime` |
 | `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
@@ -2738,11 +2779,16 @@ one clip at once.
 |---|---|---|
 | `position` | rw `Vector2` | points (pixels); setting teleports and wakes the body |
 | `angle` | rw number | default units (degrees) |
+| `setPosition(v2 [, interpolate])`, `setAngle(a [, interpolate])` | methods | teleports; `interpolate` true draws it sliding from the pose before the last step (default false: a jump, as the properties) |
+| `movePosition(v2)`, `moveRotation(angle)`, `movePositionAndRotation(v2, angle)` | methods | Unity `MovePosition` / `MoveRotation` / `Move`: there at the end of the next fixed step, drawn interpolated; kinematic: by velocity (pushes, stops there), dynamic / static: placed before the step, velocity kept |
+| `attachToParentBody` | rw bool | its colliders join the nearest parent's Rigidbody 2D (compound body); no body of its own |
+| `attachedRigidbody` | ro `Rigidbody2D` or nil | the body its colliders joined |
 | `linearVelocity` | rw `Vector2` | points per second |
 | `angularVelocity` | rw | |
 | `linearDamping`, `angularDamping`, `gravityScale` | rw | saved fields too (Unity drag, gravity scale) |
 | `type` | rw | `BodyType.STATIC`, `BodyType.KINEMATIC`, `BodyType.DYNAMIC` |
 | `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | `bullet` = `collisionDetection` CONTINUOUS, `enableSleep` false = NEVER_SLEEP |
+| `allowFastRotation` | rw bool | not capped by `scene.physics2DMaxRotation` (wheels) |
 | `collisionDetection` | rw | `CollisionDetectionMode2D.DISCRETE` / `CONTINUOUS` (never tunnels) |
 | `sleepingMode` | rw | `RigidbodySleepMode2D.NEVER_SLEEP` / `START_AWAKE` / `START_ASLEEP` |
 | `mass` | rw number | kg; setting it turns `useAutoMass` off (also `getMass()`) |
@@ -2786,8 +2832,12 @@ Editing one changes every collider using it at the next step.
 
 ### 4.13.1 Joint2D (EntityHandle) - 2D joints
 
-`go:getJoint2D()` (nil when none), `Joint2D(scene, entity)`, `Joint2D(scene)` (a new GameObject
-with a joint). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
+`go:getJoint2D()` (nil when none, the joint on `go` itself), `go:addJoint2D(Joint2DType.WHEEL)` (a
+child GameObject "Joint 2D" with bodyA = `go` and Unity's defaults; an error when `go` has no
+Rigidbody 2D), `go:getJoints2D()` (every joint whose bodyA is `go`), `Joint2D(scene, entity)`,
+`Joint2D(scene)` (a new GameObject "Joint 2D" owned by the handle until its bodyA is set: then it
+goes under bodyA and lives as long as that GameObject; one never given a bodyA goes with its
+handle). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
 Unity mapping: WheelJoint2D = `Joint2DType.WHEEL`, HingeJoint2D = `REVOLUTE`, SliderJoint2D =
 `PRISMATIC`, DistanceJoint2D = `DISTANCE` (`rope` = maxDistanceOnly), SpringJoint2D = `DISTANCE`
 with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoint2D = `MOUSE`.
@@ -2809,6 +2859,8 @@ with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoi
 | `linearOffset`, `angularOffset`, `autoOffset`, `maxForce`, `maxTorque`, `correctionFactor` | rw | motor joint (setting an offset turns `autoOffset` off); mouse `maxForce` (0: 1000 x mass) |
 | `target` | rw `Vector2` | mouse joint world point |
 | `enabled` | rw bool | a disabled joint leaves the simulation (a broken DISABLE joint stays so until enabled) |
+| `gameObject` | ro GameObject | the joint's GameObject |
+| `destroy([delay])` | method | `GameObject.destroy` of the joint's GameObject (after `delay` seconds) |
 | `reactionForce` (Vector2), `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `jointLinearSpeed`, `motorTorque`, `motorForce`, `currentLength`, `limitState` (`JointLimitState2D`), `referenceAngle`, `broken` | ro | the live joint (0 without one) |
 | `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, rope])`, `setRevoluteJoint(a, b, anchor)`, `setPrismaticJoint(a, b, anchor, axis)`, `setMouseJoint(a, b, target)`, `setWheelJoint(a, b, anchor, axis)`, `setWeldJoint(a, b, anchor)`, `setMotorJoint(a, b)` | methods | bodies are entities; build a joint as before local anchors: WORLD anchors and Box2D's defaults for every other field (set properties after) |
 
@@ -2859,6 +2911,10 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 |---|---|---|
 | `position` | rw `Vector3` | teleport |
 | `rotation` | rw `Quaternion` | |
+| `setPosition(p [, interpolate])`, `setRotation(q [, interpolate])` | methods | teleports; `interpolate` true draws it sliding from the pose before the last step (default false: a jump, as the properties) |
+| `movePosition(p)`, `moveRotation(q)`, `movePositionAndRotation(p, q)` | methods | Unity `MovePosition` / `MoveRotation` / `Move`: there at the end of the next fixed step, drawn interpolated; kinematic: by velocity (pushes and carries, stops there; from `onUpdate` over the frame's steps), dynamic / static: placed before the step, velocity kept; the last call before a step wins |
+| `attachToParentBody` | rw bool | its colliders join the nearest parent's Rigidbody (compound body, `jasper://docs/physics`); no body of its own |
+| `attachedRigidbody` | ro `Rigidbody` or nil | the body its colliders joined |
 | `linearVelocity`, `angularVelocity` | rw `Vector3` | also `setLinearVelocityClamped(v)`, `setAngularVelocityClamped(v)` |
 | `mass` | rw property | kg; setting it turns `automaticMass` off (2D uses `getMass()` method) |
 | `automaticMass`, `centerOfMass`, `automaticCenterOfMass`, `inertiaTensor`, `inertiaTensorRotation`, `automaticInertiaTensor` | rw | setting a value turns its automatic off; `resetCenterOfMass()`, `resetInertiaTensor()` |
@@ -2876,7 +2932,7 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `activate()`, `deactivate()` | methods | |
 | `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload; any number of colliders, vertices and indices |
 | `getNumColliders()` / `getColliderCount()`, `getColliderType(i)`, `removeCollider(i)` (later indices shift), `removeAllColliders()`, `load()`, `getAttachedObject()` | methods | |
-| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts |
+| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts; a capsule's half height 0 is a sphere (negative: an error) |
 | `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
 | `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
@@ -2900,8 +2956,11 @@ normal before the solver), `getWorldSpaceNormal()`, `getPenetrationDepth()`, `ge
 
 Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
-**Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
-GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
+**Joint3D** (EntityHandle; `go:getJoint3D()`, `go:addJoint3D(Joint3DType.HINGE)` (a child "Joint 3D"
+with bodyA = `go`, Unity's defaults; an error without a Rigidbody), `go:getJoints3D()` (every joint
+whose bodyA is `go`), `Joint3D(scene, entity)`, `Joint3D(scene)` a new GameObject "Joint 3D" that
+goes under its bodyA once that is set, as `Joint2D(scene)`): ro `gameObject`, method
+`destroy([delay])`, rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
 Entity or GameObject, nil = the world), `anchorSpace` (`JointAnchorSpace.LOCAL` for new joints),
 `anchor`, `anchorB` (alias `connectedAnchor`), `autoAnchors` (alias
 `autoConfigureConnectedAnchor`), `anchorA`, `axis`, `normal` (alias `secondaryAxis`), `twistAxis`,
@@ -2939,7 +2998,20 @@ kinematic and follow the animation; true: dynamic, the Animation Player paused),
 `Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point; after `simulated = true`
 in the same frame too), `applyForce(force)` (every part by its mass); event
 `onBeforeAnimatedRestore` (`RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`, fn(entity)
-before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`).
+before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`), or at run
+time by `Ragdoll.create(root [, options])`: the wizard on a live character, every part made before
+the next step; `options` `bones` (`{pelvis = go or name below root, leftHips, leftKnee, leftFoot,
+rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow, middleSpine, head}`, the
+others guessed from the humanoid map or bone names), `totalMass` (20), `start` (`"simulated"`
+default, `"animated"`), `selfCollision` (true), `flipForward` (false); returns the Ragdoll, or an
+error naming the bones it could not find.
+
+```lua
+function Enemy:die(hitPoint, push)
+    local ragdoll = Ragdoll.create(self.object, {totalMass = 70})
+    ragdoll:applyImpulse(push, hitPoint)
+end
+```
 
 #### 4.14.1 CharacterController (EntityHandle)
 
@@ -2959,6 +3031,60 @@ or `CharacterController(scene, entity)`. World units (metres).
 
 Script hook `function MyScript:onControllerColliderHit(hit)`: `hit.controller`, `hit.entity`,
 `hit.point`, `hit.normal`, `hit.moveDirection`, `hit.moveLength`.
+
+#### 4.14.2 WheelCollider, VehicleDrivetrain (EntityHandle)
+
+`go:getWheelCollider()` / `go:getVehicleDrivetrain()` (add one with defaults if missing),
+`go:removeWheelCollider()`, `go:removeVehicleDrivetrain()`, or `WheelCollider(scene, entity)` /
+`VehicleDrivetrain(scene, entity)`. Metres, kg, N, N m; angles in the engine's angle unit. Inputs
+reach the vehicle at the next fixed step; read-outs are the last step's ([physics.md](physics.md),
+"Vehicles").
+
+| WheelCollider member | Kind | Notes |
+|---|---|---|
+| `motorTorque`, `brakeTorque`, `steerAngle` | rw number | the inputs (steer positive right); with a drivetrain they read what it applied |
+| `radius`, `mass`, `wheelDampingRate`, `suspensionDistance`, `forceAppPointDistance` | rw number | Unity defaults 0.5, 20, 0.25, 0.3, 0 |
+| `center` | rw `Vector3` | in the GameObject's space |
+| `suspensionSpring` | rw `JointSpring` | a copy: `local s = wc.suspensionSpring; s.spring = 50000; wc.suspensionSpring = s` |
+| `forwardFriction`, `sidewaysFriction` | rw `WheelFrictionCurve` | copies, as `suspensionSpring` |
+| `maxSteerAngle`, `maxBrakeTorque`, `maxHandBrakeTorque` | rw number | a drivetrain's limits (70, 1500, 4000) |
+| `driveTransform`, `enabled` | rw bool | `driveTransform`: the GameObject follows `getWorldPose()` |
+| `isGrounded`, `rpm`, `sprungMass`, `suspensionCompression`, `attachedRigidbody`, `valid` | ro | `attachedRigidbody`: the body's GameObject, nil while no vehicle has it |
+| `getGroundHit()` | method | a `WheelHit` (`point`, `normal`, `forwardDir`, `sidewaysDir`, `force`, `forwardSlip`, `sidewaysSlip`, `collider`) or nil |
+| `getWorldPose()` | method | returns position, rotation of the drawn wheel |
+
+`JointSpring(spring, damper, targetPosition)` and
+`WheelFrictionCurve(extremumSlip, extremumValue, asymptoteSlip, asymptoteValue, stiffness)` make
+the values (no arguments: Unity's defaults).
+
+| VehicleDrivetrain member | Kind | Notes |
+|---|---|---|
+| `throttle`, `steer`, `brake`, `handBrake` | rw number | -1..1, -1..1 (positive right), 0..1, 0..1 |
+| `setGear(n)` | method | the MANUAL gear (-1 reverse, 0 neutral) |
+| `rpm`, `gear`, `speed` | ro | `speed`: m/s along the body's forward |
+| `maxTorque`, `minRPM`, `maxRPM`, `shiftUpRPM`, `shiftDownRPM`, `clutchStrength`, `maxPitchRollAngle` | rw number | |
+| `transmission` | rw `VehicleTransmissionMode` | `AUTO` or `MANUAL` |
+| `enabled`, `valid` | rw / ro bool | |
+
+```lua
+-- rear-wheel drive on the arrow keys
+local Car = {}
+
+function Car:init()
+    self.rear = { GameObject.find("Wheel Rear Left"):getWheelCollider(), GameObject.find("Wheel Rear Right"):getWheelCollider() }
+    self.front = { GameObject.find("Wheel Front Left"):getWheelCollider(), GameObject.find("Wheel Front Right"):getWheelCollider() }
+    RegisterEngineEvent(self, "onFixedUpdate")
+end
+
+function Car:onFixedUpdate()
+    local throttle = (Input.isKeyPressed(Input.KEY_UP) and 1 or 0) - (Input.isKeyPressed(Input.KEY_DOWN) and 1 or 0)
+    for _, wheel in ipairs(self.rear) do wheel.motorTorque = 400 * throttle end
+    local steer = (Input.isKeyPressed(Input.KEY_RIGHT) and 1 or 0) - (Input.isKeyPressed(Input.KEY_LEFT) and 1 or 0)
+    for _, wheel in ipairs(self.front) do wheel.steerAngle = 25 * steer end
+end
+
+return Car
+```
 
 ### 4.15 Actions and Tweens
 
@@ -3637,7 +3763,8 @@ Rigidbody wrappers by index.
    `onFixedUpdate`; the fixed step is `Engine.updateTime`, `Time.fixedDeltaTime`, and
    `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
-   velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
+   velocities read/written through Rigidbody2D are in points (`scene.physics2DPointsPerMeter`,
+   default 64: set it in the scene, not from a script at start).
 10. **Pass every argument the reference does not mark optional.** A missing trailing `bool`
     reads as `false` unless the reference gives it a default (`[, wake]` of the Rigidbody2D forces
     and `[, newRun]` default to true: `applyForceToCenter(f)` wakes the body); a missing
@@ -3654,74 +3781,82 @@ Rigidbody wrappers by index.
 14. **Do not assign Engine events** (`Engine.onUpdate = function() end`): it bypasses the
     per-script subscription (not removed when the script is destroyed, survives play
     sessions). Always use `RegisterEngineEvent`.
-15. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` / `getKey` report the held
+15. **A 3D ray from inside a collider does not hit it** (Unity): `Physics.raycast` from a body's
+    centre skips that body's collider. Pass `{hitFromInside = true}` for the old result (the
+    collider at distance 0), or `{ignore = {self.gameObject}}` to skip a body wherever the ray
+    starts. 2D rays never hit from inside unless `startInColliders`.
+16. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` / `getKey` report the held
     state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
     (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
     (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
-16. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
+17. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
     come only to the GameObjects involved; the global events (`beginContact2D`,
     `onContactAdded3D`...) fire for every pair of the scene (compare `bodyA.entity` /
     `bodyB.entity` with `self.entity`) and 2D ones need the collider's event flags. A filter that
     was a Lua `shouldCollide3D` is `Physics.ignoreCollision(a, b)` (or layers) now.
-17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
+18. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
-18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
+19. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
     `self:getScript(...)`), `getScriptInChildren/InParent`, or across scenes
     `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
     (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
     also returns the copy's script.
-19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
+20. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
     `init`; use `Engine.preferredCanvasWidth/Height` there.
-20. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
+21. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
     `string.format` for other layouts.
-21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
+22. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+23. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
     also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
     for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
     automatically.
-23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+24. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+25. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
-25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+26. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+27. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
-27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+28. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
     (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
     `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
     `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
-28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+29. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
-29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+30. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
     equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
     for a persistent manager, or keep shared state in a `require`d module table.
-30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+31. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
     name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
-31. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+32. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
     and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
     coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
     (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
     metamethod or another C callback raise too ("waits cannot cross a C function").
-32. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+33. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
     `timeScale = 0` but not while the app is in the background or the editor's Play is paused
     (unlike Unity's wall clock).
-33. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+34. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
     GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
     on reactivation: start them again (in `onEnable`, or where you reactivate).
-34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+35. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
-35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+36. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
+36. **No fixed step is dropped by default.** A long frame (up to `Time.maximumDeltaTime`) runs all
+    its fixed steps (`Time.maximumFixedStepsPerFrame` 0, automatic); the old cap of 100 steps a
+    frame is gone. A game with a very small `Time.fixedDeltaTime` that relied on it sets
+    `Time.maximumFixedStepsPerFrame`, and reads `Time.droppedFixedSteps`.
 
 ## 7. Hot reload and editor scripts
 

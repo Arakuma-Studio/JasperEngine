@@ -121,6 +121,7 @@
 #include <map>
 #include <set>
 #include <functional>
+#include <limits>
 #include <optional>
 
 using namespace jasperengine;
@@ -193,6 +194,9 @@ Engine::FrameStats Engine::currentFrameStats;
 // and physics never receive a giant step that teleports objects or triggers the
 // spiral of death.
 double Engine::maxDeltatime = 0.25;
+int Engine::maxFixedStepsPerFrame = 0;
+uint64_t Engine::droppedFixedSteps = 0;
+bool Engine::reportedDroppedFixedSteps = false;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
 
@@ -1235,6 +1239,38 @@ void Engine::setMaxDeltatime(float seconds){
         return;
     }
     maxDeltatime = seconds;
+}
+
+void Engine::setMaxFixedStepsPerFrame(int steps){
+    maxFixedStepsPerFrame = std::max(0, steps);
+}
+
+int Engine::getMaxFixedStepsPerFrame(){
+    return maxFixedStepsPerFrame;
+}
+
+int Engine::getFixedStepCap(){
+    if (maxFixedStepsPerFrame > 0){
+        return maxFixedStepsPerFrame;
+    }
+    if (!(updateTime > 0.0)){
+        return 1;
+    }
+    // a frame's game time is at most this (runFrame: the fixed frame delta replaces the measured
+    // one, maxDeltatime caps that, then the time scale applies); +1 for the part of a step the
+    // last frame left, and the whole steps it left (a fixed step made shorter since)
+    const double frameSeconds = (fixedDeltatime > 0.0 ? fixedDeltatime : maxDeltatime) * std::max(1.0, timeScale);
+    const double steps = std::ceil(frameSeconds / updateTime) + 1.0 + std::floor(updateTimeCount / updateTime);
+    return (int)std::clamp(steps, 1.0, (double)std::numeric_limits<int>::max());
+}
+
+uint64_t Engine::getDroppedFixedSteps(){
+    return droppedFixedSteps;
+}
+
+void Engine::resetDroppedFixedSteps(){
+    droppedFixedSteps = 0;
+    reportedDroppedFixedSteps = false;
 }
 
 float Engine::getUnscaledDeltatime(){
@@ -2418,8 +2454,6 @@ void Engine::systemUpdate(){
 }
 
 void Engine::runFrame(bool draw){
-    const int MAX_UPDATES_PER_FRAME = 100;
-
     // a game's frame starts here; the editor marks its own (FrameTimes::setExternalFrames)
     const bool ownFrame = !FrameTimes::hasExternalFrames();
     if (ownFrame){
@@ -2625,15 +2659,18 @@ void Engine::runFrame(bool draw){
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
             JE_PROFILE_SCOPE("FixedUpdate");
+            // S96 WP-E: Time.maximumFixedStepsPerFrame, automatic by default (with what earlier
+            // frames left, before this frame's time is added)
+            const int maxFixedSteps = getFixedStepCap();
             updateTimeCount += frameDelta;
 
             int fixedLoops = 0;
-            while (updateTimeCount >= updateTime && fixedLoops < MAX_UPDATES_PER_FRAME) {
+            while (updateTimeCount >= updateTime && fixedLoops < maxFixedSteps) {
                 // edges read in the step are the fixed window's: each is seen by one step
                 Input::beginFixedStep();
                 // counted like this loop, so its last step sees 1
                 fixedStepsLeft = 0;
-                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < MAX_UPDATES_PER_FRAME; remaining -= updateTime) {
+                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < maxFixedSteps; remaining -= updateTime) {
                     fixedStepsLeft++;
                 }
 
@@ -2659,8 +2696,16 @@ void Engine::runFrame(bool draw){
 
             fixedStepsLeft = 1;
 
-            if (fixedLoops >= MAX_UPDATES_PER_FRAME) {
-                Log::warn("Dropping fixed-update steps - more than %i per frame", MAX_UPDATES_PER_FRAME);
+            if (fixedLoops >= maxFixedSteps && updateTimeCount >= updateTime) {
+                const uint64_t dropped = (uint64_t)std::floor(updateTimeCount / updateTime);
+                droppedFixedSteps += dropped;
+                if (!reportedDroppedFixedSteps) {
+                    reportedDroppedFixedSteps = true;
+                    Log::warn("Dropped %llu fixed step(s): a frame needed more than %d (Time.maximumFixedStepsPerFrame, "
+                              "0 = automatic); a lower Time.maximumDeltaTime (%.3f s) shortens such frames. Logged once, "
+                              "Time.droppedFixedSteps counts them",
+                              (unsigned long long)dropped, maxFixedSteps, maxDeltatime);
+                }
                 // Discard remaining backlog so we don't fall further behind next frame.
                 updateTimeCount = 0.0;
             }
@@ -3167,6 +3212,9 @@ void Engine::resetApplicationState(){
     dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
+    // the step cap a script set, and the drops of the last Play (S96 WP-E)
+    maxFixedStepsPerFrame = 0;
+    resetDroppedFixedSteps();
 }
 
 bool Engine::isFocused(){

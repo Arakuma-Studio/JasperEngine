@@ -112,7 +112,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1102);
     scene->recreateEntity(1103);
     scene->recreateEntity(1104);
-    scene->setLastEntity(1104);
+    scene->recreateEntity(1105);
+    scene->recreateEntity(1106);
+    scene->setLastEntity(1106);
 
     {
         // Entity 1001 (Transform)
@@ -3515,6 +3517,88 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         titleArt.animationUnscaledTime = false;
         titleArt.driveAnimation = "";
         scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
+    }
+
+    {
+        // Entity 1105 (WheelColliderComponent)
+        scene->setEntityName(1105, "WheelColliderComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(104.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1105, transform);
+
+#ifdef JASPERENGINE_PHYSICS_3D
+        WheelColliderComponent wheelCollider;
+        wheelCollider.enabled = false;
+        wheelCollider.mass = 25.000000f;
+        wheelCollider.radius = 0.350000f;
+        wheelCollider.wheelDampingRate = 0.500000f;
+        wheelCollider.suspensionDistance = 0.400000f;
+        wheelCollider.forceAppPointDistance = 0.100000f;
+        wheelCollider.center = Vector3(0.000000f, 0.100000f, 0.000000f);
+        wheelCollider.maxSteerAngle = 35.000000f;
+        wheelCollider.maxBrakeTorque = 2000.000000f;
+        wheelCollider.maxHandBrakeTorque = 3000.000000f;
+        wheelCollider.driveTransform = false;
+        wheelCollider.suspensionSpring = JointSpring3D{50000.000000f, 4000.000000f, 0.400000f};
+        wheelCollider.forwardFriction = WheelFrictionCurve{0.300000f, 1.200000f, 0.900000f, 0.600000f, 1.100000f};
+        wheelCollider.sidewaysFriction = WheelFrictionCurve{0.250000f, 1.100000f, 0.600000f, 0.700000f, 1.300000f};
+        scene->addComponent<WheelColliderComponent>(1105, wheelCollider);
+#endif // JASPERENGINE_PHYSICS_3D
+    }
+
+    {
+        // Entity 1106 (VehicleDrivetrainComponent)
+        scene->setEntityName(1106, "VehicleDrivetrainComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(105.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1106, transform);
+
+#ifdef JASPERENGINE_PHYSICS_3D
+        VehicleDrivetrainComponent vehicleDrivetrain;
+        vehicleDrivetrain.enabled = false;
+        vehicleDrivetrain.maxTorque = 300.000000f;
+        vehicleDrivetrain.minRPM = 900.000000f;
+        vehicleDrivetrain.maxRPM = 6500.000000f;
+        vehicleDrivetrain.torqueCurve = Curve({CurveKey{0.0f, 0.8f, 0.30303028f, 0.30303028f, 0}, CurveKey{0.66f, 1.0f, 0.30303028f, -0.5882353f, 0}, CurveKey{1.0f, 0.8f, -0.5882353f, -0.5882353f, 0}});
+        vehicleDrivetrain.engineInertia = 0.500000f;
+        vehicleDrivetrain.engineDamping = 0.200000f;
+        vehicleDrivetrain.transmission = VehicleTransmissionMode::MANUAL;
+        vehicleDrivetrain.gearRatios.clear();
+        vehicleDrivetrain.gearRatios.push_back(3.000000f);
+        vehicleDrivetrain.gearRatios.push_back(2.000000f);
+        vehicleDrivetrain.gearRatios.push_back(1.400000f);
+        vehicleDrivetrain.reverseGearRatios.clear();
+        vehicleDrivetrain.reverseGearRatios.push_back(-2.500000f);
+        vehicleDrivetrain.switchTime = 0.500000f;
+        vehicleDrivetrain.clutchReleaseTime = 0.300000f;
+        vehicleDrivetrain.switchLatency = 0.500000f;
+        vehicleDrivetrain.shiftUpRPM = 5000.000000f;
+        vehicleDrivetrain.shiftDownRPM = 2500.000000f;
+        vehicleDrivetrain.clutchStrength = 8.000000f;
+        vehicleDrivetrain.differentialLimitedSlipRatio = 1.400000f;
+        vehicleDrivetrain.maxPitchRollAngle = 60.000000f;
+        scene->addComponent<VehicleDrivetrainComponent>(1106, vehicleDrivetrain);
+#endif // JASPERENGINE_PHYSICS_3D
     }
 
     // Default Camera 1

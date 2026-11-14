@@ -108,6 +108,8 @@ namespace jasperengine{
     struct VideoPlayerComponent;
     struct VolumetricCloudsComponent;
     struct VoxelVolumeComponent;
+    struct VehicleDrivetrainComponent;   // S96
+    struct WheelColliderComponent;       // S96
     struct WaterExcluderComponent;
     struct WaterVolumeComponent;
     struct WaterWakeComponent;

@@ -21,7 +21,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"Plane", 0xdc3127fcu},
         {"AABB", 0xd4223d35u},
         {"OBB", 0xbf5e79a2u},
-        {"RayReturn", 0x6da341d2u},
+        {"RayReturn", 0xa1f1ddc8u},
         {"Ray", 0x3727652du},
         {"Angle", 0x213e3b03u},
         {"Base64", 0x811c9dc5u},
@@ -54,12 +54,14 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"OverallBuildProgress", 0x2336bf6fu},
         {"PhysicsMaterial", 0xbfd7eb57u},
         {"ControllerStateInfo", 0x4c569349u},
-        {"Physics2D", 0x4a1ccb1bu},
+        {"Physics2D", 0x7c0bc921u},
         {"PhysicsSystem", 0x20f6cb78u},
-        {"Rigidbody", 0x1e9ac738u},
-        {"Rigidbody2D", 0x6b62a5d7u},
-        {"Joint2D", 0x752b4ab5u},
-        {"Joint3D", 0x9e244509u},
+        // S96: movePosition / moveRotation, attachToParentBody / attachedRigidbody, a joint's
+        // gameObject and destroy (bodies and joints draw nothing)
+        {"Rigidbody", 0x0fc8e85bu},
+        {"Rigidbody2D", 0x5cac3c70u},
+        {"Joint2D", 0x85abe0c4u},
+        {"Joint3D", 0x8c95c8b0u},
         {"Contact2D", 0x9896e5eau},
         {"Contact3D", 0x1ed07a59u},
         {"Manifold2D", 0x44d54ffau},
@@ -67,6 +69,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"CharacterController", 0x0d4ce962u},
         {"CharacterController2D", 0x1552b032u},
         {"ControllerColliderHit", 0x8de113a0u},
+        // S96: what the queries return (a collider's GameObject, body, index, tag and trigger flag)
+        {"Collider", 0x0940b3f2u},
+        {"Collider2D", 0x0940b3f2u},
         {"Buoyancy", 0x4d7d14b5u},
         {"WaterVolume", 0x1399452eu},
         {"Water", 0x91f19d94u},
@@ -136,7 +141,11 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "ALL_LAYERS", "DEFAULT_RAYCAST_LAYERS", "IGNORE_RAYCAST_LAYER", "getIgnoreCollision",
             "getIgnoreLayerCollision", "getLayerCollisionMask", "ignoreCollision",
             "ignoreLayerCollision", "raycast", "raycastAll", "resetLayerCollisionMatrix",
-            "setLayerCollisionMask"
+            "setLayerCollisionMask",
+            // S96 shape queries
+            "boxCast", "boxCastAll", "capsuleCast", "capsuleCastAll", "checkBox", "checkCapsule",
+            "checkSphere", "closestPoint", "overlapBox", "overlapCapsule", "overlapSphere",
+            "queriesHitBackfaces", "queriesHitTriggers", "sphereCast", "sphereCastAll"
         }},
         // scene layers and loading, the canvas and input routing, time, threads, events (not the
         // texture or atmosphere quality setters, nor rendering into a framebuffer; the foliage distance only

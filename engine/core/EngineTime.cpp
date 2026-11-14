@@ -68,6 +68,18 @@ void Time::setMaximumDeltaTime(float seconds){
     Engine::setMaxDeltatime(seconds);
 }
 
+int Time::getMaximumFixedStepsPerFrame(){
+    return Engine::getMaxFixedStepsPerFrame();
+}
+
+void Time::setMaximumFixedStepsPerFrame(int steps){
+    Engine::setMaxFixedStepsPerFrame(steps);
+}
+
+uint64_t Time::getDroppedFixedSteps(){
+    return Engine::getDroppedFixedSteps();
+}
+
 double Time::getCaptureDeltaTime(){
     return Engine::getFixedDeltatime();
 }

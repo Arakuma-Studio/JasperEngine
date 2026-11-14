@@ -6,7 +6,8 @@
 // engine code share it): 11 bodies and 10 swing-twist joints with Unity's table, masses summing to
 // the total; animated, the kinematic parts follow their bones; simulated, it falls and comes to
 // rest on a floor within its joint limits, the bones (what skinning reads) at the bodies' poses;
-// animated again, kinematic and the Animation Player back on.
+// animated again, kinematic and the Animation Player back on. At run time (S96 REQ-29), Lua's
+// Ragdoll.create makes the wizard's ragdoll on a live character in one go.
 
 #include <gtest/gtest.h>
 
@@ -19,8 +20,13 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/RagdollComponent.h"
+#include "object/GameObject.h"
 #include "object/physics/Ragdoll.h"
 #include "physics/RagdollBuilder.h"
+#include "script/LuaBinding.h"
+
+#include "lua.hpp"
+#include "LuaBridge.h"
 
 #include <cmath>
 #include <functional>
@@ -303,4 +309,124 @@ TEST(Ragdoll, OtherBoneDriversPauseAndResume) {
     EXPECT_TRUE(c.world.scene.getComponent<PoseAnimatorComponent>(c.root).playing);
     EXPECT_TRUE(c.world.scene.getComponent<VertexAnimatorComponent>(c.bones["Hips"]).enabled);
     c.world.physics()->onRagdollBeforeAnimatedRestore3D.remove("count");
+}
+
+// ---- S96 REQ-29: the runtime builder ----------------------------------------------------------
+
+namespace {
+
+    // runs Lua with `ragdollRoot` set to the character's root; the error text, "" when none
+    std::string runWithRoot(Character& c, const std::string& code) {
+        lua_State* L = LuaBinding::getLuaState();
+        luabridge::setGlobal(L, GameObject(&c.world.scene, c.root), "ragdollRoot");
+        std::string error;
+        if (luaL_dostring(L, code.c_str()) != LUA_OK) {
+            error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "?";
+            lua_pop(L, 1);
+        }
+        luaL_dostring(L, "ragdollRoot = nil ragdollMade = nil");
+        return error;
+    }
+
+}
+
+TEST(Ragdoll, RuntimeCreateFromHumanoid) {
+    Character c;
+    c.world.load();
+    c.world.step(5);
+    // what the wizard makes of the same poses, simulated (Ragdoll.create's default)
+    const RagdollBuildResult wizard = c.build(true);
+    ASSERT_TRUE(wizard.ok) << wizard.error;
+    const Entity pelvis = c.bones["Hips"];
+    const float pelvisBefore = c.world.transform(pelvis).worldPosition.y;
+
+    ASSERT_EQ(runWithRoot(c, "ragdollMade = Ragdoll.create(ragdollRoot)\n"
+                             "assert(ragdollMade.simulated and ragdollMade.totalMass == 20)"), "");
+    ASSERT_NE(c.world.scene.findComponent<RagdollComponent>(c.root), nullptr);
+    for (const RagdollBuiltPart& part : wizard.parts) {
+        const RigidbodyComponent* body = c.world.scene.findComponent<RigidbodyComponent>(part.entity);
+        ASSERT_NE(body, nullptr) << part.slot;
+        EXPECT_EQ(body->type, BodyType::DYNAMIC) << part.slot;
+        EXPECT_FLOAT_EQ(body->mass, part.body.mass) << part.slot;
+        ASSERT_EQ(body->colliders.size(), 1u) << part.slot;
+        EXPECT_EQ(body->colliders[0].type, part.body.colliders[0].type) << part.slot;
+        EXPECT_NEAR(body->colliders[0].radius, part.body.colliders[0].radius, 1e-5f) << part.slot;
+        EXPECT_NEAR(body->colliders[0].halfHeight, part.body.colliders[0].halfHeight, 1e-5f) << part.slot;
+        const Joint3DComponent* joint = c.world.scene.findComponent<Joint3DComponent>(part.entity);
+        ASSERT_EQ(joint != nullptr, part.hasJoint) << part.slot;
+        if (joint) {
+            EXPECT_EQ(joint->bodyB, part.joint.bodyB) << part.slot;
+            EXPECT_EQ(joint->twistAxis, part.joint.twistAxis) << part.slot;
+            EXPECT_FLOAT_EQ(joint->twistMinAngle, part.joint.twistMinAngle) << part.slot;
+            EXPECT_FLOAT_EQ(joint->normalHalfConeAngle, part.joint.normalHalfConeAngle) << part.slot;
+        }
+    }
+
+    // every part and joint is there from the first step: it collapses as one body
+    c.world.step(120);
+    Ragdoll ragdoll(&c.world.scene, c.root);
+    EXPECT_EQ(ragdoll.getPartCount(), wizard.parts.size());
+    for (const RagdollBuiltPart& part : wizard.parts) {
+        if (part.hasJoint) {
+            EXPECT_TRUE(Joint3D(&c.world.scene, part.entity).isLive()) << part.slot;
+        }
+    }
+    EXPECT_LT(c.world.rb(pelvis).getPosition().y, pelvisBefore - 0.3f) << "the pelvis fell";
+}
+
+TEST(Ragdoll, RuntimeCreateOptions) {
+    Character c;
+    c.world.load();
+    c.world.step();
+    ASSERT_EQ(runWithRoot(c, "ragdollMade = Ragdoll.create(ragdollRoot, {start = 'animated', totalMass = 40, selfCollision = false,\n"
+                             "    bones = {leftKnee = 'mixamorig:LeftLeg', head = ragdollRoot:findChild('mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:Neck/mixamorig:Head')}})\n"
+                             "assert(not ragdollMade.simulated and not ragdollMade.selfCollision)"), "");
+    float mass = 0.0f;
+    for (const auto& [name, bone] : c.bones) {
+        if (const RigidbodyComponent* body = c.world.scene.findComponent<RigidbodyComponent>(bone)) {
+            EXPECT_EQ(body->type, BodyType::KINEMATIC) << name;
+            mass += body->mass;
+        }
+    }
+    EXPECT_NEAR(mass, 40.0f, 1e-3f);
+
+    // wrong options name the fix
+    const std::string unknown = runWithRoot(c, "Ragdoll.create(ragdollRoot, {mass = 3})");
+    EXPECT_NE(unknown.find("unknown option \"mass\""), std::string::npos) << unknown;
+    const std::string slot = runWithRoot(c, "Ragdoll.create(ragdollRoot, {bones = {leftLeg = 'x'}})");
+    EXPECT_NE(slot.find("no slot \"leftLeg\""), std::string::npos) << slot;
+    const std::string name = runWithRoot(c, "Ragdoll.create(ragdollRoot, {bones = {leftKnee = 'Nobody'}})");
+    EXPECT_NE(name.find("no GameObject \"Nobody\""), std::string::npos) << name;
+    const std::string start = runWithRoot(c, "Ragdoll.create(ragdollRoot, {start = 'falling'})");
+    EXPECT_NE(start.find("options.start"), std::string::npos) << start;
+}
+
+TEST(Ragdoll, RuntimeCreateListsTheMissingBones) {
+    Character c;
+    c.world.scene.destroyHierarchy(c.bones["LeftLeg"]);
+    c.world.scene.destroyHierarchy(c.bones["RightLeg"]);
+    c.world.load();
+    const std::string error = runWithRoot(c, "Ragdoll.create(ragdollRoot)");
+    EXPECT_NE(error.find("Ragdoll.create"), std::string::npos) << error;
+    EXPECT_NE(error.find("no bone found for leftKnee, rightKnee ("), std::string::npos) << "the found ones are not listed: " << error;
+    // nothing was made
+    EXPECT_EQ(c.world.scene.findComponent<RagdollComponent>(c.root), nullptr);
+    EXPECT_EQ(c.world.scene.findComponent<RigidbodyComponent>(c.bones["Hips"]), nullptr);
+}
+
+TEST(Ragdoll, ApplyRefusesAReplacementWhileRemovalsAreDeferred) {
+    Character c;
+    const RagdollBuildResult result = c.build(false);
+    ASSERT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, result));
+    const RagdollBuildResult again = c.build(true);
+    std::string error;
+    {
+        StructuralDeferScope scope(c.world.scene);
+        EXPECT_FALSE(RagdollBuilder::apply(&c.world.scene, c.root, again, &error));
+    }
+    EXPECT_NE(error.find("UI event"), std::string::npos) << error;
+    EXPECT_EQ(c.world.component(c.bones["Hips"]).type, BodyType::KINEMATIC) << "the first ragdoll is untouched";
+    // outside the scope it replaces
+    EXPECT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, again, &error));
+    EXPECT_EQ(c.world.component(c.bones["Hips"]).type, BodyType::DYNAMIC);
 }
