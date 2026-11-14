@@ -431,11 +431,12 @@ class RenderTest(unittest.TestCase):
                              advisory.split(), **extra)
 
     def green_reports(self):
-        names = ["changes", "lint", "linux", "unit", "asan", "smoke", "web", "android", "windows", "macos", "ios", "mcp-1", "mcp-2"]
+        names = ["changes", "lint", "linux", "unit", "asan", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        names += [f"windows-{p}" for p in report.WINDOWS_PARTS]
         return [lane_report(n, ran={"unit": 412, "asan": 400, "mcp-1": 120, "mcp-2": 94}.get(n, 0)) for n in names]
 
     def test_red_layout(self):
-        windows = lane_report("windows", "failure", failures=[failure(
+        windows = lane_report("windows-editor", "failure", failures=[failure(
             "error C2027: use of undefined type 'jasperengine::Transform'", "build", "editor/window/InspectorTerrain.cpp:412",
             "D:/a/x.cpp(412): error C2027\n410 |   auto& t = scene->getComponent<Transform>(e);", "tools/ci/windows.sh editor")])
         windows["artifacts"] = ["windows-build.log"]
@@ -443,13 +444,13 @@ class RenderTest(unittest.TestCase):
             "test_tileset.py::test_undo_paint", location="tools/mcp/tests/test_tileset.py",
             excerpt="AssertionError: expected 3 tiles after undo, got 4",
             repro="MCP_TEST_ARGS='-k test_undo_paint' tools/build.sh mcp-tests tools/mcp/tests/test_tileset.py")])
-        others = [r for r in self.green_reports() if r["lane"] not in ("windows", "mcp-2")]
+        others = [r for r in self.green_reports() if r["lane"] not in ("windows-editor", "mcp-2")]
         path = self.write(windows, mcp3, *others, lanes=lanes_json(htmlui=(False, "no HTML UI change")))
         body = self.render(path)
         lines = body.splitlines()
         self.assertEqual(lines[0], "<!-- jasper-ci-report -->")
         self.assertIn("CI failed on `3f2c1ab`", lines[1])
-        self.assertIn("2 of 13 jobs", lines[1])
+        self.assertIn("2 of 17 jobs", lines[1])
         self.assertIn("[run 812](https://github.com/o/r/actions/runs/812)", lines[1])
         self.assertIn("windows", body)
         self.assertIn("Windows MSVC", body)
@@ -457,13 +458,13 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Reproduce (Windows, x64 Native Tools shell): `tools/ci/windows.sh editor`", body)
         self.assertIn("mcp (2/2)", body)
         self.assertIn("1 failed, 214 passed, 0 skipped", body)
-        self.assertIn("Evidence: artifact `test-results-windows`", body)
+        self.assertIn("Evidence: artifact `test-results-windows-editor`", body)
         self.assertIn("Passed: changes · lint · linux · unit (412 tests)", body)
         self.assertIn("htmlui (skipped: no HTML UI change)", body)
         self.assertIn("Not run in CI: `tools/mcp/tests/test_ecs.py` (needs the fixture project)", body)
         self.assertIn("Machine-readable: `gh run download 812 -p 'ci-report-*'`; per failed lane: `-n ci-report-mcp-2`", body)
         self.assertIn("mcp (1/2, 120 tests)", body)
-        self.assertIn("`-n ci-report-windows`", body)
+        self.assertIn("`-n ci-report-windows-editor`", body)
         self.assertLess(body.index("windows"), body.index("Passed:"))
 
     def test_advisory_is_on_top_and_not_counted(self):
@@ -480,7 +481,7 @@ class RenderTest(unittest.TestCase):
         body = self.render(self.write(*self.green_reports(), lanes=lanes_json(htmlui=(False, "no HTML UI change"))))
         lines = body.splitlines()
         self.assertEqual(lines[0], "<!-- jasper-ci-report -->")
-        self.assertRegex(lines[1], r"^✅ CI passed on `3f2c1ab`: 13 jobs, 10 min · \[run 812\]\(https://github.com/o/r/actions/runs/812\)$")
+        self.assertRegex(lines[1], r"^✅ CI passed on `3f2c1ab`: 17 jobs, 10 min · \[run 812\]\(https://github.com/o/r/actions/runs/812\)$")
         self.assertEqual(lines[2], "")
         self.assertTrue(lines[3].startswith("<details>"))
         self.assertIn("unit: passed, 412 tests", body)
@@ -493,7 +494,7 @@ class RenderTest(unittest.TestCase):
         body = self.render(path)
         self.assertIn("No report from: macos", body)
         # nothing failed, but a lane left no report: not a pass the comment can claim
-        self.assertIn("CI finished on `3f2c1ab`: 13 jobs, 1 without a report (the `Check` status decides)", body.splitlines()[1])
+        self.assertIn("CI finished on `3f2c1ab`: 17 jobs, 1 without a report (the `Check` status decides)", body.splitlines()[1])
         self.assertNotIn("CI passed", body)
         needs = {"macos": {"result": "failure"}}
         body = self.render(path, needs=needs)
@@ -572,6 +573,68 @@ for match, out, code in responses:
         sys.stdout.write(out)
         sys.exit(code)
 """
+
+
+class WindowsLegsTest(unittest.TestCase):
+    """The windows lane runs as parallel jobs: the matrix legs and windows-compile, a report each."""
+    RUN = "https://github.com/o/r/actions/runs/812"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="windows-legs-test-")
+        self.dir = Path(self.tmp.name)
+        self.reports = self.dir / "reports"
+        self.reports.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def render(self, reports, lanes, **extra):
+        for r in reports:
+            (self.reports / f"{r['lane']}.json").write_text(json.dumps(r))
+        path = self.dir / "lanes.json"
+        path.write_text(json.dumps(lanes))
+        return report.render(report.load_reports(self.reports), report.load_lanes(path), self.RUN, "3f2c1ab" + "0" * 33, [], **extra)
+
+    def test_legs_belong_to_the_windows_lane(self):
+        for leg in ("windows-editor", "windows-engine-glcore", "windows-engine-d3d11", "windows-engine-vulkan", "windows-compile"):
+            self.assertEqual(report.lane_base(leg), "windows")
+        self.assertEqual(report.lane_label("windows-engine-d3d11", []), "windows (engine-d3d11)")
+        self.assertEqual(report.lane_base("windows"), "windows")
+        self.assertEqual(report.lane_base("mcp-2"), "mcp")
+
+    def test_every_leg_is_expected_and_titled(self):
+        names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        legs = [f"windows-{p}" for p in report.WINDOWS_PARTS]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names + legs]
+        body = self.render(reports, lanes_json())
+        self.assertIn(f"{len(names) + len(legs)} jobs", body.splitlines()[1])
+        self.assertIn("windows (engine-vulkan)", body)
+        # a leg without a report is missing, not passed
+        broken = [r for r in reports if r["lane"] != "windows-engine-vulkan"]
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render(broken, lanes_json())
+        self.assertIn("No report from: windows (engine-vulkan)", body)
+        # a failed leg is titled and reproduced as the windows lane, and windows-compile's own job result counts
+        failed = lane_report("windows-compile", "failure", failures=[failure("compile smoke", "build", repro="tools/ci/windows.sh compile-smoke x")])
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render([r for r in reports if r["lane"] != "windows-compile"] + [failed], lanes_json())
+        self.assertIn("Windows MSVC", body)
+        self.assertIn("Reproduce (Windows, x64 Native Tools shell): `tools/ci/windows.sh compile-smoke x`", body)
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render([r for r in reports if r["lane"] != "windows-compile"], lanes_json(),
+                           needs={"windows": {"result": "success"}, "windows-compile": {"result": "failure"}})
+        self.assertIn("CI failed on", body)
+
+    def test_a_skipped_windows_lane_has_no_legs(self):
+        names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names]
+        body = self.render(reports, lanes_json(windows=(False, "no Windows change")))
+        self.assertIn(f"{len(names)} jobs", body.splitlines()[1])
+        self.assertIn("- windows: skipped (no Windows change)", body)
+        self.assertNotIn("No report from", body)
 
 
 class GhTest(unittest.TestCase):

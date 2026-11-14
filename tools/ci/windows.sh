@@ -14,6 +14,8 @@
 #   tools/ci/windows.sh tests [backend]            the CPU unit tests (-*Gpu*: no device here) of the editor
 #                                                  tree and that engine tree, through tools/ci/gtest-gate.py;
 #                                                  XML in build/test-results/{core,editor}-windows.xml
+#                                                  (TEST_SUITES=core or editor: that suite alone, as the
+#                                                  lane's engine-glcore and editor jobs run them)
 #   tools/ci/windows.sh compile-smoke <project-dir> [backend]  a Compile build of the project with MSVC,
 #                                                  as Build with Method Compile makes it (tools/ci/compile-smoke.sh)
 #   tools/ci/windows.sh package <version>          dist/JasperEngine-<version>-windows-x64.zip of instdir/bin
@@ -66,21 +68,28 @@ step_engine() {
 min_tests() { sed -n "s/^$1=//p" tools/build.sh; }
 
 step_tests() {
-    local backend="$1" status=0
+    local backend="$1" status=0 suite
     local core="build/windows/engine-$backend/tests/core/jasperengine-core-tests.exe"
     local editor="$EDITOR_TREE/jasperengine-editor-tests.exe"
-    [[ -f "$core" ]] || { echo "no $core: run tools/ci/windows.sh engine $backend first" >&2; exit 1; }
-    [[ -f "$editor" ]] || { echo "no $editor: run tools/ci/windows.sh editor (without EDITOR_TESTS=0) first" >&2; exit 1; }
+    local suites="${TEST_SUITES:-core editor}"
+    [[ "$suites" =~ ^(core|editor|core\ editor)$ ]] || ci_usage "TEST_SUITES: core, editor or \"core editor\" (got '$suites')"
+    if [[ " $suites " == *" core "* ]]; then
+        [[ -f "$core" ]] || { echo "no $core: run tools/ci/windows.sh engine $backend first" >&2; exit 1; }
+    fi
+    if [[ " $suites " == *" editor "* ]]; then
+        [[ -f "$editor" ]] || { echo "no $editor: run tools/ci/windows.sh editor (without EDITOR_TESTS=0) first" >&2; exit 1; }
+    fi
     mkdir -p "$RESULTS"
-    rm -f "$RESULTS/core-windows.xml" "$RESULTS/editor-windows.xml"
     # the GPU suites need a device (Linux runs them on llvmpipe/lavapipe, docs/testing.md); the
     # minimum counts are tools/build.sh's (AC7 of S02), the skip limit its 0
-    "$core" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/core-windows.xml" || status=1
-    "$editor" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/editor-windows.xml" || status=1
-    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/core-windows.xml" --min-tests "$(min_tests CORE_MIN_TESTS)" --max-skipped 0 \
-        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
-    "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/editor-windows.xml" --min-tests "$(min_tests EDITOR_MIN_TESTS)" --max-skipped 0 \
-        --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
+    for suite in $suites; do
+        local binary="$core" minimum=CORE_MIN_TESTS
+        [[ "$suite" == editor ]] && binary="$editor" minimum=EDITOR_MIN_TESTS
+        rm -f "$RESULTS/$suite-windows.xml"
+        "$binary" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/$suite-windows.xml" || status=1
+        "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/$suite-windows.xml" --min-tests "$(min_tests "$minimum")" --max-skipped 0 \
+            --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
+    done
     return "$status"
 }
 

@@ -14,6 +14,7 @@ skipped while lanes.json says that lane did not need to run. It fails when:
     nothing reads touch runs nothing, D3);
   - a test lane (TEST_LANES) succeeded with zero tests in its report, or with no report; each MCP
     shard of lanes.json counts on its own (report mcp-<shard>).
+A job of a lane that is not the lane's own job (windows-compile, of windows) is planned with its lane.
 An --advisory lane's failure or zero tests are listed, not failing (rollout, design §14.1); its
 cancellation still fails. The report job only posts the comment, so its result never gates.
 Prints a table of job, result and verdict, also into $GITHUB_STEP_SUMMARY when set. Exit 2 when
@@ -85,7 +86,8 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
     for job, value in needs.items():
         result = value.get("result") if isinstance(value, dict) else None
         result = result if result in report.STATUSES else "unknown"
-        lane = plan["lanes"].get(job)
+        # (windows-compile is a job of the windows lane: planned with it)
+        lane = plan["lanes"].get(job, plan["lanes"].get(report.lane_base(job)))
         is_advisory = job in advisory_set
         if job in NOT_GATING:
             row(job, result, "ok (the comment, not a verdict)", False)

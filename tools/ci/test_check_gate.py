@@ -118,6 +118,28 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^players\s+skipped\s+FAIL: not in lanes\.json")
 
+    def test_windows_compile_is_part_of_the_windows_lane(self):
+        # its own job (the editor leg's install), not a lane of lanes.json: planned with windows
+        p = plan(off=("windows",))
+        needs = needs_for(p)
+        needs["windows-compile"] = {"result": "skipped", "outputs": {}}
+        status, out = self.gate(needs, p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^windows-compile\s+skipped\s+ok \(not planned: not needed\)$")
+        p = plan()
+        needs = needs_for(p)
+        needs["windows-compile"] = {"result": "skipped", "outputs": {}}
+        status, out = self.gate(needs, p, reports_for(p))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-compile\s+skipped\s+FAIL: skipped, but the plan needed it$")
+        needs["windows-compile"] = {"result": "success", "outputs": {}}
+        status, out = self.gate(needs, p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        needs["windows-compile"] = {"result": "failure", "outputs": {}}
+        status, out = self.gate(needs, p, reports_for(p))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-compile\s+failure\s+FAIL$")
+
     def test_failure_and_cancelled_fail(self):
         p = plan()
         status, out = self.gate(needs_for(p, windows="failure"), p, reports_for(p))
