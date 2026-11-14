@@ -28,6 +28,9 @@ namespace jasperengine {
 
         int loadSound(const std::string& filename);
         void destroySound();
+        // Unity's AudioClip.loadState of the source's clip: Loading from loadSound until ready
+        // (getLength() is 0 until Loaded) or Failed
+        AudioLoadState getLoadState() const;
 
         GameObject getGameObject() const;
 

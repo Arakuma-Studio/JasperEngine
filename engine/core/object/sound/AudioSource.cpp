@@ -56,13 +56,17 @@ GameObject AudioSource::getGameObject() const{
 int AudioSource::loadSound(const std::string& filename){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
-    // the loaded sample would keep playing the old file
+    // the loaded sample would keep playing the old file; the old clip stays cached, unused
+    // (S97 REQ-9), so switching back decodes nothing
     if (!audio.filename.empty() && audio.filename != filename) {
         scene->getSystem<AudioSystem>()->destroySound(audio);
     }
 
     audio.filename = filename;
     SoundPool::retry(filename);
+    // each call gets its onLoad, a clip already loaded or failed before included
+    audio.loadFailed = false;
+    audio.loadRequested = true;
 
     if (Engine::isViewLoaded())
         return scene->getSystem<AudioSystem>()->loadSound(audio);
@@ -73,7 +77,14 @@ int AudioSource::loadSound(const std::string& filename){
 void AudioSource::destroySound(){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
+    // the way to free a clip's memory now: dropped when nothing else holds it
+    const std::string key = audio.sampleKey;
     scene->getSystem<AudioSystem>()->destroySound(audio);
+    if (!key.empty()) SoundPool::remove(key);
+}
+
+AudioLoadState AudioSource::getLoadState() const{
+    return AudioSystem::getLoadState(getComponent<AudioSourceComponent>());
 }
 
 void AudioSource::play(){

@@ -3684,6 +3684,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
     audioSettings.seed = std::max(audioSettings.seed, 0);
+    audioSettings.unusedClipCacheMb = std::clamp(audioSettings.unusedClipCacheMb, 0, 4096);
+    SoundPool::setUnusedBudget((uint64_t)audioSettings.unusedClipCacheMb * 1024 * 1024);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
                             AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
