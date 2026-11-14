@@ -35,6 +35,10 @@ namespace jasperengine{
         int textureHeight = 1024;
         Entity inputSurface = NULL_ENTITY;                          // TEXTURE mode: mesh hit-tested for pointer input; NULL = own entity
         float pixelRatio = 0.0f;                                    // 0 = automatic (phase-0 dp ratio); TEXTURE mode default 1
+        // S92: TEXTURE mode, the MSAA samples of its own context's target: 0 = the scene's
+        // htmlUiMsaaSamples, else 1, 2, 4 or 8. Screen documents share the scene's context: the
+        // scene setting decides for them
+        int msaaSamples = 0;
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
 

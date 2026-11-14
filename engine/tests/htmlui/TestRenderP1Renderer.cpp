@@ -311,8 +311,12 @@ TEST(RenderP1Test, SampleCountChoice){
     EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 4);
     UIDocumentSystem::setPreferredSampleCount(16);
     EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 8);
+    // S92 R16: 0 is Auto (4 on desktop), no longer a count to correct
     UIDocumentSystem::setPreferredSampleCount(0);
-    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 1);
+    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 0);
+    EXPECT_EQ(context.getSampleCount(), std::max(FramebufferRender::getMaxMsaaSamples(HtmlUIContext::autoSampleCount(Engine::getPlatform())), 1));
+    UIDocumentSystem::setPreferredSampleCount(-3);
+    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 0);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] MSAA sample count"), 3u);
 
     // 8 where the device has it, else the highest count below (lavapipe and llvmpipe: 4); a

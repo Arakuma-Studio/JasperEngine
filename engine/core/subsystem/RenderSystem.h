@@ -3532,6 +3532,15 @@ namespace jasperengine{
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
+		// S92 R13 (Screen Space - Overlay): the main camera's screen HTML UI documents, held back
+		// from its camera pass when a later pass writes its output (the uber pass, a blit, the
+		// post-process chain's or SSR's composite). The first of those passes that writes the view
+		// (a null destination: the view's framebuffer or the swapchain) composites them over the
+		// whole pass at the output resolution, after its own draw
+		bool overlayDocumentsPending = false;
+		bool writesView(const FramebufferRender* destination) const;
+		void drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip);
+
 		// user post-process chain
 		void loadPostProcess();
 		void updatePostProcessUniforms();
