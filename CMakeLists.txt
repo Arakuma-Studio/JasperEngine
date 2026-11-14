@@ -1590,6 +1590,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/FogProfileAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/LinkFogProfileCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RevertToBaselineCmd.cpp
 
