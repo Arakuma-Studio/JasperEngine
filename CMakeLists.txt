@@ -1286,6 +1286,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
+    ${EDITOR_DIR}/window/InspectorFogProfiles.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
