@@ -14101,8 +14101,8 @@ void editor::InspectorWindow::show(){
                     ImGui::PopStyleVar(3);
                 }
                 ImGui::TableSetColumnIndex(1);
-                ImGui::SetNextItemWidth(8 * ImGui::GetFontSize());
-                if (ImGui::InputFloat("##fixed_timestep", &step, 0.001f, 0.01f, "%.5f s")) {
+                ImGui::SetNextItemWidth(5 * ImGui::GetFontSize());
+                if (ImGui::InputFloat("##fixed_timestep", &step, 0.0f, 0.0f, "%.4f s")) {
                     step = step <= 0.0f ? 0.0f : std::clamp(step, (float)Project::minFixedTimestep, (float)Project::maxFixedTimestep);
                     CommandHandle::get(sceneProject->id)->addCommand(new ScenePropertyCmd<float>(project, sceneProject->id, "fixed_timestep", step));
                 }

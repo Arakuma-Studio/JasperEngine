@@ -249,7 +249,7 @@ async def test_simulate_touch_from_mouse(ed: Editor):
             ed.check(on is True, "Engine.callTouchInMouseEvent at Play start")
         finally:
             await stop(ed)
-        off = (await ed.call("eval_lua", code="return Engine.callTouchInMouseEvent"))["values"][0]
+        off = (await ed.call("eval_lua", code="return Engine.callTouchInMouseEvent", allow_edit_mode=True))["values"][0]
         ed.check(off is False, "Play stop turns it off for the editor")
     finally:
         await ed.call("set_project_settings", values={"input.simulate_touch_from_mouse": False})

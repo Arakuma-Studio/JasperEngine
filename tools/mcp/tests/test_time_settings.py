@@ -10,8 +10,8 @@ EDITOR = {"create": True, "name": "Time Settings"}
 TIMEOUT = 600
 
 
-async def step(ed: Editor) -> float:
-    return (await ed.call("eval_lua", code="return Time.fixedDeltaTime"))["values"][0]
+async def step(ed: Editor, edit_mode: bool = False) -> float:
+    return (await ed.call("eval_lua", code="return Time.fixedDeltaTime", allow_edit_mode=edit_mode))["values"][0]
 
 
 async def play(ed: Editor, scene: int) -> None:
@@ -45,7 +45,7 @@ async def test_time_settings(ed: Editor):
         ed.check_eq(round(await step(ed), 6), round(1 / 120, 6), "a script sets it at runtime")
     finally:
         await ed.call("play", action="stop")
-    ed.check_eq(round(await step(ed), 6), round(1 / 60, 6), "Play stop gives the editor its step back")
+    ed.check_eq(round(await step(ed, edit_mode=True), 6), round(1 / 60, 6), "Play stop gives the editor its step back")
 
     await play(ed, sid)
     try:
