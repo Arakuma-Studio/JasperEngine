@@ -7,6 +7,7 @@
 #include "EntityHandle.h"
 #include "GameObject.h"
 #include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceEffect.h"
 
 namespace jasperengine {
 
@@ -141,6 +142,17 @@ namespace jasperengine {
         bool isFading() const;
         // the voices playing now (main + one-shots)
         int getVoiceCount() const;
+
+        // ---- its own effects (docs/specs/S97-audio-gaps.md REQ-1, REQ-41; AudioSourceEffect.cpp)
+        // appends a mixer effect (not duck or limiter), up to AudioSourceComponent::maxEffects; an
+        // invalid effect (logged) when it cannot
+        AudioSourceEffect addEffect(const std::string& type);
+        // by 1-based index, or the first of a type; invalid when there is none
+        AudioSourceEffect getEffect(int index) const;
+        AudioSourceEffect getEffect(const std::string& type) const;
+        bool removeEffect(int index);
+        bool removeEffect(const std::string& type);
+        int getEffectCount() const;
 
         // Unity AudioSource.PlayClipAtPoint: a voice of `scene` at a world position, stopped with
         // the scene; through a mixer group by name ("" = Master)
