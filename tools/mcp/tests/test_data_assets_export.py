@@ -64,6 +64,7 @@ async def test_desktop_build_reads_data_assets(ed: Editor):
     sword = await ed.call("edit_data_asset", action="create", path="assets/items/sword.dataasset", **{"class": "ItemData"},
                           values={"displayName": "Sword", "damage": 12, "upgrade": axe["guid"]})
     # moved after the sword referenced it: the GUID finds it, the cook writes its new path
+    await ed.call("create_folder", path="assets/items/moved")
     await ed.call("move_asset", path="assets/items/axe.dataasset", to="assets/items/moved/axe.dataasset")
 
     made = await ed.call("create_scene", name="DataExport", type="3D", path="scenes/DataExport")
