@@ -508,7 +508,22 @@ REQ-18 to REQ-23, REQ-31.
 
 ## Deviations
 
-(none yet)
+- **WP-A, REQ-37: the cache's cost is O(pool entries), not O(unused entries),** paid when an entry is cached, a
+  holder releases one, or a free voice ends; never per frame. The pool cannot see which entries became unused
+  without reading their holders' counts.
+- **WP-A, REQ-10: "least recently released" is exact for releases that name the clip** (a source switching or
+  removed, `release`). Clips that ended voices let go are ordered by when they were last handed out.
+- **WP-A, REQ-11: `unload` of a held clip marks it**, so its last release drops it instead of caching it (AC11);
+  handing it out again clears the mark.
+- **WP-A, REQ-16/39: the Load Type row is in the clip Inspector (`editor/window/InspectorAudioClip.cpp`)**, which
+  draws Import Settings; `InspectorWindowClips.cpp` holds the animation clips. `load_type` is the last key of the
+  section, after `music`, so existing files keep their key order.
+- **WP-A, AC14 measures the voice's gain, not a mixed block's peak:** the source's volume and SoLoud's volume of the
+  voice in the frame it starts are at most the fade's gain after 20 ms (one 20 ms frame).
+- **WP-A, AC16's engine half is `AudioImportSettingsLoadType.ResolvesAfterTheSource`** (a fixture with an asset root
+  for the 100 KB file), with `AudioImportSettings.LoadTypeKeyRoundTripsAndApplies` for the key, the hash and the
+  export table. The export check is in `test_build_method.py::test_prebuilt_build_hears_the_projects_mixer_and_audio_settings`
+  (fast: a stand-in runtime) as well as `test_prebuilt_audio.py` (a real player, `JASPER_SLOW_BUILD=1`).
 
 ## Progress
 
