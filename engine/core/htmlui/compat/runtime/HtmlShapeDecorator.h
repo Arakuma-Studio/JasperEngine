@@ -35,6 +35,10 @@ namespace jasperengine::htmlui::compat {
         // white, black elsewhere transparent; `resolveLength` resolves lengths other than px and
         // percentages (em, rem, vw ...) for the element. "" when the shape is invalid.
         std::string toSvg(float width, float height, Rml::Element* element = nullptr, std::string* error = nullptr) const;
+
+        // The shape as a rectangle with elliptical corners in the reference box (inset(), xywh(), rect(), circle(),
+        // ellipse(): an analytic clip, S92 R8); false for polygon() and path(), and when invalid.
+        bool toRoundedRect(float width, float height, Rml::Element* element, Rml::Rectanglef& rect, Rml::Array<Rml::Vector2f, 4>& radii) const;
     };
 
     // html-shape("<basic-shape>"): the shape rasterized (LunaSVG) at the reference box's size x
@@ -49,6 +53,9 @@ namespace jasperengine::htmlui::compat {
         Rml::DecoratorDataHandle GenerateElementData(Rml::Element* element, Rml::BoxArea paint_area) const override;
         void ReleaseElementData(Rml::DecoratorDataHandle element_data) const override;
         void RenderElement(Rml::Element* element, Rml::DecoratorDataHandle element_data) const override;
+        // S92 R8: the border box's inset(), circle(), ellipse(), xywh() and rect() clip analytically
+        bool GetMaskClipShape(Rml::Element* element, Rml::DecoratorDataHandle element_data, Rml::ClipShape& shape,
+                              Rml::Geometry*& geometry) const override;
 
         const BasicShape& getShape() const { return shape; }
         // tests: the SVG and pixel size the element data was rasterized with

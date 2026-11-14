@@ -6127,7 +6127,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
+    // v67: S92's HTMLUI_PRIM gradients: up to 16 stops through the stop table (u_htmluiStops), the
+    //      conic and repeating functions, a single tile (a negative period). (S93's branch holds v66
+    //      for its own sources: a shared cache of either must not serve the other's programs.)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v67";
 }
 
 void editor::App::pushTabNotificationStyle(){

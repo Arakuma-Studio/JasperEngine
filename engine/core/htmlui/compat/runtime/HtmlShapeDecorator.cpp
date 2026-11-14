@@ -12,6 +12,9 @@
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/RenderBox.h>
+#include <RmlUi/Core/RenderInterface.h>
+#include <RmlUi/Core/RenderManager.h>
 
 #include <algorithm>
 #include <array>
@@ -217,6 +220,159 @@ namespace {
         return true;
     }
 
+    // inset(), xywh(), rect(), circle() and ellipse() in a width x height reference box: a rectangle with elliptical
+    // corners (a circle's and an ellipse's are its radii)
+    struct RoundedShape {
+        enum class Kind { Rect, Circle, Ellipse };
+        Kind kind = Kind::Rect;
+        float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+        std::array<std::array<float, 2>, 4> radii{};    // top-left, top-right, bottom-right, bottom-left: x, y
+    };
+
+    bool isRoundedShape(const std::string& name){
+        return name == "inset" || name == "xywh" || name == "rect" || name == "circle" || name == "ellipse";
+    }
+
+    // false with the reason when the arguments are not understood
+    bool resolveRoundedShape(const std::string& name, const std::vector<std::string>& tokens, const Resolver& r, float width, float height,
+                             RoundedShape& out, std::string* error){
+        if (name == "inset"){
+            std::vector<std::string> offsets, radiusTokens;
+            splitRound(tokens, offsets, radiusTokens);
+            if (offsets.empty() || offsets.size() > 4){
+                fail(error, "inset() needs 1 to 4 offsets");
+                return false;
+            }
+            std::vector<std::string> o = offsets;
+            if (o.size() == 1) o = {o[0], o[0], o[0], o[0]};
+            else if (o.size() == 2) o = {o[0], o[1], o[0], o[1]};
+            else if (o.size() == 3) o = {o[0], o[1], o[2], o[1]};
+            float top, right, bottom, left;
+            if (!r.length(o[0], height, top) || !r.length(o[1], width, right) || !r.length(o[2], height, bottom) || !r.length(o[3], width, left)){
+                fail(error, "inset() offsets must be lengths or percentages");
+                return false;
+            }
+            // offsets that overlap are scaled down proportionally (CSS Shapes 1)
+            if (left + right > width && left + right > 0.0f){
+                const float f = width / (left + right);
+                left *= f;
+                right *= f;
+            }
+            if (top + bottom > height && top + bottom > 0.0f){
+                const float f = height / (top + bottom);
+                top *= f;
+                bottom *= f;
+            }
+            const float w = width - left - right, h = height - top - bottom;
+            std::array<std::array<float, 2>, 4> radii{};
+            if (!radiusTokens.empty() && !parseRadii(radiusTokens, r, w, h, radii, error))
+                return false;
+            out = RoundedShape{RoundedShape::Kind::Rect, left, top, w, h, radii};
+            return true;
+        }
+        if (name == "xywh" || name == "rect"){
+            std::vector<std::string> values, radiusTokens;
+            splitRound(tokens, values, radiusTokens);
+            if (values.size() != 4){
+                fail(error, name + "() needs 4 values");
+                return false;
+            }
+            float x, y, w, h;
+            if (name == "xywh"){
+                if (!r.length(values[0], width, x) || !r.length(values[1], height, y) || !r.length(values[2], width, w) ||
+                    !r.length(values[3], height, h) || w < 0.0f || h < 0.0f){
+                    fail(error, "xywh() needs lengths or percentages (non-negative sizes)");
+                    return false;
+                }
+            }else{
+                // rect(top right bottom left), offsets from the top and left edges; auto = the edge
+                float top = 0.0f, right = width, bottom = height, left = 0.0f;
+                const auto edge = [&](const std::string& token, float base, float automatic, float& out){
+                    if (lower(token) == "auto"){
+                        out = automatic;
+                        return true;
+                    }
+                    return r.length(token, base, out);
+                };
+                if (!edge(values[0], height, 0.0f, top) || !edge(values[1], width, width, right) || !edge(values[2], height, height, bottom) ||
+                    !edge(values[3], width, 0.0f, left)){
+                    fail(error, "rect() needs lengths, percentages or auto");
+                    return false;
+                }
+                x = left;
+                y = top;
+                w = std::max(0.0f, right - left);
+                h = std::max(0.0f, bottom - top);
+            }
+            std::array<std::array<float, 2>, 4> radii{};
+            if (!radiusTokens.empty() && !parseRadii(radiusTokens, r, w, h, radii, error))
+                return false;
+            out = RoundedShape{RoundedShape::Kind::Rect, x, y, w, h, radii};
+            return true;
+        }
+        if (name == "circle" || name == "ellipse"){
+            std::vector<std::string> radiusTokens, positionTokens;
+            bool at = false;
+            for (const std::string& token : tokens){
+                if (!at && lower(token) == "at"){
+                    at = true;
+                    continue;
+                }
+                (at ? positionTokens : radiusTokens).push_back(token);
+            }
+            float cx, cy;
+            if ((at && positionTokens.empty()) || !parsePosition(positionTokens, r, cx, cy, error))
+                return false;
+            const bool circle = name == "circle";
+            if (radiusTokens.size() > (circle ? 1u : 2u)){
+                fail(error, name + "() has too many radii");
+                return false;
+            }
+            const auto sideRadius = [&](const std::string& token, bool horizontal, float& radius) -> bool {
+                const std::string value = lower(token);
+                const float dx[2] = {std::fabs(cx), std::fabs(width - cx)};
+                const float dy[2] = {std::fabs(cy), std::fabs(height - cy)};
+                if (value == "closest-side" || value == "farthest-side"){
+                    const bool closest = value == "closest-side";
+                    if (circle){
+                        const float values[4] = {dx[0], dx[1], dy[0], dy[1]};
+                        radius = closest ? *std::min_element(values, values + 4) : *std::max_element(values, values + 4);
+                    }else{
+                        const float* d = horizontal ? dx : dy;
+                        radius = closest ? std::min(d[0], d[1]) : std::max(d[0], d[1]);
+                    }
+                    return true;
+                }
+                const float base = circle ? std::sqrt(width * width + height * height) / std::sqrt(2.0f) : (horizontal ? width : height);
+                return r.length(token, base, radius) && radius >= 0.0f;
+            };
+            float rx = 0.0f, ry = 0.0f;
+            if (circle){
+                if (!sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[0], true, rx)){
+                    fail(error, "circle() radius must be a length, percentage, closest-side or farthest-side");
+                    return false;
+                }
+                ry = rx;
+            }else{
+                if (radiusTokens.size() == 1){
+                    fail(error, "ellipse() needs two radii or none");
+                    return false;
+                }
+                if (!sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[0], true, rx) ||
+                    !sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[1], false, ry)){
+                    fail(error, "ellipse() radii must be lengths, percentages, closest-side or farthest-side");
+                    return false;
+                }
+            }
+            std::array<std::array<float, 2>, 4> radii{};
+            for (auto& corner : radii)
+                corner = {rx, ry};
+            out = RoundedShape{circle ? RoundedShape::Kind::Circle : RoundedShape::Kind::Ellipse, cx - rx, cy - ry, 2.0f * rx, 2.0f * ry, radii};
+            return true;
+        }
+        return fail(error, "'" + name + "()' is not a rounded shape");
+    }
+
 }
 
 // ---------------------------------------------------------------- BasicShape
@@ -247,6 +403,22 @@ bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string*
     return true;
 }
 
+bool BasicShape::toRoundedRect(float width, float height, Rml::Element* element, Rml::Rectanglef& rect, Rml::Array<Rml::Vector2f, 4>& radii) const{
+    const size_t open = text.find('(');
+    if (!(width > 0.0f) || !(height > 0.0f) || open == std::string::npos || text.back() != ')')
+        return false;
+    const std::string name = lower(trim(text.substr(0, open)));
+    if (!isRoundedShape(name))
+        return false;
+    RoundedShape shape;
+    if (!resolveRoundedShape(name, tokenize(text.substr(open + 1, text.size() - open - 2)), Resolver{element, width, height}, width, height, shape, nullptr))
+        return false;
+    rect = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(shape.x, shape.y), Rml::Vector2f(std::max(shape.w, 0.0f), std::max(shape.h, 0.0f)));
+    for (size_t corner = 0; corner < 4; corner++)
+        radii[corner] = Rml::Vector2f(shape.radii[corner][0], shape.radii[corner][1]);
+    return true;
+}
+
 std::string BasicShape::toSvg(float width, float height, Rml::Element* element, std::string* error) const{
     if (!(width > 0.0f) || !(height > 0.0f)){
         fail(error, "the reference box is empty");
@@ -264,131 +436,17 @@ std::string BasicShape::toSvg(float width, float height, Rml::Element* element, 
     std::string fillRule = "nonzero";
 
     std::vector<std::string> tokens = tokenize(arguments);
-    if (name == "inset"){
-        std::vector<std::string> offsets, radiusTokens;
-        splitRound(tokens, offsets, radiusTokens);
-        if (offsets.empty() || offsets.size() > 4){
-            fail(error, "inset() needs 1 to 4 offsets");
+    if (isRoundedShape(name)){
+        RoundedShape shape;
+        if (!resolveRoundedShape(name, tokens, r, width, height, shape, error))
             return std::string();
-        }
-        std::vector<std::string> o = offsets;
-        if (o.size() == 1) o = {o[0], o[0], o[0], o[0]};
-        else if (o.size() == 2) o = {o[0], o[1], o[0], o[1]};
-        else if (o.size() == 3) o = {o[0], o[1], o[2], o[1]};
-        float top, right, bottom, left;
-        if (!r.length(o[0], height, top) || !r.length(o[1], width, right) || !r.length(o[2], height, bottom) || !r.length(o[3], width, left)){
-            fail(error, "inset() offsets must be lengths or percentages");
-            return std::string();
-        }
-        // offsets that overlap are scaled down proportionally (CSS Shapes 1)
-        if (left + right > width && left + right > 0.0f){
-            const float f = width / (left + right);
-            left *= f;
-            right *= f;
-        }
-        if (top + bottom > height && top + bottom > 0.0f){
-            const float f = height / (top + bottom);
-            top *= f;
-            bottom *= f;
-        }
-        const float w = width - left - right, h = height - top - bottom;
-        std::array<std::array<float, 2>, 4> radii{};
-        if (!radiusTokens.empty() && !parseRadii(radiusTokens, r, w, h, radii, error))
-            return std::string();
-        shapeMarkup = "<path d=\"" + roundedRectPath(left, top, w, h, radii) + "\"";
-    }else if (name == "xywh" || name == "rect"){
-        std::vector<std::string> values, radiusTokens;
-        splitRound(tokens, values, radiusTokens);
-        if (values.size() != 4){
-            fail(error, name + "() needs 4 values");
-            return std::string();
-        }
-        float x, y, w, h;
-        if (name == "xywh"){
-            if (!r.length(values[0], width, x) || !r.length(values[1], height, y) || !r.length(values[2], width, w) ||
-                !r.length(values[3], height, h) || w < 0.0f || h < 0.0f){
-                fail(error, "xywh() needs lengths or percentages (non-negative sizes)");
-                return std::string();
-            }
-        }else{
-            // rect(top right bottom left), offsets from the top and left edges; auto = the edge
-            float top = 0.0f, right = width, bottom = height, left = 0.0f;
-            const auto edge = [&](const std::string& token, float base, float automatic, float& out){
-                if (lower(token) == "auto"){
-                    out = automatic;
-                    return true;
-                }
-                return r.length(token, base, out);
-            };
-            if (!edge(values[0], height, 0.0f, top) || !edge(values[1], width, width, right) || !edge(values[2], height, height, bottom) ||
-                !edge(values[3], width, 0.0f, left)){
-                fail(error, "rect() needs lengths, percentages or auto");
-                return std::string();
-            }
-            x = left;
-            y = top;
-            w = std::max(0.0f, right - left);
-            h = std::max(0.0f, bottom - top);
-        }
-        std::array<std::array<float, 2>, 4> radii{};
-        if (!radiusTokens.empty() && !parseRadii(radiusTokens, r, w, h, radii, error))
-            return std::string();
-        shapeMarkup = "<path d=\"" + roundedRectPath(x, y, w, h, radii) + "\"";
-    }else if (name == "circle" || name == "ellipse"){
-        std::vector<std::string> radiusTokens, positionTokens;
-        bool at = false;
-        for (const std::string& token : tokens){
-            if (!at && lower(token) == "at"){
-                at = true;
-                continue;
-            }
-            (at ? positionTokens : radiusTokens).push_back(token);
-        }
-        float cx, cy;
-        if ((at && positionTokens.empty()) || !parsePosition(positionTokens, r, cx, cy, error))
-            return std::string();
-        const bool circle = name == "circle";
-        if (radiusTokens.size() > (circle ? 1u : 2u)){
-            fail(error, name + "() has too many radii");
-            return std::string();
-        }
-        const auto sideRadius = [&](const std::string& token, bool horizontal, float& out) -> bool {
-            const std::string value = lower(token);
-            const float dx[2] = {std::fabs(cx), std::fabs(width - cx)};
-            const float dy[2] = {std::fabs(cy), std::fabs(height - cy)};
-            if (value == "closest-side" || value == "farthest-side"){
-                const bool closest = value == "closest-side";
-                if (circle){
-                    const float values[4] = {dx[0], dx[1], dy[0], dy[1]};
-                    out = closest ? *std::min_element(values, values + 4) : *std::max_element(values, values + 4);
-                }else{
-                    const float* d = horizontal ? dx : dy;
-                    out = closest ? std::min(d[0], d[1]) : std::max(d[0], d[1]);
-                }
-                return true;
-            }
-            const float base = circle ? std::sqrt(width * width + height * height) / std::sqrt(2.0f) : (horizontal ? width : height);
-            return r.length(token, base, out) && out >= 0.0f;
-        };
-        float rx = 0.0f, ry = 0.0f;
-        if (circle){
-            if (!sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[0], true, rx)){
-                fail(error, "circle() radius must be a length, percentage, closest-side or farthest-side");
-                return std::string();
-            }
-            shapeMarkup = "<circle cx=\"" + num(cx) + "\" cy=\"" + num(cy) + "\" r=\"" + num(rx) + "\"";
-        }else{
-            if (radiusTokens.size() == 1){
-                fail(error, "ellipse() needs two radii or none");
-                return std::string();
-            }
-            if (!sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[0], true, rx) ||
-                !sideRadius(radiusTokens.empty() ? "closest-side" : radiusTokens[1], false, ry)){
-                fail(error, "ellipse() radii must be lengths, percentages, closest-side or farthest-side");
-                return std::string();
-            }
-            shapeMarkup = "<ellipse cx=\"" + num(cx) + "\" cy=\"" + num(cy) + "\" rx=\"" + num(rx) + "\" ry=\"" + num(ry) + "\"";
-        }
+        const float cx = shape.x + 0.5f * shape.w, cy = shape.y + 0.5f * shape.h;
+        if (shape.kind == RoundedShape::Kind::Circle)
+            shapeMarkup = "<circle cx=\"" + num(cx) + "\" cy=\"" + num(cy) + "\" r=\"" + num(0.5f * shape.w) + "\"";
+        else if (shape.kind == RoundedShape::Kind::Ellipse)
+            shapeMarkup = "<ellipse cx=\"" + num(cx) + "\" cy=\"" + num(cy) + "\" rx=\"" + num(0.5f * shape.w) + "\" ry=\"" + num(0.5f * shape.h) + "\"";
+        else
+            shapeMarkup = "<path d=\"" + roundedRectPath(shape.x, shape.y, shape.w, shape.h, shape.radii) + "\"";
     }else if (name == "polygon" || name == "path"){
         // an optional fill rule before the first comma
         size_t start = 0;
@@ -462,6 +520,10 @@ struct HtmlShapeDecorator::Data {
     std::string svg;
     Rml::Vector2i pixels{0, 0};
     Rml::Vector2f offset{0, 0};
+    // S92 R8: a rounded shape of the border box as a clip (relative to the border box), with its mesh for the stencil
+    bool clips = false;
+    Rml::ClipShape clipShape;
+    Rml::Geometry clipGeometry;
 };
 
 HtmlShapeDecorator::HtmlShapeDecorator(BasicShape shape): shape(std::move(shape)) {}
@@ -496,7 +558,37 @@ Rml::DecoratorDataHandle HtmlShapeDecorator::GenerateElementData(Rml::Element* e
     Rml::MeshUtilities::GenerateQuad(mesh, box.TopLeft(), box.Size(), Rml::Colourb(255, 255, 255, 255).ToPremultiplied(element->GetDrawOpacity()),
                                      Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
     data->geometry = renderManager->MakeGeometry(std::move(mesh));
+
+    // the border box's inset(), circle(), ellipse(), xywh() and rect(): a clip (S92 R8), unless the element's opacity
+    // fades the mask (only an opaque mask is a clip)
+    Rml::Rectanglef rect;
+    Rml::Array<Rml::Vector2f, 4> radii;
+    if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toRoundedRect(box.Width(), box.Height(), element, rect, radii) &&
+        rect.Width() > 0.0f && rect.Height() > 0.0f){
+        data->clipShape.rect = rect.Translate(box.TopLeft());
+        Rml::CornerSizes2 corners;
+        for (size_t corner = 0; corner < 4; corner++){
+            const bool curved = radii[corner].x > 0.0f && radii[corner].y > 0.0f;
+            data->clipShape.radii[corner] = curved ? radii[corner] : Rml::Vector2f(0.0f);
+            corners[corner] = data->clipShape.radii[corner];
+        }
+        Rml::Mesh clipMesh;
+        Rml::MeshUtilities::GenerateBackground(clipMesh, Rml::RenderBox(data->clipShape.rect.Size(), data->clipShape.rect.TopLeft(), Rml::EdgeSizes{},
+                                                                        corners), Rml::ColourbPremultiplied(255));
+        data->clipGeometry = renderManager->MakeGeometry(std::move(clipMesh));
+        data->clips = (bool)data->clipGeometry;
+    }
     return reinterpret_cast<Rml::DecoratorDataHandle>(data);
+}
+
+bool HtmlShapeDecorator::GetMaskClipShape(Rml::Element* /*element*/, Rml::DecoratorDataHandle element_data, Rml::ClipShape& clipShape,
+                                          Rml::Geometry*& geometry) const{
+    Data* data = reinterpret_cast<Data*>(element_data);
+    if (!data || !data->clips)
+        return false;
+    clipShape = data->clipShape;
+    geometry = &data->clipGeometry;
+    return true;
 }
 
 void HtmlShapeDecorator::ReleaseElementData(Rml::DecoratorDataHandle element_data) const{
