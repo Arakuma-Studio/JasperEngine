@@ -4922,6 +4922,15 @@
 		4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477D90766B959111B7 /* HtmlUIImageCache.h */; };
+		4A534E474C3EA84A1BBF0F2D /* HtmlUIClockElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4766CE1E2DA6228273 /* HtmlUIClockElement.cpp */; };
+		4A534E47AA431B600F147DB7 /* HtmlUIClockElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4766CE1E2DA6228273 /* HtmlUIClockElement.cpp */; };
+		4A534E473A2449EC2C410458 /* RmlRendererWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471AFFC5395D78D3FE /* RmlRendererWorld.cpp */; };
+		4A534E47409305C74F024C05 /* RmlRendererWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471AFFC5395D78D3FE /* RmlRendererWorld.cpp */; };
+		4A534E476C9D5379B2BB48BF /* UIDocumentSystemWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BDD7A4206548595D /* UIDocumentSystemWorld.cpp */; };
+		4A534E47882D03D98D77613E /* UIDocumentSystemWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BDD7A4206548595D /* UIDocumentSystemWorld.cpp */; };
+		4A534E4710B1E486E0953955 /* TextAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734AB89F7CC3E692E /* TextAlignment.cpp */; };
+		4A534E478CF0D409D5174573 /* TextAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734AB89F7CC3E692E /* TextAlignment.cpp */; };
+		4A534E471BC6AB38936E3D3C /* TextAlignment.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472F89CE36FE5B752A /* TextAlignment.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9501,6 +9510,11 @@
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
 		4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIImageCache.cpp; sourceTree = "<group>"; };
 		4A534E477D90766B959111B7 /* HtmlUIImageCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIImageCache.h; sourceTree = "<group>"; };
+		4A534E4766CE1E2DA6228273 /* HtmlUIClockElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClockElement.cpp; sourceTree = "<group>"; };
+		4A534E471AFFC5395D78D3FE /* RmlRendererWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererWorld.cpp; sourceTree = "<group>"; };
+		4A534E47BDD7A4206548595D /* UIDocumentSystemWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemWorld.cpp; sourceTree = "<group>"; };
+		4A534E4734AB89F7CC3E692E /* TextAlignment.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextAlignment.cpp; sourceTree = "<group>"; };
+		4A534E472F89CE36FE5B752A /* TextAlignment.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextAlignment.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11767,6 +11781,8 @@
 				4A534E474365841B0820D5A8 /* NearestName.h */,
 				4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */,
 				4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */,
+				4A534E4734AB89F7CC3E692E /* TextAlignment.cpp */,
+				4A534E472F89CE36FE5B752A /* TextAlignment.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -12342,6 +12358,7 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47BDD7A4206548595D /* UIDocumentSystemWorld.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -14497,6 +14514,8 @@
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */,
 				4A534E477D90766B959111B7 /* HtmlUIImageCache.h */,
+				4A534E4766CE1E2DA6228273 /* HtmlUIClockElement.cpp */,
+				4A534E471AFFC5395D78D3FE /* RmlRendererWorld.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -16851,6 +16870,7 @@
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */,
+				4A534E471BC6AB38936E3D3C /* TextAlignment.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19520,6 +19540,10 @@
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
 				4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */,
+				4A534E474C3EA84A1BBF0F2D /* HtmlUIClockElement.cpp in Sources */,
+				4A534E473A2449EC2C410458 /* RmlRendererWorld.cpp in Sources */,
+				4A534E476C9D5379B2BB48BF /* UIDocumentSystemWorld.cpp in Sources */,
+				4A534E4710B1E486E0953955 /* TextAlignment.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20480,6 +20504,10 @@
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
 				4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */,
+				4A534E47AA431B600F147DB7 /* HtmlUIClockElement.cpp in Sources */,
+				4A534E47409305C74F024C05 /* RmlRendererWorld.cpp in Sources */,
+				4A534E47882D03D98D77613E /* UIDocumentSystemWorld.cpp in Sources */,
+				4A534E478CF0D409D5174573 /* TextAlignment.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

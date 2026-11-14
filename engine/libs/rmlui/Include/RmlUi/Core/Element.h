@@ -283,6 +283,10 @@ public:
 	bool AddAnimationKey(const String& property_name, const Property& target_value, float duration, Tween tween = Tween{});
 	bool AddAnimationKey(PropertyId id, const Property& target_value, float duration, Tween tween = Tween{});
 
+	/// Fork (S93-F1): moves the start times of the element's running animations and transitions (not its children's) by
+	/// 'delta' seconds, so that they keep their progress on another clock (ElementDocument::SetAnimationClock).
+	void ShiftAnimationStartTimes(double delta);
+
 	/// Iterator for the local (non-inherited) properties defined on this element.
 	/// @param[in] filter_inherited_by If set, only iterates properties that are inherited by the given element.
 	/// @warning Modifying the element's properties or classes invalidates the iterator.
@@ -811,6 +815,9 @@ private:
 	/// Advances the animations (including transitions) to the context's time, applies their values to the animation layers, and dispatches
 	/// their events.
 	void AdvanceAnimations();
+
+	/// Fork (S93-F1): the time the element's animations and transitions run on: its owner document's animation clock.
+	double GetAnimationClockTime();
 
 	/// Follows the element's display (and its ancestors'): CSS animations and transitions stop while it is 'none', and restart after.
 	/// @return True if the element's style must be computed again (shown again: transitions from its @starting-style).

@@ -112,6 +112,14 @@ public:
 	bool HasCanvasBackground() const { return canvas_background; }
 	const String& GetCanvasBodyTag() const { return canvas_body_tag; }
 
+	/// Fork (S93-F1): the clock the CSS animations and transitions of the document run on. 0 (the default) is
+	/// SystemInterface::GetElapsedTime, any other value SystemInterface::GetAnimationClockTime(clock). The running animations
+	/// and transitions keep their progress over a change: their start times move by the difference of the two clocks.
+	void SetAnimationClock(int clock);
+	int GetAnimationClock() const { return animation_clock; }
+	/// Fork (S93-F1): the time of the document's animation clock, in seconds.
+	double GetAnimationTime() const;
+
 	/// Finds the next tabbable element in the document tree, starting at the given element, possibly wrapping around the document.
 	/// @param[in] current_element The element to start from.
 	/// @param[in] forward True to search forward, false to search backward.
@@ -166,6 +174,7 @@ protected:
 
 private:
 	bool canvas_background = false;
+	int animation_clock = 0;
 	String canvas_body_tag;
 
 	/// Searches forwards or backwards for a focusable element in the given subtree.

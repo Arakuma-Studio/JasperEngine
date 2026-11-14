@@ -336,11 +336,12 @@ TEST_F(AnimeElementTest, UiClockRunsWhileTheGameIsFrozen){
     EXPECT_NEAR(uiTarget->getNumber("v"), 200, 1e-6);
     EXPECT_NEAR(gameTarget->getNumber("v"), 50, 1e-6);
 
-    // a pinned UI clock pins anime too (and the RmlUi animations, the Lottie players)
+    // a pinned UI clock pins anime too (and the RmlUi animations, the Lottie players), on both
+    // clocks: the game clock holds while a fixed UI time is set (S93 R35; it ran on before)
     HtmlUIClock::setFixedTime(HtmlUIClock::now());
     GpuEnvironment::drawFrames(3);
     EXPECT_NEAR(uiTarget->getNumber("v"), 200, 1e-6);
-    EXPECT_NEAR(gameTarget->getNumber("v"), 80, 1e-6);
+    EXPECT_NEAR(gameTarget->getNumber("v"), 50, 1e-6);
     HtmlUIClock::setFixedTime(std::nullopt);
 
     // an invalid clock is an error naming the valid values

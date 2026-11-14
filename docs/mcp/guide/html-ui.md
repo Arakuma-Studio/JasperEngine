@@ -33,7 +33,7 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
   scaled canvas (letterbox, high-DPI screens) the document is drawn at screen resolution, so
   text and edges stay sharp.
 - A document can also render into a **texture** for a mesh or an `Image` (`renderMode:
-  texture`, below).
+  texture`), or stand in the 3D world as a quad (`renderMode: world`, World Space), below.
 - **No browser and no JavaScript.** The layout engine is a fork of RmlUi 6.3 drawn with the
   engine's own renderer on every backend. Logic is Lua: a script on the GameObject
   (`UIDocument(self.scene, self.entity)`) or `<script type="text/lua">` in the document.
@@ -48,8 +48,11 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
 | `sortOrder` | int | Higher draws on top (default 0). |
 | `enabled` | bool | Shown and receiving input (the Inspector's checkbox; Lua `doc.visible`, `show()`, `hide()`). |
 | `interactive` | bool | Receives pointer, keyboard and text input (default true). Off: every event goes to the game. |
-| `renderMode` | enum | `screen` (default) or `texture`. |
-| `textureWidth`, `textureHeight` | int | `texture` mode: texture size, 1..8192 (default 1024 x 1024). |
+| `renderMode` | enum | `screen` (default), `texture` or `world` (Inspector "World Space"). |
+| `updateMode` | enum | `unscaled` (default, "Unscaled Time") or `game` ("Game Time"): the clock of its animations (Animation, below). |
+| `textureWidth`, `textureHeight` | int | `texture` and `world` modes: texture size, 1..8192 (default 1024 x 1024). |
+| `pixelsPerUnit` | float | `world` mode: texture pixels per world unit (default 100). |
+| `billboard` | bool | `world` mode: the quad turns to the camera (default false). |
 | `inputSurface` | entity | `texture` mode: the mesh whose UVs receive the pointer; none = the document's own GameObject. |
 | `pixelRatio` | float | Document pixels per CSS pixel; 0 = automatic (the canvas-to-screen scale; 1 in `texture` mode). |
 
@@ -138,6 +141,22 @@ return Terminal
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
   screen documents only.
+
+### World Space documents
+
+`renderMode: world` (Unity's Canvas World Space) draws the document as a quad at its
+GameObject, with no mesh or material: `textureWidth x textureHeight / pixelsPerUnit` world
+units, centred on the GameObject, in its XY plane facing +Z (`billboard: true` turns it to the
+camera). `create_ui_document` takes them as `properties` (`render_mode`, `pixels_per_unit`,
+`billboard`).
+
+- It is drawn with the scene's transparent objects (sorted by distance), depth tested: objects
+  in front hide it, it hides objects behind it. Both faces show.
+- Pointer input hits the quad as a texture document's mesh (above), and an object in front of
+  the quad takes the ray, as it hides the quad.
+- Everything else is a texture document's: its own layout context and `getTargetTexture()`.
+  `inspect_ui at`, `send_input` selectors and `screenshot document` work on screen documents
+  only: click it at its canvas point with `send_input` x, y.
 
 ## Quick start
 
@@ -575,8 +594,8 @@ h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
 The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
 shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
 <integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
-(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
-runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+(bubbles) fires at the element that declares the effect; `text-effect-time: auto` (default: the
+document's Update Mode), `ui` (unscaled: runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
 still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
 `el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
 new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
@@ -1095,6 +1114,13 @@ Two ways, both on the **UI clock** (the engine's frame time before `Engine.timeS
 menu animates while the game is frozen; deterministic with `play {fixed_fps}`; still while
 `auto_pause` holds the simulation):
 
+- A document whose HUD should freeze and slow with the game takes **Update Mode Game Time**
+  (`updateMode: game`; Lua `doc.updateMode = UIDocumentUpdateMode.GAME_TIME`): its CSS
+  transitions and `@keyframes`, the anime animations of its elements, its effects, Lottie and
+  text effects follow `Engine.timeScale`, and stop while the game is paused and in the editor
+  outside Play. Input timing (double click, long press, scroll inertia) stays unscaled. A change
+  keeps running animations where they are.
+
 - **CSS** transitions and `@keyframes` for state changes and loops declared in the stylesheet
   (hover, `.open`, a pulsing badge). They start on any change, including a class set from Lua.
 - **`anime`**, a Lua port of [Anime.js v4](https://animejs.com/documentation/) (4.5.0), for
@@ -1130,7 +1156,8 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 - **Parameters**: `duration` (ms, default 1000), `delay`, `loop` (count or `true`), `loopDelay`,
   `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `frameRate`, `ease`
   (default `"out(2)"`), `composition` (`"replace"`, `"none"`, `"blend"`), `modifier`, `id`,
-  `root`, `clock = "game"` (scaled game time: freezes with the game).
+  `root`, `clock = "game"` (scaled game time: freezes with the game) or `"ui"`; without it, the
+  clock of the targets' document (a timeline: of its first animated targets).
 - **Callbacks** (they get the animation): `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`,
   `onLoop`, `onPause`, `onComplete`; `anim:andThen(fn)` is Anime's `then()`.
 - **Control**: `play pause resume restart reverse alternate seek(ms) stretch(ms) cancel revert

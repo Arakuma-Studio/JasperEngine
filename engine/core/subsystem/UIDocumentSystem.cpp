@@ -230,7 +230,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
-            if (document.renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(document.filename);
+            if (!rendersToTexture(document.renderMode)) scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = loadEntityDocument(entity, document.filename);
             if (loadedDocument){
@@ -256,6 +256,12 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         // a numeric z-index also stops RmlUi pulling a focused document to the front
         rmlDocument->SetProperty(Rml::PropertyId::ZIndex, Rml::Property((float)document.sortOrder, Rml::Unit::NUMBER));
         document.appliedSortOrder = document.sortOrder;
+    }
+
+    // S93 R35: the clock its animations run on (a change keeps their progress)
+    if (forceApply || document.updateMode != document.appliedUpdateMode){
+        rmlDocument->SetAnimationClock(HtmlUIClock::animationClockOf(document.updateMode));
+        document.appliedUpdateMode = document.updateMode;
     }
 
     if (forceApply || visible != document.appliedVisible){

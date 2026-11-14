@@ -1,11 +1,14 @@
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/Context.h"
+#include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementText.h"
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
+#include "../../Include/RmlUi/Core/SystemInterface.h"
+#include "Clock.h"
 #include "DocumentHeader.h"
 #include "ElementCascade.h"
 #include "ElementStyle.h"
@@ -582,6 +585,32 @@ void ElementDocument::SetCanvasBackground(bool enable, const String& body_tag)
 	canvas_background = enable;
 	canvas_body_tag = body_tag;
 	// (ElementBackgroundBorder looks the canvas's source up as it renders.)
+}
+
+static void ShiftSubtreeAnimationStartTimes(Element* element, double delta)
+{
+	element->ShiftAnimationStartTimes(delta);
+	for (int i = 0; i < element->GetNumChildren(true); i++)
+		ShiftSubtreeAnimationStartTimes(element->GetChild(i), delta);
+}
+
+void ElementDocument::SetAnimationClock(int clock)
+{
+	if (clock == animation_clock)
+		return;
+	const double before = GetAnimationTime();
+	animation_clock = clock;
+	const double delta = GetAnimationTime() - before;
+	if (delta != 0.0)
+		ShiftSubtreeAnimationStartTimes(this, delta);
+}
+
+double ElementDocument::GetAnimationTime() const
+{
+	if (animation_clock == 0)
+		return Clock::GetElapsedTime();
+	SystemInterface* system_interface = GetSystemInterface();
+	return system_interface ? system_interface->GetAnimationClockTime(animation_clock) : 0.0;
 }
 
 bool ElementDocument::IsModal() const

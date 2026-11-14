@@ -118,6 +118,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;
     extern const EnumDesc kUIDocumentRenderMode;
+    extern const EnumDesc kUIDocumentUpdateMode;
+    extern const EnumDesc kTextHorizontalAlignment;
+    extern const EnumDesc kTextVerticalAlignment;
     extern const EnumDesc kUIEventState;
     extern const EnumDesc kWindingOrder;
     // navigation (S19, editor/reflect/components/NavigationReflect.cpp)

@@ -3408,6 +3408,21 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("colorWrite", &Polygon::getColorWrite, &Polygon::setColorWrite)
         .endClass();
 
+    // S93 R37: Text.horizontalAlignment / verticalAlignment (TextMeshPro's names)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextHorizontalAlignment")
+        .addVariable("LEFT", TextHorizontalAlignment::LEFT)
+        .addVariable("CENTER", TextHorizontalAlignment::CENTER)
+        .addVariable("RIGHT", TextHorizontalAlignment::RIGHT)
+        .addVariable("JUSTIFIED", TextHorizontalAlignment::JUSTIFIED)
+        .endNamespace()
+        .beginNamespace("TextVerticalAlignment")
+        .addVariable("TOP", TextVerticalAlignment::TOP)
+        .addVariable("MIDDLE", TextVerticalAlignment::MIDDLE)
+        .addVariable("BOTTOM", TextVerticalAlignment::BOTTOM)
+        .addVariable("BASELINE", TextVerticalAlignment::BASELINE)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<Text, RectTransform>("Text")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
@@ -3424,6 +3439,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::constOverload<>(&Text::getFont),
             luabridge::constOverload<unsigned int>(&Text::getFont))
         .addProperty("fontSize", &Text::getFontSize, &Text::setFontSize)
+        // S93 R37 (TextMeshPro): Alignment inside the fixed box, Auto Size between Min and Max
+        .addProperty("horizontalAlignment", &Text::getHorizontalAlignment, &Text::setHorizontalAlignment)
+        .addProperty("verticalAlignment", &Text::getVerticalAlignment, &Text::setVerticalAlignment)
+        .addProperty("autoSize", &Text::isAutoSize, &Text::setAutoSize)
+        .addProperty("fontSizeMin", &Text::getFontSizeMin, &Text::setFontSizeMin)
+        .addProperty("fontSizeMax", &Text::getFontSizeMax, &Text::setFontSizeMax)
         .addProperty("multiline", &Text::getMultiline, &Text::setMultiline)
         .addProperty("color", &Text::getColor, (void(Text::*)(Vector4))&Text::setColor)
         .addFunction("setColor", 
