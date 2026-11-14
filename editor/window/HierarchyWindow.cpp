@@ -124,6 +124,7 @@
 #include "util/EntityPayload.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
+#include "asset/MeshAssetFiles.h"
 #include "util/ProjectUtils.h"
 #include "Out.h"
 #include "Stream.h"
@@ -3907,7 +3908,8 @@ void editor::HierarchyWindow::show(bool covered){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path) || Util::isTilemapImportFile(path) || Util::isTitleArtFile(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path) || Util::isTilemapImportFile(path) || Util::isTitleArtFile(path) ||
+                            Util::isMeshAssetFile(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
@@ -3943,6 +3945,14 @@ void editor::HierarchyWindow::show(bool covered){
                     std::string error;
                     if (createTitleArtObject(project, project->getSelectedSceneId(), path, NULL_ENTITY, &error) == NULL_ENTITY) {
                         Out::warning("Title Art drop: %s", error.c_str());
+                    }
+                }
+                // a .mesh (S98 F1): a GameObject whose Mesh Renderer shows it
+                for (const std::string& path : droppedPaths) {
+                    if (!Util::isMeshAssetFile(path)) continue;
+                    std::string error;
+                    if (MeshAssetFiles::createObject(*project, project->getSelectedSceneId(), path, Vector3(0, 0, 0), NULL_ENTITY, &error) == NULL_ENTITY) {
+                        Out::warning("Mesh drop: %s", error.c_str());
                     }
                 }
 

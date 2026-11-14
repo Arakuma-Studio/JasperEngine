@@ -219,6 +219,9 @@ namespace {
 
     constexpr FieldDesc kMeshFields[] = {
         JE_FIELD(MeshComponent, enabled),
+        // S98 F1: the .mesh asset the geometry comes from (MeshSystem reads it when it changes);
+        // none: the geometry is the mesh's own
+        JE_FIELD(MeshComponent, meshAsset, .ops = &ops::AssetRefIfSet, .updateFlags = kMeshReload, .asset = AssetKind::Mesh, .label = "Mesh"),
         JE_FIELD(MeshComponent, receiveLights, .updateFlags = kMeshReload),
         JE_FIELD(MeshComponent, receiveIBL, .updateFlags = kMeshReload, .label = "Receive IBL"),
         JE_FIELD(MeshComponent, castShadows, .updateFlags = kMeshReload),
@@ -647,7 +650,7 @@ namespace {
     constexpr const char* kMeshKnownKeys[] = {"aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows",
                                               "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices",
                                               "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode",
-                                              "lodFadeTransitionWidth", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
+                                              "lodFadeTransitionWidth", "meshAsset", "meshAssetGuid", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
                                               "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
                                               "shaderUniforms", "shadowsBillboard", "sortingLayer", "sortingOrder", "staticShadowCaster",
                                               "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};

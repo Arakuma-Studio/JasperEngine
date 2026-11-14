@@ -119,6 +119,7 @@
 #include "subsystem/VoxelSystem.h"
 #include "voxel/VoxelWorkQueue.h"
 #include "voxel/VoxelAssetFile.h"
+#include "asset/MeshAssetFiles.h"
 #include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
@@ -8283,6 +8284,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         NavigationEditor::get().saveSceneAssets(this, *sceneProject);
         // its dirty Voxel Volumes (T6 R77)
         saveSceneVoxelAssets(*this, *sceneProject);
+        // its large meshes to .mesh assets (S98 F1)
+        MeshAssetFiles::extractScene(*this, *sceneProject, fullPath);
         resolveSceneAssetRefs(*sceneProject, false);
     }
 
@@ -8678,6 +8681,8 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
     // its dirty Voxel Volumes (T6 R77): the store's tables belong to this thread
     saveSceneVoxelAssets(*this, *sceneProject);
+    // its large meshes to .mesh assets (S98 F1), here: they edit the scene's components
+    MeshAssetFiles::extractScene(*this, *sceneProject, path.is_relative() ? getProjectPath() / path : path);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
         if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {

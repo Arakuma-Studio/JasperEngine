@@ -227,6 +227,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".titleart";
         }
 
+        // a Mesh Renderer's geometry in a file of its own (S98 F1, model/MeshAsset.h)
+        inline static bool isMeshAssetFile(const std::string& path) {
+            return fileExtension(path) == ".mesh";
+        }
+
         // a Procedural Material's node graph (S90): editor-only, its bakes are what ships
         inline static bool isProceduralMaterialFile(const std::string& path) {
             return fileExtension(path) == ".procmat";
@@ -264,7 +269,7 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isMeshAssetFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

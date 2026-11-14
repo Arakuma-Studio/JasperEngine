@@ -24,11 +24,13 @@ namespace {
 
     // ---------------------------------------------------------------- Mesh
 
-    // Factory::createMeshComponent: the geometry of a mesh whose model or heightmapped terrain
-    // rebuilds it at load is not shipped; nor are the bones of a generated mesh
+    // Factory::createMeshComponent: the geometry of a mesh whose model, heightmapped terrain or
+    // .mesh asset (meshAsset, a field of the table) rebuilds it at load is not shipped; nor are the
+    // bones of a generated mesh
     void writeMesh(Writer& w, const void* component, const WriteContext& ctx) {
         const MeshComponent& mesh = *static_cast<const MeshComponent*>(component);
-        const bool runtimeGeometry = ctx.modelBackedMesh || ctx.terrainHeightmap;
+        const bool meshAsset = !mesh.meshAsset.empty();
+        const bool runtimeGeometry = ctx.modelBackedMesh || ctx.terrainHeightmap || meshAsset;
         w.varint(mesh.vertexCount);
         w.boolean(mesh.shadowsBillboard);
         write(w, mesh.windingOrder);
@@ -51,8 +53,8 @@ namespace {
             w.boolean(submesh.hasSkinningNormalization);
             w.f32(submesh.normAdjustJoint);
             w.f32(submesh.normAdjustWeight);
-            // a model load rebuilds the attributes
-            if (ctx.modelBackedMesh) {
+            // a model or .mesh load rebuilds the attributes
+            if (ctx.modelBackedMesh || meshAsset) {
                 write(w, std::map<AttributeType, Attribute>());
             } else {
                 write(w, submesh.attributes);

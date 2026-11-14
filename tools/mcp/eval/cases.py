@@ -5242,6 +5242,34 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S98 F1: .mesh assets
+    {
+        "id": "guard_mesh_save_as_asset",
+        "kind": "guard",
+        "what_happened": "New text (S98 F1): set_mesh_geometry's save_as writes a mesh's geometry to a .mesh asset the mesh "
+                         "then shows; an agent asked to make a GameObject's mesh reusable saves it there instead of exporting "
+                         "a model by hand, copying the scene YAML's buffers or writing the bytes from Lua.",
+        "text_at_issue": "set_mesh_geometry: 'save_as: also a .mesh asset it then shows (alone: the current geometry).'",
+        "source": "S98 F1 (new parameter); ledger E1 (scene files embed mesh buffers)",
+        "prompt": "Make the Rock GameObject's mesh a reusable asset at assets/meshes/rock.mesh so other scenes can use it. "
+                  "Keep its current shape.",
+        "mocks": [
+            {"tool": "set_mesh_geometry", "result": ok(
+                "Set the mesh of Rock to show assets/meshes/rock.mesh.",
+                {"entity": {"id": 12, "path": "Rock"}, "mesh_asset": "assets/meshes/rock.mesh", "local_size": [1.2, 0.8, 1.1],
+                 "local_center": [0, 0.4, 0]})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 12 Rock (mesh)", {"entities": [{"id": 12, "path": "Rock"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Rock\": transform, mesh (612 vertices, its own geometry).",
+                                               {"id": 12})},
+            {"tool": "get_asset_info", "result": ok(
+                "assets/meshes/rock.mesh: mesh: 612 vertices, 3240 indices, 1 submesh(es), shown by 1 GameObject(s) of the open "
+                "scenes.", {"path": "assets/meshes/rock.mesh", "type": "mesh", "vertex_count": 612})},
+            {"tool": "save_scene", "result": ok("Saved scene Main.", {"scene_id": 1})},
+        ],
+        "checks": {"calls": [{"tool": "set_mesh_geometry", "args": {"save_as": "re:rock\\.mesh$"}}],
+                   "must_not_call": ["eval_lua", "write_file"]},
+        "max_turns": 10,
+    },
     # ---- S98 WP-4: opening a scene leaves the build list alone (E8, REQ-28)
     {
         "id": "s98_open_scene_stays_out_of_build",

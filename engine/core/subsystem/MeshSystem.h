@@ -255,6 +255,11 @@ namespace jasperengine{
         void reloadFoliageMesh(const std::string& filename);
         // Retries the failed loads of a file that appeared or changed on disk
         void retryFailedModelLoads(const std::string& filename);
+        // Reads the mesh's .mesh asset (MeshComponent::meshAsset) into its geometry now, as update
+        // does when the path changes; false (logged) when the file cannot be read
+        bool loadMeshAsset(MeshComponent& mesh);
+        // The meshes of this scene showing the .mesh at `path` read it again on the next update
+        void invalidateMeshAsset(const std::string& path);
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
         // createPlane split into segments x segments quads (1..255), for a surface the vertex

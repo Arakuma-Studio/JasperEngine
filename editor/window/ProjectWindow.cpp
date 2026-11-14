@@ -300,6 +300,24 @@ static void makeTilesetFileIcon(int size, std::vector<uint8_t>& rgba) {
     rgba = image.getPixels();
 }
 
+// a .mesh (S98 F1): a wireframe cube
+static void makeMeshAssetFileIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    const editor::PoseColor edge = editor::PoseColor::hex(0x8FB8E8);
+    const float front[4][2] = {{10, 22}, {42, 22}, {42, 54}, {10, 54}};
+    const float back[4][2] = {{22, 10}, {54, 10}, {54, 42}, {22, 42}};
+    for (int i = 0; i < 4; i++) {
+        const int j = (i + 1) % 4;
+        image.drawLine(front[i][0] * s, front[i][1] * s, front[j][0] * s, front[j][1] * s, 2.5f * s, edge);
+        image.drawLine(back[i][0] * s, back[i][1] * s, back[j][0] * s, back[j][1] * s, 2.5f * s, edge);
+        image.drawLine(front[i][0] * s, front[i][1] * s, back[i][0] * s, back[i][1] * s, 2.5f * s, edge);
+    }
+    // one face split in two triangles: geometry, not a model file
+    image.drawLine(front[0][0] * s, front[0][1] * s, front[2][0] * s, front[2][1] * s, 1.5f * s, edge);
+    rgba = image.getPixels();
+}
+
 // "+N" over a palette thumbnail of more than 64 colours: a 3 x 5 pixel font, no text renderer
 // on the thumbnail worker
 static void drawPaletteThumbnailCount(std::vector<uint8_t>& rgba, int width, int height, int hidden) {
@@ -1315,6 +1333,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.94f, 0.49f, 0.34f, 1.0f));
         case FileType::TILESET:
             return ImGui::GetColorU32(ImVec4(0.42f, 0.73f, 0.44f, 1.0f));
+        case FileType::MESH_ASSET:
+            return ImGui::GetColorU32(ImVec4(0.56f, 0.72f, 0.91f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -3233,6 +3253,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isTilesetFile(fileEntry.extension)){
             fileEntry.type = FileType::TILESET;
             fileEntry.icon = tilesetIcon.getRender();
+        }else if (Util::isMeshAssetFile(fileEntry.extension)){
+            fileEntry.type = FileType::MESH_ASSET;
+            fileEntry.icon = meshAssetIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -4798,6 +4821,7 @@ void editor::ProjectWindow::show() {
         physicsMaterialIcon.load();
         proceduralIcon(paletteIcon, paletteIconPixels, "editor:resources:palette_icon", makePaletteFileIcon);
         proceduralIcon(tilesetIcon, tilesetIconPixels, "editor:resources:tileset_icon", makeTilesetFileIcon);
+        proceduralIcon(meshAssetIcon, meshAssetIconPixels, "editor:resources:mesh_asset_icon", makeMeshAssetFileIcon);
 
         scanDirectory(project->getProjectPath().string());
 

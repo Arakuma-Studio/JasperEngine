@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshSystem.h"
+#include "model/MeshAsset.h"
 #include "terrain/TerrainEditModule.h"
 #include "subsystem/FoliageSystem.h"
 #include "component/ActionComponent.h"
@@ -4382,7 +4383,14 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
     terrain.ranges[terrain.levels - 1] = lastLevel;
 }
 
+// A generated primitive replaces the geometry: the mesh no longer shows its .mesh asset (S98 F1)
+static void dropMeshAssetLink(MeshComponent& mesh){
+    mesh.meshAsset.clear();
+    mesh.loadedMeshAsset.clear();
+}
+
 void MeshSystem::createPlane(MeshComponent& mesh, float width, float depth, unsigned int tiles){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -4439,6 +4447,7 @@ void MeshSystem::createPlane(MeshComponent& mesh, float width, float depth, unsi
 // createPlane's quad (horizontal, +Y normal, uv along X and Z) as a grid of segments x
 // segments quads with the same winding, uv and bounds
 void MeshSystem::createGrid(MeshComponent& mesh, float width, float depth, unsigned int segments, unsigned int tiles){
+    dropMeshAssetLink(mesh);
     // 16-bit indices: at most 256 x 256 vertices
     segments = std::clamp(segments, 1u, 255u);
 
@@ -4494,6 +4503,7 @@ void MeshSystem::createGrid(MeshComponent& mesh, float width, float depth, unsig
 // Unlike createPlane (horizontal, +Y normal), a wall stands upright — its +Z
 // normal matches the MirrorComponent default, so a mirror needs no rotation.
 void MeshSystem::createWall(MeshComponent& mesh, float width, float height, unsigned int tiles){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -4548,6 +4558,7 @@ void MeshSystem::createWall(MeshComponent& mesh, float width, float height, unsi
 }
 
 void MeshSystem::createBox(MeshComponent& mesh, float width, float height, float depth, unsigned int tiles){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -4712,6 +4723,7 @@ void MeshSystem::createBox(MeshComponent& mesh, float width, float height, float
 }
 
 void MeshSystem::createSphere(MeshComponent& mesh, float radius, unsigned int slices, unsigned int stacks){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -4806,6 +4818,7 @@ void MeshSystem::createSphere(MeshComponent& mesh, float radius, unsigned int sl
 }
 
 void MeshSystem::createCylinder(MeshComponent& mesh, float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -4937,6 +4950,7 @@ void MeshSystem::createCylinder(MeshComponent& mesh, float baseRadius, float top
 }
 
 void MeshSystem::createCapsule(MeshComponent& mesh, float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -5021,6 +5035,7 @@ void MeshSystem::createCapsule(MeshComponent& mesh, float baseRadius, float topR
 }
 
 void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius, unsigned int sides, unsigned int rings){
+    dropMeshAssetLink(mesh);
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
@@ -7698,6 +7713,32 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
     return true;
 }
 
+bool MeshSystem::loadMeshAsset(MeshComponent& mesh){
+    mesh.loadedMeshAsset = mesh.meshAsset.path;
+    if (mesh.meshAsset.empty()){
+        return false;
+    }
+    std::string error;
+    if (!MeshAsset::load(mesh.meshAsset.path, mesh, &error)){
+        // once per path: the next try waits for another path or invalidateMeshAsset
+        Log::error("Mesh asset not loaded: %s (%s)", mesh.meshAsset.path.c_str(), error.c_str());
+        return false;
+    }
+    calculateMeshAABB(mesh);
+    if (mesh.loaded)
+        mesh.needReload = true;
+    return true;
+}
+
+void MeshSystem::invalidateMeshAsset(const std::string& path){
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        if (mesh.meshAsset.path == path)
+            mesh.loadedMeshAsset.clear();
+    }
+}
+
 void MeshSystem::load(){
     update(0);
 }
@@ -7867,6 +7908,11 @@ void MeshSystem::update(double dt){
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
+
+        // a .mesh asset assigned, changed on disk or not read yet (S98 F1)
+        if (!mesh.meshAsset.empty() && mesh.loadedMeshAsset != mesh.meshAsset.path){
+            loadMeshAsset(mesh);
+        }
 
         if (mesh.aabb == AABB::ZERO){
             calculateMeshAABB(mesh);
