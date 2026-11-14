@@ -115,7 +115,9 @@ async def test_render_stats(ed: Editor):
     # S15's generic render stats carry the selected scene's HTML UI counters too (R27)
     generic = await ed.call("get_render_stats")
     html_ui = generic.get("html_ui", {})
-    ed.check(all(field in html_ui for field in FIELDS) and html_ui.get("drawCalls", 0) > 0, f"get_render_stats html_ui: {html_ui}")
+    # (a frame that drew, or one S92 kept: the editor's clock may not have moved since the last)
+    drew = html_ui.get("drawCalls", 0) > 0 or html_ui.get("framesKept", 0) == 1
+    ed.check(all(field in html_ui for field in FIELDS) and drew, f"get_render_stats html_ui: {html_ui}")
 
 
 async def test_paint_and_raster(ed: Editor):
