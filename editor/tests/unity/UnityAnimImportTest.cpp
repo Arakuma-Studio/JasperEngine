@@ -54,10 +54,12 @@ namespace {
         }
     };
 
-    TrackSample sampleTrackAt(const AnimationClip& clip, int track, float t) {
-        TrackSample sample;
+    anim::TrackSample sampleTrackAt(const AnimationClip& clip, int track, float t) {
+        anim::TrackSample sample;
         EXPECT_GE(track, 0);
-        if (track >= 0) EXPECT_TRUE(sampleTrack(clip.getTracks()[(size_t)track], t, sample));
+        if (track >= 0) {
+            EXPECT_TRUE(anim::sampleTrack(clip.getTracks()[(size_t)track], t, sample));
+        }
         return sample;
     }
 
@@ -121,7 +123,7 @@ TEST(UnityAnimImportTest, TransformAndFloatCurves) {
         SCOPED_TRACE("t = " + std::to_string(t));
         const double h = hermiteEase(t);
         // m_PositionCurves (Clamped Auto, flat ends), X mirrored
-        const TrackSample p = sampleTrackAt(*clip, hipsPosition, t);
+        const anim::TrackSample p = sampleTrackAt(*clip, hipsPosition, t);
         EXPECT_NEAR(p.vector.x, -(1.0 + h), 1e-4);
         EXPECT_NEAR(p.vector.y, 2.0, 1e-4);
         EXPECT_NEAR(p.vector.z, 3.0 + 2.0 * h, 1e-4);
@@ -136,12 +138,12 @@ TEST(UnityAnimImportTest, TransformAndFloatCurves) {
         // m_RotationCurves: linear components, normalized, mirrored
         EXPECT_GE(unitQuatDot(sampleTrackAt(*clip, head, t).rotation, 0, -0.70710677 * t, 0, 1.0 - 0.29289323 * t), 1.0 - 1e-6);
         // Transform float curves merged at the union of their key times
-        const TrackSample l = sampleTrackAt(*clip, leg, t);
+        const anim::TrackSample l = sampleTrackAt(*clip, leg, t);
         EXPECT_NEAR(l.vector.x, -t, 1e-4);
         EXPECT_NEAR(l.vector.y, t <= 0.5f ? 2.0 * t : 2.0 - 2.0 * t, 1e-4);
         EXPECT_NEAR(l.vector.z, 0.5, 1e-4);
         // float curves: a material colour channel, a stepped m_IsActive, an AudioSource volume
-        const TrackSample a = sampleTrackAt(*clip, alpha, t);
+        const anim::TrackSample a = sampleTrackAt(*clip, alpha, t);
         ASSERT_EQ(a.weights.size(), 1u);
         EXPECT_NEAR(a.weights[0], 1.0 - h, 1e-4);
         EXPECT_NEAR(sampleTrackAt(*clip, active, t).weights[0], t < 0.5f ? 1.0 : 0.0, 1e-6);
@@ -316,12 +318,16 @@ TEST(UnityControllerImportTest, StatesTransitionsBlendTrees) {
     EXPECT_TRUE(jumpReported) << result.report.dump(2);
 
     // a second import beside the first reuses its clips and mask
-    for (const auto& [path, text] : result.files) ASSERT_TRUE(writeFileAtomic(path, text).written());
+    for (const auto& [path, text] : result.files) {
+        ASSERT_TRUE(io::writeFileAtomic(path, text).written());
+    }
     options.dest = assets.root / "anim" / "Hero 2.controller";
     const AssetImportResult again = importUnityAnimationAsset(options);
     ASSERT_TRUE(again.ok) << again.error;
     EXPECT_EQ(again.files.size(), 1u) << again.report.dump(2);
-    for (const Json& c : again.report["clips"]) EXPECT_TRUE(c["reused"].get<bool>()) << c.dump();
+    for (const Json& c : again.report["clips"]) {
+        EXPECT_TRUE(c["reused"].get<bool>()) << c.dump();
+    }
     const anim::ControllerParseResult second = anim::parseController(again.files.front().second);
     ASSERT_TRUE(second.ok);
     EXPECT_EQ(stateNamed(second.data.layers[0].machine, "Idle")->motion.clip.guid, idle->motion.clip.guid);
