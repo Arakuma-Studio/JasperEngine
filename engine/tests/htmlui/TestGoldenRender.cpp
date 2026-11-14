@@ -309,6 +309,21 @@ TEST_F(FullPathGoldenTest, Transform){
     EXPECT_SCREEN_GOLDEN(screen, "transform");
 }
 
+// S93 R30 (AC34): multiply blends with a copy of the backdrop, plus-lighter adds without one (fixed function), normal
+// draws as before; the colours are Compositing 1's: multiply (0x40,0x80,0xc0) x (0xc0,0x80,0x40), plus-lighter their sum
+TEST_F(FullPathGoldenTest, MixBlendModeBackdropCopies){
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("golden/mix_blend.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+    EXPECT_EQ(document.getRenderStats().blendBackdropCopies, 1u);
+    EXPECT_TRUE(screen.is(50, 50, 0x30, 0x40, 0x30, 2));     // multiply
+    EXPECT_TRUE(screen.is(150, 50, 0xff, 0xff, 0xff, 2));    // plus-lighter (clamped)
+    EXPECT_TRUE(screen.is(250, 50, 0xc0, 0x80, 0x40, 2));    // normal
+    EXPECT_TRUE(screen.is(10, 50, 0x40, 0x80, 0xc0, 2));     // the backdrop
+}
+
 // ---------------------------------------------------------------- S93 images (R20-R22)
 
 namespace {

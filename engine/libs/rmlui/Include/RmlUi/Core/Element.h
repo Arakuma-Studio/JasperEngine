@@ -667,6 +667,10 @@ public:
 	/// Fork (P7-L): true when the element is a layout boundary.
 	bool IsLayoutBoundary() const;
 
+	/// Fork (S93 R31): the font size 'text-autosize' fitted the element's text to (its computed font size), 0 when the
+	/// element has no 'text-autosize' or it was not laid out yet.
+	float GetTextAutosizeFontSize() const;
+
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();

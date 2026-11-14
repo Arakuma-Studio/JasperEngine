@@ -108,8 +108,9 @@ namespace {
         {codes::LuaScriptError, E, false, "lua-script-error", "Lua script error",
          "A <script type=\"text/lua\"> failed to compile or raised an error; the location is the line in the HTML file."},
         {codes::LinkNotNavigable, I, false, "link-not-navigable", "Link not navigable",
-         "The link points outside the project's documents (http(s), mailto:, javascript:, ...): clicking it only dispatches "
-         "the htmlnavigate event."},
+         "The link points outside the project's documents (http(s), mailto:, ...): clicking it dispatches the htmlnavigate "
+         "event, then opens the URL with System.openURL unless a listener called preventDefault(); a relative link to a file "
+         "that is not a document only dispatches the event."},
         {codes::UnsupportedImageFormat, W, false, "unsupported-image-format", "Unsupported image format",
          "The engine cannot decode this image format (WebP, AVIF, ...). Convert the image to PNG or JPEG (or SVG)."},
         {codes::DialogNotModal, I, false, "dialog-not-modal", "Dialog not modal",

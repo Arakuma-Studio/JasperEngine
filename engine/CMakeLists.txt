@@ -1930,6 +1930,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/subsystem/UIDocumentSystemStyle.cpp
     core/subsystem/UIDocumentSystemWorld.cpp
     core/model/CookedModels.cpp
     core/model/ModelCpuData.cpp

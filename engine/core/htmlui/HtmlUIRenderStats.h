@@ -20,6 +20,7 @@ namespace jasperengine {
         uint32_t layersPushed = 0;
         uint32_t filtersApplied = 0;
         uint32_t compositesFused = 0;       // backdrop composites drawn without their temporary layer (p5-tooling)
+        uint32_t blendBackdropCopies = 0;   // mix-blend-mode composites: the backdrop copied to blend with (S93 R30)
         uint32_t regionLayers = 0;          // layers pushed covering more than the viewport (a filter's input beyond it, P7-F2)
         uint32_t regionTargetsCreated = 0;  // their images made (none while the pooled ones fit)
         uint32_t clipMasksRedrawn = 0;      // clip masks drawn again into another layer's depth-stencil (P7-F2)
@@ -58,6 +59,7 @@ namespace jasperengine {
             fn("layersPushed", layersPushed);
             fn("filtersApplied", filtersApplied);
             fn("compositesFused", compositesFused);
+            fn("blendBackdropCopies", blendBackdropCopies);
             fn("regionLayers", regionLayers);
             fn("regionTargetsCreated", regionTargetsCreated);
             fn("clipMasksRedrawn", clipMasksRedrawn);
@@ -96,6 +98,7 @@ namespace jasperengine {
                 layersPushed += other.layersPushed;
                 filtersApplied += other.filtersApplied;
                 compositesFused += other.compositesFused;
+                blendBackdropCopies += other.blendBackdropCopies;
                 regionLayers += other.regionLayers;
                 regionTargetsCreated += other.regionTargetsCreated;
                 clipMasksRedrawn += other.clipMasksRedrawn;

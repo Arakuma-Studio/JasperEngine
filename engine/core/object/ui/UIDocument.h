@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,25 @@
 namespace jasperengine{
 
     class Framebuffer;
+    class UIDocumentSystem;
+
+    // A style sheet a script added to an .html document (S93 R29, UIDocument::addStyleSheet). A
+    // weak handle: once it is removed, or its UI Document component or scene is gone, every method
+    // is a no-op returning defaults
+    class JASPERENGINE_API UIStyleSheet {
+    public:
+        bool isValid() const;
+        std::string getName() const;
+        bool isEnabled() const;
+        void setEnabled(bool enabled);   // a disabled sheet stays with the document, out of its cascade
+        void remove();
+
+    private:
+        friend class UIDocument;
+        std::weak_ptr<UIDocumentSystem> system;
+        Entity entity = NULL_ENTITY;
+        uint64_t id = 0;
+    };
 
     // The tooltips of a document (S17 R16): shown at all, after `delay` seconds of hover or
     // focus, at once on another source within `hopWindow` seconds of the last one
@@ -142,6 +162,13 @@ namespace jasperengine{
         // attributes, and its images (unless images is false), made before they are shown (UIPrewarm); done at once when
         // the document is not loaded
         UIPrewarm prewarm(bool images = true) const;
+
+        // --- S93 R29 ---
+        // CSS added to the document through the compat layer, cascading after its own sheets; it stays
+        // over reloads and live patches. A text sheet's rules name their source "injected:<name>:<line>"
+        // ("sheetN" when unnamed); a file's, the file.
+        UIStyleSheet addStyleSheet(const std::string& css, const std::string& name = std::string());
+        UIStyleSheet addStyleSheetFile(const std::string& path);   // an asset path of a .css file
     };
 
 }

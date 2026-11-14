@@ -44,6 +44,8 @@ that every changed golden has its row. More than 60 updates need a separate revi
 
 | Golden | Test | What it shows |
 |---|---|---|
+| `p1/shared_shadow` | `TextureModeTest.SharedSheetDecoratorsPerRenderManager` | S93 R27: a screen document's texture box shadow and gradient decorator, drawn after the texture-mode document of the same sheet went |
+| `text_autosize` | `FullPathGoldenTest.TextAutosizeFits` | S93 R31: `text-autosize` fitting a short word, a long word, a paragraph in a fixed box and a heading whose box follows its height |
 | `s51/bitmap_fonts` | `TestBitmapFonts.ScalesAndEffects` | S51 bitmap faces (a `.bitmapfont` and a `.fnt`) at 1x, 2x, 3x their native size, a pixel outline, a sharp shadow, a glow dropped |
 | `s51/bitmap_fonts_1_5x` | `TestBitmapFonts.PixelRatioOneAndAHalf` | the same document at pixel ratio 1.5: every font pixel round(k x 1.5) device pixels |
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |

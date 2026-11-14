@@ -4921,6 +4921,8 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E473B8FE1D13890B84E /* UIDocumentSystemStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730038C346CB914ED /* UIDocumentSystemStyle.cpp */; };
+		4A534E47A7867243F8FA2DF2 /* UIDocumentSystemStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730038C346CB914ED /* UIDocumentSystemStyle.cpp */; };
 		4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */; };
 		4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477D90766B959111B7 /* HtmlUIImageCache.h */; };
@@ -9518,6 +9520,7 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E4730038C346CB914ED /* UIDocumentSystemStyle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemStyle.cpp; sourceTree = "<group>"; };
 		4A534E478A854910755821B2 /* HtmlUIImageCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIImageCache.cpp; sourceTree = "<group>"; };
 		4A534E477D90766B959111B7 /* HtmlUIImageCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIImageCache.h; sourceTree = "<group>"; };
 		4A534E478D783659B29EF58F /* HtmlUIPrewarm.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIPrewarm.cpp; sourceTree = "<group>"; };
@@ -12373,6 +12376,7 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E4730038C346CB914ED /* UIDocumentSystemStyle.cpp */,
 				4A534E47BDD7A4206548595D /* UIDocumentSystemWorld.cpp */,
 			);
 			path = subsystem;
@@ -19563,6 +19567,7 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E473B8FE1D13890B84E /* UIDocumentSystemStyle.cpp in Sources */,
 				4A534E47D936DE250A3859FA /* HtmlUIImageCache.cpp in Sources */,
 				4A534E47A8850A33B67AE16A /* HtmlUIPrewarm.cpp in Sources */,
 				4A534E47AD70E0663442E192 /* HtmlUIFontDiagnostics.cpp in Sources */,
@@ -20529,6 +20534,7 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47A7867243F8FA2DF2 /* UIDocumentSystemStyle.cpp in Sources */,
 				4A534E4779CF8F307F17B3C1 /* HtmlUIImageCache.cpp in Sources */,
 				4A534E47BE328BE80F62D96C /* HtmlUIPrewarm.cpp in Sources */,
 				4A534E476ACE50B131866CA6 /* HtmlUIFontDiagnostics.cpp in Sources */,

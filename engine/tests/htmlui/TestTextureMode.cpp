@@ -110,6 +110,34 @@ namespace {
 
 }
 
+// S93 R27 (AC31): a screen and a texture-mode document of one sheet each get their own box-shadow texture and decorator
+// (their render managers do not share texture handles), and the screen one keeps drawing when the other goes
+TEST_F(TextureModeTest, SharedSheetDecoratorsPerRenderManager){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument texture = textureDocument("p1/shared_shadow.rml", surface.getEntity(), 256, 256, 1.0f);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    UIDocument screen = fixture->addDocument("p1/shared_shadow.rml");
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    ASSERT_NE(system().getTextureContext(texture.getEntity()), nullptr);
+
+    Screen before;
+    ASSERT_TRUE(capture(before, 2));
+    EXPECT_TRUE(before.is(33, 80, 255, 0, 0));        // the shadow's spread, left of the border
+    EXPECT_TRUE(before.is(100, 50, 255, 255, 0, 24)); // the decorator's top
+
+    texture.removeComponent<UIDocumentComponent>();
+    GpuEnvironment::drawFrames(1);
+    ASSERT_EQ(system().getTextureContext(texture.getEntity()), nullptr);
+
+    Screen after;
+    ASSERT_TRUE(capture(after, 2));
+    EXPECT_TRUE(after.is(33, 80, 255, 0, 0));
+    EXPECT_TRUE(after.is(100, 50, 255, 255, 0, 24));
+    EXPECT_TRUE(after.rgba == before.rgba) << "the screen document draws the same without the texture-mode one";
+    EXPECT_SCREEN_GOLDEN(after, "p1/shared_shadow");
+    (void)screen;
+}
+
 TEST_F(TextureModeTest, RaycastPlaneCenterAndCorners){
     // the horizontal plane primitive, seen from above
     Primitive& plane = fixture->add<Primitive>();

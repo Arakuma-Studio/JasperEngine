@@ -64,6 +64,9 @@ private:
 	struct ParserState {
 		PropertyParser* parser;
 		ParameterMap parameters;
+		// Fork (S93 R28): the names in registration order, so that a value written back is the first name registered for
+		// it ('visibility: hidden' reads "hidden", not its alias "collapse").
+		Vector<Pair<String, int>> ordered_parameters;
 	};
 
 	Vector<ParserState> parsers;

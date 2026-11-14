@@ -318,3 +318,54 @@ void UIDocument::setColorScheme(const std::string& scheme){
 void UIDocument::setReducedMotion(bool reduced){
     scene->getSystem<UIDocumentSystem>()->setReducedMotion(entity, reduced);
 }
+
+// ---- S93 R29 ----
+
+UIStyleSheet UIDocument::addStyleSheet(const std::string& css, const std::string& name){
+    UIStyleSheet sheet;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    sheet.system = system;
+    sheet.entity = entity;
+    sheet.id = system->addStyleSheet(entity, css, name, std::string());
+    return sheet;
+}
+
+UIStyleSheet UIDocument::addStyleSheetFile(const std::string& path){
+    UIStyleSheet sheet;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    sheet.system = system;
+    sheet.entity = entity;
+    sheet.id = path.empty() ? 0 : system->addStyleSheet(entity, std::string(), std::string(), path);
+    if (!sheet.id)
+        Log::error("[HTML UI] addStyleSheetFile: no path");
+    return sheet;
+}
+
+bool UIStyleSheet::isValid() const{
+    std::shared_ptr<UIDocumentSystem> owner = system.lock();
+    return owner && owner->getStyleSheet(entity, id, nullptr, nullptr);
+}
+
+std::string UIStyleSheet::getName() const{
+    std::string name;
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->getStyleSheet(entity, id, nullptr, &name);
+    return name;
+}
+
+bool UIStyleSheet::isEnabled() const{
+    bool enabled = false;
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->getStyleSheet(entity, id, &enabled, nullptr);
+    return enabled;
+}
+
+void UIStyleSheet::setEnabled(bool enabled){
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->setStyleSheetEnabled(entity, id, enabled);
+}
+
+void UIStyleSheet::remove(){
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->removeStyleSheet(entity, id);
+}

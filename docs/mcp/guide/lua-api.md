@@ -3253,6 +3253,9 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `<html>`); `getDiagnostics()` (what the engine does not draw like a browser: a list of
   `{severity, code, name, message, suggestion, file, line, column, text}`),
   `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
+  `addStyleSheet(css[, name])`, `addStyleSheetFile(path)` (`.html` documents: CSS cascading after
+  the document's own sheets, kept over reloads; returns a `UIStyleSheet`: rw `enabled`, ro `name`,
+  `valid`, `remove()`; its rules' source is `injected:<name>:<line>`);
   `load(file)`,
   `reload([{mode = "patch"|"rebuild"}])`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,

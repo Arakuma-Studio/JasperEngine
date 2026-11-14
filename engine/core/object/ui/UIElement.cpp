@@ -27,6 +27,7 @@
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Property.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <RmlUi/Core/StyleTypes.h>
 
@@ -735,6 +736,9 @@ std::string UIElement::getStyle(const std::string& property) const{
     // a line-clamp container computes to flow-root or inline-block, as Chromium's getComputedStyle (fork, P6-L1)
     if (property == "display" && element->GetComputedValues().line_clamp() > 0)
         return element->GetComputedValues().display() == Rml::Style::Display::InlineBlock ? "inline-block" : "flow-root";
+    // the size text-autosize fitted, as Chromium's getComputedStyle gives a computed font size (S93 R31)
+    if (property == "font-size" && element->GetTextAutosizeFontSize() > 0.0f)
+        return Rml::CreateString("%gpx", element->GetTextAutosizeFontSize());
     const Rml::Property* value = element->GetProperty(property);
     return value ? value->ToString() : std::string();
 }

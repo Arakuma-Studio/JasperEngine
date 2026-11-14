@@ -385,6 +385,7 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
     unloadEntityDocument(entity);
     textureRemoveEntity(entity);
     scriptComponentRemoved(entity);
+    styleSheetsComponentRemoved(entity);
 }
 
 bool UIDocumentSystem::hasVisibleDocument() const{

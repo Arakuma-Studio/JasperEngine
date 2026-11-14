@@ -128,7 +128,7 @@ body { margin: 0; font-family: 'Karla', sans-serif; }
 .card { border-radius: 50%; }
 .card { aspect-ratio: 1; }
 .card { transition: all .2s ease-in-out; }
-.card { mix-blend-mode: screen; }
+.card { background-blend-mode: screen; }
 .card:has(.sale) { outline: 2px solid gold; }
 .card::before { content: "*"; }
 .name { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
@@ -317,7 +317,7 @@ async def test_cli_ui_findings_text_and_json():
             check(re.fullmatch(r"HTMLUI-[A-Z]+-\d{4}", f["code"]), f"code: {f}")
             check(f["severity"] in ("error", "warning"), f"no info at check level: {f}")
         css = [f for f in findings if f["path"] == "assets/ui/shop_llm.css"]
-        check(any(f["code"] == "HTMLUI-CSS-0002" and f["line"] == line_of(LLM_CSS, "mix-blend-mode") for f in css),
+        check(any(f["code"] == "HTMLUI-CSS-0002" and f["line"] == line_of(LLM_CSS, "background-blend-mode") for f in css),
               f"css diagnostics are reported at the css path and line: {css}")
         script = [f for f in findings if f["code"] == "HTMLUI-HTML-0006"]
         check_eq([(f["path"], f["line"], f["col"], f["severity"]) for f in script],
@@ -464,7 +464,7 @@ async def test_live_document_reports_fallback_glyphs(ed: Editor):
 
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
-        write(project, "assets/ui/x.css", ".x { mix-blend-mode: multiply; }\n")
+        write(project, "assets/ui/x.css", ".x { background-blend-mode: multiply; }\n")
         write(project, "assets/ui/panel.html", GOOD_HTML)
         write(project, "assets/ui/panel.css", GOOD_CSS)
         code, data = run_json(project, "--files", "assets/ui/x.css")
@@ -547,7 +547,7 @@ async def test_cli_ui_files_and_exclusions():
 
 async def test_cli_ui_dedupe():
     with scratch_project() as project:
-        write(project, "assets/ui/shared.css", ".a { mix-blend-mode: screen; }\n.b { zoom: 2; }\n")
+        write(project, "assets/ui/shared.css", ".a { background-blend-mode: screen; }\n.b { zoom: 2; }\n")
         doc = '<html><head><link rel="stylesheet" href="shared.css"></head><body><div class="a b">{}</div></body></html>\n'
         write(project, "assets/ui/one.html", doc.format("one"))
         write(project, "assets/ui/two.html", doc.format("two"))
@@ -779,7 +779,8 @@ async def test_ui_support_schema_and_diagnostic_codes():
             check(f.get("severity") in ("error", "warning", "info"), f"the severity it is reported with: {f}")
     check_eq(seen_kinds, kinds, "every table is there")
     # the rows the matrix promises
-    check_eq(support_row(data, "property", "mix-blend-mode")["support"], "unsupported", "mix-blend-mode")
+    check_eq(support_row(data, "property", "background-blend-mode")["support"], "unsupported", "background-blend-mode")
+    check_eq(support_row(data, "property", "mix-blend-mode")["support"], "native", "mix-blend-mode (S93 R30)")
     check_eq(support_row(data, "at_rule", "@container")["support"], "unsupported", "@container")
     check_eq(support_row(data, "element", "canvas")["code"], "HTMLUI-HTML-0002", "canvas")
     check_eq(support_row(data, "attribute", "on*")["code"], "HTMLUI-HTML-0005", "on*")
