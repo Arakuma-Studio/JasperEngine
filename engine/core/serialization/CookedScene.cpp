@@ -321,6 +321,22 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         if (!readComponents(record.body, scene, entity, false, error)) return false;
     }
 
+    // format 1.6: the hierarchy, each child after its parent (a 1.5 scene ends with its resources)
+    r.record();
+    if (!r.atEnd()) {
+        Reader hierarchy = r.record();
+        const uint64_t links = hierarchy.varint();
+        for (uint64_t i = 0; i < links && !hierarchy.failed(); i++) {
+            const Entity child = hierarchy.entity();
+            const Entity parent = hierarchy.entity();
+            if (child != NULL_ENTITY && parent != NULL_ENTITY) scene->addEntityChild(parent, child, false);
+        }
+        if (hierarchy.failed() || r.failed()) {
+            setError(error, "corrupt scene hierarchy: " + (hierarchy.failed() ? hierarchy.error() : r.error()));
+            return false;
+        }
+    }
+
     bindTextureLinks(scene, made, nullptr);
 
     const Entity cameraEntity = camera.entity();

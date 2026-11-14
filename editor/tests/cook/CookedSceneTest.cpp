@@ -21,6 +21,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -362,6 +363,65 @@ entities:
     const Collider2D& polygon = loaded.scene->scene->getComponent<Rigidbody2DComponent>(source.scene->entities[0]).colliders[0];
     EXPECT_EQ(polygon.points.size(), 4u);
     EXPECT_EQ(polygon.groupIndex, -2);
+}
+
+// A prebuilt player keeps the scene's hierarchy: a child stays under its parent with its local
+// pose (S96 AC-32: a Wheel Collider finds its car's Rigidbody through it)
+TEST(CookedScene, SceneKeepsItsHierarchy) {
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Hierarchy
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Car
+    components:
+      transform:
+        position: [0, 1, 0]
+    children:
+      - type: Entity
+        entity: 1002
+        name: Axle
+        components:
+          transform:
+            position: [0, -0.25, 1.3]
+        children:
+          - type: Entity
+            entity: 1003
+            name: Wheel
+            components:
+              transform:
+                position: [-0.8, 0, 0]
+  - type: Entity
+    entity: 1004
+    name: Floor
+    components:
+      transform:
+        position: [0, -0.5, 0]
+)";
+    DecodedScene source = decodeSceneText(text, "Hierarchy.scene");
+    Scene* scene = source.scene->scene;
+    ASSERT_EQ(source.scene->entities.size(), 4u);
+    const Entity car = source.scene->entities[0], axle = source.scene->entities[1], wheel = source.scene->entities[2],
+                 floor = source.scene->entities[3];
+    ASSERT_EQ(scene->getComponent<Transform>(wheel).parent, axle);
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, source.scene->entities, loaded, error)) << error;
+    Scene* game = loaded.scene->scene;
+    EXPECT_EQ(game->getComponent<Transform>(car).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(axle).parent, car);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).parent, axle);
+    EXPECT_EQ(game->getComponent<Transform>(floor).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).position, Vector3(-0.8f, 0.0f, 0.0f));
+    // parents before their children in the Transform array, as the runtime keeps them
+    auto transforms = game->getComponentArray<Transform>();
+    EXPECT_LT(transforms->getIndex(car), transforms->getIndex(axle));
+    EXPECT_LT(transforms->getIndex(axle), transforms->getIndex(wheel));
 }
 
 // S27: a Tween eased along its curve keeps the curve whole in a cooked scene (keys, tangent
