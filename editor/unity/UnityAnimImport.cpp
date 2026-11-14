@@ -786,7 +786,7 @@ AnimImportResult jasperengine::editor::unity::importAnimText(const std::string& 
         }
     }
 
-    // Unity's root transform settings: the bake flags; Based Upon and the offsets reported
+    // Unity's root transform settings (S94 F32): Bake Into Pose, Based Upon and the offsets
     Json rootMotion;
     if (hasSettings) {
         const bool bakeRotation = readBool(settings, "m_LoopBlendOrientation");
@@ -797,14 +797,22 @@ AnimImportResult jasperengine::editor::unity::importAnimText(const std::string& 
             block.bakeRotation = bakeRotation;
             block.bakePositionY = bakeY;
             block.bakePositionXZ = bakeXZ;
+            block.rotationBasedUpon = readBool(settings, "m_KeepOriginalOrientation") ? anim::RootRotationBasis::Original
+                                                                                       : anim::RootRotationBasis::BodyOrientation;
+            block.rotationOffset = (float)readFloat(settings, "m_OrientationOffsetY");
+            block.positionYBasedUpon = readBool(settings, "m_KeepOriginalPositionY") ? anim::RootPositionYBasis::Original
+                                     : readBool(settings, "m_HeightFromFeet") ? anim::RootPositionYBasis::Feet
+                                     : anim::RootPositionYBasis::CenterOfMass;
+            block.positionYOffset = (float)readFloat(settings, "m_Level");
+            block.positionXZBasedUpon = readBool(settings, "m_KeepOriginalPositionXZ") ? anim::RootPositionXZBasis::Original
+                                                                                         : anim::RootPositionXZBasis::CenterOfMass;
             clip.unknownKeys.push_back({"root_motion", anim::writeClipRootMotion(block)});
-            const bool feet = readBool(settings, "m_HeightFromFeet");
             rootMotion = {{"bake_rotation", bakeRotation}, {"bake_position_y", bakeY}, {"bake_position_xz", bakeXZ},
-                          {"rotation_based_upon", readBool(settings, "m_KeepOriginalOrientation") ? "original" : "body_orientation"},
-                          {"rotation_offset", readFloat(settings, "m_OrientationOffsetY")},
-                          {"position_y_based_upon", readBool(settings, "m_KeepOriginalPositionY") ? "original" : feet ? "feet" : "center_of_mass"},
-                          {"position_y_offset", readFloat(settings, "m_Level")},
-                          {"position_xz_based_upon", readBool(settings, "m_KeepOriginalPositionXZ") ? "original" : "center_of_mass"}};
+                          {"rotation_based_upon", anim::rootRotationBasisName(block.rotationBasedUpon)},
+                          {"rotation_offset", block.rotationOffset},
+                          {"position_y_based_upon", anim::rootPositionYBasisName(block.positionYBasedUpon)},
+                          {"position_y_offset", block.positionYOffset},
+                          {"position_xz_based_upon", anim::rootPositionXZBasisName(block.positionXZBasedUpon)}};
         }
         if (readBool(settings, "m_Mirror")) notes.add("mirror", "the clip's Mirror setting is not imported: set Mirror on the Animator state");
         if (readFloat(settings, "m_CycleOffset") != 0.0f) notes.add("cycle-offset", "the clip's Cycle Offset is not imported: set it on the Animator state");

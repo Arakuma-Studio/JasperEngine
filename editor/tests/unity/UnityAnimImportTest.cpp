@@ -170,12 +170,16 @@ TEST(UnityAnimImportTest, TransformAndFloatCurves) {
     ASSERT_EQ(parsed.data->events[1].args.size(), 1u);
     EXPECT_DOUBLE_EQ(std::get<double>(parsed.data->events[1].args[0]), 2.5);
 
-    // the root transform: bake flags in the clip, Based Upon reported
+    // the root transform: bake flags, Based Upon and the offsets in the clip (S94 F32), and reported
     const anim::ClipRootMotion rootMotion = anim::readClipRootMotion(parsed.data->unknownKeys);
     EXPECT_TRUE(rootMotion.present);
     EXPECT_TRUE(rootMotion.bakeRotation);
     EXPECT_TRUE(rootMotion.bakePositionY);
     EXPECT_FALSE(rootMotion.bakePositionXZ);
+    EXPECT_EQ(rootMotion.rotationBasedUpon, anim::RootRotationBasis::BodyOrientation);
+    EXPECT_NEAR(rootMotion.rotationOffset, 10.0f, 1e-6f);
+    EXPECT_EQ(rootMotion.positionYBasedUpon, anim::RootPositionYBasis::Original);
+    EXPECT_EQ(rootMotion.positionXZBasedUpon, anim::RootPositionXZBasis::CenterOfMass);
     const Json& report = result.report;
     EXPECT_EQ(report["root_motion"]["rotation_based_upon"], "body_orientation");
     EXPECT_NEAR(report["root_motion"]["rotation_offset"].get<double>(), 10.0, 1e-6);

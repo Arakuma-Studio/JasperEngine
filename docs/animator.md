@@ -308,7 +308,7 @@ the result's `unity` report) lists what did not map. Nothing is written into the
   `m_IsActive`, renderer material, Light, Camera and AudioSource float curves, keys with their
   slopes and tangent modes, Loop Time, Start and Stop, and events (Unity's one parameter). Unity's
   left-handed X is mirrored (`mirror_x: false` keeps the values). A clip with Bake Into Pose set
-  gets a `root_motion` block with those flags. Humanoid muscle curves are not imported: a clip of
+  gets a `root_motion` block with those flags, its Based Upon and its offsets. Humanoid muscle curves are not imported: a clip of
   only muscle curves is refused (use the clip of its model, which plays through the humanoid path).
   Object reference curves (sprite swaps) and script fields are reported.
 - **Controllers** keep parameters, layers (weight, blending, mask), state machines with sub-state
