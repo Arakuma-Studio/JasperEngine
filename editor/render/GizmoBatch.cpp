@@ -3,6 +3,8 @@
 
 #include "GizmoBatch.h"
 
+#include "component/InstancedMeshComponent.h"
+#include "component/LineRendererComponent.h"
 #include "object/LineRenderer.h"
 #include "object/Sprite.h"
 #include "texture/TextureData.h"
@@ -71,19 +73,12 @@ void editor::GizmoLineBatch::addLine(const Vector3& pointA, const Vector3& point
 }
 
 void editor::GizmoLineBatch::addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& colorA, const Vector4& colorB){
-    LineData line;
-    line.pointA = pointA;
-    line.pointB = pointB;
-    line.colorA = colorA;
-    line.colorB = colorB;
-    pending.push_back(line);
+    pending.push_back({pointA, colorA, pointB, colorB});
 }
 
-void editor::GizmoLineBatch::addLines(const std::vector<LineData>& lines, const Matrix4& toWorld){
-    for (LineData line : lines){
-        line.pointA = toWorld * line.pointA;
-        line.pointB = toWorld * line.pointB;
-        pending.push_back(line);
+void editor::GizmoLineBatch::addLines(const GizmoLineList& list, const Matrix4& toWorld){
+    for (const GizmoLine& line : list.lines){
+        pending.push_back({toWorld * line.pointA, line.colorA, toWorld * line.pointB, line.colorB});
     }
 }
 
@@ -105,7 +100,14 @@ void editor::GizmoLineBatch::flush(){
         renderer->setMaxLines(gizmoCapacity(pending.size(), lines.maxLines));
     }
     lines.mode = LineRendererMode::Segments;
-    lines.lines = pending;
+    lines.lines.resize(pending.size());
+    for (size_t i = 0; i < pending.size(); i++){
+        LineData& line = lines.lines[i];
+        line.pointA = pending[i].pointA;
+        line.colorA = pending[i].colorA;
+        line.pointB = pending[i].pointB;
+        line.colorB = pending[i].colorB;
+    }
     renderer->updateLines();
     shown.swap(pending);
 }
@@ -131,12 +133,7 @@ void editor::GizmoLineBatch::forgetRenderer(){
 // ---------------------------------------------------------------- icons
 
 void editor::GizmoIconBatch::add(GizmoIcon icon, const Vector3& position, float scale){
-    InstanceData instance;
-    instance.position = position;
-    instance.scale = Vector3(scale, scale, scale);
-    const float width = 1.0f / (float)GIZMO_ICON_COUNT;
-    instance.textureRect = Rect(width * (float)(int)icon, 0.0f, width, 1.0f);
-    pending.push_back(instance);
+    pending.push_back({icon, position, scale});
 }
 
 void editor::GizmoIconBatch::flush(){
@@ -148,19 +145,23 @@ void editor::GizmoIconBatch::flush(){
         return;
     }
     sprite->setVisible(true);
-    const bool same = pending.size() == shown.size() && std::equal(pending.begin(), pending.end(), shown.begin(),
-        [](const InstanceData& a, const InstanceData& b){
-            Rect rectA = a.textureRect;   // (Rect compares non-const)
-            return a.position == b.position && a.scale == b.scale && rectA == b.textureRect;
-        });
-    if (same){
+    if (pending == shown){
         return;
     }
     InstancedMeshComponent& instmesh = sprite->getComponent<InstancedMeshComponent>();
     if (instmesh.maxInstances < pending.size()){
         sprite->setMaxInstances(gizmoCapacity(pending.size(), instmesh.maxInstances));
     }
-    instmesh.instances = pending;
+    // each icon its cell of the atlas
+    const float width = 1.0f / (float)GIZMO_ICON_COUNT;
+    instmesh.instances.resize(pending.size());
+    for (size_t i = 0; i < pending.size(); i++){
+        InstanceData& instance = instmesh.instances[i];
+        instance = InstanceData();
+        instance.position = pending[i].position;
+        instance.scale = Vector3(pending[i].scale, pending[i].scale, pending[i].scale);
+        instance.textureRect = Rect(width * (float)(int)pending[i].icon, 0.0f, width, 1.0f);
+    }
     sprite->updateInstances();
     shown.swap(pending);
 }

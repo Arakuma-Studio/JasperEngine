@@ -10,8 +10,6 @@
 // takes one now, whatever the number of objects. A frame's update collects what it draws between
 // begin() and the owner's flush; the renderer is written only when that changed.
 
-#include "component/InstancedMeshComponent.h"
-#include "component/LineRendererComponent.h"
 #include "math/Matrix4.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -27,18 +25,26 @@ namespace jasperengine{
 
 namespace jasperengine::editor{
 
-    // lines kept by one object between frames (a cage that is rebuilt only when it changes),
-    // appended to a batch every frame
+    // (the renderers' own types stay out of this header: SceneRender.h includes it, and so do
+    // most editor sources)
+    struct GizmoLine{
+        Vector3 pointA;
+        Vector4 colorA;
+        Vector3 pointB;
+        Vector4 colorB;
+
+        bool operator==(const GizmoLine& other) const{
+            return pointA == other.pointA && colorA == other.colorA && pointB == other.pointB && colorB == other.colorB;
+        }
+    };
+
+    // lines kept by one object between frames (a cage that is rebuilt only when it changes, a
+    // light's shape in its own space), appended to a batch every frame
     struct GizmoLineList{
-        std::vector<LineData> lines;
+        std::vector<GizmoLine> lines;
         void clearLines() { lines.clear(); }
         void addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& color){
-            LineData line;
-            line.pointA = pointA;
-            line.pointB = pointB;
-            line.colorA = color;
-            line.colorB = color;
-            lines.push_back(line);
+            lines.push_back({pointA, color, pointB, color});
         }
     };
 
@@ -57,7 +63,7 @@ namespace jasperengine::editor{
         void addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& color);
         void addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& colorA, const Vector4& colorB);
         // lines made in an object's space, placed by its matrix
-        void addLines(const std::vector<LineData>& lines, const Matrix4& toWorld);
+        void addLines(const GizmoLineList& list, const Matrix4& toWorld);
         void append(const GizmoLineList& list) { pending.insert(pending.end(), list.lines.begin(), list.lines.end()); }
         size_t size() const { return pending.size(); }
 
@@ -74,8 +80,8 @@ namespace jasperengine::editor{
     private:
         bool toolsLayer;
         LineRenderer* renderer = nullptr;
-        std::vector<LineData> pending;
-        std::vector<LineData> shown;
+        std::vector<GizmoLine> pending;
+        std::vector<GizmoLine> shown;
     };
 
     enum class GizmoIcon{
@@ -111,8 +117,17 @@ namespace jasperengine::editor{
     private:
         bool billboard;
         Sprite* sprite = nullptr;
-        std::vector<InstanceData> pending;
-        std::vector<InstanceData> shown;
+        struct Icon{
+            GizmoIcon icon;
+            Vector3 position;
+            float scale;
+
+            bool operator==(const Icon& other) const{
+                return icon == other.icon && position == other.position && scale == other.scale;
+            }
+        };
+        std::vector<Icon> pending;
+        std::vector<Icon> shown;
     };
 
 }

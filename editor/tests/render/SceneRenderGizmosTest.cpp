@@ -79,7 +79,7 @@ TEST(SceneRenderGizmos, SystemEntitiesPerKind) {
     project->updateSceneRender(sceneId);
     const size_t before = scene->getSystemEntityCount();
 
-    const test::LogCapture log;
+    const ::jasperengine::test::LogCapture capture;
     Entity lastLight = NULL_ENTITY;
     for (int i = 0; i < 500; i++) {
         lastLight = addObject(sceneProject, Vector3((float)(i % 25) * 2.0f, 0.0f, (float)(i / 25) * 2.0f));
@@ -100,7 +100,7 @@ TEST(SceneRenderGizmos, SystemEntitiesPerKind) {
     const size_t gizmoEntities = scene->getSystemEntityCount() - before;
     // the icons, the light shapes and the body wires: one renderer each
     EXPECT_LE(gizmoEntities, 3u) << "1,000 GameObjects with gizmos took " << gizmoEntities << " system entities";
-    EXPECT_EQ(log.count(D_LOG_ERROR, "No free system entity slot"), 0u);
+    EXPECT_EQ(capture.count(D_LOG_ERROR, "No free system entity slot"), 0u);
 
     sceneProject->selectedEntities.clear();
     sceneProject->isModified = false;

@@ -949,7 +949,7 @@ void editor::SceneRender3D::createDirectionalLightArrow(const Transform& transfo
     // Optional: Add some additional lines for better visualization
     lo->addLine(arrowHead1, arrowHead3, arrowColor * 0.7f); // Cross lines with slightly dimmer color
     lo->addLine(arrowHead2, arrowHead4, arrowColor * 0.7f);
-    lightLines.addLines(local.lines, lightGizmoMatrix(transform));
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
 void editor::SceneRender3D::createPointLightSphere(const Transform& transform, const LightComponent& light) {
@@ -997,7 +997,7 @@ void editor::SceneRender3D::createPointLightSphere(const Transform& transform, c
 
         lo->addLine(point1, point2, sphereColor);
     }
-    lightLines.addLines(local.lines, lightGizmoMatrix(transform));
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
 void editor::SceneRender3D::createSpotLightCones(const Transform& transform, const LightComponent& light) {
@@ -1045,7 +1045,7 @@ void editor::SceneRender3D::createSpotLightCones(const Transform& transform, con
             lo->addLine(corners[i], corners[(i + 1) % 4], outerConeColor);
         }
         lo->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
-        lightLines.addLines(local.lines, lightGizmoMatrix(transform));
+        lightLines.addLines(local, lightGizmoMatrix(transform));
         return;
     }
 
@@ -1083,7 +1083,7 @@ void editor::SceneRender3D::createSpotLightCones(const Transform& transform, con
 
     // Draw central direction line
     lo->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
-    lightLines.addLines(local.lines, lightGizmoMatrix(transform));
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
 void editor::SceneRender3D::dropGoneGizmos(){
