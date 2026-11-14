@@ -122,8 +122,10 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"SplineHit", 0x923264d8u},
         {"SplineAnimate", 0x00658326u},
         // S81 R67: a script changes a title's values, never its asset, its Render Mode or which
-        // Live Effects it has (the export collects title_fx for the titles of shipped content)
-        {"TitleArt", 0xb946fadau},
+        // Live Effects it has (the export collects title_fx for the titles of shipped content).
+        // S85's animation members pick among the document's animations, which play without a
+        // script too (Play Automatically); S87's language members pick the text
+        {"TitleArt", 0x6b2b23a2u},
     };
     return classes;
 }

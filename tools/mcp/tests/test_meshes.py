@@ -14,6 +14,7 @@ import math
 import struct
 from pathlib import Path
 
+import pngdiff
 from harness import Editor
 
 CI = True
@@ -158,3 +159,97 @@ async def test_render_stats_count_levels(ed: Editor):
         ed.check(key in lod, f"lod.{key} is reported: {lod}")
     ed.check_eq(len(lod["lod_histogram"]), 4, "one count per level")
     ed.check(sum(lod["lod_histogram"]) >= 1, f"the sphere is counted at its level: {lod}")
+
+
+# S98 REQ-34/35: a box whose five materials each name a diffuse texture, three missing and two
+# present with a tiling (editor/tests/util/FbxImporterWarningsTest.cpp holds the same model)
+HALL_TEXTURES = ["missing_wall.psd", "missing_floor.png", "missing_roof.tga", "tile_a.png", "tile_b.png"]
+
+
+def hall_fbx() -> str:
+    objects, connections = [], ['\tC: "OO",200,0', '\tC: "OO",100,200']
+    for i, name in enumerate(HALL_TEXTURES):
+        tiled = i >= 3
+        objects.append(f'\tMaterial: 30{i}, "Material::M{i}", "" {{\n\t\tVersion: 102\n\t\tShadingModel: "phong"\n\t\tMultiLayer: 0\n'
+                       f'\t\tProperties70:  {{\n\t\t\tP: "DiffuseColor", "Color", "", "A",0.8,0.8,0.8\n\t\t}}\n\t}}')
+        props = '\t\tProperties70:  {\n\t\t\tP: "Scaling", "Vector", "", "A",2,2,1\n\t\t}\n' if tiled else ""
+        objects.append(f'\tTexture: 31{i}, "Texture::T{i}", "" {{\n\t\tType: "TextureVideoClip"\n\t\tVersion: 202\n'
+                       f'\t\tTextureName: "Texture::T{i}"\n\t\tFileName: "textures/{name}"\n\t\tRelativeFilename: "textures/{name}"\n'
+                       f'\t\tModelUVTranslation: 0,0\n\t\tModelUVScaling: {"2,2" if tiled else "1,1"}\n{props}\t}}')
+        connections += [f'\tC: "OO",30{i},200', f'\tC: "OP",31{i},30{i}, "DiffuseColor"']
+    return ('; FBX 7.4.0 project file\nFBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7400\n\tCreator: "JasperEngine tests"\n}\n'
+            'GlobalSettings:  {\n\tVersion: 1000\n\tProperties70:  {\n\t\tP: "UpAxis", "int", "Integer", "",1\n'
+            '\t\tP: "UpAxisSign", "int", "Integer", "",1\n\t\tP: "FrontAxis", "int", "Integer", "",2\n'
+            '\t\tP: "FrontAxisSign", "int", "Integer", "",1\n\t\tP: "CoordAxis", "int", "Integer", "",0\n'
+            '\t\tP: "CoordAxisSign", "int", "Integer", "",1\n\t\tP: "UnitScaleFactor", "double", "Number", "",100\n\t}\n}\n'
+            'Objects:  {\n\tGeometry: 100, "Geometry::Box", "Mesh" {\n'
+            '\t\tVertices: *24 {\n\t\t\ta: -1,-1,-1,1,-1,-1,1,1,-1,-1,1,-1,-1,-1,1,1,-1,1,1,1,1,-1,1,1\n\t\t}\n'
+            '\t\tPolygonVertexIndex: *24 {\n\t\t\ta: 0,3,2,-2,4,5,6,-8,0,1,5,-5,3,7,6,-3,0,4,7,-4,1,2,6,-6\n\t\t}\n'
+            '\t\tGeometryVersion: 124\n\t\tLayerElementUV: 0 {\n\t\t\tVersion: 101\n\t\t\tName: "UVMap"\n'
+            '\t\t\tMappingInformationType: "ByPolygonVertex"\n\t\t\tReferenceInformationType: "IndexToDirect"\n'
+            '\t\t\tUV: *8 {\n\t\t\t\ta: 0,0,1,0,1,1,0,1\n\t\t\t}\n'
+            '\t\t\tUVIndex: *24 {\n\t\t\t\ta: 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3\n\t\t\t}\n\t\t}\n'
+            '\t\tLayerElementMaterial: 0 {\n\t\t\tVersion: 101\n\t\t\tName: ""\n\t\t\tMappingInformationType: "ByPolygon"\n'
+            '\t\t\tReferenceInformationType: "IndexToDirect"\n\t\t\tMaterials: *6 {\n\t\t\t\ta: 0,1,2,3,4,4\n\t\t\t}\n\t\t}\n'
+            '\t\tLayer: 0 {\n\t\t\tVersion: 100\n\t\t\tLayerElement:  {\n\t\t\t\tType: "LayerElementUV"\n\t\t\t\tTypedIndex: 0\n\t\t\t}\n'
+            '\t\t\tLayerElement:  {\n\t\t\t\tType: "LayerElementMaterial"\n\t\t\t\tTypedIndex: 0\n\t\t\t}\n\t\t}\n\t}\n'
+            '\tModel: 200, "Model::Hall", "Mesh" {\n\t\tVersion: 232\n\t\tShading: T\n\t\tCulling: "CullingOff"\n\t}\n'
+            + "\n".join(objects) + "\n}\nConnections:  {\n" + "\n".join(connections) + "\n}\n")
+
+
+def glb_json(path: Path) -> dict:
+    data = path.read_bytes()
+    length = struct.unpack("<I", data[12:16])[0]
+    return json.loads(data[20:20 + length])
+
+
+async def test_material_creation_mode_none(ed: Editor):
+    """S98 AC30 (MCP side) and AC31: an FBX import with warnings logs one Console line per model, the
+    import report (inspect_models) lists each; Material Creation Mode None re-imports it with no
+    material and no texture lookup, so nothing is warned, and its submeshes stay."""
+    models = ed.project / "models"
+    (models / "textures").mkdir(parents=True, exist_ok=True)
+    for name in ("tile_a.png", "tile_b.png"):
+        (models / "textures" / name).write_bytes(pngdiff.encode(4, 4, bytes([200, 200, 200, 255]) * 16))
+    (models / "Hall.fbx").write_text(hall_fbx())
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    await ed.call("sync_files", paths=["models/Hall.fbx", "models/textures/tile_a.png", "models/textures/tile_b.png"])
+    await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
+
+    lines = [e["message"] for e in (await ed.call("read_console", since=cursor, contains="Hall.fbx", limit=200))["entries"]
+             if e["type"] == "warning"]
+    ed.check_eq(len(lines), 1, f"one warning line for the model: {lines}")
+    ed.check("3 textures not found" in lines[0] and "tiling/offset not imported on 2 textures" in lines[0], f"with the counts: {lines}")
+    report = (await ed.call("inspect_models", paths=["models/Hall.fbx"]))["models"][0]
+    warnings = [i["message"] for i in report["issues"] if i["code"] == "fbx-import-warning"]
+    ed.check(sum("Texture not found" in w for w in warnings) == 3 and sum("tiling/offset" in w for w in warnings) == 2,
+             f"the import report lists all five: {warnings}")
+    ed.check_eq(report["settings"]["resolved"]["material_creation_mode"], "import", "Import by default")
+    glb = ed.project / ".jasperengine" / "imported" / "models" / "Hall.fbx.glb"
+    ed.check_eq(len(glb_json(glb).get("materials", [])), 5, "the import made the five materials")
+
+    await ed.check_error("set_model_import_settings", paths=["models/Hall.fbx"], settings={"material_creation_mode": "none"},
+                         platform="mobile", contains="without platform")
+    write_sphere_gltf(models / "ball.gltf")
+    await ed.call("sync_files", paths=["models/ball.gltf"])
+    await ed.check_error("set_model_import_settings", paths=["models/ball.gltf"], settings={"material_creation_mode": "none"},
+                         contains="FBX")
+
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    await ed.call("set_model_import_settings", paths=["models/Hall.fbx"], settings={"material_creation_mode": "none"}, timeout=600)
+    meta = (models / "Hall.fbx.meta").read_text()
+    ed.check("materialCreationMode: none" in meta, f"the sidecar holds it: {meta}")
+    doc = glb_json(glb)
+    ed.check(not doc.get("materials") and not doc.get("images"), "None: no material and no image in the import")
+    ed.check(len(doc["meshes"][0]["primitives"]) >= 5 and all("material" not in p for p in doc["meshes"][0]["primitives"]),
+             "its submeshes stay, with the default material")
+    warned = [e for e in (await ed.call("read_console", since=cursor, contains="Hall.fbx", limit=200))["entries"] if e["type"] == "warning"]
+    ed.check_eq(warned, [], "None warns about no texture")
+    report = (await ed.call("inspect_models", paths=["models/Hall.fbx"]))["models"][0]
+    ed.check_eq([i for i in report["issues"] if i["code"] == "fbx-import-warning"], [], "the report is empty")
+    ed.check_eq(report["settings"]["resolved"]["material_creation_mode"], "none", "and says None")
+
+    # one undo step: Import again, the materials come back
+    await ed.call("undo", scope="project")
+    await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
+    ed.check_eq(len(glb_json(glb).get("materials", [])), 5, "undo: the materials are imported again")

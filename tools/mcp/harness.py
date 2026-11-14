@@ -415,6 +415,9 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env.setdefault("MESA_SHADER_CACHE_MAX_SIZE", "4G")
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
+    # a created project keeps the flat layout (assets and scripts at its root) the tests are written
+    # against; a new project's real layout (assets/, scripts/) is tested with env {"...": "0"}
+    env.setdefault("JASPER_TEST_FLAT_NEW_PROJECT", "1")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
     # widgets it names there (Editor.ui_rect)
     if ui_probe:

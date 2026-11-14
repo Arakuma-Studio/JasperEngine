@@ -678,6 +678,19 @@ bool ModelImporterView::draw(const std::vector<fs::path>& selection, const std::
     section("Level of Detail", [&]{ drawLevels(resolved); });
     if (tab > 0)
         ImGui::EndDisabled();
+    // the FBX import's, one value for every platform (S98 REQ-35): the Default tab only
+    if (tab == 0){
+        const bool fbx = std::all_of(assetPaths.begin(), assetPaths.end(), [](const std::string& path){ return FbxImporter::isFbxFile(path); });
+        section("Materials", [&]{
+            ImGui::BeginDisabled(!fbx);
+            const MaterialCreationMode mode = settings.materialCreationMode.value_or(MaterialCreationMode::Import);
+            form.comboField("Material Creation Mode", "materialCreationMode", modelEnumValues("materialCreationMode"), {"Import", "None"},
+                            materialCreationModeName(mode), fbx ? "Import makes the FBX's materials and looks for their textures. None makes no "
+                            "material, so nothing is looked for or warned about: every submesh draws with the default material."
+                            : "Applies to FBX models: a glTF carries its own materials.");
+            ImGui::EndDisabled();
+        });
+    }
 
     ImGui::Separator();
     if (assetPaths.size() == 1){
