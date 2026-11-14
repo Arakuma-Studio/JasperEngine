@@ -176,6 +176,24 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | `maxVoices` | 8 | voices of this source at once (its clip + one-shots) |
 | `ignoreListenerPause` | false | plays on while `AudioListener.pause` is set |
 | `pitch` | 1 | = `speed` |
+| `effects` | `[]` | its own effects, up to 4: `[{type, bypass, wet, params}]` (below) |
+
+- **Effects on one source** (Unity's Audio Low Pass, High Pass, Echo, Distortion and Reverb
+  Filter): to muffle, filter or echo one source (a radio, a voice behind a door), give that source
+  `effects`; a group's effects are for every source routed through it. `add_component
+  {"component": "Audio Low Pass Filter"}` adds one (and the Audio Source if missing), or
+  `set_properties {"values": {"AudioSource": {"effects": [{"type": "lowpass", "params": {"cutoff":
+  500}}]}}}`. Types and parameters are those of 4 but `duck` and `limiter`. They run on the
+  source's voices (its clip, one-shots, its event's voices) before its group. A change of the list
+  (add, remove, reorder, type) is heard from the next `play()`, values (`params`, `wet`, `bypass`)
+  at once. With no effect on (none, all bypassed, a low-pass at 22000 Hz) the voice costs nothing
+  more. An echo's delay longer than the one its voice started with is cut to it.
+
+```lua
+local src = AudioSource(self.scene, self.entity)
+local lowpass = src:getEffect("lowpass") or src:addEffect("lowpass")
+lowpass:setParameter("cutoff", 525, 0.9)
+```
 
 - **Many sources, one clip**: they play at once. `play()` on a playing source starts it over.
 - **One-shots**: `sound:playOneShot("sfx/coin.wav", 0.8)` adds a voice (the source's group,
