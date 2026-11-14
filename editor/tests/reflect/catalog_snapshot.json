@@ -29322,6 +29322,38 @@
     true
    ]
   },
+  "OutlineComponent": {
+   "color": [
+    6,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "width": [
+    2,
+    0,
+    true
+   ],
+   "widthUnits": [
+    13,
+    0,
+    true
+   ]
+  },
   "PanelComponent": {
    "canBringToFront": [
     0,
