@@ -557,7 +557,12 @@ void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 6))  defs.push_back({"SIXWAY", "1"});                   // 'Sxw'
     if (prop & (1 << 7))  defs.push_back({"CUSTOM_DATA", "1"});              // 'Cus'
     if (prop & (1 << 8))  defs.push_back({"RECEIVE_SHADOWS", "1"});          // 'Rsh'
-    if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
+    if (prop & (1 << 9)) {                                                    // 'Fog'
+        defs.push_back({"HAS_FOG", "1"});
+        // the height fog as the mesh variants take it, chosen by its block at run time
+        // (includes/fog.glsl, docs/specs/vapor.md R16)
+        defs.push_back({"HAS_HEIGHT_FOG", "1"});
+    }
     if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
     if (prop & (1 << 11)) defs.push_back({"PIXEL_SNAP", "1"});               // 'Pxs' (S41)
     if (prop & (1 << 12)) defs.push_back({"PARTICLE_PIXEL", "1"});           // 'Pxl' (S49)

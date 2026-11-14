@@ -1,4 +1,4 @@
-// Height fog (Fog type Height; HAS_HEIGHT_FOG in the fogged mesh variants): the medium, its lighting
+// Height fog (Fog type Height; HAS_HEIGHT_FOG in the fogged mesh and particle variants): the medium, its lighting
 // and the fog of any part of a view ray, shared by the fogged shaders (includes/fog.glsl), the
 // sky composite, the volumetric fog march and the clouds' aerial perspective, so they agree
 // where they meet. engine/core/render/AtmosphereMath.{h,cpp} mirrors it one to one.

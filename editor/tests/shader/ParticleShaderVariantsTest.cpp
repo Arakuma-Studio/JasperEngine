@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // BF23 F1: RenderSystem loads a sub-emitter child's own Renderer, so an export has to ship its
-// shader variants too (ShaderVariantCollector), down the levels EmitterRuntime binds.
+// shader variants too (ShaderVariantCollector), down the levels EmitterRuntime binds. The
+// fogged particle variants' height fog (docs/specs/vapor.md R16) is cached under its own version.
 
 #include "shader/ShaderVariantCollector.h"
 
+#include "App.h"
 #include "Scene.h"
 #include "object/ParticleSystem.h"
 #include "object/Primitive.h"
@@ -93,4 +95,10 @@ TEST(ParticleShaderVariants, ASoftChildGivesTheMeshesTheirDepthPrograms){
     const size_t soft = depthKeys(R"("renderMode": "billboard", "shader": "library:particles", "shaderFeatures": ["SOFT"])");
     EXPECT_GT(soft, plain);
     particles::ParticleEffectLibrary::clear();
+}
+
+// the fogged particle variants carry the height fog from v66 (after S50's v65): an older cache holds
+// 'Fog' particle programs that take a height fog's linear fields instead
+TEST(ParticleShaderVariants, ShaderCacheVersionCoversTheHeightFog){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v66");
 }

@@ -36,7 +36,7 @@ namespace jasperengine{
     struct SkyboxComponent;
 
     // u_fs_heightFog (shaderlib/includes/height_fog.glsl): the height fog of a camera pass, read
-    // by the fogged mesh variants (HAS_HEIGHT_FOG), the sky composite and the atmosphere passes
+    // by the fogged mesh and particle variants (HAS_HEIGHT_FOG), the sky composite and the atmosphere passes
     typedef struct height_fog_t {
         Matrix4 invViewProjection;            // camera clip -> world, the camera's own matrices
         Vector4 screenToNdc;                  // camera ndc.xy = gl_FragCoord.xy * xy + zw

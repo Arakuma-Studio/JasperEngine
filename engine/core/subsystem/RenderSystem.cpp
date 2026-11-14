@@ -2653,7 +2653,7 @@ bool RenderSystem::loadAndProcessFog(){
     if (fog){
         hasFog = true;
 
-        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
+        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh and particle variants): this one
         // stays a linear fog's
         int fogTypeI = 0;
         if (fog->type == FogType::EXPONENTIAL){
