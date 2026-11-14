@@ -77,6 +77,7 @@
 #include "util/SafeWrite.h"
 #include "util/VersionControlFiles.h"
 #include "util/FbxImporter.h"
+#include "export/AssetStripping.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -1372,6 +1373,18 @@ fs::path editor::Project::applyModelReloads(bool synchronous) {
 }
 
 void editor::Project::importFbxModels() {
+    // S98 REQ-12: only the FBX files a build would ship (every one under Ship All Assets without
+    // exclusions, which plans nothing); the plan reads the dependency index on the main thread
+    std::shared_ptr<AssetStrippingPlan> plan;
+    const AssetStrippingSettings stripping = getAssetStripping();
+    if (stripping.mode == AssetStrippingMode::ReferencedOnly || !stripping.exclude.empty()) {
+        auto planned = std::make_shared<std::promise<std::shared_ptr<AssetStrippingPlan>>>();
+        std::future<std::shared_ptr<AssetStrippingPlan>> plannedFuture = planned->get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, planned]() {
+            planned->set_value(std::make_shared<AssetStrippingPlan>(AssetStrippingPlan::make(*this)));
+        });
+        plan = plannedFuture.get();
+    }
     std::error_code ec;
     for (watch::LinkedDirectoryIterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
          !ec && it != end; it.increment(ec)) {
@@ -1381,6 +1394,7 @@ void editor::Project::importFbxModels() {
             continue;
         }
         if (FbxImporter::isFbxFile(it->path()) && it->is_regular_file(ec)) {
+            if (plan && !plan->leftOutReason(FileUtils::pathToGenericUtf8(normalizeToProjectRelative(it->path()))).empty()) continue;
             fbxImports->request(it->path());
         }
     }
@@ -6561,6 +6575,7 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    assetStripping = AssetStrippingSettings();
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);
@@ -7365,7 +7380,6 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         resetConfigs();
         // T5 R21, R66: a project made now says what its platforms draw; one without the key is older
         setFoliageQuality(newProjectFoliageQuality);
-
         // Clear the last project path in settings when creating a new temp project (a
         // project elsewhere becomes it when saved below); a tool's process leaves the user's alone
         if (editor::getEditorHost().recordsRecentProjects()) {
@@ -7405,6 +7419,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 std::error_code dirError;
                 FileUtils::createDirectories(projectPath / assetsDir, dirError);
                 FileUtils::createDirectories(projectPath / luaDir, dirError);
+                // S98 D3: and it ships what its build references (a project.yaml without the key
+                // ships every asset)
+                assetStripping.mode = AssetStrippingMode::ReferencedOnly;
             }
             refreshTrustedRoots();   // the folder exists now
 
