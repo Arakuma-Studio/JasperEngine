@@ -246,3 +246,59 @@ TEST(Atmosphere, VolumeSelection){
     ASSERT_EQ(selected.size(), 2u);
     EXPECT_EQ(ties[selected[0]].entity, 3u);
 }
+
+// why each volume was left out (docs/specs/vapor.md R17's volume_culled)
+TEST(Atmosphere, VolumeSelectionReasons){
+    Plane planes[6];
+    boxFrustum(planes);
+    std::vector<FogVolumeData> volumes = {
+        boxVolume(1, Vector3(0.0f, 0.0f, -10.0f), Vector3(2.0f, 2.0f, 2.0f)),   // used
+        boxVolume(2, Vector3(0.0f, 0.0f, -20.0f), Vector3(2.0f, 2.0f, 2.0f)),   // past the cap of 1
+        boxVolume(3, Vector3(0.0f, 0.0f, 30.0f), Vector3(2.0f, 2.0f, 2.0f)),    // behind the camera
+        boxVolume(4, Vector3(0.0f, 0.0f, -90.0f), Vector3(2.0f, 2.0f, 2.0f)),   // past the distance
+    };
+    std::vector<int> selected;
+    std::vector<const char*> reasons;
+    AtmosphereMath::selectFogVolumes(volumes, planes, 100.0f, Vector3(0.0f, 0.0f, 0.0f), 80.0f, 1, selected, &reasons);
+    ASSERT_EQ(reasons.size(), volumes.size());
+    EXPECT_EQ(reasons[0], nullptr);
+    EXPECT_STREQ(reasons[1], "tier_cap");
+    EXPECT_STREQ(reasons[2], "frustum");
+    EXPECT_STREQ(reasons[3], "distance");
+}
+
+// the analytic fog's opacity (R18) is 1 - the transmittance each fog type applies (fog.glsl, height_fog.glsl)
+TEST(AtmosphereMath, FogOpacityFollowsEachFogType){
+    const Vector3 origin(0.0f, 2.0f, 0.0f);
+    const Vector3 forward(0.0f, 0.0f, -1.0f);
+    FogComponent fog;
+    fog.type = FogType::LINEAR;
+    fog.linearStart = 10.0f;
+    fog.linearEnd = 60.0f;
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 5.0f), 0.0f);
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 35.0f), 0.5f);
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 200.0f), 1.0f);
+
+    fog.type = FogType::EXPONENTIAL;
+    fog.density = 0.02f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-1.0f), 1e-6f);
+    fog.type = FogType::EXPONENTIALSQUARED;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-1.0f), 1e-6f);
+
+    // below the base height a level ray sees the uniform medium; Max Opacity caps it
+    fog.type = FogType::HEIGHT;
+    fog.attenuationDistance = 100.0f;
+    fog.baseHeight = 5.0f;
+    fog.maximumHeight = 50.0f;
+    fog.startDistance = 0.0f;
+    fog.maxFogDistance = 2000.0f;
+    fog.maxOpacity = 1.0f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-0.5f), 1e-5f);
+    fog.maxOpacity = 0.3f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 200.0f), 0.3f, 1e-6f);
+    // no fog nearer than the Start Distance
+    fog.maxOpacity = 1.0f;
+    fog.startDistance = 20.0f;
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 10.0f), 0.0f);
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-0.3f), 1e-5f);
+}

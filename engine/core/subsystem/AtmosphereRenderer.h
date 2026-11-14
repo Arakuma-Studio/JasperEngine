@@ -136,6 +136,17 @@ namespace jasperengine{
     struct AtmosphereInfo{
         AtmosphereQuality quality = AtmosphereQuality::OFF;
         AtmosphereQuality platformDefault = AtmosphereQuality::OFF;
+        // what set quality (AtmosphereRenderer::viewQuality): "runtime" (Engine::setAtmosphereQuality),
+        // "game_view_preview" (the editor's Game view), "device_tier" (a device tier turned the
+        // volumetrics off), "project" (the platform's Atmosphere Quality)
+        std::string qualitySource = "project";
+        // a pass of the view drew through the scene's main camera with an atmosphere plan (the
+        // volumetric fog and Screen clouds draw for it only)
+        bool mainCameraPass = false;
+        // the volumetric fog marched the sun's shadows (light shafts)
+        bool lightShafts = false;
+        // the view draws as if the scene had no fog (the editor's Disable fog)
+        bool fogDisabled = false;
         bool fog = false;
         bool heightFog = false;
         bool volumetric = false;           // asked for (Fog volumetric on a height fog)
@@ -340,6 +351,7 @@ namespace jasperengine{
         bool ensureTarget(Framebuffer& target, unsigned int width, unsigned int height, bool floatFormat, bool linear);
         bool useFloatTargets() const;
         AtmosphereQuality viewQuality() const;
+        const char* viewQualitySource() const;
         bool cloudsReady();
         TextureRender* weatherTexture();
         void updateHorizon();
