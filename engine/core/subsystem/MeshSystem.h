@@ -44,6 +44,8 @@ namespace jasperengine{
 
     struct InstanceData;
     struct SpriteSlicedMesh;
+    struct SpriteFrame;
+    struct SpriteFrameGeometryInput;
     struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
@@ -78,7 +80,11 @@ namespace jasperengine{
                              float x0, float y0, float x1, float y1, int grid, bool keepIndices = false);
         // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
         // only when the frame's geometry differs from the one built
-        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin = nullptr);
+        // S94 F49: a frame's skin as a skinned mesh (bone ids and weights per vertex); false when
+        // the frame cannot be drawn so (no page size)
+        void buildSpriteSkinned(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent& skin, const SpriteFrame& frame,
+                                const SpriteFrameGeometryInput& input);
         // the 9-slice of a bordered sheet frame (S45 R6, the Sliced draw mode)
         void buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced);
         // a legacy sprite whose texture an atlas in use packs (S45 R8): its inline rect drawn from
@@ -209,6 +215,8 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // a Sprite Skin's mesh (S94 F49): the sprite's layout plus bone ids and weights
+        static void prepareSkinnedSpriteMesh(MeshComponent& mesh);
         // a Tilemap Layer's quad (S50): positions (0, 0)..(1, 1), UV (qx, 1 - qy), the instances'
         // matrices place it
         static void prepareTileLayerMesh(MeshComponent& mesh);
@@ -431,7 +439,7 @@ namespace jasperengine{
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;
         void cancelAsyncModelLoad(Entity entity, const std::string& filename);
 
-        bool createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        bool createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin = nullptr);
         bool createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent& mesh, Transform& transform);
         bool createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh);

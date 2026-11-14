@@ -4919,6 +4919,15 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
+		4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
+		4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479920E96CC7362C45 /* SpriteSkin.cpp */; };
+		4A534E471C14304D7A66D95F /* SpriteSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479920E96CC7362C45 /* SpriteSkin.cpp */; };
+		4A534E475E95808F07B4BD61 /* SpriteSkinLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A162309B607880 /* SpriteSkinLua.cpp */; };
+		4A534E47EB53B33EA27F4522 /* SpriteSkinLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A162309B607880 /* SpriteSkinLua.cpp */; };
+		4A534E476CD552A27A50EDFC /* SpriteSkinComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */; };
+		4A534E47A22036B29249620B /* SpriteSkin.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F288F92F0CD372E9 /* SpriteSkin.h */; };
+		4A534E479BD40CFA4074F857 /* SpriteSkinning.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF8545A73F8D913 /* SpriteSkinning.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9505,12 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinning.cpp; sourceTree = "<group>"; };
+		4A534E479920E96CC7362C45 /* SpriteSkin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkin.cpp; sourceTree = "<group>"; };
+		4A534E4714A162309B607880 /* SpriteSkinLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinLua.cpp; sourceTree = "<group>"; };
+		4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkinComponent.h; sourceTree = "<group>"; };
+		4A534E47F288F92F0CD372E9 /* SpriteSkin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkin.h; sourceTree = "<group>"; };
+		4A534E475FF8545A73F8D913 /* SpriteSkinning.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkinning.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10065,6 +10080,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E4714A162309B607880 /* SpriteSkinLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11420,6 +11436,8 @@
 				4A534E47F916164B86075842 /* SpriteSheetPool.h */,
 				4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */,
 				4A534E4766741A7C4FB88EF3 /* PivotPreset.h */,
+				4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */,
+				4A534E475FF8545A73F8D913 /* SpriteSkinning.h */,
 			);
 			path = sprite;
 			sourceTree = "<group>";
@@ -11987,6 +12005,7 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12127,6 +12146,8 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E479920E96CC7362C45 /* SpriteSkin.cpp */,
+				4A534E47F288F92F0CD372E9 /* SpriteSkin.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -16843,6 +16864,9 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E476CD552A27A50EDFC /* SpriteSkinComponent.h in Headers */,
+				4A534E47A22036B29249620B /* SpriteSkin.h in Headers */,
+				4A534E479BD40CFA4074F857 /* SpriteSkinning.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19535,9 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */,
+				4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */,
+				4A534E475E95808F07B4BD61 /* SpriteSkinLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20497,9 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */,
+				4A534E471C14304D7A66D95F /* SpriteSkin.cpp in Sources */,
+				4A534E47EB53B33EA27F4522 /* SpriteSkinLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

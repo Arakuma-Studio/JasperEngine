@@ -18,6 +18,8 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/SpriteSkinComponent.h"
+#include "sprite/SpriteSkinning.h"
 #include "pixelart/PixelSnap.h"
 #include "shader/ShaderManifest.h"
 
@@ -783,6 +785,13 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
         mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
+void MeshSystem::prepareSkinnedSpriteMesh(MeshComponent& mesh){
+    prepareSpriteMesh(mesh);
+    // the model path's vec4 joints (normAdjustJoint 1: float indices) and weights
+    mesh.buffer.addAttribute(AttributeType::BONEIDS, 4);
+    mesh.buffer.addAttribute(AttributeType::BONEWEIGHTS, 4);
+}
+
 void MeshSystem::prepareTileLayerMesh(MeshComponent& mesh){
     prepareSpriteMesh(mesh);
     Attribute* positions = mesh.buffer.getAttribute(AttributeType::POSITION);
@@ -1230,6 +1239,46 @@ void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh,
     mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), SPRITE_SLICED_INDICES,
                            (char*)spriteSlicedIndices(), sizeof(uint16_t));
     calculateSpriteAABB(mesh);
+}
+
+void MeshSystem::buildSpriteSkinned(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent& skin, const SpriteFrame& frame,
+                                    const SpriteFrameGeometryInput& input){
+    const SpriteSkinGeometry& geometry = *frame.skin;
+    const SpriteSkinnedVertices vertices = spriteSkinnedVertices(frame, geometry, input);
+    prepareSkinnedSpriteMesh(mesh);
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
+    Attribute* attBones = mesh.buffer.getAttribute(AttributeType::BONEIDS);
+    Attribute* attWeights = mesh.buffer.getAttribute(AttributeType::BONEWEIGHTS);
+    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    for (size_t v = 0; v < vertices.positions.size(); v++){
+        mesh.buffer.addVector3(attVertex, vertices.positions[v]);
+        mesh.buffer.addVector2(attTexcoord, vertices.uvs[v]);
+        mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
+        mesh.buffer.addVector4(attTangent, tangent);
+        mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+        SpriteVertexWeights w;
+        if (v < geometry.weights.size()) w = geometry.weights[v];
+        else w.weights[0] = 1.0f;   // unweighted: rigid on the first bone
+        mesh.buffer.addVector4(attBones, Vector4(w.bones[0], w.bones[1], w.bones[2], w.bones[3]));
+        mesh.buffer.addVector4(attWeights, Vector4(w.weights[0], w.weights[1], w.weights[2], w.weights[3]));
+    }
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), geometry.indices.size(),
+                           (char*)geometry.indices.data(), sizeof(uint16_t));
+    calculateSpriteAABB(mesh);
+    // the per-bone bounds RenderSystem poses with the palette (calculateSpriteAABB cleared them)
+    mesh.bonesAABB = vertices.boneBounds;
+    if (mesh.bonesMatrix.stored() != vertices.inverseBindMatrices.size())
+        mesh.bonesMatrix.resize(vertices.inverseBindMatrices.size());
+    for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++) mesh.bonesMatrix[b] = Matrix4();
+    mesh.needUpdateBones = true;
+    skin.inverseBindMatrices = vertices.inverseBindMatrices;
+    skin.builtSkin = frame.skin;
+    skin.paletteDirty = true;
 }
 
 // calculateMeshAABB for a sprite's own buffer (no external buffers, no bones), without its buffer
@@ -7160,7 +7209,7 @@ void MeshSystem::stepSpriteTag(SpriteComponent& sprite, double dt){
     sprite.frame = sprite.tagFrames[sprite.tagStep];
 }
 
-bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
+bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin){
     // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
     // previous one stays drawn until the new one is there (no flicker)
     // another sheet (the Inspector, a script, a drop): its frames from now on
@@ -7206,9 +7255,15 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
     // Sliced (S45 R6): a bordered frame as its 9-slice; the lattice's grid does not apply to it
     const bool sliced = sprite.drawMode == SpriteDrawMode::SLICED && spriteFrameHasBorder(frame);
-    const int grid = sliced ? 1 : requestedSpriteGrid(mesh);
-    const int previousGrid = sprite.builtSliced ? 1 : builtSpriteGrid(mesh);
-    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid && sprite.builtSliced == sliced){
+    // S94 F49: a Sprite Skin draws a skinned frame through its bones (never instanced: a Sprite
+    // Batch's instances carry no palette)
+    const bool skinned = skin && skin->enabled && frame.skin && frame.skin->drawable() && !sliced && !mesh.spriteInstanced;
+    // (the buffer's layout says it: a Sprite Skin removed since leaves its mesh skinned)
+    const bool wasSkinned = mesh.buffer.getAttribute(AttributeType::BONEIDS) != nullptr;
+    const int grid = (sliced || skinned) ? 1 : requestedSpriteGrid(mesh);
+    const int previousGrid = (sprite.builtSliced || wasSkinned) ? 1 : builtSpriteGrid(mesh);
+    const bool skinSame = skinned == wasSkinned && (!skinned || skin->builtSkin == frame.skin);
+    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid && sprite.builtSliced == sliced && skinSame){
         return true;
     }
 
@@ -7243,6 +7298,46 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     input.flipY = sprite.flipY;
     input.pageWidth = page.width;
     input.pageHeight = page.height;
+    if (skinned || wasSkinned){
+        const unsigned int builtVertices = mesh.buffer.getCount();
+        if (skinned){
+            const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+            mesh.submeshes[0].textureRect = quad.textureRect;
+            buildSpriteSkinned(sprite, mesh, *skin, frame, input);
+        }else{
+            // back to the quad: the bones go, the mesh's layout with them (clear() keeps the
+            // attributes, so a skinned layout's bone ids and weights would stay in it)
+            mesh.buffer.clearAll();
+            prepareSpriteMesh(mesh);
+            const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+            mesh.submeshes[0].textureRect = quad.textureRect;
+            buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+            // no palette left to upload (a pending one would ask for a reload every frame)
+            mesh.bonesMatrix.clear();
+            mesh.bonesAABB.clear();
+            mesh.needUpdateBones = false;
+            if (skin){
+                skin->builtSkin.reset();
+                skin->inverseBindMatrices.clear();
+            }
+        }
+        mesh.submeshes[0].hasTextureRect = true;
+        if (mesh.loaded){
+            // another layout or vertex count needs a buffer of its own
+            if (wasSkinned != skinned || builtVertices != mesh.buffer.getCount()){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+        if (skin) skin->builtSkinned = skinned;
+        sprite.builtSliced = false;
+        sprite.frameName = frame.name;
+        sprite.needUpdateFrameRect = false;
+        sprite.builtFrame = sprite.frame;
+        sprite.needUpdateSprite = false;
+        return true;
+    }
     if (sliced || sprite.builtSliced){
         // a 9-slice is rebuilt on every frame change (its lattice depends on the frame's border);
         // back to Simple, the buffer goes back to the quad's size
@@ -7472,9 +7567,23 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
     return true;
 }
 
-bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
+bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin){
     if (!sprite.sheet.empty()){
-        return updateSheetSprite(sprite, mesh);
+        return updateSheetSprite(sprite, mesh, skin);
+    }
+    // a legacy sprite draws no skin: a mesh skinned as a sheet sprite goes back to its quad
+    if (mesh.buffer.getAttribute(AttributeType::BONEIDS)){
+        if (skin){
+            skin->builtSkinned = false;
+            skin->builtSkin.reset();
+            skin->inverseBindMatrices.clear();
+        }
+        mesh.bonesMatrix.clear();
+        mesh.bonesAABB.clear();
+        mesh.needUpdateBones = false;
+        mesh.buffer.clearAll();
+        sprite.needUpdateSprite = true;
+        if (mesh.loaded) mesh.needReload = true;
     }
     if (updateInlineAtlas(sprite, mesh)){
         return true;
@@ -7687,6 +7796,7 @@ void MeshSystem::update(double dt){
     RenderSystem* snapRenderSystem = scene->findSystem<RenderSystem>().get();
     const bool snapping = snapRenderSystem && snapRenderSystem->hasPixelSnapVariants();
     const ComponentId spriteBatchId = scene->getComponentId<SpriteBatchComponent>();
+    const ComponentId spriteSkinId = scene->getComponentId<SpriteSkinComponent>();
     auto sprites = scene->getComponentArray<SpriteComponent>();
     for (int i = 0; i < sprites->size(); i++){
         SpriteComponent& sprite = sprites->getComponentFromIndex(i);
@@ -7731,7 +7841,7 @@ void MeshSystem::update(double dt){
                 if (mesh.loaded)
                     mesh.needReload = true;
             }
-            createOrUpdateSprite(sprite, mesh);
+            createOrUpdateSprite(sprite, mesh, signature.test(spriteSkinId) ? &scene->getComponent<SpriteSkinComponent>(entity) : nullptr);
             fillSpriteBatchAttributes(mesh);
         }
     }

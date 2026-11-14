@@ -92,6 +92,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/TerrainComponent.h"
@@ -1041,6 +1042,18 @@ void prepare<SpriteComponent>(SpriteComponent& sprite, Entity, CloneContext&) {
 }
 
 template<>
+void prepare<SpriteSkinComponent>(SpriteSkinComponent& skin, Entity, CloneContext& ctx) {
+    // a copied skeleton drives the copy; the copy's mesh is built on its own
+    skin.rootBone = ctx.remap(skin.rootBone);
+    for (Entity& bone : skin.bones) bone = ctx.remap(bone);
+    skin.builtSkin.reset();
+    skin.inverseBindMatrices.clear();
+    skin.builtSkinned = false;
+    skin.paletteDirty = false;
+    skin.paletteBones.clear();
+}
+
+template<>
 void prepare<ImageComponent>(ImageComponent& image, Entity, CloneContext&) {
     image.needUpdatePatches = true;
 }
@@ -1363,6 +1376,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TitleArtRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SpriteSkinComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

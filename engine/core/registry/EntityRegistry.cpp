@@ -83,6 +83,7 @@
 #include "component/SplineInstantiateComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
@@ -238,6 +239,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
+    // S94 F49: after the last one, so no ComponentType moves
+    registerComponent<SpriteSkinComponent>(ComponentOrder::Insertion, "SpriteSkinComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

@@ -131,6 +131,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
