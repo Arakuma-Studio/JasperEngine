@@ -1,8 +1,8 @@
 {
-  "description": "tools/test-projects/app-lifecycle (WEB_PROJECT=app-lifecycle tools/build.sh web): S95 REQ-15 on WebGL2. After the first view, the page loses its WebGL context (WEBGL_lose_context) and gets it back half a second later; the engine releases its GPU objects and makes them again in the restored context, and the HTML UI document keeps the counter its script left in the DOM (7; the file says 0), loaded once. The key press only lets the page run on after the loss.",
+  "description": "tools/test-projects/app-lifecycle (WEB_PROJECT=app-lifecycle tools/build.sh web): S95 REQ-15 on WebGL2. After the first view, the page loses its WebGL context (WEBGL_lose_context) and gets it back half a second after the browser reported the loss; the engine releases its GPU objects and makes them again in the restored context, and the HTML UI document keeps the counter its script left in the DOM (7; the file says 0), loaded once. The key press only lets the page run on after the loss.",
   "isolated": true,
   "seconds": 6,
-  "eval_before_input": "(() => { const canvas = document.querySelector('#canvas') || document.querySelector('canvas'); const gl = canvas && canvas.getContext('webgl2'); const ext = gl && gl.getExtension('WEBGL_lose_context'); if (!ext) return 'no WEBGL_lose_context'; ext.loseContext(); setTimeout(() => ext.restoreContext(), 500); return 'lost'; })()",
+  "eval_before_input": "(() => { const canvas = document.querySelector('#canvas') || document.querySelector('canvas'); const gl = canvas && canvas.getContext('webgl2'); const ext = gl && gl.getExtension('WEBGL_lose_context'); if (!ext) return 'no WEBGL_lose_context'; canvas.addEventListener('webglcontextlost', () => setTimeout(() => ext.restoreContext(), 500), {once: true}); ext.loseContext(); return 'lost'; })()",
   "eval_before_input_expect": ["lost"],
   "keys": [{"code": "KeyA", "key": "a", "key_code": 65}],
   "after_key_seconds": 6,

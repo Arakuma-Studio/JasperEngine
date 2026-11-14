@@ -946,8 +946,9 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         return EM_FALSE;
     }
 
-    // no context to draw in: nothing runs (on a phone nothing runs without a window either)
-    if (contextLost)
+    // no context to draw in: nothing runs (on a phone nothing runs without a window either). The
+    // browser reports the loss with an event some frames after the context went: asked directly
+    if (contextLost || emscripten_is_webgl_context_lost(glContext))
         return EM_TRUE;
 
     if (!projectStarted){
