@@ -24,6 +24,19 @@ bool TextureExport::gather(Project& project, std::map<std::string, TextureCookIn
             error = path + ": its texture import settings cannot be read: " + reason;
             return false;
         }
+        // the export would ship the source to a reader (RmlUi, the terrain layers) that cannot decode it
+        if (in.inference.readsSource && isEditorDecodedTexture(path)){
+            std::string reader;
+            for (const TextureReferenceUse& use : in.inference.uses){
+                if (use.slot == TextureSlot::SourceFile){
+                    reader = use.where;
+                    break;
+                }
+            }
+            error = path + ": " + reader + " reads the source file, and a game cannot decode TIFF or PSB (only their cooks); "
+                    "convert it to PNG for that reference";
+            return false;
+        }
         inputs.emplace(path, std::move(in));
     }
     return true;
