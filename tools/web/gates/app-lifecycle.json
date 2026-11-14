@@ -7,9 +7,9 @@
   "keys": [{"code": "KeyA", "key": "a", "key_code": 65}],
   "after_key_seconds": 6,
   "console": [
-    {"text": "[lifecycle] view 1 counter 7 loads 1", "level": "log"},
+    {"text": "[lifecycle] start counter 7", "level": "log"},
     {"text": "[lifecycle] view lost", "level": "log"},
-    {"text": "[lifecycle] view 2 counter 7 loads 1", "level": "log"}
+    {"text": "[lifecycle] view back counter 7 loads 1", "level": "log"}
   ],
   "ordered": true
 }
