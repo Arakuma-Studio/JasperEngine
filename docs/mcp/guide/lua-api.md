@@ -204,6 +204,10 @@ a sound -> `"AudioSource"`).
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
 | `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+
+Both look the method up by name at each call: `self.onUpdate = other` takes effect at the next
+event. While `self[methodName]` is not a function (nil, a value) the call is skipped, with one
+warning per subscription.
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -244,7 +248,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 |---|---|---|
 | `onUpdate` | none | every frame (variable step; use `Engine.deltatime`) |
 | `onFixedUpdate` | none | every fixed step (`Engine.updateTime`, default 1/60 s), 0..n times per frame, before physics steps |
-| `onPostUpdate` | none | every frame after scenes update |
+| `onPostUpdate` | none | every frame after the scenes' update, the timers and the coroutines (Unity's `LateUpdate`); what it moves is drawn in the same frame |
 | `onDraw` | none | every frame before drawing |
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
@@ -1655,9 +1659,11 @@ animation timing stays `anime.createTimer` (milliseconds, the UI clock); for gam
 `self:invoke` / `Timer.after`.
 
 Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
-`waitForFixedUpdate`), `onUpdate`, then `invoke` timers and the coroutines whose wait is over (seconds,
-frames, predicates, `waitFor`; in the order they were started), the scenes' update,
-`onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
+`waitForFixedUpdate`), `onUpdate`, the scenes' update, then `invoke` timers and the coroutines whose
+wait is over (seconds, frames, predicates, `waitFor`; in the order they were started),
+`onPostUpdate`, destroys, the late transform pass (what moved since the scenes' update gets its
+world matrices, so it is drawn in this frame), the draw, then the coroutines waiting
+`waitForEndOfFrame`. Every wait
 resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
 coroutine (at once).
 
@@ -1903,13 +1909,13 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 |---|---|---|
 | `position` | rw `Vector3` | local position |
 | `setPosition(x, y [, z])` | method | z 0 when left out |
-| `getWorldPosition()` | method | Vector3 |
+| `getWorldPosition()` | method | Vector3, current: a move of it or a parent earlier in the frame is included (Unity's `transform.position`) |
 | `rotation` | rw `Quaternion` | |
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
-| `getWorldRotation()` | method | Quaternion |
+| `getWorldRotation()` | method | Quaternion, current as `getWorldPosition()` |
 | `scale` | rw `Vector3` | |
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
-| `getWorldScale()` | method | |
+| `getWorldScale()` | method | current as `getWorldPosition()` |
 | `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
 | `parent` | rw `GameObject` or nil | Unity's `transform.parent`: assigning keeps the world placement (nil: to the root) |
@@ -1918,7 +1924,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `findChild(path)` | method | Unity's `Transform.Find`: a child by name, or a path of names below it (`"Arm/Hand"`); nil when missing |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
-| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
+| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | `modelMatrix` is current as `getWorldPosition()`; `normalMatrix` is the last frame's |
 | (no Transform) | | On a GameObject without a Transform (an action, a tween) `position`, `rotation`, `scale`, `parent`, the matrices and `getWorld*()` are nil; setting one raises `GameObject '<name>' has no Transform` |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
@@ -2597,7 +2603,8 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `snap()` | the next update places it without damping |
 
 Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
-(warned once). Writes in `onPostUpdate` reach the camera a frame late.
+(warned once). A target moved in `onPostUpdate` is followed the next frame (Camera Follow runs in the
+scenes' update).
 
 ```lua
 -- MilkShake's CameraShaker.cs, ported
