@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include <optional>
 #include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
@@ -816,6 +817,9 @@ namespace jasperengine{
 			int unitPriority = 0;
 			float unitDistance = 0.0f;
 			uint64_t unitSeq = 0;
+			// a mesh split by sort priority (MeshComponent::splitPriorities): the submeshes of
+			// this entry's priority; all otherwise
+			uint32_t submeshMask = 0xFFFFFFFFu;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -2726,7 +2730,8 @@ namespace jasperengine{
 
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
-		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// baseColor: a Property Override's base colour texture in place of the material's (drawnBaseColor)
+		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights, Texture* baseColor = nullptr);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
 		// again once an image could be made since (TexturePool::getReadyEpoch)
@@ -2752,8 +2757,8 @@ namespace jasperengine{
 		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
-		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
-		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render);
+		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
+		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
 		// Every map of every layer is a slice of one array texture, so the whole terrain
 		// costs a single bind slot. Kept here, not on the component, which stays copiable.
 		struct TerrainDetailArray{
@@ -3614,7 +3619,7 @@ namespace jasperengine{
 		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
 		// an emitter and its children as items of the transparent queue
 		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
-		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		                       Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order);
 		// an emitter, then its children in the effect's order
 		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
 		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
@@ -3720,6 +3725,9 @@ namespace jasperengine{
 		// Transparency Sort Axis distance as an order-preserving float, larger first (32; 0 in
 		// mode Default)
 		static uint64_t makeSortKey(uint16_t layerValue, int32_t order, bool axis, float distance);
+		// the distance a transparent draw at `point` sorts by from this camera (Transparency Sort
+		// Mode: the view-axis depth or the distance; larger first)
+		static float transparentSortDistance(const CameraComponent& camera, const Transform& cameraTransform, const Vector3& point);
 		// whether this frame's renderers leave the defaults (R9: else today's loop runs)
 		bool isSortingActive() const { return sortingActive; }
 		// the flag of this frame and a new frame for the order (update() calls it)
@@ -3787,7 +3795,7 @@ namespace jasperengine{
 		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
 		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
 		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
-		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const CameraComponent& camera, const Transform& cameraTransform);
 
 		// Sprite Batch (RenderSystemSpriteBatch.cpp)
 		SpriteBatchStats spriteBatchStats;
@@ -3944,6 +3952,20 @@ namespace jasperengine{
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// Property Overrides (S94 F7). The textures a submesh draws with, made at load: its
+		// material's shader textures with the overrides' over them (the Mesh's, then the
+		// submesh's), and the built-in Lit's overridden base colour texture
+		static void resolveOverrideTextures(const MeshComponent& mesh, Submesh& submesh);
+		static std::vector<std::pair<std::string, Texture>>& drawnShaderTextures(Submesh& submesh);
+		static Texture* drawnBaseColor(Submesh& submesh);
+		// the material the built-in Lit's block is written from: the submesh's, or (an override
+		// naming baseColorFactor or emissiveFactor) a copy in scratch with the overrides in it
+		static const Material& drawnLitMaterial(const MeshComponent& mesh, const Submesh& submesh, std::optional<Material>& scratch);
+		// a submesh's override of `name`: its own, else the Mesh's; false without one
+		static bool findOverrideValue(const MeshComponent& mesh, const Submesh& submesh, const std::string& name, Vector4& value);
+		// the built-in Lit's colour factors as drawn (an override's, else the material's)
+		static Vector4 drawnBaseColorFactor(const MeshComponent& mesh, const Submesh& submesh);
+		static Vector3 drawnEmissiveFactor(const MeshComponent& mesh, const Submesh& submesh);
 		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
 		// fragment program knows the fade
 		static bool shaderSupportsCompactInstances(const std::string& shader);

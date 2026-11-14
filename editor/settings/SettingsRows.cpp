@@ -2347,19 +2347,22 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "graphics.transparency_sort_mode";
             s.type = "enum";
-            s.values = {"default", "custom_axis"};
-            s.description = "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
+            s.values = {"default", "perspective", "orthographic", "custom_axis"};
+            s.description = "How transparent draws sort, far first: perspective by the distance to the camera, orthographic by "
+                            "depth along its view axis, default orthographic for orthographic cameras and perspective otherwise. "
+                            "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
                             "graphics.transparency_sort_axis (a larger dot(axis, position) first). Undoable (undo scope project).";
             s.get = [](SettingsContext& ctx) {
-                return Json(ctx.project()->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS ? "custom_axis" : "default");
+                return Json(SortingLayers::transparencySortModeToken(ctx.project()->getTransparencySortMode()));
             };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_string() || (value.get<std::string>() != "default" && value.get<std::string>() != "custom_axis")) {
-                    error = "must be \"default\" or \"custom_axis\"";
+                TransparencySortMode mode = TransparencySortMode::DEFAULT;
+                if (!value.is_string() || !SortingLayers::transparencySortModeFromToken(value.get<std::string>(), mode)) {
+                    error = "must be \"default\", \"perspective\", \"orthographic\" or \"custom_axis\"";
                     return false;
                 }
                 SortingSettings changed = SortingSettings::current();
-                changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                changed.mode = mode;
                 return setSorting(ctx, changed, apply, error);
             };
             add(s);

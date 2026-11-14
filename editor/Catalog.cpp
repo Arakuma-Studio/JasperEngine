@@ -151,6 +151,11 @@ namespace {
         {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
         {"material.shaderPalettes", SubmeshOverride_ShaderPalettes},
         {"material.blendMode", SubmeshOverride_BlendMode},
+        {"material.blendSrc", SubmeshOverride_BlendMode},
+        {"material.blendDst", SubmeshOverride_BlendMode},
+        {"material.blendSrcAlpha", SubmeshOverride_BlendMode},
+        {"material.blendDstAlpha", SubmeshOverride_BlendMode},
+        {"material.blendOp", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
         {"material.depthTest", SubmeshOverride_DepthTest},
@@ -168,6 +173,9 @@ namespace {
         {"material.stochasticRotation", SubmeshOverride_StochasticTiling},
         {"material.emissiveStrength", SubmeshOverride_EmissiveStrength},
         {"material.pbr", SubmeshOverride_PbrExtensions},
+        {"propertyOverrides", SubmeshOverride_PropertyOverrides},
+        {"propertyOverrides.values", SubmeshOverride_PropertyOverrides},
+        {"propertyOverrides.textures", SubmeshOverride_PropertyOverrides},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -946,7 +954,7 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
     uint64_t flags = UpdateFlags_Mesh_Texture;
     // resolved when the mesh loads: the shader, its variant and its pipelines
     if (from.shader != to.shader || from.shaderFeatures != to.shaderFeatures || from.shaderTextures != to.shaderTextures ||
-            from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
+            from.blendMode != to.blendMode || from.getBlendFactors() != to.getBlendFactors() || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
             from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
             from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
             from.lighting != to.lighting || from.alphaMode != to.alphaMode || from.stochasticTiling != to.stochasticTiling) {

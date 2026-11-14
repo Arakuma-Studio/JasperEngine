@@ -807,6 +807,34 @@ void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, Material
     colorWrite = node["colorWrite"] ? stringToColorWrite(node["colorWrite"].as<std::string>()) : -1;
 }
 
+namespace {
+
+    // Blend Mode Custom's factors, each away from its default (One Zero, One Zero, Add)
+    template<typename T>
+    void encodeBlendFactors(YAML::Node& node, const T& owner) {
+        const MaterialBlendFactors defaults;
+        const MaterialBlendFactors factors = owner.getBlendFactors();
+        const auto& names = editor::StreamSchema::materialBlendFactor();
+        if (factors.src != defaults.src) node["blendSrc"] = names.toString(factors.src);
+        if (factors.dst != defaults.dst) node["blendDst"] = names.toString(factors.dst);
+        if (factors.srcAlpha != defaults.srcAlpha) node["blendSrcAlpha"] = names.toString(factors.srcAlpha);
+        if (factors.dstAlpha != defaults.dstAlpha) node["blendDstAlpha"] = names.toString(factors.dstAlpha);
+        if (factors.op != defaults.op) node["blendOp"] = editor::StreamSchema::materialBlendOp().toString(factors.op);
+    }
+
+    template<typename T>
+    void decodeBlendFactors(const YAML::Node& node, T& owner) {
+        const MaterialBlendFactors defaults;
+        const auto& names = editor::StreamSchema::materialBlendFactor();
+        owner.blendSrc = node["blendSrc"] ? editor::decodeEnum(node, "blendSrc", names) : defaults.src;
+        owner.blendDst = node["blendDst"] ? editor::decodeEnum(node, "blendDst", names) : defaults.dst;
+        owner.blendSrcAlpha = node["blendSrcAlpha"] ? editor::decodeEnum(node, "blendSrcAlpha", names) : defaults.srcAlpha;
+        owner.blendDstAlpha = node["blendDstAlpha"] ? editor::decodeEnum(node, "blendDstAlpha", names) : defaults.dstAlpha;
+        owner.blendOp = node["blendOp"] ? editor::decodeEnum(node, "blendOp", editor::StreamSchema::materialBlendOp()) : defaults.op;
+    }
+
+}
+
 YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool embedTextureData) {
     YAML::Node node(YAML::NodeType::Map);
     if (!pass.shader.empty()) encodeShaderRef(node, "shader", pass.shader);
@@ -817,6 +845,7 @@ YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool emb
     }
     if (!pass.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(pass.shaderFeatures);
     if (pass.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(pass.blendMode);
+    encodeBlendFactors(node, pass);
     if (pass.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(pass.cullMode);
     if (pass.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(pass.depthWrite);
     if (pass.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(pass.depthTest);
@@ -837,6 +866,7 @@ MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
     pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     if (node["blendMode"]) pass.blendMode = decodeEnum(node, "blendMode", StreamSchema::materialBlendMode());
+    decodeBlendFactors(node, pass);
     if (node["cullMode"]) pass.cullMode = decodeEnum(node, "cullMode", StreamSchema::materialCullMode());
     if (node["depthWrite"]) pass.depthWrite = decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite());
     if (node["depthTest"]) pass.depthTest = decodeEnum(node, "depthTest", StreamSchema::materialDepthTest());
@@ -1787,6 +1817,24 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
+YAML::Node editor::Stream::encodePropertyOverrides(const ShaderPropertyOverrides& overrides, bool embedData) {
+    YAML::Node node(YAML::NodeType::Map);
+    if (!overrides.values.empty()) node["values"] = encodeShaderUniforms(overrides.values);
+    if (!overrides.textures.empty()) {
+        YAML::Node textures = encodeShaderTextures(overrides.textures, embedData);
+        if (textures.size() > 0) node["textures"] = textures;
+    }
+    return node;
+}
+
+ShaderPropertyOverrides editor::Stream::decodePropertyOverrides(const YAML::Node& node) {
+    ShaderPropertyOverrides overrides;
+    if (!node || !node.IsMap()) return overrides;
+    overrides.values = decodeShaderUniforms(node["values"]);
+    overrides.textures = decodeShaderTextures(node["textures"]);
+    return overrides;
+}
+
 YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount) {
     YAML::Node node;
 
@@ -1798,6 +1846,8 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
+
+    if (!submesh.propertyOverrides.empty()) node["propertyOverrides"] = encodePropertyOverrides(submesh.propertyOverrides, embedTextureData);
 
     // The fields the next model load must keep instead of taking them from the file.
     if (submesh.overrideFields != 0) {
@@ -1839,6 +1889,8 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["vertexCount"]) submesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
     if (node["faceCulling"]) submesh.faceCulling = YamlNumbers::as<bool>(node["faceCulling"]);
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
+    // omitted when empty: an absent key is none
+    submesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
     submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint64_t>(node["overrideFields"]) : 0;
@@ -2959,8 +3011,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         for (const SortingLayerInfo& layer : sortingLayers) maxId = std::max(maxId, layer.id);
         if (SortingLayers::getNextId() > maxId + 1)
             root["sortingLayerNextId"] = SortingLayers::getNextId();
-        if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
-            root["transparencySortMode"] = "custom_axis";
+        if (project->getTransparencySortMode() != TransparencySortMode::DEFAULT)
+            root["transparencySortMode"] = SortingLayers::transparencySortModeToken(project->getTransparencySortMode());
         const Vector3 axis = project->getTransparencySortAxis();
         if (axis != Vector3(0.0f, 1.0f, 0.0f)) {
             YAML::Node axisNode(YAML::NodeType::Sequence);
@@ -3915,8 +3967,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         TransparencySortMode mode = TransparencySortMode::DEFAULT;
         if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
             const std::string name = node["transparencySortMode"].as<std::string>();
-            if (name == "custom_axis") mode = TransparencySortMode::CUSTOM_AXIS;
-            else if (name != "default") Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default or custom_axis)", name.c_str());
+            if (!SortingLayers::transparencySortModeFromToken(name, mode))
+                Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default, perspective, orthographic or custom_axis)", name.c_str());
         }
         Vector3 axis(0.0f, 1.0f, 0.0f);
         if (node["transparencySortAxis"] && node["transparencySortAxis"].IsSequence() && node["transparencySortAxis"].size() == 3) {
@@ -5895,6 +5947,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
     if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
+    encodeBlendFactors(node, material);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
     if (material.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(material.depthTest);
@@ -6040,6 +6093,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
+    decodeBlendFactors(node, material);
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
     material.depthTest = node["depthTest"] ? decodeEnum(node, "depthTest", StreamSchema::materialDepthTest()) : MaterialDepthTest::AUTO;

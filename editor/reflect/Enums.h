@@ -83,6 +83,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
+    extern const EnumDesc kMaterialBlendFactor;
+    extern const EnumDesc kMaterialBlendOp;
     extern const EnumDesc kMaterialCullMode;
     extern const EnumDesc kMaterialDepthTest;
     extern const EnumDesc kMaterialDepthWrite;
@@ -168,5 +170,7 @@ namespace jasperengine::editor::reflect::enums {
 
     // masks of enum values a field offers (FieldDesc::enumMask)
     constexpr uint64_t bit(int value) { return uint64_t(1) << value; }
+    // the blend modes a component (Points, Line, Trail, UI) offers: Custom's factors are a material's
+    constexpr uint64_t kComponentBlendModes = bit(0) | bit(1) | bit(2) | bit(3) | bit(4) | bit(5);
 
 }
