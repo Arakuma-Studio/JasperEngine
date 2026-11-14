@@ -83,6 +83,8 @@ namespace jasperengine{
         SubmeshOverride_ShaderGlobalBindings     = 1ull << 33,
         // material.shaderPalettes (S43 Palette Swap)
         SubmeshOverride_ShaderPalettes           = 1ull << 34,
+        // the submesh's Property Overrides (S94 F7): a model file never sets them
+        SubmeshOverride_PropertyOverrides        = 1ull << 35,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -186,6 +188,8 @@ namespace jasperengine{
         LightDataTail lightDataTail;
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
+        int slotVSAmbientGradient = -1;
+        int slotFSAmbientGradient = -1;
         int slotFSLighting2D = -1;
         int slotVSSprite = -1;
         int slotVSSkinning = -1;
@@ -303,6 +307,8 @@ namespace jasperengine{
         unsigned int sizeFSObjectLights = 0;
         int slotFSLitFrame = -1;        // includes/lit_frame.glsl (built-in Lit)
         unsigned int sizeFSLitFrame = 0; // reflected: the prefix the variant declares
+        int slotVSAmbientGradient = -1; // includes/ambient.glsl ('Agr', S94)
+        int slotFSAmbientGradient = -1;
         int slotFSReflectionProbe = -1;
         int slotFSLighting2D = -1;
         int slotFSFog = -1;
@@ -426,6 +432,15 @@ namespace jasperengine{
         bool hasMorphTangent = false;
 
         bool alphaBlend = false;
+        // this submesh's Property Overrides, over the Mesh's (MeshComponent::propertyOverrides),
+        // out of line: almost no submesh has them
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
+        // set at load when an override names a texture: what it binds (RenderSystem's
+        // drawnShaderTextures, drawnBaseColor); unset otherwise
+        OutOfLineValue<SubmeshOverrideTextures> overrideTextures;
+        // set at load: its queue order, the material's sortPriority plus its shader's @state
+        // priority= (lower first)
+        int sortPriority = 0;
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
@@ -561,7 +576,11 @@ namespace jasperengine{
         // vertices or discards keeps its shadows in step.
         ShaderRef customDepthShader;
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
+        // (under its materials' parameters: Property Overrides win over those)
         ShaderUniformValues shaderUniforms;
+        // Property Overrides of every submesh (Unity's MaterialPropertyBlock, saved): over the
+        // materials' values; a submesh's own (Submesh::propertyOverrides) win over these; out of line
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
         bool needUpdateShaderUniforms = false;
         // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
         // bind globals (Material::shaderGlobalBindings) were last written
@@ -676,6 +695,10 @@ namespace jasperengine{
         // ones read the scene: its opaque submeshes draw in the opaque queue (so they are in the
         // scene depth and colour it reads), the blended ones in the transparent queue
         bool splitQueues = false;
+        // set at load (autoTransparency): its submeshes differ in sort priority, so each queue
+        // draws them as one entry per priority (RenderSystem's opaque and transparent queues,
+        // through the entries' submesh masks; Unity's per-material render queue)
+        bool splitPriorities = false;
         // what it was registered to read before it loaded (RenderSystem::predictSceneInputUsers),
         // done once per load
         bool sceneInputsPredicted = false;

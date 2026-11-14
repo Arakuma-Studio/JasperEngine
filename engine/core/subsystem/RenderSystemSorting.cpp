@@ -16,6 +16,7 @@
 #include "RenderSystem.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteComponent.h"
@@ -40,6 +41,12 @@ uint64_t RenderSystem::makeSortKey(uint16_t layerValue, int32_t order, bool axis
         key |= (uint64_t)(~bits);
     }
     return key;
+}
+
+float RenderSystem::transparentSortDistance(const CameraComponent& camera, const Transform& cameraTransform, const Vector3& point){
+    // (an orthographic projection: the Ortho and the 2D camera)
+    const bool viewDepth = SortingLayers::sortsByViewDepth(SortingLayers::getTransparencySortMode(), camera.type != CameraType::CAMERA_PERSPECTIVE);
+    return SortingLayers::sortDistance(viewDepth, cameraTransform.worldPosition, camera.worldDirection, point);
 }
 
 void RenderSystem::updateSortingActive(){
@@ -221,7 +228,7 @@ const std::vector<RenderSystem::SortedDraw>& RenderSystem::getSorted2DOrder(){
     return sortedOrder;
 }
 
-bool RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition){
+bool RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const CameraComponent& camera, const Transform& cameraTransform){
     if (!sortingActive || renders.empty())
         return false;
     auto transforms = scene->getComponentArray<Transform>();
@@ -267,7 +274,7 @@ bool RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& 
             render.sortBucket = (render.sortKey & 0xFFFFFFFF00000000ull) | render.sortGroup;
             // the group is one unit: at its own distance, after every item alone of its distance
             render.unitPriority = 0;
-            render.unitDistance = (scene->getComponent<Transform>(groupEntity).worldPosition - cameraPosition).length();
+            render.unitDistance = transparentSortDistance(camera, cameraTransform, scene->getComponent<Transform>(groupEntity).worldPosition);
             render.unitSeq = (1ull << 32) | render.sortGroup;
             grouped = true;
         }else{

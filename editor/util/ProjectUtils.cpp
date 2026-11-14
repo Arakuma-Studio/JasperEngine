@@ -32,6 +32,7 @@
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "shader/ShaderManifest.h"
 #include "util/Util.h"
 #include "texture/TextureData.h"
 #include "util/ProjectChecks.h"
@@ -371,6 +372,30 @@ editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
             plan.error = "A fork target already exists: " +
                          std::filesystem::relative(collision, projectRoot, ec).generic_string();
             return plan;
+        }
+    }
+
+    // a library shader with its own depth program (@depth): the fork takes its <name>_depth
+    // files too, as <base>_depth.vert / .frag beside it, so its shadows keep following it
+    // (a file the library leaves to the generic surface_depth stays that)
+    if (!librarySource.empty()) {
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(librarySource);
+        std::string depthVert, depthFrag;
+        if (manifest && manifest->depth &&
+                ShaderVariantCompiler::getLibraryShaderPaths(librarySource, ShaderType::DEPTH, depthVert, depthFrag, nullptr)) {
+            const std::pair<std::string, const char*> depthFiles[] = {{depthVert, ".vert"}, {depthFrag, ".frag"}};
+            for (const auto& [key, extension] : depthFiles) {
+                auto source = ShaderVariantCompiler::getLibrarySources().find(key);
+                if (key.rfind("library/surface_depth", 0) == 0 || source == ShaderVariantCompiler::getLibrarySources().end())
+                    continue;
+                const std::filesystem::path path = forkDir / (baseName + "_depth" + extension);
+                std::error_code ec;
+                if (!forkIncludes && std::filesystem::exists(path, ec) && !ec) {
+                    plan.error = "A fork target already exists: " + std::filesystem::relative(path, projectRoot, ec).generic_string();
+                    return plan;
+                }
+                plan.includeFiles.push_back({path, source->second});
+            }
         }
     }
 
