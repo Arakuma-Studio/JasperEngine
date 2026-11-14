@@ -5249,7 +5249,7 @@ CASES = [
         "what_happened": "open_scene added every scene file it opened to project.yaml's build list, so the scenes an agent opened "
                          "to look at shipped with the game (JasperArcade port, E8). Opening no longer lists a scene: asked to "
                          "open one and ship it, the agent adds it with edit_build_scenes instead of taking the open for the add.",
-        "text_at_issue": "open_scene: 'An unlisted one stays out of the build (edit_build_scenes add).' (was: 'Opens a .scene file "
+        "text_at_issue": "open_scene: 'an unlisted one stays out of the build (edit_build_scenes add).' (was: 'Opens a .scene file "
                          "(adding it to the project if unlisted)')",
         "source": "S98 REQ-28 (ENGINE_LIMITATIONS.md E8, paraphrased)",
         "prompt": "Open scenes/Bonus.scene so I can work on it, and make sure it ships with the game.",
