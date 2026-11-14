@@ -715,7 +715,11 @@ Entity editor::ProjectUtils::lockedByParentUI(Scene* scene, Entity entity, Signa
     return NULL_ENTITY;
 }
 
-editor::LockedParentIndex::LockedParentIndex(Scene* scene): scene(scene){
+editor::LockedParentIndex::LockedParentIndex(Scene* scene): scene(scene), meshes(scene->getSystem<MeshSystem>()){
+#if JASPERENGINE_VOXEL
+    voxels = scene->findSystem<VoxelSystem>();
+#endif
+    splines = scene->findSystem<SplineSystem>();
     // in the order getLockedEntityParent looks: the first model (and in it the first kind of
     // reference) that names an entity answers for it
     auto models = scene->getComponentArray<ModelComponent>();
@@ -752,9 +756,24 @@ Entity editor::LockedParentIndex::get(Entity entity) const{
     if (entity == NULL_ENTITY)
         return NULL_ENTITY;
 
-    Entity foliageOwner = scene->getSystem<MeshSystem>()->getFoliageOwner(entity);
+    Entity foliageOwner = meshes->getFoliageOwner(entity);
     if (foliageOwner != NULL_ENTITY) {
         return foliageOwner;
+    }
+    // then, as getLockedEntityParent, the generated GameObjects of Voxel Volumes and splines
+#if JASPERENGINE_VOXEL
+    if (voxels) {
+        const Entity voxelOwner = voxels->getGeneratedOwner(entity);
+        if (voxelOwner != NULL_ENTITY) {
+            return voxelOwner;
+        }
+    }
+#endif
+    if (splines) {
+        const Entity splineOwner = splines->getGeneratedOwner(entity);
+        if (splineOwner != NULL_ENTITY) {
+            return splineOwner;
+        }
     }
 
     auto reference = modelReferences.find(entity);

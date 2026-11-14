@@ -130,6 +130,7 @@
 #include "imgui_internal.h"
 #include <algorithm>
 #include <cctype>
+#include <tuple>
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
@@ -3105,26 +3106,199 @@ void editor::HierarchyWindow::popNodeImGuiId(const TreeNode& node){
 
 // Walks the scene (and any inline child scenes) into the TreeNode hierarchy the panel
 // draws. Called only when the cache key changes, so it must not depend on frame state.
-void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet){
+namespace {
 
-    sceneEntitiesSet = std::unordered_set<Entity>(sceneProject->entities.begin(), sceneProject->entities.end());
+    // the rows' icons by signature (a scene has few kinds of GameObject; a signature's bits are
+    // its registry's, so the key holds the scene)
+    class HierarchyIconCache {
+    public:
+        const std::string& of(Scene* registry, const Signature& signature){
+            for (const auto& [iconScene, iconSignature, icon] : icons){
+                if (iconScene == registry && iconSignature == signature) return icon;
+            }
+            icons.emplace_back(registry, signature, editor::HierarchyWindow::getObjectIcon(signature, registry));
+            return std::get<2>(icons.back());
+        }
+    private:
+        std::vector<std::tuple<const Scene*, Signature, std::string>> icons;
+    };
+
+    // What a row of the selected scene shows of its GameObject, from indexes made once a rebuild
+    // (S98 E11: 1,500 GameObjects took 2.4 ms a rebuild). A full rebuild and the timed refresh
+    // fill rows with it, so they cannot differ.
+    struct HierarchyRowFacts {
+        editor::Project* project;
+        editor::SceneProject* sceneProject;
+        const editor::LockedParentIndex& locks;
+        const std::unordered_map<Entity, std::filesystem::path>& prefabPaths;
+        HierarchyIconCache& icons;
+
+        // modelAncestor: the nearest ancestor with a Model (a Transform row); only a model's
+        // part asks the model helpers, which walk up to the model
+        void fill(editor::TreeNode& row, Entity entity, const Signature& signature, bool hasTransform, Entity modelAncestor) const{
+            Scene* scene = sceneProject->scene;
+            row.icon = icons.of(scene, signature);
+            row.id = entity;
+            row.isMainCamera = entity == sceneProject->mainCamera;
+            row.hasScript = hasScripts(scene, entity);
+            row.isBone = signature.test(scene->getComponentId<BoneComponent>());
+            row.hasTransform = hasTransform;
+            row.isLocked = locks.get(entity) != NULL_ENTITY;
+            row.canEditModelHierarchy = false;
+            row.hierarchyReason.clear();
+            if (modelAncestor != NULL_ENTITY){
+                row.isLocked = row.isLocked || editor::ProjectUtils::getModelBranchOwner(scene, entity) != NULL_ENTITY;
+                row.canEditModelHierarchy = editor::ProjectUtils::canEditModelBranch(scene, entity, &row.hierarchyReason);
+            }
+            const std::string& name = scene->getEntityNameRef(entity);
+            if (row.name != name) row.name = name;
+            const bool prefabRoot = signature.test(scene->getComponentId<PrefabComponent>());
+            auto prefabIt = prefabPaths.find(entity);
+            row.isPrefab = prefabIt != prefabPaths.end();
+            row.prefabFilepath = row.isPrefab ? prefabIt->second : std::filesystem::path();
+            // a row without a Transform is a prefab root only as a member of an instance
+            row.isPrefabRoot = prefabRoot && (hasTransform || row.isPrefab);
+            row.nestedPrefabFilepath = row.isPrefabRoot ? std::filesystem::path(scene->getComponent<PrefabComponent>(entity).path) : std::filesystem::path();
+            row.isMissingPrefab = prefabRoot && project->isMissingPrefab(sceneProject->id, entity);
+            // (markPrefabScripts and markPrefabRows set these again)
+            row.hasChildScript = false;
+            row.isAddedGameObject = false;
+            row.isInMissingPrefab = false;
+            row.isPrefabVariant = false;
+            row.canOpenPrefab = false;
+        }
+
+        // where a GameObject without a Transform is listed: under its action's target (of the
+        // same prefab instance, or of none), else under its prefab instance's root, else at the
+        // scene's top (NULL_ENTITY); `byAction` tells the first
+        Entity flatParent(Entity entity, const std::unordered_set<Entity>& listed, bool& byAction) const{
+            byAction = false;
+            auto prefabIt = prefabPaths.find(entity);
+            const Entity actionTarget = editor::ProjectUtils::getVirtualParent(sceneProject->scene, entity);
+            if (actionTarget != NULL_ENTITY && listed.find(actionTarget) != listed.end()){
+                auto targetPrefabIt = prefabPaths.find(actionTarget);
+                const bool samePrefab = prefabIt != prefabPaths.end() && targetPrefabIt != prefabPaths.end() && prefabIt->second == targetPrefabIt->second;
+                // Priority is Action target, but if both are prefabs, ensure it prefers organizing by the actual local parent element correctly.
+                if (samePrefab || prefabIt == prefabPaths.end()){
+                    byAction = true;
+                    return actionTarget;
+                }
+            }
+            if (prefabIt != prefabPaths.end()){
+                editor::Prefab* prefab = project->getPrefab(prefabIt->second);
+                const Entity prefabRoot = prefab ? prefab->getRootEntity(sceneProject->id, entity) : NULL_ENTITY;
+                if (prefabRoot != NULL_ENTITY && prefabRoot != entity){
+                    return prefabRoot;
+                }
+            }
+            return NULL_ENTITY;
+        }
+    };
+
+}
+
+Entity editor::HierarchyWindow::modelAncestorOf(Scene* scene, Entity entity, Entity parent, std::unordered_map<Entity, Entity>& known){
+    // parents come first in the Transform array; one that does not is asked of ProjectUtils
+    Entity ancestor = NULL_ENTITY;
+    if (parent != NULL_ENTITY){
+        if (scene->findComponent<ModelComponent>(parent)){
+            ancestor = parent;
+        }else if (auto it = known.find(parent); it != known.end()){
+            ancestor = it->second;
+        }else{
+            ancestor = ProjectUtils::getParentModel(scene, entity);
+        }
+    }
+    known[entity] = ancestor;
+    return ancestor;
+}
+
+bool editor::HierarchyWindow::refreshEntityRows(SceneProject* sceneProject, TreeNode& root){
+    if (!rowRecordsValid || rowRecordsSceneId != sceneProject->id || !project->getPlayCreatedEntities(sceneProject).empty()){
+        return false;
+    }
+    const std::unordered_map<Entity, std::filesystem::path> prefabEntityPaths = project->getPrefabPathsForScene(sceneProject->id);
+    const LockedParentIndex sceneLocks(sceneProject->scene);
+    HierarchyIconCache icons;
+    const HierarchyRowFacts facts{project, sceneProject, sceneLocks, prefabEntityPaths, icons};
+    Scene* scene = sceneProject->scene;
+
+    // the rows come back in the order the rebuild made them, each with the parent it was listed
+    // under: any other order or parent is a structure this refresh does not make
+    size_t next = 0;
+    auto take = [&](Entity entity, Entity parent) -> TreeNode* {
+        if (next >= rowRecords.size() || rowRecords[next].entity != entity || rowRecords[next].parent != parent) return nullptr;
+        return rowRecords[next++].node;
+    };
+    const ComponentId transformId = scene->getComponentId<Transform>();
+    for (Entity entity : sceneProject->entities){
+        const Signature signature = scene->getSignature(entity);
+        if (signature.test(transformId)) continue;
+        bool byAction = false;
+        TreeNode* row = take(entity, facts.flatParent(entity, cachedSceneEntitiesSet, byAction));
+        if (!row) return false;
+        facts.fill(*row, entity, signature, false, NULL_ENTITY);
+    }
+    auto transforms = scene->getComponentArray<Transform>();
+    const bool sceneHasModels = scene->getComponentArray<ModelComponent>()->size() > 0;
+    std::unordered_map<Entity, Entity> modelAncestors;
+    for (size_t i = 0; i < transforms->size(); i++){
+        const Transform& transform = transforms->getComponentFromIndex(i);
+        const Entity entity = transforms->getEntity(i);
+        Entity modelAncestor = NULL_ENTITY;
+        if (sceneHasModels){
+            modelAncestor = modelAncestorOf(scene, entity, transform.parent, modelAncestors);
+        }
+        if (cachedSceneEntitiesSet.find(entity) == cachedSceneEntitiesSet.end()) continue;
+        TreeNode* row = take(entity, transform.parent);
+        if (!row) return false;
+        facts.fill(*row, entity, scene->getSignature(entity), true, modelAncestor);
+    }
+    if (next != rowRecords.size()){
+        return false;
+    }
+    if (rowRecordsPrefabRows){
+        markPrefabScripts(root);
+        markPrefabRows(root);
+    }
+    return true;
+}
+
+void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet){
 
     // Whatever the scene spawned while running is listed alongside the authored entities, so a
     // script's object shows up under its parent instead of nowhere. It is never authored, so
     // it is drawn as read-only and disappears again once Stop destroys it.
     const std::vector<Entity> playCreated = project->getPlayCreatedEntities(sceneProject);
-    cachedPlayCreatedEntities = std::unordered_set<Entity>(playCreated.begin(), playCreated.end());
-    sceneEntitiesSet.insert(playCreated.begin(), playCreated.end());
+    // the set is made again only when the scene's list changed (the timed rebuild keeps it)
+    if (playCreated.empty() && cachedPlayCreatedEntities.empty() && setSceneId == sceneProject->id && setEntities == sceneProject->entities) {
+        // unchanged
+    } else {
+        sceneEntitiesSet = std::unordered_set<Entity>(sceneProject->entities.begin(), sceneProject->entities.end());
+        cachedPlayCreatedEntities = std::unordered_set<Entity>(playCreated.begin(), playCreated.end());
+        sceneEntitiesSet.insert(playCreated.begin(), playCreated.end());
+        setSceneId = sceneProject->id;
+        setEntities = sceneProject->entities;
+    }
 
-    Entity mainCamera = sceneProject->mainCamera;
     size_t order = 0;
     std::unordered_map<Entity, TreeNode*> entityNodeMap;
     const std::unordered_map<Entity, std::filesystem::path> prefabEntityPaths =
         project->getPrefabPathsForScene(sceneProject->id);
     std::unordered_map<Entity, std::list<TreeNode>> virtualPrefabChildren;
     std::unordered_map<Entity, std::list<TreeNode>> virtualActionChildren;
+    const LockedParentIndex sceneLocks(sceneProject->scene);
+    HierarchyIconCache icons;
+    const HierarchyRowFacts facts{project, sceneProject, sceneLocks, prefabEntityPaths, icons};
+    auto iconOf = [&icons](Scene* registry, const Signature& signature) -> const std::string& { return icons.of(registry, signature); };
+    // the rows in the order made, with the parent each is listed under (refreshEntityRows)
+    rowRecords.clear();
+    rowRecordsValid = false;
 
     root = TreeNode();
+    // whether any row can be a prefab's (its instance sets, a Missing Prefab, a child scene's
+    // rows): without one the prefab passes at the end have nothing to mark
+    bool prefabRows = !prefabEntityPaths.empty();
 
     switch (sceneProject->sceneType) {
         case SceneType::SCENE_3D: root.icon = ICON_FA_CUBES; break;
@@ -3150,6 +3324,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
         std::unordered_set<Entity> childEntitiesSet(contentScene->entities.begin(), contentScene->entities.end());
         childEntitiesSet.insert(contentPlayCreated.begin(), contentPlayCreated.end());
         std::unordered_map<Entity, TreeNode*> childEntityNodeMap;
+        const LockedParentIndex contentLocks(contentRegistry);
 
         std::vector<Entity> flatEntities = contentScene->entities;
         flatEntities.insert(flatEntities.end(), contentPlayCreated.begin(), contentPlayCreated.end());
@@ -3159,7 +3334,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             Signature signature = contentRegistry->getSignature(entity);
             if (!signature.test(contentRegistry->getComponentId<Transform>())) {
                 TreeNode enode;
-                enode.icon = getObjectIcon(signature, contentRegistry);
+                enode.icon = iconOf(contentRegistry, signature);
                 enode.id = entity;
                 enode.entitySceneId = contentSceneId;
                 enode.isMainCamera = (entity == contentScene->mainCamera);
@@ -3170,7 +3345,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
                 enode.order = order++;
                 enode.name = contentRegistry->getEntityName(entity);
-                sceneNode.children.push_back(enode);
+                sceneNode.children.push_back(std::move(enode));
                 childEntityNodeMap[entity] = &sceneNode.children.back();
             }
         }
@@ -3184,7 +3359,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
 
             if (childEntitiesSet.find(entity) != childEntitiesSet.end()) {
                 TreeNode enode;
-                enode.icon = getObjectIcon(signature, contentRegistry);
+                enode.icon = iconOf(contentRegistry, signature);
                 enode.id = entity;
                 enode.entitySceneId = contentSceneId;
                 enode.isMainCamera = (entity == contentScene->mainCamera);
@@ -3194,7 +3369,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 enode.isMissingPrefab = enode.isPrefabRoot && project->isMissingPrefab(contentSceneId, entity);
                 enode.hasTransform = true;
                 enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
-                enode.isLocked = enode.isPlayCreated || ProjectUtils::isEntityLocked(contentRegistry, entity);
+                enode.isLocked = enode.isPlayCreated || contentLocks.get(entity) != NULL_ENTITY;
                 enode.order = order++;
                 enode.name = contentRegistry->getEntityName(entity);
 
@@ -3202,11 +3377,11 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 TreeNode* parentNode = parentIt != childEntityNodeMap.end() ? parentIt->second : nullptr;
                 if (parentNode) {
                     enode.parent = parentNode->id;
-                    parentNode->children.push_back(enode);
+                    parentNode->children.push_back(std::move(enode));
                     childEntityNodeMap[entity] = &parentNode->children.back();
                 } else if (transform.parent == NULL_ENTITY || (enode.isPlayCreated && childEntitiesSet.count(transform.parent) == 0)) {
                     // a runtime entity can hang from an unlisted one, like the default camera
-                    sceneNode.children.push_back(enode);
+                    sceneNode.children.push_back(std::move(enode));
                     childEntityNodeMap[entity] = &sceneNode.children.back();
                 }
             }
@@ -3232,6 +3407,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
 
     // child scenes (shown before entities)
     bool hasChildScenes = !sceneProject->childScenes.empty() || !runningLayers.empty();
+    prefabRows = prefabRows || hasChildScenes;
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
         uint32_t childSceneId = childSceneRef.id;
         SceneProject* childScene = project->getScene(childSceneId);
@@ -3313,65 +3489,40 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             }
 
             TreeNode child;
-            child.icon = getObjectIcon(signature, sceneProject->scene);
-            child.id = entity;
-            child.isMainCamera = (entity == mainCamera);
-            child.hasScript = hasScripts(sceneProject->scene, entity);
-            child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
+            facts.fill(child, entity, signature, false, NULL_ENTITY);
             child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
-            child.isLocked = child.isPlayCreated || ProjectUtils::isEntityLocked(sceneProject->scene, entity);
+            child.isLocked = child.isLocked || child.isPlayCreated;
             child.order = order++;
-            child.name = sceneProject->scene->getEntityName(entity);
-            auto prefabIt = prefabEntityPaths.find(entity);
-            if (prefabIt != prefabEntityPaths.end()) {
-                child.isPrefab = true;
-                child.prefabFilepath = prefabIt->second;
-                if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
-                    child.isPrefabRoot = true;
-                    child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
-                }
-            }
             if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
-                child.isMissingPrefab = project->isMissingPrefab(sceneProject->id, entity);
+                prefabRows = true;
             }
 
-            bool addedAsVirtualChild = false;
-            Entity actionTarget = ProjectUtils::getVirtualParent(sceneProject->scene, entity);
-            if (actionTarget != NULL_ENTITY && sceneEntitiesSet.find(actionTarget) != sceneEntitiesSet.end()) {
-                // Check if they are in the same prefab
-                bool samePrefab = false;
-                auto targetPrefabIt = prefabEntityPaths.find(actionTarget);
-                if (prefabIt != prefabEntityPaths.end() && targetPrefabIt != prefabEntityPaths.end() && prefabIt->second == targetPrefabIt->second) {
-                    samePrefab = true;
-                }
-
-                // Priority is Action target, but if both are prefabs, ensure it prefers organizing by the actual local parent element correctly.
-                if (samePrefab || prefabIt == prefabEntityPaths.end()) {
-                    child.parent = actionTarget;
-                    if (samePrefab) {
+            bool byAction = false;
+            const Entity listedUnder = facts.flatParent(entity, sceneEntitiesSet, byAction);
+            TreeNode* made = nullptr;
+            if (listedUnder != NULL_ENTITY) {
+                child.parent = listedUnder;
+                if (byAction) {
+                    // an action of the same prefab instance as its target
+                    if (child.isPrefab && prefabEntityPaths.count(listedUnder)) {
                         child.isParentPrefab = true;
                         child.hasPrefabParent = true;
                     }
-                    virtualActionChildren[actionTarget].push_back(std::move(child));
-                    addedAsVirtualChild = true;
-                }
-            }
-            
-            if (!addedAsVirtualChild && prefabIt != prefabEntityPaths.end()) {
-                Prefab* prefab = project->getPrefab(prefabIt->second);
-                Entity prefabRoot = prefab ? prefab->getRootEntity(sceneProject->id, entity) : NULL_ENTITY;
-                if (prefabRoot != NULL_ENTITY && prefabRoot != entity) {
-                    child.parent = prefabRoot;
+                    std::list<TreeNode>& listed = virtualActionChildren[listedUnder];
+                    listed.push_back(std::move(child));
+                    made = &listed.back();
+                } else {
                     child.isParentPrefab = true;
-                    virtualPrefabChildren[prefabRoot].push_back(std::move(child));
-                    addedAsVirtualChild = true;
+                    std::list<TreeNode>& listed = virtualPrefabChildren[listedUnder];
+                    listed.push_back(std::move(child));
+                    made = &listed.back();
                 }
+            } else {
+                root.children.push_back(std::move(child));
+                made = &root.children.back();
+                entityNodeMap[entity] = made;
             }
-            
-            if (!addedAsVirtualChild) {
-                root.children.push_back(child);
-                entityNodeMap[entity] = &root.children.back();
-            }
+            rowRecords.push_back({entity, listedUnder, made});
         }
     }
 
@@ -3382,10 +3533,18 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
 
     // hierarchical entities
     auto transforms = sceneProject->scene->getComponentArray<Transform>();
+    // each GameObject's nearest ancestor with a Model (parents come first in the array; one that
+    // does not is asked of ProjectUtils), so the rows outside any model skip the model helpers
+    const bool sceneHasModels = sceneProject->scene->getComponentArray<ModelComponent>()->size() > 0;
+    std::unordered_map<Entity, Entity> modelAncestors;
+    if (sceneHasModels) modelAncestors.reserve(transforms->size());
+    entityNodeMap.reserve(transforms->size() + root.children.size());
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = sceneProject->scene->getSignature(entity);
+
+        const Entity modelAncestor = sceneHasModels ? modelAncestorOf(sceneProject->scene, entity, transform.parent, modelAncestors) : NULL_ENTITY;
 
         if (sceneEntitiesSet.find(entity) != sceneEntitiesSet.end()){
             if (applySeparator){
@@ -3398,32 +3557,30 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 separatorAfterChildScenes = false;
             }
 
-            TreeNode child;
-            child.icon = getObjectIcon(signature, sceneProject->scene);
-            child.id = entity;
-            child.isMainCamera = (entity == mainCamera);
-            child.hasScript = hasScripts(sceneProject->scene, entity);
-            child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
-            child.hasTransform = true;
-            child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
-            child.isLocked = child.isPlayCreated
-                || ProjectUtils::isEntityLocked(sceneProject->scene, entity)
-                || ProjectUtils::getModelBranchOwner(sceneProject->scene, entity) != NULL_ENTITY;
-            child.canEditModelHierarchy = ProjectUtils::canEditModelBranch(sceneProject->scene, entity, &child.hierarchyReason);
-            child.order = order++;
-            child.name = sceneProject->scene->getEntityName(entity);
-            auto prefabIt = prefabEntityPaths.find(entity);
-            if (prefabIt != prefabEntityPaths.end()) {
-                child.isPrefab = true;
-                child.prefabFilepath = prefabIt->second;
-            }
-            if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
-                child.isPrefabRoot = true;
-                child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
-                child.isMissingPrefab = project->isMissingPrefab(sceneProject->id, entity);
-            }
+            // the row is made in its parent's list (no copy of it)
+            const bool isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
             auto parentIt = entityNodeMap.find(transform.parent);
             TreeNode* parent = parentIt != entityNodeMap.end() ? parentIt->second : nullptr;
+            std::list<TreeNode>* siblings = nullptr;
+            if (parent){
+                siblings = &parent->children;
+            }else if (transform.parent == NULL_ENTITY || (isPlayCreated && sceneEntitiesSet.count(transform.parent) == 0)){
+                // a runtime entity can hang from an unlisted one, like the default camera
+                siblings = &root.children;
+            }else{
+                printf("ERROR: Could not find parent of entity %u\n", entity);
+                continue;
+            }
+            TreeNode& child = siblings->emplace_back();
+            entityNodeMap[entity] = &child;
+            rowRecords.push_back({entity, transform.parent, &child});
+            facts.fill(child, entity, signature, true, modelAncestor);
+            child.isPlayCreated = isPlayCreated;
+            child.isLocked = child.isLocked || child.isPlayCreated;
+            child.order = order++;
+            if (child.isPrefabRoot) {
+                prefabRows = true;
+            }
             if (parent){
                 child.parent = parent->id;
                 auto parentPrefabIt = prefabEntityPaths.find(transform.parent);
@@ -3435,14 +3592,6 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                         child.isParentPrefab = false;
                     }
                 }
-                parent->children.push_back(child);
-                entityNodeMap[entity] = &parent->children.back();
-            }else if (transform.parent == NULL_ENTITY || (child.isPlayCreated && sceneEntitiesSet.count(transform.parent) == 0)){
-                // a runtime entity can hang from an unlisted one, like the default camera
-                root.children.push_back(child);
-                entityNodeMap[entity] = &root.children.back();
-            }else{
-                printf("ERROR: Could not find parent of entity %u\n", entity);
             }
         }
     }
@@ -3492,6 +3641,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
 
     // Unity's DontDestroyOnLoad scene in Play: the persistent GameObjects, live
     if (persistentLayer) {
+        prefabRows = true;
         TreeNode persistentNode;
         persistentNode.icon = ICON_FA_THUMBTACK;
         persistentNode.name = persistentLayer->name;
@@ -3510,8 +3660,15 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
         root.children.push_back(persistentNode);
     }
 
-    markPrefabScripts(root);
-    markPrefabRows(root);
+    if (prefabRows) {
+        markPrefabScripts(root);
+        markPrefabRows(root);
+    }
+    // a timed rebuild refreshes these rows in place while the structure stays (refreshEntityRows);
+    // the child scenes, the running game's layers and what it made are built again
+    rowRecordsValid = !hasChildScenes && !persistentLayer && playCreated.empty();
+    rowRecordsSceneId = sceneProject->id;
+    rowRecordsPrefabRows = prefabRows;
 }
 
 void editor::HierarchyWindow::showPartialLoadBanner(const SceneProject& sceneProject) {
@@ -3611,12 +3768,13 @@ void editor::HierarchyWindow::show(bool covered){
     const int frame = ImGui::GetFrameCount();
     // The timed rebuild waits some frames too: a large scene's rebuild takes milliseconds, and
     // in an editor slower than 0.5 s a frame it ran every frame (S98 E11)
-    const bool rebuildTree =
+    const bool structureChanged =
         cacheSceneId != sceneProject->id ||
         cacheStructureVersion != sceneProject->structureVersion ||
         cacheEntityCount != sceneProject->entities.size() ||
         cacheChildSignature != childSignature ||
-        cacheBuildTime < 0.0 || ((nowTime - cacheBuildTime) > 0.5 && frame - cacheBuildFrame >= HIERARCHY_TIMED_REBUILD_FRAMES);
+        cacheBuildTime < 0.0;
+    const bool rebuildTree = structureChanged || ((nowTime - cacheBuildTime) > 0.5 && frame - cacheBuildFrame >= HIERARCHY_TIMED_REBUILD_FRAMES);
 
     // root and sceneEntitiesSet are cached members reused across frames.
     TreeNode& root = cachedRoot;
@@ -3631,7 +3789,12 @@ void editor::HierarchyWindow::show(bool covered){
         cacheBuildFrame = frame;
 
         JE_PROFILE_SCOPE("Hierarchy Tree Rebuild");
-        rebuildEntityTree(sceneProject, root, sceneEntitiesSet);
+        // the timed rebuild catches what changes without a structural command (a name, an icon,
+        // a lock): while the rows' order and parents stay, it refreshes them in place
+        if (structureChanged || !refreshEntityRows(sceneProject, root)) {
+            JE_PROFILE_SCOPE("Hierarchy Tree Full Rebuild");
+            rebuildEntityTree(sceneProject, root, sceneEntitiesSet);
+        }
     }
 
     showToolbar();

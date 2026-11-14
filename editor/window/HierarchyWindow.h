@@ -113,6 +113,9 @@ namespace jasperengine::editor{
         TreeNode cachedRoot;
         std::unordered_set<Entity> cachedSceneEntitiesSet;
         std::unordered_set<Entity> cachedPlayCreatedEntities;
+        // the scene list cachedSceneEntitiesSet was made from (a timed rebuild reuses the set)
+        uint32_t setSceneId = 0;
+        std::vector<Entity> setEntities;
         uint32_t cacheSceneId = NULL_PROJECT_SCENE;
         uint64_t cacheStructureVersion = UINT64_MAX;
         size_t cacheEntityCount = SIZE_MAX;
@@ -183,6 +186,21 @@ namespace jasperengine::editor{
         void revealInProject(const std::filesystem::path& path);
         friend struct HierarchyTestAccess;
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
+        // A timed rebuild with the structure unchanged: the rows of the last full rebuild filled again
+        // in place (names, icons, locks, prefab marks); false when a row's order or parent differs,
+        // or the tree lists more than the scene's own GameObjects (then the rebuild runs)
+        bool refreshEntityRows(SceneProject* sceneProject, TreeNode& root);
+        // the nearest ancestor of `entity` with a Model, noted in `known`
+        static Entity modelAncestorOf(Scene* scene, Entity entity, Entity parent, std::unordered_map<Entity, Entity>& known);
+        struct RowRecord {
+            Entity entity = NULL_ENTITY;
+            Entity parent = NULL_ENTITY;   // listed under (a Transform's parent, an action's target, a prefab root)
+            TreeNode* node = nullptr;
+        };
+        std::vector<RowRecord> rowRecords;
+        bool rowRecordsValid = false;
+        bool rowRecordsPrefabRows = false;
+        uint32_t rowRecordsSceneId = 0;
         void showToolbar();
         void showTreeNode(TreeNode& node);
         // the open state a row's TreeNode takes this frame (search, first show, reveal), for the
