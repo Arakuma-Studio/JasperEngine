@@ -1906,6 +1906,12 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
+    # S96 vehicles: their 3D parts are under JASPERENGINE_PHYSICS_3D inside the files
+    core/subsystem/VehicleSystem.cpp
+    core/physics/WheelColliderController.cpp
+    core/object/physics/WheelCollider.cpp
+    core/object/physics/VehicleDrivetrain.cpp
+    core/script/binding/VehicleClassesLua.cpp
     core/subsystem/PhysicsSystemWorldSettings.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp

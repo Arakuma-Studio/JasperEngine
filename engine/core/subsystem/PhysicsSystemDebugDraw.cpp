@@ -13,6 +13,7 @@
 #include "object/LineRenderer.h"
 #include "physics/PhysicsDebugLines.h"
 #include "registry/PhysicsLayers.h"
+#include "subsystem/VehicleSystem.h"
 
 #include <algorithm>
 #include <chrono>
@@ -276,6 +277,9 @@ void PhysicsSystem::updateDebugLines(){
                 lines.addLine(a, b, kind == 3 ? colorJointLimit : colorJoint);
             });
         }
+
+        // S96 WP-A: the WheelColliders' circles and travels
+        vehicles3D->debugLines([&](const Vector3& a, const Vector3& b){ lines.addLine(a, b, colorJoint); });
 
         if (Physics::isDebugDrawContacts()){
             std::lock_guard<std::mutex> lock(debugContactsMutex3D);

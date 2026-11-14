@@ -1093,6 +1093,9 @@ namespace jasperengine::editor{
         void drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // InspectorVehicle.cpp (S96)
+        void drawWheelColliderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawVehicleDrivetrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorSplines.cpp (S18)
         void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSplineExtrudeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

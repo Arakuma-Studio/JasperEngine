@@ -7,6 +7,7 @@
 #include "pixelart/PixelSnap.h"
 #include "pixelart/particles/PixelParticlePresets.h"
 #include "pixelart/particles/PixelPresetCreate.h"
+#include "util/VehicleRig.h"
 #include "util/ProjectFileWrites.h"
 #include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
@@ -594,6 +595,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
         // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
         {"3D Object", "Ragdoll...", ICON_FA_PERSON_FALLING, T::RAGDOLL_WIZARD, "Ragdoll", CREATE_IN_3D, true},
+        // a car on the selected mesh (or a new one): a dynamic body and four Wheel Colliders (S96)
+        {"3D Object", "Vehicle...", ICON_FA_CAR, T::VEHICLE_RIG, "Vehicle", CREATE_IN_3D},
         // around the selection (or its row's GameObject) when there is one, see createGameObject
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
@@ -732,6 +735,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
             return;
         }
         RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
+    if (entry.type == EntityCreationType::VEHICLE_RIG) {
+        // the selected mesh (or the row's GameObject) becomes the vehicle, else a new one is made
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        const Entity target = parent != NULL_ENTITY ? parent : (selected.size() == 1 ? selected[0] : NULL_ENTITY);
+        std::string error;
+        if (createVehicleRig(project, sceneProject->id, target, NULL_ENTITY, error) == NULL_ENTITY) {
+            Out::warning("Vehicle: %s", error.c_str());
+        }
         return;
     }
     if (entry.type == EntityCreationType::TERRAIN_WORLD) {

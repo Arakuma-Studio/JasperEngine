@@ -3032,6 +3032,60 @@ or `CharacterController(scene, entity)`. World units (metres).
 Script hook `function MyScript:onControllerColliderHit(hit)`: `hit.controller`, `hit.entity`,
 `hit.point`, `hit.normal`, `hit.moveDirection`, `hit.moveLength`.
 
+#### 4.14.2 WheelCollider, VehicleDrivetrain (EntityHandle)
+
+`go:getWheelCollider()` / `go:getVehicleDrivetrain()` (add one with defaults if missing),
+`go:removeWheelCollider()`, `go:removeVehicleDrivetrain()`, or `WheelCollider(scene, entity)` /
+`VehicleDrivetrain(scene, entity)`. Metres, kg, N, N m; angles in the engine's angle unit. Inputs
+reach the vehicle at the next fixed step; read-outs are the last step's ([physics.md](physics.md),
+"Vehicles").
+
+| WheelCollider member | Kind | Notes |
+|---|---|---|
+| `motorTorque`, `brakeTorque`, `steerAngle` | rw number | the inputs (steer positive right); with a drivetrain they read what it applied |
+| `radius`, `mass`, `wheelDampingRate`, `suspensionDistance`, `forceAppPointDistance` | rw number | Unity defaults 0.5, 20, 0.25, 0.3, 0 |
+| `center` | rw `Vector3` | in the GameObject's space |
+| `suspensionSpring` | rw `JointSpring` | a copy: `local s = wc.suspensionSpring; s.spring = 50000; wc.suspensionSpring = s` |
+| `forwardFriction`, `sidewaysFriction` | rw `WheelFrictionCurve` | copies, as `suspensionSpring` |
+| `maxSteerAngle`, `maxBrakeTorque`, `maxHandBrakeTorque` | rw number | a drivetrain's limits (70, 1500, 4000) |
+| `driveTransform`, `enabled` | rw bool | `driveTransform`: the GameObject follows `getWorldPose()` |
+| `isGrounded`, `rpm`, `sprungMass`, `suspensionCompression`, `attachedRigidbody`, `valid` | ro | `attachedRigidbody`: the body's GameObject, nil while no vehicle has it |
+| `getGroundHit()` | method | a `WheelHit` (`point`, `normal`, `forwardDir`, `sidewaysDir`, `force`, `forwardSlip`, `sidewaysSlip`, `collider`) or nil |
+| `getWorldPose()` | method | returns position, rotation of the drawn wheel |
+
+`JointSpring(spring, damper, targetPosition)` and
+`WheelFrictionCurve(extremumSlip, extremumValue, asymptoteSlip, asymptoteValue, stiffness)` make
+the values (no arguments: Unity's defaults).
+
+| VehicleDrivetrain member | Kind | Notes |
+|---|---|---|
+| `throttle`, `steer`, `brake`, `handBrake` | rw number | -1..1, -1..1 (positive right), 0..1, 0..1 |
+| `setGear(n)` | method | the MANUAL gear (-1 reverse, 0 neutral) |
+| `rpm`, `gear`, `speed` | ro | `speed`: m/s along the body's forward |
+| `maxTorque`, `minRPM`, `maxRPM`, `shiftUpRPM`, `shiftDownRPM`, `clutchStrength`, `maxPitchRollAngle` | rw number | |
+| `transmission` | rw `VehicleTransmissionMode` | `AUTO` or `MANUAL` |
+| `enabled`, `valid` | rw / ro bool | |
+
+```lua
+-- rear-wheel drive on the arrow keys
+local Car = {}
+
+function Car:init()
+    self.rear = { GameObject.find("Wheel Rear Left"):getWheelCollider(), GameObject.find("Wheel Rear Right"):getWheelCollider() }
+    self.front = { GameObject.find("Wheel Front Left"):getWheelCollider(), GameObject.find("Wheel Front Right"):getWheelCollider() }
+    RegisterEngineEvent(self, "onFixedUpdate")
+end
+
+function Car:onFixedUpdate()
+    local throttle = (Input.isKeyPressed(Input.KEY_UP) and 1 or 0) - (Input.isKeyPressed(Input.KEY_DOWN) and 1 or 0)
+    for _, wheel in ipairs(self.rear) do wheel.motorTorque = 400 * throttle end
+    local steer = (Input.isKeyPressed(Input.KEY_RIGHT) and 1 or 0) - (Input.isKeyPressed(Input.KEY_LEFT) and 1 or 0)
+    for _, wheel in ipairs(self.front) do wheel.steerAngle = 25 * steer end
+end
+
+return Car
+```
+
 ### 4.15 Actions and Tweens
 
 Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a running or paused

@@ -103,6 +103,8 @@
 #include "component/Joint2DComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterWakeComponent.h"

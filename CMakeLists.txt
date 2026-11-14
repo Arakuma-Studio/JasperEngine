@@ -881,6 +881,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VehicleReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
@@ -1100,6 +1101,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/util/VehicleRig.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
     ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
@@ -1292,6 +1294,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
     ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorVehicle.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp

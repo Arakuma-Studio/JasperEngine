@@ -63,6 +63,7 @@ namespace jasperengine{
 	class JoltObjectLayerPairFilter;
 	class CharacterController2DSystem;
 	class CharacterControllerSystem;
+	class VehicleSystem;
 	class WaterSystem;
 	struct WaterSample;
 	class JoltPairFilter3D;
@@ -205,6 +206,9 @@ namespace jasperengine{
 		// the CharacterControllers (S22 P2): Jolt CharacterVirtuals in world3D, so after it
 		// (destroyed first, while the world their inner bodies are in still exists)
 		std::unique_ptr<CharacterControllerSystem> characters3D;
+		// S96 WP-A: the vehicles of the WheelColliders (a VehicleConstraint each), after world3D
+		// (destroyed first, while the world their constraints are in still exists)
+		std::unique_ptr<VehicleSystem> vehicles3D;
 
 		// ObjectLayers index this table (GameObject layer, category and mask bits)
 		JoltObjectLayerTable* objectLayerTable3D;
@@ -836,6 +840,8 @@ namespace jasperengine{
 		void setRootMotion(Entity entity, const Vector3& worldVelocity, float yawRate);
 		// the kinematic body a CharacterController with detectCollisions puts in the world
 		bool isCharacterInnerBody(const JPH::BodyID& body) const;
+		// S96 WP-A: the WheelColliders' vehicles
+		VehicleSystem& getVehicles3D() { return *vehicles3D; }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

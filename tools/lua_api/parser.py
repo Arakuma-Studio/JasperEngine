@@ -3293,6 +3293,12 @@ OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
     'overloads': [([('center', 'Vector3'), ('size', 'Vector3'), ('area', 'integer'),
                     ('options?', '{rotation: Quaternion|nil, agentType: string|integer|nil}')], 'NavAreaOverride|nil')]}
 
+# S96 vehicles: WheelCollider.getWorldPose returns two values (VehicleClassesLua.cpp)
+OVERRIDES[('WheelCollider', 'getWorldPose')] = {
+    'doc': ['The wheel\'s drawn pose after the last fixed step (Unity\'s GetWorldPose): the position of its',
+            'centre and its rotation with suspension, steer and spin. Before the first step, its GameObject\'s.'],
+    'overloads': [([], 'Vector3, Quaternion')]}
+
 # S19 navigation: the queries returning (bool, hit) and the link data table
 _NAV_FILTER = 'NavMeshQueryFilter|integer'
 OVERRIDES[('NavigationSystem', 'samplePosition')] = {

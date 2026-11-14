@@ -122,6 +122,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -232,6 +234,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -340,6 +344,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -374,6 +380,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // S96 vehicles
+        &enums::kVehicleTransmissionMode,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

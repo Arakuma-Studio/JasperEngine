@@ -297,6 +297,42 @@ template<> struct Codec<TitleArtOverride> {
 template<> struct TextureVisit<TitleArtOverride> {
     static void visit(TitleArtOverride& value, const TextureVisitor& f);
 };
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<JointSpring3D> {
+    static void write(Writer& w, const JointSpring3D& value);
+    static void read(Reader& r, JointSpring3D& value);
+};
+template<> struct TextureVisit<JointSpring3D> {
+    static void visit(JointSpring3D& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<WheelFrictionCurve> {
+    static void write(Writer& w, const WheelFrictionCurve& value);
+    static void read(Reader& r, WheelFrictionCurve& value);
+};
+template<> struct TextureVisit<WheelFrictionCurve> {
+    static void visit(WheelFrictionCurve& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<VehicleDifferential> {
+    static void write(Writer& w, const VehicleDifferential& value);
+    static void read(Reader& r, VehicleDifferential& value);
+};
+template<> struct TextureVisit<VehicleDifferential> {
+    static void visit(VehicleDifferential& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<VehicleAntiRollBar> {
+    static void write(Writer& w, const VehicleAntiRollBar& value);
+    static void read(Reader& r, VehicleAntiRollBar& value);
+};
+template<> struct TextureVisit<VehicleAntiRollBar> {
+    static void visit(VehicleAntiRollBar& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
 
 }
 
@@ -949,6 +985,59 @@ const StructTable kStruct_TitleArtOverride{"TitleArtOverride", kStruct_TitleArtO
 void Codec<TitleArtOverride>::write(Writer& w, const TitleArtOverride& value) { writeStruct(w, kStruct_TitleArtOverride, &value); }
 void Codec<TitleArtOverride>::read(Reader& r, TitleArtOverride& value) { readStruct(r, kStruct_TitleArtOverride, &value); }
 void TextureVisit<TitleArtOverride>::visit(TitleArtOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_TitleArtOverride, &value, f); }
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_JointSpring3D_fields[] = {
+    JE_RF(JointSpring3D, spring, 0xee04fb9cu, Float),
+    JE_RF(JointSpring3D, damper, 0x373325b0u, Float),
+    JE_RF(JointSpring3D, targetPosition, 0x7d4fc8ebu, Float),
+};
+const StructTable kStruct_JointSpring3D{"JointSpring3D", kStruct_JointSpring3D_fields, std::size(kStruct_JointSpring3D_fields)};
+void Codec<JointSpring3D>::write(Writer& w, const JointSpring3D& value) { writeStruct(w, kStruct_JointSpring3D, &value); }
+void Codec<JointSpring3D>::read(Reader& r, JointSpring3D& value) { readStruct(r, kStruct_JointSpring3D, &value); }
+void TextureVisit<JointSpring3D>::visit(JointSpring3D& value, const TextureVisitor& f) { visitStructTextures(kStruct_JointSpring3D, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_WheelFrictionCurve_fields[] = {
+    JE_RF(WheelFrictionCurve, extremumSlip, 0x1e070e20u, Float),
+    JE_RF(WheelFrictionCurve, extremumValue, 0x4da17707u, Float),
+    JE_RF(WheelFrictionCurve, asymptoteSlip, 0xcca8787du, Float),
+    JE_RF(WheelFrictionCurve, asymptoteValue, 0x9f9996a8u, Float),
+    JE_RF(WheelFrictionCurve, stiffness, 0x32bcad56u, Float),
+};
+const StructTable kStruct_WheelFrictionCurve{"WheelFrictionCurve", kStruct_WheelFrictionCurve_fields, std::size(kStruct_WheelFrictionCurve_fields)};
+void Codec<WheelFrictionCurve>::write(Writer& w, const WheelFrictionCurve& value) { writeStruct(w, kStruct_WheelFrictionCurve, &value); }
+void Codec<WheelFrictionCurve>::read(Reader& r, WheelFrictionCurve& value) { readStruct(r, kStruct_WheelFrictionCurve, &value); }
+void TextureVisit<WheelFrictionCurve>::visit(WheelFrictionCurve& value, const TextureVisitor& f) { visitStructTextures(kStruct_WheelFrictionCurve, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_VehicleDifferential_fields[] = {
+    JE_RF_ENTITY(VehicleDifferential, leftWheel, 0x1dbeb058u, Entity),
+    JE_RF_ENTITY(VehicleDifferential, rightWheel, 0x5e69d641u, Entity),
+    JE_RF(VehicleDifferential, ratio, 0x867b36dbu, Float),
+    JE_RF(VehicleDifferential, leftRightSplit, 0x805e0937u, Float),
+    JE_RF(VehicleDifferential, limitedSlipRatio, 0x29a70427u, Float),
+    JE_RF(VehicleDifferential, engineTorqueRatio, 0x5f168e53u, Float),
+};
+const StructTable kStruct_VehicleDifferential{"VehicleDifferential", kStruct_VehicleDifferential_fields, std::size(kStruct_VehicleDifferential_fields)};
+void Codec<VehicleDifferential>::write(Writer& w, const VehicleDifferential& value) { writeStruct(w, kStruct_VehicleDifferential, &value); }
+void Codec<VehicleDifferential>::read(Reader& r, VehicleDifferential& value) { readStruct(r, kStruct_VehicleDifferential, &value); }
+void TextureVisit<VehicleDifferential>::visit(VehicleDifferential& value, const TextureVisitor& f) { visitStructTextures(kStruct_VehicleDifferential, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_VehicleAntiRollBar_fields[] = {
+    JE_RF_ENTITY(VehicleAntiRollBar, leftWheel, 0xe43b17cfu, Entity),
+    JE_RF_ENTITY(VehicleAntiRollBar, rightWheel, 0x5a4b8b4cu, Entity),
+    JE_RF(VehicleAntiRollBar, stiffness, 0x40fa83beu, Float),
+};
+const StructTable kStruct_VehicleAntiRollBar{"VehicleAntiRollBar", kStruct_VehicleAntiRollBar_fields, std::size(kStruct_VehicleAntiRollBar_fields)};
+void Codec<VehicleAntiRollBar>::write(Writer& w, const VehicleAntiRollBar& value) { writeStruct(w, kStruct_VehicleAntiRollBar, &value); }
+void Codec<VehicleAntiRollBar>::read(Reader& r, VehicleAntiRollBar& value) { readStruct(r, kStruct_VehicleAntiRollBar, &value); }
+void TextureVisit<VehicleAntiRollBar>::visit(VehicleAntiRollBar& value, const TextureVisitor& f) { visitStructTextures(kStruct_VehicleAntiRollBar, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -2727,6 +2816,52 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kBody_WheelColliderComponent_fields[] = {
+    JE_RF(WheelColliderComponent, enabled, 0x514f739fu, Bool),
+    JE_RF(WheelColliderComponent, mass, 0x90358932u, Float),
+    JE_RF(WheelColliderComponent, radius, 0xaf5cb7e0u, Float),
+    JE_RF(WheelColliderComponent, wheelDampingRate, 0xebe26ea3u, Float),
+    JE_RF(WheelColliderComponent, suspensionDistance, 0x7a9d231cu, Float),
+    JE_RF(WheelColliderComponent, forceAppPointDistance, 0x3245b1a5u, Float),
+    JE_RF(WheelColliderComponent, center, 0xef9def97u, Vector3),
+    JE_RF(WheelColliderComponent, suspensionSpring, 0x1e243b9au, Struct),
+    JE_RF(WheelColliderComponent, forwardFriction, 0x88e31ec1u, Struct),
+    JE_RF(WheelColliderComponent, sidewaysFriction, 0xe4420cefu, Struct),
+    JE_RF(WheelColliderComponent, maxSteerAngle, 0x40291cf8u, Float),
+    JE_RF(WheelColliderComponent, maxBrakeTorque, 0x8cd05e25u, Float),
+    JE_RF(WheelColliderComponent, maxHandBrakeTorque, 0x4c1c470eu, Float),
+    JE_RF(WheelColliderComponent, driveTransform, 0xc5d6af8eu, Bool),
+};
+const StructTable kBody_WheelColliderComponent{"wheelcollider", kBody_WheelColliderComponent_fields, std::size(kBody_WheelColliderComponent_fields)};
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kBody_VehicleDrivetrainComponent_fields[] = {
+    JE_RF(VehicleDrivetrainComponent, enabled, 0xf03b414eu, Bool),
+    JE_RF(VehicleDrivetrainComponent, maxTorque, 0x56662527u, Float),
+    JE_RF(VehicleDrivetrainComponent, minRPM, 0x4f7f6440u, Float),
+    JE_RF(VehicleDrivetrainComponent, maxRPM, 0xe0452eeau, Float),
+    JE_RF(VehicleDrivetrainComponent, torqueCurve, 0x613cd082u, Custom),
+    JE_RF(VehicleDrivetrainComponent, engineInertia, 0x721bec9bu, Float),
+    JE_RF(VehicleDrivetrainComponent, engineDamping, 0xfd0ac4afu, Float),
+    JE_RF(VehicleDrivetrainComponent, transmission, 0x6e11b5d5u, Enum),
+    JE_RF(VehicleDrivetrainComponent, gearRatios, 0xdc29d962u, Array),
+    JE_RF(VehicleDrivetrainComponent, reverseGearRatios, 0xcbcb4e62u, Array),
+    JE_RF(VehicleDrivetrainComponent, switchTime, 0xdc142038u, Float),
+    JE_RF(VehicleDrivetrainComponent, clutchReleaseTime, 0xed59b07cu, Float),
+    JE_RF(VehicleDrivetrainComponent, switchLatency, 0x20e9479du, Float),
+    JE_RF(VehicleDrivetrainComponent, shiftUpRPM, 0x13638997u, Float),
+    JE_RF(VehicleDrivetrainComponent, shiftDownRPM, 0xcba3816cu, Float),
+    JE_RF(VehicleDrivetrainComponent, clutchStrength, 0x63ccbae1u, Float),
+    JE_RF(VehicleDrivetrainComponent, differentials, 0xb84c14d5u, Array),
+    JE_RF(VehicleDrivetrainComponent, differentialLimitedSlipRatio, 0xe3e55863u, Float),
+    JE_RF(VehicleDrivetrainComponent, antiRollBars, 0x5e3e71c4u, Array),
+    JE_RF(VehicleDrivetrainComponent, maxPitchRollAngle, 0x616003f5u, Float),
+};
+const StructTable kBody_VehicleDrivetrainComponent{"vehicledrivetrain", kBody_VehicleDrivetrainComponent_fields, std::size(kBody_VehicleDrivetrainComponent_fields)};
+#endif // JASPERENGINE_PHYSICS_3D
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2846,6 +2981,12 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+#ifdef JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(WheelColliderComponent, "wheelcollider", 0x8c5df4c8u),
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(VehicleDrivetrainComponent, "vehicledrivetrain", 0x26164119u),
+#endif // JASPERENGINE_PHYSICS_3D
     JE_RF_COMPONENTS_END
 };
 
