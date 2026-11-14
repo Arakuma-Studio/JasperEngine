@@ -150,8 +150,9 @@ shaders and the rest of its settings stay with the component. A scene or prefab 
   GameObject shows any more stays until you delete it.
 - Dropping a `.mesh` in the Hierarchy or the Scene view makes a GameObject that shows it.
 - A `.mesh` another program changes is read again by every GameObject showing it.
-- Exports ship `.mesh` files as they are; the game reads them on every platform. Cooked scenes
-  (format 1.6) and compiled scenes name the file instead of holding the buffers.
+- Exports ship `.mesh` files as they are; the game reads them on every platform. Under Asset
+  Stripping's Referenced Only, a `.mesh` ships when a build scene, prefab or script names it.
+  Cooked scenes (format 1.6) and compiled scenes name the file instead of holding the buffers.
 
 Scripts: `mesh.meshAsset = "meshes/rock.mesh"` (a path relative to the assets folder) reads the
 file at once, so `mesh.vertexCount` and `mesh:getAABB()` answer straight away; `""` keeps the

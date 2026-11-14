@@ -777,9 +777,9 @@ Avoiding conflicts:
     `mesh.meshAsset`. Eval case `guard_mesh_save_as_asset`. The core listing was at its budget:
     `set_mesh_geometry`'s text was shortened to fit `save_as`, and `get_asset_info`'s description
     does not list `.mesh` (its result does; the meshes guide names the call).
-  - **For WP-6 (asset stripping):** a `.mesh` is referenced through the reflection asset rows
-    (`AssetRefSchema`, `AssetKind::Mesh`), which the dependency walk follows; nothing is needed
-    beyond what any `AssetRef` field gets, but the stripping test should include one.
+  - **With WP-6 (asset stripping):** a `.mesh` is a strippable type: Referenced Only ships the ones
+    the dependency index reaches (the reflection asset rows, `AssetKind::Mesh`) and leaves out an
+    extracted file nothing shows any more (`MeshAssetSaveTest.AssetStrippingShipsTheMeshesTheScenesShow`).
 - **WP-3, REQ-25 (E37):** no code change. Measured first (below): the handler takes 0-2 ms whatever
   the scene; a call's time is its wait for the editor's next frame, which grows with the scene for
   every tool (`editor_status` alike). The frame is WP-5's (REQ-41). `test_particles_perf.py` guards
