@@ -124,6 +124,8 @@ TEST(RmlRendererTest, GeometryLifetime){
 }
 
 TEST(RmlRendererTest, GeometryLifetimeThroughContext){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     // (the boxes as meshes: SDF primitives make no geometry)
     ClassicReplay classic;
@@ -348,6 +350,8 @@ TEST(RmlRendererTest, WaitsForShaders){
 }
 
 TEST(RmlRendererTest, GeometryStorage){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     S16On s16;
     RenderTestContext test;

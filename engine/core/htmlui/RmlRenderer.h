@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -266,7 +267,8 @@ namespace jasperengine {
         // compositePipeline is PIP_DEFAULT_NODEPTH (swapchain) or PIP_RTT_NODEPTH (offscreen),
         // or PIP_MSAA_NODEPTH for the post-processed camera's multisampled scene target
         // (shader library phase 4 MSAA) of msaaSamples samples, drawn through the pipeline
-        // cache since its sample count is the scene's
+        // cache since its sample count is the scene's. S92 R4: for the last frame's layer 0, only
+        // the 64x64 tiles it wrote, in one draw (false, nothing drawn, when it wrote none)
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
                            int msaaSamples = 1);
@@ -472,6 +474,32 @@ namespace jasperengine {
         uint64_t signatureOf(size_t first, size_t end, Rml::Vector2i origin, uint32_t& live);
         // the commands recorded so far in this frame (a range's end)
         size_t getRecordedCommandCount() const { return commands.size(); }
+        // R1: a recorded frame whose signature equals the last drawn frame's, with no live source,
+        // into the same target, is not replayed (stats.framesKept 1, nothing drawn or uploaded):
+        // the target keeps its image and its composite tiles. Tests: false draws every frame (not a
+        // user setting: a stale frame is a bug to fix, S92 risk 1). Read by endFrame
+        static void setFrameReuseForTesting(bool enabled);
+        static bool isFrameReuse();
+        bool wasLastFrameKept() const { return lastFrameKept; }
+        // the signature's CPU time in the last recorded frame (R33)
+        double getLastSignatureMs() const { return lastSignatureMs; }
+        // R3 (tests, JASPER_HTMLUI_VERIFY_KEPT=1 or the setter): a kept frame is also replayed into a
+        // scratch target, which is compared with the kept image byte for byte (on GL at once, on the
+        // other backends once the frame is committed: the next frame, or checkKeptFrame). A difference
+        // logs "[HTML UI] kept frame differs" and counts in stats.keptMismatches
+        static void setKeptFrameVerificationForTesting(bool enabled);
+        static bool isKeptFrameVerification();
+        // a comparison still pending, done now when its frame was committed; false when none is pending
+        bool checkKeptFrame();
+        uint32_t getKeptMismatchCount() const { return keptMismatchCount; }
+        // R5 (tests): OFF stores every depth-stencil, as before S92; PLANNED (the default) stores
+        // one only when a later pass tests it; EVERY_PASS stores none, so every later stencil test
+        // finds its mask dropped and draws it again (the fallback a wrong plan relies on). The
+        // images are the same. Read by the replay
+        enum class DepthStencilDiscard : uint8_t { OFF, PLANNED, EVERY_PASS };
+        static void setDepthStencilDiscardForTesting(DepthStencilDiscard mode);
+        // R4: the composite's draws over the renderer's life (one per drawComposite that drew)
+        uint64_t getCompositeDrawCount() const { return compositeDraws; }
 
         // S92 layer cache (RmlRendererLayerCache.cpp, R9). A layer scope (a PUSH_LAYER to its
         // COMPOSITE) keeps its filtered result, without a trailing opacity, as an image of its
@@ -619,8 +647,26 @@ namespace jasperengine {
             Rml::CompiledGeometryHandle geometry;
             Rml::Vector2f translation;
             Rml::Matrix4f transform;      // getCurrentTransform's, when it was drawn
+            // S92 R5: the scissor it was drawn with (maskHistory replays it exactly), and the
+            // depth-stencil it went into (nullptr: layer 0's shared one, else a region layer's)
+            bool scissored = false;
+            Rml::Rectanglei scissorPixels;
+            const Framebuffer* attachment = nullptr;
         };
         std::vector<MaskOp> maskOps;
+        // S92 R5: every stencil write into each depth-stencil since it was last cleared (layer 0's
+        // shared one this frame, a region layer's since its push), in order, with its scissor: a
+        // depth-stencil a DONTCARE store dropped is cleared and gets them all again, the stencil
+        // it held outside the current mask's scissor included
+        std::vector<MaskOp> maskHistory;
+        std::vector<const Framebuffer*> replayDs;   // dropped and cleared since (nullptr: the shared one)
+        // the mask version each dropped depth-stencil held when it was dropped
+        std::vector<std::pair<const Framebuffer*, uint64_t>> droppedVersions;
+        const Framebuffer* attachmentOf(int index) const;
+        // a dropped and cleared depth-stencil gets what it held back (its writes replayed, its
+        // version again), before anything tests or writes it; the layer is bound
+        void restoreDroppedMask(int index);
+        void drawMaskOp(const MaskOp& op);
         uint64_t maskVersion = 0;
         uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's
         std::vector<StencilAuditEntry>* stencilAudit = nullptr;
@@ -1041,6 +1087,78 @@ namespace jasperengine {
         uint64_t textureSignature(const HtmlUITexture* texture, uint32_t& live) const;
         uint64_t filterSignature(Rml::CompiledFilterHandle filter, uint32_t& live) const;
         uint64_t shaderSignature(Rml::CompiledShaderHandle shader, uint32_t& live) const;
+        // R1: the last drawn frame (its signature, target and the target's generation after it)
+        uint64_t keptSignature = 0;
+        bool keptValid = false;
+        const RmlRenderTarget* keptTarget = nullptr;
+        uint64_t keptGeneration = 0;
+        uint64_t frameSignature = 0;         // the frame being ended's
+        bool lastFrameKept = false;
+        double lastSignatureMs = 0.0;
+        // what a replay leaves undrawn (a pipeline compiling, an upload past the staging buffer)
+        uint64_t skippedBefore = 0;
+        uint64_t skippedWork() const;
+        // endFrame: the frame's signature; true when it is kept (then nothing is replayed)
+        bool keepRecordedFrame();
+        // a kept frame's end (its textures count as drawn, R3's verification)
+        void finishKeptFrame();
+        // a replayed frame's end (recorded: not drawn at once): it can be kept from now on when
+        // everything was drawn; its composite tiles
+        void rememberDrawnFrame(bool recorded);
+        // the frame statistics both ends fill
+        void closeFrameStats();
+        uint32_t targetBytesOf(const RmlRenderTarget& renderTarget) const;
+        // R4: the 64x64 tiles of layer 0 the recorded frame writes (draw bounds after transform and
+        // scissor, composites' scissors), as quads of horizontal runs merged down identical rows
+        static constexpr int TILE_SIZE = 64;
+        std::vector<uint8_t> tileMask;
+        std::vector<uint8_t> uploadedTileMask;
+        int tileColumns = 0, tileRows = 0;
+        bool tilesFull = true;               // the whole quad (immediate drawing, an upload refused)
+        const TextureRender* tileSource = nullptr;   // the layer-0 image the tiles are of
+        uint32_t tileQuads = 0;
+        uint32_t tileCount = 0;
+        uint32_t tilePixels = 0;
+        std::vector<Rml::Vertex> tileVertices;
+        BufferRender tileVertexBuffer;
+        BufferRender tileIndexBuffer;
+        // the composite on the dynamic path, its buffers swapped for the tiles' (every backend
+        // takes them there), at the camera pass's format
+        ObjectRender compositeTileObject;
+        uint32_t tileCapacity = 0;           // quads the buffers hold
+        uint64_t tileUploadFrame = UINT64_MAX;
+        uint64_t compositeDraws = 0;
+        void computeCompositeTiles();
+        void markTiles(float x0, float y0, float x1, float y1, bool scissorOn, const Rml::Rectanglei& scissor);
+        void buildTileQuads();
+        void destroyTileBuffers();
+        // R5: the replay's depth-stencil plan. Per replay position (an op of the batched plan, else a
+        // command): whether it uses the stencil, and the next position that surely begins another
+        // pass; a pass begun where no stencil use follows its end stores DONTCARE, one where none
+        // follows at all also loads DONTCARE. A depth-stencil stored DONTCARE is cleared and its mask
+        // drawn again if a later pass needs it after all
+        enum : uint8_t { DS_STENCIL = 1, DS_BREAK = 2 };
+        std::vector<uint8_t> dsFlags;
+        std::vector<uint32_t> dsNextBreak;
+        int64_t dsLastStencil = -1;
+        bool dsPlanned = false;
+        bool dsEveryPass = false;            // DepthStencilDiscard::EVERY_PASS (tests)
+        size_t replayPosition = 0;
+        bool activeDsDiscard = false;        // the open pass stores its depth-stencil DONTCARE
+        const Framebuffer* activeDsAttachment = nullptr;   // nullptr: the shared one
+        bool sharedDsDiscarded = false;
+        std::vector<const Framebuffer*> discardedRegionDs;
+        void planDepthStencil();
+        // R3
+        std::unique_ptr<RmlRenderTarget> verifyTarget;
+        bool verifyPending = false;
+        uint64_t verifyFrame = 0;
+        RmlRenderTarget* verifyKeptTarget = nullptr;
+        uint64_t verifyKeptGeneration = 0;   // its framebuffers then: made again since, nothing to compare
+        std::string verifySource;            // the first command reading an unversioned source
+        uint32_t keptMismatchCount = 0;
+        void verifyKeptFrame();
+        void compareKeptFrame();
 
         // S92 layer cache (RmlRendererLayerCache.cpp)
         struct LayerCacheEntry {

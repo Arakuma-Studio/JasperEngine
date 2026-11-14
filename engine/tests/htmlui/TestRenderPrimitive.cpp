@@ -149,6 +149,8 @@ namespace {
 
 TEST(RenderPrimitive, MatchesTheMeshPath){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
     LayerCacheOff cacheOff;
     for (const Case& test : cases()){
@@ -197,6 +199,8 @@ TEST(RenderPrimitive, ShadowsMakeNoTextures){
 
 TEST(RenderPrimitive, GradientBackgroundsNeedNoMaskLayer){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
     LayerCacheOff cacheOff;
     // a rounded box's CSS gradient: the mesh path masks it in a layer, the primitive clips itself

@@ -784,7 +784,74 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 
 ## Deviations (implementation record)
 
-(empty: filled while implementing, with the red-control numbers of AC10, AC20 and AC21)
+### S92-A (frame reuse and tile composite)
+
+- **AC10 red control.** `RenderLayerCost.ArcadePatterns` on `2601cb641` (the first commit: main's
+  renderer with the new statistics), glcore (llvmpipe), 1280x720, pixel ratio 1. Passes per frame,
+  cold / warm / idle:
+
+  | Fixture | 4 samples | 1 sample |
+  |---|---|---|
+  | `static` | 1 / 1 / 1 | 1 / 1 / 1 |
+  | `rounded-gradient` | 12 / 12 / 12 | 10 / 10 / 10 |
+  | `btn` | 15 / 15 / 15 | 13 / 13 / 13 |
+  | `card` | 32 / 32 / 32 | 28 / 28 / 28 |
+  | `inset-clip` | 12 / 12 / 12 | 10 / 10 / 10 |
+  | `cards4` | 128 / 128 / 128 | 112 / 112 / 112 |
+  | `o2-frame` | 1 / 1 / 1 | 1 / 1 / 1 |
+
+  S16-F5 already draws the O2 frame's gradients (four stops at most) without a layer. With S92-A
+  every idle cell is 0 passes, 0 draws, `framesKept` 1 (asserted); cold and warm are unchanged until
+  B1 and B2 land.
+- **AC21 (R33).** `HtmlUIRenderPerf.B1Examples` and `B2List500`, glcore, dev host under load: the
+  signature takes 1.0-5.0 % of the recording and the plan (B1: blank 4.3, dialogue 3.5, hud 4.0,
+  inventory 2.9, loading 1.0, main_menu 3.7, pause_menu 4.0, settings 3.0, shop 3.0, toasts 5.0,
+  video_menu 3.8; B2 1.1 %; 0.001-0.011 ms a frame). With frame reuse, the static examples keep all
+  120 measured frames and cost 0.005-0.062 ms of engine time against 0.094-0.698 ms replayed; the
+  animated ones (loading, main_menu, toasts, video_menu) keep none and cost the same as replayed
+  (within 0.02 ms). toasts sits at the 5 % bound: the gate takes `perfSlack()`.
+- **AC2's oracle.** The image after each change is compared byte for byte with a fresh replay of
+  the same frame (frame reuse off, same clock), not with a second document loaded in that state:
+  it is the image the frame would have without R1, which is what a stale frame would differ from.
+  Glyph page growth and the live sources (video, effect on a running clock, `<particle-system>`)
+  are separate tests (`GlyphPageGrowthChangesTheSignature`, `LiveSourcesDrawEveryFrame`,
+  `ParticleSystemElementTest.FramesWithParticlesAreAlwaysDrawn`).
+- **R2's render-target source.** No HTML UI texture wraps an engine render target today. Any
+  EXTERNAL texture that is not a glyph page's variant reports `LIVE_RENDER_TARGET`, so one added
+  later is live without further work.
+- **R3 timing.** GL compares a kept frame with its replay at once; Vulkan, Metal and D3D11 read back
+  once the frame is committed (the next frame, or `RmlRenderer::checkKeptFrame`). The harnesses skip
+  the verification frame after a frame with a live source (it is never kept, and a stateful effect
+  would step).
+- **R4 tiles.** A layer composited into layer 0 marks what its own draws covered, spread by its
+  filters (6 sigma of a blur, a drop shadow's offset), within the composite's scissor; a backdrop
+  or an effect filter marks the whole scissor. The tile vertex buffer is written at most once a
+  sokol frame; a second change in the same frame composites the whole quad.
+- **R5 plan.** The plan is per replay position (an op of the batched plan, else a command). A pass
+  stores its depth-stencil only when a stencil use follows the next position that surely starts
+  another pass; one with no stencil use after it also loads `DONTCARE`. A depth-stencil stored
+  `DONTCARE` and bound again is cleared and its mask version reset, so a wrong guess costs a mask
+  redraw, never a wrong clip. AC5's bound is checked against the same frame with every
+  depth-stencil stored (`setDepthStencilDiscardForTesting(OFF)`): fewer stores, the same image. R12's
+  part in R5 (left to S92-A by B1): a `DONTCARE` store resets that depth-stencil's mask version at
+  once; with every store dropped (`EVERY_PASS`) each stencil test draws its mask again, the audit
+  holds and the image is the same. Since B2 every element layer is a region layer with its own
+  depth-stencil, so a dropped one is restored exactly: every stencil write is kept with its scissor
+  and its attachment (a region layer's since its push), and a dropped and cleared depth-stencil
+  replays its own writes and takes back the version it held before anything tests or writes it.
+- **R1 and the replay tests.** Tests that count a replay's passes, draws or run-cache hits on
+  repeated identical frames now turn frame reuse off for their scope (`FrameReuseMode`), and the S16
+  benchmarks replay every frame (`S16Mode`); R33 is measured with reuse on and off.
+  `RenderTestContext::renderUntilDrawn` ends on a replayed frame (its statistics are a drawn
+  frame's: B1's tests read them), and B2's cache tests ask for replayed frames; the layer cache's
+  switch is part of the frame signature.
+- **Not S92-A's, found on the merged tree.** `FullPathGoldenTest.UIParticleSystemsClippedByAPanel`
+  fails after the other FullPath goldens in one process (alone it passes) on main `fcfbc222d` too;
+  MCP `test_html_ui_basic.py::test_child_scene_document` (a child scene's document at canvas
+  640, 320) fails on the spec branch without S92-A too (`f3b98de40`, after C). After B2's follow-up
+  (`07480e8ef`, a blurred drop shadow in four passes) `IntegrationTest.TextureDocumentDrawsClipsLayersAndFilters`
+  misses its `p1/texture_effects` golden (0.69 % of the pixels, glcore and Vulkan, with the layer
+  cache off as the test counts a frame's own layers); it passed on the merge before it.
 
 ### WP D: Lua overload dispatch (R24-R28, R34)
 

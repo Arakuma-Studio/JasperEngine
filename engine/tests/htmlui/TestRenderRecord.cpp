@@ -469,6 +469,8 @@ div { display: block; }
             ASSERT_TRUE(test.renderUntilDrawn());
             std::vector<RmlRenderer::StencilAuditEntry> audit;
             test.renderer.setStencilAuditForTesting(&audit);
+            // a replayed frame (S92 R1 keeps an unchanged one: nothing to audit)
+            test.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
             ASSERT_TRUE(test.renderFrame());
             test.renderer.setStencilAuditForTesting(nullptr);
             const char* label = batched ? "batched" : "call by call";

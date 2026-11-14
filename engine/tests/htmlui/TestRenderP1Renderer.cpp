@@ -553,6 +553,8 @@ TEST(RenderP1Test, BlurParameters){
 
 TEST(RenderP1Test, PassCounts){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
     LayerCacheOff cacheOff;
     const char* head = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/><style>"
@@ -594,6 +596,8 @@ TEST(RenderP1Test, PassCounts){
 // the one the temporary layer gives, byte for byte (with fusion off, as RmlUi's GL3 renderer draws).
 TEST(RenderP1Test, BackdropCompositeFusedExactly){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
     LayerCacheOff cacheOff;
     const char* head = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/><style>"

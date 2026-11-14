@@ -214,6 +214,8 @@ TEST(RenderBatch, UntexturedJoinsWhiteTexels){
 
 TEST(RenderBatch, RunCacheHitAndInvalidation){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     PrimitivesMode vertexRuns(false);
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());

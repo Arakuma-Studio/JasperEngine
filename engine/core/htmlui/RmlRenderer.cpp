@@ -1402,6 +1402,36 @@ void RmlRenderer::endPass(bool resolve){
             r.stale = Rml::Rectanglei::MakeInvalid();
     }
     pass.endRenderPass();
+    // S92 R5, R12: what a DONTCARE store left is unknown: no mask is trusted across it (its
+    // version is none), and a pass that loads it clears it
+    if (activeKind == TargetKind::LAYER && activeDsDiscard){
+        // the version it held (a drop not restored yet keeps the one before it)
+        const bool pending = std::find(replayDs.begin(), replayDs.end(), activeDsAttachment) != replayDs.end();
+        auto keep = [&](uint64_t held){
+            if (pending)
+                return;
+            auto it = std::find_if(droppedVersions.begin(), droppedVersions.end(),
+                                   [this](const std::pair<const Framebuffer*, uint64_t>& d){ return d.first == activeDsAttachment; });
+            if (it != droppedVersions.end())
+                it->second = held;
+            else
+                droppedVersions.emplace_back(activeDsAttachment, held);
+        };
+        if (activeDsAttachment){
+            discardedRegionDs.push_back(activeDsAttachment);
+            for (LayerFrame& frame : frames){
+                if (frame.framebuffer == activeDsAttachment){
+                    keep(frame.maskVersion);
+                    frame.maskVersion = 0;
+                }
+            }
+        }else{
+            keep(sharedMaskVersion);
+            sharedDsDiscarded = true;
+            sharedMaskVersion = 0;
+        }
+    }
+    activeDsDiscard = false;
     activeRegions = nullptr;
     activeKind = TargetKind::NONE;
     activeIndex = -1;
@@ -1415,8 +1445,47 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     if (!(target && target->checkedThisFrame(framebuffer)) && !framebuffer.isCreated())
         return false;
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    // S92 R5: a layer's depth-stencil (layer 0's shared one, or a region layer's own) is stored
+    // only when a later pass of the plan tests it, loaded only when this one does
+    activeDsDiscard = false;
+    activeDsAttachment = nullptr;
+    if (kind == TargetKind::LAYER){
+        activeDsAttachment = isRegionLayer(index) ? frames[(size_t)index].framebuffer : nullptr;
+        if (dsPlanned){
+            const size_t position = std::min(replayPosition, dsFlags.size());
+            if ((int64_t)position > dsLastStencil){
+                depthStencilLoad = LoadAction::DONTCARE;
+                activeDsDiscard = true;
+            }else if (dsEveryPass || (int64_t)dsNextBreak[position] > dsLastStencil){
+                activeDsDiscard = true;
+            }
+        }
+        // stored DONTCARE earlier in the frame, yet read: cleared, its clip mask drawn again
+        const bool discarded = activeDsAttachment ? std::find(discardedRegionDs.begin(), discardedRegionDs.end(), activeDsAttachment) != discardedRegionDs.end()
+                                                  : sharedDsDiscarded;
+        if (discarded && depthStencilLoad == LoadAction::LOAD){
+            depthStencilLoad = LoadAction::CLEAR;
+            if (activeDsAttachment){
+                discardedRegionDs.erase(std::remove(discardedRegionDs.begin(), discardedRegionDs.end(), activeDsAttachment), discardedRegionDs.end());
+                frames[(size_t)index].maskVersion = 0;
+            }else{
+                sharedDsDiscarded = false;
+                sharedMaskVersion = 0;
+            }
+            if (std::find(replayDs.begin(), replayDs.end(), activeDsAttachment) == replayDs.end())
+                replayDs.push_back(activeDsAttachment);
+        }else if (activeDsAttachment && depthStencilLoad == LoadAction::CLEAR){
+            // a region layer's depth-stencil cleared with its push: nothing written into it yet
+            maskHistory.erase(std::remove_if(maskHistory.begin(), maskHistory.end(),
+                                             [this](const MaskOp& op){ return op.attachment == activeDsAttachment; }),
+                              maskHistory.end());
+            replayDs.erase(std::remove(replayDs.begin(), replayDs.end(), activeDsAttachment), replayDs.end());
+        }
+        if (!activeDsDiscard)
+            stats.depthStencilStores++;
+    }
     // ignored by a pass without a depth-stencil attachment
-    pass.setDepthStencilActions(depthStencilLoad, StoreAction::STORE, 1.0f, 0);
+    pass.setDepthStencilActions(depthStencilLoad, activeDsDiscard ? StoreAction::DONTCARE : StoreAction::STORE, 1.0f, 0);
     // its name in the frame stats' pass list (JASPERENGINE_FRAME_STATS)
     pass.setLabel(kind == TargetKind::LAYER ? "html ui layer" : (kind == TargetKind::POSTPROCESS ? "html ui post" : "html ui"));
     pass.startRenderPass(&framebuffer.getRender());
@@ -1923,11 +1992,25 @@ void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::Com
     // P7-F2: the operation goes into the depth-stencil of the layer it is drawn in; one that
     // intersects needs the mask before it there
     const int drawIndex = (deferred.layer >= 1 && deferred.layer == layersSize - 1) ? deferred.layer - 1 : layersSize - 1;
+    // S92 R5: a dropped depth-stencil gets what it held before anything is written into it
+    if (!replayDs.empty() && std::find(replayDs.begin(), replayDs.end(), attachmentOf(drawIndex)) != replayDs.end()){
+        // (bound as the operation's draw binds it: under a deferred composite, the layer below)
+        drawingMask = true;
+        const bool bound = bindDrawLayer(true);
+        drawingMask = false;
+        if (bound)
+            restoreDroppedMask(drawIndex);
+    }
     if (operation == Rml::ClipMaskOperation::Intersect)
         ensureMask(drawIndex);
     else
         maskOps.clear();
-    maskOps.push_back(MaskOp{operation, handle, translation, transform});
+    MaskOp op{operation, handle, translation, transform};
+    op.scissored = scissorEnabled;
+    op.scissorPixels = scissorPixels;
+    op.attachment = attachmentOf(drawIndex);
+    maskOps.push_back(op);
+    maskHistory.push_back(op);
     maskVersion++;
 
     drawingMask = true;
@@ -1979,24 +2062,90 @@ void RmlRenderer::auditStencilDraw(const PipelineState& state){
     stencilAudit->push_back(entry);
 }
 
+const Framebuffer* RmlRenderer::attachmentOf(int index) const{
+    return isRegionLayer(index) ? frames[(size_t)index].framebuffer : nullptr;
+}
+
 uint64_t& RmlRenderer::maskVersionOf(int index){
     if (isRegionLayer(index))
         return frames[(size_t)index].maskVersion;
     return sharedMaskVersion;
 }
 
+void RmlRenderer::drawMaskOp(const MaskOp& op){
+    RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(op.geometry);
+    StencilState write;
+    write.enabled = true;
+    write.compare = CompareFunc::ALWAYS;
+    write.readMask = 0xFF;
+    write.writeMask = 0xFF;
+    if (op.operation == Rml::ClipMaskOperation::Intersect){
+        write.passOp = StencilOp::INCR_CLAMP;
+        write.ref = 0;
+    }else{
+        const bool inverse = (op.operation == Rml::ClipMaskOperation::SetInverse);
+        stencilClear(inverse ? 1 : 0);
+        write.passOp = StencilOp::REPLACE;
+        write.ref = inverse ? 0 : 1;
+    }
+    if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
+        return;
+    transform = op.transform;
+    drawGeometry(geometry, op.translation, nullptr, layerState(BlendMode::NONE, ColorWriteMask::NONE, write));
+}
+
+void RmlRenderer::restoreDroppedMask(int index){
+    const Framebuffer* attachment = attachmentOf(index);
+    auto pending = std::find(replayDs.begin(), replayDs.end(), attachment);
+    if (pending == replayDs.end())
+        return;
+    replayDs.erase(pending);
+    const bool savedScissor = scissorEnabled;
+    const Rml::Rectanglei savedScissorPixels = scissorPixels;
+    const Rml::Matrix4f savedTransform = transform;
+    const bool savedClip = clipMaskEnabled;
+    const int savedOverride = drawIndexOverride;
+    const bool savedDrawing = drawingMask;
+    drawingMask = true;
+    drawIndexOverride = index;
+    clipMaskEnabled = false;
+    for (const MaskOp& op : maskHistory){
+        if (op.attachment != attachment)
+            continue;
+        scissorEnabled = op.scissored;
+        scissorPixels = op.scissorPixels;
+        drawMaskOp(op);
+    }
+    transform = savedTransform;
+    scissorEnabled = savedScissor;
+    scissorPixels = savedScissorPixels;
+    clipMaskEnabled = savedClip;
+    drawIndexOverride = savedOverride;
+    drawingMask = savedDrawing;
+    for (const std::pair<const Framebuffer*, uint64_t>& dropped : droppedVersions){
+        if (dropped.first == attachment)
+            maskVersionOf(index) = dropped.second;
+    }
+    stats.clipMasksRedrawn++;
+}
+
 void RmlRenderer::ensureMask(int index){
     if (index < 0 || index >= layersSize || drawingMask)
         return;
-    uint64_t& version = maskVersionOf(index);
-    if (version == maskVersion || maskOps.empty())
+    if (maskVersionOf(index) == maskVersion || maskOps.empty())
         return;
     // The clip mask was drawn into another depth-stencil (a region layer's own, or the shared one
     // while a region layer was the top one: RmlUi sets a filter's outer clip mask before its
     // composite): it is drawn again into this one, all of it (the scissor at each operation only
-    // limited where it went)
+    // limited where it went). S92 R5: a depth-stencil a DONTCARE store dropped (cleared since)
+    // first gets back what it held, every write it had, each within its own scissor
     if (!bindLayer(index))
         return;
+    restoreDroppedMask(index);
+    uint64_t& version = maskVersionOf(index);
+    if (version == maskVersion)
+        return;
+    const Framebuffer* attachment = attachmentOf(index);
     const bool savedScissor = scissorEnabled;
     const Rml::Matrix4f savedTransform = transform;
     const bool savedClip = clipMaskEnabled;
@@ -2006,25 +2155,12 @@ void RmlRenderer::ensureMask(int index){
     scissorEnabled = false;
     clipMaskEnabled = false;
     for (const MaskOp& op : maskOps){
-        RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(op.geometry);
-        StencilState write;
-        write.enabled = true;
-        write.compare = CompareFunc::ALWAYS;
-        write.readMask = 0xFF;
-        write.writeMask = 0xFF;
-        if (op.operation == Rml::ClipMaskOperation::Intersect){
-            write.passOp = StencilOp::INCR_CLAMP;
-            write.ref = 0;
-        }else{
-            const bool inverse = (op.operation == Rml::ClipMaskOperation::SetInverse);
-            stencilClear(inverse ? 1 : 0);
-            write.passOp = StencilOp::REPLACE;
-            write.ref = inverse ? 0 : 1;
-        }
-        if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
-            continue;
-        transform = op.transform;
-        drawGeometry(geometry, op.translation, nullptr, layerState(BlendMode::NONE, ColorWriteMask::NONE, write));
+        drawMaskOp(op);
+        // (what the depth-stencil holds from now on)
+        MaskOp written = op;
+        written.scissored = false;
+        written.attachment = attachment;
+        maskHistory.push_back(written);
     }
     transform = savedTransform;
     scissorEnabled = savedScissor;
@@ -3145,11 +3281,14 @@ void RmlRenderer::destroyStopTables(){
 
 namespace {
 
-    bool loadGeometryObject(ObjectRender& object, ShaderRender* shader, BufferRender* vertices, BufferRender* indices, TextureRender* white){
+    // immediate: a pass of the frame (a composite), its pipelines made at once
+    bool loadGeometryObject(ObjectRender& object, ShaderRender* shader, BufferRender* vertices, BufferRender* indices, TextureRender* white,
+                            bool immediate = false){
         ShaderData& shaderData = shader->shaderData;
         const unsigned int stride = sizeof(Rml::Vertex);
 
         object.beginLoad(PrimitiveType::TRIANGLES);
+        object.setImmediatePipelines(immediate);
         object.setShader(shader);
         // Rml::Vertex: position (2 floats), colour (4 bytes), tex_coord (2 floats). An
         // attribute the variant does not use has slot -1 and is skipped
@@ -3308,7 +3447,9 @@ bool RmlRenderer::loadPipelines(){
         return false;
     }
 
+    // (the tiles' composite, S92 R4: a pass of the frame)
     if (!loadGeometryObject(compositeMsaaObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
+        !loadGeometryObject(compositeTileObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite, true) ||
         !loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
         !loadGeometryObject(gradientObject, gradientShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite)){
         Log::error("[HTML UI] could not load the HTML UI geometry programs");
@@ -3357,6 +3498,8 @@ bool RmlRenderer::isReady() const{
 
 void RmlRenderer::abortFrame(){
     endPass();
+    // what the target holds is not known any more (S92 R1)
+    keptValid = false;
     // region layers still pushed go back to the pool (P7-F2)
     for (size_t i = 1; i < frames.size(); i++){
         if (frames[i].pool >= 0 && target)
@@ -3364,6 +3507,7 @@ void RmlRenderer::abortFrame(){
     }
     frames.clear();
     maskOps.clear();
+    maskHistory.clear();
     frameState = FrameState::NONE;
     target = nullptr;
     // the recorded frame is dropped, what it held released
@@ -3414,6 +3558,9 @@ void RmlRenderer::replayCommands(){
     frames.assign(1, LayerFrame());
     frames[0].rect = standardFrame();
     maskOps.clear();
+    maskHistory.clear();
+    replayDs.clear();
+    droppedVersions.clear();
     maskVersion = 0;
     sharedMaskVersion = 0;
     activeClipScope = -1;
@@ -3429,11 +3576,15 @@ void RmlRenderer::replayCommands(){
     // unbatched with SDF primitives: rounded clips the shaders can do are analytic (S16 R6)
     if (primitivesFrame){
         planClipScopes();
+        planDepthStencil();
         replayScoped();
         return;
     }
-    for (const Command& c : commands)
-        replayCommand(c);
+    planDepthStencil();
+    for (size_t i = 0; i < commands.size(); i++){
+        replayPosition = i;
+        replayCommand(commands[i]);
+    }
 }
 
 void RmlRenderer::replayCommand(const Command& c){
@@ -3536,8 +3687,17 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         abortFrame();
     }
 
+    // S92 R3: the last kept frame's comparison, before anything draws into its target
+    checkKeptFrame();
+
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
+    lastFrameKept = false;
+    dsPlanned = false;
+    replayPosition = 0;
+    activeDsDiscard = false;
+    sharedDsDiscarded = false;
+    discardedRegionDs.clear();
     transformSet = false;
     frameNumber = SystemRender::getFrameCount();
     // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
@@ -3595,6 +3755,9 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     frames[0].rect = standardFrame();
     recordFrames.assign(1, standardFrame());
     maskOps.clear();
+    maskHistory.clear();
+    replayDs.clear();
+    droppedVersions.clear();
     maskVersion = 0;
     sharedMaskVersion = 0;
     layerClearPending.assign(std::max<size_t>(1, target->layers.size()), false);
@@ -3646,18 +3809,26 @@ bool RmlRenderer::endFrame(){
         return false;
     }
 
-    // the recorded frame, drawn in one go
+    // the recorded frame, drawn in one go, unless it is the frame the target holds (S92 R1)
     lastFrameCommandCount = 0;
+    const bool recorded = recording;
     if (recording){
         recording = false;
         lastFrameCommandCount = commands.size();
+        if (keepRecordedFrame()){
+            finishKeptFrame();
+            return true;
+        }
+        skippedBefore = skippedWork();
         replayCommands();
     }
 
     if (layersSize != 1)
         Log::error("[HTML UI] a frame ended with %d layers pushed", layersSize - 1);
 
-    // layer 0 is cleared even when nothing was drawn, and resolved
+    // layer 0 is cleared even when nothing was drawn, and resolved (past every planned position:
+    // these passes need no depth-stencil)
+    replayPosition = dsFlags.size();
     layersSize = std::max(layersSize, 1);
     ensureLayerCleared(0);
     if (Framebuffer* layer = target->getLayer(0))
@@ -3677,15 +3848,9 @@ bool RmlRenderer::endFrame(){
     frames[0].rect = standardFrame();
     maskOps.clear();
     target->trimRegions();
-
-    stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);
-    stats.pipelineApplies = (uint32_t)(SystemRender::getPipelineApplies() - frameAppliesStart);
-    lastFrameDrawCount = stats.drawCalls;
-    // the glyph atlas is shared by every context: its size and the distance glyphs it still makes
-    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
-    stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
-    stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
-    stats.liveSources = frameLiveSources;
+    dsPlanned = false;
+    rememberDrawnFrame(recorded);
+    closeFrameStats();
 
     frameState = FrameState::NONE;
     target = nullptr;
@@ -3706,9 +3871,35 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
                                 int msaaSamples){
     if (!isReady() || !source.isCreated())
         return false;
+    // S92 R4: the last frame's tiles when they are of this image; none written, nothing to draw
+    const bool tiled = !tilesFull && tileSource == &source && tileVertexBuffer.isCreated();
+    if (tiled && tileQuads == 0)
+        return false;
+
+    const bool msaaTarget = compositePipeline == PIP_MSAA_NODEPTH || compositePipeline == PIP_MSAA;
+    if (tiled){
+        // the fixed composite's state (premultiplied, no depth, no culling) at the camera pass's format
+        PipelineState state;
+        state.target = targetFormatFor(msaaTarget ? PIP_MSAA_NODEPTH : compositePipeline, msaaSamples);
+        state.blend = BlendMode::PREMULTIPLIED;
+        state.depthCompare = CompareFunc::ALWAYS;
+        state.depthWrite = false;
+        compositeTileObject.replaceVertexBuffer(&compositeVertexBuffer, &tileVertexBuffer, 0);
+        compositeTileObject.setIndexBuffer(&tileIndexBuffer, 0);
+        compositeTileObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &source);
+        if (!compositeTileObject.beginDraw(state))
+            return false;
+        HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
+        compositeTileObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+        compositeTileObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
+        // the tiles the frame wrote, one draw: the image of the whole quad, the rest is transparent
+        compositeTileObject.draw(0, tileQuads * 6, 1);
+        compositeDraws++;
+        return true;
+    }
 
     ObjectRender* object = &compositeObject;
-    if (compositePipeline == PIP_MSAA_NODEPTH || compositePipeline == PIP_MSAA){
+    if (msaaTarget){
         // the fixed composite's state (premultiplied, no depth, no culling) at the target's
         // sample count
         PipelineState state;
@@ -3728,6 +3919,7 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     object->applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
     object->applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
     object->draw(0, 6, 1);
+    compositeDraws++;
 
     return true;
 }
@@ -3775,6 +3967,15 @@ void RmlRenderer::releaseGpuResources(){
     destroyPipelineObjects();
     destroyGeometryBuffers();
     destroyGatherPages();
+    // S92: no frame is kept across a view loss; the tiles and the scratch target go with it
+    keptValid = false;
+    keptTarget = nullptr;
+    tilesFull = true;
+    tileSource = nullptr;
+    destroyTileBuffers();
+    verifyPending = false;
+    verifyKeptTarget = nullptr;
+    verifyTarget.reset();
     releaseLayerCache();
 
     // the handles stay valid for RmlUi, which releases them (Rml::ReleaseTextures)
@@ -3802,6 +4003,7 @@ void RmlRenderer::destroyPipelineObjects(){
     gradientObject.destroy();
     compositeObject.destroy();
     compositeMsaaObject.destroy();
+    compositeTileObject.destroy();
     primObject.destroy();
     for (PostProgram& program : postPrograms){
         program.object.destroy();
@@ -4096,6 +4298,9 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     addBuffer(primQuadBuffer);
     addBuffer(primQuadIndexBuffer);
     addBuffer(primInstanceTemplate);
+    // S92: the composite tiles
+    addBuffer(tileVertexBuffer);
+    addBuffer(tileIndexBuffer);
 
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;
     if (placeholder != 0) images.push_back(placeholder);

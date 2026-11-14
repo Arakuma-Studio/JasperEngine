@@ -4,7 +4,8 @@
 // S92 layer cost (docs/specs/S92-htmlui-render-cost.md R29, AC10): the passes per frame of the
 // port's UI patterns (fixtures/s92/), cold (the first frame drawn), warm (another element changed)
 // and idle (nothing changed), at 4 samples and at 1. Every row is printed ("[ s92 ]" lines); the
-// budgets asserted are those of the packages that landed (idle: S92-A's kept frame).
+// budgets asserted are those of the packages that landed (S92-A: the idle column and the static
+// row; the cold and warm columns of the layered rows are S92-B2's).
 
 #include "FixtureRunner.h"
 #include "TestRenderCommon.h"
@@ -104,6 +105,14 @@ TEST(RenderLayerCost, ArcadePatterns){
             if (!measurePattern(row.name, samples, row.changed, frames))
                 continue;
             printPattern(row.name, samples, frames);
+            // S92-A (R1, R29's idle column and static row): nothing changed, nothing drawn
+            EXPECT_EQ(frames.idle.passes, 0u) << row.name << " at " << samples << "x";
+            EXPECT_EQ(frames.idle.drawCalls, 0u) << row.name << " at " << samples << "x";
+            EXPECT_EQ(frames.idle.framesKept, 1u) << row.name << " at " << samples << "x";
+            if (std::string(row.name) == "static"){
+                EXPECT_EQ(frames.cold.passes, 1u) << samples << "x";
+                EXPECT_EQ(frames.warm.passes, 1u) << samples << "x";
+            }
             EXPECT_LE(frames.cold.passes, row.cold) << row.name << " at " << samples << "x: cold";
             // S92-B2 (R9): the warm frame draws every layer scope from the cache: one pass. Not
             // inset-clip: its scopes hold text, whose glyph page grows with the warm frame's new
@@ -149,7 +158,9 @@ namespace {
         return false;
     }
 
+    // the next frame, replayed: the cache is measured on frames S92 R1 would keep when nothing changed
     bool nextFrame(RenderTestContext& render, CacheFrame& frame){
+        render.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
         if (!render.renderFrame())
             return false;
         frame.stats = render.renderer.getStats();
@@ -333,6 +344,8 @@ namespace {
         RecordedScope result;
         for (int i = 0; i < 30 && !result.drawn; i++){
             beginTestFrame();
+            // replayed: S92 R1 keeps a frame that records what the last one did
+            test.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
             test.renderer.beginFrame(test.target, test.contextSize);
             test.renderer.RenderGeometry(quad, Rml::Vector2f(4, 4), 0);
             Rml::Rectanglei region = Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(70, 50));
