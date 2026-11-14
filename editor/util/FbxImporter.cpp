@@ -347,6 +347,14 @@ std::vector<fs::path> FbxImporter::findMissingLinkedFiles(const fs::path& fbxPat
     return missing;
 }
 
+std::vector<fs::path> FbxImporter::findLinkedFiles(const fs::path& fbxPath, const fs::path& glbPath) {
+    std::vector<fs::path> linked;
+    for (const Dependency& file : readImportInfo(glbPath).files) {
+        if (file.linked) linked.push_back(resolveDependency(fbxPath, file.path));
+    }
+    return linked;
+}
+
 FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force) {
     std::lock_guard<std::mutex> lock(importMutex);
 
