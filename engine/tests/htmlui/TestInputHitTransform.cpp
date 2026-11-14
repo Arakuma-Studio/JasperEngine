@@ -36,6 +36,7 @@ namespace {
         RecordingRenderInterface recording;
         Rml::Context* context = nullptr;
         Rml::ElementDocument* document = nullptr;
+        std::shared_ptr<const CompatDocument> compiled;
         std::string path;
 
         HitPage(const std::string& name, const std::string& style, const std::string& body)
@@ -49,7 +50,7 @@ namespace {
             CompatOptions options;
             options.viewport = CompatSize{800, 600};
             options.fork = ForkFeatures::present();
-            document = DocumentLoader::load(context, path, options);
+            document = DocumentLoader::load(context, path, options, &compiled);
             if (document){
                 document->Show();
                 frame();
@@ -190,6 +191,10 @@ TEST_P(ClipPathShapes, MatchesTheMask){
     ASSERT_TRUE(page.document);
     Rml::Element* element = page.byId("shape");
     ASSERT_NE(element, nullptr);
+    // the shape reaches the decorator as written (6.3 reduced calc(100% - 20px) to 100%, with a warning)
+    ASSERT_TRUE(page.compiled);
+    for (const Diagnostic& diagnostic : page.compiled->diagnostics)
+        EXPECT_NE(diagnostic.severity, Severity::Warning) << c.name << ": " << diagnostic.message;
 
     BasicShape shape;
     std::string error;
