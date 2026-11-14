@@ -537,9 +537,11 @@ TEST(ShaderManifest, TextureMain){
     EXPECT_EQ(marked.getMainTexture()->uniform, "u_albedo");
     const ShaderManifest shortForm = parse("// @shader mesh\n// @texture u_mask black\n// @texture u_albedo main\n");
     EXPECT_FALSE(shortForm.hasErrors());
+    ASSERT_NE(shortForm.getMainTexture(), nullptr);
     EXPECT_EQ(shortForm.getMainTexture()->uniform, "u_albedo");
     EXPECT_EQ(shortForm.findTexture("u_albedo")->defaultTexture, ShaderTextureDefault::WHITE);
     const ShaderManifest first = parse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white\n");
+    ASSERT_NE(first.getMainTexture(), nullptr);
     EXPECT_EQ(first.getMainTexture()->uniform, "u_mask");
     EXPECT_EQ(parse("// @shader mesh\n").getMainTexture(), nullptr);
     const ShaderManifest twice = parse("// @shader mesh\n// @texture u_a white main\n// @texture u_b white main\n");

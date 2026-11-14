@@ -185,7 +185,8 @@ TEST_F(RenderBlendGpu, CustomDstColorSrcColor){
     floor.createPlane(8.0f, 8.0f);
     floor.setPosition(0.0f, -2.0f, 0.0f);
     floor.setReceiveLights(false);
-    floor.setColor(0.5f, 0.5f, 0.5f);
+    // dark: a 2x multiply over it differs from the quad's own colour (over 0.5 it would not)
+    floor.setColor(0.25f, 0.25f, 0.25f);
     Primitive quad(&scene);
     quad.createPlane(2.0f, 2.0f);
     quad.setReceiveLights(false);
@@ -203,6 +204,7 @@ TEST_F(RenderBlendGpu, CustomDstColorSrcColor){
     quad.setMaterial(material);
     ASSERT_TRUE(settle());
     const DrawPixel blended = at(Vector3(0.0f, 0.0f, 0.0f));
+    EXPECT_LT(dst.r, 100) << "the target is dark";
     auto expected = [](int s, int d){ return std::min(255, (int)std::lround(2.0 * s * d / 255.0)); };
     EXPECT_NEAR(blended.r, expected(src.r, dst.r), 3) << "src " << src.r << " dst " << dst.r;
     EXPECT_NEAR(blended.g, expected(src.g, dst.g), 3) << "src " << src.g << " dst " << dst.g;
