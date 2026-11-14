@@ -157,7 +157,7 @@ target. A new snapshot holds every parameter's current value (the faders), with 
 Project Settings over MCP: `audio.mixer` (the .mixer path), `audio.max_real_voices` (32: voices
 mixed at once, the quietest others are virtualised; at most 255 minus the mixer's groups), `audio.max_voices` (256: voices playing at
 all), `audio.sample_rate` (`auto`, 22050, 44100, 48000), `audio.default_output_group` (the group
-new Audio Sources get).
+new Audio Sources get), `audio.unused_clip_cache` (16: MiB of clips nothing plays kept loaded; 0 drops them).
 
 `audio.output_stage`: `roundoff` (a soft clipper: a small signal leaves 1.66 dB lower, a -1 dB peak
 near -3.5 dBFS) or `linear` (samples pass unchanged, hard-clipped at 0 dBFS as a last guard: keep a
@@ -171,7 +171,8 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | Property | Default | Meaning |
 |---|---|---|
 | `outputGroup` | `""` (Master) | the mixer group, by name |
-| `loadType` | Auto | `AudioLoadType.Auto` (files of 1 MiB and more stream, smaller are decoded), `DecompressOnLoad` (zero-latency effects), `CompressedInMemory` (the file's bytes, decoded while playing), `Streaming` (read from the file while playing: memory = nothing more). Per source (no clip import settings). A packed resource cannot stream: it is held compressed in memory |
+| `loadType` | Auto | `AudioLoadType.Auto` (the clip's import settings `load_type`, else files of 1 MiB and more stream, smaller are decoded), `DecompressOnLoad` (zero-latency effects), `CompressedInMemory` (the file's bytes, decoded while playing), `Streaming` (read from the file while playing: memory = nothing more). A source's own choice wins over the clip's. A packed resource cannot stream: it is held compressed in memory |
+| `loadState` (read-only) | Unloaded | `AudioLoadState`: Loading from `loadSound` until ready, then Loaded or Failed; `getLength()` is 0 until Loaded |
 | `priority` | 128 | 0 most important .. 256 least |
 | `maxVoices` | 8 | voices of this source at once (its clip + one-shots) |
 | `ignoreListenerPause` | false | plays on while `AudioListener.pause` is set |
@@ -179,6 +180,19 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | `spatialBlend` | 1 (a new Audio Source: 0) | Unity's Spatial Blend: 0 plays 2D (`pan`, no distance attenuation), 1 plays 3D from the GameObject's position, between them a mix of the two without Doppler. A source without a Transform plays 2D |
 
 - **Many sources, one clip**: they play at once. `play()` on a playing source starts it over.
+- **Clip memory**: a clip stays loaded while a source, a voice or `AudioSystem.preload` holds it.
+  Let go (`loadSound` of another file, a voice that ended, a source removed or its scene unloaded),
+  it stays cached within Project Settings > Audio > Unused Clip Cache (16 MiB; the least recently
+  used go first; streamed clips count nothing; 0 drops it at once), so switching back decodes
+  nothing. To free one now: `destroySound()` on its source, or `AudioSystem.unload(path)` for a
+  preload. A low-memory warning clears the cache. `get_play_state`'s `audio.clips` lists the count,
+  the bytes, the unused bytes and the five largest clips with their holders.
+- **Load Type on the clip**: `set_audio_import_settings {paths, settings: {load_type: "streaming"}}`
+  (or the clip's Import Settings > Load Type) sets how every source left at Auto, `Audio.play`,
+  one-shots, Sound Events and music hold it.
+- **Load state**: `src:getAudioSourceComponent().onLoad = function(ok) ... end` runs once for each
+  `loadSound`, in a later audio update (never inside it), with false for a missing file. A
+  `fadeIn` of a clip still loading starts from silence with its voice.
 - **One-shots**: `sound:playOneShot("sfx/coin.wav", 0.8)` adds a voice (the source's group,
   volume x scale, pitch, pan; 3D voices follow the source). Ten coins from one source overlap up
   to `maxVoices`; past it the oldest one-shot stops. `stop()` stops them too. A one-shot of a clip
@@ -288,7 +302,9 @@ way per parameter, or `clearFloat` first).
 `ignoreListenerPause`.
 
 **Music that streams, effects that do not lag**: leave `loadType` Auto (big files stream, small
-ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
+ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen and
+`AudioSystem.unload("sfx/coin.wav")` when the level that needs it ends. A small loop that should
+stream anyway: its import settings' `load_type: streaming`.
 
 **An engine hum or an ambience with no GameObject**: `Audio.play("sfx/hum.ogg", {loop = true, group = "SFX"})`
 loops until `handle:stop()` or its scene stops it; `{scene = SceneManager.persistentScene}` keeps it

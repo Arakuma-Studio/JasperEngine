@@ -252,6 +252,11 @@ namespace jasperengine{
         float blendPan = 0.0f;
         // the blend was 1 when its voices last took 3D or 2D: crossing it switches the playing voices
         bool voicesFullBlend = true;
+        // S97 REQ-12/13: a load asked by loadSound or the scene's preload, not over yet
+        // (loadState Loading), and onLoad(loadEventOk) due in the next audio update
+        bool loadRequested = false;
+        bool loadEventPending = false;
+        bool loadEventOk = false;
     };
 
 }

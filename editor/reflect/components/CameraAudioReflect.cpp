@@ -364,7 +364,7 @@ namespace {
                                       old->loadType == audio.loadType;
         if (!keepLoadedSample && old && !old->sampleKey.empty()) {
             audio.sample.reset();
-            SoundPool::remove(old->sampleKey);
+            SoundPool::release(old->sampleKey);
         }
         if (!keepLoadedSample) {
             audio.sample.reset();

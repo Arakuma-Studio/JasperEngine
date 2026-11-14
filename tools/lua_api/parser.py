@@ -2574,8 +2574,17 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'number?')]},
     ('AudioSystem', 'preload'): {
         'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
-                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+                'AudioSystem.unload or the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSystem', 'unload'): {
+        'doc': ["Unity's AudioClip.UnloadAudioData: removes the clip's preload pin and drops its cached copies that nothing",
+                'holds (every load type, or the one `loadType` resolves to). Returns how many it dropped; a clip a source',
+                'or a voice holds stays until released.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'integer')]},
+    ('AudioSystem', 'getLoadState'): {
+        'doc': ["Unity's AudioClip.loadState of a clip in the cache: Loaded, Loading while its load is on its way, Failed",
+                'after a failed load, else Unloaded. `loadType` as AudioSource.loadType (default Auto).'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'AudioLoadState')]},
     ('AudioSource', 'playOneShot'): {
         'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
                 "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",

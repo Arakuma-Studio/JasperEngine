@@ -211,6 +211,22 @@ namespace {
         return 1;
     }
 
+    // AudioSystem.unload(path [, loadType]) -> integer
+    int luaAudioUnload(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = (AudioLoadType)lua_tointeger(L, 2);
+        lua_pushinteger(L, AudioSystem::unload(path, lua_isnumber(L, 2) ? &type : nullptr));
+        return 1;
+    }
+
+    // AudioSystem.getLoadState(path [, loadType]) -> AudioLoadState
+    int luaAudioGetLoadState(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
+        lua_pushinteger(L, (lua_Integer)AudioSystem::getLoadState(path, type));
+        return 1;
+    }
+
     // RenderSystem:getLoadCount() -> loaded, total
     int luaRenderGetLoadCount(lua_State* L){
         RenderSystem* self = luabridge::detail::Userdata::get<RenderSystem>(L, 1, true);
@@ -516,6 +532,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("checkActive", &AudioSystem::checkActive)
         .addStaticProperty("globalVolume", &AudioSystem::getGlobalVolume,  &AudioSystem::setGlobalVolume)
         .addStaticFunction("preload", &luaAudioPreload)
+        .addStaticFunction("unload", &luaAudioUnload)
+        .addStaticFunction("getLoadState", &luaAudioGetLoadState)
         .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
         .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
         // the sounds of this system's scene only (stopAll: every scene's)
