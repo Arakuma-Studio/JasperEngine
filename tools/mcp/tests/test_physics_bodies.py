@@ -32,14 +32,15 @@ async def test_capsule_half_height_zero(ed: Editor):
         await ed.call("wait", frames=180)
         live = await ed.call("get_runtime_entity", entity="Pill", include_script_state=False)
         y = live["components"]["transform"]["position"][1]
-        ed.check(abs(y - 0.5) < 0.01, f"rests on the floor at its radius: {live['components']['transform']}")
+        # Jolt's penetration slop lets a resting body sink up to 0.02 m
+        ed.check(abs(y - 0.5) < 0.02, f"rests on the floor at its radius: {live['components']['transform']}")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
 
 
 async def test_decompose_mesh_collider(ed: Editor):
     sid = await scene3d(ed, "Decompose")
-    await ed.call("create_entity", scene=sid, name="Ring", type="torus", position=[0, 3, 0], rotation=[90, 0, 0])
+    await ed.call("create_entity", scene=sid, name="Ring", type="torus", position=[0, 3, 0], rotation={"euler": [90, 0, 0]})
     made = await ed.call("edit_colliders", scene=sid, entity="Ring", body_type="static",
                          add=[{"shape": "mesh", "center": [0, 0.1, 0], "density": 500, "is_trigger": False}])
     ed.check_eq(made["colliders"][0]["shape"], "mesh", f"{made}")
