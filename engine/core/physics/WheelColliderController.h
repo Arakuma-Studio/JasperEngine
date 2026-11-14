@@ -47,6 +47,8 @@ namespace jasperengine{
         std::vector<float> driveTorques;
 
         void estimateDriveTorques();
+        // the slip ratio and the tire's friction again, with Unity's (PhysX's) slip ratio
+        void unitySlip(JPH::uint index, JPH::WheelWV& wheel, JPH::PhysicsSystem& physicsSystem);
 
     protected:
         bool AllowSleep() const override;

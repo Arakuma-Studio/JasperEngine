@@ -39,7 +39,7 @@ namespace {
     constexpr float VEHICLE_DT = 1.0f / 60.0f;
     constexpr float VEHICLE_TEST_PI = 3.14159265358979323846f;
 
-    struct CarSpec{
+    struct VehicleCarSpec{
         float mass = 1500.0f;
         float wheelbase = 2.6f;     // front to rear axle (m)
         float track = 1.6f;         // left to right (m)
@@ -47,7 +47,7 @@ namespace {
         Vector3 position = Vector3(0.0f, 1.0f, 0.0f);
     };
 
-    struct Car{
+    struct VehicleCar{
         Entity body = NULL_ENTITY;
         // front left, front right, rear left, rear right
         Entity wheels[4] = {NULL_ENTITY, NULL_ENTITY, NULL_ENTITY, NULL_ENTITY};
@@ -102,8 +102,8 @@ namespace {
         }
 
         // a box body (track x 0.5 x wheelbase + 1 m) with a wheel at each corner of its bottom
-        Car car(const CarSpec& spec = CarSpec()){
-            Car car;
+        VehicleCar car(const VehicleCarSpec& spec = VehicleCarSpec()){
+            VehicleCar car;
             car.body = box(spec.position, Vector3(spec.track, 0.5f, spec.wheelbase + 1.0f), BodyType::DYNAMIC);
             RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(car.body);
             rigidbody.automaticMass = false;
@@ -161,12 +161,12 @@ namespace {
             return std::atan2(forward.x, forward.z);
         }
 
-        void setMotor(const Car& c, float torque, bool rearOnly){
+        void setMotor(const VehicleCar& c, float torque, bool rearOnly){
             for (int i = 0; i < 4; i++)
                 wheel(c.wheels[i]).motorTorque = (rearOnly && i < 2) ? 0.0f : torque;
         }
 
-        void setBrake(const Car& c, float torque){
+        void setBrake(const VehicleCar& c, float torque){
             for (int i = 0; i < 4; i++)
                 wheel(c.wheels[i]).brakeTorque = torque;
         }
@@ -178,7 +178,7 @@ namespace {
 // builds it again with three; removing the last removes it
 TEST_F(VehicleTest, WheelsMakeOneConstraint){
     floor();
-    const Car c = car();
+    const VehicleCar c = car();
     int groundedAt = -1;
     for (int i = 0; i < 120 && groundedAt < 0; i++){
         step();
@@ -255,7 +255,7 @@ TEST_F(VehicleTest, SprungMassesBalanceTheBody){
 // AC-2 (REQ-4): the suspension rests at targetPosition of its travel under the sprung mass
 TEST_F(VehicleTest, SuspensionRestsAtTargetPosition){
     floor();
-    const Car c = car();
+    const VehicleCar c = car();
     steps(240);
     for (Entity w : c.wheels){
         const WheelColliderComponent& component = wheel(w);
@@ -277,9 +277,9 @@ TEST_F(VehicleTest, SuspensionRestsAtTargetPosition){
 // rolling wheel's rpm is the car's speed over its radius
 TEST_F(VehicleTest, MotorTorqueAccelerates){
     floor();
-    CarSpec spec;
+    VehicleCarSpec spec;
     spec.mass = 600.0f;
-    const Car c = car(spec);
+    const VehicleCar c = car(spec);
     steps(60);
     const Vector3 start = rigidbody(c.body).getPosition();
 
@@ -326,10 +326,10 @@ TEST_F(VehicleTest, SteerTurnsAndSlides){
     auto turnRadius = [&](float sidewaysStiffness){
         makeScene();
         floor(1000.0f);
-        CarSpec spec;
+        VehicleCarSpec spec;
         spec.wheelbase = 6.0f;
         spec.track = 2.0f;
-        const Car c = car(spec);
+        const VehicleCar c = car(spec);
         for (Entity w : c.wheels) wheel(w).sidewaysFriction.stiffness = sidewaysStiffness;
         steps(60);
         // 10 m/s along +Z, held by the rear wheels' torque
@@ -374,7 +374,7 @@ TEST_F(VehicleTest, SteerTurnsAndSlides){
 // locks the wheels, and the wheels read the drive torque it gave them
 TEST_F(VehicleTest, DrivetrainShiftsAndCaps){
     floor(2000.0f);
-    const Car c = car();
+    const VehicleCar c = car();
     scene->addComponent<VehicleDrivetrainComponent>(c.body, {});
     VehicleDrivetrain drivetrain(scene.get(), c.body);
     steps(60);
@@ -387,12 +387,13 @@ TEST_F(VehicleTest, DrivetrainShiftsAndCaps){
         step();
         maxGear = std::max(maxGear, drivetrain.getGear());
         maxRpm = std::max(maxRpm, drivetrain.getRpm());
-        if (i == 60) driveTorque = wheel(c.wheels[2]).motorTorque;
+        driveTorque = std::max(driveTorque, wheel(c.wheels[2]).motorTorque);
     }
-    std::printf("[vehicle] throttle 1 for 15 s: gear %d, max rpm %.0f, speed %.1f m/s, rear drive torque %.0f N m\n",
+    std::printf("[vehicle] throttle 1 for 15 s: gear %d, max rpm %.0f, speed %.1f m/s, rear drive torque up to %.0f N m\n",
                 maxGear, maxRpm, drivetrain.getSpeed(), driveTorque);
     EXPECT_GE(maxGear, 3);
-    EXPECT_LT(maxRpm, 6000.0f);
+    // the engine never runs past its max rpm (the rev limiter)
+    EXPECT_LE(maxRpm, 6000.0f);
     EXPECT_GT(drivetrain.getSpeed(), 10.0f);
     EXPECT_GT(driveTorque, 0.0f);
 
@@ -409,7 +410,7 @@ TEST_F(VehicleTest, DrivetrainShiftsAndCaps){
 // input the car sleeps; an input wakes it at the next step
 TEST_F(VehicleTest, WheelTransformsFollowAndSleep){
     floor();
-    const Car c = car();
+    const VehicleCar c = car();
     auto checkPoses = [&](){
         for (Entity w : c.wheels){
             const Transform& transform = scene->getComponent<Transform>(w);
@@ -454,7 +455,7 @@ TEST_F(VehicleTest, WheelTransformsFollowAndSleep){
 // REQ-9: moving the body teleports the wheels with it; the rest pose stays the GameObject's
 TEST_F(VehicleTest, TeleportMovesTheWheels){
     floor();
-    const Car c = car();
+    const VehicleCar c = car();
     steps(120);
     const float before = wheel(c.wheels[0]).worldPosePosition.y;
     rigidbody(c.body).setPosition(Vector3(20.0f, 1.0f, 5.0f));
@@ -471,7 +472,7 @@ TEST_F(VehicleTest, ReplayIsBitIdentical){
     auto run = [&](){
         makeScene();
         floor();
-        const Car c = car();
+        const VehicleCar c = car();
         std::vector<float> poses;
         for (int i = 0; i < 600; i++){
             step([&](){

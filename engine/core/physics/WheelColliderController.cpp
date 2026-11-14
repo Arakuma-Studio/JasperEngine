@@ -5,6 +5,8 @@
 
 #ifdef JASPERENGINE_PHYSICS_3D
 
+#include "Jolt/Physics/Body/BodyLockInterface.h"
+#include "Jolt/Physics/PhysicsSystem.h"
 #include "Jolt/Physics/Vehicle/VehicleConstraint.h"
 #include "Jolt/Physics/Vehicle/VehicleEngine.h"
 
@@ -12,6 +14,15 @@
 #include <cmath>
 
 using namespace jasperengine;
+
+namespace{
+
+    // PhysX's (Unity's) least slip ratio denominator: below this ground speed a spin counts against
+    // it, so a wheel pulling away from rest is in the rising part of its curve, not sliding at its
+    // asymptote (Jolt divides by the ground speed alone, any spin at rest is an endless slip)
+    constexpr float WHEEL_MIN_LONGITUDINAL_SLIP_SPEED = 4.0f;
+
+}
 
 JPH::VehicleController* WheelColliderControllerSettings::ConstructController(JPH::VehicleConstraint& constraint) const{
     return new WheelColliderController(*this, constraint);
@@ -72,6 +83,11 @@ void WheelColliderController::PreCollide(float deltaTime, JPH::PhysicsSystem& ph
 void WheelColliderController::PostCollide(float deltaTime, JPH::PhysicsSystem& physicsSystem){
     if (!perWheelDrive){
         JPH::WheeledVehicleController::PostCollide(deltaTime, physicsSystem);
+        // the tire forces are solved after this: they take Unity's slip too
+        JPH::Wheels& driven = mConstraint.GetWheels();
+        for (JPH::uint i = 0; i < (JPH::uint)driven.size(); i++){
+            unitySlip(i, *static_cast<JPH::WheelWV*>(driven[i]), physicsSystem);
+        }
         estimateDriveTorques();
         return;
     }
@@ -84,6 +100,7 @@ void WheelColliderController::PostCollide(float deltaTime, JPH::PhysicsSystem& p
         JPH::WheelWV* wheel = static_cast<JPH::WheelWV*>(wheels[i]);
         // the spin's damping, the slips and the friction combined with the ground
         wheel->Update(i, deltaTime, mConstraint);
+        unitySlip(i, *wheel, physicsSystem);
 
         const WheelDriveInput input = i < inputs.size() ? inputs[i] : WheelDriveInput();
         if (input.motorTorque != 0.0f && std::isfinite(input.motorTorque)){
@@ -108,6 +125,27 @@ void WheelColliderController::PostCollide(float deltaTime, JPH::PhysicsSystem& p
         }
     }
     mPreviousDeltaTime = deltaTime;
+}
+
+void WheelColliderController::unitySlip(JPH::uint index, JPH::WheelWV& wheel, JPH::PhysicsSystem& physicsSystem){
+    if (!wheel.HasContact()){
+        return;
+    }
+    const JPH::Body* ground = physicsSystem.GetBodyLockInterfaceNoLock().TryGetBody(wheel.GetContactBodyID());
+    if (!ground){
+        return;
+    }
+    const JPH::WheelSettingsWV* settings = wheel.GetSettings();
+    JPH::Vec3 relative = mConstraint.GetVehicleBody()->GetPointVelocity(wheel.GetContactPosition()) - wheel.GetContactPointVelocity();
+    relative -= wheel.GetContactNormal().Dot(relative) * wheel.GetContactNormal();
+    const float forwardSpeed = relative.Dot(wheel.GetContactLongitudinal());
+    const float denominator = std::max(std::fabs(forwardSpeed), WHEEL_MIN_LONGITUDINAL_SLIP_SPEED);
+    wheel.mLongitudinalSlip = std::fabs(wheel.GetAngularVelocity() * settings->mRadius - forwardSpeed) / denominator;
+    float longitudinal = settings->mLongitudinalFriction.GetValue(wheel.mLongitudinalSlip);
+    float lateral = settings->mLateralFriction.GetValue(JPH::RadiansToDegrees(wheel.mLateralSlip));
+    mConstraint.GetCombineFriction()(index, longitudinal, lateral, *ground, wheel.GetContactSubShapeID());
+    wheel.mCombinedLongitudinalFriction = longitudinal;
+    wheel.mCombinedLateralFriction = lateral;
 }
 
 // The torque the clutch passes to each driven wheel after the step's engine solve:
