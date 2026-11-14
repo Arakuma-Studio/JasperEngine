@@ -49,7 +49,7 @@ report failures as failures. Each fix ships a test that fails without it.
     §8 there).
   - E41's `mesh.sortPriority`: S94 R48 owns sort priority per renderer, which is the same key.
 - **A `.mesh` asset** (E1's embedded custom-mesh buffers): a format feature that belongs with S53's
-  mesh pipeline. Recorded as follow-up F1 (§9).
+  mesh pipeline. Recorded as follow-up F1 (§9); brought into scope as WP-7 (Deviations).
 - **The game-side items** (§3): no engine change.
 - **Play Asset Delivery in source exports (Gradle asset-pack modules)**: REQ-16 covers prebuilt App
   Bundles, the route a Lua-only game such as the arcade takes. Recorded as follow-up F2.
@@ -727,7 +727,57 @@ Avoiding conflicts:
 
 ## Deviations
 
-(none yet)
+- **F1 brought into scope (WP-7, E1): the `.mesh` asset.** The coordinator moved F1 out of the
+  follow-ups. Decisions, each Unity's behaviour unless noted:
+  - **Format.** A binary file (`engine/core/model/MeshAsset.h`): magic `JMSH`, u16 major and minor
+    (1.0), a string table, then the cooked scenes' codecs (`CookTypes.h`): the vertices' bounds, the
+    vertex count, the interleaved vertex buffer, the index buffer, the external buffers and each
+    submesh's primitive type, vertex count and attributes. The bytes depend only on the geometry
+    (the counts a load gives, not what a frame set), so the same geometry is the same file. Readers
+    refuse another major. Materials, shaders, the skin's palette and the component's settings stay
+    on the Mesh Renderer, as on Unity's MeshRenderer.
+  - **Identity and reference.** `AssetType::Mesh = 37` (35 and 36 are S95's), a `.meta` sidecar
+    GUID (S04), `AssetKind::Mesh`. `MeshComponent::meshAsset` (an `AssetRef`, Inspector label
+    "Mesh", saved as `meshAsset` / `meshAssetGuid`, omitted when empty). A mesh showing a file saves
+    neither its buffers nor the bounds and vertex counts they give, so a save does not depend on
+    whether the file was read (S63).
+  - **Runtime.** `MeshSystem::update` reads the file when `meshAsset` differs from what it last read
+    (`loadedMeshAsset`; a missing or bad file is logged once per path), before RenderSystem and
+    PhysicsSystem run, in the editor, a prebuilt player and a compiled game alike. A generated
+    primitive (`MeshSystem::create*`: Shape fields, `set_mesh_geometry`, `Primitive:create*`) lets go
+    of the file: the geometry is the mesh's own again and the file is never written by a geometry
+    edit of one GameObject.
+  - **Saving through it: both, automatic above 4 KB.** Save Mesh As Asset... (the Mesh Renderer's
+    menu, `set_mesh_geometry save_as`) writes any mesh of its own. A scene save also moves each mesh
+    of its own with more than 4 KB of geometry (`MeshAssetFiles::EXTRACT_ABOVE_BYTES`) to
+    `<scene folder>/<scene name>/<GameObject>.mesh` (Unity's per-scene folder, as for lighting data;
+    `<assets>/Meshes/<scene name>/` for a scene outside the assets folder). Rejected: always (every
+    cube and plane would become a file of 1-2 KB), and Save As only (a sphere's 45 KB base64 line,
+    E1's fragile hand edit, would stay). Meshes of the same geometry share one file; a file there
+    with the same bytes is used again (an undo past the save finds it), one with other bytes is never
+    written over (`<name> 1.mesh`). Prefab instances keep their prefab's mesh, and prefab saves do not
+    extract (a prefab names a `.mesh` through Save As or a GameObject that already shows one). An
+    extracted file nothing shows any more stays until deleted, as Unity never deletes assets.
+  - **Format bump.** Scene 8 -> 9 and prefab 9 -> 10, identity migrations (`StreamMigrations.cpp`,
+    fixture `migrations/scene-v8-inline-mesh.scene`, `MeshAssetMigration.*`): an older file's inline
+    buffers still read and keep their meaning, but an older editor must refuse a file whose meshes
+    name `.mesh` assets rather than show them empty (S44's sprite-sheet precedent). Cooked scenes
+    are format 1.6: the reference is a field of the mesh's table and its buffers are not written
+    (`ComponentHooks.cpp writeMesh`); compiled scenes emit `mesh.meshAsset = "..."` instead of the
+    buffers (`Factory::createMeshComponent`). Exports ship `.mesh` files through `copyAssets`, which
+    copies every asset it does not skip.
+  - **Editor.** The Mesh field (drop a `.mesh`, pick one, Reset), Save Mesh As Asset... (one undo
+    step; undo keeps the file), dropping a `.mesh` in the Hierarchy or the Scene view makes a
+    GameObject showing it, a Project window icon, `t:mesh` search, hot reload of a file another
+    program changed.
+  - **Lua.** `Mesh.meshAsset` (read at once, so `vertexCount` and `getAABB()` answer straight away).
+  - **MCP.** Extended, no new tool: `set_mesh_geometry save_as` (alone: the current geometry; with
+    `shape`: the new one), `get_asset_info` on a `.mesh` (format, vertices, indices, submeshes,
+    attributes, bounds, users in the open scenes), `list_assets type: mesh`, `set_properties`
+    `mesh.meshAsset`. Eval cases `guard_mesh_save_as_asset`, `guard_mesh_asset_info`.
+  - **For WP-6 (asset stripping):** a `.mesh` is referenced through the reflection asset rows
+    (`AssetRefSchema`, `AssetKind::Mesh`), which the dependency walk follows; nothing is needed
+    beyond what any `AssetRef` field gets, but the stripping test should include one.
 
 ## Progress
 

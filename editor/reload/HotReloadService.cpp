@@ -72,6 +72,7 @@ namespace {
         else if (kind == "particles") noun = "particle effect";
         else if (kind == "palette") noun = "palette";
         else if (kind == "tileset") noun = "tileset";
+        else if (kind == "mesh") noun = "mesh asset";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -501,6 +502,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadVoxelVolumes(ctx, files(external, "voxel"));
     reload::reloadPalettes(ctx, both("palette"));
+    reload::reloadMeshAssets(ctx, files(external, "mesh"));
     reload::reloadTilesets(ctx, both("tileset"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");

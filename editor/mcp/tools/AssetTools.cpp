@@ -59,6 +59,8 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "component/MeshComponent.h"
+#include "model/MeshAsset.h"
+#include "StreamSchema.h"
 #include "htmlui/HtmlUiImporters.h"
 #include "htmlui/VideoImporter.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -102,6 +104,8 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <iterator>
+#include <span>
 #include <map>
 #include <regex>
 #include <set>
@@ -869,6 +873,50 @@ void listAssetsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ get_asset_info
 
+// S98 F1: a .mesh's geometry, and the GameObjects of the open scenes showing it
+Json meshAssetInfo(Project* project, const fs::path& file, std::string& text) {
+    Json out;
+    std::ifstream in(file, std::ios::binary);
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    MeshAsset::Info info;
+    std::string error;
+    if (!MeshAsset::inspect(std::span<const uint8_t>(bytes.data(), bytes.size()), info, &error)) {
+        out["error"] = error;
+        text += ": cannot be read (" + error + ")";
+        return out;
+    }
+    out["format"] = std::to_string(info.major) + "." + std::to_string(info.minor);
+    out["vertex_count"] = info.vertexCount;
+    out["index_count"] = info.indexCount;
+    out["geometry_bytes"] = info.geometryBytes;
+    Json submeshes = Json::array();
+    for (const MeshAsset::Info::Submesh& submesh : info.submeshes)
+        submeshes.push_back({{"primitive_type", StreamSchema::primitiveType().toString(submesh.primitiveType)}, {"vertex_count", submesh.vertexCount}});
+    out["submeshes"] = submeshes;
+    Json attributes = Json::array();
+    for (AttributeType type : info.attributes) attributes.push_back(StreamSchema::attributeType().toString(type));
+    out["attributes"] = attributes;
+    if (!info.bounds.isNull() && !info.bounds.isInfinite()) {
+        const Vector3 min = info.bounds.getMinimum();
+        const Vector3 max = info.bounds.getMaximum();
+        out["bounds"] = {{"min", {min.x, min.y, min.z}}, {"max", {max.x, max.y, max.z}}};
+    }
+    const std::string assetsRelative = project->normalizeToAssetsRelative(file).generic_string();
+    Json users = Json::array();
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++) {
+            if (meshes->getComponentFromIndex(i).meshAsset.path != assetsRelative) continue;
+            users.push_back({{"scene", sceneProject->name}, {"entity", McpRefs::entityJson(sceneProject, meshes->getEntity(i))}});
+        }
+    }
+    out["users"] = users;
+    text += ": " + std::to_string(info.vertexCount) + " vertices, " + std::to_string(info.indexCount) + " indices, " +
+            std::to_string(info.submeshes.size()) + " submesh(es), shown by " + std::to_string(users.size()) + " GameObject(s) of the open scenes";
+    return out;
+}
+
 void getAssetInfoTool(const CallPtr& call) {
     fs::path file;
     if (!resolveExisting(call, "path", file)) return;
@@ -925,6 +973,10 @@ void getAssetInfoTool(const CallPtr& call) {
     if (kind == "aseprite_sprite") {
         Json sprite = asepriteAssetInfo(project, file, text);
         for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
+    }
+    if (kind == "mesh") {
+        Json mesh = meshAssetInfo(project, file, text);
+        for (auto it = mesh.begin(); it != mesh.end(); ++it) data[it.key()] = it.value();
     }
     if (kind == "font") {
         Json font = fontAssetInfo(project, file, text);
@@ -4261,7 +4313,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "shake", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "shake", "mesh", "folder", "other"};
 
     {
         ToolDef tool;
@@ -4296,7 +4348,8 @@ void registerAssetTools(McpRegistry& registry) {
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
-            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
+            "linked submeshes; .mesh vertices, submeshes, bounds, users; shader includes, forks using it; Lua syntax; scene status; "
+            "unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

@@ -1059,6 +1059,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Materials.cpp
     ${EDITOR_DIR}/reload/handlers/Models.cpp
     ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/MeshAssets.cpp
     ${EDITOR_DIR}/reload/handlers/Shaders.cpp
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
@@ -1071,6 +1072,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/AssetMeta.cpp
     ${EDITOR_DIR}/asset/AssetRefSchema.cpp
     ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/MeshAssetFiles.cpp
     ${EDITOR_DIR}/asset/ContentHash.cpp
     ${EDITOR_DIR}/asset/DepEdge.cpp
     ${EDITOR_DIR}/asset/MissingAssetTracker.cpp

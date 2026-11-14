@@ -55,6 +55,7 @@
 #include "util/Fnv.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "asset/MeshAssetFiles.h"
 #include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
@@ -1795,6 +1796,29 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
             if (ImGui::MenuItem(ICON_FA_PERSON_FALLING " Create Ragdoll...")) {
                 RagdollWizardDialog::instance().open(project, sceneProject->id, entities[0]);
             }
+        }
+        if (cpType == ComponentType::MeshComponent && entities.size() == 1) {
+            // S98 F1: the geometry to a .mesh the Mesh field then shows (Unity's Save Mesh As Asset)
+            reason.clear();
+            const bool canSave = MeshAssetFiles::ownsGeometry(sceneProject->scene, entities[0], &reason);
+            if (ImGui::MenuItem("Save Mesh As Asset...", nullptr, false, canSave)) {
+                const std::string name = sceneProject->scene->getEntityName(entities[0]);
+                const std::string chosen = FileDialogs::saveFileDialog(project->getAssetsPath().string(), (name.empty() ? "New Mesh" : name) + ".mesh",
+                                                                       "Mesh assets", "mesh");
+                if (!chosen.empty()) {
+                    std::string path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(chosen)));
+                    if (!Util::isMeshAssetFile(path)) path += ".mesh";
+                    std::string written, error;
+                    Command* save = MeshAssetFiles::saveAs(project, sceneProject->id, entities[0], sceneProject->scene->getComponent<MeshComponent>(entities[0]),
+                                                           path, written, &error);
+                    if (save) {
+                        addMenuCommand(save);
+                    } else {
+                        Out::error("Save Mesh As Asset: %s", error.c_str());
+                    }
+                }
+            }
+            reasonTooltip(canSave, reason);
         }
         ImGui::Separator();
 
