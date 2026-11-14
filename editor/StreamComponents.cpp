@@ -2052,6 +2052,8 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
         for (Entity plane : particles.collisionPlanes) planes.push_back(plane);
         node["collisionPlanes"] = planes;
     }
+    // written only for a migrated system: a file from before it stays as it was
+    if (particles.legacyFrom != NULL_ENTITY) node["legacyFrom"] = particles.legacyFrom;
     return node;
 }
 
@@ -2093,6 +2095,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["collisionPlanes"] && node["collisionPlanes"].IsSequence()){
         for (const YAML::Node& plane : node["collisionPlanes"]) particles.collisionPlanes.push_back(YamlNumbers::as<Entity>(plane));
     }
+    particles.legacyFrom = node["legacyFrom"] ? YamlNumbers::as<Entity>(node["legacyFrom"]) : NULL_ENTITY;
     particles.needReload = true;
     return particles;
 }
