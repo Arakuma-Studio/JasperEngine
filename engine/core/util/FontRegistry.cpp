@@ -202,6 +202,38 @@ const std::vector<std::shared_ptr<FontFace>>& FontRegistry::getFallbackFaces(){
     return reg.fallbacks;
 }
 
+std::vector<std::shared_ptr<FontFace>> FontRegistry::getFallbackFaces(int weight, bool italic){
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+    if (weight <= 0)
+        weight = 400;
+
+    std::vector<std::shared_ptr<FontFace>> faces;
+    for (const std::shared_ptr<FontFace>& fallback : reg.fallbacks){
+        std::shared_ptr<FontFace> chosen = fallback;
+        const Entry* own = nullptr;
+        for (const Entry& entry : reg.entries){
+            if (entry.face == fallback){
+                own = &entry;
+                break;
+            }
+        }
+        if (own){
+            std::vector<const Entry*> sameStyle;
+            std::vector<const Entry*> otherStyle;
+            for (const Entry& entry : reg.entries){
+                if (entry.family == own->family)
+                    (entry.italic == italic ? sameStyle : otherStyle).push_back(&entry);
+            }
+            if (const Entry* best = matchWeight(sameStyle.empty() ? otherStyle : sameStyle, weight))
+                chosen = best->face;
+        }
+        if (std::find(faces.begin(), faces.end(), chosen) == faces.end())
+            faces.push_back(chosen);
+    }
+    return faces;
+}
+
 std::shared_ptr<FontFace> FontRegistry::getBuiltInLatin(){
     Registry& reg = registry();
     std::lock_guard<std::recursive_mutex> lock(reg.mutex);

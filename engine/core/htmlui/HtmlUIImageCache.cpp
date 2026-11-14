@@ -64,6 +64,11 @@ namespace {
         JE_PROFILE_SCOPE("htmlui-image-decode");
         auto result = std::make_shared<DecodedImage>();
         TextureData data;
+        // (a TextureData does not own what it loads: its pixels go once copied out)
+        struct ReleaseData {
+            TextureData& data;
+            ~ReleaseData(){ data.releaseImageData(); }
+        } releaseData{data};
         bool loaded = false;
         if (htmlui::compat::VirtualFiles::isVirtual(path)){
             // compat's generated files (data: URIs); a "?svgScale=" suffix stays meaningful for virtual SVGs

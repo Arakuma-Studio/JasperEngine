@@ -1568,6 +1568,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlRendererWorld.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
+    core/htmlui/HtmlUIPrewarm.cpp
+    core/htmlui/HtmlUIFontDiagnostics.cpp
     core/htmlui/RmlKeyMap.cpp
     core/htmlui/RmlTextInputHandler.cpp
     core/htmlui/anim/AnimAnimation.cpp

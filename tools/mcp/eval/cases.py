@@ -1340,6 +1340,34 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_html_ui_prewarm",
+        "kind": "guard",
+        "what_happened": "The JasperArcade port wrote its own UIWarm.lua (hidden layers shown off-screen for a frame) to stop "
+                         "the first show of outlined text stalling; S93 R15 added doc:prewarm and the guide's 'Prewarming text'.",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Fonts > 'Prewarming text': doc:prewarm(), HtmlUI.prewarmText, data-warm",
+        "source": "JasperArcade port, docs/port/ENGINE_LIMITATIONS.md U30 (scripts/shared/ui/UIWarm.lua); spec S93 R15",
+        "files": {"README.md": README,
+                  "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><link rel=\"stylesheet\" href=\"pause.css\"></head>\n<body>\n"
+                                          "<div id=\"pause\"><h1>PAUSED</h1><button id=\"resume\">Resume</button></div>\n"
+                                          "</body></html>\n",
+                  "assets/ui/pause.css": "#pause { display: none; }\n#pause.open { display: block; }\n"
+                                         "h1 { font-size: 160px; font-effect: outline(12px #000), glow(4px 10px 0px 6px #000); }\n",
+                  "assets/ui/pause.lua": "local Pause = { properties = {} }\n\nfunction Pause:init()\n"
+                                         "    self.doc = UIDocument(self.scene, self.entity)\nend\n\n"
+                                         "function Pause:open()\n    self.doc:getElementById(\"pause\").classList:add(\"open\")\nend\n\n"
+                                         "return Pause\n"},
+        "prompt": "The first time the pause menu (assets/ui/pause.html, its script assets/ui/pause.lua) opens, the game hitches "
+                  "for a moment: the big outlined PAUSED title. Later opens are smooth. Fix the first open in the script; don't "
+                  "play the game.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("assets/ui/pause.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"prewarm\s*\("]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"left\s*=\s*[\"']?-\d{3,}"]},
+                   "must_not_call": ["play"]},
+        "max_turns": 16,
+    },
+    {
         "id": "bad_ui_tween_for_game_time",
         "kind": "bad",
         "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "

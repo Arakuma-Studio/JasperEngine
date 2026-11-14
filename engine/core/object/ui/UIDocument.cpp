@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/compat/LuaHooks.h"
+#include "htmlui/HtmlUIPrewarm.h"
 
 #include <RmlUi/Core/ElementDocument.h>
 
@@ -300,6 +301,10 @@ UIElement UIDocument::getDocumentElement() const{
 std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
     loadedDocument(scene, entity);
     return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
+}
+
+UIPrewarm UIDocument::prewarm(bool images) const{
+    return UIPrewarm(HtmlUIPrewarm::prewarmDocument(loadedDocument(scene, entity), images));
 }
 
 HtmlUIRenderStats UIDocument::getRenderStats() const{

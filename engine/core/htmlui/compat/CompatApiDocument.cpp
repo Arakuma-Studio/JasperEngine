@@ -13,6 +13,7 @@
 #include "htmlui/compat/SourceFiles.h"
 
 #include "HtmlUI.h"
+#include "HtmlUIFontDiagnostics.h"
 
 #include <RmlUi/Core.h>
 
@@ -128,6 +129,9 @@ namespace {
         if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled.rml, compiled.sourcePath)){
             document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
             context->Update();
+            // S93 R17: static text a fallback face draws (HTMLUI-FONT-0001), from the laid-out document's fonts
+            std::vector<Diagnostic> fallback = HtmlUIFontDiagnostics::check(document, compiled);
+            diagnostics.insert(diagnostics.end(), fallback.begin(), fallback.end());
             context->UnloadDocument(document);
             context->Update();
         }

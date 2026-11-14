@@ -386,6 +386,13 @@ namespace {
          "runs its passes every frame. A warning while over the soft budget; an error when the hard cap (64 simulations) "
          "refuses a new one, which then draws nothing. Hide the elements whose simulations should stop: a simulation that is "
          "not drawn does not step."},
+        // ---- FONT (S93: glyphs and faces)
+        {codes::FallbackGlyph, I, false, "fallback-glyph", "Characters drawn by a fallback font",
+         "Characters of the text are not in the first available face of its font-family list; a fallback face (a later family "
+         "of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight "
+         "and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that "
+         "has the characters, or name one that has them after it in font-family. Reported once the text is drawn, and by the "
+         "checks that lay the document out (inspect_ui of a file)."},
     };
 
     char toLower(char c){
@@ -460,6 +467,7 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::IMP: return "IMP";
         case DiagArea::SVG: return "SVG";
         case DiagArea::FX: return "FX";
+        case DiagArea::FONT: return "FONT";
     }
     return "GEN";
 }

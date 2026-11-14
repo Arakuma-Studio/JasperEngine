@@ -68,7 +68,8 @@ namespace {
         // S93: the shared images (after the contexts gave their handles back)
         HtmlUIImageCache::get().releaseGpuResources();
 
-        Rml::ReleaseFontResources();
+        // S93 R14: the glyph cache keeps its pages' texels; releaseGpuResources gave back the contexts'
+        // textures of them (Rml::ReleaseTextures), made and uploaded again when text draws next
     }
 
     void subscribeViewDestroyed(){

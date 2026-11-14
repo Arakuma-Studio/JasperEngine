@@ -236,8 +236,8 @@ void HtmlUIContext::destroy(){
     context = nullptr;
     navigateListener.reset();   // detached with the root element
 
-    // file textures, then font textures and this renderer's render manager; in this order,
-    // or a callback texture of a destroyed render manager would release through it
+    // file textures, then this renderer's render manager, which releases its textures of the
+    // glyph pages first; the glyphs and pages stay for the next context (S93 R13)
     Rml::ReleaseTextures(renderer.get());
     Rml::ReleaseRenderManagers();
 
