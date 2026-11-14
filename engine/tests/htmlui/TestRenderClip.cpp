@@ -250,13 +250,46 @@ TEST(RenderClip, ClipPathBasicShapesAreAnalytic){
         EXPECT_TRUE(result.passed) << result.message;
     }
 
-    // polygon() keeps the mask layer
+    // a concave polygon() keeps the mask layer (a convex one is analytic: ConvexPolygonClipPathIsAnalytic)
     Frame polygon;
     ASSERT_TRUE(drawDocument(documentOf("#p { position: absolute; left: 20px; top: 20px; width: 90px; height: 70px; background-color: #e0a020;"
-                                        " mask-image: html-shape(\"polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)\"); }",
+                                        " mask-image: html-shape(\"polygon(0% 0%, 100% 0%, 50% 40%, 100% 100%, 0% 100%)\"); }",
                                         "<div id=\"p\"/>"),
                              4, polygon));
     EXPECT_GT(polygon.stats.layersPushed, 0u);
+}
+
+// S92: a convex clip-path polygon() (the port's octagon cards, a diamond) clips in the shaders, without a layer or
+// the stencil, antialiased at one sample too; its pixels match the stencil's (the classic replay: its triangle fan)
+// but at the edges
+TEST(RenderClip, ConvexPolygonClipPathIsAnalytic){
+    JASPER_REQUIRE_GPU();
+    S16On s16;
+    const char* const shapes[] = {
+        "polygon(21px 0px, 69px 0px, 90px 21px, 90px 49px, 69px 70px, 21px 70px, 0px 49px, 0px 21px)",
+        "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+        "polygon(evenodd, 0% 100%, 50% 0%, 100% 100%)",
+    };
+    for (const char* shape : shapes){
+        for (int samples : {4, 1}){
+            const std::string label = std::string(shape) + ", " + std::to_string(samples) + " samples";
+            const std::string css = std::string("#p { position: absolute; left: 20px; top: 20px; width: 90px; height: 70px; background-color: #e0a020;"
+                                                " mask-image: html-shape(\"") + shape + "\"); } #c { position: absolute; left: 10px; top: 30px; width: 60px;"
+                                                " height: 30px; background-color: #3060c0; }";
+            Frame frame;
+            ASSERT_TRUE(drawDocument(documentOf(css, "<div id=\"p\"><div id=\"c\"/></div>"), samples, frame)) << label;
+            EXPECT_EQ(frame.stats.layersPushed, 0u) << label;
+            EXPECT_EQ(frame.stats.stencilDraws, 0u) << label;
+            EXPECT_GT(frame.stats.analyticClips, 0u) << label;
+            Frame stencil;
+            {
+                ClassicReplay classic;
+                ASSERT_TRUE(drawDocument(documentOf(css, "<div id=\"p\"><div id=\"c\"/></div>"), samples, stencil)) << label;
+            }
+            EXPECT_GT(stencil.stats.stencilDraws, 0u) << label;
+            EXPECT_TRUE(similar(frame.screen, stencil.screen, label));
+        }
+    }
 }
 
 namespace {

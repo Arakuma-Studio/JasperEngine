@@ -94,15 +94,17 @@ TEST(RenderLayerCost, ArcadePatterns){
     struct Row {
         const char* name;
         const char* changed;
+        uint32_t cold;      // R29's budget for the first frame drawn
     };
-    const Row rows[] = {{"static", "tick"},     {"rounded-gradient", "tick"}, {"btn", "tick"},     {"card", "tick"},
-                        {"inset-clip", "tick"}, {"cards4", "timer"},          {"o2-frame", "tick"}};
+    const Row rows[] = {{"static", "tick", 1},     {"rounded-gradient", "tick", 1}, {"btn", "tick", 4},     {"card", "tick", 7},
+                        {"inset-clip", "tick", 1}, {"cards4", "timer", 1 + 4 * 6},  {"o2-frame", "tick", 1}};
     for (int samples : {4, 1}){
         for (const Row& row : rows){
             PatternFrames frames;
             if (!measurePattern(row.name, samples, row.changed, frames))
                 continue;
             printPattern(row.name, samples, frames);
+            EXPECT_LE(frames.cold.passes, row.cold) << row.name << " at " << samples << "x: cold";
             // S92-B2 (R9): the warm frame draws every layer scope from the cache: one pass. Not
             // inset-clip: its scopes hold text, whose glyph page grows with the warm frame's new
             // glyph (a page's generation is part of what a scope reads)
@@ -496,8 +498,10 @@ TEST(RenderLayerCost, LayersSizedToTheirElement){
         ASSERT_TRUE(drawn);
         const HtmlUIRenderStats& stats = runner.renderer()->getStats();
         const RmlRenderer::LayerPassStats passes = runner.renderer()->getLastLayerPassStats();
-        std::printf("[ s92 ] %-16s layers %3u layerPixels %8u window granules %8llu largest pass %7u\n", name, stats.layersPushed,
-                    stats.layerPixels, (unsigned long long)passes.windowPixels, passes.largestPass);
+        std::printf("[ s92 ] %-16s layers %3u layerPixels %8u window granules %8llu largest pass %7u | passes %3u: layer 0 and copies %3u, "
+                    "element layers %3u, post-process %3u\n",
+                    name, stats.layersPushed, stats.layerPixels, (unsigned long long)passes.windowPixels, passes.largestPass, stats.passes,
+                    stats.passes - passes.layerPasses - passes.postPasses, passes.layerPasses, passes.postPasses);
         EXPECT_LE((double)stats.layerPixels, 1.5 * (double)passes.windowPixels);
         EXPECT_LT(passes.largestPass, 1280u * 720u) << "a layer within the viewport is the target's size";
     }

@@ -8,6 +8,8 @@
 //   HAS_COLOR_MATRIX   brightness/contrast/invert/grayscale/sepia/hue-rotate/saturate
 //   HAS_BLEND_MASK     multiplies by the mask image's alpha (mask-image)
 //   HAS_DROP_SHADOW    the source's alpha times the shadow colour, inside texCoordMinMax
+//   (PASSTHROUGH and DROP_SHADOW, weights.w on: the mean of four bilinear taps weights.yz off the
+//   texture coordinate, a 4 x 4 box: a blur's two halvings in one pass, S92)
 //   HAS_BLUR           one 7-tap separable gaussian pass along params.yz, mirrored at texCoordMinMax
 //   HAS_UNPREMULTIPLY  straight alpha (render-to-texture documents)
 //   HAS_YUV            a video frame: Y (u_htmluiPostTex), U and V planes (R8) to opaque RGB by
@@ -72,9 +74,34 @@ vec4 tap(float i, float weight){
 }
 #endif
 
+#if defined(HAS_PASSTHROUGH)
+// the source, or (weights.w on) the mean of the 4 x 4 texels around v_uv
+vec4 sourceBox(vec2 uv){
+    if (htmluiPost.weights.w < 0.5)
+        return source(uv);
+    vec2 d = htmluiPost.weights.yz;
+    return 0.25 * (source(uv + vec2(-d.x, -d.y)) + source(uv + vec2(d.x, -d.y)) + source(uv + vec2(-d.x, d.y)) + source(uv + vec2(d.x, d.y)));
+}
+#endif
+
+#if defined(HAS_DROP_SHADOW)
+float shadowAlpha(vec2 uv){
+    return source(uv).a * inRegion(uv);
+}
+
+// the shadow's coverage, or (weights.w on) its mean over the 4 x 4 texels around v_uv
+float shadowBox(vec2 uv){
+    if (htmluiPost.weights.w < 0.5)
+        return shadowAlpha(uv);
+    vec2 d = htmluiPost.weights.yz;
+    return 0.25 * (shadowAlpha(uv + vec2(-d.x, -d.y)) + shadowAlpha(uv + vec2(d.x, -d.y)) + shadowAlpha(uv + vec2(-d.x, d.y)) +
+                   shadowAlpha(uv + vec2(d.x, d.y)));
+}
+#endif
+
 void main() {
 #if defined(HAS_PASSTHROUGH)
-    g_finalColor = source(v_uv) * htmluiPost.params.x;
+    g_finalColor = sourceBox(v_uv) * htmluiPost.params.x;
     if (htmluiPost.params.w > 0.5){
         vec2 p = v_dst * htmluiPost.params.yz;
         vec2 inside = clamp(min(p - htmluiPost.texCoordMinMax.xy, htmluiPost.texCoordMinMax.zw - p) + 0.5, 0.0, 1.0);
@@ -89,7 +116,7 @@ void main() {
     float mask = texture(sampler2D(u_htmluiMaskTex, u_htmluiMask_smp), v_uv).a;
     g_finalColor = source(v_uv) * mask;
 #elif defined(HAS_DROP_SHADOW)
-    g_finalColor = htmluiPost.color * (source(v_uv).a * inRegion(v_uv));
+    g_finalColor = htmluiPost.color * shadowBox(v_uv);
 #elif defined(HAS_BLUR)
     vec4 w = htmluiPost.weights;
     g_finalColor = tap(-3.0, w.w) + tap(-2.0, w.z) + tap(-1.0, w.y) + tap(0.0, w.x) +
