@@ -1622,6 +1622,11 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
         lineCount++;
+        // S92: frames kept unchanged (no pass), the layer result cache and the composite's area
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %s, %ux MSAA, cache %u hits %.1f MiB, composite %.2f MP",
+                 ui.framesKept ? "kept" : "drawn", ui.samples, ui.layerCacheHits, (double)ui.layerCacheBytes / (1024.0 * 1024.0),
+                 (double)ui.compositePixels / 1.0e6);
+        lineCount++;
     }
 
     // S48: the game frozen by a hit-stop, and for how long still
