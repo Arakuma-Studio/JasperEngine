@@ -141,7 +141,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 ```
 
 - `format` and `version` are required; everything else has a default. Not JSON, another
-  format, a newer version or a Unity YAML `.anim` fail to load (JSON errors with `line:col`).
+  format, a newer version or a Unity YAML `.anim` fail to load (JSON errors with `line:col`). Import
+  a Unity `.anim` instead: `edit_animation {clip, create: {unity: "<absolute .anim path>"}}`.
 - Everything else is lenient: a bad key, track or event is dropped with a warning carrying its
   JSON path (`tracks[3].keys[2].value: expected [x, y, z]`) and the rest loads.
 - `guid` identifies the clip for references (the editor writes one into a clip without it).

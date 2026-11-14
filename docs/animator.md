@@ -267,3 +267,28 @@ states and transitions, `humanoid` and `transforms` masks), which share the vers
 are told apart by their members. The Inspector notes a converted file; the next edit saves it as
 version 2, keeping every member (what the engine does not read is written back as it was).
 `jasperengine-editor check --anims` reports them too.
+
+## Importing from Unity
+
+The runtime never reads Unity's YAML. The editor imports it: **Assets > Import Unity Animation...**
+(a `.anim`, `.controller` or `.mask` into the current folder), a drop of one into the Project window
+(it asks first), or MCP `create: {unity: "<absolute path>"}` on `edit_animation`,
+`edit_animator_controller` and `edit_avatar_mask`. Each import is one undo step and the Console (or
+the result's `unity` report) lists what did not map. Nothing is written into the Unity project.
+
+- **Clips** keep their position, rotation, Euler and scale curves, Transform, GameObject
+  `m_IsActive`, renderer material, Light, Camera and AudioSource float curves, keys with their
+  slopes and tangent modes, Loop Time, Start and Stop, and events (Unity's one parameter). Unity's
+  left-handed X is mirrored (`mirror_x: false` keeps the values). A clip with Bake Into Pose set
+  gets a `root_motion` block with those flags. Humanoid muscle curves are not imported: a clip of
+  only muscle curves is refused (use the clip of its model, which plays through the humanoid path).
+  Object reference curves (sprite swaps) and script fields are reported.
+- **Controllers** keep parameters, layers (weight, blending, mask), state machines with sub-state
+  machines, states (speed, cycle offset, their parameters, mirror, foot IK, tag), every kind of
+  transition with its conditions (Solo mutes the others, as in Unity) and 1D, 2D and Direct blend
+  trees. Their `.anim` motions and masks are found through the Unity project's GUIDs (the folder
+  above with `Assets/` and `ProjectSettings/`) and imported beside the controller; a later import
+  reuses them. A clip inside a model (`Hero.fbx`) is reported with its name: bring the model in and
+  set the state's clip to `<model>#<clip>`. Synced layers and state machine behaviours are reported.
+- **Masks** keep their humanoid body parts (the arm part also weighs the hand) and their transform
+  list: a listed transform with weight moves, the others do not, as in Unity.
