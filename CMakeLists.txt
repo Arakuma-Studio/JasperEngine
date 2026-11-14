@@ -943,6 +943,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpModelImport.cpp
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
@@ -1262,6 +1263,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/model/ModelCookQueue.cpp
     ${EDITOR_DIR}/model/ModelCooker.cpp
     ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/FbxImportQueue.cpp
     ${EDITOR_DIR}/model/ModelHeader.cpp
     ${EDITOR_DIR}/model/ModelImportSettings.cpp
     ${EDITOR_DIR}/model/ModelPreviewRaster.cpp

@@ -11,6 +11,7 @@
 #include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
+#include "profiler/Profile.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/BoneComponent.h"
@@ -127,6 +128,7 @@
 #include "util/ProjectUtils.h"
 #include "Out.h"
 #include "Stream.h"
+#include "imgui_internal.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -1897,6 +1899,10 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     const uint32_t childPropertiesSceneId = node.runtimeSceneId != 0 ? node.runtimeSceneId : node.childSceneId;
 
     pushNodeImGuiId(node);
+    if (showClippedRow(node, hasSearch)) {
+        popNodeImGuiId(node);
+        return;
+    }
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
 
@@ -1929,24 +1935,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         : nullptr;
     size_t instanceCount = instancedMesh ? instancedMesh->instances.size() : 0;
 
-    // Auto-expand nodes when searching to show matches
-    if (hasSearch && node.hasMatchingDescendant) {
-        ImGui::SetNextItemOpen(true);
-    } else if (!hasSearch && !node.children.empty()) {
-        // Model entities can exist for a few frames as leaves while their children load
-        // asynchronously. Initialize tree state only once children exist so imported
-        // model hierarchies start collapsed instead of inheriting an earlier leaf state.
-        ImGui::SetNextItemOpen(!node.isBone && !node.isPrefabRoot && !isModelWithChildren, ImGuiCond_Once);
-    }
-
-    if(!node.isScene && openParent == node.id) {
-        ImGui::SetNextItemOpen(true);
-        openParent = NULL_ENTITY;
-    }
-
-    if (revealOpenNodes.find(&node) != revealOpenNodes.end()) {
-        ImGui::SetNextItemOpen(true);
-    }
+    setNextOpenState(node, hasSearch, isModelWithChildren);
 
     // Push colors for visual feedback
     bool pushedHighlightColor = false;
@@ -2018,6 +2007,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeOpen = renamingNode
         ? ImGui::TreeNodeEx("##node", flags, "%s", node.icon.c_str())
         : ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
+    if (!node.isScene && !node.isChildScene) {
+        entityRowStep = ImGui::GetItemRectSize().y + ImGui::GetStyle().ItemSpacing.y;
+    }
     if (!node.isScene) UIProbe::item("hierarchy.node." + nodeLabel);
     if (dimInactive) {
         ImGui::PopStyleVar();
@@ -2958,6 +2950,69 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     popNodeImGuiId(node);
 }
 
+void editor::HierarchyWindow::setNextOpenState(const TreeNode& node, bool hasSearch, bool isModelWithChildren) {
+    // Auto-expand nodes when searching to show matches
+    if (hasSearch && node.hasMatchingDescendant) {
+        ImGui::SetNextItemOpen(true);
+    } else if (!hasSearch && !node.children.empty()) {
+        // Model entities can exist for a few frames as leaves while their children load
+        // asynchronously. Initialize tree state only once children exist so imported
+        // model hierarchies start collapsed instead of inheriting an earlier leaf state.
+        ImGui::SetNextItemOpen(!node.isBone && !node.isPrefabRoot && !isModelWithChildren, ImGuiCond_Once);
+    }
+
+    if(!node.isScene && openParent == node.id) {
+        ImGui::SetNextItemOpen(true);
+        openParent = NULL_ENTITY;
+    }
+
+    if (revealOpenNodes.find(&node) != revealOpenNodes.end()) {
+        ImGui::SetNextItemOpen(true);
+    }
+}
+
+bool editor::HierarchyWindow::showClippedRow(TreeNode& node, bool hasSearch) {
+    // scene and child scene rows are few and differ in height; the renamed row, the one being
+    // revealed and the one being dragged (its drag source must be submitted every frame) are drawn
+    if (node.isScene || node.isChildScene || entityRowStep <= 0.0f || revealTargetNode == &node || isRenaming(node)) {
+        return false;
+    }
+    const ImGuiID rowId = ImGui::GetID("##node");
+    if (ImGui::GetActiveID() == rowId || ImGui::IsRectVisible(ImVec2(1.0f, entityRowStep))) {
+        return false;
+    }
+
+    const ImGuiTreeNodeFlags flags = node.children.empty() ? ImGuiTreeNodeFlags_Leaf : ImGuiTreeNodeFlags_None;
+    bool isModelWithChildren = false;
+    if (!node.children.empty()) {
+        SceneProject* nodeSceneProject = project->getScene(getNodeSceneId(node));
+        isModelWithChildren = nodeSceneProject && nodeSceneProject->scene && nodeSceneProject->scene->findComponent<ModelComponent>(node.id);
+    }
+    setNextOpenState(node, hasSearch, isModelWithChildren);
+    const bool open = ImGui::TreeNodeUpdateNextOpen(rowId, flags) && !node.children.empty();
+    // the row's place (the item consumes the open state set above)
+    ImGui::Dummy(ImVec2(1.0f, entityRowStep - ImGui::GetStyle().ItemSpacing.y));
+
+    auto& sceneCollapsedEntities = collapsedEntities[getNodeSceneId(node)];
+    if (!node.children.empty() && !open) {
+        sceneCollapsedEntities.insert(node.id);
+    } else {
+        sceneCollapsedEntities.erase(node.id);
+    }
+
+    if (open) {
+        ImGui::TreePushOverrideID(rowId);
+        for (auto& child : node.children) {
+            showTreeNode(child);
+        }
+        ImGui::TreePop();
+    }
+    if (node.separator) {
+        ImGui::Separator();
+    }
+    return true;
+}
+
 void editor::HierarchyWindow::revealEntity(uint32_t sceneId, Entity entity) {
     revealRequest = {sceneId, entity};
 }
@@ -3483,9 +3538,9 @@ void editor::HierarchyWindow::showPartialLoadBanner(const SceneProject& scenePro
     ImGui::Separator();
 }
 
-void editor::HierarchyWindow::show(){
+void editor::HierarchyWindow::show(bool covered){
     windowFocused = false;
-    if (!windowOpen) {
+    if (!windowOpen || covered) {
         return;
     }
 
@@ -3554,12 +3609,15 @@ void editor::HierarchyWindow::show(){
     }
 
     const double nowTime = ImGui::GetTime();
+    const int frame = ImGui::GetFrameCount();
+    // The timed rebuild waits some frames too: a large scene's rebuild takes milliseconds, and
+    // in an editor slower than 0.5 s a frame it ran every frame (S98 E11)
     const bool rebuildTree =
         cacheSceneId != sceneProject->id ||
         cacheStructureVersion != sceneProject->structureVersion ||
         cacheEntityCount != sceneProject->entities.size() ||
         cacheChildSignature != childSignature ||
-        cacheBuildTime < 0.0 || (nowTime - cacheBuildTime) > 0.5;
+        cacheBuildTime < 0.0 || ((nowTime - cacheBuildTime) > 0.5 && frame - cacheBuildFrame >= HIERARCHY_TIMED_REBUILD_FRAMES);
 
     // root and sceneEntitiesSet are cached members reused across frames.
     TreeNode& root = cachedRoot;
@@ -3571,14 +3629,19 @@ void editor::HierarchyWindow::show(){
         cacheEntityCount = sceneProject->entities.size();
         cacheChildSignature = childSignature;
         cacheBuildTime = nowTime;
+        cacheBuildFrame = frame;
 
+        JE_PROFILE_SCOPE("Hierarchy Tree Rebuild");
         rebuildEntityTree(sceneProject, root, sceneEntitiesSet);
     }
 
     showToolbar();
     ImGui::BeginChild("StructureScrollRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
-    updateSearchAndSelectionOrder(root, rebuildTree);
+    {
+        JE_PROFILE_SCOPE("Hierarchy Search Order");
+        updateSearchAndSelectionOrder(root, rebuildTree);
+    }
 
     revealOpenNodes.clear();
     revealTargetNode = nullptr;
@@ -3590,9 +3653,15 @@ void editor::HierarchyWindow::show(){
     // the rows leave room on their left for the visibility gutter
     const float gutterWidth = visibilityGutterWidth();
     ImGui::Indent(gutterWidth);
-    showTreeNode(root);
+    {
+        JE_PROFILE_SCOPE("Hierarchy Rows");
+        showTreeNode(root);
+    }
     ImGui::Unindent(gutterWidth);
-    syncSceneWindowSelectionHierarchy(root);
+    {
+        JE_PROFILE_SCOPE("Hierarchy Scene Sync");
+        syncSceneWindowSelectionHierarchy(root);
+    }
     float treeLastCursorY = ImGui::GetCursorScreenPos().y;
 
     // The renamed row is hidden (filtered out, deleted): drop the rename
@@ -3732,9 +3801,12 @@ void editor::HierarchyWindow::show(){
         ImGui::EndDragDropTarget();
     }
 
-    showReplacePrefabPopup();
-    showRestructurePopup();
-    showTilemapImportPreview();
+    {
+        JE_PROFILE_SCOPE("Hierarchy Popups");
+        showReplacePrefabPopup();
+        showRestructurePopup();
+        showTilemapImportPreview();
+    }
 
     ImGui::End();
 

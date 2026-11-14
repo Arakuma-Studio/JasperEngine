@@ -1265,6 +1265,10 @@ void editor::Exporter::runExport() {
     if (!clearGenerated()) return;
     holdForTest();
     if (isCancelled()) { setError("Build cancelled"); return; }
+    // every FBX import lands on this thread, so the scenes' save on the main thread waits for and
+    // converts none (S98 REQ-32)
+    project->importFbxModels();
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
     if (!checkMissingAssets()) return;
     resolveShaderKeys();

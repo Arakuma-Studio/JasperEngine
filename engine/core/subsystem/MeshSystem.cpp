@@ -2190,6 +2190,35 @@ void MeshSystem::setModelLoadDelayForTest(int milliseconds){
     modelLoadTestDelayMs.store(std::max(0, milliseconds));
 }
 
+namespace {
+    std::atomic<bool> modelImportGateSet{false};
+    std::mutex modelImportGateMutex;
+    std::function<bool(const std::string&)> modelImportGate;
+}
+
+void MeshSystem::setModelImportGate(std::function<bool(const std::string& filename)> gate){
+    std::lock_guard<std::mutex> lock(modelImportGateMutex);
+    modelImportGateSet.store(static_cast<bool>(gate));
+    modelImportGate = std::move(gate);
+}
+
+bool MeshSystem::isModelImportPending(const std::string& filename){
+    if (!modelImportGateSet.load() || !isFbxModelFile(filename)){
+        return false;
+    }
+    // a cooked model loads in its place
+    CookedModelEntry cooked;
+    if (CookedModels::find(filename, cooked)){
+        return false;
+    }
+    std::function<bool(const std::string&)> gate;
+    {
+        std::lock_guard<std::mutex> lock(modelImportGateMutex);
+        gate = modelImportGate;
+    }
+    return gate && gate(filename);
+}
+
 std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj){
     const std::string key = getAsyncModelLoadKey(scene, filename);
     const uint64_t buildId = std::hash<std::string>{}(key);
@@ -7640,6 +7669,12 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
 
             // Retrying a file that cannot be read re-parses it every frame, forever.
             if (failedModelLoads.count(model.filename)){
+                model.needUpdateModel = false;
+                return false;
+            }
+            // An FBX whose import is still running is no failure: the editor runs the load once it
+            // lands (retryFailedModelLoads), so nothing is logged now
+            if (isModelImportPending(model.filename)){
                 model.needUpdateModel = false;
                 return false;
             }
