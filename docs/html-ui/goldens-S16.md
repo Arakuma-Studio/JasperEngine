@@ -49,3 +49,7 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |
 | `p1/rounded_clip_4x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | the same at four samples |
 | `p1/rounded_clip_nested` | `RenderClip.NestedRoundedClipsUseTheStencil` | three nested rounded clips: the stencil path |
+| `s92/clip_path_shapes_1x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | S92 R8: `clip-path` `inset() round`, `circle()` and `ellipse()` clipped in the shaders without a layer, a child crossing each shape, at one sample |
+| `s92/clip_path_shapes_4x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | the same at four samples |
+| `s92/u27_scaled_scroll` | `RenderClip.TextInScaledScrollWithFilterLayers` | S92 R11, the JasperArcade port's U27: a scaled panel's `overflow: hidden` list of filtered tiles and text, clipped by a scissor (no stencil) |
+| `s92/u27_rotated_scroll` | `RenderClip.RotatedClipKeepsStencil` | the same list turned: its clip stays a stencil mask |
