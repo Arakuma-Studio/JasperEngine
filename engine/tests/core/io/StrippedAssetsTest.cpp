@@ -12,6 +12,14 @@
 #include "io/File.h"
 #include "io/FileData.h"
 #include "io/StrippedAssets.h"
+#include "player/ContentManifest.h"
+#include "player/GameRunner.h"
+#include "player/PlayerConfig.h"
+#include "serialization/CookedScene.h"
+
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 using namespace jasperengine;
 
@@ -41,4 +49,29 @@ TEST(StrippedAssets, WithoutAListNothingIsExplained) {
     StrippedAssets::set({});
     EXPECT_TRUE(StrippedAssets::empty());
     EXPECT_FALSE(StrippedAssets::explainMissing("stripping-test/b.png"));
+}
+
+// A Compile build reads game.json through player::readGameConfig (its generated main.cpp): the
+// content-manifest.json beside it gives the list, as the prebuilt player's own check does
+TEST(StrippedAssets, ACompileBuildReadsTheListBesideItsGameJson) {
+    StrippedAssets::set({});
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "jasper-stripped-compile-test";
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream(dir / "game.json") << player::PlayerConfig().toJson().dump(2);
+        player::ContentManifest manifest;
+        manifest.engineVersion = "v1.0.0";
+        manifest.contentFormatVersion = cook::contentFormatVersion();
+        manifest.method = "compile";
+        manifest.stripped["stripping-test/b.png"] = "unreferenced";
+        std::ofstream(dir / "content-manifest.json") << manifest.toJson().dump(2);
+    }
+    player::PlayerConfig game;
+    std::string error;
+    EXPECT_TRUE(player::readGameConfig(dir.generic_string() + "/", game, error)) << error;
+    EXPECT_FALSE(StrippedAssets::empty());
+    EXPECT_TRUE(StrippedAssets::explainMissing("stripping-test/b.png"));
+    StrippedAssets::set({});
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
