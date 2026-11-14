@@ -93,6 +93,8 @@ namespace jasperengine {
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
+        // What the Profiler table holds for the state (Profiler.gpuTiming's GPU timing), let go
+        static void releaseProfilerState();
         static void registerGameplayClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
