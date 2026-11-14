@@ -6,6 +6,7 @@ the Lua AudioSourceEffect sets and moves a parameter the component then holds.
 """
 
 from audio_refs import write_tone
+import harness
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Audio Source Effects"}
@@ -77,7 +78,12 @@ async def test_lua_moves_a_parameter_in_play(ed: Editor):
         got = (await ed.call("eval_lua", code="""
             return object('Radio', 'AudioSource'):getEffect(1):getParameter('cutoff')"""))["values"][0]
         ed.check(abs(got - 2000) < 1, f"the timed change ended at 2000 Hz: {got}")
-        runtime = await ed.call("get_runtime_entity", entity="Radio")
-        ed.check(abs(audio_of(runtime)["effects"][0]["params"]["cutoff"] - 2000) < 1, "the component holds the value heard")
+        runtime = await ed.call("get_runtime_entity", entity="Radio", include_script_state=False)
+        # the list whole, or flattened into its elements' paths
+        effects = harness.find_key(runtime, "effects")
+        params = effects[0]["params"] if isinstance(effects, list) and effects else harness.find_key(runtime, "effects[0].params")
+        cutoff = params.get("cutoff") if isinstance(params, dict) else harness.find_key(runtime, "effects[0].params.cutoff")
+        ed.check(isinstance(cutoff, (int, float)) and abs(cutoff - 2000) < 1,
+                 f"the component holds the value heard: {harness.find_key(runtime, 'components')}")
     finally:
         await ed.call("play", action="stop")

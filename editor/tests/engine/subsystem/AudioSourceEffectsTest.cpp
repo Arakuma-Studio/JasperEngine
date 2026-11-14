@@ -295,5 +295,7 @@ TEST_F(AudioSourceEffectsBench, LowPassCostOn32Voices) {
     std::printf("[bench] 32 voices, 1 s at 48 kHz on the null driver: %.2f ms plain, %.2f ms with a low-pass each (x%.3f)\n",
                 plain, filtered, ratio);
     const double slack = editor::test::perfSlack();
-    if (slack > 0.0) EXPECT_LE(ratio, 1.15 * slack) << "REQ-36";
+    if (slack > 0.0) {
+        EXPECT_LE(ratio, 1.15 * slack) << "REQ-36";
+    }
 }
