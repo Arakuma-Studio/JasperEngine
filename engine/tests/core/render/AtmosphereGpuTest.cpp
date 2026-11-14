@@ -724,7 +724,7 @@ protected:
         room.light.setConeAngle(60.0f, 80.0f);
         room.light.setRange(40.0f);
         room.light.setColor(1.0f, 0.9f, 0.75f);
-        room.light.setIntensity(2000.0f);
+        room.light.setIntensity(300.0f);
         room.light.setShadows(true);
 
         room.fog.setType(FogType::HEIGHT);
