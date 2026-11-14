@@ -1951,7 +1951,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `setColor(r, g, b)`, `setColor(r, g, b, a)`, `setColor(Vector4)` | method |
 | `alpha` | rw |
 | `enabled` | rw |
-| `setTexture(path)` | method |
+| `setTexture(path)` | method: submesh 0's main texture: the shader's `@texture ... main` (else its first `@texture`) for a custom or library shader, `baseColorTexture` for the built-in Lit |
+| `setShaderTexture(uniform, path [, submesh])`, `getShaderTexture(uniform [, submesh])` | methods: a `@texture` of the submesh's shader in its material (`""` back to the default; submesh 0 when not given) |
+| `setPropertyBlock(block [, submesh])`, `getPropertyBlock([submesh])` | methods: the Mesh's `MaterialPropertyBlock` (or one submesh's, which wins); `getPropertyBlock` gives a copy; an empty block removes them |
 | `normalTexture` | rw path of submesh 0's normal map (`""` none; assigning `""` removes it) |
 | `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
@@ -1959,7 +1961,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods (a model made of parts: 4.8) |
 | `vertexCount` | ro (Unity's `Mesh.vertexCount`) |
-| `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
+| `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods: a value under its materials' parameters (a material setting the same name wins, and a warning says so): to win over the material use a `MaterialPropertyBlock` |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
 
 `Material` (rw): `baseColorFactor`, `metallicFactor`, `roughnessFactor`, `alphaMode`,
@@ -2012,6 +2014,19 @@ hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondar
 `hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
 E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
+`MaterialPropertyBlock()` (Unity's, saved with the mesh here): values and textures by the
+shader's member or `@texture` name, over the material's; the built-in Lit takes
+`baseColorFactor`, `emissiveFactor` and `baseColorTexture`. Methods `setFloat(name, n)`,
+`setVector(name, Vector4|Vector3|Vector2)`, `setColor(name, Vector4|Vector3)` (sRGB in, the shader
+reads linear), `setTexture(name, path)` (`""` removes it), `getFloat`, `getVector`, `getColor`
+(sRGB), `getTexture`, `hasProperty(name)`, `clear()`, `isEmpty()`. Meshes with equal blocks still
+batch together. E.g. `local b = MaterialPropertyBlock(); b:setColor("baseColor", Vector4(1, 0.5,
+0, 1)); mesh:setPropertyBlock(b)`.
+`blendMode = MaterialBlendMode.CUSTOM` blends with the material's own `blendSrc`, `blendDst`,
+`blendSrcAlpha`, `blendDstAlpha` (`MaterialBlendFactor.*`: `ZERO`, `ONE`, `SRC_COLOR`,
+`SRC_ALPHA`, `DST_COLOR`, `DST_ALPHA` and the `ONE_MINUS_` forms) and `blendOp`
+(`MaterialBlendOp.*`: `ADD`, `SUBTRACT`, `REVERSE_SUBTRACT`, `MIN`, `MAX`; Min and Max ignore the
+factors): Unity's `Blend DstColor SrcColor` is `blendSrc = DST_COLOR, blendDst = SRC_COLOR`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
 them; on a mesh of several submeshes every After pass draws after all of its submeshes and
@@ -3236,7 +3251,10 @@ makes a GameObject with one.
   `getStoredWidth()`, `getStoredHeight()` (what the GPU holds), `isCompressed()`,
   `getGpuFormat()` (`"BC7"`, `"ASTC_6x6"`, `"RGBA8"`...), `getData()` (the pixels: empty, with a
   warning once, for a GPU-compressed texture; set Read/Write in its import settings, or reference
-  it from a CPU slot such as a terrain height map).
+  it from a CPU slot such as a terrain height map); ro `ready` (its GPU texture exists). A mesh
+  given a texture keeps drawing its old one until the new one is ready. To swap without that
+  frame, preload: keep `local t = Texture(path); t:load()` for the scene, and swap once
+  `t.ready` (the first draw of it, or `t:getRender()`, makes the GPU texture).
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `Terrain` queries the surface at world X, Z (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) and, with Allow Runtime Edits on, edits it (`applyOps` with `edit_terrain`'s op tables, `getHeights`, `setHeights`): `docs/scripting/terrain.md`.
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects

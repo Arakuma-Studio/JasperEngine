@@ -5242,4 +5242,58 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
+    {
+        "id": "guard_property_override_per_object_colour",
+        "kind": "guard",
+        "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
+                         "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
+                         "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
+        "text_at_issue": "set_shader_uniform: override 'A Mesh's Property Override: wins over its materials; with submesh, that submesh's.'",
+        "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
+        "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nCrate [30] mesh transform\nCrate2 [31] mesh transform",
+                                                   {"entities": [{"id": 30, "path": "Crate"}, {"id": 31, "path": "Crate2"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 31 \"Crate2\": transform, mesh (submeshes[0] material materials/crate.material, "
+                                               "shader library:unlit, shaderParams {baseColor: [1, 1, 1, 1]}).", {"id": 31, "name": "Crate2"})},
+            {"tool": "get_shader_uniforms", "result": ok("library:unlit on Crate2 submesh 0: baseColor [1, 1, 1, 1] (own), tiling [1, 1, 0, 0] (shader_default).",
+                                                        {"parameters": [{"member": "baseColor", "source": "own", "effective": [1, 1, 1, 1]}]})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set baseColor on Crate2 (Property Override).", {"entity": {"id": 31, "name": "Crate2"}, "property": "propertyOverrides.values",
+                                                                 "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set baseColor on Crate2 (submesh 0 material).", {"entity": {"id": 31, "name": "Crate2"}, "property": "submeshes[0].material.shaderParams",
+                                                                  "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"Crate2\".", {"entity": {"id": 31}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}],
+                   "must_not_call": ["update_material"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_shadowed_mesh_uniform_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F8): set_shader_uniform's next says a Mesh value is hidden by its material's parameter "
+                         "of the same name and names override: true; the agent sets the value again as an override.",
+        "text_at_issue": "set_shader_uniform next: 'Submesh 0's material sets 'speed', which wins over this value: set it again "
+                         "with override: true (a Property Override) to win.'",
+        "source": "S94 F8, ARCADE ledger R15 (a silent failure)",
+        "prompt": "Set the Conveyor's shader uniform speed to 3.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nConveyor [40] mesh transform", {"entities": [{"id": 40, "path": "Conveyor"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 40 \"Conveyor\": transform, mesh (customShader shaders/belt, submeshes[0] material "
+                                               "shaderParams {speed: 1}).", {"id": 40, "name": "Conveyor"})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set speed on Conveyor (Property Override).", {"entity": {"id": 40}, "property": "propertyOverrides.values", "name": "speed",
+                                                               "declared": True, "value": [3, 0, 0, 0]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set speed on Conveyor.", {"entity": {"id": 40}, "property": "shaderUniforms", "name": "speed", "declared": True,
+                                           "value": [3, 0, 0, 0],
+                                           "next": "Submesh 0's material sets 'speed', which wins over this value: set it again with "
+                                                   "override: true (a Property Override) to win."})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
+        "max_turns": 8,
+    },
 ]
