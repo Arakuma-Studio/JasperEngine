@@ -712,6 +712,7 @@ TEST(Physics3DBody, ZeroHalfHeightCapsuleIsSphere) {
     EXPECT_NEAR(world.rb(ball).getPosition().y, sphereY, 1e-3f);
     EXPECT_NEAR(world.rb(tapered).getPosition().y, sphereY, 1e-3f);
     EXPECT_THROW(world.rb(ball).setColliderHalfHeight(0, -1.0f), std::runtime_error);
+}
 
 // ---- S96 REQ-35: the 3D world settings ---------------------------------------------------------
 
