@@ -10,6 +10,7 @@
 #include "support/TestTempDir.h"
 
 #include "Exporter.h"
+#include "export/ExportFiles.h"
 #include "Project.h"
 #include "platform/AndroidIcons.h"
 #include "platform/AndroidPackager.h"
@@ -73,7 +74,9 @@ namespace android_icons_test {
             ASSERT_EQ(round.width, density.legacyPx) << density.folder;
             EXPECT_EQ(round.alphaAt(0, 0), 0) << density.folder << ": the corner is outside the circle";
             EXPECT_EQ(round.alphaAt(density.legacyPx / 2, density.legacyPx / 2), 255) << density.folder;
-            if (!icon.rgba.empty()) EXPECT_EQ(icon.alphaAt(0, 0), 255) << density.folder << ": the square one keeps its corner";
+            if (!icon.rgba.empty()) {
+                EXPECT_EQ(icon.alphaAt(0, 0), 255) << density.folder << ": the square one keeps its corner";
+            }
         }
     }
 
@@ -99,12 +102,12 @@ TEST(AndroidIcons, WritesEveryDensityAndRound) {
 
     // the source export: the template's mipmap-*dpi/ic_launcher.png replaced, roundIcon declared
     const fs::path target = dir / "export";
-    fs::copy(repo / "engine" / "workspaces" / "androidstudio", target / "workspaces" / "androidstudio", fs::copy_options::recursive);
+    std::string error;
+    ASSERT_TRUE(exportfiles::mirrorTree(repo / "engine" / "workspaces" / "androidstudio", target / "workspaces" / "androidstudio", true, error)) << error;
     const fs::path java = fs::path("platform") / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
     fs::create_directories((target / java).parent_path());
     fs::copy_file(repo / "engine" / java, target / java);
     Exporter exporter;
-    std::string error;
     ASSERT_TRUE(ExporterTestAccess::writeAndroidProjectSettings(exporter, project.get(), target, error)) << error;
     const fs::path res = target / "workspaces" / "androidstudio" / "app" / "src" / "main" / "res";
     expectDensities(res, "ic_launcher");

@@ -9,6 +9,7 @@
 #include "support/TestTempDir.h"
 
 #include "Exporter.h"
+#include "export/ExportFiles.h"
 #include "Project.h"
 #include "Stream.h"
 #include "Workspace.h"
@@ -45,7 +46,7 @@ namespace android_template_test {
     // the export's Android Studio project: the template and MainActivity copied as copyEngine does,
     // then written from the project's settings; app/build.gradle's text
     std::string exportGradle(Project& project, const fs::path& target, std::string& error) {
-        fs::copy(workspace, target / "workspaces" / "androidstudio", fs::copy_options::recursive);
+        if (!exportfiles::mirrorTree(workspace, target / "workspaces" / "androidstudio", true, error)) return {};
         const fs::path java = fs::path("platform") / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
         fs::create_directories((target / java).parent_path());
         fs::copy_file(repo / "engine" / java, target / java);
@@ -147,8 +148,8 @@ TEST(AndroidTemplate, PinsTheImagesNdkAndCMake) {
     const std::string gradle = TestTempDir::read(workspace / "app" / "build.gradle");
     const std::string docker = TestTempDir::read(repo / "docker" / "android.Dockerfile");
     std::smatch ndk, cmake;
-    ASSERT_TRUE(std::regex_search(gradle, ndk, std::regex(R"(ndkVersion = "([0-9.]+)")"))) << gradle;
-    ASSERT_TRUE(std::regex_search(gradle, cmake, std::regex(R"(\n\s+version = "([0-9.]+)")"))) << gradle;
+    ASSERT_TRUE(std::regex_search(gradle, ndk, std::regex(R"re(ndkVersion = "([0-9.]+)")re"))) << gradle;
+    ASSERT_TRUE(std::regex_search(gradle, cmake, std::regex(R"re(\n\s+version = "([0-9.]+)")re"))) << gradle;
     EXPECT_NE(docker.find("ARG ANDROID_NDK=" + ndk[1].str()), std::string::npos) << docker;
     EXPECT_NE(docker.find("ARG ANDROID_CMAKE=" + cmake[1].str()), std::string::npos) << docker;
     EXPECT_NE(docker.find("\"ndk;${ANDROID_NDK}\" \"cmake;${ANDROID_CMAKE}\""), std::string::npos) << docker;

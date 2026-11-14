@@ -781,3 +781,28 @@ Avoiding conflicts:
   with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
   Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
   1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.
+- **WP-2, Android end to end** (`ANDROID_PACKAGING_SOURCE=1 tools/ci/android_packaging.sh development`,
+  local KVM host, x86_64 development runtime from `tools/build.sh players`): every prebuilt check
+  passed, step 3b included: `_Onboarding/level.json` in the APK and in `game_content` of the bundle,
+  `.gitkeep` left out with `W-ANDROID-ASSET-IGNORED`, package `com.jasperengine.packaging.dbg`,
+  `bundletool dump manifest --module game_content` shows `dist:install-time`, the universal APK has
+  all 62 content files, and `JASPER_TEST_ANDROID_DROP_ENTRY` fails the APK and the bundle naming the
+  entry. The emulator ran the prebuilt APK and the bundle (install-time pack) to the golden (0.07 %).
+  The source export (`export --platform android`: GLES3 shaders only) built with Gradle: the APK, then
+  the bundle in a run of its own with the content in `game_content`; its debug native code is `-O2`
+  (2,005 compile commands, no `-O0`, `JASPERENGINE_DEVELOPMENT_BUILD=1`). On the emulator both source
+  packages draw the golden (0.00 %) and still fail the GLES log check with S67's open
+  `GL_FRAMEBUFFER_STATUS_INCOMPLETE_MULTISAMPLE`; one bundle run also met an ANR dialog on the loaded
+  host (frames of 2.4-6.6 s), and its rerun drew the golden.
+- **WP-2, Gradle template without native code** (`./gradlew ... -x configureCMake* -x buildCMake*` in
+  the Android image): `bundleDebug` puts the content in `game_content`, `assembleDebug` in the APK,
+  both in one run keep it in `base` and say so; a hidden file is left out and named. Red control:
+  with `ignoreAssetsPattern` removed, AGP drops `_Onboarding/` and the build fails with
+  "app-debug.apk lacks 1 file(s) of the game's content (assets/): _Onboarding/a.txt".
+- **WP-2, image:** the rebuilt `docker/android.Dockerfile` image ran the player and game builds with
+  no NDK or CMake download (Gradle's log has no "Installing"). `tools/ci/check_android_image.sh`
+  passes in it (`ndk;28.2.13676358`, `cmake;3.22.1`) and fails in the image before (red: neither is
+  installed).
+- **WP-2, `export --platform`:** `test_call_cli.py::test_export_platform_android` passes (the file:
+  13 passed, 1 skipped by design); red: an editor without the change (s98-4's build) exits with
+  "Unknown argument: --platform".

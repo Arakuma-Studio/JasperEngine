@@ -75,7 +75,7 @@ TEST(IosTemplate, OrientationsFromPresentation) {
     settings.bundleIdentifier = "com.example.game";
     settings.presentation.defaultOrientation = ScreenOrientation::AutoRotation;
     settings.presentation.allowedOrientations = bits({ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight});
-    settings.runtimeDir = fakeRuntime(dir);
+    settings.runtimeDir = fakeRuntime(dir.path());
     settings.projectDir = dir / "project";
     std::string error;
     ASSERT_TRUE(platform::stageIosProject(settings, error)) << error;
