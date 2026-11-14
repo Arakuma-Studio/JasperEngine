@@ -642,6 +642,16 @@ JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Rende
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 ```
 
+An HTML UI frame that records what the last drawn one did is not replayed (S92 R1). A test that
+counts a replay's passes, draws or caches frame after frame turns that off for its scope
+(`FrameReuseMode replayed(false)`, `TestRenderCommon.h`). `JASPER_HTMLUI_VERIFY_KEPT=1` makes the
+golden harnesses draw a second frame and compare every kept frame with a fresh replay; a
+difference fails the comparison and logs `[HTML UI] kept frame differs`:
+
+```sh
+JASPER_HTMLUI_VERIFY_KEPT=1 HTMLUI_TEST_ARGS='--gtest_filter=*Golden*:RenderP1*:RenderPrimitive.*:RenderClip.*:RenderFilter*' tools/build.sh htmlui-tests
+```
+
 The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14
 AC8: every `GpuTextureFormat` as a cooked 32 px KTX2 with the CPU decode of each level, which
 `TextureFormatsGpu` compares the GPU's sampling with) come from the editor's encoders and

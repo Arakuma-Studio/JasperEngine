@@ -57,7 +57,7 @@ void UIDocumentSystem::setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimiti
     for (HtmlUIContext* context : HtmlUI::getContexts()){
         if (primitivesChanged && context->getRmlContext())
             context->getRmlContext()->DirtyBackgrounds();
-        context->markUpdated();
+        context->requestRedraw();
     }
 }
 

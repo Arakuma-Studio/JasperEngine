@@ -784,4 +784,48 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 
 ## Deviations (implementation record)
 
-(empty: filled while implementing, with the red-control numbers of AC10, AC20 and AC21)
+### S92-A (frame reuse and tile composite)
+
+- **AC10 red control.** `RenderLayerCost.ArcadePatterns` on `2601cb641` (the first commit: main's
+  renderer with the new statistics), glcore (llvmpipe), 1280x720, pixel ratio 1. Passes per frame,
+  cold / warm / idle:
+
+  | Fixture | 4 samples | 1 sample |
+  |---|---|---|
+  | `static` | 1 / 1 / 1 | 1 / 1 / 1 |
+  | `rounded-gradient` | 12 / 12 / 12 | 10 / 10 / 10 |
+  | `btn` | 15 / 15 / 15 | 13 / 13 / 13 |
+  | `card` | 32 / 32 / 32 | 28 / 28 / 28 |
+  | `inset-clip` | 12 / 12 / 12 | 10 / 10 / 10 |
+  | `cards4` | 128 / 128 / 128 | 112 / 112 / 112 |
+  | `o2-frame` | 1 / 1 / 1 | 1 / 1 / 1 |
+
+  S16-F5 already draws the O2 frame's gradients (four stops at most) without a layer. With S92-A
+  every idle cell is 0 passes, 0 draws, `framesKept` 1 (asserted); cold and warm are unchanged until
+  B1 and B2 land.
+- **AC2's oracle.** The image after each change is compared byte for byte with a fresh replay of
+  the same frame (frame reuse off, same clock), not with a second document loaded in that state:
+  it is the image the frame would have without R1, which is what a stale frame would differ from.
+  Glyph page growth and the live sources (video, effect on a running clock, `<particle-system>`)
+  are separate tests (`GlyphPageGrowthChangesTheSignature`, `LiveSourcesDrawEveryFrame`,
+  `ParticleSystemElementTest.FramesWithParticlesAreAlwaysDrawn`).
+- **R2's render-target source.** No HTML UI texture wraps an engine render target today. Any
+  EXTERNAL texture that is not a glyph page's variant reports `LIVE_RENDER_TARGET`, so one added
+  later is live without further work.
+- **R3 timing.** GL compares a kept frame with its replay at once; Vulkan, Metal and D3D11 read back
+  once the frame is committed (the next frame, or `RmlRenderer::checkKeptFrame`). The harnesses skip
+  the verification frame after a frame with a live source (it is never kept, and a stateful effect
+  would step).
+- **R4 tiles.** A layer composited into layer 0 marks what its own draws covered, spread by its
+  filters (6 sigma of a blur, a drop shadow's offset), within the composite's scissor; a backdrop
+  or an effect filter marks the whole scissor. The tile vertex buffer is written at most once a
+  sokol frame; a second change in the same frame composites the whole quad.
+- **R5 plan.** The plan is per replay position (an op of the batched plan, else a command). A pass
+  stores its depth-stencil only when a stencil use follows the next position that surely starts
+  another pass; one with no stencil use after it also loads `DONTCARE`. A depth-stencil stored
+  `DONTCARE` and bound again is cleared and its mask version reset, so a wrong guess costs a mask
+  redraw, never a wrong clip. AC5's bound is checked against the same frame with every
+  depth-stencil stored (`setDepthStencilDiscardForTesting(false)`): fewer stores, the same image.
+- **R1 and the replay tests.** Tests that count a replay's passes, draws or run-cache hits on
+  repeated identical frames now turn frame reuse off for their scope (`FrameReuseMode`), and the S16
+  benchmarks replay every frame (`S16Mode`); R33 is measured with reuse on and off.

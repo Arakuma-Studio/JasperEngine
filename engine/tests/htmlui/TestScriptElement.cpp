@@ -7,6 +7,8 @@
 
 #include "TestScriptCommon.h"
 
+#include "RmlRenderer.h"
+
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -351,6 +353,10 @@ TEST_F(ScriptElementTest, DocumentApi){
 // S16 R28 (AC18): UIDocument:getRenderStats() is the HtmlUIRenderStats of the document's context,
 // every field by its name, the same values as the C++ API
 TEST_F(ScriptElementTest, RenderStats){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    const bool reuse = RmlRenderer::isFrameReuse();
+    RmlRenderer::setFrameReuseForTesting(false);
+    struct Restore { bool on; ~Restore(){ RmlRenderer::setFrameReuseForTesting(on); } } restore{reuse};
     GpuEnvironment::drawFrames(3);
     const HtmlUIRenderStats stats = document->getRenderStats();
     EXPECT_GT(stats.drawCalls, 0u);

@@ -1498,7 +1498,10 @@ void RmlRenderer::applyClipEnable(const Command& command, int32_t scope){
 }
 
 void RmlRenderer::executePlan(){
+    // S92 R5: which passes need their depth-stencil (replayPosition follows the ops)
+    planDepthStencil();
     for (const ReplayOp& op : replayOps){
+        replayPosition = (size_t)(&op - replayOps.data());
         if (op.kind == ReplayOp::Kind::RUN){
             drawRun(batchRuns[op.index]);
             continue;
@@ -1516,6 +1519,7 @@ void RmlRenderer::executePlan(){
 void RmlRenderer::replayScoped(){
     int32_t scope = -1;
     for (size_t ci = 0; ci < commands.size(); ci++){
+        replayPosition = ci;
         const Command& c = commands[ci];
         if (c.type == CommandType::CLIP_ENABLE){
             scope = c.flag ? scopeOfCommand[ci] : -1;

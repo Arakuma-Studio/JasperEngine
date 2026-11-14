@@ -1397,6 +1397,14 @@ void RmlRenderer::endPass(bool resolve){
             r.stale = Rml::Rectanglei::MakeInvalid();
     }
     pass.endRenderPass();
+    // S92 R5: what a DONTCARE store left is unknown
+    if (activeKind == TargetKind::LAYER && activeDsDiscard){
+        if (activeDsAttachment)
+            discardedRegionDs.push_back(activeDsAttachment);
+        else
+            sharedDsDiscarded = true;
+    }
+    activeDsDiscard = false;
     activeRegions = nullptr;
     activeKind = TargetKind::NONE;
     activeIndex = -1;
@@ -1410,8 +1418,39 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     if (!(target && target->checkedThisFrame(framebuffer)) && !framebuffer.isCreated())
         return false;
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    // S92 R5: a layer's depth-stencil (layer 0's shared one, or a region layer's own) is stored
+    // only when a later pass of the plan tests it, loaded only when this one does
+    activeDsDiscard = false;
+    activeDsAttachment = nullptr;
+    if (kind == TargetKind::LAYER){
+        activeDsAttachment = isRegionLayer(index) ? frames[(size_t)index].framebuffer : nullptr;
+        if (dsPlanned){
+            const size_t position = std::min(replayPosition, dsFlags.size());
+            if ((int64_t)position > dsLastStencil){
+                depthStencilLoad = LoadAction::DONTCARE;
+                activeDsDiscard = true;
+            }else if ((int64_t)dsNextBreak[position] > dsLastStencil){
+                activeDsDiscard = true;
+            }
+        }
+        // stored DONTCARE earlier in the frame, yet read: cleared, its clip mask drawn again
+        const bool discarded = activeDsAttachment ? std::find(discardedRegionDs.begin(), discardedRegionDs.end(), activeDsAttachment) != discardedRegionDs.end()
+                                                  : sharedDsDiscarded;
+        if (discarded && depthStencilLoad == LoadAction::LOAD){
+            depthStencilLoad = LoadAction::CLEAR;
+            if (activeDsAttachment){
+                discardedRegionDs.erase(std::remove(discardedRegionDs.begin(), discardedRegionDs.end(), activeDsAttachment), discardedRegionDs.end());
+                frames[(size_t)index].maskVersion = 0;
+            }else{
+                sharedDsDiscarded = false;
+                sharedMaskVersion = 0;
+            }
+        }
+        if (!activeDsDiscard)
+            stats.depthStencilStores++;
+    }
     // ignored by a pass without a depth-stencil attachment
-    pass.setDepthStencilActions(depthStencilLoad, StoreAction::STORE, 1.0f, 0);
+    pass.setDepthStencilActions(depthStencilLoad, activeDsDiscard ? StoreAction::DONTCARE : StoreAction::STORE, 1.0f, 0);
     // its name in the frame stats' pass list (JASPERENGINE_FRAME_STATS)
     pass.setLabel(kind == TargetKind::LAYER ? "html ui layer" : (kind == TargetKind::POSTPROCESS ? "html ui post" : "html ui"));
     pass.startRenderPass(&framebuffer.getRender());
@@ -1435,6 +1474,9 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
                                  : viewportSized ? fullRect(target->getWidth(), target->getHeight())
                                                  : fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
     activeFull = full;
+    // S92 R6: the render area of every layer and post-process pass (layer 0's are the document's)
+    if ((kind == TargetKind::LAYER && index > 0) || kind == TargetKind::POSTPROCESS)
+        stats.layerPixels += (uint32_t)(full.Width() * full.Height());
     // sg_begin_pass sets both to the whole framebuffer on every backend (sokol_gfx.h: "sg_begin_pass()
     // will reset both the viewport and scissor rectangles"): applying them again was two backend
     // calls a pass, at once overridden by the first draw's
@@ -3132,6 +3174,8 @@ bool RmlRenderer::isReady() const{
 
 void RmlRenderer::abortFrame(){
     endPass();
+    // what the target holds is not known any more (S92 R1)
+    keptValid = false;
     // region layers still pushed go back to the pool (P7-F2)
     for (size_t i = 1; i < frames.size(); i++){
         if (frames[i].pool >= 0 && target)
@@ -3202,11 +3246,15 @@ void RmlRenderer::replayCommands(){
     // unbatched with SDF primitives: rounded clips the shaders can do are analytic (S16 R6)
     if (primitivesFrame){
         planClipScopes();
+        planDepthStencil();
         replayScoped();
         return;
     }
-    for (const Command& c : commands)
-        replayCommand(c);
+    planDepthStencil();
+    for (size_t i = 0; i < commands.size(); i++){
+        replayPosition = i;
+        replayCommand(commands[i]);
+    }
 }
 
 void RmlRenderer::replayCommand(const Command& c){
@@ -3302,8 +3350,17 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         abortFrame();
     }
 
+    // S92 R3: the last kept frame's comparison, before anything draws into its target
+    checkKeptFrame();
+
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
+    lastFrameKept = false;
+    dsPlanned = false;
+    replayPosition = 0;
+    activeDsDiscard = false;
+    sharedDsDiscarded = false;
+    discardedRegionDs.clear();
     transformSet = false;
     frameNumber = SystemRender::getFrameCount();
     // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
@@ -3410,18 +3467,26 @@ bool RmlRenderer::endFrame(){
         return false;
     }
 
-    // the recorded frame, drawn in one go
+    // the recorded frame, drawn in one go, unless it is the frame the target holds (S92 R1)
     lastFrameCommandCount = 0;
+    const bool recorded = recording;
     if (recording){
         recording = false;
         lastFrameCommandCount = commands.size();
+        if (keepRecordedFrame()){
+            finishKeptFrame();
+            return true;
+        }
+        skippedBefore = skippedWork();
         replayCommands();
     }
 
     if (layersSize != 1)
         Log::error("[HTML UI] a frame ended with %d layers pushed", layersSize - 1);
 
-    // layer 0 is cleared even when nothing was drawn, and resolved
+    // layer 0 is cleared even when nothing was drawn, and resolved (past every planned position:
+    // these passes need no depth-stencil)
+    replayPosition = dsFlags.size();
     layersSize = std::max(layersSize, 1);
     ensureLayerCleared(0);
     if (Framebuffer* layer = target->getLayer(0))
@@ -3436,15 +3501,9 @@ bool RmlRenderer::endFrame(){
     frames[0].rect = standardFrame();
     maskOps.clear();
     target->trimRegions();
-
-    stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);
-    stats.pipelineApplies = (uint32_t)(SystemRender::getPipelineApplies() - frameAppliesStart);
-    lastFrameDrawCount = stats.drawCalls;
-    // the glyph atlas is shared by every context: its size and the distance glyphs it still makes
-    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
-    stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
-    stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
-    stats.liveSources = frameLiveSources;
+    dsPlanned = false;
+    rememberDrawnFrame(recorded);
+    closeFrameStats();
 
     frameState = FrameState::NONE;
     target = nullptr;
@@ -3464,6 +3523,10 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
 bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
                                 int msaaSamples){
     if (!isReady() || !source.isCreated())
+        return false;
+    // S92 R4: the last frame's tiles when they are of this image; none written, nothing to draw
+    const bool tiled = !tilesFull && tileSource == &source && tileVertexBuffer.isCreated();
+    if (tiled && tileQuads == 0)
         return false;
 
     ObjectRender* object = &compositeObject;
@@ -3486,7 +3549,18 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
     object->applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
     object->applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
-    object->draw(0, 6, 1);
+    if (tiled){
+        // S92 R4: the tiles the frame wrote, one draw (the image of the whole quad: the rest of the
+        // target is transparent)
+        object->replaceVertexBuffer(&compositeVertexBuffer, &tileVertexBuffer, 0);
+        object->setIndexBuffer(&tileIndexBuffer, 0);
+        object->draw(0, tileQuads * 6, 1);
+        object->replaceVertexBuffer(&compositeVertexBuffer, &compositeVertexBuffer, 0);
+        object->resetIndexBuffer();
+    }else{
+        object->draw(0, 6, 1);
+    }
+    compositeDraws++;
 
     return true;
 }
@@ -3534,6 +3608,15 @@ void RmlRenderer::releaseGpuResources(){
     destroyPipelineObjects();
     destroyGeometryBuffers();
     destroyGatherPages();
+    // S92: no frame is kept across a view loss; the tiles and the scratch target go with it
+    keptValid = false;
+    keptTarget = nullptr;
+    tilesFull = true;
+    tileSource = nullptr;
+    destroyTileBuffers();
+    verifyPending = false;
+    verifyKeptTarget = nullptr;
+    verifyTarget.reset();
 
     // the handles stay valid for RmlUi, which releases them (Rml::ReleaseTextures)
     for (HtmlUITexture* texture : liveTextures){
@@ -3852,6 +3935,9 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     addBuffer(primQuadBuffer);
     addBuffer(primQuadIndexBuffer);
     addBuffer(primInstanceTemplate);
+    // S92: the composite tiles
+    addBuffer(tileVertexBuffer);
+    addBuffer(tileIndexBuffer);
 
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;
     if (placeholder != 0) images.push_back(placeholder);

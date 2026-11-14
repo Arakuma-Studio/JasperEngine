@@ -111,9 +111,9 @@ namespace jasperengine {
 
         // --- HtmlUIContextRender.cpp (p0-render, p1-render) ---
         // Offscreen: pixel ratio from viewRect, target (re)creation, font raster scale,
-        // renderer->beginFrame, Context::Render, renderer->endFrame. Once per sokol frame, and
-        // only when the context updated since its last render or the target was recreated
-        // (otherwise the previous content stays). False when there is nothing to composite.
+        // renderer->beginFrame, Context::Render, renderer->endFrame. Once per sokol frame; the
+        // renderer replays the recorded frame only when it differs from the one the target holds
+        // (S92 R1). False when there is nothing to composite.
         bool render(const Rect& viewRect);
         // inside the camera pass; nothing when there is no rendered content. clipFromQuad maps
         // the quad (-1,1) top-left .. (1,-1) bottom-right (a world-space canvas); without it
@@ -128,8 +128,9 @@ namespace jasperengine {
         FramebufferRender* getTarget();  // tests: layer 0, the composited image (resolved under MSAA)
         RmlRenderTarget* getRenderTarget();
         RmlRenderer& getRenderer();
-        // the context changed (Context::Update ran): the next render() draws again
-        void markUpdated();
+        // the next render() draws whatever it records: content the frame signature cannot see
+        // changed (native drawing, render settings; S92 R2)
+        void requestRedraw();
         // MSAA samples of every UI target: the preferred count (1/2/4/8, default 4), 1 when
         // the device cannot multisample RGBA8 and DEPTH_STENCIL attachments
         static void setPreferredSampleCount(int samples);
@@ -144,11 +145,9 @@ namespace jasperengine {
         // the target of the other size when two views of different sizes draw the scene in
         // turn (the editor's Scene and Game views): swapped instead of recreated every frame
         std::unique_ptr<RmlRenderTarget> spareTarget;
-        bool updatedSinceRender = true;
         bool hasContent = false;          // the target holds a rendered frame
         uint64_t lastRenderFrame = UINT64_MAX;
         Rml::Vector2i dimensions{0, 0};
-        Rml::Vector2i targetDimensions{0, 0};   // context dimensions of the target's content
         float pixelRatio = 1.0f;
         float densityRatio = 1.0f;
         bool renderedOnce = false;

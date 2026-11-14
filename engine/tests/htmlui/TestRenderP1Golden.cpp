@@ -529,6 +529,8 @@ TEST_F(RmlRendererP1GoldenTest, OpacityText){
 }
 
 TEST_F(RmlRendererP1GoldenTest, ManyElements){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     P1Context test;
     ASSERT_TRUE(test.isValid());

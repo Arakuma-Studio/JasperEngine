@@ -4,7 +4,8 @@
 // S92 layer cost (docs/specs/S92-htmlui-render-cost.md R29, AC10): the passes per frame of the
 // port's UI patterns (fixtures/s92/), cold (the first frame drawn), warm (another element changed)
 // and idle (nothing changed), at 4 samples and at 1. Every row is printed ("[ s92 ]" lines); the
-// budgets asserted are those of the packages that landed (idle: S92-A's kept frame).
+// budgets asserted are those of the packages that landed (S92-A: the idle column and the static
+// row; the cold and warm columns of the layered rows are S92-B2's).
 
 #include "FixtureRunner.h"
 #include "TestRenderCommon.h"
@@ -96,6 +97,14 @@ TEST(RenderLayerCost, ArcadePatterns){
             if (!measurePattern(row.name, samples, row.changed, frames))
                 continue;
             printPattern(row.name, samples, frames);
+            // S92-A (R1, R29's idle column and static row): nothing changed, nothing drawn
+            EXPECT_EQ(frames.idle.passes, 0u) << row.name << " at " << samples << "x";
+            EXPECT_EQ(frames.idle.drawCalls, 0u) << row.name << " at " << samples << "x";
+            EXPECT_EQ(frames.idle.framesKept, 1u) << row.name << " at " << samples << "x";
+            if (std::string(row.name) == "static"){
+                EXPECT_EQ(frames.cold.passes, 1u) << samples << "x";
+                EXPECT_EQ(frames.warm.passes, 1u) << samples << "x";
+            }
         }
     }
 }

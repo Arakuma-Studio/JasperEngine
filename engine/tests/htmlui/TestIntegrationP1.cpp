@@ -671,6 +671,8 @@ namespace {
 }
 
 TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     fixture.reset(new SceneFixture());
     textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/texture_effects.rml")));
     UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
@@ -731,6 +733,8 @@ TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
 }
 
 TEST_F(IntegrationTest, RenderStatsOfACombinedScene){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     createScene();
     ASSERT_TRUE(fixture->waitUntilLoaded());
     drawFramesAt(time, 3, 0.0);

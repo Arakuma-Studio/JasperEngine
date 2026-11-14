@@ -485,6 +485,10 @@ RmlRenderer* FixtureRunner::renderer() const{
     return state->render ? &state->render->renderer : nullptr;
 }
 
+RenderTestContext* FixtureRunner::renderContext() const{
+    return state->render.get();
+}
+
 bool FixtureRunner::renderRequested() const{
     return state->render && state->render->renderRequested;
 }
@@ -552,6 +556,9 @@ void FixtureRunner::frame(bool draw, bool* drawn){
     const Clock::time_point endStart = Clock::now();
     const bool result = draw && r.renderer.endFrame();
     state->phases.endFrameMs = ms(endStart, Clock::now());
+    // as HtmlUIContext: the settle draws the next frame whatever it records (S92 R2)
+    if (r.renderRequested)
+        r.renderer.addLiveSource(RmlRenderer::LIVE_TEXT_SETTLE);
     SystemRender::commit();
     if (drawn)
         *drawn = result;
@@ -801,6 +808,17 @@ bool FixtureRunner::capture(Capture& capture, bool image, bool noText){
         out.width = state->render->targetSize.x;
         out.height = state->render->targetSize.y;
         out.rgba = std::move(rgba);
+        // S92 R3 (JASPER_HTMLUI_VERIFY_KEPT=1): the next frame, kept when nothing moves, verified
+        // against a fresh replay (here on GL, at the next frame elsewhere); a difference fails. Not
+        // after a frame with a live source: none is kept, and a simulation would step
+        if (RmlRenderer::isKeptFrameVerification() && state->render->renderer.getStats().liveSources == 0){
+            RmlRenderer& renderer = state->render->renderer;
+            const uint32_t before = renderer.getKeptMismatchCount();
+            frame(true);
+            renderer.checkKeptFrame();
+            if (renderer.getKeptMismatchCount() != before)
+                return false;
+        }
         return true;
     };
     // the reference's screenshots hide the text caret (`caret: 'hide'`); its blink here follows the wall clock,

@@ -10,13 +10,26 @@
 #include "RmlRenderer.h"
 #include "RmlRendererInternal.h"
 
+#include "HtmlUI.h"
 #include "HtmlUITexture.h"
+#include "RmlFontEngine.h"
 
+#include "Engine.h"
+#include "Log.h"
 #include "effects/EffectRenderer.h"
 #include "effects/EffectRuntime.h"
 #include "effects/EffectTypes.h"
+#include "render/FrameReadback.h"
+#include "render/ObjectRender.h"
+#include "render/SystemRender.h"
+#include "texture/Framebuffer.h"
+#include "util/GlyphAtlas.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 using namespace jasperengine;
@@ -66,6 +79,37 @@ namespace {
         return geometry ? geometry->generation : 0;
     }
 
+    std::atomic<bool> frameReuseEnabled{true};
+    std::atomic<bool> depthStencilDiscard{true};
+    // -1: JASPER_HTMLUI_VERIFY_KEPT decides (read once)
+    std::atomic<int> keptVerification{-1};
+
+}
+
+void RmlRenderer::setFrameReuseForTesting(bool enabled){
+    frameReuseEnabled = enabled;
+}
+
+bool RmlRenderer::isFrameReuse(){
+    return frameReuseEnabled;
+}
+
+void RmlRenderer::setDepthStencilDiscardForTesting(bool enabled){
+    depthStencilDiscard = enabled;
+}
+
+void RmlRenderer::setKeptFrameVerificationForTesting(bool enabled){
+    keptVerification = enabled ? 1 : 0;
+}
+
+bool RmlRenderer::isKeptFrameVerification(){
+    int value = keptVerification;
+    if (value < 0){
+        const char* env = std::getenv("JASPER_HTMLUI_VERIFY_KEPT");
+        value = (env && std::strcmp(env, "1") == 0) ? 1 : 0;
+        keptVerification = value;
+    }
+    return value == 1;
 }
 
 void RmlRenderer::addLiveSource(uint32_t reasons){
@@ -306,4 +350,651 @@ uint64_t RmlRenderer::signatureOf(size_t first, size_t end, Rml::Vector2i origin
         }
     }
     return h;
+}
+
+//-------------------------------------------------------------------------------------------
+// R1: kept frames
+//-------------------------------------------------------------------------------------------
+
+uint64_t RmlRenderer::skippedWork() const{
+    return (uint64_t)ObjectRender::getWaitingDrawCount() + SystemRender::getUniformSkippedDraws() + SystemRender::getDescriptorSkippedDraws() +
+           SystemRender::getStreamSkippedUploads();
+}
+
+bool RmlRenderer::keepRecordedFrame(){
+    lastFrameKept = false;
+    const auto start = std::chrono::steady_clock::now();
+    uint32_t live = frameLiveSources;
+    // distance glyphs still to come: the text drawn now is not the final one
+    if (HtmlUI::getFontEngine().getPendingDistanceGlyphCount() > 0)
+        live |= LIVE_MSDF_PENDING;
+    uint64_t signature = signatureOf(0, commands.size(), Rml::Vector2i(0, 0), live);
+    // what the replay draws them into, and how (the replay modes give the same image; a switch
+    // draws again, so a test that switches sees the mode it asked for)
+    signature = frameMix(signature, (uint64_t)(uint32_t)contextSize.x | ((uint64_t)(uint32_t)contextSize.y << 32));
+    signature = frameMix(signature, (uint64_t)(uint32_t)targetSize.x | ((uint64_t)(uint32_t)targetSize.y << 32));
+    signature = frameMix(signature, ((uint64_t)target->getSampleCount() << 2) | ((uint64_t)batching << 1) | (uint64_t)primitivesFrame);
+    frameLiveSources = live;
+    frameSignature = signature;
+    lastSignatureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+
+    if (!isFrameReuse() || !keptValid || live != 0 || signature != keptSignature || keptTarget != target ||
+        keptGeneration != target->getGeneration())
+        return false;
+    lastFrameKept = true;
+    return true;
+}
+
+void RmlRenderer::finishKeptFrame(){
+    stats.framesKept = 1;
+    // the glyph pages the kept image shows are in use (the font engine's LRU eviction)
+    for (const Command& c : commands){
+        if (c.type != CommandType::GEOMETRY)
+            continue;
+        const HtmlUITexture* texture = reinterpret_cast<const HtmlUITexture*>(c.b);
+        if (texture && texture->drawFrame)
+            *texture->drawFrame = frameNumber;
+    }
+    if (isKeptFrameVerification())
+        verifyKeptFrame();
+
+    frames.assign(1, LayerFrame());
+    frames[0].rect = standardFrame();
+    maskOps.clear();
+    // region layers an idle document does not use go as after a drawn frame
+    target->trimRegions();
+    closeFrameStats();
+    frameState = FrameState::NONE;
+    target = nullptr;
+    finishRecording();
+    persistGeometry();
+    flushPendingReleases();
+}
+
+void RmlRenderer::rememberDrawnFrame(bool recorded){
+    if (!recorded){
+        // drawn at once: nothing to compare the next frame with, and no plan of its writes
+        keptValid = false;
+        tilesFull = true;
+        tileSource = nullptr;
+        return;
+    }
+    // a draw that waited for its pipeline, or an upload refused, left the image incomplete: the
+    // next frame draws again whatever it records
+    bool complete = skippedWork() == skippedBefore;
+    for (const HtmlUITexture* texture : atlasTextures){
+        if (!complete)
+            break;
+        if (texture->dead || !texture->atlas || !texture->atlasGeneration || !texture->drawFrame || *texture->drawFrame != frameNumber)
+            continue;
+        const size_t bytes = (size_t)texture->width * (size_t)texture->height * (texture->sample == HtmlUITexture::Sample::COVERAGE ? 1u : 4u);
+        if (texture->atlas->getPixels().size() == bytes && *texture->atlasGeneration != texture->uploadedGeneration)
+            complete = false;
+    }
+    keptValid = complete;
+    keptSignature = frameSignature;
+    keptTarget = target;
+    keptGeneration = target->getGeneration();
+    computeCompositeTiles();
+}
+
+uint32_t RmlRenderer::targetBytesOf(const RmlRenderTarget& renderTarget) const{
+    // colour per layer, the one shared D24S8, the resolve images of a multisampled target, the
+    // post-process targets and the region layers
+    const uint64_t pixels = (uint64_t)renderTarget.getWidth() * (uint64_t)renderTarget.getHeight();
+    const uint64_t samples = (uint64_t)std::max(renderTarget.getSampleCount(), 1);
+    const uint64_t layers = (uint64_t)renderTarget.getLayerCount();
+    uint64_t bytes = 0;
+    if (layers > 0){
+        bytes += pixels * 4u * samples * layers + pixels * 4u * samples;
+        if (samples > 1)
+            bytes += pixels * 4u * layers;
+    }
+    bytes += pixels * 4u * (uint64_t)renderTarget.getPostprocessCount();
+    bytes += renderTarget.getRegionBytes();
+    return (uint32_t)std::min<uint64_t>(bytes, UINT32_MAX);
+}
+
+void RmlRenderer::closeFrameStats(){
+    stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);
+    stats.pipelineApplies = (uint32_t)(SystemRender::getPipelineApplies() - frameAppliesStart);
+    lastFrameDrawCount = stats.drawCalls;
+    // the glyph atlas is shared by every context: its size and the distance glyphs it still makes
+    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
+    stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
+    stats.liveSources = frameLiveSources;
+    stats.keptMismatches = keptMismatchCount;
+    if (tilesFull){
+        const int columns = (targetSize.x + TILE_SIZE - 1) / TILE_SIZE;
+        const int rows = (targetSize.y + TILE_SIZE - 1) / TILE_SIZE;
+        stats.compositeTiles = (uint32_t)(columns * rows);
+        stats.compositePixels = (uint32_t)(targetSize.x * targetSize.y);
+    }else{
+        stats.compositeTiles = tileCount;
+        stats.compositePixels = tilePixels;
+    }
+    if (target){
+        stats.samples = (uint32_t)target->getSampleCount();
+        stats.targetBytes = targetBytesOf(*target);
+    }
+}
+
+//-------------------------------------------------------------------------------------------
+// R4: composite tiles
+//-------------------------------------------------------------------------------------------
+
+void RmlRenderer::markTiles(float x0, float y0, float x1, float y1, bool scissorOn, const Rml::Rectanglei& scissor){
+    // two pixels of margin: antialiased edges, a rasterizer's samples beyond a scissor's edge, a
+    // composite scaled down reading a texel past them
+    x0 -= 2.0f;
+    y0 -= 2.0f;
+    x1 += 2.0f;
+    y1 += 2.0f;
+    if (scissorOn){
+        x0 = std::max(x0, (float)scissor.Left());
+        y0 = std::max(y0, (float)scissor.Top());
+        x1 = std::min(x1, (float)scissor.Right());
+        y1 = std::min(y1, (float)scissor.Bottom());
+    }
+    x0 = std::max(x0, 0.0f);
+    y0 = std::max(y0, 0.0f);
+    x1 = std::min(x1, (float)targetSize.x);
+    y1 = std::min(y1, (float)targetSize.y);
+    if (!(x1 > x0) || !(y1 > y0))
+        return;
+    const int c0 = std::max(0, (int)std::floor(x0 / (float)TILE_SIZE));
+    const int r0 = std::max(0, (int)std::floor(y0 / (float)TILE_SIZE));
+    const int c1 = std::min(tileColumns, (int)std::ceil(x1 / (float)TILE_SIZE));
+    const int r1 = std::min(tileRows, (int)std::ceil(y1 / (float)TILE_SIZE));
+    for (int r = r0; r < r1; r++){
+        uint8_t* row = &tileMask[(size_t)r * (size_t)tileColumns];
+        for (int c = c0; c < c1; c++)
+            row[c] = 1;
+    }
+}
+
+void RmlRenderer::computeCompositeTiles(){
+    tileColumns = (targetSize.x + TILE_SIZE - 1) / TILE_SIZE;
+    tileRows = (targetSize.y + TILE_SIZE - 1) / TILE_SIZE;
+    tileMask.assign((size_t)tileColumns * (size_t)tileRows, 0);
+    tileSource = (target && target->getComposited()) ? &target->getComposited()->getColorTexture() : nullptr;
+    const Rml::Vector2f pixel = getPixelScale();
+    const float huge = 1e9f;
+
+    // what each pushed layer holds (target px, its draws within their scissors): a composite of it
+    // writes that, spread by its filters, within the composite's scissor
+    struct Ink {
+        float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+        bool empty = true;
+    };
+    std::vector<Ink> layers(1);
+
+    // the recorded state as the replay sets it, and the layer stack's depth (1: layer 0 on top)
+    bool scissorOn = false;
+    Rml::Rectanglei scissor = toTargetPixels(frameStartScissor, contextSize, targetSize);
+    const Rml::Matrix4f* matrix = nullptr;
+    auto write = [&](size_t layer, float x0, float y0, float x1, float y1){
+        if (scissorOn){
+            x0 = std::max(x0, (float)scissor.Left());
+            y0 = std::max(y0, (float)scissor.Top());
+            x1 = std::min(x1, (float)scissor.Right());
+            y1 = std::min(y1, (float)scissor.Bottom());
+        }
+        if (!(x1 > x0) || !(y1 > y0))
+            return;
+        if (layer == 0){
+            markTiles(x0, y0, x1, y1, false, scissor);
+            return;
+        }
+        if (layer >= layers.size())
+            return;
+        Ink& ink = layers[layer];
+        if (ink.empty){
+            ink = Ink{x0, y0, x1, y1, false};
+            return;
+        }
+        ink.x0 = std::min(ink.x0, x0);
+        ink.y0 = std::min(ink.y0, y0);
+        ink.x1 = std::max(ink.x1, x1);
+        ink.y1 = std::max(ink.y1, y1);
+    };
+    auto writeDocument = [&](const Rml::Rectanglef& local, float tx, float ty){
+        const size_t layer = layers.size() - 1;
+        const float x0 = local.Left() + tx, y0 = local.Top() + ty, x1 = local.Right() + tx, y1 = local.Bottom() + ty;
+        if (!matrix){
+            write(layer, x0 * pixel.x, y0 * pixel.y, x1 * pixel.x, y1 * pixel.y);
+            return;
+        }
+        const Rml::Vector2f corners[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+        float a0 = huge, b0 = huge, a1 = -huge, b1 = -huge;
+        for (const Rml::Vector2f& corner : corners){
+            const Rml::Vector4f p = (*matrix) * Rml::Vector4f(corner.x, corner.y, 0.0f, 1.0f);
+            // behind the eye: anywhere within the scissor
+            if (!(p.w > 1e-6f)){
+                write(layer, -huge, -huge, huge, huge);
+                return;
+            }
+            const float x = p.x / p.w * pixel.x, y = p.y / p.w * pixel.y;
+            a0 = std::min(a0, x);
+            b0 = std::min(b0, y);
+            a1 = std::max(a1, x);
+            b1 = std::max(b1, y);
+        }
+        write(layer, a0, b0, a1, b1);
+    };
+    // how far a composite's filters move content (target px; an effect may write anywhere)
+    auto reachOf = [&](const Command& c){
+        float reach = 0.0f;
+        for (int f = 0; f < c.i[3]; f++){
+            const Rml::CompiledFilterHandle handle = commandFilters[(size_t)(c.i[2] + f)];
+            if (!handle)
+                continue;
+            if (htmlui::EffectRenderer::isEffectHandle(handle))
+                return huge;
+            const RmlCompiledFilter& filter = *reinterpret_cast<const RmlCompiledFilter*>(handle);
+            const float scale = std::max(pixel.x, pixel.y);
+            // six sigma: nothing of a Gaussian reaches an 8-bit value beyond it
+            if (filter.type == RmlCompiledFilter::Type::BLUR)
+                reach += 6.0f * filter.sigma * scale;
+            else if (filter.type == RmlCompiledFilter::Type::DROP_SHADOW)
+                reach += (std::fabs(filter.offset.x) + std::fabs(filter.offset.y) + 6.0f * filter.sigma) * scale;
+        }
+        return reach;
+    };
+
+    for (const Command& c : commands){
+        switch (c.type){
+        case CommandType::SCISSOR_ENABLE:
+            scissorOn = c.flag != 0;
+            break;
+        case CommandType::SCISSOR_REGION:
+            scissor = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
+            break;
+        case CommandType::TRANSFORM:
+            matrix = c.flag ? &commandMatrices[(size_t)c.i[0]] : nullptr;
+            break;
+        case CommandType::PUSH_LAYER:
+            layers.emplace_back();
+            break;
+        case CommandType::POP_LAYER:
+            if (layers.size() > 1)
+                layers.pop_back();
+            break;
+        case CommandType::GEOMETRY: {
+            RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(c.a);
+            if (geometry && !geometry->vertices.empty() && !geometry->indices.empty())
+                writeDocument(geometryBounds(*geometry), c.x, c.y);
+            break;
+        }
+        case CommandType::SHADER: {
+            // an effect may paint beyond its geometry (scatter forms): its scissor
+            if (htmlui::EffectRenderer::isEffectHandle(c.a)){
+                write(layers.size() - 1, -huge, -huge, huge, huge);
+                break;
+            }
+            RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(c.b);
+            if (geometry && !geometry->vertices.empty() && !geometry->indices.empty())
+                writeDocument(geometryBounds(*geometry), c.x, c.y);
+            break;
+        }
+        case CommandType::PRIMITIVES:
+            if (c.i[1] > 0)
+                writeDocument(primitiveBounds((uint32_t)c.i[0], (uint32_t)c.i[1]), c.x, c.y);
+            break;
+        case CommandType::COMPOSITE: {
+            const size_t source = (size_t)std::max(c.i[0], 0), destination = (size_t)std::max(c.i[1], 0);
+            // a backdrop reads a layer below it: what that holds is not tracked
+            if (source == 0 || source >= layers.size()){
+                write(destination, -huge, -huge, huge, huge);
+                break;
+            }
+            const Ink& ink = layers[source];
+            if (ink.empty)
+                break;
+            const float reach = reachOf(c);
+            write(destination, ink.x0 - reach, ink.y0 - reach, ink.x1 + reach, ink.y1 + reach);
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    buildTileQuads();
+}
+
+void RmlRenderer::buildTileQuads(){
+    tileCount = 0;
+    for (uint8_t tile : tileMask)
+        tileCount += tile;
+    // the quads: each row's runs of tiles, one quad for a run that continues the same run of the
+    // rows above (D3: a dense document is a quad per row at most, a box many rows high one quad)
+    tileVertices.clear();
+    tilePixels = 0;
+    struct Open { int c0, c1, r0; };
+    std::vector<Open> open, next;
+    const float w = (float)std::max(targetSize.x, 1), h = (float)std::max(targetSize.y, 1);
+    const Rml::ColourbPremultiplied white(255, 255, 255, 255);
+    auto emit = [&](const Open& run, int r1){
+        const int x0 = run.c0 * TILE_SIZE, y0 = run.r0 * TILE_SIZE;
+        const int x1 = std::min(run.c1 * TILE_SIZE, targetSize.x), y1 = std::min(r1 * TILE_SIZE, targetSize.y);
+        tilePixels += (uint32_t)((x1 - x0) * (y1 - y0));
+        // the composite quad's space: (-1, 1) top-left .. (1, -1) bottom-right, uv 0..1 from the top
+        const float u0 = (float)x0 / w, u1 = (float)x1 / w, v0 = (float)y0 / h, v1 = (float)y1 / h;
+        const Rml::Vertex corners[4] = {
+            {Rml::Vector2f(u0 * 2.0f - 1.0f, 1.0f - v0 * 2.0f), white, Rml::Vector2f(u0, v0)},
+            {Rml::Vector2f(u1 * 2.0f - 1.0f, 1.0f - v0 * 2.0f), white, Rml::Vector2f(u1, v0)},
+            {Rml::Vector2f(u1 * 2.0f - 1.0f, 1.0f - v1 * 2.0f), white, Rml::Vector2f(u1, v1)},
+            {Rml::Vector2f(u0 * 2.0f - 1.0f, 1.0f - v1 * 2.0f), white, Rml::Vector2f(u0, v1)},
+        };
+        tileVertices.insert(tileVertices.end(), corners, corners + 4);
+    };
+    for (int r = 0; r <= tileRows; r++){
+        next.clear();
+        if (r < tileRows){
+            const uint8_t* row = &tileMask[(size_t)r * (size_t)tileColumns];
+            for (int c = 0; c < tileColumns;){
+                if (!row[c]){
+                    c++;
+                    continue;
+                }
+                int e = c;
+                while (e < tileColumns && row[e])
+                    e++;
+                next.push_back(Open{c, e, r});
+                c = e;
+            }
+        }
+        // a run of the rows above that this row continues keeps going; the others end here
+        for (const Open& run : open){
+            auto same = std::find_if(next.begin(), next.end(), [&](const Open& o){ return o.c0 == run.c0 && o.c1 == run.c1; });
+            if (same != next.end())
+                same->r0 = run.r0;
+            else
+                emit(run, r);
+        }
+        open.swap(next);
+    }
+    tileQuads = (uint32_t)(tileVertices.size() / 4);
+
+    // the GPU copy: a stream buffer written when the set changes, at most once a sokol frame
+    if (tileQuads == 0 || (tileMask == uploadedTileMask && tileVertexBuffer.isCreated() && tileCapacity >= tileQuads)){
+        tilesFull = false;
+        return;
+    }
+    const uint64_t now = SystemRender::getFrameCount();
+    if (tileUploadFrame == now){
+        tilesFull = true;
+        uploadedTileMask.clear();
+        return;
+    }
+    if (tileCapacity < tileQuads){
+        destroyTileBuffers();
+        uint32_t capacity = 64;
+        while (capacity < tileQuads)
+            capacity *= 2;
+        std::vector<uint32_t> indices((size_t)capacity * 6);
+        for (uint32_t q = 0; q < capacity; q++){
+            const uint32_t pattern[6] = {0, 1, 2, 0, 2, 3};
+            for (int k = 0; k < 6; k++)
+                indices[(size_t)q * 6 + (size_t)k] = q * 4 + pattern[k];
+        }
+        gpuCreateCount += 2;
+        if (!tileVertexBuffer.createBuffer((unsigned int)(capacity * 4 * sizeof(Rml::Vertex)), nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM) ||
+            !tileIndexBuffer.createBuffer((unsigned int)(indices.size() * sizeof(uint32_t)), indices.data(), BufferType::INDEX_BUFFER,
+                                          BufferUsage::IMMUTABLE)){
+            destroyTileBuffers();
+            tilesFull = true;
+            return;
+        }
+        tileCapacity = capacity;
+    }
+    if (!tileVertexBuffer.updateBuffer((unsigned int)(tileVertices.size() * sizeof(Rml::Vertex)), tileVertices.data())){
+        // past the frame's stream staging buffer: the whole quad, the tiles again next frame
+        tilesFull = true;
+        uploadedTileMask.clear();
+        return;
+    }
+    tileUploadFrame = now;
+    uploadedTileMask = tileMask;
+    tilesFull = false;
+}
+
+void RmlRenderer::destroyTileBuffers(){
+    tileVertexBuffer.destroyBuffer();
+    tileIndexBuffer.destroyBuffer();
+    tileCapacity = 0;
+    uploadedTileMask.clear();
+}
+
+//-------------------------------------------------------------------------------------------
+// R5: the depth-stencil plan
+//-------------------------------------------------------------------------------------------
+
+void RmlRenderer::planDepthStencil(){
+    // positions: the batched plan's ops, else the commands. A position breaks the open pass when
+    // it draws into another layer than the drawing before it, or goes through other targets
+    // (filters, saved layers, effects); pushing or popping a layer alone binds nothing
+    const size_t count = batching ? replayOps.size() : commands.size();
+    dsFlags.assign(count, 0);
+    bool stencilOn = false;
+    int32_t scope = -1;
+    int depth = 1;             // the layer stack as recorded
+    int drawnInto = -1;        // the layer the last drawing went to (-1: none, or another target since)
+    auto stencilScope = [this](int32_t s){
+        return s < 0 || clipScopes[(size_t)s].mode == ScopeMode::STENCIL;
+    };
+    auto drawInto = [&](int layer, uint8_t& flags){
+        if (layer != drawnInto)
+            flags |= DS_BREAK;
+        drawnInto = layer;
+    };
+    for (size_t i = 0; i < count; i++){
+        uint8_t flags = 0;
+        if (batching && replayOps[i].kind == ReplayOp::Kind::RUN){
+            const BatchRun& run = batchRuns[replayOps[i].index];
+            if (run.stencil)
+                flags |= DS_STENCIL;
+            drawInto(run.layer, flags);
+            dsFlags[i] = flags;
+            continue;
+        }
+        const size_t ci = batching ? replayOps[i].index : i;
+        const Command& c = commands[ci];
+        switch (c.type){
+        case CommandType::CLIP_ENABLE:
+            if (batching){
+                scope = replayOps[i].scope;
+                stencilOn = c.flag != 0 && stencilScope(scope);
+            }else if (primitivesFrame){
+                scope = c.flag ? scopeOfCommand[ci] : -1;
+                stencilOn = c.flag != 0 && stencilScope(scope);
+            }else{
+                stencilOn = c.flag != 0;
+            }
+            break;
+        case CommandType::CLIP_MASK:
+            // the replays skip the masks of a scope clipped without the stencil
+            if (batching || !primitivesFrame || scope < 0 || clipScopes[(size_t)scope].mode == ScopeMode::STENCIL){
+                flags |= DS_STENCIL;
+                drawInto(depth - 1, flags);
+            }
+            break;
+        case CommandType::GEOMETRY:
+        case CommandType::PRIMITIVES:
+            if (stencilOn)
+                flags |= DS_STENCIL;
+            drawInto(depth - 1, flags);
+            break;
+        case CommandType::SHADER:
+            if (stencilOn)
+                flags |= DS_STENCIL;
+            if (htmlui::EffectRenderer::isEffectHandle(c.a)){
+                // an effect's passes may use other targets
+                flags |= DS_BREAK;
+                drawnInto = -1;
+            }else{
+                drawInto(depth - 1, flags);
+            }
+            break;
+        case CommandType::COMPOSITE:
+            if (stencilOn)
+                flags |= DS_STENCIL;
+            // the source is read (its pass ends), filters go through the post-process targets
+            flags |= DS_BREAK;
+            drawnInto = c.i[1];
+            break;
+        case CommandType::PUSH_LAYER:
+            depth++;
+            break;
+        case CommandType::POP_LAYER:
+            depth = std::max(1, depth - 1);
+            break;
+        case CommandType::SAVE_TEXTURE:
+        case CommandType::SAVE_MASK:
+            flags |= DS_BREAK;
+            drawnInto = -1;
+            break;
+        default:
+            break;
+        }
+        dsFlags[i] = flags;
+    }
+    dsLastStencil = -1;
+    dsNextBreak.assign(count, (uint32_t)count);
+    uint32_t next = (uint32_t)count;
+    for (size_t i = count; i-- > 0;){
+        dsNextBreak[i] = next;
+        if (dsFlags[i] & DS_BREAK)
+            next = (uint32_t)i;
+        if (dsLastStencil < 0 && (dsFlags[i] & DS_STENCIL))
+            dsLastStencil = (int64_t)i;
+    }
+    replayPosition = 0;
+    dsPlanned = depthStencilDiscard;
+}
+
+//-------------------------------------------------------------------------------------------
+// R3: verification of kept frames
+//-------------------------------------------------------------------------------------------
+
+namespace {
+
+    const char* frameCommandName(int type){
+        static const char* names[] = {"GEOMETRY", "CLIP_MASK", "SCISSOR_ENABLE", "SCISSOR_REGION", "CLIP_ENABLE", "TRANSFORM",
+                                      "PUSH_LAYER", "POP_LAYER", "COMPOSITE", "SAVE_TEXTURE", "SAVE_MASK", "SHADER", "PRIMITIVES"};
+        return (type >= 0 && type < (int)(sizeof(names) / sizeof(names[0]))) ? names[type] : "?";
+    }
+
+}
+
+void RmlRenderer::verifyKeptFrame(){
+    // what the message names: the first command that reads a source the signature cannot version
+    verifySource = "no command reads an unversioned source";
+    for (size_t i = 0; i < commands.size(); i++){
+        const Command& c = commands[i];
+        uint32_t live = 0;
+        if (c.type == CommandType::GEOMETRY)
+            textureSignature(reinterpret_cast<const HtmlUITexture*>(c.b), live);
+        else if (c.type == CommandType::SAVE_TEXTURE)
+            textureSignature(reinterpret_cast<const HtmlUITexture*>(c.a), live);
+        else if (c.type == CommandType::SHADER)
+            shaderSignature(c.a, live);
+        else if (c.type == CommandType::COMPOSITE){
+            for (int f = 0; f < c.i[3]; f++)
+                filterSignature(commandFilters[(size_t)(c.i[2] + f)], live);
+        }
+        if (live != 0){
+            verifySource = "command " + std::to_string(i) + " (" + frameCommandName((int)c.type) + ") reads live source bits " +
+                           std::to_string(live);
+            break;
+        }
+    }
+
+    RmlRenderTarget* kept = target;
+    if (!verifyTarget)
+        verifyTarget = std::make_unique<RmlRenderTarget>();
+    verifyTarget->ensure(kept->getWidth(), kept->getHeight(), kept->getSampleCount());
+    if (!verifyTarget->isCreated())
+        return;
+
+    // the frame replayed into the scratch target as into a fresh one; its statistics are not the
+    // kept frame's
+    const HtmlUIRenderStats keptStats = stats;
+    target = verifyTarget.get();
+    target->newFrame();
+    activeRegions = nullptr;
+    deferred = DeferredComposite();
+    regions.clear();
+    regionsCache[0] = regionsCache[1] = RegionsCacheEntry();
+    regionsGeneration = target->getGeneration();
+    layerClearPending.assign(std::max<size_t>(1, target->layers.size()), false);
+    layerClearPending[0] = true;
+    depthStencilClearPending = true;
+    activeKind = TargetKind::NONE;
+    activeIndex = -1;
+    activeFramebuffer = nullptr;
+    sharedDsDiscarded = false;
+    discardedRegionDs.clear();
+
+    replayCommands();
+    layersSize = std::max(layersSize, 1);
+    ensureLayerCleared(0);
+    if (Framebuffer* layer = target->getLayer(0))
+        ensureResolved(*layer);
+    endPass();
+    for (size_t i = 1; i < frames.size(); i++){
+        if (frames[i].pool >= 0)
+            target->releaseRegionLayer(frames[i].pool);
+    }
+    target->trimRegions();
+    dsPlanned = false;
+
+    // what is known of the kept target's resolves holds no more: unknown is a full resolve
+    target = kept;
+    regions.clear();
+    regionsCache[0] = regionsCache[1] = RegionsCacheEntry();
+    regionsGeneration = 0;
+    stats = keptStats;
+
+    verifyPending = true;
+    verifyFrame = SystemRender::getFrameCount();
+    verifyKeptTarget = kept;
+    // GL reads back at once; the other backends once the frame's commands are submitted
+    if (Engine::isOpenGL())
+        compareKeptFrame();
+}
+
+bool RmlRenderer::checkKeptFrame(){
+    if (!verifyPending)
+        return false;
+    if (!Engine::isOpenGL() && SystemRender::getFrameCount() <= verifyFrame)
+        return true;
+    compareKeptFrame();
+    return true;
+}
+
+void RmlRenderer::compareKeptFrame(){
+    verifyPending = false;
+    RmlRenderTarget* kept = verifyKeptTarget;
+    verifyKeptTarget = nullptr;
+    if (!kept || !verifyTarget || !kept->isCreated() || !verifyTarget->isCreated() || kept->getWidth() != verifyTarget->getWidth() ||
+        kept->getHeight() != verifyTarget->getHeight())
+        return;
+    const int width = kept->getWidth(), height = kept->getHeight();
+    std::vector<uint8_t> keptPixels, freshPixels;
+    std::string error;
+    if (!FrameReadback::readTexture(kept->getComposited()->getColorTexture(), width, height, 4, keptPixels, &error) ||
+        !FrameReadback::readTexture(verifyTarget->getComposited()->getColorTexture(), width, height, 4, freshPixels, &error)){
+        Log::warn("[HTML UI] kept frame not verified: %s", error.c_str());
+        return;
+    }
+    if (keptPixels == freshPixels)
+        return;
+    size_t first = 0;
+    while (first < keptPixels.size() && keptPixels[first] == freshPixels[first])
+        first++;
+    const size_t pixel = first / 4;
+    keptMismatchCount++;
+    Log::error("[HTML UI] kept frame differs at (%d, %d): %s", (int)(pixel % (size_t)width), (int)(pixel / (size_t)width), verifySource.c_str());
 }
