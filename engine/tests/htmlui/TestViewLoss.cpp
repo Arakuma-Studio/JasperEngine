@@ -30,6 +30,7 @@ namespace {
     protected:
         int loads = 0;
         int unloads = 0;
+        int loadsBefore = 0;
 
         void SetUp() override{
             ScriptTest::SetUp();
@@ -38,10 +39,17 @@ namespace {
             component.onUnload.add("view_loss_unload", std::function<void()>([this](){ unloads++; }));
         }
 
+        // the scene and its document drawn (the fixture's own wait does not know the document
+        // ScriptTest loaded)
+        bool drawn(){
+            return fixture->waitUntilLoaded() && GpuEnvironment::runFrames([this](){ return documentSystem(scene()).isAllLoaded(); });
+        }
+
         // what a game's script did to its document before the app went to the background
         void changeTheDocument(){
-            ASSERT_TRUE(fixture->waitUntilLoaded());
-            ASSERT_EQ(loads, 1);
+            ASSERT_TRUE(drawn());
+            // (UIDocument::load in SetUp fired its onLoad before the listener above)
+            loadsBefore = loads;
             EXPECT_LUA(R"(
                 clicks = 0
                 el = doc:getElementById("label")
@@ -51,7 +59,7 @@ namespace {
                 btn:addEventListener("click", function() clicks = clicks + 1 end)
                 doc:getElementById("scroller").scrollTop = 30
             )");
-            ASSERT_TRUE(fixture->waitUntilLoaded());
+            ASSERT_TRUE(drawn());
         }
 
         // after the return: the same elements, as the script left them, and a click reaches the listener
@@ -71,7 +79,7 @@ namespace {
             EXPECT_TRUE(system.eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, 350.0f, 40.0f, 0, false));
             EXPECT_EQ(luaString("clicks"), "1");
             EXPECT_EQ(system.getLoadCount(document->getEntity()), 1u);
-            EXPECT_EQ(loads, 1);
+            EXPECT_EQ(loads, loadsBefore);
             EXPECT_EQ(unloads, 0);
             lua("clicks = nil");
         }
@@ -120,7 +128,7 @@ TEST_F(ViewLossTest, PlatformViewLossKeepsTheDocument){
     // and brings it back: the textures are made again as the document draws
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
-    ASSERT_TRUE(fixture->waitUntilLoaded());
+    ASSERT_TRUE(drawn());
     EXPECT_EQ(documentSystem(scene()).getContext(), context);
     EXPECT_TRUE(context->hasRenderedFrame());
 
@@ -146,7 +154,7 @@ TEST_F(ViewLossTest, ScenesGpuReleaseKeepsTheDocument){
     EXPECT_EQ(documentSystem(scene()).getContext(), context);
 
     Engine::restoreScenesGpu({&scene()});
-    ASSERT_TRUE(fixture->waitUntilLoaded());
+    ASSERT_TRUE(drawn());
     EXPECT_TRUE(context->hasRenderedFrame());
 
     Screen after;

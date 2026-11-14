@@ -84,9 +84,12 @@ async def test_view_loss_keeps_ui(ed: Editor):
     s = await setup(ed)
     await ed.call("play", action="start", scene=s["scene"], fixed_fps=60, auto_pause=True)
     try:
-        r = await ed.call_raw("wait", {"until": "uiDoc ~= nil and uiDoc.loaded and uiLoads == 1", "game_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "uiDoc ~= nil and uiDoc.loaded", "game_seconds": 10})
         ed.check(not r.is_error, f"the document loaded in Play: {r.text[:300]}")
+        await ed.call("wait", frames=3)
+        # (Play starts with the document the editor loaded: no onLoad may have fired since init)
         await lua(ed, """
+            loadsBefore = uiLoads
             local doc = uiDoc
             keptLabel = doc:getElementById("label")
             keptLabel.textContent = "Set by the script"
@@ -109,10 +112,10 @@ async def test_view_loss_keeps_ui(ed: Editor):
         values = await lua(ed, """
             local doc = uiDoc
             local label = doc:getElementById("label")
-            return uiLoads, uiUnloads, label == keptLabel, keptLabel:isValid(), label.textContent,
+            return uiLoads - loadsBefore, uiUnloads, label == keptLabel, keptLabel:isValid(), label.textContent,
                    doc:getElementById("btn"):hasClass("on"), doc:getElementById("list").scrollTop
         """)
-        ed.check_eq(values, [1, 0, True, True, "Set by the script", True, 50],
+        ed.check_eq(values, [0, 0, True, True, "Set by the script", True, 50],
                     "the document as the script left it, with no onLoad or onUnload")
         await ed.call("send_input", events=[{"type": "mouse", "action": "click", "target": "#btn"}], frames_after=2)
         ed.check_eq(await lua(ed, "return uiClicks"), [1], "the listener added before the loss still runs")
