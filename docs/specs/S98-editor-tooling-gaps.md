@@ -853,3 +853,15 @@ Avoiding conflicts:
   and do not build on the old one. AC36: screenshots of Project Settings > Player > Build, the
   Project window's two items and an Exclude From Build undone with Edit > Undo (outside the
   repository, the package's evidence folder).
+- **WP-1, verification** (targeted runs; full suites not run). Red controls on a scratch copy with
+  each fix set aside: `CookDeterminism.EveryComponentDefaultInitialisedCooksTheSameBytes` fails naming
+  `RigidbodyComponent` with `solidBoxDensity`'s initialiser removed (E27/AC6 guard);
+  `ProjectCookCacheTest.WritesCookedSceneOnSave` fails with the stale-source removal off (AC4);
+  `ExportTemplate.ProjectGlobConfigureDepends` fails without the keyword (AC7);
+  `StrippedAssets.ACompileBuildReadsTheListBesideItsGameJson` fails without the manifest read.
+  `CookedScenes.ParentsAreBuiltBeforeChildren`, `CookDeterminism.ATextShipsNoFontAtlas` and
+  `Stream.SubmeshVertexCountNotTheLastDraws` failed on the first cooked build (the scene hierarchy,
+  the sampler and the vertex counts were lost) and pass with the fixes. `test_export_sources.py`
+  run on the editor before WP-1: both tests fail (no `W-SCENE-UNSAVED`, the export saved the scenes;
+  no cooked scene in a source export). The MCP-level red of AC3 (hooks set aside) and AC6
+  (`solidBoxDensity` in an export) were not run.
