@@ -420,6 +420,14 @@ namespace jasperengine {
         };
         struct PrewarmBatch;
         static PrewarmBitmap makePrewarmBitmap(const PrewarmItem& item);
+        // the same from the glyph's coverage at the item's scale and bold (ink: it has some)
+        static PrewarmBitmap makePrewarmBitmap(const PrewarmItem& item, const std::vector<unsigned char>& coverage, int width, int height,
+                                               int xoff, int yoff, bool ink);
+        // GenerateString of big text (bigTextPixels and up): the bitmaps it misses (base glyphs, CPU effect glyphs of the
+        // effects with a bitmap key) made in parallel on the job system, then placed (R39)
+        static constexpr int bigTextPixels = 48;
+        void makeGlyphsTogether(const FaceHandle& handle, const std::vector<ShapedGlyph>& shaped, float scale, int rasterKey, bool distanceText,
+                                const RmlFontEffects::Set* effects, const std::vector<bool>& effectOnGpu);
         // places one prewarmed bitmap as getGlyph and getEffectGlyph would have; false when it must wait for room
         bool placePrewarm(const PrewarmItem& item, const PrewarmBitmap& bitmap);
         std::vector<std::unique_ptr<PrewarmBatch>> prewarmBatches;

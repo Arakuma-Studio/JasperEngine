@@ -1408,6 +1408,10 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
         }
     }
 
+    // a big text's missing bitmaps side by side on the workers (R39)
+    if (!distanceText || effects)
+        makeGlyphsTogether(*handle, shaped, scale, rasterKey, distanceText, effects, effectOnGpu);
+
     // every glyph in a page first, so the textures fetched below already hold them; the pages
     // they are on are in use from now (a later glyph may not clear them)
     const uint64_t frame = SystemRender::getFrameCount();
@@ -2081,20 +2085,115 @@ std::vector<const FontFace*> RmlFontEngine::getChain(Rml::FontFaceHandle handle)
 // prewarm (S93 R15)
 //-------------------------------------------------------------------------------------------
 
+void RmlFontEngine::makeGlyphsTogether(const FaceHandle& handle, const std::vector<ShapedGlyph>& shaped, float scale, int rasterKey,
+                                       bool distanceText, const RmlFontEffects::Set* effects, const std::vector<bool>& effectOnGpu){
+    // Small text makes its few small bitmaps faster than the workers start; a title's outline and glow
+    // glyphs take a millisecond or more each, which the frame waits for one after the other otherwise
+    if (handle.size < bigTextPixels)
+        return;
+    std::vector<PrewarmItem> items;
+    std::unordered_set<GlyphKey, GlyphKeyHash> asked;
+    for (const ShapedGlyph& glyph : shaped){
+        if (!distanceText){
+            PrewarmItem item;
+            const float strength = handle.boldStrength[glyph.face];
+            item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength * scale)) : 0;
+            item.key = GlyphKey{handle.faces[glyph.face], glyph.glyphIndex, rasterKey, item.bold, 0};
+            if (!glyphs.count(item.key) && asked.insert(item.key).second){
+                item.kind = PageKind::BASE;
+                item.face = handle.chain[glyph.face];
+                item.scale = handle.emScales[glyph.face] * scale;
+                item.size = handle.size;
+                items.push_back(std::move(item));
+            }
+        }
+        if (!effects)
+            continue;
+        for (size_t i = 0; i < effects->effects.size(); i++){
+            Rml::FontEffect::BitmapKey bitmapKey;
+            if (!effects->effects[i]->HasUniqueTexture() || effectOnGpu[i] || !effects->effects[i]->GetBitmapKey(bitmapKey))
+                continue;
+            PrewarmItem item;
+            const float strength = handle.boldStrength[glyph.face];
+            item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength)) : 0;
+            item.key = GlyphKey{handle.faces[glyph.face], glyph.glyphIndex, handle.size * 64, item.bold, effects->bitmapIds[i]};
+            if (glyphs.count(item.key) || !asked.insert(item.key).second)
+                continue;
+            item.kind = PageKind::EFFECT;
+            item.face = handle.chain[glyph.face];
+            item.scale = handle.emScales[glyph.face];
+            item.size = handle.size;
+            item.advance = (int)std::lround(item.face->getGlyphAdvance(glyph.glyphIndex, item.scale));
+            item.effect = effects->effects[i];
+            item.offset = effects->offsets[i];
+            items.push_back(std::move(item));
+        }
+    }
+    if (items.size() < 2)
+        return;
+
+    const auto start = std::chrono::steady_clock::now();
+    // a job per glyph: its coverage rasterized once for every bitmap of the same scale and bold (the base glyph and the
+    // effects' at the document's own scale), then each effect
+    std::vector<std::vector<size_t>> groups;
+    for (size_t i = 0; i < items.size(); i++){
+        bool joined = false;
+        for (std::vector<size_t>& group : groups){
+            const PrewarmItem& first = items[group[0]];
+            if (first.face == items[i].face && first.key.glyphIndex == items[i].key.glyphIndex && first.scale == items[i].scale &&
+                first.bold == items[i].bold){
+                group.push_back(i);
+                joined = true;
+                break;
+            }
+        }
+        if (!joined)
+            groups.push_back(std::vector<size_t>(1, i));
+    }
+    std::vector<PrewarmBitmap> made(items.size());
+    jobs::ParallelForOptions options;
+    options.lane = jobs::Lane::High;
+    jobs::parallelFor(groups.size(), [&items, &made, &groups](size_t g){
+        const PrewarmItem& first = items[groups[g][0]];
+        std::vector<unsigned char> coverage;
+        int width = 0, height = 0, xoff = 0, yoff = 0;
+        const bool ink = first.face->rasterizeGlyph(first.key.glyphIndex, first.scale, coverage, width, height, xoff, yoff);
+        if (ink && first.bold > 0)
+            RmlFontEffects::embolden(coverage, width, height, yoff, first.bold);
+        for (size_t i : groups[g])
+            made[i] = makePrewarmBitmap(items[i], coverage, width, height, xoff, yoff, ink);
+    }, options);
+    FrameCounters* counters = countersOf(currentManager);
+    for (size_t i = 0; i < items.size(); i++){
+        // (a glyph that must wait for room is made again, the usual way, when the text asks for it)
+        if (!placePrewarm(items[i], made[i]))
+            continue;
+        if (counters && items[i].kind == PageKind::BASE)
+            counters->glyphsRasterized++;
+    }
+    if (counters)
+        counters->glyphRasterMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
 RmlFontEngine::PrewarmBitmap RmlFontEngine::makePrewarmBitmap(const PrewarmItem& item){
+    std::vector<unsigned char> coverage;
+    int width = 0, height = 0, xoff = 0, yoff = 0;
+    bool ink = item.face->rasterizeGlyph(item.key.glyphIndex, item.scale, coverage, width, height, xoff, yoff);
+    if (ink && item.bold > 0)
+        RmlFontEffects::embolden(coverage, width, height, yoff, item.bold);
+    return makePrewarmBitmap(item, coverage, width, height, xoff, yoff, ink);
+}
+
+RmlFontEngine::PrewarmBitmap RmlFontEngine::makePrewarmBitmap(const PrewarmItem& item, const std::vector<unsigned char>& coverage, int width,
+                                                              int height, int xoff, int yoff, bool ink){
     // what getGlyph and getEffectGlyph make, off the main thread: stb_truetype on the immutable face, and the built-in
     // effects' filters, which keep no state (FontEffect::GetBitmapKey)
     PrewarmBitmap made;
-    std::vector<unsigned char> coverage;
-    int width = 0, height = 0, xoff = 0, yoff = 0;
-    const bool ink = item.face->rasterizeGlyph(item.key.glyphIndex, item.scale, coverage, width, height, xoff, yoff);
-    if (ink && item.bold > 0)
-        RmlFontEffects::embolden(coverage, width, height, yoff, item.bold);
     if (item.kind != PageKind::EFFECT){
         if (!ink)
             return made;
         made.made = true;
-        made.pixels.swap(coverage);
+        made.pixels = coverage;
         made.width = width;
         made.height = height;
         made.xoff = xoff;
