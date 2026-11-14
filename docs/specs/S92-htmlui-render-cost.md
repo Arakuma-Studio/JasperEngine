@@ -7,6 +7,10 @@ engine `7f48d7e8d` (2026-10-30). Paths are relative to the repository root. Ever
 checked by reading current main (`82ccd7c6a`) at the cited lines. "Inferred" means read from the
 code and not run; nothing in this spec was built or run.
 
+**Status: implemented** on `feature/s92-htmlui-render-cost` (packages A, B1, B2, C and D, integrated
+with `main` at `82ccd7c6a`). What each package did differently from this text, and the integration's
+decisions, are in the Deviations section at the end.
+
 ## 1. Goal
 
 A game HUD made of ordinary CSS costs more GPU time than the 3D world on a phone. The port measured
@@ -1014,3 +1018,73 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 - **Polygon clip-path.** Only convex polygons (both fill rules agree there) of at most 16 points clip
   analytically; a concave or self-intersecting one keeps the mask layer
   (`RenderClip.ClipPathBasicShapesAreAnalytic` now pins that with a concave polygon). Editor shader cache v69.
+
+### Package B1 (gradients and clips)
+
+- **Red controls.** Run on main's renderer: the rounded-gradient and `clip-path` fixtures pushed 6 to 8
+  layers in 16 to 25 passes; with B1 they push 0 layers in 1 pass (`RenderPrimitive.*`,
+  `RenderClip.ClipPathBasicShapesAreAnalytic`). The U27 list (`RenderClip.TextInScaledScrollWithFilterLayers`):
+  stencil draws 28 -> 0, text draws 41 -> 8 (lines culled under the scale).
+- **Left to the other packages.** A filtered element whose window reaches past a scaled clip still
+  composited through a stencil rectangle: B2 clips it in the shader ("U27 gap (from B1)" above). The
+  depth-stencil `DONTCARE` mask-version reset went to A (R5 above).
+- **Shader cache.** B1's `HTMLUI_PRIM` change took v67 because S93's branch holds v66 (a host's shared
+  cache served one branch's program to the other's editor); B2 then took v68 and v69. `TilemapShaders`'
+  pin of the version became a lower bound.
+- **Android render gate.** The `htmlui-u27` scene was added to the gate's project and its scene list;
+  its golden is written at integration (below), where the local host has KVM.
+
+### Integration
+
+- **Coordinator decisions.** U27, U34 and R57 moved into S92 from S93 and S94 (they live in the render
+  and composite code S92 rewrites). The built-in shader cache is v69 here (main: v65; S93 holds v66,
+  S94 may take v69/v70): the second of S92 and S94 to merge takes the next free number. The cooked
+  scene format minor 1.6 (C) collides with S95's 1.6: the second to merge renumbers. S93's
+  `mix-blend-mode` (U11) is built on main's composite: merge S92 first, then S93 re-merges main and
+  makes region layers blend too (B2's cache already keys by blend mode). S95 keeps its
+  `hardenClassTables` workaround in `LuaBinding.cpp` until S92 and S95 are both on main; D fixes both
+  crashes inside LuaBridge (`04393ef4c`).
+- **`p1/texture_effects` rewritten.** B2's four-tap halving (`07480e8ef`) makes the 6 px blur's outer
+  ring reach one pixel further: 448 of the 451 differing pixels have alpha 0-2 in both images (straight
+  white at alpha 1-2 where the old blur left alpha 0), alpha differs by at most 8, 3 edge pixels by the
+  text outline by 43. The images look the same: an equivalent result, rewritten on glcore
+  (`docs/html-ui/goldens-S16.md`, category `filter-blur`, added to `check_golden_ledger.py`).
+- **The editor's Game view outside Play.** `test_html_ui_basic.py::test_child_scene_document` failed
+  since C: the Game view frames the project canvas (1280 x 661 in a 944 x 488 view) while the documents
+  keep the layout the editor gave them (1280 x 720), and R15's full-viewport composite squashed that
+  layout into the view. An Auto Resize UI or 2D camera's clip rectangle is the canvas the view shows;
+  the documents' frame is placed in it at its canvas pixels' size from the top-left corner, which is
+  what main drew through the camera (`RenderSystem::documentsCanvas`, editor builds only: a game lays
+  its documents out in the canvas its camera covers, where both are equal). Red: the test on the
+  merged tree; green with the change, the boxes at main's pixel positions.
+- **`FullPathGoldenTest.UIParticleSystemsClippedByAPanel`** was order-dependent on main (the burst
+  comes with the first simulation tick, which a few fast frames can end before): S93's fix
+  (`98fe43c97`, waits for its particles) is cherry-picked.
+- **LuaBridge wrong call, quiet box (R34).** The port's harness on a build box at load 2.8 of 16 CPUs,
+  pinned to one core, min of 14 interleaved runs, ns per call (stock / port's patch / S92):
+  clang++ 86233 / 86776 / 96363 (1.117x), g++ 137250 / 121045 / 121298 (0.884x); a wrong-call-only
+  build, min of 8: clang++ stock 89952, port 90929, D's first merge 98836 (1.099x), S92 98374 (1.094x).
+  The clang ratio sits at R34's 1.1x, not under it as noise would have it: about 9 us of the ~90 us
+  error path come from D's own changes on the raising path (the port's patch alone is 1.01x). It is a
+  call that raises an error; every later-overload and first-overload budget holds with a wide margin
+  (later overloads 0.6-1.7 % of stock). Accepted as at the budget.
+- **Android render gate (AC12).** The `htmlui-u27` golden was written on the local KVM emulator
+  (`swangle_indirect`) from a clean run: the first update run caught a 6.8 s first-launch stall with
+  Android's ANR scrim over the app (the whole screen dimmed). A fresh run matches it (0.00 %), and the
+  gate's other scenes pass against their goldens. On a real Mali or Adreno device: unverified (risk 4).
+- **Verification on the merged tree.** `WERROR=1 tools/build.sh linux` (no warning from S92's sources);
+  `htmlui-tests` with S92's suites (frame reuse, layer cost, P1, primitives, clips, records, filters,
+  batches, renderer, integration, particles, the scene composite, every `*Golden*` but the effect
+  goldens, the compat decorators and shapes, the p3 paint parity fixtures) and
+  `JASPER_HTMLUI_VERIFY_KEPT=1`: glcore 281 ran, 1 failed (the `texture_effects` golden, then
+  rewritten; its rerun with the integration and full-path goldens: 40 ran, 0 failed), Vulkan 281 ran,
+  0 failed, 0 skipped, 0 disabled; unit core (`LuaBridgeSelf`, `LuaOverloadDispatch`,
+  `LuaBindingBench`, `*Lua*`) 75/75; unit editor (stream, cooked scene, reflection parity, catalog,
+  shader cache pins, `*Lua*`) 227/227; MCP (15 files: render cost, render stats, the HTML UI basic,
+  render, Lua and effects files, scene colour scale, the Lua-facing files D ran, regressions,
+  upgrade-from-main) 46/46; RmlUi's `EffectHooks`/clip/transform doctest cases 20/20; `web` and
+  `web-gate` (PASS); Android `render-gate` x86_64 and arm64-v8a builds; `check_golden_ledger`,
+  `check_fanout`, `check-cxx-subset`, `check_raw_writes`, `check_stream_keys`, `check_event_clears`,
+  `check_text_encoding`, `check-hardcoded-shortcuts`, `check_shader_lod`, `xcode_sync_engine --check`,
+  `tool_budget --check`. `TOOLS.md`, `html-ui-support.md`, `RuntimeFields.gen.inc` and the templates
+  regenerate without a change beyond ids.
