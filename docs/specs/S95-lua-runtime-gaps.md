@@ -565,4 +565,40 @@ Per package, before merging:
 
 ## Deviations
 
-None yet.
+### WP-4 (app lifecycle and HTML UI)
+
+- **D-11, `Rml::ReleaseCompiledGeometry` is not called.** `RmlRenderer` keeps every compiled
+  geometry's vertices on the CPU and uploads them again after `releaseGpuResources`, so the handles
+  stay valid; releasing them would make RmlUi drop geometry it does not build again for unchanged
+  elements. AC-16 shows the frame after the return equals the one before.
+- **REQ-15, CPU-only systems.** `ActionSystem`, `AnimatorSystem` and `NavigationSystem` hold no GPU
+  objects, and their `destroy` stopped actions and tweens, reset state machines and dropped baked
+  surfaces: their `releaseGpu`/`restoreGpu` do nothing. Every other system keeps D-11's default
+  (`destroy`/`load`), as before.
+- **Scenes-only release (REQ-18).** `Engine::releaseScenesGpu`/`restoreScenesGpu` run the systems'
+  release with the view marked lost, as the platforms do. RenderSystem keeps its shared default
+  textures during such a release (they still serve the other scenes): one condition in
+  `RenderSystem::destroy`.
+- **REQ-18, the game while the view is lost.** `view_lost` pauses a running app first (a device
+  loses the view only in the background) and `view_restored` resumes it; meanwhile the editor
+  neither updates nor draws the running game, and a Game view screenshot fails naming
+  `view_restored`. `get_play_state.platform.lifecycle` is `{view_lost, view_restored, view}`.
+- **Web.** `webglcontextlost` now prevents its default (without it the context never comes back),
+  no frame runs while the context is lost, and the restored context gets its extensions enabled
+  again before `systemViewLoaded`.
+- **AC-16.** The pixel check compares the frame after the return with the frame before it (within
+  2 levels), not a stored golden. The scenes-only route and a texture-mode document have their own
+  tests (`ViewLossTest.*`).
+- **AC-17.** The device step is `tools/android-emulator-test.sh --view-loss` (Home,
+  `am send-trim-memory <pkg> COMPLETE`, the launcher) with `--once 'SVG plugin initialised'`, on the
+  new test project `tools/test-projects/app-lifecycle`. The web check is automated too:
+  `GATE=app-lifecycle tools/build.sh web-gate` loses and restores the WebGL context through
+  `WEBGL_lose_context`.
+- **AC-19.** The suite is `EngineFrameGpu` (it draws frames: GPU suites end in `Gpu`), with
+  `ViewRestoreClampsDelta` beside `ResumeClampsDelta`.
+- **REQ-16 held on main.** A rebuild (file change, `needReload`) already fired `onUnload` before
+  `onLoad`; the only DOM rebuild without `onUnload` was the view loss REQ-15 removes.
+  `UIDocumentReloadTest.ReloadFiresUnloadFirst` pins it (the reload paths it runs are unchanged here).
+- **S28 not reproduced.** `test_app_lifecycle.py::test_play_cycle_no_outside_frame_error` passes on
+  the editor built before this package and after it: three Play cycles with a document log no
+  "outside a frame" error.
