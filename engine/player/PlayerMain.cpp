@@ -18,6 +18,7 @@
 #include "player/GameRunner.h"
 #include "player/Launch.h"
 #include "player/PlayerConfig.h"
+#include "player/RunControl.h"
 #include "util/Sha256.h"
 
 #include <cstdio>

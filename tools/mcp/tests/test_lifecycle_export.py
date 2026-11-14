@@ -144,7 +144,7 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
                   header_content=SPAWN_HEADER, source_content=SPAWN_SOURCE)
     await ed.call("create_prefab", entity=spawnee, path="prefabs/Spawnee.prefab")
     await ed.call("delete_entities", entities=[spawnee])
-    await ed.call("set_script_properties", entity=child, values={"buddy": parent})
+    await ed.call("set_script_properties", entity=child, script="CppParity", values={"buddy": parent})
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
     await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
     await ed.call("set_project_settings", values={
