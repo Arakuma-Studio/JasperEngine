@@ -835,10 +835,20 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   depth-stencil stored (`setDepthStencilDiscardForTesting(OFF)`): fewer stores, the same image. R12's
   part in R5 (left to S92-A by B1): a `DONTCARE` store resets that depth-stencil's mask version at
   once; with every store dropped (`EVERY_PASS`) each stencil test draws its mask again, the audit
-  holds and the image is the same.
+  holds and the image is the same. Since B2 every element layer is a region layer with its own
+  depth-stencil, so a dropped one is restored exactly: every stencil write is kept with its scissor
+  and its attachment (a region layer's since its push), and a dropped and cleared depth-stencil
+  replays its own writes and takes back the version it held before anything tests or writes it.
 - **R1 and the replay tests.** Tests that count a replay's passes, draws or run-cache hits on
   repeated identical frames now turn frame reuse off for their scope (`FrameReuseMode`), and the S16
   benchmarks replay every frame (`S16Mode`); R33 is measured with reuse on and off.
+  `RenderTestContext::renderUntilDrawn` ends on a replayed frame (its statistics are a drawn
+  frame's: B1's tests read them), and B2's cache tests ask for replayed frames; the layer cache's
+  switch is part of the frame signature.
+- **Not S92-A's, found on the merged tree.** `FullPathGoldenTest.UIParticleSystemsClippedByAPanel`
+  fails after the other FullPath goldens in one process (alone it passes) on main `fcfbc222d` too;
+  MCP `test_html_ui_basic.py::test_child_scene_document` (a child scene's document at canvas
+  640, 320) fails on the spec branch without S92-A too (`f3b98de40`, after C).
 
 ### WP D: Lua overload dispatch (R24-R28, R34)
 
