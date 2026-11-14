@@ -778,7 +778,27 @@ Avoiding conflicts:
   - **For WP-6 (asset stripping):** a `.mesh` is referenced through the reflection asset rows
     (`AssetRefSchema`, `AssetKind::Mesh`), which the dependency walk follows; nothing is needed
     beyond what any `AssetRef` field gets, but the stripping test should include one.
+- **WP-3, REQ-25 (E37):** no code change. Measured first (below): the handler takes 0-2 ms whatever
+  the scene; a call's time is its wait for the editor's next frame, which grows with the scene for
+  every tool (`editor_status` alike). The frame is WP-5's (REQ-41). `test_particles_perf.py` guards
+  REQ-42; it passes on the code before WP-3 too (no red run exists).
+- **WP-3, REQ-35:** Material Creation Mode applies to FBX models. A glTF carries the materials it
+  draws with and its cook keeps them (S53 R9), so `set_model_import_settings` refuses the key for a
+  glTF naming why, and the Inspector row is disabled for one.
+- **WP-3, REQ-34:** the summary counts tiling/offset per texture ("on 2 textures"): the importer
+  reports it per texture, which is what the user fixes.
+- **WP-3, AC33:** `ProfilerLuaGpu.GpuTimingArmsTimers` is in `engine/tests/core/render/`: only the
+  core test tree has a headless GPU device (docs/testing.md, "Where a test goes").
+- **WP-3, AC19/AC20:** the tests are `test_prefab.py::test_create_prefab_overwrite` (the existing
+  prefab file) and a new `test_shaders.py`.
+- **WP-3, REQ-36:** the MCP test harness keeps the flat layout for the projects it creates
+  (`JASPER_TEST_FLAT_NEW_PROJECT=1`, docs/testing.md): the suite's tests address assets at the
+  project root. `test_project_create.py` and the template generator use the real layout.
 
 ## Progress
 
-(none yet)
+- **WP-3, E37 measurement** (unchanged editor, headless, llvmpipe; `JASPER_MCP_TRACE=1`):
+  `create_particles` median round trip 170 ms in an empty scene, 431 ms with 1,000 cubes, 610 ms
+  with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
+  Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
+  1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.

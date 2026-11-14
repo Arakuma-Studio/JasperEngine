@@ -3842,7 +3842,10 @@ void checkShaderTool(const CallPtr& call) {
                 findings.push_back(ProjectChecks::toJson(finding));
                 text += "\n" + finding.severity + ": " + finding.message;
             }
-            call->ok(text, Json{{"results", Json::array()}, {"failed", 0}, {"findings", findings}});
+            // a failed check is the answer asked for, and isError is how MCP clients see it
+            Json data{{"results", Json::array()}, {"failed", 0}, {"findings", findings}};
+            if (ProjectChecks::countSeverity(sceneFindings, "error") > 0) call->fail(text, std::move(data));
+            else call->ok(text, std::move(data));
             return;
         }
     }
@@ -3885,8 +3888,13 @@ void checkShaderTool(const CallPtr& call) {
             if (finding.value("severity", std::string()) == "warning")
                 text += "\nwarning: " + finding.value("path", std::string()) + ": " + finding.value("message", std::string());
         }
-        call->ok((failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text,
-                 Json{{"results", results}, {"failed", failed}, {"findings", findings}});
+        const bool anyError = failed > 0 || std::any_of(findings.begin(), findings.end(), [](const Json& finding) {
+            return finding.value("severity", std::string()) == "error";
+        });
+        text = (failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text;
+        Json data{{"results", results}, {"failed", failed}, {"findings", findings}};
+        if (anyError) call->fail(text, std::move(data));
+        else call->ok(text, std::move(data));
     });
 }
 
