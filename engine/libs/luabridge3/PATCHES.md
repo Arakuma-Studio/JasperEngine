@@ -91,3 +91,27 @@ objects (the decoded `std::string` of an argument, a half-built container, a cau
 - The second pass of `try_overload_functions` asserts that no overload it runs succeeds. In a
   release build such a call still runs rather than being dropped.
 - Test: the `LuaOverloadDispatch` tests in a build without `NDEBUG`.
+
+## 6. S92, S95 REQ-2: nil and class metatables are not objects
+
+Two values were read as an object and crashed the process (found by S95 WP-1):
+
+- **nil as the object of a member call** (`Vector3.length(nil)`, `nil + v`, `nil < v`, an
+  accessor reached through `debug.getmetatable`). `Userdata::get` returns a null pointer for nil,
+  as an argument's nil means; the member thunks dereferenced it. They now take their object
+  through `Userdata::getSelf`, which raises for nil the bad-self error any other value raises
+  (`bad argument #1 to 'length' (Vector3 expected, got nil)`): member functions, const ones,
+  C-function members, property getters and setters. A function or functor bound as a member with
+  a pointer as its first parameter (`invoke_proxy_member_function`, `invoke_proxy_member_functor`,
+  used by `push_member_function` and the class property helpers) refuses a nil object the same
+  way; a reference parameter refused it already. Free and static functions keep nil as a null
+  pointer.
+- **A class's metatable as an object** (`debug.getmetatable(v)`: a table whose own metatable is
+  itself). `getClass` matched it and used its null userdata pointer. It now matches only a full
+  userdata; `Userdata::isInstance` answers false for anything else. The error names the type
+  ("got table"), with the same expected name as before.
+- Messages of every other call unchanged; the 22 nil-self calls of the dispatch fixture changed
+  from a call on a null object to the bad-self error (deliberate, in the same commit).
+- Test: `LuaBridgeSelf.*` (`engine/tests/core/script/LuaBridgeSelfTest.cpp`; each test crashed the
+  process on the header before this change), `LuaOverloadDispatch.CallsMatchStockLuaBridge`.
+
