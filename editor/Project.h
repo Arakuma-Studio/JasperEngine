@@ -2941,7 +2941,10 @@ namespace jasperengine::editor{
         // from the root as one of the old content keeps that one's registry id, so the instances'
         // overrides on it stay. The GameObject becomes an instance root, as createPrefab makes
         // it, and every open instance is re-imported. The root must not be part of an instance.
-        bool overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode);
+        // knownIds: scene GameObject -> registry id it keeps whatever its name (the members of an
+        // instance of this prefab, taken before its unpack)
+        bool overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode,
+            const std::unordered_map<Entity, Entity>& knownIds = {});
         bool removePrefab(const std::filesystem::path& filepath);
 
         const std::vector<std::filesystem::path>& getStandalonePrefabs() const;

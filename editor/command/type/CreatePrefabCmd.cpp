@@ -10,6 +10,7 @@
 #include "component/PrefabComponent.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -129,6 +130,20 @@ bool editor::CreatePrefabCmd::execute(){
             continue;
         }
 
+        // An instance of the prefab it overwrites: its GameObjects keep their registry ids whatever
+        // their names (taken before the unpack drops them)
+        std::unordered_map<Entity, Entity> knownIds;
+        if (item.overwrite) {
+            if (Prefab* target = project->getPrefab(item.filepath)) {
+                if (const Prefab::Instance* instance = target->getInstanceByRoot(sceneId, root)) {
+                    knownIds[root] = instance->rootRegistryEntity;
+                    for (const Prefab::EntityMember& member : instance->members) {
+                        knownIds[member.localEntity] = member.registryEntity;
+                    }
+                }
+            }
+        }
+
         // A prefab instance root becomes the root of an original prefab: unpacked first, its
         // GameObjects read again with its nested instances as instances
         PrefabObjectRef ref;
@@ -165,7 +180,7 @@ bool editor::CreatePrefabCmd::execute(){
             item.overwritten = project->capturePrefabUndoState(sceneId, NULL_ENTITY, {item.filepath});
             item.overwriteRoot = root;
         }
-        if (item.overwrite ? project->overwritePrefab(sceneId, item.filepath, node)
+        if (item.overwrite ? project->overwritePrefab(sceneId, item.filepath, node, knownIds)
                            : project->createPrefab(sceneId, item.filepath, node, item.guid)) {
             item.guid = project->getPrefabGuid(item.filepath);
             item.created = true;

@@ -199,7 +199,8 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     return true;
 }
 
-bool editor::Project::overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode) {
+bool editor::Project::overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode,
+        const std::unordered_map<Entity, Entity>& knownIds) {
     Prefab* existing = loadPrefabAsset(filepath);
     if (!existing || !existing->registry || !entityNode || !entityNode.IsMap()) {
         Out::error("Overwrite Prefab: no prefab to overwrite at %s", filepath.string().c_str());
@@ -223,8 +224,15 @@ bool editor::Project::overwritePrefab(uint32_t sceneId, const std::filesystem::p
             const std::string name = existing->registry->getEntityName(entity);
             return parent == NULL_ENTITY ? "#" + name : join(pathOf(parent), name);
         };
+        // a GameObject that keeps its id by identity is not matched by name
+        std::unordered_set<Entity> kept;
+        for (const auto& [local, registry] : knownIds) {
+            kept.insert(registry);
+        }
         for (Entity entity : existing->registryEntities) {
-            oldByPath[pathOf(entity)].push_back(entity);
+            if (!kept.count(entity)) {
+                oldByPath[pathOf(entity)].push_back(entity);
+            }
         }
     }
     std::unordered_map<Entity, Entity> registryIds;
@@ -242,15 +250,20 @@ bool editor::Project::overwritePrefab(uint32_t sceneId, const std::filesystem::p
             return;
         }
         if (node["entity"]) {
+            const Entity local = node["entity"].as<Entity>();
+            auto known = knownIds.find(local);
             auto it = oldByPath.find(path);
             Entity id = NULL_ENTITY;
-            if (it != oldByPath.end() && !it->second.empty()) {
+            if (known != knownIds.end() && std::find(existing->registryEntities.begin(), existing->registryEntities.end(),
+                                                     known->second) != existing->registryEntities.end()) {
+                id = known->second;
+            } else if (it != oldByPath.end() && !it->second.empty()) {
                 id = it->second.front();
                 it->second.erase(it->second.begin());
             } else {
                 id = nextId++;
             }
-            registryIds[node["entity"].as<Entity>()] = id;
+            registryIds[local] = id;
         }
         if (node["children"] && node["children"].IsSequence()) {
             for (const YAML::Node& child : node["children"]) {
