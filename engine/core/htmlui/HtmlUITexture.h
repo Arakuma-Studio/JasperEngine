@@ -67,6 +67,11 @@ namespace jasperengine {
         const uint64_t serial = nextSerial();
         uint64_t contentVersion = 0;
         bool liveContent = false;
+        // S92 R9: a small static texture's texels and sampling, hashed when it was made (0: not),
+        // for the content version it was hashed at: equal elements' textures (a clip-path's mask
+        // raster each) key their layer scopes the same
+        uint64_t pixelHash = 0;
+        uint64_t pixelHashVersion = 0;
 
         HtmlUITexture() = default;
         HtmlUITexture(const HtmlUITexture&) = delete;

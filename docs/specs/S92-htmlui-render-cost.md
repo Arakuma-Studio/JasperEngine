@@ -940,3 +940,49 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   `.OverlayIgnoresFxaaAndCrt` (230400), `.OrthoCameraFillsViewport`, `.UiCameraPannedFillsViewport` and
   `.PixelPerfectBarsCoveredByOverlay` fail; `.CameraModeKeepsOldPlacement`'s golden
   (`overlay_camera_mode_scaled.png`) was captured in that state.
+
+### Package B2 (sized layers and the layer cache)
+
+- **R9 key: a scope signature of its own.** `signatureOf` (A) hashes the state commands as recorded,
+  so a scope keyed differently with the state its predecessors left (an element after a filtered one
+  started with the scissor on, the first with it off) and by geometry serial (two equal elements are
+  two geometries). The cache key (`RmlRenderer::scopeSignature`, `RmlRendererLayerCache.cpp`) hashes
+  each draw with the state it is drawn in (scissor relative to the window, transform, clip), geometry
+  by its vertices and indices (hashed once per compiled geometry), small static textures (at most 256
+  KiB, a clip-path raster) by their texels, and reuses A's texture, filter and shader signatures and
+  live-source bits. A glyph page's generation is part of it (A's texture signature): a scope holding
+  text misses once when the page grows (`inset-clip`'s warm frame before B1 made its shapes analytic).
+- **R9 window.** The result kept is the composite's scissor within what RmlUi asked the layer to cover
+  (the region frame's granules around it are empty), so it moves with its element. A blur's halved
+  passes sample a grid of 2^levels px: the window's phase on that grid is in the key, so a blurred
+  element hits after moves by whole grid steps, any move otherwise.
+- **R9 trailing opacity.** Applied in the composite's passthrough for cached scopes only (a miss and a
+  hit draw the same image the same way: byte-identical); uncached composites keep the opacity pass.
+- **R9 frames.** "Unused for 120 frames" counts replays (a kept frame, R1, replays nothing). A stored
+  entry not drawn again in the next replay (its element changes every frame) is freed then, its image
+  reused by the next store. An equal scope later in the same replay draws the earlier one's result (a
+  row of equal buttons stores one); such a store is kept over the budget until the replay ends.
+- **R10 rule.** A window within the viewport is a region layer unless its 64-px granules cover as much
+  as the target (then an ordinary layer is no larger and shares layer 0's depth-stencil).
+  `RenderFilterRegion.BlurReadsTheContentBeyondTheViewport`'s reference may now be a region layer.
+  Backdrop composite fusion works between region layers (placed by their frames).
+- **R30 measure.** `layerPixels` counts every layer pass but layer 0's, every post-process pass and the
+  cache's copies; a layer's filter chain is several passes, so the bound is checked per pass: layerPixels
+  <= 1.5 x the granule-rounded windows of the layers each pass serves (`getLastLayerPassStats`), and no
+  pass of a layer within the viewport is the target's size.
+- **R29 cold column (4x, after B1).** static 1, rounded-gradient 1, btn 3 (<= 4), inset-clip 1, o2-frame 1,
+  card 32 (budget 7), cards4 128 (budget 25). card and cards4 keep four polygon clip-path mask scopes and a
+  blurred glow per card: each mask scope is its layer's pass, the mask layer's, the mask copy and the mask
+  filter. The four cards do not share entries (each gradient primitive names its own stop-table row, the
+  glow's blur grid phase differs). Warm is 1 pass for every row (16 hits for cards4), idle 1 (A's kept frame
+  makes it 0). Red control: A's state gave warm = cold (btn 15, card 32, cards4 128 at 4x).
+- **U27 gap (from B1).** A filtered element whose window reaches past its ancestors' scissor is composited
+  through a rectangle of that scissor; the rectangle now carries its shape (S92-F5) and a scope whose masks
+  are all rectangles on the target's axes is analytic: the composite's passthrough clips by coverage at the
+  pixel's centre (`params.w`, `texCoordMinMax`), no stencil. Editor shader cache v68.
+- **Tests that pin per-frame layer work** run with the cache off (`LayerCacheOff`): TestRenderFilterRegion's
+  region tests, `RenderPrimitive.MatchesTheMeshPath`, `.GradientBackgroundsNeedNoMaskLayer`,
+  `.GradientsWithManyStops`, `RenderClip.ClipPathBasicShapesAreAnalytic`, `RenderBatch.NoMergeAcrossLayersFiltersShadersOrStencil`,
+  `RenderP1Test.PassCounts`, `.BackdropCompositeFusedExactly`, `RenderRecordTest.StencilAuditHoldsAcrossPassBreaks`,
+  `RmlRendererP1GoldenTest.LayersNested`. No golden image changed (the htmlui golden, browser-parity and
+  scene suites pass unchanged on glcore).

@@ -501,6 +501,27 @@ namespace jasperengine {
         // R4: the composite's draws over the renderer's life (one per drawComposite that drew)
         uint64_t getCompositeDrawCount() const { return compositeDraws; }
 
+        // S92 layer cache (RmlRendererLayerCache.cpp, R9). A layer scope (a PUSH_LAYER to its
+        // COMPOSITE) keeps its filtered result, without a trailing opacity, as an image of its
+        // window, keyed by its signature relative to the window: a later frame recording the
+        // same scope draws the image with the composite's blend, scissor, clip mask and opacity
+        // (one draw, no pass, no filter). Scopes reading live sources, saved-layer textures or
+        // layers outside them are not kept. Tests: false replays every scope (read by the replay)
+        static void setLayerCacheForTesting(bool enabled);
+        static bool isLayerCache();
+        // the cache's budget per renderer, least recently used first: 8 MiB on Android, iOS and
+        // the web, 32 MiB on desktop; tests set another (0: the platform's)
+        static void setLayerCacheBudgetForTesting(size_t bytes);
+        static size_t getLayerCacheBudget();
+        static constexpr uint64_t kLayerCacheKeepFrames = 120;   // replays an unused entry is kept
+        size_t getLayerCacheEntryCount() const;
+        size_t getLayerCacheBytes() const;                         // entries and free images
+        // R30 (tests): the last frame's layer and post-process passes, each by the 64-px granules
+        // of the window of the layer it serves (what RmlUi asked the layer to cover; the whole
+        // target for a layer pushed without one), and the largest such pass's render area
+        struct LayerPassStats { uint64_t windowPixels = 0; uint32_t largestPass = 0; };
+        LayerPassStats getLastLayerPassStats() const { return layerPassStats; }
+
     private:
         friend class RmlFilterContext;
         // phase 5: the UI effects draw with the renderer's passes, geometry and state
@@ -571,9 +592,15 @@ namespace jasperengine {
         struct DeferredComposite {
             int layer = -1;                  // the pushed layer; -1: none
             int post = -1;                   // the post target holding the filter output
-            Rml::Rectanglei scissor;         // the first composite's
+            Rml::Rectanglei scissor;         // the first composite's (the pushed layer's px)
             PipelineState state;             // the first composite's (no clip mask)
+            // S92 R10: the post target (of the source layer's frame, a region layer's set too) and
+            // the frames it and the pushed layer cover (target px)
+            Framebuffer* postImage = nullptr;
+            Rml::Rectanglei postFrame, layerFrame;
         };
+        // a post draw's source of frame `from` placed by the target plane into a target of frame `to`
+        static void placeByFrames(PostDraw& draw, Rml::Rectanglei from, Rml::Rectanglei to);
         DeferredComposite deferred;
         bool fusingDeferred = false;
         void flushDeferredComposite();
@@ -587,6 +614,7 @@ namespace jasperengine {
             Framebuffer* framebuffer = nullptr;
             int pool = -1;
             uint64_t maskVersion = 0;
+            Rml::Rectanglei window;           // S92 R30: what RmlUi asked it to cover (target px)
         };
         std::vector<LayerFrame> frames;               // the replay's, per layer stack index
         std::vector<Rml::Rectanglei> recordFrames;    // the recording's rects, per layer stack index
@@ -702,11 +730,16 @@ namespace jasperengine {
         // the replay of RenderGeometry: the texture was checked when it was recorded
         void drawRecordedGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, HtmlUITexture* texture);
         void renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
-        // frame: an ordinary layer when invalid, else a region layer covering it (target px)
-        Rml::LayerHandle pushLayerNow(Rml::Rectanglei frame = Rml::Rectanglei::MakeInvalid());
+        // frame: an ordinary layer when invalid, else a region layer covering it (target px);
+        // window: what RmlUi asked it to cover (S92 R30; invalid: the frame)
+        Rml::LayerHandle pushLayerNow(Rml::Rectanglei frame = Rml::Rectanglei::MakeInvalid(),
+                                      Rml::Rectanglei window = Rml::Rectanglei::MakeInvalid());
         void popLayerNow();
+        struct LayerCacheScope;
+        // scope: a layer cache miss (S92 R9): the result without its trailing opacity is stored
+        // and drawn from the cache, the opacity applied at the composite
         void compositeLayersNow(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blendMode,
-                                Rml::Span<const Rml::CompiledFilterHandle> filters);
+                                Rml::Span<const Rml::CompiledFilterHandle> filters, const LayerCacheScope* scope = nullptr);
         void renderShaderNow(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
         void releaseGeometryNow(Rml::CompiledGeometryHandle geometry);
         void releaseFilterNow(Rml::CompiledFilterHandle filter);
@@ -774,6 +807,10 @@ namespace jasperengine {
             uint32_t masks = 0;              // the mask draws of its list
             Rml::Rectanglei scissor;         // ELIDED: target px
             ClipParams clip;                 // ANALYTIC
+            // ANALYTIC with masks that are all rectangles on the target's axes: their intersection
+            // (target px), which clips a layer composite in its shader (S92, U27: no stencil)
+            bool compositeClip = false;
+            Rml::Rectanglef compositeRect;
         };
         enum class RunKind : uint8_t { VERTICES, INSTANCES };
         // a run cut into chunks of bounded size, each found in the run cache or gathered on its own
@@ -1104,6 +1141,86 @@ namespace jasperengine {
         uint32_t keptMismatchCount = 0;
         void verifyKeptFrame();
         void compareKeptFrame();
+
+        // S92 layer cache (RmlRendererLayerCache.cpp)
+        struct LayerCacheEntry {
+            std::unique_ptr<Framebuffer> image;   // 1-sample RGBA8
+            Rml::Rectanglei rect;                 // the window's pixels in it
+            size_t bytes = 0;
+            uint64_t lastUsed = 0;                // replay
+            bool hit = false;                     // drawn from since it was stored
+            bool transient = false;               // over the budget, for an equal scope of the replay only
+        };
+        // what the replay does with a recorded command of a cached scope: a hit's commands draw
+        // nothing (its clip masks only set the mask, drawn where it is tested), its composite
+        // draws the image; a miss's composite stores its result
+        enum class CacheOp : uint8_t { NONE, SKIP, MASK, HIT, STORE };
+        struct LayerCacheScope {
+            uint64_t key = 0;
+            Rml::Rectanglei window;               // target px: the composite's scissor within the layer
+            float opacity = 1.0f;                 // a trailing opacity filter, applied at the composite
+            int filters = 0;                      // the composite's filters before it
+            bool keep = false;                    // a store an equal scope later in the replay draws
+            bool afterStore = false;              // a hit on a store earlier in the replay
+        };
+        std::unordered_map<uint64_t, LayerCacheEntry> layerCache;
+        // images of evicted entries, reused by size by the next replay's stores (an element that
+        // changes every frame stores every frame), destroyed when it takes none
+        struct LayerCacheFreeImage {
+            std::unique_ptr<Framebuffer> image;
+            uint64_t freed = 0;                   // replay
+        };
+        std::vector<LayerCacheFreeImage> layerCacheFree;
+        size_t layerCacheBytes = 0;
+        uint64_t layerCacheReplay = 0;
+        uint32_t recordedPushes = 0;             // the frame's PUSH_LAYER commands (none: no plan)
+        std::vector<CacheOp> cacheOps;           // per command (empty: no cached scope this frame)
+        std::vector<int32_t> cacheScopeOf;       // HIT, STORE: the scope in cacheScopes
+        std::vector<LayerCacheScope> cacheScopes;
+        LayerPassStats layerPassStats;
+        int filterSourceLayer = -1;              // the layer post-process passes serve (-1: the top one)
+        // before the replay: the scopes' keys, hits and misses
+        void planLayerCache();
+        // The state a scope starts in (the replay's at its PUSH_LAYER), and the signature of its
+        // commands (first, end) relative to origin (target px). Unlike signatureOf, every draw is
+        // hashed with the state it is drawn in (scissor, transform, clip) instead of the state
+        // commands that set it, and geometry by its vertices: a scope keys the same whatever
+        // state the commands before it left, and equal elements key the same
+        struct ScopeState {
+            int transform = -1;                   // in commandMatrices, -1: none
+            bool scissorOn = false;
+            Rml::Rectanglei scissor;              // target px
+            bool clipOn = false;
+            uint64_t mask = 0;                    // the clip mask's operations since its last Set
+        };
+        uint64_t scopeSignature(size_t first, size_t end, Rml::Vector2i origin, const ScopeState& start, int layer, uint32_t& live);
+        // a command of a cached scope replayed: true when it was handled
+        bool replayCached(size_t index, const Command& command);
+        // a skipped scope's clip mask: the operation without its draw (ensureMask draws it where tested)
+        void setClipMaskOnly(const Command& command);
+        // the scope's result into the cache (taking a region post target, else a copy), nullptr
+        // when the budget has no room for it and no equal scope of the replay draws it
+        LayerCacheEntry* storeLayerResult(const LayerCacheScope& scope, RmlFilterContext& context);
+        void drawCachedLayer(const LayerCacheEntry& entry, Rml::Rectanglei window, int destination, Rml::BlendMode blend, float opacity);
+        // a layer composite into a layer covering destinationFrame: within an analytic clip scope
+        // of rectangles, their clip in the shader (PASSTHROUGH: params.w on, texCoordMinMax the
+        // rectangle in destination px, params.yz its size) and the scissor within it; false when
+        // that leaves nothing to draw
+        bool applyCompositeClip(PostDraw& draw, Rml::Rectanglei destinationFrame) const;
+        bool compositeClipActive() const;
+        // end of a replay: entries unused for kLayerCacheKeepFrames, and stored ones not drawn
+        // again in the replay after, go; free images no store took, and beyond a few, go
+        void trimLayerCache();
+        void releaseLayerCache();
+        // a texture in a scope's key: a small static one by its texels, else textureSignature
+        uint64_t scopeTextureSignature(const HtmlUITexture* texture, uint32_t& live) const;
+        static constexpr size_t kLayerCachePixelHashBytes = 256 * 1024;
+        static uint64_t layerCacheTextureHash(const uint8_t* data, size_t bytes, int width, int height, int filter, int wrapU, int wrapV,
+                                              int format);
+        std::unique_ptr<Framebuffer> takeLayerCacheImage(int width, int height);
+        bool makeLayerCacheRoom(size_t bytes);
+        // a pass's render area, by the window of the layer it serves (R30)
+        void noteLayerPass(Rml::Rectanglei full, TargetKind kind, int index);
     };
 
 }

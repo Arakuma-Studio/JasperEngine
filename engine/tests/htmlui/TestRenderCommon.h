@@ -53,6 +53,16 @@ namespace jasperengine { namespace test {
         ClassicReplay& operator=(const ClassicReplay&) = delete;
     };
 
+    // S92 R9: the layer cache off for a scope: the tests of what a layer's own passes do (its
+    // region, its filters) in every frame they draw, not only in the first
+    struct LayerCacheOff {
+        bool cache = RmlRenderer::isLayerCache();
+        LayerCacheOff(){ RmlRenderer::setLayerCacheForTesting(false); }
+        ~LayerCacheOff(){ RmlRenderer::setLayerCacheForTesting(cache); }
+        LayerCacheOff(const LayerCacheOff&) = delete;
+        LayerCacheOff& operator=(const LayerCacheOff&) = delete;
+    };
+
     // S16 on for a scope, whatever the run's switches (JASPER_HTMLUI_S16_OFF=1, AC1): the tests of
     // S16's own features
     struct S16On {

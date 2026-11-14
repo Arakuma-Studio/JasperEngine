@@ -173,6 +173,8 @@ public:
 	/// with PushLayer() are the size of the viewport. On return 'region' holds what the layer covers (the render interface
 	/// may crop it, to its largest texture for instance), invalid when the layer is an ordinary one: the default, which
 	/// calls PushLayer(). Composites between layers of different regions place their content by window coordinates.
+	/// Fork (S92-F4): also called for a region within the viewport (an element's layer: its filter, mask or shadow),
+	/// which the render interface may draw into a layer of that region's size.
 	virtual LayerHandle PushLayerRegion(Rectanglei& region);
 	/// Composite two layers with the given blend mode and apply filters.
 	/// @param[in] source The source layer.

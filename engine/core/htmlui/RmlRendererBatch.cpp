@@ -667,14 +667,17 @@ void RmlRenderer::planClipScopes(){
         bool analytic = primitivesFrame && !masks.empty() && masks.size() <= 2 && masks[0].operation == Rml::ClipMaskOperation::Set &&
                         (masks.size() == 1 || masks[1].operation == Rml::ClipMaskOperation::Intersect);
         regions.clear();
+        // S92 (U27): masks that are all rectangles on the target's axes clip a layer composite in
+        // the composite's shader (compositeRect) instead of the stencil
+        bool squareMasks = !masks.empty();
         for (const Mask& mask : masks){
             if (mask.shape < 0 || mask.operation == Rml::ClipMaskOperation::SetInverse){
-                elidable = analytic = false;
+                elidable = analytic = squareMasks = false;
                 break;
             }
             const AxisMap map = axisMapOf(matrixOf(mask.transform));
             if (!map.valid){
-                elidable = false;
+                elidable = squareMasks = false;
                 continue;
             }
             const ClipShapeRecord& shape = commandClipShapes[(size_t)mask.shape];
@@ -698,6 +701,7 @@ void RmlRenderer::planClipScopes(){
                 region.hasCorner[i] = r[i].x > 0.0f && r[i].y > 0.0f;
                 if (region.hasCorner[i])
                     region.corners[i] = mapRect(map, pixel, boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3]);
+                squareMasks = squareMasks && !region.hasCorner[i];
             }
             regions.push_back(region);
         }
@@ -765,7 +769,9 @@ void RmlRenderer::planClipScopes(){
                     elidable = false;
                 break;
             case CommandType::COMPOSITE: {
-                analytic = false;
+                // drawn in the target's space: clipped by the masks' rectangle there, or by the stencil
+                if (!squareMasks)
+                    analytic = false;
                 // a composite draws within the scissor; a filter that spreads may reach the corners
                 for (int f = 0; f < c.i[3]; f++){
                     if (filterSpreads(commandFilters[(size_t)(c.i[2] + f)]))
@@ -781,8 +787,16 @@ void RmlRenderer::planClipScopes(){
                     elidable = false;
                 break;
             }
-            case CommandType::PUSH_LAYER:
             case CommandType::POP_LAYER:
+                // draws nothing (a composite's layer popped after it)
+                break;
+            case CommandType::PUSH_LAYER:
+                // draws nothing either: under masks that are rectangles on the target's axes, what
+                // is drawn into it is checked as any draw (the next element's layer pushed before
+                // it sets its own clip)
+                if (!squareMasks)
+                    analytic = false;
+                break;
             case CommandType::SAVE_TEXTURE:
             case CommandType::SAVE_MASK:
                 // no stencil test of their own; what they hold was drawn by the scope's checked draws
@@ -810,6 +824,18 @@ void RmlRenderer::planClipScopes(){
             scope.scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, Rml::Vector2i((int)x1, (int)y1)));
         }else if (analytic && primitivesFrame){
             scope.mode = ScopeMode::ANALYTIC;
+            if (squareMasks){
+                // the rectangles' intersection, target px (a layer composite's clip)
+                RectF r = regions[0].rect;
+                for (const ShapeRegion& region : regions){
+                    r.x0 = std::max(r.x0, region.rect.x0);
+                    r.y0 = std::max(r.y0, region.rect.y0);
+                    r.x1 = std::max(r.x0, std::min(r.x1, region.rect.x1));
+                    r.y1 = std::max(r.y0, std::min(r.y1, region.rect.y1));
+                }
+                scope.compositeRect = Rml::Rectanglef::FromCorners(Rml::Vector2f(r.x0, r.y0), Rml::Vector2f(r.x1, r.y1));
+                scope.compositeClip = true;
+            }
             scope.clip.params[0] = (float)masks.size();
             for (size_t m = 0; m < masks.size(); m++){
                 const ClipShapeRecord& shape = commandClipShapes[(size_t)masks[m].shape];
@@ -1063,6 +1089,9 @@ void RmlRenderer::planRuns(){
     const size_t count = commands.size();
     for (size_t ci = 0; ci < count; ci++){
         const Command& c = commands[ci];
+        // S92 R9: what a scope drawn from the layer cache draws is not replayed
+        if (!cacheOps.empty() && cacheOps[ci] == CacheOp::SKIP)
+            continue;
         switch (c.type){
         case CommandType::TRANSFORM: {
             const int next = c.flag ? c.i[0] : -1;

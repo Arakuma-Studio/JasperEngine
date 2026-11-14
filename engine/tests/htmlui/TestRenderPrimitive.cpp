@@ -151,6 +151,8 @@ TEST(RenderPrimitive, MatchesTheMeshPath){
     JASPER_REQUIRE_GPU();
     // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
     FrameReuseMode replayed(false);
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     for (const Case& test : cases()){
         const std::string rml = documentOf(test.css, test.body);
         for (int samples : {1, 4, 8}){
@@ -199,6 +201,8 @@ TEST(RenderPrimitive, GradientBackgroundsNeedNoMaskLayer){
     JASPER_REQUIRE_GPU();
     // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
     FrameReuseMode replayed(false);
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     // a rounded box's CSS gradient: the mesh path masks it in a layer, the primitive clips itself
     // (S16-F5); the gradients are instances, no shader draw is left
     const std::string rml = documentOf(".g { left: 20px; top: 20px; border-radius: 12px; border: 2px solid #ffffff;"
@@ -371,6 +375,8 @@ namespace {
 
 TEST(RenderPrimitive, GradientsWithManyStops){
     JASPER_REQUIRE_GPU();
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     // the port's button body (7 stops, hard px stops), 16 stops, hard and transparent stops of a
     // radial gradient, a decorator of 9 stops
     expectLayerFreeGradients("many-stops",

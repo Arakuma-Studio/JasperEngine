@@ -500,7 +500,12 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 					clip_rect_size = size;
 				}
 				const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
-				clip_mask_list.push_back(ClipMaskGeometry{operation, &clip_rect_geometry, Vector2f(outer_scissor.p0), nullptr});
+				ClipMaskGeometry rect{operation, &clip_rect_geometry, Vector2f(outer_scissor.p0), nullptr};
+				// Fork (S92-F5): the rectangle's shape, so the render interface can clip the composite with it analytically
+				// (RenderToClipMaskShape) instead of through the stencil
+				rect.has_shape = true;
+				rect.shape.rect = Rectanglef::FromSize(size);
+				clip_mask_list.push_back(rect);
 				// (the geometry may have been rebuilt in place: the render manager would take an equal list for the mask
 				// last drawn into the stencil)
 				force_clip_mask = true;
@@ -526,7 +531,11 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 
 			if (has_mask)
 			{
-				render_manager->PushLayer();
+				// Fork (S92-F4): the mask's layer covers the element's window, as the layer it masks.
+				if (window.Valid())
+					render_manager->PushLayer(window);
+				else
+					render_manager->PushLayer();
 
 				if (!mask_layers)
 					mask_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Mask);
