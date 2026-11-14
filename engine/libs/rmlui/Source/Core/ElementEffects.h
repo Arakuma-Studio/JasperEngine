@@ -2,6 +2,7 @@
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -83,6 +84,12 @@ private:
 	// outside the element, extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
 	Rectanglei layer_window = Rectanglei::MakeInvalid();
 	bool layer_clip_root = false;
+	// Fork (S92-F2): the mask is a rounded shape the element is clipped by (RenderManager::PushShapeClip) instead of a
+	// mask layer, decided at Enter (ShapeClips).
+	bool shape_clipped = false;
+	// The clips of a mask that is one rounded shape (ElementBackgroundLayers::GetClipShapes), when nothing else of the
+	// element and its subtree draws through a layer; false otherwise.
+	bool ShapeClips(ClipMaskGeometryList& out);
 	// The rectangle of those clips' scissor region in the clip mask of the layer's composite, when the window extends
 	// beyond it; built for 'clip_rect_manager' at 'clip_rect_size' (placed by the clip mask's offset).
 	Geometry clip_rect_geometry;

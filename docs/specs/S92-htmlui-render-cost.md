@@ -836,3 +836,73 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 - **R1 and the replay tests.** Tests that count a replay's passes, draws or run-cache hits on
   repeated identical frames now turn frame reuse off for their scope (`FrameReuseMode`), and the S16
   benchmarks replay every frame (`S16Mode`); R33 is measured with reuse on and off.
+
+### WP D: Lua overload dispatch (R24-R28, R34)
+
+- **R26 reaches further than §3.7 listed.** Besides overloaded misses, all-fail calls, `tupleize` and
+  the three `catch` blocks, the same longjmp left objects behind in: a bound class that does not
+  match inside a container argument (the half-built `std::vector`), a property setter's value,
+  every `catch` of the call thunks (nine, not three), the constructor proxies (`ec.message()`
+  temporaries, the container of `container_forwarder`) and `read_only_error` (a `std::stringstream`).
+  All are fixed (PATCHES.md, change 4). Not changed: registration-time errors (`ClassBase`'s
+  `luaL_error(L, "%s", s.c_str())`), which run once when a state is made and are not call paths.
+- **A bound class that does not match no longer raises inside a decode.** `Userdata::getClass`
+  records `luaL_argerror`'s index and names in a per-thread record owned by the decoding frame (a
+  never-reused light userdata token in its first slot past the arguments); the decoder raises the
+  same `luaL_argerror` after the decoded values are destroyed. Arguments past the stack top are read
+  one slot higher, so a missing argument still reads as "none". A pack of trivially destructible
+  values keeps the stock decoder. Residual (inferred): a Lua memory error raised inside a decode
+  leaves the record set, but its token never matches again, so it changes nothing.
+- **AC17 fixture.** `engine/tests/core/fixtures/luabridge/overload-dispatch.txt` holds the 2473
+  results of the port's matrix plus S92's leak paths, captured from the stock header with the test
+  file built standalone by g++ 13 and clang++ 18. 640 calls name one of several failing arguments,
+  which depends on the compiler's evaluation order (g++ right to left, clang left to right): they
+  carry a `[gcc]` and a `[clang]` line; another compiler (MSVC) may give either (unverified there).
+- **AC18 counts live instances, not allocations.** `AllocationCounter` counts allocations but not
+  frees, so a net count is not available. The tests decode a 64-character text into `TrackedText`,
+  a type that counts its live instances (a C++ object whose destructor never ran is exactly what R26
+  forbids), on both sides of the failing parameter so either evaluation order shows a leak. The
+  same paths with `std::string`, counted by operator new/delete in the port's standalone harness
+  (2000 calls each), stock -> S92: g++ string-last wrong call 2000 -> 0, container element 4000 -> 0,
+  const object to a pointer 2000 -> 0, throwing bodies 2000 and 2000 -> 0 (and a caught exception
+  left on the runtime's stack -> none); clang++ overloaded misses 4000 -> 0, every overload fails
+  8000 -> 0, string-first wrong call 2000 -> 0, number decode 2000 -> 0, container 2000 -> 0,
+  throwing bodies 2000 and 4000 -> 0. The port's patch alone left all of these except the misses.
+- **AC19 debug run** is standalone: the engine's core tests are RelWithDebInfo (`NDEBUG`), so the
+  `LuaOverloadDispatch` tests were built without `NDEBUG` with g++ 13 and clang++ 18 against the
+  engine's `LuaBridge.h`, gtest and Lua: 6 of 6 pass, no assert. The port harness's 6735 lines are
+  byte-identical to stock in that build too, and under ASan and UBSan (g++).
+- **Red controls (AC17, AC18).** Core tests with the stock header in place
+  (`UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=LuaOverloadDispatch.*:LuaBindingBench.OverloadMisses`):
+  `LaterOverloadBuildsNoErrorString` (3011 strings per 1000 calls), `NoLeakOnMiss` (4000 live),
+  `NoLeakWhenEveryOverloadFails` (6000), `NoLeakOnWrongCallWithoutOverloads` (2000) and
+  `NoLeakWhenABodyThrows` (`std::current_exception()` set) fail; `CallsMatchStockLuaBridge` passes.
+- **AC20.** `LuaBindingBench.OverloadMisses` compares with stock's `try_overload_functions` copied
+  into the test and run over the same overload tables, so its "stock" uses today's thunks: it
+  measures the dispatch, not the decoding change. Stock as a whole was measured with the port's
+  harness (stock header vs S92 header, same program, min of 14 runs on the shared dev host, ns per
+  call):
+
+  | Form | g++ stock | g++ S92 | clang stock | clang S92 |
+  | --- | ---: | ---: | ---: | ---: |
+  | `setU(name, Vec4)` overload 1 of 4 | 1211 | 1218 (1.01x) | 1193 | 897 (0.75x) |
+  | `setU(name, float)` overload 4 of 4 | 204345 | 1121 | 241055 | 1299 |
+  | `Vec4(Vec4)` overload 5 of 5 | 2253 | 593 | 2217 | 695 |
+  | `pickF(Vec4)` overload 2 of 2 | 59516 | 911 | 71838 | 905 |
+  | `pickA(int)` overload 1 of 3 | 546 | 499 | 624 | 469 |
+  | wrong call, every overload fails | 146951 | 142170 (0.97x) | 133346 | 159179 (1.19x) |
+
+  The clang wrong call is over R34's 1.1x on this host, where the port's patch alone (the same code
+  on that path) measures 1.17x and runs vary by 2x under the load: inferred noise.
+
+  `LuaBindingBench.OverloadMisses` in the engine's core tests (g++, build box, real bindings, ns per
+  call, median of 7):
+
+  | Form | overload 1 (vs stock dispatch) | later overload (stock dispatch) | later/first | wrong call (vs stock) |
+  | --- | ---: | ---: | ---: | ---: |
+  | `Mesh:setShaderUniform(name, float)` | 509 (0.94x) | 605 (87313) | 1.19 | 83714 (1.06x) |
+  | `Quaternion * Vector3` | 320 (0.86x) | 581 (27918) | 1.82 | 53585 (0.97x) |
+  | `Vector3(Vector4)` | 229 (0.50x) | 561 (27421) | 2.45 | 55640 (1.03x) |
+
+  Every R34 budget holds there (later <= 2x + 1 us of overload 1, overload 1 and wrong calls
+  <= 1.1x stock); enforced only with `JASPER_TEST_PERF_SLACK`.

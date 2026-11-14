@@ -171,6 +171,8 @@ namespace jasperengine {
         Rml::Vector2f v{0.0f, 0.0f};                // linear: to the end, radial: 1/radius, conic: angle unit vector
         std::vector<float> stopPositions;           // normalized, at most MAX_STOPS
         std::vector<Rml::Colourf> stopColors;       // premultiplied
+        size_t declaredStops = 0;                   // the stops given (only MAX_STOPS of them drawn)
+        int stopRow = -1;                           // its row of the renderer's stop table (S92 R7), -1: none
     };
 
     // RmlUi's render interface on the engine render abstraction, with every optional RmlUi 6.3
@@ -350,6 +352,17 @@ namespace jasperengine {
         PipelineState getGeometryState(BlendMode blend = BlendMode::PREMULTIPLIED) const;
         // the top layer as the target of the next draw (opens or keeps its pass)
         bool bindTopLayer();
+        // tests (S92 R12): each draw tested against the clip mask from now on (nullptr: none), with
+        // the depth-stencil it tests (nullptr: layer 0's, which the ordinary layers share; else the
+        // region layer's framebuffer), the mask version that depth-stencil holds and the current
+        // one. Every draw that tests the stencil reports itself here before it is drawn
+        struct StencilAuditEntry {
+            const void* attachment = nullptr;
+            uint64_t attachmentVersion = 0;
+            uint64_t maskVersion = 0;
+        };
+        void setStencilAuditForTesting(std::vector<StencilAuditEntry>* audit);
+        void auditStencilDraw(const PipelineState& state);
         // a compiled geometry's buffers, uploaded on first use; false when it has no GPU data
         bool bindGeometry(Rml::CompiledGeometryHandle geometry, ObjectRender& program, uint32_t& indexCount);
 
@@ -605,6 +618,7 @@ namespace jasperengine {
         std::vector<MaskOp> maskOps;
         uint64_t maskVersion = 0;
         uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's
+        std::vector<StencilAuditEntry>* stencilAudit = nullptr;
         bool drawingMask = false;
         int drawIndexOverride = -1;       // ensureMask's layer, which the mask draws go to
         // the layer a geometry draw goes to: the top one (or ensureMask's)
@@ -979,6 +993,24 @@ namespace jasperengine {
         // bindings on the dynamic path
         ObjectRender compositeMsaaObject;
         TextureRender placeholderWhite;
+
+        // S92 gradient stop table (R7, D9): the stops of the gradient primitives of more than
+        // HtmlUIPrimitive::GRADIENT_STOPS, a row each, kept from CompileShader to ReleaseShader;
+        // the texture is made when a primitive first reads a changed table (none without rows)
+        static constexpr int STOP_TABLE_WIDTH = 2 * HtmlUIPrimitive::GRADIENT_TABLE_STOPS;   // colours, then positions
+        std::vector<uint8_t> stopTable;                   // rows of STOP_TABLE_WIDTH RGBA8 texels
+        std::vector<uint64_t> stopRowHashes;              // each row's content (the primitives' recorded hash)
+        std::vector<int> freeStopRows;
+        bool stopTableDirty = false;
+        TextureRender stopTableTexture;
+        std::vector<TextureRender> retiredStopTables;     // replaced in this frame: destroyed in a later one
+        uint64_t retiredStopTablesFrame = 0;
+        std::pair<int, int> primStopsSlot{-1, -1};        // u_htmluiStops
+        void assignStopRow(RmlCompiledShader& shader);
+        void releaseStopRow(RmlCompiledShader& shader);
+        // the table's texture with every row written (placeholderWhite without rows)
+        TextureRender* currentStopTable();
+        void destroyStopTables();
         // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
         std::unique_ptr<htmlui::EffectRenderer> effects;
 

@@ -241,6 +241,47 @@ TEST(CompatBasicShape, ShapesToSvg){
     EXPECT_FALSE(BasicShape::parse("", shape, &error));
 }
 
+// S92 R8: inset(), xywh(), rect(), circle() and ellipse() as the rounded rectangle an analytic clip
+// takes (what toSvg draws); polygon() and path() are none
+TEST(CompatBasicShape, RoundedShapesAsClipRectangles){
+    BasicShape shape;
+    std::string error;
+    Rml::Rectanglef rect;
+    Rml::Array<Rml::Vector2f, 4> radii;
+    ASSERT_TRUE(BasicShape::parse("inset(10px 20% round 5px 0 8px / 4px)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 50, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 60.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 30.0f);
+    EXPECT_EQ(radii[0], Rml::Vector2f(5, 4));
+    EXPECT_EQ(radii[1], Rml::Vector2f(0, 4));
+    EXPECT_EQ(radii[2], Rml::Vector2f(8, 4));
+
+    ASSERT_TRUE(BasicShape::parse("circle(at right 10px top)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Width(), 0.0f);
+    ASSERT_TRUE(BasicShape::parse("circle(50% at 50% 50%)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(40, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), 0.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+    EXPECT_EQ(radii[3], Rml::Vector2f(20, 20));
+    ASSERT_TRUE(BasicShape::parse("ellipse(farthest-side 25% at left)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), -100.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_EQ(radii[0], Rml::Vector2f(100, 10));
+    ASSERT_TRUE(BasicShape::parse("xywh(10px 5px 50% 20px round 3px)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Right(), 60.0f);
+    EXPECT_EQ(radii[2], Rml::Vector2f(3, 3));
+
+    ASSERT_TRUE(BasicShape::parse("polygon(50% 0%, 100% 100%, 0 100%)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toRoundedRect(20, 10, nullptr, rect, radii));
+    ASSERT_TRUE(BasicShape::parse("path('M0 0 L10 0 L10 10 Z')", shape, &error)) << error;
+    EXPECT_FALSE(shape.toRoundedRect(10, 10, nullptr, rect, radii));
+}
+
 // ---------------------------------------------------------------- GPU
 
 TEST(CompatDecoratorGpu, ShapeMaskAndLayersDraw){

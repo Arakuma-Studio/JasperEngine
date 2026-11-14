@@ -904,8 +904,17 @@ DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
-	Mesh mesh;
 	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
+	// Fork (S92-F1): a conic gradient is a primitive too
+	Vector<BoxPrimitive> primitives;
+	if (MakeGradientPrimitive(render_manager, render_box, shader, alpha, primitives))
+	{
+		ShaderElementData* element_data = GetShaderElementDataPool().AllocateAndConstruct(Geometry(), std::move(shader));
+		element_data->primitives = std::move(primitives);
+		return reinterpret_cast<DecoratorDataHandle>(element_data);
+	}
+
+	Mesh mesh;
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -926,6 +935,12 @@ void DecoratorConicGradient::ReleaseElementData(DecoratorDataHandle handle) cons
 void DecoratorConicGradient::RenderElement(Element* element, DecoratorDataHandle handle) const
 {
 	ShaderElementData* element_data = reinterpret_cast<ShaderElementData*>(handle);
+	if (!element_data->primitives.empty())
+	{
+		if (RenderManager* render_manager = element->GetRenderManager())
+			render_manager->RenderPrimitives(element_data->primitives, element->GetAbsoluteOffset(BoxArea::Border));
+		return;
+	}
 	element_data->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border), {}, element_data->shader);
 }
 

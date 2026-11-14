@@ -1715,6 +1715,7 @@ Framebuffer* RmlRenderer::postTarget(int index){
 }
 
 void RmlRenderer::drawFullscreenProgram(ObjectRender& program, const PipelineState& state, const std::function<void(ObjectRender&)>& applyUniforms){
+    auditStencilDraw(state);
     if (!program.beginDraw(state))
         return;
     if (applyUniforms)
@@ -1806,6 +1807,7 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
     geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
     stats.textureBinds++;
     noteDrawn(texture);
+    auditStencilDraw(state);
     if (!geometryObject.beginDraw(state))
         return false;
     HtmlUIParams params = makeParams(transformIn(frame), translation);
@@ -1975,6 +1977,24 @@ void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::Com
     drawGeometry(geometry, translation, nullptr, layerState(BlendMode::NONE, ColorWriteMask::NONE, write));
     drawingMask = false;
     maskVersionOf(drawIndex) = maskVersion;
+}
+
+void RmlRenderer::setStencilAuditForTesting(std::vector<StencilAuditEntry>* audit){
+    stencilAudit = audit;
+}
+
+void RmlRenderer::auditStencilDraw(const PipelineState& state){
+    if (!stencilAudit || !state.stencil.enabled || state.stencil.compare == CompareFunc::ALWAYS)
+        return;
+    // the depth-stencil of the open pass: layer 0's (every ordinary layer's) or a region layer's own
+    StencilAuditEntry entry;
+    if (activeKind == TargetKind::LAYER && activeIndex >= 0 && activeIndex < layersSize){
+        if (isRegionLayer(activeIndex))
+            entry.attachment = frames[(size_t)activeIndex].framebuffer;
+        entry.attachmentVersion = maskVersionOf(activeIndex);
+    }
+    entry.maskVersion = maskVersion;
+    stencilAudit->push_back(entry);
 }
 
 uint64_t& RmlRenderer::maskVersionOf(int index){
@@ -2833,6 +2853,7 @@ Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String& name, co
                               (int)list.size(), RmlCompiledShader::MAX_STOPS);
         }
         const int count = std::min((int)list.size(), RmlCompiledShader::MAX_STOPS);
+        shader.declaredStops = list.size();
         shader.stopPositions.resize(count);
         shader.stopColors.resize(count);
         for (int i = 0; i < count; i++){
@@ -2868,8 +2889,12 @@ Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String& name, co
         known = false;
     }
 
-    if (known)
-        return reinterpret_cast<Rml::CompiledShaderHandle>(new RmlCompiledShader(shader));
+    if (known){
+        RmlCompiledShader* compiled = new RmlCompiledShader(shader);
+        if (compiled->stopPositions.size() > (size_t)HtmlUIPrimitive::GRADIENT_STOPS)
+            assignStopRow(*compiled);
+        return reinterpret_cast<Rml::CompiledShaderHandle>(compiled);
+    }
 
     // decorator: shader("...") included; phase-5 effects claim their names before this
     Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s': supported are linear-gradient, radial-gradient and "
@@ -2916,7 +2941,9 @@ void RmlRenderer::renderShaderNow(Rml::CompiledShaderHandle shaderHandle, Rml::C
     applyPassViewport(Rml::Rectanglei::FromSize(frame.Size()));
     applyPassScissor(scissor);
 
-    if (!gradientObject.beginDraw(getGeometryState(BlendMode::PREMULTIPLIED)))
+    const PipelineState gradientState = getGeometryState(BlendMode::PREMULTIPLIED);
+    auditStencilDraw(gradientState);
+    if (!gradientObject.beginDraw(gradientState))
         return;
 
     GradientParams gradient = {};
@@ -2956,7 +2983,96 @@ void RmlRenderer::releaseShaderNow(Rml::CompiledShaderHandle shader){
         effects->releaseShader(shader);
         return;
     }
-    delete reinterpret_cast<RmlCompiledShader*>(shader);
+    RmlCompiledShader* compiled = reinterpret_cast<RmlCompiledShader*>(shader);
+    releaseStopRow(*compiled);
+    delete compiled;
+}
+
+void RmlRenderer::assignStopRow(RmlCompiledShader& shader){
+    // texels 0-15: the premultiplied colours; 16-31: the positions' float bytes, low byte first
+    int row;
+    if (!freeStopRows.empty()){
+        row = freeStopRows.back();
+        freeStopRows.pop_back();
+    }else{
+        row = (int)stopRowHashes.size();
+        stopRowHashes.push_back(0);
+        stopTable.resize(stopTable.size() + (size_t)STOP_TABLE_WIDTH * 4, 0);
+    }
+    uint8_t* texels = stopTable.data() + (size_t)row * STOP_TABLE_WIDTH * 4;
+    std::memset(texels, 0, (size_t)STOP_TABLE_WIDTH * 4);
+    for (size_t i = 0; i < shader.stopPositions.size() && i < (size_t)HtmlUIPrimitive::GRADIENT_TABLE_STOPS; i++){
+        const Rml::Colourf& c = shader.stopColors[i];
+        uint8_t* color = texels + i * 4;
+        color[0] = (uint8_t)std::lround(std::clamp(c.red, 0.0f, 1.0f) * 255.0f);
+        color[1] = (uint8_t)std::lround(std::clamp(c.green, 0.0f, 1.0f) * 255.0f);
+        color[2] = (uint8_t)std::lround(std::clamp(c.blue, 0.0f, 1.0f) * 255.0f);
+        color[3] = (uint8_t)std::lround(std::clamp(c.alpha, 0.0f, 1.0f) * 255.0f);
+        uint32_t bits;
+        std::memcpy(&bits, &shader.stopPositions[i], sizeof(bits));
+        uint8_t* position = texels + ((size_t)HtmlUIPrimitive::GRADIENT_TABLE_STOPS + i) * 4;
+        for (int b = 0; b < 4; b++)
+            position[b] = (uint8_t)((bits >> (8 * b)) & 0xffu);
+    }
+    // FNV-1a over the row: a draw reading it records its content with its own (RenderPrimitives)
+    uint64_t hash = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < (size_t)STOP_TABLE_WIDTH * 4; i++)
+        hash = (hash ^ texels[i]) * 0x100000001b3ull;
+    stopRowHashes[(size_t)row] = hash;
+    shader.stopRow = row;
+    stopTableDirty = true;
+}
+
+void RmlRenderer::releaseStopRow(RmlCompiledShader& shader){
+    if (shader.stopRow < 0)
+        return;
+    // (the texture keeps the row's texels until it is written again: nothing draws it meanwhile)
+    freeStopRows.push_back(shader.stopRow);
+    shader.stopRow = -1;
+}
+
+TextureRender* RmlRenderer::currentStopTable(){
+    const uint64_t frame = SystemRender::getFrameCount();
+    if (!retiredStopTables.empty() && retiredStopTablesFrame != frame){
+        for (TextureRender& retired : retiredStopTables)
+            retired.destroyTexture();
+        retiredStopTables.clear();
+    }
+    if (stopRowHashes.empty())
+        return &placeholderWhite;
+    if (stopTableDirty || !stopTableTexture.isCreated()){
+        // the rows of the table rounded up to a power of two (at least 16): a texture made again
+        // when one is added or changed, not updated (no once-a-frame limit, no staging buffer); the
+        // one it replaces lives until the next frame, as earlier draws of this one may read it
+        int rows = 16;
+        while (rows < (int)stopRowHashes.size())
+            rows *= 2;
+        std::vector<uint8_t> texels((size_t)rows * STOP_TABLE_WIDTH * 4, 0);
+        std::memcpy(texels.data(), stopTable.data(), stopTable.size());
+        void* data[1] = {texels.data()};
+        size_t size[1] = {texels.size()};
+        TextureRender texture;
+        gpuCreateCount++;
+        if (!texture.createTexture("htmlui-gradient-stops", STOP_TABLE_WIDTH, rows, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
+                                   TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE))
+            return &placeholderWhite;
+        if (stopTableTexture.isCreated()){
+            retiredStopTables.push_back(stopTableTexture);
+            retiredStopTablesFrame = frame;
+        }
+        stopTableTexture = texture;
+        stopTableDirty = false;
+    }
+    return &stopTableTexture;
+}
+
+void RmlRenderer::destroyStopTables(){
+    // (the rows stay with their shaders: the table is made again at its next draw)
+    stopTableTexture.destroyTexture();
+    for (TextureRender& retired : retiredStopTables)
+        retired.destroyTexture();
+    retiredStopTables.clear();
+    stopTableDirty = true;
 }
 
 //-------------------------------------------------------------------------------------------
@@ -3023,6 +3139,7 @@ bool RmlRenderer::loadPrimObject(){
     primSlotsSlot = data.getUniformBlockIndexByName("u_fs_htmluiSlots");
     for (int i = 0; i < 4; i++)
         primTextureSlots[(size_t)i] = data.getTextureIndexByName(("u_htmluiTexture" + std::to_string(i)).c_str());
+    primStopsSlot = data.getTextureIndexByName("u_htmluiStops");
     primObject.beginLoad(PrimitiveType::TRIANGLES);
     primObject.setShader(primShader.get());
     primObject.addAttribute(data.getAttrIndex(AttributeType::POSITION), &primQuadBuffer, 2, AttributeDataType::FLOAT, sizeof(float) * 2, 0, false, false);
@@ -3060,6 +3177,8 @@ bool RmlRenderer::loadPrimObject(){
         if (slot.first >= 0)
             primObject.addTexture(slot, ShaderStageType::FRAGMENT, &placeholderWhite);
     }
+    if (primStopsSlot.first >= 0)
+        primObject.addTexture(primStopsSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
     return primObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::UINT32);
 }
 
@@ -3671,6 +3790,7 @@ void RmlRenderer::destroyPipelineObjects(){
     primQuadIndexBuffer.destroyBuffer();
     primInstanceTemplate.destroyBuffer();
     placeholderWhite.destroyTexture();
+    destroyStopTables();
 
     // the pool destroys a shader (and its cached pipelines) once no other renderer holds it
     if (geometryShader){
@@ -3689,6 +3809,7 @@ void RmlRenderer::destroyPipelineObjects(){
     primClipSlot = -1;
     primSlotsSlot = -1;
     primTextureSlots.fill({-1, -1});
+    primStopsSlot = {-1, -1};
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
         if (program.shader){
