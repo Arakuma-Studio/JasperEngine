@@ -2743,6 +2743,14 @@ the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount
 pitch, and right after `play()`. `play()` on a playing source starts it over; two sources play
 one clip at once.
 
+Its own effects (Unity's Audio Low Pass Filter and its siblings; `jasper://docs/audio` 7):
+`addEffect(type)` -> `AudioSourceEffect` or nil (a mixer effect but `duck` and `limiter`, up to 4),
+`getEffect(index (1-based) or type)` -> `AudioSourceEffect` or nil, `removeEffect(index or type)` ->
+bool, `getEffectCount()`. `AudioSourceEffect`: `type`, `index` (ro), `bypass`, `wet` (rw),
+`setParameter(name, value [, seconds [, opts]])` -> bool (scaled time unless `{unscaled = true}`;
+the mixer's curves), `getParameter(name)` -> number or nil (the value heard now), `hasParameter(name)`,
+`isValid()` (false once its place in the list holds another effect).
+
 Several sources on one GameObject (Unity's `GetComponents<AudioSource>()`, `AddComponent`,
 `Destroy`): static `AudioSource.getAll(gameObject)` (its own source first, then the further ones in
 order), `AudioSource.add(gameObject)` (its own when it has none, else a further one: a hidden child

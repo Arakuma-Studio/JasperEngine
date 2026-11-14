@@ -29,6 +29,7 @@
 #include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/AudioSourceSlotCmd.h"
+#include "audio/SourceEffectEdit.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
@@ -758,8 +759,22 @@ void addComponentTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    // S97 WP-B: Unity's audio filters ("Audio Low Pass Filter") add their effect to the GameObject's
+    // Audio Source (REQ-5)
+    Json componentArg = args.contains("component") ? args["component"] : Json();
+    std::vector<std::string> filterEffects;
+    if (componentArg.is_string() || componentArg.is_array()) {
+        Json rest = Json::array();
+        for (const Json& item : componentArg.is_array() ? componentArg : Json::array({componentArg})) {
+            const SourceEffectEdit::FilterAlias* alias = item.is_string() ? SourceEffectEdit::findFilterAlias(item.get<std::string>()) : nullptr;
+            if (alias) filterEffects.push_back(alias->effect);
+            else rest.push_back(item);
+        }
+        if (!filterEffects.empty()) componentArg = rest;
+    }
     std::vector<ComponentType> types;
-    if (!args.contains("component") || !componentListArg(args["component"], types, error)) {
+    const bool onlyFilters = !filterEffects.empty() && componentArg.empty();
+    if (componentArg.is_null() || (!onlyFilters && !componentListArg(componentArg, types, error))) {
         call->fail(args.contains("component") ? error : "Pass component (a name or an array of names).");
         return;
     }
@@ -867,6 +882,12 @@ void addComponentTool(const CallPtr& call) {
             auto* reload = new CreateClipCmd(project, sceneId, {}, {});
             reload->setPlayerRoot(entity);
             return reload;
+        });
+    }
+    for (const std::string& effect : filterEffects) {
+        for (Entity entity : entities) added.push_back(Json{{"entity", entity}, {"component", "audiosource"}, {"effect", effect}});
+        steps->addStep([project, sceneId, entities, effect](std::string& why) -> Command* {
+            return SourceEffectEdit::addEffectCommand(project, sceneId, entities, effect, why);
         });
     }
     if (added.empty() && changes.empty()) {

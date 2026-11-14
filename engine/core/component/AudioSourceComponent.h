@@ -25,6 +25,7 @@ namespace SoLoud{
 namespace jasperengine{
 
     struct SoundEventDef;
+    struct SourceEffectRuntime;
 
     // What plays a source by itself (AudioSource.playOn, docs/specs/S37-sound-events.md R12)
     enum AudioPlayOn : uint32_t{
@@ -257,6 +258,9 @@ namespace jasperengine{
         bool loadRequested = false;
         bool loadEventPending = false;
         bool loadEventOk = false;
+        // the effects' filters, wrappers and timed changes while voices play through them (S97,
+        // audio/SourceEffects.h); null for a source without effects
+        std::shared_ptr<SourceEffectRuntime> effectRuntime;
     };
 
 }

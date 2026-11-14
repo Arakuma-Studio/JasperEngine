@@ -4919,6 +4919,12 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474EF3A626395839CB /* SourceEffects.h */; };
+		4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478EC1864DF63D273D /* AudioSourceEffect.h */; };
 		4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
 		4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
 		4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474DECF4105CE3068D /* AudioSourceSlots.h */; };
@@ -9499,6 +9505,10 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
+		4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceEffect.cpp; sourceTree = "<group>"; };
+		4A534E474EF3A626395839CB /* SourceEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SourceEffects.h; sourceTree = "<group>"; };
+		4A534E478EC1864DF63D273D /* AudioSourceEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceEffect.h; sourceTree = "<group>"; };
 		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
 		4A534E474DECF4105CE3068D /* AudioSourceSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceSlots.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -11024,6 +11034,8 @@
 				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
 				4A534E479455F5D4C55C2B3C /* MusicPlayer.h */,
 				4A534E47858C3240395205D8 /* MusicSequenceSource.h */,
+				4A534E472C361D2083EA2902 /* SourceEffects.cpp */,
+				4A534E474EF3A626395839CB /* SourceEffects.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -12787,6 +12799,8 @@
 				717AD967290B6602007D7DB5 /* AudioSource.h */,
 				4A534E470C31E68F4C6398B1 /* Audio.h */,
 				4A534E4779D650DFEE40600C /* SoundHandle.h */,
+				4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */,
+				4A534E478EC1864DF63D273D /* AudioSourceEffect.h */,
 				4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */,
 				4A534E474DECF4105CE3068D /* AudioSourceSlots.h */,
 			);
@@ -16850,6 +16864,8 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */,
+				4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */,
 				4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -19519,6 +19535,8 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
+				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
 				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -20479,6 +20497,8 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
+				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,
 				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -496,6 +496,8 @@ namespace jasperengine::editor{
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
         void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // AudioSource: its own effects, Add Effect, reorder and remove (S97 REQ-38; InspectorAudioEffects.cpp)
+        void drawAudioEffectRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // an audio file: its measurements, import settings, provenance and audition (InspectorAudioClip.cpp)
         void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
@@ -1181,6 +1183,9 @@ namespace jasperengine::editor{
         // GameObject of the selection; false with *why when it cannot be added to all of them
         bool canAddComponentToSelection(ComponentType type);
         bool addComponentToSelection(ComponentType type, std::string* why = nullptr);
+        // Add Component > Audio Low Pass Filter and its siblings: the effect on each selected GameObject's
+        // Audio Source, the source added where there is none (S97 REQ-5; InspectorAudioEffects.cpp)
+        bool addAudioEffectToSelection(const std::string& effect, std::string* why = nullptr);
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
         // true once after a link popup's "Shader Globals...": the App opens Project Settings on Graphics

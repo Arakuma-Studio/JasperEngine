@@ -1,7 +1,8 @@
 """Several Audio Sources on one GameObject (docs/specs/S97-audio-gaps.md REQ-24 to REQ-28, AC24): a
 second add_component AudioSource makes a slot, a hidden child entity returned by id; the scene tree
 and find_entities list only the GameObject, get_entity lists its audio_sources, set_properties and
-remove_component work on the slot's id, both play, and the slot survives a save and reopen.
+remove_component work on the slot's id, each source keeps its own effects (REQ-30), both play, and the
+slot survives a save and reopen.
 """
 
 from audio_refs import TRACE_ENV, write_tone
@@ -65,6 +66,13 @@ async def test_second_add_component_makes_a_slot(ed: Editor):
     ed.check_eq(audio_props(horn)["filename"], "sounds/horn.wav", "the second add's values went to the slot")
     ed.check_eq(audio_props(horn)["volume"], 0.5, "set_properties on the slot's id")
     ed.check_eq(audio_props(await ed.call("get_entity", scene=scene, entity=car))["volume"], 1, "the GameObject's own is untouched")
+
+    # REQ-30: each source has its own effects
+    await ed.call("set_properties", scene=scene, entity=slot,
+                  values={"AudioSource": {"effects": [{"type": "lowpass", "params": {"cutoff": 500}}]}})
+    ed.check_eq([e["type"] for e in audio_props(await ed.call("get_entity", scene=scene, entity=slot))["effects"]], ["lowpass"],
+                "the slot's effect")
+    ed.check_eq(audio_props(await ed.call("get_entity", scene=scene, entity=car)).get("effects") or [], [], "none on the GameObject's own")
 
 
 async def test_slot_survives_save_and_reopen(ed: Editor):
