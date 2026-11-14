@@ -848,7 +848,10 @@ the R29 table (AC10) after A, B1 and B2 are all in.
 - **Not S92-A's, found on the merged tree.** `FullPathGoldenTest.UIParticleSystemsClippedByAPanel`
   fails after the other FullPath goldens in one process (alone it passes) on main `fcfbc222d` too;
   MCP `test_html_ui_basic.py::test_child_scene_document` (a child scene's document at canvas
-  640, 320) fails on the spec branch without S92-A too (`f3b98de40`, after C).
+  640, 320) fails on the spec branch without S92-A too (`f3b98de40`, after C). After B2's follow-up
+  (`07480e8ef`, a blurred drop shadow in four passes) `IntegrationTest.TextureDocumentDrawsClipsLayersAndFilters`
+  misses its `p1/texture_effects` golden (0.69 % of the pixels, glcore and Vulkan, with the layer
+  cache off as the test counts a frame's own layers); it passed on the merge before it.
 
 ### WP D: Lua overload dispatch (R24-R28, R34)
 
