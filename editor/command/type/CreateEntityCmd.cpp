@@ -130,7 +130,8 @@ bool editor::CreateEntityCmd::execute(){
         }
     }
 
-    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, entityName);
+    // numbered only when a sibling has the name (Unity's), as it lands below `parent`
+    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, parent, entityName);
 
     if (type == EntityCreationType::GAMEOBJECT){
 

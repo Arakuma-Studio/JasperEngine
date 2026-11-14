@@ -900,21 +900,32 @@ std::string editor::UniqueEntityNames::make(const std::string& baseName) {
     return uniqueName;
 }
 
-std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities) {
-    if (!scene || baseName.empty()) {
-        return baseName;
+std::unordered_set<std::string> editor::ProjectUtils::siblingNames(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::unordered_set<Entity>& ignoredEntities) {
+    std::unordered_set<std::string> names;
+    if (!scene) {
+        return names;
     }
-
-    std::unordered_set<std::string> existingNames;
     for (Entity sceneEntity : entities) {
         if (ignoredEntities.find(sceneEntity) != ignoredEntities.end()) {
             continue;
         }
+        // the Hierarchy's parent of a user GameObject (getEffectiveParent's generated owners
+        // left out: they never hold a name a user picks)
+        const Transform* transform = scene->findComponent<Transform>(sceneEntity);
+        const Entity sceneParent = transform ? transform->parent : getVirtualParent(scene, sceneEntity);
+        if (sceneParent == parent) {
+            names.insert(scene->getEntityName(sceneEntity));
+        }
+    }
+    return names;
+}
 
-        existingNames.insert(scene->getEntityName(sceneEntity));
+std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities) {
+    if (!scene || baseName.empty()) {
+        return baseName;
     }
 
-    return makeUniqueEntityName(baseName, existingNames);
+    return makeUniqueEntityName(baseName, siblingNames(scene, entities, parent, ignoredEntities));
 }
 
 size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity entity){
