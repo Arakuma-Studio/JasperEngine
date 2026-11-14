@@ -17,6 +17,7 @@
 #include "component/ActionComponent.h"
 #include "subsystem/AudioSystem.h"
 #include "object/GameObject.h"
+#include "object/sound/Audio.h"
 #include "component/ButtonComponent.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -38,6 +39,7 @@
 #include <thread>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -367,6 +369,48 @@ TEST_F(PersistenceTest, PlayingSoundKeepsItsVoice) {
         moved.handle = 0;
     }
     Engine::removeAllScenes();
+}
+
+// S97 REQ-23 (AC22): a free voice the persistent scene owns plays on across a load; one the main
+// scene owns stops with it
+TEST_F(PersistenceTest, PersistentFreeVoiceSurvivesALoad) {
+    const AudioBackend backend = AudioSystem::getBackend();
+    AudioSystem::close();
+    // the null driver: a voice whatever the machine has (this test needs no output)
+    AudioSystem::setBackend(AudioBackend::Null);
+    writeWav(dir / "hum.wav", 8000 * 5);
+    Scene* first = nullptr;
+    SceneManager::registerScene(1, "First", [this, &first]() {
+        first = newScene();
+        Engine::setScene(first);
+    });
+    SceneManager::registerScene(2, "Second", [this, &first]() {
+        Engine::setScene(newScene());
+        // as the exported load_X: the replaced scene goes
+        LuaBinding::cleanupLuaScripts(first);
+        ObjectManager::forgetScene(first);
+        scenes.erase(std::remove_if(scenes.begin(), scenes.end(), [first](const std::unique_ptr<Scene>& scene) { return scene.get() == first; }),
+                     scenes.end());
+        first = nullptr;
+    });
+    loadAndFrame("First");
+    Scene* persistent = SceneManager::ensurePersistentScene();
+    ASSERT_NE(persistent, nullptr);
+    PlayOptions kept;
+    kept.scene = persistent;
+    SoundHandle survives = Audio::play("hum.wav", kept);
+    SoundHandle stops = Audio::play("hum.wav");
+    ASSERT_TRUE(survives.isPlaying());
+    ASSERT_TRUE(stops.isPlaying());
+
+    loadAndFrame("Second");
+    frame();
+    EXPECT_TRUE(survives.isPlaying()) << "owned by the persistent scene";
+    EXPECT_FALSE(stops.isValid()) << "owned by the scene the load replaced";
+    survives.stop();
+    Engine::removeAllScenes();
+    AudioSystem::close();
+    AudioSystem::setBackend(backend);
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D

@@ -1235,7 +1235,8 @@ loadType])` (`AudioLoadState.*` of a clip in the cache), `isOutputAvailable()` (
 (a Sound Event by GUID or `.soundevent` path, or a clip path; `opts = {target = GameObject (3D, follows
 it, stops when it is destroyed), position = Vector3 (3D, fixed), scene = Scene (the owner: it holds
 and stops with it; default the target's, else the main scene), volume = 1, pitch = 1, group = "SFX"
-(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time)}`; an unknown
+(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time), loop = false
+(a clip loops until `stop()` or its owner scene stops it; a Sound Event keeps its own loop)}`; an unknown
 name gives an invalid handle and one warning per name per Play), `Audio.stopAll([group])` -> integer
 (the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
 `AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
@@ -2712,8 +2713,12 @@ Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)` (the old cl
 switching back decodes nothing), `destroySound()` (stops it and frees its clip when nothing else holds
 it), `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()` (0 until `loadState` is Loaded), `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
-`getAudioSourceComponent()`.
-rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`, `sound3D`,
+`getAudioSourceComponent()`. `AudioSource(scene)` makes a 2D source on a new GameObject,
+`AudioSource(scene, true)` a 3D one; `getGameObject()` always works (an entity without a Transform
+gets one and stays 2D).
+rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`,
+`spatialBlend` (0 = 2D .. 1 = 3D, clamped), `sound3D` (a Transform and a blend above 0; true sets 1,
+false sets 0),
 `clockedSound`, `protectVoice`, `minDistance`, `maxDistance`, `attenuationModel`
 (`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`, `outputGroup` (the
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and

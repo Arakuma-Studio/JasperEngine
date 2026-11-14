@@ -15,20 +15,20 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 
 
 using namespace jasperengine;
 
-AudioSource::AudioSource(Scene* scene): EntityHandle(scene){
-    addComponent<AudioSourceComponent>();
+AudioSource::AudioSource(Scene* scene): AudioSource(scene, false){
 }
 
+// a GameObject either way, so it can be parented and made persistent; 2D is Spatial Blend 0, not a
+// missing Transform (S97 REQ-19, D8)
 AudioSource::AudioSource(Scene* scene, bool is3D): EntityHandle(scene){
-    addComponent<AudioSourceComponent>();
-    if (is3D){
-        addComponent<Transform>();
-    }
+    AudioSourceComponent audio;
+    audio.spatialBlend = is3D ? 1.0f : 0.0f;
+    addComponent<AudioSourceComponent>(audio);
+    addComponent<Transform>();
 }
 
 AudioSource::AudioSource(Scene* scene, Entity entity): EntityHandle(scene, entity){
@@ -45,9 +45,13 @@ AudioSource::AudioSource(AudioSource&& rhs) noexcept = default;
 AudioSource& AudioSource::operator=(AudioSource&& rhs) noexcept = default;
 
 GameObject AudioSource::getGameObject() const{
-    if (!isSound3D()){
-        Log::error("Cannot get object from 2D sound: enable 3D sound first");
-        throw std::runtime_error("Cannot get object from 2D sound");
+    // an older AudioSource(scene) made a bare entity: it becomes a GameObject that still plays 2D
+    if (!scene->findComponent<Transform>(entity)){
+        scene->addComponent<Transform>(entity, Transform());
+        AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+        audio.spatialBlend = 0.0f;
+        audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 
     return GameObject(scene, entity);
@@ -160,20 +164,33 @@ bool AudioSource::isStopped(){
 }
 
 void AudioSource::setSound3D(bool sound3D){
-    bool hasTransform = scene->findComponent<Transform>(entity) != nullptr;
-    if (sound3D && !hasTransform){
+    // the Transform stays when it goes 2D: it is the GameObject's (its children, its persistence)
+    if (sound3D && !scene->findComponent<Transform>(entity)){
         addComponent<Transform>();
-    }else if (!sound3D && hasTransform){
-        removeComponent<Transform>();
     }
-
-    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
-    audio.needUpdate = true;
-    markChanged<AudioSourceComponent>();
+    setSpatialBlend(sound3D ? 1.0f : 0.0f);
 }
 
 bool AudioSource::isSound3D() const{
-    return scene->findComponent<Transform>(entity) != nullptr;
+    return scene->findComponent<Transform>(entity) != nullptr && getComponent<AudioSourceComponent>().spatialBlend > 0.0f;
+}
+
+void AudioSource::setSpatialBlend(float spatialBlend){
+    if (!std::isfinite(spatialBlend)) {
+        Log::warn("AudioSource.spatialBlend: not a number, ignored");
+        return;
+    }
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+    spatialBlend = std::clamp(spatialBlend, 0.0f, 1.0f);
+    if (audio.spatialBlend != spatialBlend){
+        audio.spatialBlend = spatialBlend;
+        audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
+    }
+}
+
+float AudioSource::getSpatialBlend() const{
+    return getComponent<AudioSourceComponent>().spatialBlend;
 }
 
 void AudioSource::setClockedSound(bool enableClocked){
