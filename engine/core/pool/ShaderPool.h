@@ -199,6 +199,9 @@ namespace jasperengine{
         // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
         // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
         static uint64_t getDirectionalOnlyProperty();
+        // MESH's 'Agr' (S94 F15): a lit variant in a scene whose Environment Lighting Source is
+        // Gradient (AMBIENT_GRADIENT: the sky, equator and ground colours, includes/ambient.glsl)
+        static uint64_t getAmbientGradientProperty();
         // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
         // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
         static uint64_t getTerrainHolesProperty(ShaderType shaderType);

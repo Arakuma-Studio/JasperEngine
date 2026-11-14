@@ -171,7 +171,8 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "getActionSystem", "getAudioSystem", "getPhysicsSystem", "getNavigationSystem", "getChangeTick",
             "findEntitiesWith", "findChangedEntities", "markChanged", "camera", "backgroundColor",
             "gravity2D", "gravity3D", "physicsInterpolation", "enableUIEvents", "maxLightsPerObject",
-            "shadowQuality", "litQuality", "effectiveShadowTier"}},
+            "shadowQuality", "litQuality", "effectiveShadowTier", "ambientMode", "ambientSkyColor", "ambientEquatorColor",
+            "ambientGroundColor", "setAmbientGradient"}},
         // the hierarchy, the transform, visibility, destruction, and the components above that draw
         // nothing (not instantiate: a clone can land in a scene of other lighting; not
         // billboarding)

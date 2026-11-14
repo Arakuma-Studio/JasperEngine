@@ -55,6 +55,7 @@
 #include "Configs.h"
 #include "Stream.h"
 #include "util/ProjectUtils.h"
+#include "util/Color.h"
 #include "particles/ParticleEffectCodec.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
@@ -3264,6 +3265,21 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
+    // the Environment Lighting Source (S94); the gradient's colours away from their defaults (a
+    // script may switch to it)
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT)
+        out << ind2 << "scene->setAmbientMode(AmbientMode::GRADIENT);\n";
+    {
+        const SceneSettings ambientDefaults;
+        auto differs = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (differs(scene->getAmbientSkyColor(), Color::linearTosRGB(ambientDefaults.ambientSkyColor)) ||
+            differs(scene->getAmbientEquatorColor(), Color::linearTosRGB(ambientDefaults.ambientEquatorColor)) ||
+            differs(scene->getAmbientGroundColor(), Color::linearTosRGB(ambientDefaults.ambientGroundColor)))
+            out << ind2 << "scene->setAmbientGradient(" << formatVector3(scene->getAmbientSkyColor()) << ", " << formatVector3(scene->getAmbientEquatorColor())
+            << ", " << formatVector3(scene->getAmbientGroundColor()) << ");\n";
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         out << ind2 << "scene->setMaxLightsPerObject(" << scene->getMaxLightsPerObject() << ");\n";
     // always written: a Scene made in code is High, a scene saved before Lit Quality is Standard
