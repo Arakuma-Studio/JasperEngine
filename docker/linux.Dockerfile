@@ -15,12 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # Headless runs: virtual X server, Mesa software GL and Vulkan (lavapipe), screenshots.
         xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus xdotool \
         mesa-vulkan-drivers vulkan-tools \
-    # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
+    # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer. Pinned: Kitware's
+    # repository serves its latest release, and a new CMake can reject what the last one accepted.
     && wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
         | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg \
     && echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' \
         > /etc/apt/sources.list.d/kitware.list \
-    && apt-get update && apt-get install -y --no-install-recommends cmake \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        cmake=4.4.5-0kitware1ubuntu22.04.1 cmake-data=4.4.5-0kitware1ubuntu22.04.1 \
     && rm -rf /var/lib/apt/lists/*
 
 # sokol's Vulkan backend binds through VK_EXT_descriptor_buffer, which needs Vulkan headers

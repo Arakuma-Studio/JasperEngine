@@ -2121,10 +2121,18 @@ else()
 
     # install(DIRECTORY) only adds and overwrites: first the files engine/ no longer has leave
     # the installed copy (an export or a script build would compile a deleted header)
-    install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
-                      \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
-                      -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
-            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
+    # install(CODE) takes no CONFIGURATIONS (CMake 4.5 rejects it, older ones ignored it): the code
+    # checks the configuration itself
+    string(TOUPPER "${JASPERENGINE_INSTALL_CONFIGURATIONS}" JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX)
+    list(JOIN JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX "|" JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX)
+    install(CODE "
+        string(TOUPPER \"\${CMAKE_INSTALL_CONFIG_NAME}\" _jasper_install_config)
+        if(_jasper_install_config MATCHES \"^(${JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX})$\")
+            execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
+                \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
+                -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)
+        endif()
+    ")
     # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
