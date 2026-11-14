@@ -81,7 +81,6 @@ namespace prefab_materials_test {
     std::unique_ptr<Project> openProject(const fs::path& root) {
         auto project = std::make_unique<Project>();
         project->setSkipProjectLock(true);
-        test::useProjectPaths(project.get());
         EXPECT_TRUE(project->loadProject(root, false));
         return project;
     }
@@ -101,7 +100,7 @@ namespace prefab_materials_test {
 using namespace prefab_materials_test;
 
 TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
-    test::ensureEngine();
+    jasperengine::editor::test::ensureEngine();
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
     jasperengine::test::TempDir dir;
@@ -113,9 +112,10 @@ TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
     // a prefab made from a GameObject whose submesh links the red .material: its file embeds red
     {
         std::unique_ptr<Project> project = openProject(root);
-        const uint32_t sceneId = project->createNewScene("Boxes", SceneType::SCENE_3D);
+        std::string error;
+        const uint32_t sceneId = project->createSceneNow("Boxes", SceneType::SCENE_3D, {}, false, UnsavedChoice::Discard, &error);
         SceneProject* sceneProject = project->getScene(sceneId);
-        ASSERT_NE(sceneProject, nullptr);
+        ASSERT_NE(sceneProject, nullptr) << error;
         Scene* scene = sceneProject->scene;
         const Entity box = scene->createEntity();
         scene->addComponent<Transform>(box);
@@ -128,9 +128,8 @@ TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
         CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project.get(), sceneId, PREFAB,
             Stream::encodeEntity(box, scene, project.get(), sceneProject)));
         ASSERT_TRUE(project->isPrefabInstanceRoot(sceneId, box));
-        std::string error;
         ASSERT_TRUE(project->saveSceneNow(sceneId, "scenes/Boxes.scene", &error)) << error;
-        test::closeProject(*project);
+        jasperengine::editor::test::closeProject(*project);
     }
     ASSERT_NE(readBytes(root / PREFAB).find("materials/Box.material"), std::string::npos);
 
@@ -168,7 +167,7 @@ TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
     const auto baked = project->bakePrefabsForExport();
     const auto found = baked.find(fs::path(PREFAB));
     ASSERT_NE(found, baked.end());
-    const std::vector<uint8_t> cooked = cook::SceneCooker::cookPrefab(PREFAB, *found->second, project->getPrefabGuid(PREFAB), 1);
+    const std::vector<uint8_t> cooked = jasperengine::editor::cook::SceneCooker::cookPrefab(PREFAB, *found->second, project->getPrefabGuid(PREFAB), 1);
     Scene player;
     const Entity playerRoot = player.createEntity();
     std::vector<Entity> members;
@@ -182,5 +181,5 @@ TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
     ASSERT_TRUE(project->saveSceneNow(sceneId, {}, &error)) << error;
     EXPECT_EQ(readBytes(root / PREFAB), prefabBefore) << "the .prefab file is unchanged";
 
-    test::closeProject(*project);
+    jasperengine::editor::test::closeProject(*project);
 }
