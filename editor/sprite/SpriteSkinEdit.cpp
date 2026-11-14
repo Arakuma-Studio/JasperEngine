@@ -24,11 +24,9 @@
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 #include "sprite/SpriteSkinning.h"
-#include "texture/TextureData.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -515,15 +513,7 @@ namespace jasperengine::editor::sprite {
             return std::nullopt;
         }
         const fs::path page = project->resolveAssetPath(sheet.pages[frame.page].texture);
-        std::optional<pixelart::PixelImage> image = loadSpriteImage(page, error);
-        if (image) return image;
-        // a format the codecs of the editor read (TIFF, PSB)
-        TextureData data;
-        if (!data.loadTextureFromFile(page.string().c_str()) || !data.getData() || data.getChannels() != 4) return std::nullopt;
-        pixelart::PixelImage decoded(data.getWidth(), data.getHeight());
-        std::span<uint8_t> out = decoded.editPixels();
-        std::memcpy(out.data(), data.getData(), std::min(out.size(), static_cast<size_t>(data.getSize())));
-        return decoded;
+        return loadSpriteImage(page, error);
     }
 
     bool bindSkinBones(const SkinTarget& target, const SpriteSkinGeometry& skin, const std::vector<std::string>& removedBones,

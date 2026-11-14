@@ -43,8 +43,9 @@ namespace {
     }
 
     // bottom first: Body, then the group Head (Face, Hat), then a hidden layer
-    psd::PsdWriteDocument character(const std::string& hatName, bool extraOnTop) {
+    psd::PsdWriteDocument character(const std::string& hatName, bool extraOnTop, bool psb = false) {
         psd::PsdWriteDocument doc;
+        doc.psb = psb;
         doc.width = kDocW;
         doc.height = kDocH;
         doc.layers.push_back(solidLayer("Body", 20, 20, 24, 24, 200, 40, 40));
@@ -166,6 +167,24 @@ TEST(PsdLayerImportTest, LayersBecomeSprites) {
     collect(psdLayerPrefab(again, "art/hero.psd", Guid(), Guid::derive(Guid(), "hero"), false)["members"][0], "", objectsAgain);
     EXPECT_EQ(objectsAgain["Cap"].entity, objects["Hat"].entity) << "the renamed layer keeps its GameObject id";
     EXPECT_EQ(objectsAgain["Body"].entity, objects["Body"].entity);
+}
+
+TEST(PsdLayerImportTest, PsbLayersBecomeTheSameSprites) {
+    // a Large Document (version 2) of the same layers imports as the PSD does
+    const PsdLayerImportResult psdResult = importPsdLayers(bytesOf(character("Hat", false)), "art/hero.psb", 1, {});
+    const std::vector<uint8_t> bytes = bytesOf(character("Hat", false, true));
+    ASSERT_GE(bytes.size(), 6u);
+    EXPECT_EQ(bytes[5], 2) << "the writer made a PSB";
+    const PsdLayerImportResult psbResult = importPsdLayers(bytes, "art/hero.psb", 1, {});
+    ASSERT_TRUE(psbResult.ok) << psbResult.error;
+    ASSERT_EQ(psbResult.sheet.frames.size(), psdResult.sheet.frames.size());
+    for (size_t i = 0; i < psbResult.sheet.frames.size(); i++) {
+        EXPECT_EQ(psbResult.sheet.frames[i].name, psdResult.sheet.frames[i].name);
+        EXPECT_EQ(psbResult.sheet.frames[i].key, psdResult.sheet.frames[i].key);
+        EXPECT_EQ(psbResult.sheet.frames[i].sourceSize.x, psdResult.sheet.frames[i].sourceSize.x);
+    }
+    ASSERT_EQ(psbResult.pages.size(), psdResult.pages.size());
+    EXPECT_TRUE(psbResult.pages[0] == psdResult.pages[0]) << "the same pixels";
 }
 
 TEST(PsdLayerImportTest, CharacterRigBindsLayersToBones) {

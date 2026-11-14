@@ -499,10 +499,14 @@ namespace jasperengine::editor::sprite {
     std::optional<pixelart::PixelImage> loadSpriteImage(const fs::path& file, std::string* error) {
         std::string ext = file.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (ext != ".svg") return pixelart::PixelImage::loadPng(file, error);
+        if (ext != ".svg") {
+            std::optional<pixelart::PixelImage> image = pixelart::PixelImage::loadPng(file, error);
+            // what only the editor's registered decoders read (TIFF, PSB: S94 F50) goes through TextureData
+            if (image || !(TextureData::hasImageDecoder(ext))) return image;
+        }
         TextureData data;
         if (!data.loadTextureFromFile(file.string().c_str()) || !data.getData() || data.getWidth() <= 0 || data.getHeight() <= 0) {
-            if (error) *error = "the SVG does not rasterize";
+            if (error) *error = ext == ".svg" ? "the SVG does not rasterize" : "the image does not decode";
             return std::nullopt;
         }
         const int channels = data.getChannels();
@@ -628,6 +632,7 @@ namespace jasperengine::editor::sprite {
             if (!fs::exists(file, ec)) {
                 std::optional<pixelart::PixelImage> image = pixelart::PixelImage::decodePng(
                     std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), nullptr);
+                if (!image) image = loadSpriteImage(absolute, nullptr);
                 if (!image) return false;
                 TextureSheetBuild build = buildTextureSheet(absolute, assetPath, info.settings, &*image);
                 if (!build.ok) return false;
