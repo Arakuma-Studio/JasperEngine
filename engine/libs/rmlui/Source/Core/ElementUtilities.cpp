@@ -328,6 +328,25 @@ static bool IsPointWithinRoundedClip(Element* clipping_element, BoxArea clip_are
 	return true;
 }
 
+// Fork (S93 R43): a point in a clip rectangle farther from its edges than any declared radius reaches (lengths only; a
+// percentage radius answers false) is inside the rounded clip: most points of a hit test, with no render box made.
+static bool IsAwayFromRoundedCorners(const ComputedValues& computed, Rectanglef region, Vector2f point)
+{
+	float reach = 0.f;
+	for (int corner = 0; corner < 4; corner++)
+	{
+		for (int axis = 0; axis < 2; axis++)
+		{
+			const Style::LengthPercentage& radius = computed.border_radius(corner, axis);
+			if (radius.type != Style::LengthPercentage::Length)
+				return false;
+			reach = Math::Max(reach, radius.value);
+		}
+	}
+	return point.x >= region.Left() + reach && point.x <= region.Right() - reach && point.y >= region.Top() + reach &&
+		point.y <= region.Bottom() - reach;
+}
+
 bool ElementUtilities::IsPointWithinClip(Element* element, Vector2f point)
 {
 	// The walk of GetClippingRegion (without force_clip_self and a clip root): the same ancestors clip, each tested on its
@@ -361,7 +380,8 @@ bool ElementUtilities::IsPointWithinClip(Element* element, Vector2f point)
 			Math::SnapToPixelGrid(region);
 			if (!Rectanglei(region).Contains(Vector2i(local)))
 				return false;
-			if (clip_computed.has_border_radius() && !IsPointWithinRoundedClip(clipping_element, clip_area, local))
+			if (clip_computed.has_border_radius() && !IsAwayFromRoundedCorners(clip_computed, region, local) &&
+				!IsPointWithinRoundedClip(clipping_element, clip_area, local))
 				return false;
 		}
 
