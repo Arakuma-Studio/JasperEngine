@@ -219,6 +219,12 @@ namespace {
         }
     };
 
+    // layer 0 over the background into the screen, committed (a readback reads committed frames)
+    void composite(RenderTestContext& render){
+        render.compositeToScreen();
+        SystemRender::commit();
+    }
+
     // the first pixel where two images differ, or -1
     long firstDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
         if (a.size() != b.size())
@@ -262,7 +268,7 @@ TEST(RenderFrameReuse, StaticDocumentDrawsNothing){
     for (int i = 0; i < 60 && !kept; i++){
         const HtmlUIRenderStats& stats = frames.next();
         lastPasses = stats.passes;
-        render.compositeToScreen();
+        composite(render);
         if (stats.framesKept == 1){
             kept = true;
             break;
@@ -274,7 +280,7 @@ TEST(RenderFrameReuse, StaticDocumentDrawsNothing){
     for (int frame = 0; frame < 3; frame++){
         if (frame > 0){
             frames.next();
-            render.compositeToScreen();
+            composite(render);
         }
         const HtmlUIRenderStats& stats = runner.renderer()->getStats();
         EXPECT_EQ(stats.passes, 0u) << "frame " << frame;
@@ -432,7 +438,7 @@ TEST(RenderFrameReuse, CompositesOnlyDrawnTiles){
 
     // the tiles' composite is the whole quad's image: the background where the layer is
     // transparent, the layer over it elsewhere
-    render.compositeToScreen();
+    composite(render);
     std::vector<uint8_t> layer, screen;
     ASSERT_TRUE(render.readLayer(layer));
     ASSERT_TRUE(render.readScreen(screen));
@@ -459,7 +465,7 @@ TEST(RenderFrameReuse, CompositesOnlyDrawnTiles){
     Frames empty(runner);
     ASSERT_TRUE(empty.settle());
     const uint64_t draws = runner.renderer()->getCompositeDrawCount();
-    render.compositeToScreen();
+    composite(render);
     EXPECT_EQ(runner.renderer()->getCompositeDrawCount(), draws);
     EXPECT_EQ(runner.renderer()->getStats().compositePixels, 0u);
 }

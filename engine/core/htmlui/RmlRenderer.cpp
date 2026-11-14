@@ -2965,11 +2965,14 @@ void RmlRenderer::releaseShaderNow(Rml::CompiledShaderHandle shader){
 
 namespace {
 
-    bool loadGeometryObject(ObjectRender& object, ShaderRender* shader, BufferRender* vertices, BufferRender* indices, TextureRender* white){
+    // immediate: a pass of the frame (a composite), its pipelines made at once
+    bool loadGeometryObject(ObjectRender& object, ShaderRender* shader, BufferRender* vertices, BufferRender* indices, TextureRender* white,
+                            bool immediate = false){
         ShaderData& shaderData = shader->shaderData;
         const unsigned int stride = sizeof(Rml::Vertex);
 
         object.beginLoad(PrimitiveType::TRIANGLES);
+        object.setImmediatePipelines(immediate);
         object.setShader(shader);
         // Rml::Vertex: position (2 floats), colour (4 bytes), tex_coord (2 floats). An
         // attribute the variant does not use has slot -1 and is skipped
@@ -3125,7 +3128,9 @@ bool RmlRenderer::loadPipelines(){
         return false;
     }
 
+    // (the tiles' composite, S92 R4: a pass of the frame)
     if (!loadGeometryObject(compositeMsaaObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
+        !loadGeometryObject(compositeTileObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite, true) ||
         !loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
         !loadGeometryObject(gradientObject, gradientShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite)){
         Log::error("[HTML UI] could not load the HTML UI geometry programs");
@@ -3529,8 +3534,30 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     if (tiled && tileQuads == 0)
         return false;
 
+    const bool msaaTarget = compositePipeline == PIP_MSAA_NODEPTH || compositePipeline == PIP_MSAA;
+    if (tiled){
+        // the fixed composite's state (premultiplied, no depth, no culling) at the camera pass's format
+        PipelineState state;
+        state.target = targetFormatFor(msaaTarget ? PIP_MSAA_NODEPTH : compositePipeline, msaaSamples);
+        state.blend = BlendMode::PREMULTIPLIED;
+        state.depthCompare = CompareFunc::ALWAYS;
+        state.depthWrite = false;
+        compositeTileObject.replaceVertexBuffer(&compositeVertexBuffer, &tileVertexBuffer, 0);
+        compositeTileObject.setIndexBuffer(&tileIndexBuffer, 0);
+        compositeTileObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &source);
+        if (!compositeTileObject.beginDraw(state))
+            return false;
+        HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
+        compositeTileObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+        compositeTileObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
+        // the tiles the frame wrote, one draw: the image of the whole quad, the rest is transparent
+        compositeTileObject.draw(0, tileQuads * 6, 1);
+        compositeDraws++;
+        return true;
+    }
+
     ObjectRender* object = &compositeObject;
-    if (compositePipeline == PIP_MSAA_NODEPTH || compositePipeline == PIP_MSAA){
+    if (msaaTarget){
         // the fixed composite's state (premultiplied, no depth, no culling) at the target's
         // sample count
         PipelineState state;
@@ -3549,17 +3576,7 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
     object->applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
     object->applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
-    if (tiled){
-        // S92 R4: the tiles the frame wrote, one draw (the image of the whole quad: the rest of the
-        // target is transparent)
-        object->replaceVertexBuffer(&compositeVertexBuffer, &tileVertexBuffer, 0);
-        object->setIndexBuffer(&tileIndexBuffer, 0);
-        object->draw(0, tileQuads * 6, 1);
-        object->replaceVertexBuffer(&compositeVertexBuffer, &compositeVertexBuffer, 0);
-        object->resetIndexBuffer();
-    }else{
-        object->draw(0, 6, 1);
-    }
+    object->draw(0, 6, 1);
     compositeDraws++;
 
     return true;
@@ -3643,6 +3660,7 @@ void RmlRenderer::destroyPipelineObjects(){
     gradientObject.destroy();
     compositeObject.destroy();
     compositeMsaaObject.destroy();
+    compositeTileObject.destroy();
     primObject.destroy();
     for (PostProgram& program : postPrograms){
         program.object.destroy();

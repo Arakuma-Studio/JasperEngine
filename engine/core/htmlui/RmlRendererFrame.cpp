@@ -960,6 +960,7 @@ void RmlRenderer::verifyKeptFrame(){
     verifyPending = true;
     verifyFrame = SystemRender::getFrameCount();
     verifyKeptTarget = kept;
+    verifyKeptGeneration = kept->getGeneration();
     // GL reads back at once; the other backends once the frame's commands are submitted
     if (Engine::isOpenGL())
         compareKeptFrame();
@@ -978,8 +979,8 @@ void RmlRenderer::compareKeptFrame(){
     verifyPending = false;
     RmlRenderTarget* kept = verifyKeptTarget;
     verifyKeptTarget = nullptr;
-    if (!kept || !verifyTarget || !kept->isCreated() || !verifyTarget->isCreated() || kept->getWidth() != verifyTarget->getWidth() ||
-        kept->getHeight() != verifyTarget->getHeight())
+    if (!kept || !verifyTarget || !kept->isCreated() || !verifyTarget->isCreated() || kept->getGeneration() != verifyKeptGeneration ||
+        kept->getWidth() != verifyTarget->getWidth() || kept->getHeight() != verifyTarget->getHeight())
         return;
     const int width = kept->getWidth(), height = kept->getHeight();
     std::vector<uint8_t> keptPixels, freshPixels;

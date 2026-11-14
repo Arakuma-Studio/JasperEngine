@@ -1023,6 +1023,9 @@ namespace jasperengine {
         std::vector<Rml::Vertex> tileVertices;
         BufferRender tileVertexBuffer;
         BufferRender tileIndexBuffer;
+        // the composite on the dynamic path, its buffers swapped for the tiles' (every backend
+        // takes them there), at the camera pass's format
+        ObjectRender compositeTileObject;
         uint32_t tileCapacity = 0;           // quads the buffers hold
         uint64_t tileUploadFrame = UINT64_MAX;
         uint64_t compositeDraws = 0;
@@ -1051,6 +1054,7 @@ namespace jasperengine {
         bool verifyPending = false;
         uint64_t verifyFrame = 0;
         RmlRenderTarget* verifyKeptTarget = nullptr;
+        uint64_t verifyKeptGeneration = 0;   // its framebuffers then: made again since, nothing to compare
         std::string verifySource;            // the first command reading an unversioned source
         uint32_t keptMismatchCount = 0;
         void verifyKeptFrame();
