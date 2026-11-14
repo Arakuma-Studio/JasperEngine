@@ -1070,7 +1070,10 @@ option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-
 option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
 if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
     if(MSVC)
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        # /Z7: each object carries its own debug information, which the link gathers into the PDB as
+        # before; /Zi's shared compiler PDB made every object uncacheable (ccache: the player
+        # runtimes and Compile builds of CI)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
