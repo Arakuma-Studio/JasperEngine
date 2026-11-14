@@ -505,7 +505,8 @@ TEST(Physics2DReview, MovePosition2D) {
     World2D world(Vector2(0, 0));
     world.scene.setPhysicsInterpolation(true);
     const Entity mover = moveBox2D(world, Vector3(0, 0, 0), BodyType::KINEMATIC);
-    const Entity crate = moveBox2D(world, Vector3(77, 0, 0), BodyType::DYNAMIC);
+    // touching (within Box2D's speculative distance): the move pushes it in that step
+    const Entity crate = moveBox2D(world, Vector3(64.5f, 0, 0), BodyType::DYNAMIC);
     const Entity ball = moveBox2D(world, Vector3(0, 300, 0), BodyType::DYNAMIC);
     world.load();
     world.step();

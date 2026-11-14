@@ -300,6 +300,8 @@ namespace jasperengine{
 		void composeAttached3D();
 		// a movePosition / moveRotation target, inside the step before the world steps
 		void applyMoveTarget3D(Entity entity, RigidbodyComponent& body, float stepTime);
+		// after the step that ends a kinematic move: exactly at its target
+		void finishMoveTarget3D(Entity entity, RigidbodyComponent& body);
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
 		bool attachChild2D(Entity entity, Rigidbody2DComponent& body);
@@ -307,6 +309,7 @@ namespace jasperengine{
 		// the attached copies' shapes made again (all: every one), true when any was
 		bool syncAttachedColliders2D(Entity entity, Rigidbody2DComponent& body, bool all);
 		void applyMoveTarget2D(Entity entity, Rigidbody2DComponent& body, float stepTime);
+		void finishMoveTarget2D(Rigidbody2DComponent& body);
 #endif
 
 		// a script that defines a contact message appeared or went: the listener masks of the

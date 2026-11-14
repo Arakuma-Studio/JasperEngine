@@ -332,9 +332,10 @@ void PhysicsSystem::applyMoveTarget3D(Entity entity, RigidbodyComponent& body, f
         body.movedLinearVelocity = Vector3(linearVelocity.GetX(), linearVelocity.GetY(), linearVelocity.GetZ());
         body.movedAngularVelocity = Vector3(angularVelocity.GetX(), angularVelocity.GetY(), angularVelocity.GetZ());
         body.movingToTarget = true;
-        if (--body.moveStepsLeft > 0){
-            return;
+        if (--body.moveStepsLeft <= 0){
+            body.moveSnap = true;
         }
+        return;
     }else{
         // static, dynamic, or a body not stepped yet: placed there before the step, its velocity
         // kept (Unity); the pose drawn before the step stays where it was, so it interpolates
@@ -342,6 +343,23 @@ void PhysicsSystem::applyMoveTarget3D(Entity entity, RigidbodyComponent& body, f
                                              body.type == BodyType::STATIC ? JPH::EActivation::DontActivate : JPH::EActivation::Activate);
         body.moveStepsLeft = 0;
     }
+    body.hasMovePosition = false;
+    body.hasMoveRotation = false;
+}
+
+void PhysicsSystem::finishMoveTarget3D(Entity entity, RigidbodyComponent& body){
+    body.moveSnap = false;
+    JPH::BodyInterface& bodyInterface = world3D.GetBodyInterfaceNoLock();
+    JPH::Vec3 position;
+    JPH::Quat rotation;
+    bodyInterface.GetPositionAndRotation(body.body, position, rotation);
+    if (body.hasMovePosition){
+        position = JPH::Vec3(body.movePosition.x, body.movePosition.y, body.movePosition.z);
+    }
+    if (body.hasMoveRotation){
+        rotation = toValidatedJoltRotation(body.moveRotation, entity, -1);
+    }
+    bodyInterface.SetPositionAndRotation(body.body, position, rotation, JPH::EActivation::DontActivate);
     body.hasMovePosition = false;
     body.hasMoveRotation = false;
 }
@@ -600,9 +618,10 @@ void PhysicsSystem::applyMoveTarget2D(Entity entity, Rigidbody2DComponent& body,
         body.movedLinearVelocity = b2Body_GetLinearVelocity(body.body);
         body.movedAngularVelocity = b2Body_GetAngularVelocity(body.body);
         body.movingToTarget = true;
-        if (--body.moveStepsLeft > 0){
-            return;
+        if (--body.moveStepsLeft <= 0){
+            body.moveSnap = true;
         }
+        return;
     }else{
         b2Body_SetTransform(body.body, targetPosition, b2MakeRot(targetAngle));
         if (body.type != BodyType::STATIC){
@@ -610,6 +629,20 @@ void PhysicsSystem::applyMoveTarget2D(Entity entity, Rigidbody2DComponent& body,
         }
         body.moveStepsLeft = 0;
     }
+    body.hasMovePosition = false;
+    body.hasMoveRotation = false;
+}
+
+void PhysicsSystem::finishMoveTarget2D(Rigidbody2DComponent& body){
+    body.moveSnap = false;
+    b2Transform transform = b2Body_GetTransform(body.body);
+    if (body.hasMovePosition){
+        transform.p = {body.movePosition.x / pointsToMeterScale2D, body.movePosition.y / pointsToMeterScale2D};
+    }
+    if (body.hasMoveRotation){
+        transform.q = b2MakeRot(Angle::defaultToRad(body.moveAngle));
+    }
+    b2Body_SetTransform(body.body, transform.p, transform.q);
     body.hasMovePosition = false;
     body.hasMoveRotation = false;
 }

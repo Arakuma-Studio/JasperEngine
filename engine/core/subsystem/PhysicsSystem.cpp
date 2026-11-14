@@ -4717,6 +4717,10 @@ void PhysicsSystem::writeBackBodies2D(float alpha, bool interpolating){
         if (!interpolating && Engine::getFixedStepsLeft() == 1){
             finishFollowing2D(entity, *body);
         }
+        // S96 WP-C: and a kinematic move's last step ends at its target
+        if (!interpolating && body->moveSnap && b2Body_IsValid(body->body)){
+            finishMoveTarget2D(*body);
+        }
         updateTransformFromRigidbody2D(entity, *body, alpha);
         markWritten(entity);
     }
@@ -4762,6 +4766,10 @@ void PhysicsSystem::writeBackBodies3D(float alpha, bool interpolating){
         refreshAncestors(entity);
         if (!interpolating && Engine::getFixedStepsLeft() == 1){
             finishFollowing3D(entity, *body);
+        }
+        // S96 WP-C: and a kinematic move's last step ends at its target
+        if (!interpolating && body->moveSnap && !body->body.IsInvalid()){
+            finishMoveTarget3D(entity, *body);
         }
         // a static or kinematic body under a body written in this pass (a hitbox on a vehicle)
         // keeps its local pose and so moves with it; its body follows its Transform at the next

@@ -353,6 +353,9 @@ namespace jasperengine{
         bool moveFromFixedStep = false;
         int moveStepsLeft = 0;
         bool movingToTarget = false;
+        // the step that ends a kinematic move: the body is put exactly at the target after it
+        // (its velocity integrates rotations only approximately)
+        bool moveSnap = false;
 #ifdef JASPERENGINE_PHYSICS_2D
         b2Vec2 movedLinearVelocity = b2Vec2_zero;
         float movedAngularVelocity = 0.0f;

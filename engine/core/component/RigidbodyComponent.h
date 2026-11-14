@@ -261,6 +261,9 @@ namespace jasperengine{
         // stop once it is reached unless a script changed them)
         int moveStepsLeft = 0;
         bool movingToTarget = false;
+        // the step that ends a kinematic move: the body is put exactly at the target after it
+        // (its velocity integrates rotations only approximately)
+        bool moveSnap = false;
         Vector3 movedLinearVelocity;
         Vector3 movedAngularVelocity;
     };

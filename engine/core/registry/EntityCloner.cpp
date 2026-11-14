@@ -1099,6 +1099,7 @@ void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneCont
     body.hasMoveRotation = defaults.hasMoveRotation;
     body.moveStepsLeft = defaults.moveStepsLeft;
     body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>
@@ -1188,6 +1189,7 @@ void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext&
     body.hasMoveRotation = defaults.hasMoveRotation;
     body.moveStepsLeft = defaults.moveStepsLeft;
     body.movingToTarget = defaults.movingToTarget;
+    body.moveSnap = defaults.moveSnap;
 }
 
 template<>
