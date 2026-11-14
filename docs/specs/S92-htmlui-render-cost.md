@@ -803,6 +803,13 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   S16-F5 already draws the O2 frame's gradients (four stops at most) without a layer. With S92-A
   every idle cell is 0 passes, 0 draws, `framesKept` 1 (asserted); cold and warm are unchanged until
   B1 and B2 land.
+- **AC21 (R33).** `HtmlUIRenderPerf.B1Examples` and `B2List500`, glcore, dev host under load: the
+  signature takes 1.0-5.0 % of the recording and the plan (B1: blank 4.3, dialogue 3.5, hud 4.0,
+  inventory 2.9, loading 1.0, main_menu 3.7, pause_menu 4.0, settings 3.0, shop 3.0, toasts 5.0,
+  video_menu 3.8; B2 1.1 %; 0.001-0.011 ms a frame). With frame reuse, the static examples keep all
+  120 measured frames and cost 0.005-0.062 ms of engine time against 0.094-0.698 ms replayed; the
+  animated ones (loading, main_menu, toasts, video_menu) keep none and cost the same as replayed
+  (within 0.02 ms). toasts sits at the 5 % bound: the gate takes `perfSlack()`.
 - **AC2's oracle.** The image after each change is compared byte for byte with a fresh replay of
   the same frame (frame reuse off, same clock), not with a second document loaded in that state:
   it is the image the frame would have without R1, which is what a stale frame would differ from.
