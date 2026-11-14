@@ -94,6 +94,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ForceFieldComponent, "Pushes the particles of systems with External Forces"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
             {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
+            {ComponentType::FogZoneComponent, "A box or sphere with its own fog look, blended by the camera's position"},
             {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
             {ComponentType::TrailRendererComponent, "Draws a fading ribbon behind a moving object"},
         }},

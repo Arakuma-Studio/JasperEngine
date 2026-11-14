@@ -31,6 +31,7 @@
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/LodFade.h"
@@ -222,6 +223,7 @@ namespace luabridge
     template<> struct Stack<FogColorMode> : EnumWrapper<FogColorMode>{};
     template<> struct Stack<FogVolumeShape> : EnumWrapper<FogVolumeShape>{};
     template<> struct Stack<FogVolumeFalloff> : EnumWrapper<FogVolumeFalloff>{};
+    template<> struct Stack<FogZoneShape> : EnumWrapper<FogZoneShape>{};
     template<> struct Stack<CloudsPreset> : EnumWrapper<CloudsPreset>{};
     template<> struct Stack<CloudsRendering> : EnumWrapper<CloudsRendering>{};
     template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};

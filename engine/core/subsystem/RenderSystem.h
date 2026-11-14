@@ -2012,6 +2012,16 @@ namespace jasperengine{
 		// volumetric fog, clouds and their composites (AtmosphereRenderer)
 		height_fog_t passHeightFog;
 		AtmosphereRenderer atmosphere;
+		// the fog look the passes read (docs/specs/vapor.md R7, R11): the scene's first Fog
+		// itself, or its resolve at the camera being drawn when a profile, a blend, a Fog Zone
+		// or a runtime write layers on it (render/FogResolve.h); null without a Fog
+		struct FogLook;
+		std::unique_ptr<FogLook> fogLook;
+		FogComponent* frameFog = nullptr;
+		// fs_fog and the atmosphere's fog from a look
+		void applyFogLook(FogComponent* look);
+		// the look of a view drawn from `camera`: the frame's, or its resolve there (Fog Zones)
+		FogComponent* viewFogLook(const Vector3& camera);
 #ifdef JASPERENGINE_EDITOR
 		std::unordered_map<uint32_t, AtmosphereInfo> keptAtmosphereInfo;
 #endif
@@ -3841,6 +3851,10 @@ namespace jasperengine{
 		void setPreviewAtmosphereQuality(int quality);
 		// what the atmosphere ran in the last frame of a view (0: the frame's own)
 		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
+		// the fog look the frame's passes read (docs/specs/vapor.md R7): the scene's first Fog
+		// itself when nothing layers on it (R11), else its resolve at the main camera; null
+		// without a Fog. A view drawn from another camera resolves its own (Fog Zones).
+		const FogComponent* getFogLook() const { return frameFog; }
 #ifdef JASPERENGINE_EDITOR
 		// the frame's own view drew for an editor view (the Game view drawn as the frame):
 		// what its atmosphere ran counts for that view too (getAtmosphereInfo(viewId))

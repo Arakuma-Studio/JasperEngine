@@ -249,12 +249,14 @@ namespace jasperengine::editor{
         TilemapLayerComponent,
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
-        TitleArtRendererComponent
+        TitleArtRendererComponent,
+        // a place with its own fog look, blended by the camera's position (docs/specs/vapor.md R40)
+        FogZoneComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
+    constexpr ComponentType LastComponentType = ComponentType::FogZoneComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

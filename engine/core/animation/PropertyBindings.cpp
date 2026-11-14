@@ -38,6 +38,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
+#include "render/FogResolve.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -159,6 +160,24 @@ namespace {
         // (a function pointer template argument: a null one compares at compile time; GCC's
         // -Waddress warns on the non-null instantiations)
         if constexpr (!std::is_same_v<std::integral_constant<DirtyFn<C>, Dirty>, std::integral_constant<DirtyFn<C>, nullptr>>) Dirty(scene, entity, *component);
+        return true;
+    }
+
+    // a Fog look field: in a running game the write goes to the runtime layer above its profile
+    // and zones, so it always shows (docs/specs/vapor.md R43); a read shows that write
+    template<FogField Field>
+    bool readFogField(Scene* scene, Entity entity, const PropertyParams&, float* out){
+        FogComponent* fog = scene ? scene->findComponent<FogComponent>(entity) : nullptr;
+        if (!fog) return false;
+        FogFields::read(FogScene::readSource(*fog, Field), Field, out);
+        return true;
+    }
+
+    template<FogField Field>
+    bool writeFogField(Scene* scene, Entity entity, const PropertyParams&, const float* in){
+        FogComponent* fog = scene ? scene->findComponent<FogComponent>(entity) : nullptr;
+        if (!fog) return false;
+        FogFields::write(FogScene::writeTarget(scene, *fog, Field), Field, in);
         return true;
     }
 
@@ -564,6 +583,12 @@ namespace {
                 interpolateInt, display, false, &hasComponent<C>, &readField<C, T, Field>, &writeField<C, T, Field, Dirty>, nullptr, nullptr, true};
     }
 
+    template<FogField Field>
+    Row fogRow(const char* property, const char* label, const char* unity, PropertyKind kind, PropertyDisplay display = ID){
+        return {"fog", property, label, unity, kind, anim::kindWidth(kind), anim::kindIsDiscrete(kind), false, display, false,
+                &hasComponent<FogComponent>, &readFogField<Field>, &writeFogField<Field>, nullptr, nullptr, true};
+    }
+
     template<typename C, typename T, T C::*Field>
     Row anchorRow(const char* property, const char* label, const char* unity, PropertyKind kind, bool interpolateInt = false){
         Row row = fieldRow<C, T, Field, &layoutAnchorsDirty>("recttransform", property, label, unity, kind, ID, interpolateInt);
@@ -675,10 +700,10 @@ namespace {
         rows.push_back(fieldRow<AudioSourceComponent, float, &AudioSourceComponent::pan, &audioDirty>("audiosource", "pan", "Pan", "m_StereoPan", F));
         rows.push_back(enabledRow<AudioSourceComponent>("audiosource"));
 
-        rows.push_back(fieldRow<FogComponent, Vector3, &FogComponent::color>("fog", "color", "Color", "m_FogColor", C3, SRGB));
-        rows.push_back(fieldRow<FogComponent, float, &FogComponent::density>("fog", "density", "Density", "m_FogDensity", F));
-        rows.push_back(fieldRow<FogComponent, float, &FogComponent::linearStart>("fog", "linearStart", "Linear Start", "m_LinearFogStart", F));
-        rows.push_back(fieldRow<FogComponent, float, &FogComponent::linearEnd>("fog", "linearEnd", "Linear End", "m_LinearFogEnd", F));
+        rows.push_back(fogRow<FogField::Color>("color", "Color", "m_FogColor", C3, SRGB));
+        rows.push_back(fogRow<FogField::Density>("density", "Density", "m_FogDensity", F));
+        rows.push_back(fogRow<FogField::LinearStart>("linearStart", "Linear Start", "m_LinearFogStart", F));
+        rows.push_back(fogRow<FogField::LinearEnd>("linearEnd", "Linear End", "m_LinearFogEnd", F));
 
         rows.push_back(fieldRow<SkyboxComponent, Vector4, &SkyboxComponent::color>("skybox", "color", "Color", "_Tint", C4, SRGB));
         rows.push_back(shaderUniformRow<SkyboxComponent>("skybox"));

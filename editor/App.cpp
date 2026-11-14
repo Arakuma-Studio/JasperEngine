@@ -62,6 +62,7 @@
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "render/FogProfile.h"
 #include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
@@ -5600,6 +5601,8 @@ void editor::App::prepareForProjectSwitch() {
     // and its palettes (S43): the swap textures first, they were made from them
     jasperengine::pixelart::PaletteSwapCache::clear();
     jasperengine::pixelart::PaletteLibrary::clear();
+    // and its fog profiles (docs/specs/vapor.md R5)
+    FogProfileLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }

@@ -24,6 +24,7 @@
 #include "component/ColorTweenComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
@@ -238,6 +239,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
+    // docs/specs/vapor.md R40: appended, so no ComponentType moves
+    registerComponent<FogZoneComponent>(ComponentOrder::Insertion, "FogZoneComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

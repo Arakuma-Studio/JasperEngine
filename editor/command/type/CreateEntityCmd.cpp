@@ -28,6 +28,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ModelComponent.h"
@@ -672,6 +673,11 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<LocalVolumetricFogComponent>(entity, {});
+
+    }else if (type == EntityCreationType::FOG_ZONE){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<FogZoneComponent>(entity, {});
 
     }else if (type == EntityCreationType::VOLUMETRIC_CLOUDS){
 

@@ -203,6 +203,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".soundevent";
         }
 
+        // Fog Profiles (docs/specs/vapor.md R1)
+        inline static bool isFogProfileFile(const std::string& path) {
+            return fileExtension(path) == ".fogprofile";
+        }
+
         // The Animator's assets (S21): controllers, avatar masks, montages
         inline static bool isAnimatorControllerFile(const std::string& path) {
             return fileExtension(path) == ".controller";

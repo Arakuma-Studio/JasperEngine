@@ -43,6 +43,7 @@
 #include "render/UIDrawColor.h"
 #include "render/PipelineState.h"
 #include "render/LodFade.h"
+#include "render/FogResolve.h"
 #include <cfloat>
 #include <optional>
 #include "htmlui/HtmlUIClock.h"
@@ -872,6 +873,12 @@ namespace {
 
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
+
+// the fog look's resolves (RenderSystem.h fogLook)
+struct RenderSystem::FogLook{
+    FogResolve frame;
+    FogResolve view;
+};
 
 RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
@@ -2645,25 +2652,62 @@ void RenderSystem::processLights2D(){
     fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, atlasW, pcfRadius);
 }
 
+void RenderSystem::applyFogLook(FogComponent* look){
+    if (!look)
+        return;
+    // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
+    // stays a linear fog's
+    int fogTypeI = 0;
+    if (look->type == FogType::EXPONENTIAL){
+        fogTypeI = 1;
+    }else if (look->type == FogType::EXPONENTIALSQUARED){
+        fogTypeI = 2;
+    }
+
+    fs_fog.color_type = Vector4(look->color.x, look->color.y, look->color.z, fogTypeI);
+    fs_fog.density_start_end = Vector4(look->density, 0.0, look->linearStart, look->linearEnd);
+    atmosphere.setViewFog(look);
+}
+
+FogComponent* RenderSystem::viewFogLook(const Vector3& camera){
+    // without zones the look is the same from every camera
+    if (!fogLook || frameFog != &fogLook->frame.resolved || !scene->isComponentRegistered<FogZoneComponent>() ||
+        scene->getComponentArray<FogZoneComponent>()->size() == 0)
+        return frameFog;
+    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+    if (!fog)
+        return frameFog;
+    FogScene::resolve(scene, *fog, camera, fogLook->view);
+    return &fogLook->view.resolved;
+}
+
 bool RenderSystem::loadAndProcessFog(){
 
     FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
     const bool hadFog = hasFog;
     hasFog = false;
+    frameFog = fog;
     if (fog){
         hasFog = true;
 
-        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
-        // stays a linear fog's
+        // a profile, a blend, a Fog Zone or a runtime write: the passes read the look resolved at
+        // the frame's camera (a view's own camera: viewFogLook); otherwise the Fog itself (R11)
+        if (FogScene::needsResolve(scene, *fog)){
+            if (!fogLook)
+                fogLook = std::make_unique<FogLook>();
+            FogScene::resolve(scene, *fog, FogScene::mainCameraPosition(scene), fogLook->frame);
+            frameFog = &fogLook->frame.resolved;
+        }
+
         int fogTypeI = 0;
-        if (fog->type == FogType::EXPONENTIAL){
+        if (frameFog->type == FogType::EXPONENTIAL){
             fogTypeI = 1;
-        }else if (fog->type == FogType::EXPONENTIALSQUARED){
+        }else if (frameFog->type == FogType::EXPONENTIALSQUARED){
             fogTypeI = 2;
         }
 
-        fs_fog.color_type = Vector4(fog->color.x, fog->color.y, fog->color.z, fogTypeI);
-        fs_fog.density_start_end = Vector4(fog->density, 0.0, fog->linearStart, fog->linearEnd);
+        fs_fog.color_type = Vector4(frameFog->color.x, frameFog->color.y, frameFog->color.z, fogTypeI);
+        fs_fog.density_start_end = Vector4(frameFog->density, 0.0, frameFog->linearStart, frameFog->linearEnd);
     }
 
     // fog is a shader variant: a Fog added or removed while playing switches every mesh
@@ -17896,11 +17940,13 @@ void RenderSystem::update(double dt){
     loadLights(numLights);
     updateSpotMaskAtlas(numLights);
     loadLights2D();
+    // the fog's blends run on game time (FogScene::blendTo)
+    FogScene::advance(scene, dt);
     loadAndProcessFog();
     // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the
     // height fog (chosen by u_fs_heightFog), and the volumetric passes need depth programs on
     // every opaque mesh
-    atmosphere.update(dt);
+    atmosphere.update(dt, frameFog);
     heightFogActive = hasFog && atmosphere.hasHeightFog();
     {
         const bool depthPrograms = atmosphere.needsDepthPrograms();
@@ -21751,6 +21797,11 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         view.target->create();
     }
 
+    // a Fog Zone weighs by the view's own camera (the Scene view's, the Game view's main camera, R9)
+    FogComponent* viewFog = viewFogLook(cameraTransform.worldPosition);
+    if (viewFog != frameFog)
+        applyFogLook(viewFog);
+
     CameraPass pass;
     pass.camera = &camera;
     pass.cameraTransform = &cameraTransform;
@@ -21759,6 +21810,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     pass.terrainView = view.sharesPrimaryCamera ? 0 : TERRAIN_PASS_VIEW;
     renderCameraPass(pass);
     atmosphere.endFrame();
+    if (viewFog != frameFog)
+        applyFogLook(frameFog);
 
     passObjects = nullptr;
     passExcludedEntity = NULL_ENTITY;
