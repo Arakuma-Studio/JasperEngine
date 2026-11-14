@@ -67,6 +67,8 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -2029,14 +2031,21 @@ std::string rejectedArgument(const Json& args, bool fileMode) {
 
 namespace {
 
+// a float offset as the file writes it (0.1, not 0.10000000149)
+double rootMotionNumber(float value) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.7g", value);
+    return std::strtod(text, nullptr);
+}
+
 Json rootMotionJson(const std::optional<anim::ClipRootMotion>& rootMotion) {
     if (!rootMotion) return nullptr;
     return {{"bone", rootMotion->bone}, {"bake_rotation", rootMotion->bakeRotation}, {"bake_position_y", rootMotion->bakePositionY},
             {"bake_position_xz", rootMotion->bakePositionXZ},
             {"rotation_based_upon", anim::rootRotationBasisName(rootMotion->rotationBasedUpon)},
-            {"rotation_offset", rootMotion->rotationOffset},
+            {"rotation_offset", rootMotionNumber(rootMotion->rotationOffset)},
             {"position_y_based_upon", anim::rootPositionYBasisName(rootMotion->positionYBasedUpon)},
-            {"position_y_offset", rootMotion->positionYOffset},
+            {"position_y_offset", rootMotionNumber(rootMotion->positionYOffset)},
             {"position_xz_based_upon", anim::rootPositionXZBasisName(rootMotion->positionXZBasedUpon)}};
 }
 
