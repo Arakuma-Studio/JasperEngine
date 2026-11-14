@@ -1005,6 +1005,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PhysicsQueryTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp

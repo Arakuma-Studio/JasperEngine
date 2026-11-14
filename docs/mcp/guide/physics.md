@@ -49,7 +49,7 @@ By default mass comes from the collider's size and density; either body can take
 |---|---|---|
 | formula | volume x density | area (in m^2) x density |
 | default density | 1000 (kg/m^3, water) | 1 |
-| units | meters | collider sizes in points, scaled by `pointsToMeterScale2D` (64 points per meter by default) |
+| units | meters | collider sizes in points, in metres after the scene's Points Per Meter (`physics_2d_points_per_meter`, 64 by default; "World settings") |
 | example | radius-1 sphere ~ 4189 kg, radius-0.5 ~ 524 kg | 100x100 point box ~ 2.4 kg |
 | read it (C++) | `getMass()` | `getMass()` |
 | read it (Lua) | `body.mass` (property) | `body.mass` (property) or `body:getMass()` |
@@ -207,6 +207,29 @@ The project settings `physics.enabled` (3D, Jolt) and `physics2d.enabled` (2D, B
 backend off for exports: its bodies and joints are left out of the build. C++ code that must
 build either way guards on `JASPERENGINE_PHYSICS_3D` / `JASPERENGINE_PHYSICS_2D`.
 
+## World settings
+
+Scene settings (Inspector > Scene > Physics; `set_scene_settings`; Lua `scene.<name>`), saved only
+away from their defaults, which are what the worlds did before they were settings. A change in Play
+applies before the next step.
+
+| Inspector | MCP / Lua | default | |
+|---|---|---|---|
+| Points Per Meter (2D) | `physics_2d_points_per_meter` / `physics2DPointsPerMeter` | 64 | canvas points in a metre: sizes and speeds of 2D bodies are points, masses, forces and the settings below metres. Changed with bodies made, each is made again where it is, as fast in points, its mass from its colliders in the new metres (an explicit mass kept); contacts start again (`OnCollisionExit2D` / `Enter2D`). Set it in the scene, not every frame |
+| Max Rotation Per Step (2D) | `physics_2d_max_rotation` / `physics2DMaxRotation` | 45 (degrees) | a 2D body turns at most this much a fixed step (45 at 50 Hz is 39 rad/s); Unity's Max Rotation Speed is 360. A Rigidbody 2D with `allowFastRotation` is not capped |
+| World > Contact Hertz, Contact Damping Ratio, Contact Push Speed (2D) | `physics_2d_contact_hertz` (30), `..._contact_damping_ratio` (10), `..._contact_push_speed` (3 m/s) | | contact stiffness, bounciness, how fast overlaps separate |
+| World > Joint Hertz, Joint Damping Ratio (2D) | `physics_2d_joint_hertz` (60), `physics_2d_joint_damping_ratio` (2) | | joint stiffness |
+| World > Bounce Threshold (2D) | `physics_2d_bounce_threshold` / `physics2DBounceThreshold` | 1 m/s | slower collisions do not bounce (Unity Velocity Threshold) |
+| World > Max Linear Speed, Warm Starting, Continuous, Sleeping (2D) | `physics_2d_max_linear_speed` (400 m/s), `physics_2d_warm_starting`, `physics_2d_continuous`, `physics_2d_sleep` (true) | | |
+| World > Velocity Iterations, Position Iterations (3D) | `physics_3d_velocity_iterations` (10, 1-64), `physics_3d_position_iterations` (2) | | Jolt's solver iterations (Unity Default Solver Velocity Iterations / Solver Iterations) |
+| World > Bounce Threshold, Sleep Threshold, Speculative Distance (3D) | `physics_3d_bounce_threshold` (1 m/s), `physics_3d_sleep_threshold` (0.03 m/s), `physics_3d_speculative_distance` (0.02 m) | | |
+| World > Collision Steps (3D) | `physics_3d_collision_steps` / `physics3DCollisionSteps` | 1 | collision passes per fixed step, 1-4: more for very fast bodies |
+
+A frame runs at most `Time.maximumFixedStepsPerFrame` fixed steps: 0 (default) is automatic, as many
+as `Time.maximumDeltaTime` lets a frame last (400 Hz with 0.25 s: 101), so none are dropped. A cap
+set lower drops the rest of a long frame: the Console warns once per Play and
+`Time.droppedFixedSteps` and `editor_status` `physics.dropped_fixed_steps` count them.
+
 ## 2D bodies, colliders and materials
 
 `Rigidbody2DComponent` fields (Unity's Rigidbody2D; Catalog names for `set_properties`, `edit_colliders`
@@ -217,6 +240,7 @@ build either way guards on `JASPERENGINE_PHYSICS_3D` / `JASPERENGINE_PHYSICS_2D`
 | `gravityScale` | 1 | share of the scene's 2D gravity (0 floats, -1 falls up) |
 | `linearDamping`, `angularDamping` | 0, 0 | Unity Linear / Angular Drag |
 | `fixedRotation` | false | never turns (Unity Freeze Rotation) |
+| `allowFastRotation` | false | not capped by the scene's Max Rotation Per Step (wheels; "World settings") |
 | `collisionDetection` | `discrete` | `continuous`: a Box2D bullet, never tunnels through thin or fast bodies |
 | `sleepingMode` | `start_awake` | `never_sleep`, `start_asleep` |
 | `useAutoMass`, `mass` | true, 1 | false: `mass` kg instead of area x density (setting Lua `body.mass` turns it off) |
@@ -497,11 +521,13 @@ Inspector shows the same under each body in Play.
   bodies of one scene): those two bodies never collide, at run time (Unity
   `Physics.IgnoreCollision`); `getIgnoreCollision(a, b)`. Resting pairs are woken. The replacement
   for a Lua `shouldCollide3D` filter.
-- Ray casts: `Physics.raycast(scene, ray [, layerMask])`,
-  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask])`, `raycastAll`, and the
-  `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
+- Ray casts: `Physics.raycast(scene, ray [, layerMask [, options]])`,
+  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])`, `raycastAll`,
+  and the `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
-  `ray.direction`; with origin/direction/distance it is in world units.
+  `ray.direction`; with origin/direction/distance it is in world units. A 3D ray that starts inside
+  a collider does not hit it (Unity); `{hitFromInside = true}` reports it at distance 0.
+  `Ray:intersects(scene, ...)` keeps its old rule (the start's collider at 0).
 - What the player sees, not its colliders: `MeshRaycast.raycast` / `raycastAll` take the same
   arguments (plus an options table) and hit the triangles of meshes, instances, terrains and UI
   rects, no body needed, also in the editor (`raycast_meshes`). Use Physics for gameplay against
@@ -521,6 +547,43 @@ Inspector shows the same under each body in Play.
   (conveyor-belt friction): `PhysicsSystem::onContactModify3D`, on Jolt's job threads.
 - 2D limitation (Box2D): a kinematic sensor never pairs with static or kinematic bodies, and two
   sensors never pair; make the other body dynamic (gravity scale 0) to detect it.
+
+### Shape casts and overlaps
+
+Unity's queries, on the playing scene's colliders (bodies exist only in Play), all with
+`[, layerMask [, options]]` last:
+
+| 3D (`Physics`) | 2D (`Physics2D`, points, angles in the engine's unit) | Returns |
+|---|---|---|
+| `sphereCast(scene, origin, radius, direction, maxDistance)` | `circleCast(scene, origin, radius, direction, distance)` | the nearest `RaycastHit` or nil |
+| `boxCast(scene, center, halfExtents, direction, orientation, maxDistance)` | `boxCast(scene, origin, size, angle, direction, distance)` | " |
+| `capsuleCast(scene, point1, point2, radius, direction, maxDistance)` | `capsuleCast(scene, origin, size, CapsuleDirection2D.VERTICAL, angle, direction, distance)` | " |
+| `...CastAll` | `...CastAll` | every collider hit once, nearest first |
+| `overlapSphere(scene, center, radius)`, `overlapBox(scene, center, halfExtents [, orientation])`, `overlapCapsule(scene, point1, point2, radius)` | `overlapCircle`, `overlapBox(scene, point, size, angle)`, `overlapCapsule`, `overlapPoint(scene, point)`, `overlapArea(scene, pointA, pointB)` | 3D: every `Collider`; 2D: the first `Collider2D` (nil), `...All` every one |
+| `checkSphere`, `checkBox`, `checkCapsule` (the overlap's arguments) | | boolean |
+| `closestPoint(scene, point, collider)` (convex colliders) | | Vector3 |
+| `rigidbody:sweepTest(direction, maxDistance [, options])`, `sweepTestAll` | `rigidbody2d:cast(direction, distance [, options])`, `castAll` | the body's own colliders moved, never hitting itself |
+
+- options: `ignore` (GameObjects, bodies or entities: a caster's own body), `triggers`
+  (`QueryTriggerInteraction.USE_GLOBAL` = `Physics.queriesHitTriggers` / `Physics2D.queriesHitTriggers`,
+  true; `IGNORE`; `COLLIDE`), 3D `hitFromInside` and `hitBackfaces` (`Physics.queriesHitBackfaces`,
+  false), 2D `startInColliders` (`Physics2D.queriesStartInColliders`, false: unlike Unity's default
+  true, a ground check from inside the player's own collider does not hit the player), `maxHits` (256).
+- A cast that starts in a collider skips it, or with `hitFromInside` / `startInColliders` reports it
+  at distance 0 with `point` = the start and `normal` = -direction.
+- A hit (`RayReturn`, Unity's `RaycastHit`) has `hit`, `distance`, `point`, `normal`, `body`,
+  `colliderIndex`, and `collider` (`Collider` / `Collider2D`), `gameObject`, `rigidbody`, `transform`
+  (the GameObject); a CharacterController is hit as its GameObject with `rigidbody` nil (2D
+  controllers have no body and are never hit).
+- Zero, negative or non-finite sizes, distances and directions raise an error naming the argument.
+- An agent asks the same of a running game with `query_physics` (`physics` group; `draw: true` shows
+  the shape and hits for 3 s in the Game view's physics lines): "is anything within 2 m of the
+  player" is `query_physics {shape: "sphere", mode: "overlap", origin, radius: 2}`, not a fan of rays.
+  Its arguments per shape: `origin` (`[x, y]` in 2D), casts `direction` + `max_distance`; sphere
+  `radius`; 3D box `half_extents` + `rotation`, 2D box `size` + `angle` or the corners `point_a` +
+  `point_b` (overlap, check); 3D capsule `point_a` + `point_b` + `radius`, 2D capsule `size` +
+  `angle`. `layer_mask` takes a number or layer names; `hit_from_inside` is 2D's
+  `startInColliders` too. It hits colliders; `raycast_meshes` hits drawn triangles.
 
 ## Character controllers
 

@@ -94,6 +94,8 @@ namespace jasperengine {
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
         static void registerGameplayClasses(lua_State *L);
+        // S96: Physics / Physics2D shape queries, RaycastHit fields (PhysicsQueriesLua.cpp)
+        static void registerPhysicsQueryClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);

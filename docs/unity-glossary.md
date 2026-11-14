@@ -150,6 +150,9 @@ Projects made before the rename are migrated once with
 | `WheelCollider` (`motorTorque`, `brakeTorque`, `steerAngle`, `suspensionSpring` `JointSpring`, `forwardFriction` / `sidewaysFriction` `WheelFrictionCurve`, `GetGroundHit(out WheelHit)`, `GetWorldPose(out pos, out rot)`, `isGrounded`, `rpm`, `sprungMass`) | none (new): Wheel Collider (`WheelColliderComponent`, Lua `WheelCollider`: `go:getWheelCollider()`), the same names lowerCamelCase; `wc:getGroundHit()` returns the WheelHit or nil, `wc:getWorldPose()` returns position, rotation; plus `driveTransform` (the GameObject follows the pose) and a Vehicle Drivetrain (engine, gear box, differentials) Unity has none of ([physics.md](mcp/guide/physics.md), "Vehicles") |
 | A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
+| `Physics.SphereCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapSphere`, `OverlapBox`, `OverlapCapsule`, `CheckSphere`, `CheckBox`, `CheckCapsule`, `ClosestPoint`, `Rigidbody.SweepTest` / `SweepTestAll`, `QueryTriggerInteraction`, `Physics.queriesHitTriggers`, `queriesHitBackfaces` -> the same names lowerCamelCase; casts return the hit or nil (no `out` argument), every query takes an options table last (`ignore`, `triggers`, `hitFromInside`, `hitBackfaces`) | none (new) |
+| `Physics2D.CircleCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapCircle`, `OverlapBox`, `OverlapCapsule`, `OverlapPoint`, `OverlapArea` (and `...All`), `Rigidbody2D.Cast`, `CapsuleDirection2D`, `Physics2D.queriesHitTriggers`, `queriesStartInColliders` -> the same names lowerCamelCase (`rigidbody2d:cast` / `castAll` return hits); `queriesStartInColliders` defaults to **false** (Unity: true), so a ray or cast from inside a collider (a player's ground check) does not hit it | none (new) |
+| `RaycastHit` / `RaycastHit2D` (`point`, `normal`, `distance`, `collider`, `rigidbody`, `transform`) | `RayReturn` (alias `RaycastHit`): the same fields plus `gameObject`, `body` (entity), `colliderIndex`, `hit`; `transform` is the GameObject |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | none: Unity has no per-scene shader property defaults (closest: `Shader.SetGlobal*`, applied when the material leaves the property undefined) | none (new): Scene > Default Shaders > <Shader> Properties, the values every object drawn with the scene's default shader inherits (Revert to Scene Default on an override); Lua `scene:setDefaultShaderUniform(ShaderType.MESH, name, value)`; `set_shader_uniform` `shader_type` |
@@ -256,6 +259,7 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| Time settings: Maximum Allowed Timestep (no fixed step dropped within it) | `Time.maximumDeltaTime` with `Time.maximumFixedStepsPerFrame` 0 (automatic); a cap above 0 drops steps past it (`Time.droppedFixedSteps`) |
 | A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Always Refresh (water, animated tiles and the shaders on the scene clock) |
 | HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 | HDRP Water Excluder (a boat's hull keeping the water out) | Water Excluder (`WaterExcluderComponent`): Convex Hull of the GameObject's mesh, Box or Sphere; also dry for buoyancy, `Water.sample` and the underwater fade |
@@ -447,9 +451,10 @@ the `Physics2D` one change it at runtime; in the editor that lasts until Play st
 Changing a GameObject's layer re-filters its Rigidbody (2D) before the next step.
 
 Ray casts take a layer mask (`LayerMask.getMask(...)`, `Physics.ALL_LAYERS`):
-`Physics.raycast(scene, ray [, layerMask])`,
-`Physics.raycast(scene, origin, direction, maxDistance [, layerMask])` and `raycastAll`,
-and the `Physics2D` ones with `Vector2` origin and direction. Without a mask they use
+`Physics.raycast(scene, ray [, layerMask [, options]])`,
+`Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])` and `raycastAll`,
+and the `Physics2D` ones with `Vector2` origin and direction. As in Unity, a 3D ray that starts
+inside a collider does not hit it (`options.hitFromInside` reports it at 0). Without a mask they use
 `DEFAULT_RAYCAST_LAYERS`, every layer but Ignore Raycast; so do the scene queries of
 `Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
 origin, a direction and a distance it is in world units (scene units in 2D).
@@ -477,6 +482,9 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
 | `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
 | Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+| Physics 2D settings: Max Rotation Speed (360), Velocity Threshold, Max Translation Speed | the scene's `physics2DMaxRotation` (45 degrees a step, Box2D's default), `physics2DBounceThreshold`, `physics2DMaxLinearSpeed`; the World foldout has Box2D's contact and joint stiffness too |
+| `Rigidbody2D` that must spin past Max Rotation Speed (wheels) | `allowFastRotation` (Box2D's; Unity has no per-body switch) |
+| pixels per unit of 2D physics (Unity: 1 unit = 1 m) | the scene's `physics2DPointsPerMeter` (64) |
 
 ## 3D physics: Unity names and their JasperEngine counterparts
 
@@ -498,6 +506,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
 | Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`) |
 | Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
+| Physics settings: Default Solver Iterations / Velocity Iterations, Bounce Threshold, Sleep Threshold, Default Contact Offset | the scene's `physics3DPositionIterations` / `physics3DVelocityIterations`, `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (Inspector > Scene > Physics > World); `physics3DCollisionSteps` has no Unity name |
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

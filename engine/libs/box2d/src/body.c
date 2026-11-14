@@ -1635,6 +1635,20 @@ bool b2Body_IsBullet( b2BodyId bodyId )
 	return bodySim->isBullet;
 }
 
+// JASPER PATCH: max rotation
+void b2Body_SetAllowFastRotation( b2BodyId bodyId, bool flag )
+{
+	b2World* world = b2GetWorldLocked( bodyId.world0 );
+	if ( world == NULL )
+	{
+		return;
+	}
+
+	b2Body* body = b2GetBodyFullId( world, bodyId );
+	b2BodySim* bodySim = b2GetBodySim( world, body );
+	bodySim->allowFastRotation = flag;
+}
+
 void b2Body_EnableSensorEvents(b2BodyId bodyId, bool flag)
 {
 	b2World* world = b2GetWorld( bodyId.world0 );

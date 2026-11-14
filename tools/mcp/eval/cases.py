@@ -1259,6 +1259,63 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_physics_overlap_query",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S96 REQ-17/REQ-47 added query_physics (physics group): an agent asked what is near a GameObject "
+                         "in the running game overlaps the colliders once instead of casting a fan of rays from eval_lua.",
+        "text_at_issue": "query_physics description ('ray/sphere/box/capsule/point cast, cast_all, overlap or check'); the "
+                         "physics group's line ('physics queries in Play'); docs/mcp/guide/physics.md 'Shape casts and overlaps'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-47 (new tool; the port's scripts cast ray fans for proximity)",
+        "prompt": "The game is playing. Is anything within 2 m of the Player right now? Check the physics colliders and "
+                  "name what you find.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere"}, "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Player", "collider": 0}, {"entity": 15, "name": "Crate", "collider": 0}]})},
+            {"tool": "query_physics", "result": ok(
+                "1 hit(s), nearest Crate at 1.4.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 15, "name": "Crate", "collider": 0,
+                 "point": [1.4, 0.5, 0], "normal": [-1, 0, 0], "distance": 1.4}]})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "GameObject 12 \"Player\" (playing): transform position [0, 0.5, 0], rigidbody dynamic.",
+                {"id": 12, "components": {"transform": {"position": [0, 0.5, 0]}}})},
+            {"tool": "list_runtime_entities", "result": ok(
+                "5 GameObjects: 10 Camera, 11 Ground, 12 Player, 14 Enemy, 15 Crate.",
+                {"entities": [{"id": 12, "name": "Player", "path": "Player"}, {"id": 15, "name": "Crate", "path": "Crate"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere", "radius": 2}}]},
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap"}}]},
+                       {"calls": [{"tool": "eval_lua", "args": {"code": "re:overlapSphere|checkSphere"}}]}],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:raycast"}}],
+                   "reply_must": [r"Crate"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_query_physics_needs_play",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "S96 REQ-17: query_physics reads the bodies the running game built (none exist at edit time); its "
+                         "error names play, so the agent starts Play and asks again instead of giving up or guessing from "
+                         "the Transforms.",
+        "text_at_issue": "query_physics error: 'query_physics reads the running physics world: start Play first (play).'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-17, AC-16 (new tool; no failure on record)",
+        "prompt": "Using the physics colliders, tell me which GameObject a ray straight down from (0, 10, 0) hits first.",
+        "mocks": [
+            {"tool": "query_physics", "after": "play", "result": ok(
+                "1 hit(s), nearest Ground at 10.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 11, "name": "Ground", "collider": 0,
+                 "point": [0, 0, 0], "normal": [0, 1, 0], "distance": 10.0}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "play", "result": ok("Playing scene 1 \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"order": [[{"tool": "play", "args": {"action": "start"}}, {"tool": "query_physics", "args": {"shape": "ray"}}]],
+                   "reply_must": [r"Ground"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_shader_library_first",
         "kind": "guard",
         "what_happened": "A forked shader was edited without reading it and lost its samplers (git cf12fd6cc); the guide says "

@@ -18,6 +18,7 @@ namespace jasperengine {
     class Scene;
     class Rigidbody2D;
     class Rigidbody;
+    struct QueryOptions;
 
     enum class RayFilter{
         BODY_2D,
@@ -32,6 +33,10 @@ namespace jasperengine {
         Vector3 normal;
         Entity body;
         size_t colliderIndex;
+        // the scene and world of a physics hit (null for bounds and plain shapes): what the Lua
+        // RaycastHit's collider, gameObject and rigidbody resolve through
+        Scene* scene = nullptr;
+        bool body2D = false;
 
         operator bool() const {
             return hit;
@@ -99,7 +104,9 @@ namespace jasperengine {
         // also every hit into it, nearest first and one per collider. broadPhaseLayer3D < 0
         // searches every 3D broad phase layer. The scene queries above skip the Ignore
         // Raycast layer (LAYER_MASK_DEFAULT_RAYCAST); Physics and Physics2D take a mask.
-        RayReturn cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits) const;
+        // options (Physics.raycast's, S96): Unity's start-inside, trigger and back-face rules;
+        // null keeps this API's own (convex shapes solid, triggers and the start's collider hit).
+        RayReturn cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits, const QueryOptions* options = nullptr) const;
 
         friend class Physics;
         friend class Physics2D;
