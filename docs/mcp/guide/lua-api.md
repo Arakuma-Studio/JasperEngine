@@ -2828,8 +2828,12 @@ Editing one changes every collider using it at the next step.
 
 ### 4.13.1 Joint2D (EntityHandle) - 2D joints
 
-`go:getJoint2D()` (nil when none), `Joint2D(scene, entity)`, `Joint2D(scene)` (a new GameObject
-with a joint). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
+`go:getJoint2D()` (nil when none, the joint on `go` itself), `go:addJoint2D(Joint2DType.WHEEL)` (a
+child GameObject "Joint 2D" with bodyA = `go` and Unity's defaults; an error when `go` has no
+Rigidbody 2D), `go:getJoints2D()` (every joint whose bodyA is `go`), `Joint2D(scene, entity)`,
+`Joint2D(scene)` (a new GameObject "Joint 2D" owned by the handle until its bodyA is set: then it
+goes under bodyA and lives as long as that GameObject; one never given a bodyA goes with its
+handle). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
 Unity mapping: WheelJoint2D = `Joint2DType.WHEEL`, HingeJoint2D = `REVOLUTE`, SliderJoint2D =
 `PRISMATIC`, DistanceJoint2D = `DISTANCE` (`rope` = maxDistanceOnly), SpringJoint2D = `DISTANCE`
 with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoint2D = `MOUSE`.
@@ -2851,6 +2855,8 @@ with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoi
 | `linearOffset`, `angularOffset`, `autoOffset`, `maxForce`, `maxTorque`, `correctionFactor` | rw | motor joint (setting an offset turns `autoOffset` off); mouse `maxForce` (0: 1000 x mass) |
 | `target` | rw `Vector2` | mouse joint world point |
 | `enabled` | rw bool | a disabled joint leaves the simulation (a broken DISABLE joint stays so until enabled) |
+| `gameObject` | ro GameObject | the joint's GameObject |
+| `destroy([delay])` | method | `GameObject.destroy` of the joint's GameObject (after `delay` seconds) |
 | `reactionForce` (Vector2), `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `jointLinearSpeed`, `motorTorque`, `motorForce`, `currentLength`, `limitState` (`JointLimitState2D`), `referenceAngle`, `broken` | ro | the live joint (0 without one) |
 | `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, rope])`, `setRevoluteJoint(a, b, anchor)`, `setPrismaticJoint(a, b, anchor, axis)`, `setMouseJoint(a, b, target)`, `setWheelJoint(a, b, anchor, axis)`, `setWeldJoint(a, b, anchor)`, `setMotorJoint(a, b)` | methods | bodies are entities; build a joint as before local anchors: WORLD anchors and Box2D's defaults for every other field (set properties after) |
 
@@ -2942,8 +2948,11 @@ normal before the solver), `getWorldSpaceNormal()`, `getPenetrationDepth()`, `ge
 
 Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
-**Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
-GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
+**Joint3D** (EntityHandle; `go:getJoint3D()`, `go:addJoint3D(Joint3DType.HINGE)` (a child "Joint 3D"
+with bodyA = `go`, Unity's defaults; an error without a Rigidbody), `go:getJoints3D()` (every joint
+whose bodyA is `go`), `Joint3D(scene, entity)`, `Joint3D(scene)` a new GameObject "Joint 3D" that
+goes under its bodyA once that is set, as `Joint2D(scene)`): ro `gameObject`, method
+`destroy([delay])`, rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
 Entity or GameObject, nil = the world), `anchorSpace` (`JointAnchorSpace.LOCAL` for new joints),
 `anchor`, `anchorB` (alias `connectedAnchor`), `autoAnchors` (alias
 `autoConfigureConnectedAnchor`), `anchorA`, `axis`, `normal` (alias `secondaryAxis`), `twistAxis`,
@@ -2981,7 +2990,20 @@ kinematic and follow the animation; true: dynamic, the Animation Player paused),
 `Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point; after `simulated = true`
 in the same frame too), `applyForce(force)` (every part by its mass); event
 `onBeforeAnimatedRestore` (`RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`, fn(entity)
-before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`).
+before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`), or at run
+time by `Ragdoll.create(root [, options])`: the wizard on a live character, every part made before
+the next step; `options` `bones` (`{pelvis = go or name below root, leftHips, leftKnee, leftFoot,
+rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow, middleSpine, head}`, the
+others guessed from the humanoid map or bone names), `totalMass` (20), `start` (`"simulated"`
+default, `"animated"`), `selfCollision` (true), `flipForward` (false); returns the Ragdoll, or an
+error naming the bones it could not find.
+
+```lua
+function Enemy:die(hitPoint, push)
+    local ragdoll = Ragdoll.create(self.object, {totalMass = 70})
+    ragdoll:applyImpulse(push, hitPoint)
+end
+```
 
 #### 4.14.1 CharacterController (EntityHandle)
 

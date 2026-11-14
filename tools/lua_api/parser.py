@@ -1968,6 +1968,14 @@ OVERRIDES = {
     },
 }
 
+# S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
+OVERRIDES[('Ragdoll', 'create')] = {
+    'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
+            'the next step, and the Ragdoll on root. Unnamed bones are guessed (humanoid map, bone names); raises an',
+            'error naming the bones it could not find.'],
+    'overloads': [([('root', _OBJ), ('options?', '{bones?: table<string, GameObject|string>, totalMass?: number, '
+                    'start?: "simulated"|"animated", selfCollision?: boolean, flipForward?: boolean}')], 'Ragdoll')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
