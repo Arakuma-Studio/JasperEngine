@@ -19,9 +19,10 @@ async def setup(ed: Editor) -> dict:
     S["ed"] = ed
     made = await ed.call("create_scene", name="Sprites", type="2D", path="scenes/Sprites")
     S["scene"] = made["scene"]["id"]
+    S["path"] = "scenes/Sprites.scene"
     await ed.call("create_entity", scene=S["scene"], type="sprite", name="Hero", position=[0, 0, 0],
                   values={"sprite": {"pivotPreset": "bottom_left", "width": 16, "height": 8}})
-    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("save_scene", scene=S["scene"], path=S["path"])
     return S
 
 

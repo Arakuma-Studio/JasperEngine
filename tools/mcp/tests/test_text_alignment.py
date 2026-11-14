@@ -21,10 +21,11 @@ async def setup(ed: Editor) -> dict:
     S["ed"] = ed
     made = await ed.call("create_scene", name="Plaques", type="3D", path="scenes/Plaques")
     S["scene"] = made["scene"]["id"]
+    S["path"] = "scenes/Plaques.scene"
     await ed.call("create_entity", scene=S["scene"], type="camera", name="Cam", position=[0, 0, 300])
     await ed.call("set_main_camera", scene=S["scene"], entity="Cam")
     await ed.call("create_entity", scene=S["scene"], type="text", name="Door", values={"text": {"text": "12"}})
-    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("save_scene", scene=S["scene"], path=S["path"])
     return S
 
 

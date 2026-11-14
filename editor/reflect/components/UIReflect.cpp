@@ -317,7 +317,7 @@ namespace {
         JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = Hidden, .updateFlags = kText,
                  .label = "Vertical Alignment", .group = "Alignment"),
         // S94 F26: written only when Em
-        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = UpdateFlags_Text_Atlas,
                  .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",
                  .visibleIf = &textIsVector, .uiOrder = 2),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;

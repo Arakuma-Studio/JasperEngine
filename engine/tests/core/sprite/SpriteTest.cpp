@@ -90,8 +90,8 @@ namespace {
         }
 
         std::vector<float> column(AttributeType type, int lane){
-            const MeshComponent& mesh = build();
-            Buffer& buffer = const_cast<Buffer&>(mesh.buffer);
+            build();
+            Buffer& buffer = scene.getComponent<MeshComponent>(sprite->getEntity()).buffer;
             Attribute* attribute = buffer.getAttribute(type);
             std::vector<float> out;
             for (unsigned int i = 0; attribute && i < attribute->getCount(); i++){
