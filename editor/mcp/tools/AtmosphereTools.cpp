@@ -16,9 +16,12 @@
 
 #include "Project.h"
 #include "command/type/AtmospherePresetCmd.h"
+#include "render/AtmosphereDiagnostics.h"
 #include "render/AtmospherePresets.h"
 #include "render/RenderUtil.h"
 #include "subsystem/RenderSystem.h"
+
+#include <cmath>
 
 namespace jasperengine::editor::mcp {
 
@@ -34,6 +37,23 @@ const char* qualityName(AtmosphereQuality quality) {
         case AtmosphereQuality::HIGH: return "high";
     }
     return "off";
+}
+
+double roundOpacity(float value) {
+    return std::round((double)value * 1000.0) / 1000.0;
+}
+
+// the tool route to a diagnostic's fix (its fix sentence names the editor's way)
+std::string diagnosticRoute(const AtmosphereDiagnostic& diagnostic, const AtmosphereInfo& info) {
+    if (diagnostic.code == "scene_view_fog_disabled")
+        return "set_scene_camera {display: {disable_fog: false}}";
+    if (diagnostic.code == "fog_missing")
+        return "create_entity {type: \"fog\"}, then set_properties fog {type: \"height\", volumetric: true}";
+    if (diagnostic.code == "volumetric_quality_off") {
+        if (info.qualitySource == "game_view_preview") return "configure_game_view {atmosphere_quality: \"project\"}";
+        if (info.qualitySource == "project") return "set_project_settings quality.atmosphere_quality_desktop (or _mobile, _web)";
+    }
+    return "set_properties on its entity";
 }
 
 Json presetsJson(const std::vector<AtmospherePreset>& presets) {
@@ -172,6 +192,36 @@ void getAtmosphereInfoTool(const CallPtr& call) {
         text += ", volumetric fog " + std::to_string(info.fogWidth) + "x" + std::to_string(info.fogHeight) + " " + std::to_string(info.fogSteps) + " steps";
     if (info.cloudsActive)
         text += std::string(", clouds ") + mode;
+
+    // why the fog shows less (or more) than expected, and how dense it is (docs/specs/vapor.md R17, R18)
+    AtmosphereDiagnosticsInput input;
+    input.scene = scene->scene;
+    input.info = &info;
+    input.sceneViewFogDisabled = scene->displaySettings.disableFog;
+    input.camera = project->getGameCamera(scene->id);
+    const AtmosphereReport report = AtmosphereDiagnostics::run(input);
+    Json diagnostics = Json::array();
+    const AtmosphereDiagnostic* firstWarning = nullptr;
+    for (const AtmosphereDiagnostic& diagnostic : report.diagnostics) {
+        Json item = {{"code", diagnostic.code}, {"severity", AtmosphereDiagnostics::severityName(diagnostic.severity)},
+                     {"message", diagnostic.message}};
+        if (diagnostic.entity != NULL_ENTITY) item["entity"] = (uint64_t)diagnostic.entity;
+        item["fix"] = diagnostic.fix;
+        diagnostics.push_back(item);
+        if (!firstWarning && diagnostic.severity != AtmosphereSeverity::Info) firstWarning = &diagnostic;
+    }
+    data["diagnostics"] = diagnostics;
+    data["opacity"] = report.opacity.valid ? Json({{"at10", roundOpacity(report.opacity.at10)}, {"at50", roundOpacity(report.opacity.at50)},
+                                                   {"at200", roundOpacity(report.opacity.at200)}, {"includes", "analytic"}})
+                                           : Json(nullptr);
+    if (!report.diagnostics.empty()) {
+        text += ", " + std::to_string(report.diagnostics.size()) + " diagnostics:";
+        for (const AtmosphereDiagnostic& diagnostic : report.diagnostics)
+            text += " " + diagnostic.code;
+    }
+    if (firstWarning)
+        data["next"] = "Apply each warning's fix before changing the fog's look: " + firstWarning->code + " -> " +
+                       diagnosticRoute(*firstWarning, info) + ". Then call get_atmosphere_info again.";
     call->ok(text, data);
 }
 
@@ -211,8 +261,9 @@ void registerAtmosphereTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "get_atmosphere_info";
         tool.title = "Get Atmosphere Info";
-        tool.description = "What the height fog, volumetric fog and clouds of a view ran last frame: the quality tier, the volumetric fog's "
-                           "target size, steps, format and volumes, the clouds' mode and noise bake, the Atmosphere/* passes and their VRAM.";
+        tool.description = "What a view's height fog, volumetric fog and clouds ran last frame, the fog's estimated opacity ahead of the "
+                           "main camera, and diagnostics: why fog does not show or looks wrong, each with its fix. Call it first when fog "
+                           "is missing, too thin or too dense.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene"}), "game")},
             {"scene", sceneRef("Default: the playing scene, else the Game view's.")}

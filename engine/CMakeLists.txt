@@ -1775,6 +1775,7 @@ set(JASPERENGINE_SRCS
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/render/AtmosphereDiagnostics.cpp
     core/render/AtmosphereMath.cpp
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp

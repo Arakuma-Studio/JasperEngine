@@ -186,10 +186,42 @@ GPU budgets still need the reference-GPU run with S15's pass timings.
 - `get_atmosphere_info {view: "game" | "scene"}`: the tier and platform default, the fog's type
   and volumetric target (size, steps, format, volumes used and culled, local lights, whether it
   forced a depth pre-pass), the clouds' mode, noise state and Sky Map, the `Atmosphere/*` passes
-  of the last frame and their VRAM.
+  of the last frame and their VRAM, the `diagnostics` and the `opacity` estimate (below).
 - `configure_game_view {atmosphere_quality}`, the Scene view's `disable_fog` and
   `disable_clouds` display settings (`set_scene_camera display`), and the project settings
   `quality.atmosphere_quality_desktop`, `_mobile`, `_web`.
+
+## Diagnostics
+
+When fog does not show, looks too thin, hides everything or ignores a volume or a light, call
+`get_atmosphere_info` before changing the look. Its `diagnostics` list each cause found:
+`{code, severity, message, entity?, fix}` (`entity`: the GameObject it is about; severity `info`,
+`warning` or `error`), the same text as the Inspector's help boxes on Fog, Local Volumetric Fog and
+Light. Apply the fix of each `warning`, by the route below (`next` names the first one's), then
+call it again. `info` items explain a choice (a light past the tier's cap, a volume out of view)
+and need nothing.
+
+| Code | Seen when | Route |
+|---|---|---|
+| `fog_missing` | Local Volumetric Fog in a scene with no Fog | `create_entity {type: "fog"}`, then `set_properties` fog `type: "height"`, `volumetric: true` |
+| `fog_second_ignored` | a second Fog (on `entity`): only the first is used | `delete_entities` one of them |
+| `volumetric_needs_height` | Volumetric on a distance fog, or volumes with the volumetric fog off | `set_properties` fog `type: "height"`, `volumetric: true` |
+| `volumetric_quality_off` | the view's Atmosphere Quality is Off; the message names the setting | that setting: `configure_game_view {atmosphere_quality: "project"}`, `quality.atmosphere_quality_desktop` (`_mobile`, `_web`), the script's `Engine.setAtmosphereQuality`, or the device tier's Volumetrics cell |
+| `volumetric_main_camera_only` | the view, or a render-to-texture camera, is not the main camera | read `view: "game"`; the volumetric fog draws for the main camera only |
+| `shafts_off` | Light Shafts off while the sun casts shadows | `set_properties` fog `lightShafts: true` |
+| `shafts_sun_no_shadows` | Light Shafts on, but no sun shadow map was drawn | `set_properties` the named light `shadows: true` |
+| `light_not_scattered` | a point or spot light (on `entity`) the fog left out: intensity, Volumetric Intensity, distance, out of view, past the tier's cap | its `volumetricIntensity`, the Fog's `volumetricDistance`, or the quality |
+| `volume_culled` | a Local Volumetric Fog (on `entity`) left out: distance, out of view, past the tier's cap | the Fog's `volumetricDistance`, or the quality |
+| `scene_view_fog_disabled` | the Scene view's Disable fog display setting is on | `set_scene_camera {display: {disable_fog: false}}` |
+| `sky_mode_no_horizon` | Color Mode Sky with a sky that has no horizon colour | `set_properties` fog `colorMode: "color"`, or a cube map Skybox |
+| `lit_no_light` | Color Mode Lit with no sun, no ambient light and no emissive: black fog | a directional light, or `set_scene_settings` `global_illumination_intensity` |
+| `fog_invisible` | `opacity.at200` below 0.02 | Height: lower `attenuationDistance`; Linear: lower `linearEnd`; Exponential: raise `density` |
+| `fog_opaque` | `opacity.at10` above 0.95 | Height: raise `attenuationDistance`; Linear: raise `linearStart`; Exponential: lower `density` |
+
+`opacity {at10, at50, at200, includes: "analytic"}` is the share (0..1) of the scene the fog hides
+10, 50 and 200 m along the main camera's forward ray: the analytic fog exactly (the volumetric
+fog's medium without shadows), not Local Volumetric Fog or the noise. It is `null` without a Fog
+or a main camera. Compare it after a change instead of a screenshot.
 
 ## Limits
 

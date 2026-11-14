@@ -69,6 +69,14 @@ RECORD = {
     "search_api_game_view": ("search_engine_api", {"query": "game view resolution aspect device"}),
     "search_api_tags_layers": ("search_engine_api", {"query": "tags layers collision matrix"}),
     "settings_search_game_view": ("get_project_settings", {"search": "game view resolution"}),
+    # a height fog the Scene view hides (its Disable fog), then shown again: what get_atmosphere_info says of
+    # each (last, so the Fog is in no other recording; build_world discards this scene)
+    "create_entity_fog": ("create_entity", {"type": "fog", "name": "Fog"}),
+    "set_properties_fog_height": ("set_properties", {"entity": "Fog", "values": {"fog": {"type": "height"}}}),
+    "scene_view_disable_fog": ("set_scene_camera", {"display": {"disable_fog": True}}),
+    "get_atmosphere_info_fog_hidden": ("get_atmosphere_info", {"view": "scene"}),
+    "scene_view_enable_fog": ("set_scene_camera", {"display": {"disable_fog": False}}),
+    "get_atmosphere_info_fog_shown": ("get_atmosphere_info", {"view": "scene"}),
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}

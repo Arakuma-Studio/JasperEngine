@@ -270,15 +270,24 @@ namespace {
     // ---------------------------------------------------------------- Local Volumetric Fog
 
     constexpr FieldDesc kLocalVolumetricFogFields[] = {
-        JE_FIELD(LocalVolumetricFogComponent, shape, .enumDesc = &enums::kFogVolumeShape),
-        JE_FIELD(LocalVolumetricFogComponent, size, .unit = Unit::Meters),
-        JE_FIELD(LocalVolumetricFogComponent, attenuationDistance, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, albedo, .flags = ColorLinear),
-        JE_FIELD(LocalVolumetricFogComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, falloff, .enumDesc = &enums::kFogVolumeFalloff),
-        JE_FIELD(LocalVolumetricFogComponent, noiseIntensity, .min = 0.0f, .max = 1.0f),
-        JE_FIELD(LocalVolumetricFogComponent, noiseScale, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, scrollSpeed, .unit = Unit::MetersPerSecond),
+        JE_FIELD(LocalVolumetricFogComponent, shape, .enumDesc = &enums::kFogVolumeShape,
+                 .tooltip = "Box or Sphere, placed, turned and scaled by the Transform."),
+        JE_FIELD(LocalVolumetricFogComponent, size, .unit = Unit::Meters,
+                 .tooltip = "The volume's extent before the Transform's scale (a sphere's: its diameters)."),
+        JE_FIELD(LocalVolumetricFogComponent, attenuationDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The distance light travels in the volume before 63% of it is absorbed. Smaller: denser fog."),
+        JE_FIELD(LocalVolumetricFogComponent, albedo, .flags = ColorLinear,
+                 .tooltip = "The colour the volume's fog scatters."),
+        JE_FIELD(LocalVolumetricFogComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The density fades in over this distance inside the volume's edge."),
+        JE_FIELD(LocalVolumetricFogComponent, falloff, .enumDesc = &enums::kFogVolumeFalloff,
+                 .tooltip = "How the density fades in over the Blend Distance: Linear, or Exponential (faster at the edge)."),
+        JE_FIELD(LocalVolumetricFogComponent, noiseIntensity, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "How much a 3D noise varies the volume's density (0 none, 1 full)."),
+        JE_FIELD(LocalVolumetricFogComponent, noiseScale, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The size of the noise's features."),
+        JE_FIELD(LocalVolumetricFogComponent, scrollSpeed, .unit = Unit::MetersPerSecond,
+                 .tooltip = "The speed the noise drifts at."),
     };
 
     // ---------------------------------------------------------------- Volumetric Clouds

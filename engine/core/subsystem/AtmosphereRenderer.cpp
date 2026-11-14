@@ -247,6 +247,16 @@ AtmosphereQuality AtmosphereRenderer::viewQuality() const{
     return QualityResolver::volumetrics(Engine::getAtmosphereQualityDefault());
 }
 
+const char* AtmosphereRenderer::viewQualitySource() const{
+    // viewQuality's order
+    if (Engine::isAtmosphereQualityOverridden())
+        return "runtime";
+    if (rs->rv().atmosphereQuality >= 0)
+        return "game_view_preview";
+    const AtmosphereQuality project = Engine::getAtmosphereQualityDefault();
+    return QualityResolver::volumetrics(project) != project ? "device_tier" : "project";
+}
+
 void AtmosphereRenderer::clearHeightFog(height_fog_t& block){
     block.invViewProjection.identity();
     block.screenToNdc = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -620,8 +630,18 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
 
     // the volumes: in view, within the volumetric distance, the nearest first, capped by the tier
     std::vector<int> selected;
+    std::vector<const char*> volumeReasons;
     const int culled = AtmosphereMath::selectFogVolumes(volumes, camera.frustumPlanes, camera.farClip, cameraTransform.worldPosition,
-                                                        fog->volumetricDistance, std::min(tier.fogVolumes, ATMOSPHERE_MAX_FOG_VOLUMES), selected);
+                                                        fog->volumetricDistance, std::min(tier.fogVolumes, ATMOSPHERE_MAX_FOG_VOLUMES), selected,
+                                                        &volumeReasons);
+    building.fogVolumes.clear();
+    for (size_t i = 0; i < volumes.size(); i++){
+        AtmosphereFogVolume record;
+        record.entity = volumes[i].entity;
+        record.used = volumeReasons[i] == nullptr;
+        record.reason = volumeReasons[i] ? volumeReasons[i] : "";
+        building.fogVolumes.push_back(record);
+    }
     for (int i = 0; i < (int)selected.size(); i++){
         const FogVolumeData& volume = volumes[selected[i]];
         for (int r = 0; r < 3; r++)
@@ -713,6 +733,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     building.volumesUsed = (int)selected.size();
     building.volumesCulled = culled;
     building.localLights = lightCount;
+    building.lightShafts = shafts;
 }
 
 float AtmosphereRenderer::cloudsFade() const{
@@ -918,6 +939,7 @@ void AtmosphereRenderer::renderSkyMap(const CameraComponent& camera, const Trans
 float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponent& camera, const Transform& cameraTransform,
                                             TextureRender* sceneDepth, bool forcedDepth, unsigned int width, unsigned int height){
     AtmosphereViewTargets& targets = rs->rv().atmosphere;
+    building.mainCameraPass = building.mainCameraPass || plan.mainCamera;
     // the medium and the sun of the camera for the marches (they make their own rays)
     fillHeightFog(passFog, camera, cameraTransform, Rect(0.0f, 0.0f, 1.0f, 1.0f), 1, false, 0.0f);
     const AtmosphereQuality quality = viewQuality();
@@ -1115,7 +1137,11 @@ void AtmosphereRenderer::drawComposites(const PassPlan& plan, PipelineType pipel
 
 void AtmosphereRenderer::endFrame(){
     building.quality = viewQuality();
+    building.qualitySource = viewQualitySource();
     building.platformDefault = Engine::getAtmosphereQualityDefault();
+#ifdef JASPERENGINE_EDITOR
+    building.fogDisabled = rs->rv().disableFog;
+#endif
     building.fog = fogPresent;
     building.heightFog = heightFogActive;
     building.volumetric = heightFogActive && fog->volumetric;

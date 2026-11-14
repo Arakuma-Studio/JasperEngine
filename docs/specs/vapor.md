@@ -640,4 +640,9 @@ scene.fog.profile = p                  -- runtime only
 
 ## Deviations
 
-None yet.
+- **AC10's test is `AtmosphereMathGpu.OpacityMatchesGpuAnalytic`**, not `AtmosphereMathTest.…`: it reads
+  back the GPU, and a suite that needs a GPU ends in `Gpu` (`docs/testing.md`, Naming), which decides
+  how it runs. The CPU side is `AtmosphereMath.FogOpacityFollowsEachFogType`.
+- **`volumetric_needs_height` also covers volumes with the volumetric part off**: Local Volumetric Fog
+  in a scene whose Height fog has Volumetric off (R17 lists no code of its own for it); the message
+  and fix say which.

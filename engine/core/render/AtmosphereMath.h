@@ -100,9 +100,18 @@ namespace jasperengine{
         // frustum (cameraFar 0: no far plane) and lie within maxDistance of the camera, the
         // nearest first (distance to the bounding sphere, entity order on ties), at most cap.
         // Writes their indices into selected and returns how many were left out (culled or
-        // past the cap).
+        // past the cap). reasons, when given, gets one entry per volume: null for a selected
+        // one, else why it was left out ("distance", "frustum" or "tier_cap").
         static int selectFogVolumes(const std::vector<FogVolumeData>& volumes, const Plane frustumPlanes[6], float cameraFar,
-                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected);
+                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                    std::vector<const char*>* reasons = nullptr);
+
+        // How much of what lies distance metres along origin + t dir (dir a unit vector) the
+        // scene's analytic fog hides (0..1): 1 minus the transmittance the fogged meshes apply
+        // (includes/fog.glsl, includes/height_fog.glsl). Exact for the height fog; the distance
+        // fogs take distance as their fog distance, which is the fragment's depth there (equal
+        // along the camera's forward axis, about it elsewhere). No volumes, no noise.
+        static float fogOpacity(const FogComponent& fog, const Vector3& origin, const Vector3& dir, float distance);
     };
 
 }

@@ -1359,6 +1359,41 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_fog_not_showing_reads_diagnostics",
+        "kind": "bad",
+        "what_happened": "Before get_atmosphere_info's diagnostics an agent told the fog does not show could only guess: the "
+                         "Fog's fields and the passes looked right, so it thickened the fog, while the Scene view's Disable "
+                         "fog display setting hid it.",
+        "text_at_issue": "get_atmosphere_info description ('... diagnostics: why fog does not show or looks wrong, each with "
+                         "its fix. Call it first when fog is missing ...'); its result's diagnostics (scene_view_fog_disabled) "
+                         "and next ('set_scene_camera {display: {disable_fog: false}}'); docs/mcp/guide/atmosphere.md Diagnostics",
+        "source": "docs/specs/vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
+        "prompt": "I added a height fog to Main (the Fog GameObject), but I can't see any fog in the editor. Fix it.",
+        "mocks": [
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+                 "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "color": [0.6, 0.6, 0.6], "colorMode": "color",
+                                        "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
+                                        "maxOpacity": 1.0, "volumetric": False}}})},
+            {"tool": "set_scene_camera", "result": {"recorded": "scene_view_enable_fog"}},
+            {"tool": "get_atmosphere_info", "after": "set_scene_camera", "result": {"recorded": "get_atmosphere_info_fog_shown"}},
+            {"tool": "get_atmosphere_info", "result": {"recorded": "get_atmosphere_info_fog_hidden"}},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 1005 \"Fog\" (one undo step).", {"entity": {"id": 1005}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"disable_fog": False}}}]},
+        "max_turns": 20,
+    },
+    {
         "id": "bad_privacy_manifest_by_hand",
         "kind": "bad",
         "what_happened": "Before the privacy manifest settings an agent asked for an App Store privacy manifest wrote "
