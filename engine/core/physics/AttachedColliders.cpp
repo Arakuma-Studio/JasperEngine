@@ -20,6 +20,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 using namespace jasperengine;
@@ -52,10 +53,12 @@ namespace {
         return attached;
     }
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     Vector3 attachedWorldScale(Scene* scene, Entity entity){
         const Transform* transform = scene->findComponent<Transform>(entity);
         return transform ? transform->worldScale : Vector3(1.0f, 1.0f, 1.0f);
     }
+#endif
 
     // first-seen order of the bodies children were listed for, then the ones that hold
     // attached colliders and lost them all
@@ -104,6 +107,18 @@ bool AttachedColliders::poseInBody(Scene* scene, Entity ancestor, Entity child, 
 }
 
 #ifdef JASPERENGINE_PHYSICS_3D
+namespace {
+    std::atomic<int> attachedBodyCount3D{0};
+}
+
+bool AttachedColliders::anyAttached3D(){
+    return attachedBodyCount3D.load(std::memory_order_relaxed) > 0;
+}
+
+void AttachedColliders::countAttached3D(int delta){
+    attachedBodyCount3D.fetch_add(delta, std::memory_order_relaxed);
+}
+
 Entity AttachedColliders::findBody3D(Scene* scene, Entity entity){
     return findAttachBody<RigidbodyComponent>(scene, entity);
 }
@@ -264,6 +279,7 @@ void PhysicsSystem::composeAttached3D(){
             holding.push_back(bodyEntity);
         }
     }
+    AttachedColliders::countAttached3D((int)holding.size() - (int)attachedBodies3D.size());
     attachedBodies3D = std::move(holding);
     attachedChildren3D.clear();
 }

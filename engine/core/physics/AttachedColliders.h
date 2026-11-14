@@ -53,6 +53,10 @@ namespace jasperengine{
         // The other way: the body and combined index an attached child's collider is in; false
         // when the child is not attached (or that collider is not in its body yet)
         JASPERENGINE_API bool bodyIndexOf3D(Scene* scene, Entity child, int colliderIndex, Entity& bodyEntity, int& index);
+        // Bodies holding attached colliders, in every scene: a ColliderRef looks its index up only
+        // while there are some, so contacts cost nothing more without compound bodies
+        JASPERENGINE_API bool anyAttached3D();
+        JASPERENGINE_API void countAttached3D(int delta);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

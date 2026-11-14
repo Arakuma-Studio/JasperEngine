@@ -6666,10 +6666,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
-        "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
-        "list). Order: clear, remove (old indices), update, add. 2D: box, circle, capsule, segment, polygon, "
-        "chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, convex_hull, mesh, heightfield. New shapes "
-        "fit the drawn GameObject unless fit: false. Fields: jasper://docs/physics.",
+        "Add/update/remove/decompose a Rigidbody (2D)'s colliders, creating a missing body (no edits: list). "
+        "2D: box, circle, capsule, segment, polygon, chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, "
+        "convex_hull, mesh, heightfield. New shapes fit the drawn object unless fit: false. Fields: jasper://docs/physics.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -6680,7 +6679,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"remove", array(integerItem, "")},
             {"update", array(anyObject("{index, ...fields}"), "")},
             {"add", array(anyObject("{shape, ...fields}"), "")},
-            {"decompose", anyObject("{index, quality: low|medium|high, max_hulls (16)}: a mesh collider into convex hulls a moving body can use.")}
+            {"decompose", anyObject("{index, quality, max_hulls}: mesh to hulls.")}
         }, {"entity"}),
         editCollidersTool, false, false);
 

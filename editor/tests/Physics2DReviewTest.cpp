@@ -510,8 +510,9 @@ TEST(Physics2DReview, MovePosition2D) {
     world.load();
     world.step();
 
-    // kinematic: there at the end of the step by velocity, pushing; stopped the step after
-    const float quarter = Angle::radToDefault((float)M_PI / 2.0f);
+    // kinematic: there at the end of the step by velocity, pushing; stopped the step after (a
+    // turn under Box2D's 45 degrees a step)
+    const float quarter = Angle::radToDefault((float)M_PI / 6.0f);
     world.rb(mover).movePosition(Vector2(64, 0));
     world.rb(mover).moveRotation(quarter);
     world.rb(ball).setLinearVelocity(Vector2(0, 128));

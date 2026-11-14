@@ -612,7 +612,8 @@ TEST(Physics3DBody, DebugDrawLines2D) {
 TEST(Physics3DBody, MovePositionKinematicPushes) {
     World3D world(Vector3(0, 0, 0));
     const Entity mover = world.box(Vector3(0, 0, 0), Vector3(1, 1, 1), BodyType::KINEMATIC);
-    const Entity crate = world.box(Vector3(1.2f, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
+    // touching (within Jolt's speculative contact distance): the move pushes it in that step
+    const Entity crate = world.box(Vector3(1.01f, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
     world.load();
     world.step();
     world.rb(mover).movePosition(Vector3(1, 0, 0));
@@ -696,10 +697,14 @@ TEST(Physics3DBody, ZeroHalfHeightCapsuleIsSphere) {
     world.rb(ball).createCapsuleCollider(0.0f, 0.5f);
     const Entity tapered = world.body(Vector3(3, 2, 0), BodyType::DYNAMIC);
     world.rb(tapered).createTaperedCapsuleCollider(0.0f, 0.25f, 0.5f);
+    const Entity sphere = world.sphere(Vector3(-3, 2, 0), 0.5f, BodyType::DYNAMIC);
     world.load();
     world.step(240);
-    // a sphere of its radius (the larger one for a tapered capsule), resting on the plane
-    EXPECT_NEAR(world.rb(ball).getPosition().y, 0.5f, 1e-3f);
-    EXPECT_NEAR(world.rb(tapered).getPosition().y, 0.5f, 1e-3f);
+    // a sphere of its radius (the larger one for a tapered capsule): it rests as a sphere does
+    // (Jolt's penetration slop lets a resting body sink up to 0.02 m)
+    const float sphereY = world.rb(sphere).getPosition().y;
+    EXPECT_NEAR(sphereY, 0.5f, 0.02f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, sphereY, 1e-3f);
+    EXPECT_NEAR(world.rb(tapered).getPosition().y, sphereY, 1e-3f);
     EXPECT_THROW(world.rb(ball).setColliderHalfHeight(0, -1.0f), std::runtime_error);
 }

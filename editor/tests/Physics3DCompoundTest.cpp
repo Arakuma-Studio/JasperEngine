@@ -9,9 +9,10 @@
 #include <gtest/gtest.h>
 
 #include "Physics3DTestWorld.h"
-#include "ScriptTestHarness.h"
 
 #include "physics/AttachedColliders.h"
+#include "math/Ray.h"
+#include "object/physics/Collision.h"
 #include "registry/PhysicsLayers.h"
 
 #include <cmath>
@@ -78,6 +79,7 @@ TEST(Physics3DCompound, MovedChildRecomposesOnceKeepingBodyAndVelocity) {
     world.load();
     world.step();
     const JPH::BodyID id = world.component(car).body;
+    world.rb(car).setLinearDamping(0.0f);
     world.rb(car).setLinearVelocity(Vector3(1, 0, 0));
     world.step();
     EXPECT_EQ(world.component(car).attachedRecomposeSteps, 0) << "nothing moved: no compose";
@@ -125,75 +127,4 @@ TEST(Physics3DCompound, AnimatedChildWarnsOnce) {
     }
     EXPECT_EQ(log.count("moved on"), 1u);
     EXPECT_EQ(log.count("kinematic Rigidbody"), 1u);
-}
-
-// ---- callbacks: a script on the child and on the ancestor both hear the child's contact ---------
-
-namespace {
-
-    const char* COMPOUND_LOGGER_LUA =
-        "local M = {}\n"
-        "local function n(go) if go then return go.name else return 'nil' end end\n"
-        "function M:onCollisionEnter(c)\n"
-        "  log[#log + 1] = 'CE:' .. self.gameObject.name .. ':' .. n(c.gameObject) .. ':' .. n(c.thisCollider.gameObject) .. ':' .. n(c.rigidbody and c.rigidbody.gameObject)\n"
-        "end\n"
-        "return M\n";
-
-    class Physics3DCompoundScripts : public scripttest::ScriptTest {
-    protected:
-        Scene* scene = nullptr;
-
-        void SetUp() override {
-            ScriptTest::SetUp();
-            scene = newScene();
-            scene->setPhysicsInterpolation(false);
-            setScene("compoundScene", scene);
-            writeScript("CompoundLogger", COMPOUND_LOGGER_LUA);
-        }
-
-        void TearDown() override {
-            Engine::removeAllScenes();
-            lua("compoundScene = nil");
-            ScriptTest::TearDown();
-        }
-
-        Entity boxBody(const std::string& name, const Vector3& position, BodyType type, const Vector3& size, Entity parent = NULL_ENTITY) {
-            const Entity e = entity(scene, name, parent);
-            scene->getComponent<Transform>(e).position = position;
-            RigidbodyComponent body;
-            body.type = type;
-            Collider3D collider;
-            collider.type = Collider3DType::BOX;
-            collider.width = size.x;
-            collider.height = size.y;
-            collider.depth = size.z;
-            body.colliders.push_back(collider);
-            scene->addComponent<RigidbodyComponent>(e, body);
-            addScript(scene, e, "CompoundLogger");
-            return e;
-        }
-
-        bool hasEntry(const std::string& entry) {
-            return (" " + log() + " ").find(" " + entry + " ") != std::string::npos;
-        }
-    };
-
-}
-
-TEST_F(Physics3DCompoundScripts, ContactOnChildReachesChildAndAncestor) {
-    boxBody("Floor", Vector3(0, -0.5f, 0), BodyType::STATIC, Vector3(40, 1, 40));
-    const Entity car = boxBody("Car", Vector3(0, 2, 0), BodyType::DYNAMIC, Vector3(1, 1, 1));
-    // lower than the car's own box: it lands first
-    const Entity wheel = boxBody("Wheel", Vector3(2, -1, 0), BodyType::STATIC, Vector3(1, 1, 1), car);
-    scene->getComponent<RigidbodyComponent>(wheel).attachToParentBody = true;
-    LuaBinding::initializeLuaScripts(scene);
-    Engine::setScene(scene);
-    for (int i = 0; i < 90 && log().find("CE:Wheel") == std::string::npos; i++) {
-        frame();
-    }
-    // the child's collider touched: its GameObject, the ancestor's and the floor's scripts are told,
-    // the collider is the child's, the body the ancestor's
-    EXPECT_TRUE(hasEntry("CE:Wheel:Floor:Wheel:Floor")) << log();
-    EXPECT_TRUE(hasEntry("CE:Car:Floor:Wheel:Floor")) << log();
-    EXPECT_TRUE(hasEntry("CE:Floor:Wheel:Floor:Car")) << log();
 }

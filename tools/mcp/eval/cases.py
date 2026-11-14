@@ -1299,7 +1299,7 @@ CASES = [
         "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
                          "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
                          "decompose) instead of one convex hull or a box that changes the shape.",
-        "text_at_issue": "edit_colliders `decompose` parameter ('a mesh collider into convex hulls a moving body can use'); "
+        "text_at_issue": "edit_colliders 'Add/update/remove/decompose' and its `decompose` parameter ('mesh to hulls'); "
                          "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
         "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
         "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "

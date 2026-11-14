@@ -429,6 +429,8 @@ void PhysicsSystem::setSubSteps2D(int subSteps){
 
 PhysicsSystem::~PhysicsSystem(){
 #ifdef JASPERENGINE_PHYSICS_3D
+    // S96 WP-C: its compound bodies go with it
+    AttachedColliders::countAttached3D(-(int)attachedBodies3D.size());
     // the characters release their object layers and inner bodies while both still exist
     characters3D.reset();
     flushPendingDestroys3D();

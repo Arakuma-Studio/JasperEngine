@@ -1284,6 +1284,7 @@ const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, autoInertia, 0x1be21bd7u, Bool),
     JE_RF(Rigidbody2DComponent, inertia, 0x1f0cbb8eu, Float),
     JE_RF(Rigidbody2DComponent, material, 0x0ad64729u, String),
+    JE_RF(Rigidbody2DComponent, attachToParentBody, 0x622adf48u, Bool),
     JE_RF(Rigidbody2DComponent, colliders, 0xa1ab1c35u, Array),
 };
 const StructTable kBody_Rigidbody2DComponent{"rigidbody2d", kBody_Rigidbody2DComponent_fields, std::size(kBody_Rigidbody2DComponent_fields)};
@@ -1319,6 +1320,7 @@ const FieldEntry kBody_RigidbodyComponent_fields[] = {
     JE_RF(RigidbodyComponent, allowSleeping, 0xd5d0787eu, Bool),
     JE_RF(RigidbodyComponent, collideKinematicVsNonDynamic, 0x456d6d16u, Bool),
     JE_RF(RigidbodyComponent, interpolation, 0xeb948100u, Enum),
+    JE_RF(RigidbodyComponent, attachToParentBody, 0x89377c5au, Bool),
     JE_RF(RigidbodyComponent, colliders, 0xaa51737bu, Array),
 };
 const StructTable kBody_RigidbodyComponent{"rigidbody", kBody_RigidbodyComponent_fields, std::size(kBody_RigidbodyComponent_fields)};

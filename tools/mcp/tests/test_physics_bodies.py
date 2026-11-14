@@ -31,8 +31,8 @@ async def test_capsule_half_height_zero(ed: Editor):
     try:
         await ed.call("wait", frames=180)
         live = await ed.call("get_runtime_entity", entity="Pill", include_script_state=False)
-        y = live["transform"]["position"][1]
-        ed.check(abs(y - 0.5) < 0.01, f"rests on the floor at its radius: {live['transform']}")
+        y = live["components"]["transform"]["position"][1]
+        ed.check(abs(y - 0.5) < 0.01, f"rests on the floor at its radius: {live['components']['transform']}")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
 
@@ -68,8 +68,8 @@ async def test_decompose_mesh_collider(ed: Editor):
     try:
         await ed.call("wait", frames=30)
         live = await ed.call("get_runtime_entity", entity="Ring", include_script_state=False)
-        y = live["transform"]["position"][1]
-        ed.check(y < 2.9, f"the decomposed ring is dynamic and falls: {live['transform']}")
+        y = live["components"]["transform"]["position"][1]
+        ed.check(y < 2.9, f"the decomposed ring is dynamic and falls: {live['components']['transform']}")
         errors = [e["message"] for e in await ed.console_since() if "static-only" in e["message"]]
         ed.check_eq(errors, [], "no static-only refusal")
     finally:
@@ -97,7 +97,7 @@ async def test_attach_to_parent_body(ed: Editor):
                  f"the child's collider, in its parent's body: {hit}")
         # the wheel moves with the car's body: both fall together
         await ed.call("wait", frames=30)
-        car = (await ed.call("get_runtime_entity", entity="Car", include_script_state=False))["transform"]["position"]
+        car = (await ed.call("get_runtime_entity", entity="Car", include_script_state=False))["components"]["transform"]["position"]
         ed.check(car[1] < 2.95, f"the compound falls: {car}")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)

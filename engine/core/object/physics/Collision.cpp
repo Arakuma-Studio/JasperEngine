@@ -44,7 +44,7 @@ ColliderRef::ColliderRef(Scene* scene, Entity entity, int index)
     : scene(scene), entity(entity), index(index) {
 #ifdef JASPERENGINE_PHYSICS_3D
     // a body's index past its own colliders names an attached child's collider (S96 REQ-18)
-    if (scene && index >= 0 && entity != NULL_ENTITY && scene->isEntityCreated(entity)) {
+    if (AttachedColliders::anyAttached3D() && scene && index >= 0 && entity != NULL_ENTITY && scene->isEntityCreated(entity)) {
         const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
         if (body && !body->attachedColliders.empty() && (size_t)index >= body->colliders.size()) {
             AttachedColliders::resolve3D(scene, entity, index, this->entity, this->index);
