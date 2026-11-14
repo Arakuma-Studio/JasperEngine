@@ -1,0 +1,7 @@
+# tools/android-emulator-test.sh --view-loss --ordered --expect-file (S95 AC-17): the first view,
+# then Home and a trim-memory call drop the EGL context (APP_CMD_LOW_MEMORY without a window), and
+# the launcher brings the app back with a new view. The counter the script left in the DOM (7; the
+# file says 0) is still there and the document loaded once.
+I/JasperEngine: [lifecycle] start counter 7
+I/JasperEngine: [lifecycle] view lost
+I/JasperEngine: [lifecycle] view back counter 7 loads 1

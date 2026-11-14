@@ -79,6 +79,10 @@ namespace jasperengine{
 
         void load() override;                 // nothing heavy: the context is created lazily in update()
         void destroy() override;              // destroy context, HtmlUI::release() if acquired
+        // a view loss: the contexts, documents, DOM, element handles, listeners, data models and
+        // scroll stay; their textures, geometry buffers and targets go and are made again when
+        // they draw next (restoreGpu is load(): only documents that never loaded load)
+        void releaseGpu() override;
         void update(double dt) override;
         void draw() override;                 // empty: RenderSystem drives drawing
         void onComponentAdded(Entity entity, ComponentId componentId) override;    // mark needReload
@@ -375,6 +379,7 @@ namespace jasperengine{
         void textureRenderOffscreen();               // renderOffscreen(): each texture context into its target
         bool textureAllRendered() const;             // isAllLoaded(): every shown texture document drawn once
         void textureDestroyAll();                    // destroyContext(): before RmlUi is released
+        void textureReleaseGpu();                    // releaseGpu(): each texture context's GPU objects and target
         std::vector<HtmlUIContext*> getTextureContexts() const;   // renderOffscreen(): statistics
         // the context data models of owner live in (its texture context, else the screen one; p1-lua)
         HtmlUIContext* modelContext(Entity owner) const;

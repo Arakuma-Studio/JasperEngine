@@ -220,6 +220,7 @@ bool Engine::inFixedStep = false;
 float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
+bool Engine::releasingScenesGpu = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
@@ -2256,7 +2257,7 @@ void Engine::systemViewLoaded(){
     }
     
     for (Scene* scene : getScenesSnapshot()){
-        scene->load();
+        scene->restoreGpu();
     }
 }
 
@@ -2976,8 +2977,10 @@ void Engine::systemViewDestroyed(){
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->destroy();
+        scenes[i]->releaseGpu();
     }
+    // the frame that brings the view back measured the time without it
+    clampNextDelta = true;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -2991,6 +2994,37 @@ void Engine::systemViewDestroyed(){
     clearPools();
 
     drawSemaphore.release();
+}
+
+void Engine::releaseScenesGpu(const std::vector<Scene*>& list){
+    if (!viewLoaded)
+        return;
+
+    drawSemaphore.acquire();
+    // the systems tell a view loss from a teardown by the view (RenderSystem keeps its CPU
+    // assets for the next load, UISystem its buttons' textures)
+    viewLoaded = false;
+    releasingScenesGpu = true;
+    for (Scene* scene : list){
+        if (scene)
+            scene->releaseGpu();
+    }
+    releasingScenesGpu = false;
+    viewLoaded = true;
+    clampNextDelta = true;
+    drawSemaphore.release();
+}
+
+void Engine::restoreScenesGpu(const std::vector<Scene*>& list){
+    for (Scene* scene : list){
+        if (scene)
+            scene->restoreGpu();
+    }
+    clampNextDelta = true;
+}
+
+bool Engine::isReleasingScenesGpu(){
+    return releasingScenesGpu;
 }
 
 void Engine::systemShutdown(){
@@ -3097,6 +3131,8 @@ void Engine::applyPause(){
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
     if (!want){
+        // the first frame back measured the time in the background: no game clock jumps by it
+        clampNextDelta = true;
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
             [](ScriptBase& script) { script.onApplicationPause(false); });

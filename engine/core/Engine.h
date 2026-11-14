@@ -419,6 +419,7 @@ namespace jasperengine {
         static float smoothDeltatime;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
+        static bool releasingScenesGpu;
         // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
         static bool gameEventsPaused;
 
@@ -995,8 +996,17 @@ namespace jasperengine {
         // frees what earlier frames released without waiting for them
         static void systemUpdate();
         // Nothing when no view is loaded (a launch that failed before systemViewLoaded, a second
-        // destroy)
+        // destroy). The scenes release their GPU objects only (Scene::releaseGpu): what the game
+        // made, its HTML UI documents included, is there when systemViewLoaded brings the view back
         static void systemViewDestroyed();
+        // A view loss of these scenes only, while the renderer and the other scenes stay (the
+        // editor's send_input app view_lost / view_restored, tests): their systems release and
+        // restore their GPU objects as systemViewDestroyed and systemViewLoaded have them do
+        static void releaseScenesGpu(const std::vector<Scene*>& scenes);
+        static void restoreScenesGpu(const std::vector<Scene*>& scenes);
+        // inside releaseScenesGpu: the view stays for the other scenes, so what all the scenes
+        // share (RenderSystem's default textures) stays too
+        static bool isReleasingScenesGpu();
         static void systemShutdown();
 
         // The app goes to the background (pause) and comes back (resume). Idempotent: a

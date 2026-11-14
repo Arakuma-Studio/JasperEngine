@@ -730,6 +730,11 @@ games (layout needs no GPU). A later change of the document reloads it in one of
   elements are cancelled and listeners of elements without an id are dropped with one warning.
   `onUnload` then `onLoad` fire.
 
+A view loss is not a reload: when Android drops the GPU context in the background or a browser
+loses the WebGL context, the documents keep their DOM, handles, listeners, data models and scroll,
+and no `onLoad`/`onUnload` fires; only their textures are made again (`send_input` app
+`view_lost` / `view_restored` tries it in Play).
+
 A stylesheet-only change restyles in place and keeps everything. Each reload logs one Console
 line, `[HTML UI] Patched ui/menu.html: 3 updated, 1 inserted, 0 removed, 0 replaced, 12
 runtime nodes kept (2.1 ms)` (click it for the full report), and `doc.lastReloadReport` holds
