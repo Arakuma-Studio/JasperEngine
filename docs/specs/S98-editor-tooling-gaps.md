@@ -797,6 +797,38 @@ Avoiding conflicts:
   (`JASPER_TEST_FLAT_NEW_PROJECT=1`, docs/testing.md): the suite's tests address assets at the
   project root. `test_project_create.py` and the template generator use the real layout.
 
+### WP-6 (what ships)
+
+- **Keys under `export:`.** The settings are stored as `export.assetStripping` (`referencedOnly`;
+  absent = Ship All Assets), `export.alwaysInclude` and `export.exclude`, beside the other Player >
+  Publishing keys (`method`, `pack`, `stripEngineCode`); `project.yaml` has no `build:` map. The MCP
+  rows are `player.asset_stripping` (`ship_all` / `referenced_only`), `player.always_include` and
+  `player.exclude_from_build`.
+- **What Referenced Only may leave out.** Only content file types: textures, models, audio, video,
+  fonts, materials, prefabs, UI documents and stylesheets, colour LUTs, particle effects, animation
+  assets (clips, pose and vertex animations, controllers, masks, montages), Aseprite files,
+  tilesets, Sound Events, Title Art and voxel volumes. Lua (REQ-9), shader sources (REQ-11), scenes,
+  data files, palettes, navigation data, terrain worlds and other files always ship: the runtime
+  reads several of them by convention or through dependencies the index does not hold.
+- **More literal sources.** Besides Lua and C++ sources, the scalars of `project.yaml` and the
+  string literals of shipped `.json` data files count: the window icon and the audio mixer are named
+  there and are not index edges; a level file listing its sprites is the same case as a script.
+  A kept bitmap font keeps its sheets and TrueType source, and a kept FBX keeps the textures its
+  import links by URI (neither is an index edge).
+- **Exclude From Build everywhere.** It also leaves out Lua files (`copyLua`) and shader sources, and
+  `assetmap.bin` leaves out every left-out asset (so `Asset.exists` answers false for one).
+- **The Development Build message** is a warning from `File::open` (once per path), before the
+  loader's own "not found" line, which stays. Prebuilt players read the list at start; a Compile
+  build reads `content-manifest.json` once WP-1 runs it through `player::runGame` (REQ-1), and a
+  source export has no manifest.
+- **New projects** get Referenced Only in `createProjectInDirectory` (templates take it from there);
+  `JASPER_TEST_FLAT_NEW_PROJECT=1` (WP-3's harness default) keeps the projects the MCP suite creates
+  as they were before S98.
+- **AC10's test** is `test_asset_stripping.py::test_shader_shipped_once` (`test_export_sources.py`
+  is WP-1's file) and checks the copies; the exported player drawing it is not run there.
+- **AC9's player check** is `test_asset_stripping_player.py` (slow, prebuilt Development runtime),
+  apart from the CI file so that file waits for no runtime.
+
 ## Progress
 
 - **WP-3, E37 measurement** (unchanged editor, headless, llvmpipe; `JASPER_MCP_TRACE=1`):
@@ -808,3 +840,12 @@ Avoiding conflicts:
   Red controls: `test_mesh_assets.py` on the editor of `3ef9338fa` (3 of 3 fail: `save_as` unknown,
   no `.mesh` written); the editor unit tests with `MeshSystem`'s read and the save's extraction
   turned off (5 of 7 `MeshAsset*` fail). Evidence: `/tmp/arcade-gaps/evidence/s98-7/`.
+- **WP-6, what ships** (AC9, AC10, AC11, AC35, AC36): `test_asset_stripping.py` 6/6 on the WP-6
+  editor; red on the spec branch's editor (3ef9338fa): 0/6, everything shipped (`textures/unused.png`
+  and `dev/debug.png` cooked), Play imported the unused FBX, two copies of the shader source
+  (`assets/assets/shaders/Plain.frag` and `assets/shaders/Plain.frag`), the settings unknown. The
+  WP-6 unit tests (`AssetStripping.*`, `AssetStrippingProjectTest.*`, `StreamProjectSettings*.*`,
+  `ContentManifest.StrippedListRoundTripsAndIsAbsentWhenEmpty`, `StrippedAssets.*`) use the new API
+  and do not build on the old one. AC36: screenshots of Project Settings > Player > Build, the
+  Project window's two items and an Exclude From Build undone with Edit > Undo (outside the
+  repository, the package's evidence folder).

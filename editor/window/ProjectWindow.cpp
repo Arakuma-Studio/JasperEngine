@@ -69,6 +69,8 @@
 #include "util/ProjectFileWrites.h"
 #include "procmat/ProceduralBake.h"
 #include "command/type/RenameFileCmd.h"
+#include "command/type/AssetStrippingSettingsCmd.h"
+#include "export/AssetStripping.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
@@ -2715,6 +2717,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 renderLabelsMenu();
                 if (ImGui::MenuItem(ICON_FA_BOOKMARK " Add to Bookmarks")) addSelectionToBookmarks();
+                renderBuildInclusionMenu(currentPath / file.name);
                 ImGui::Separator();
                 const std::string deleteKeys = CommandCatalog::editor().menuShortcutText("project.delete");
                 const bool deleteItem = ImGui::MenuItem(ICON_FA_TRASH " Delete", deleteKeys.empty() ? nullptr : deleteKeys.c_str());
@@ -6176,4 +6179,34 @@ void editor::ProjectWindow::pingAsset(const std::string& projectRelative) {
     pingName = fs::path(projectRelative).filename().string();
     pingUntil = ImGui::GetTime() + 1.5;
     pingScroll = true;
+}
+
+// S98 REQ-8: the selection's globs in Exclude From Build / Always Include in Build (Project Settings >
+// Player > Build), checked when every selected item's glob is in the list; one undo step each
+void editor::ProjectWindow::renderBuildInclusionMenu(const fs::path& clicked) {
+    std::vector<fs::path> chosen = getSelectedFiles();
+    if (std::find(chosen.begin(), chosen.end(), clicked) == chosen.end()) chosen = {clicked};
+    std::vector<std::string> globs;
+    for (const fs::path& path : chosen) {
+        std::error_code ec;
+        globs.push_back(buildglob::forSelection(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(path)), fs::is_directory(path, ec)));
+    }
+    const AssetStrippingSettings stripping = project->getAssetStripping();
+    auto allIn = [&](const std::vector<std::string>& list) {
+        return std::all_of(globs.begin(), globs.end(), [&](const std::string& glob) { return std::find(list.begin(), list.end(), glob) != list.end(); });
+    };
+    const bool excluded = allIn(stripping.exclude);
+    const bool included = allIn(stripping.alwaysInclude);
+    const bool exclude = ImGui::MenuItem(ICON_FA_BAN " Exclude From Build", nullptr, excluded);
+    uiBuilding.contextMenu.push_back({"Exclude From Build", lastItemRect()});
+    ImGui::SetItemTooltip("No build ships it (Project Settings > Player > Build > Exclude From Build)");
+    const bool include = ImGui::MenuItem(ICON_FA_THUMBTACK " Always Include in Build", nullptr, included);
+    uiBuilding.contextMenu.push_back({"Always Include in Build", lastItemRect()});
+    ImGui::SetItemTooltip("Ships under Asset Stripping: Referenced Only, used or not: for a file a script loads by a path it builds");
+    if (!exclude && !include) return;
+    AssetStrippingSettings changed = stripping;
+    for (const std::string& glob : globs) changed = withBuildGlob(changed, exclude, glob, exclude ? !excluded : !included);
+    if (changed == stripping) return;
+    project->getProjectCommandHistory()->addCommandNoMerge(
+        new AssetStrippingSettingsCmd(project, changed, exclude ? "Exclude From Build" : "Always Include in Build"));
 }

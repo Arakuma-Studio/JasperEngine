@@ -459,6 +459,8 @@ namespace jasperengine::editor {
         std::vector<std::pair<Guid, std::string>> selectedAssets() const;
         void setLabelOnSelection(const std::string& label, bool on);
         void renderLabelsMenu();
+        // Exclude From Build / Always Include in Build for the selection (or the clicked item)
+        void renderBuildInclusionMenu(const std::filesystem::path& clicked);
         void renderLabelItems();
         float renderLabelStrip(ImVec2 barMin, float barHeight, float right);
         void drawItemLabels(const FileEntry& entry, ImVec2 min, ImVec2 max, bool listView);

@@ -14,6 +14,7 @@
 #include "StreamMigrations.h"
 #include "asset/MeshAssetFiles.h"
 #include "command/CommandHandle.h"
+#include "export/AssetStripping.h"
 #include "command/CommandHistory.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
@@ -245,4 +246,24 @@ TEST_F(MeshAssetSaveTest, AFileAnotherProgramChangedIsReadAgain) {
     service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
     meshSystem->update(0);
     EXPECT_TRUE(sameBytes(meshOf(ball).buffer, box.getComponent<MeshComponent>().buffer));
+}
+
+// Referenced Only (S98 REQ-8) ships the .mesh a build scene shows and leaves out one nothing names
+TEST_F(MeshAssetSaveTest, AssetStrippingShipsTheMeshesTheScenesShow) {
+    addPrimitive("Ball", true);
+    ASSERT_TRUE(project->saveSceneToPath(sceneProject->id, "Main Scene.scene"));
+    Scene stray;
+    Primitive ring(&stray);
+    ring.createTorus(1.0f, 0.25f, 16, 12);
+    AssetRef ref;
+    std::string error;
+    ASSERT_TRUE(MeshAssetFiles::write(*project, ring.getComponent<MeshComponent>(), "meshes/stray.mesh", ref, &error)) << error;
+
+    project->getAssetIndex().waitUntilReady();
+    AssetStrippingSettings settings;
+    settings.mode = AssetStrippingMode::ReferencedOnly;
+    project->setAssetStripping(settings);
+    const AssetStrippingPlan plan = AssetStrippingPlan::make(*project);
+    EXPECT_EQ(plan.leftOutReason("assets/Meshes/Main Scene/Ball.mesh"), "") << "the build scene shows it";
+    EXPECT_EQ(plan.leftOutReason("assets/meshes/stray.mesh"), "unreferenced");
 }
