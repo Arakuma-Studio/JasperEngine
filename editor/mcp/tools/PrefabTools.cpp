@@ -2034,16 +2034,16 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab";
         tool.title = "Create Prefab";
         tool.description =
-            "Create Prefab: saves the GameObject (with children) as a new .prefab and makes it the instance root "
-            "(same id). Several entities: one each, <directory>/<name>.prefab. An instance root becomes an original "
-            "prefab (variants: create_prefab_variant); an instance member is refused (unpack_prefab first).";
+            "Saves the GameObject (with children) as a .prefab and makes it the instance root (same id). Several "
+            "entities: one each, <directory>/<name>.prefab. An instance root becomes an original prefab (variants: "
+            "create_prefab_variant); an instance member is refused (unpack_prefab first).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
             {"path", assetPath("One root only.")},
             {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")},
-            {"overwrite", withDefault(boolean("Replace the prefab at path; its GUID, instances and their overrides stay."), false)}
+            {"overwrite", boolean("Replace the prefab at path; GUID and instances stay.")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = createPrefabTool;

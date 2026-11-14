@@ -5248,8 +5248,8 @@ CASES = [
         "kind": "bad",
         "what_happened": "E2 (JasperArcade port): create_prefab refused an existing path, so the agent deleted the .prefab and created "
                          "it again; the new file had a new GUID and every scene that placed the prefab lost its instances.",
-        "text_at_issue": "create_prefab's overwrite parameter ('Replace the prefab at path; its GUID, instances and their overrides "
-                         "stay.') and its refusal naming overwrite",
+        "text_at_issue": "create_prefab's overwrite parameter ('Replace the prefab at path; GUID and instances stay.') and its "
+                         "refusal naming overwrite",
         "source": "PORT docs/port/ENGINE_LIMITATIONS.md E2; S98 REQ-21",
         "prompt": "I edited the Enemy GameObject in this scene (new collider, bigger sprite). Save it over prefabs/Enemy.prefab: "
                   "Level1 and Level2 place that prefab and must get the change.",
