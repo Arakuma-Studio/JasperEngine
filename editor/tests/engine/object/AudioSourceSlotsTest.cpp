@@ -322,14 +322,15 @@ TEST_F(AudioSourceSlotsEditorTest, SecondSourceIsAHiddenChildThatFollows) {
     auto* duplicate = new editor::DuplicateEntityCmd(project.get(), scene->id, {car});
     ASSERT_TRUE(history()->addCommandNoMerge(duplicate));
     const std::vector<Entity> copies = duplicate->getCreatedEntities();
-    ASSERT_EQ(copies.size(), 1u);
-    const std::vector<Entity> copiedSlots = AudioSourceSlots::getSlots(registry, copies[0]);
+    ASSERT_EQ(copies.size(), 3u) << "the copy and its two slots";
+    const auto copy = std::find_if(copies.begin(), copies.end(), [registry](Entity e) { return !AudioSourceSlots::isSlot(registry, e); });
+    ASSERT_NE(copy, copies.end());
+    const std::vector<Entity> copiedSlots = AudioSourceSlots::getSlots(registry, *copy);
     ASSERT_EQ(copiedSlots.size(), 2u) << "2 + 2 sources";
     EXPECT_EQ(registry->getComponent<AudioSourceComponent>(copiedSlots[0]).slot, 1);
     EXPECT_EQ(registry->getComponent<AudioSourceComponent>(copiedSlots[1]).slot, 2);
     ASSERT_TRUE(history()->undo());
-    EXPECT_FALSE(registry->isEntityCreated(copies[0]));
-    EXPECT_FALSE(registry->isEntityCreated(copiedSlots[0]));
+    for (Entity created : copies) EXPECT_FALSE(registry->isEntityCreated(created));
 
     // Remove Component on a slot takes its entity; the undo brings it back
     ASSERT_TRUE(history()->addCommandNoMerge(new editor::RemoveAudioSourceSlotCmd(project.get(), scene->id, siren)));
