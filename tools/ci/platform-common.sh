@@ -21,14 +21,15 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-RESULTS=build/test-results
+# (CI_RESULTS: another folder, for a step reported apart from its job's)
+RESULTS="${CI_RESULTS:-build/test-results}"
 
 # The command a log starts with ("$ <command>", what tools/ci/report.py takes as the repro): the
 # script as run from the checkout, its arguments, and the variables of this file that change what it
 # does. A script that runs another one for its step exports it, so the log names the outer command.
 if [[ -z "${CI_LOG_COMMAND:-}" ]]; then
     CI_LOG_COMMAND=""
-    for _name in ARCHS EDITOR_TESTS ENGINE_DEBUG_INFO JASPERENGINE_VERSION TEST_SUITES WERROR XCODE_JOBS CMAKE_GENERATOR; do
+    for _name in ARCHS EDITOR_TESTS ENGINE_DEBUG_INFO JASPERENGINE_VERSION TEST_SUITES TEST_TIMEOUT WERROR XCODE_JOBS CMAKE_GENERATOR; do
         [[ -n "${!_name:-}" ]] && CI_LOG_COMMAND+="$_name=$(printf '%q' "${!_name}") "
     done
     unset _name

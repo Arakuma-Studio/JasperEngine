@@ -15,6 +15,8 @@ skipped while lanes.json says that lane did not need to run. It fails when:
   - a test lane (TEST_LANES) succeeded with zero tests in its report, or with no report; each MCP
     shard of lanes.json counts on its own (report mcp-<shard>).
 A job of a lane that is not the lane's own job (windows-compile, of windows) is planned with its lane.
+A job's test run reported apart from the job (windows-editor-tests, of the windows editor leg) must
+have passed with tests in its report, or be --advisory.
 An --advisory lane's failure or zero tests are listed, not failing (rollout, design §14.1); its
 cancellation still fails. The report job only posts the comment, so its result never gates.
 Prints a table of job, result and verdict, also into $GITHUB_STEP_SUMMARY when set. Exit 2 when
@@ -119,6 +121,28 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
                 tests_verdict(job, result, job)
         else:
             row(job, result, "ok", False)
+
+    # a job's test run reported apart from it (report.TEST_REPORTS): its job's result is its build's,
+    # so the report itself must show the tests ran and passed
+    for test_report, job in report.TEST_REPORTS.items():
+        lane = plan["lanes"].get(job)
+        if not lane or not lane["run"] or event == "push" or job not in needs:
+            continue
+        is_advisory = test_report in advisory_set
+        r = reports.get(test_report)
+        if r is None:
+            result, problem = "missing", "no report, so no proof tests ran"
+        elif r["status"] != "success":
+            result, problem = r["status"], "failing"
+        elif r["tests"]["ran"] == 0:
+            result, problem = r["status"], "0 tests ran"
+        else:
+            row(test_report, r["status"], f"ok ({r['tests']['ran']} tests)", False)
+            continue
+        if is_advisory:
+            row(test_report, result, f"advisory (rollout): {problem}", False, True)
+        else:
+            row(test_report, result, f"FAIL: {problem}", True)
 
     for name, lane in plan["lanes"].items():
         if lane["run"] and name not in needs:

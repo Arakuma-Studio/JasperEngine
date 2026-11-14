@@ -432,8 +432,9 @@ class RenderTest(unittest.TestCase):
 
     def green_reports(self):
         names = ["changes", "lint", "linux", "unit", "asan", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
-        names += [f"windows-{p}" for p in report.WINDOWS_PARTS]
-        return [lane_report(n, ran={"unit": 412, "asan": 400, "mcp-1": 120, "mcp-2": 94}.get(n, 0)) for n in names]
+        names += [f"windows-{p}" for p in report.WINDOWS_PARTS] + list(report.TEST_REPORTS)
+        return [lane_report(n, ran={"unit": 412, "asan": 400, "mcp-1": 120, "mcp-2": 94, "windows-editor-tests": 900}.get(n, 0))
+                for n in names]
 
     def test_red_layout(self):
         windows = lane_report("windows-editor", "failure", failures=[failure(
@@ -450,7 +451,7 @@ class RenderTest(unittest.TestCase):
         lines = body.splitlines()
         self.assertEqual(lines[0], "<!-- jasper-ci-report -->")
         self.assertIn("CI failed on `3f2c1ab`", lines[1])
-        self.assertIn("2 of 17 jobs", lines[1])
+        self.assertIn("2 of 18 jobs", lines[1])
         self.assertIn("[run 812](https://github.com/o/r/actions/runs/812)", lines[1])
         self.assertIn("windows", body)
         self.assertIn("Windows MSVC", body)
@@ -481,7 +482,7 @@ class RenderTest(unittest.TestCase):
         body = self.render(self.write(*self.green_reports(), lanes=lanes_json(htmlui=(False, "no HTML UI change"))))
         lines = body.splitlines()
         self.assertEqual(lines[0], "<!-- jasper-ci-report -->")
-        self.assertRegex(lines[1], r"^✅ CI passed on `3f2c1ab`: 17 jobs, 10 min · \[run 812\]\(https://github.com/o/r/actions/runs/812\)$")
+        self.assertRegex(lines[1], r"^✅ CI passed on `3f2c1ab`: 18 jobs, 10 min · \[run 812\]\(https://github.com/o/r/actions/runs/812\)$")
         self.assertEqual(lines[2], "")
         self.assertTrue(lines[3].startswith("<details>"))
         self.assertIn("unit: passed, 412 tests", body)
@@ -494,7 +495,7 @@ class RenderTest(unittest.TestCase):
         body = self.render(path)
         self.assertIn("No report from: macos", body)
         # nothing failed, but a lane left no report: not a pass the comment can claim
-        self.assertIn("CI finished on `3f2c1ab`: 17 jobs, 1 without a report (the `Check` status decides)", body.splitlines()[1])
+        self.assertIn("CI finished on `3f2c1ab`: 18 jobs, 1 without a report (the `Check` status decides)", body.splitlines()[1])
         self.assertNotIn("CI passed", body)
         needs = {"macos": {"result": "failure"}}
         body = self.render(path, needs=needs)
@@ -588,12 +589,13 @@ class WindowsLegsTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def render(self, reports, lanes, **extra):
+    def render(self, reports, lanes, advisory=(), **extra):
         for r in reports:
             (self.reports / f"{r['lane']}.json").write_text(json.dumps(r))
         path = self.dir / "lanes.json"
         path.write_text(json.dumps(lanes))
-        return report.render(report.load_reports(self.reports), report.load_lanes(path), self.RUN, "3f2c1ab" + "0" * 33, [], **extra)
+        return report.render(report.load_reports(self.reports), report.load_lanes(path), self.RUN, "3f2c1ab" + "0" * 33,
+                             list(advisory), **extra)
 
     def test_legs_belong_to_the_windows_lane(self):
         for leg in ("windows-editor", "windows-engine-glcore", "windows-engine-d3d11", "windows-engine-vulkan", "windows-compile"):
@@ -604,8 +606,9 @@ class WindowsLegsTest(unittest.TestCase):
 
     def test_every_leg_is_expected_and_titled(self):
         names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
-        legs = [f"windows-{p}" for p in report.WINDOWS_PARTS]
-        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names + legs]
+        legs = [f"windows-{p}" for p in report.WINDOWS_PARTS] + list(report.TEST_REPORTS)
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2", "windows-editor-tests") else 0)
+                   for n in names + legs]
         body = self.render(reports, lanes_json())
         self.assertIn(f"{len(names) + len(legs)} jobs", body.splitlines()[1])
         self.assertIn("windows (engine-vulkan)", body)
@@ -627,6 +630,26 @@ class WindowsLegsTest(unittest.TestCase):
         body = self.render([r for r in reports if r["lane"] != "windows-compile"], lanes_json(),
                            needs={"windows": {"result": "success"}, "windows-compile": {"result": "failure"}})
         self.assertIn("CI failed on", body)
+
+    def test_the_editor_tests_report_is_advisory_when_named(self):
+        names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        legs = [f"windows-{p}" for p in report.WINDOWS_PARTS]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names + legs]
+        failed = lane_report("windows-editor-tests", "failure", ran=900, failures=[failure(
+            "SafeWrite.WritesNewAndReplacesKeepingPermissions", location="editor/tests/SafeWriteTest.cpp:93")])
+        body = self.render(reports + [failed], lanes_json(), advisory=["windows-editor-tests"])
+        self.assertIn("CI passed on", body.splitlines()[1])
+        self.assertIn("advisory (rollout): failing", body)
+        self.assertIn("windows (editor-tests)", body)
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render(reports + [failed], lanes_json())
+        self.assertIn("CI failed on", body.splitlines()[1])
+        # expected on a pull request: no report is missing, not passed
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render(reports, lanes_json())
+        self.assertIn("No report from: windows (editor-tests)", body)
 
     def test_a_skipped_windows_lane_has_no_legs(self):
         names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]

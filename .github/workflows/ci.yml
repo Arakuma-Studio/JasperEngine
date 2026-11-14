@@ -37,7 +37,7 @@ concurrency:
 
 env:
   # the test lanes whose failures Check lists but does not fail on (D2); emptied in phase 7
-  ADVISORY_LANES: "unit asan htmlui mcp smoke"
+  ADVISORY_LANES: "unit asan htmlui mcp smoke windows-editor-tests"
   # every compile error of a run, not the first one (tools/build.sh and tools/ci/platform-common.sh)
   KEEP_GOING: 1
 
@@ -788,9 +788,23 @@ jobs:
       - name: Editor
         if: matrix.part == 'editor'
         run: tools/ci/windows.sh editor
+      # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
+      # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg
       - name: Editor unit tests (CPU suites)
+        id: editor-tests
         if: matrix.part == 'editor' && github.event_name != 'push'
+        continue-on-error: true
+        timeout-minutes: 75
+        env:
+          CI_RESULTS: build/test-results-editor-tests
+          TEST_TIMEOUT: 3600
         run: TEST_SUITES=editor tools/ci/windows.sh tests
+      - uses: ./.github/actions/report
+        if: ${{ always() && steps.editor-tests.outcome != 'skipped' && steps.editor-tests.outcome != '' }}
+        with:
+          lane: windows-editor-tests
+          status: ${{ steps.editor-tests.outcome }}
+          results: build/test-results-editor-tests
       - name: Call CLI without an editor
         if: matrix.part == 'editor' && github.event_name != 'push'
         run: tools/ci/windows.sh check-cli

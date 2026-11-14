@@ -49,9 +49,11 @@ def reports_for(lanes_json, ran=None):
         if not lane["run"]:
             continue
         names = [f"mcp-{s}" for s in lanes_json["mcp"]["shards"]] if name == "mcp" else [name]
+        if name == "windows" and lanes_json["event"] != "push":
+            names.append("windows-editor-tests")
         for n in names:
             out.append({"lane": n, "status": "success", "sha": "", "commands": [], "failures": [], "artifacts": [],
-                        "tests": {"ran": ran.get(n, 50 if name in ("unit", "asan", "htmlui", "mcp") else 0),
+                        "tests": {"ran": ran.get(n, 50 if name in ("unit", "asan", "htmlui", "mcp") or n == "windows-editor-tests" else 0),
                                   "failed": 0, "skipped": 0, "disabled": 0}, "timings": {"seconds": 1}, "disk": ""})
     return out
 
@@ -139,6 +141,39 @@ class GateTest(unittest.TestCase):
         status, out = self.gate(needs, p, reports_for(p))
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^windows-compile\s+failure\s+FAIL$")
+
+    def test_windows_editor_tests_report_on_their_own_and_may_be_advisory(self):
+        # the editor leg's test run (report windows-editor-tests): its failure, a missing report or zero
+        # tests fail Check unless ADVISORY_LANES names it; the leg's build still gates through its job
+        p = plan()
+        failing = {"lane": "windows-editor-tests", "status": "failure", "sha": "", "commands": [], "failures": [],
+                   "artifacts": [], "tests": {"ran": 900, "failed": 3, "skipped": 0, "disabled": 0},
+                   "timings": {"seconds": 1}, "disk": ""}
+        status, out = self.gate(needs_for(p), p, reports_for(p) + [failing], advisory="windows-editor-tests")
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+failure\s+advisory \(rollout\): failing$")
+        status, out = self.gate(needs_for(p), p, reports_for(p) + [failing])
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+failure\s+FAIL: failing$")
+        passing = dict(failing, status="success", tests={"ran": 900, "failed": 0, "skipped": 0, "disabled": 0})
+        status, out = self.gate(needs_for(p), p, [r for r in reports_for(p) if r["lane"] != "windows-editor-tests"] + [passing])
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+success\s+ok \(900 tests\)$")
+        # no report although the windows lane ran a pull request
+        others = [r for r in reports_for(p) if r["lane"] != "windows-editor-tests"]
+        status, out = self.gate(needs_for(p), p, others)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+missing\s+FAIL: no report, so no proof tests ran$")
+        status, out = self.gate(needs_for(p), p, others, advisory="windows-editor-tests")
+        self.assertEqual(status, 0, out)
+        # nothing expected when the lane did not run, or on push (build only)
+        p = plan(off=("windows",))
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        self.assertNotIn("windows-editor-tests", out)
+        p = plan(event="push")
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertNotIn("windows-editor-tests", out)
 
     def test_failure_and_cancelled_fail(self):
         p = plan()

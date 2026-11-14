@@ -16,7 +16,9 @@
 #                                                  tree and that engine tree, through tools/ci/gtest-gate.py;
 #                                                  XML in build/test-results/{core,editor}-windows.xml
 #                                                  (TEST_SUITES=core or editor: that suite alone, as the
-#                                                  lane's engine-glcore and editor jobs run them)
+#                                                  lane's engine-glcore and editor jobs run them;
+#                                                  TEST_TIMEOUT=<s>: a suite still running then is
+#                                                  stopped and fails, googletest having no per-test one)
 #   tools/ci/windows.sh compile-smoke <project-dir> [backend]  a Compile build of the project with MSVC,
 #                                                  as Build with Method Compile makes it (tools/ci/compile-smoke.sh)
 #   tools/ci/windows.sh package <version>          dist/JasperEngine-<version>-windows-x64.zip of instdir/bin
@@ -94,7 +96,18 @@ step_tests() {
         local binary="$core" minimum=CORE_MIN_TESTS
         [[ "$suite" == editor ]] && binary="$editor" minimum=EDITOR_MIN_TESTS
         rm -f "$RESULTS/$suite-windows.xml"
-        "$binary" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/$suite-windows.xml" || status=1
+        local run=("$binary" --gtest_filter=-*Gpu* --gtest_output=xml:"$RESULTS/$suite-windows.xml")
+        if [[ -n "${TEST_TIMEOUT:-}" ]]; then
+            # (the last "[ RUN      ]" line of the log names the test that did not finish)
+            local code=0
+            timeout --kill-after=30 "$TEST_TIMEOUT" "${run[@]}" || code=$?
+            if [[ $code != 0 ]]; then
+                status=1
+                [[ $code == 124 || $code == 137 ]] && echo "$suite tests: stopped after $TEST_TIMEOUT s" >&2
+            fi
+        else
+            "${run[@]}" || status=1
+        fi
         "$PY" tools/ci/gtest-gate.py --xml "$RESULTS/$suite-windows.xml" --min-tests "$(min_tests "$minimum")" --max-skipped 0 \
             --allow-skip-reason 'count(s)? allocations|allocation counter' || status=1
     done

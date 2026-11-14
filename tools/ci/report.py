@@ -80,6 +80,9 @@ LANE_TITLES = {
 # the windows lane's parallel jobs, a report each (windows-<part>): ci.yml's windows matrix and
 # windows-compile, which compiles a fixture with the editor leg's install
 WINDOWS_PARTS = ("editor", "engine-glcore", "engine-d3d11", "engine-vulkan", "compile")
+# a job's test run reported apart from the job (its report lane: the job), so ADVISORY_LANES can hold
+# it while the job's build gates: the editor leg's editor tests
+TEST_REPORTS = {"windows-editor-tests": "windows"}
 
 
 # where a lane's repro runs, when that is not the Linux images
@@ -904,12 +907,13 @@ def lane_base(lane: str) -> str:
     return lane
 
 
-def lane_jobs(name: str, shards: list[str]) -> list[str]:
-    """The reports a planned lane makes: one per MCP shard, one per Windows leg, else its own."""
+def lane_jobs(name: str, shards: list[str], event: str = "") -> list[str]:
+    """The reports a planned lane makes: one per MCP shard, one per Windows leg (and the editor leg's
+    test run but on push, which builds only), else its own."""
     if name == "mcp" and shards:
         return [f"mcp-{s}" for s in shards]
     if name == "windows":
-        return [f"windows-{p}" for p in WINDOWS_PARTS]
+        return [f"windows-{p}" for p in WINDOWS_PARTS] + ([] if event == "push" else list(TEST_REPORTS))
     return [name]
 
 
@@ -1018,7 +1022,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
     for name, lane in lanes["lanes"].items():
         if name in ("report", "check") or not lane["run"]:
             continue
-        expected += lane_jobs(name, shards)
+        expected += lane_jobs(name, shards, lanes["event"])
     expected += [name for name in reports if name not in expected]
     states: dict[str, str] = {}
     for name in expected:
@@ -1028,8 +1032,11 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             job = needs.get(name, needs.get(lane_base(name)))
             result = job.get("result") if isinstance(job, dict) else None
             states[name] = result if result in STATUSES else "missing"
-    red = [n for n in expected if states[n] in ("failure", "cancelled") and lane_base(n) not in advisory_set]
-    advisory_red = [n for n in expected if states[n] in ("failure", "cancelled") and lane_base(n) in advisory_set]
+    def advisory_lane(n: str) -> bool:
+        return n in advisory_set or lane_base(n) in advisory_set
+
+    red = [n for n in expected if states[n] in ("failure", "cancelled") and not advisory_lane(n)]
+    advisory_red = [n for n in expected if states[n] in ("failure", "cancelled") and advisory_lane(n)]
     missing = [n for n in expected if states[n] == "missing"]
     jobs = len(expected)
 
@@ -1058,7 +1065,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 passed.append(f"{name} (skipped: {md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards):
+            for n in lane_jobs(name, shards, lanes["event"]):
                 if states.get(n) == "success":
                     tests = reports[n]["tests"]["ran"] if n in reports else 0
                     label = lane_label(n, shards)
@@ -1103,7 +1110,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 details.append(f"- {name}: skipped ({md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards):
+            for n in lane_jobs(name, shards, lanes["event"]):
                 state = {"success": "passed", "missing": "no report"}.get(states.get(n, "missing"), states.get(n, ""))
                 details.append(f"- {lane_label(n, shards)}: {state}{count_note(reports[n]) if n in reports else ''}")
         for name in expected:
