@@ -461,6 +461,8 @@ TEST_F(RmlRendererP1GoldenTest, MsaaRounded){
 
 TEST_F(RmlRendererP1GoldenTest, LayersNested){
     JASPER_REQUIRE_GPU();
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     P1Context test;
     std::vector<uint8_t> screen;
     ASSERT_TRUE(draw(test, "layers_nested", screen));

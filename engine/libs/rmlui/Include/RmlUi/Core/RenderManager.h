@@ -107,8 +107,9 @@ public:
 	/// A layer covering the region of the top layer (Fork, P7-F2: GetLayerRegion).
 	LayerHandle PushLayer();
 	/// Fork (P7-F2): a layer covering 'region' (window coordinates), which may extend beyond the viewport
-	/// (RenderInterface::PushLayerRegion): an ordinary layer when it lies within the viewport or the render interface does
-	/// not support it. GetLayerRegion() then returns what it covers.
+	/// (RenderInterface::PushLayerRegion): an ordinary layer when the render interface does not support it. Fork
+	/// (S92-F4): a region within the viewport is asked for too (a layer sized to an element). GetLayerRegion() then
+	/// returns what it covers.
 	LayerHandle PushLayer(Rectanglei region);
 	void CompositeLayers(LayerHandle source, LayerHandle destination, BlendMode blend_mode, Span<const CompiledFilterHandle> filters);
 	void PopLayer();

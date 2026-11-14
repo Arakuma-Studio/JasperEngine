@@ -437,7 +437,10 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				const RenderBox clip_box = element->GetRenderBox(clip_area, 0, false);
 				// (fork, P5-2: a decorator that clips itself, as the engine's effects do, needs no mask)
 				if (clip_box.HasBorderRadius() && !canvas && !draw.decorator->PaintsOwnClip())
+				{
 					draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
+					draw.clip_rect = Rectanglef::FromPositionSize(clip_box.GetBorderOffset() + clip_box.GetFillOffset(), clip_box.GetFillSize());
+				}
 				draws.push_back(std::move(draw));
 				continue;
 			}
@@ -641,6 +644,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 			if (clip_box.HasBorderRadius() && !canvas)
 			{
 				draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
+				draw.clip_rect = Rectanglef::FromPositionSize(clip_box.GetBorderOffset() + clip_box.GetFillOffset(), clip_box.GetFillSize());
+				draw.clip_box_index = box_index;
 			}
 			draws.push_back(std::move(draw));
 		}
@@ -862,6 +867,26 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		return;
 	const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
 
+	// Fork (S92-F4): a masked draw's layers cover its clip box (the mask's feathered edge included), not the viewport,
+	// within the layer they are composited into. Under a transform, the element's projected border box (the main box's:
+	// another box of an inline element keeps a layer of the region it is drawn in).
+	auto MaskWindow = [&](const Draw& draw) {
+		Rectanglef window = Rectanglef::MakeInvalid();
+		const TransformState* transform_state = element->GetTransformState();
+		if (transform_state && transform_state->GetTransform())
+		{
+			if (draw.clip_box_index != 0 || element->GetNumBoxes() > 1 || !ElementUtilities::GetBoundingBox(window, element, BoxArea::Border))
+				return render_manager->GetLayerRegion();
+		}
+		else
+		{
+			window = draw.clip_rect.Translate(offset);
+		}
+		window = window.Extend(1.f);
+		Math::ExpandToPixelGrid(window);
+		return Rectanglei(window).IntersectIfValid(render_manager->GetLayerRegion());
+	};
+
 	for (Draw& draw : draws)
 	{
 		if (!draw.primitives.empty())
@@ -871,7 +896,10 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		}
 		const bool masked = bool(draw.clip_mask);
 		const bool fade = !draw.fade.empty();
-		if (masked || fade)
+		const Rectanglei mask_window = masked ? MaskWindow(draw) : Rectanglei::MakeInvalid();
+		if (masked)
+			render_manager->PushLayer(mask_window);
+		else if (fade)
 			render_manager->PushLayer();
 
 		if (fade)
@@ -905,7 +933,7 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		if (masked)
 		{
 			// The layer, masked by the anti-aliased shape of its rounded clip box.
-			render_manager->PushLayer();
+			render_manager->PushLayer(mask_window);
 			draw.clip_mask.Render(offset);
 			CompiledFilter mask = render_manager->SaveLayerAsMaskImage();
 			render_manager->PopLayer();

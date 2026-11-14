@@ -1,7 +1,10 @@
 #version 450
 
 // HTML UI fullscreen passes on premultiplied sRGB images, one exclusive variant each:
-//   HAS_PASSTHROUGH    copy (layer composite, blits, stencil clears) times params.x (opacity)
+//   HAS_PASSTHROUGH    copy (layer composite, blits, stencil clears) times params.x (opacity); with
+//                      params.w on, clipped to the rectangle texCoordMinMax (destination px of a
+//                      viewport of params.yz px) by its coverage at the pixel's centre (S92: a
+//                      layer composite under a rectangular clip, without the stencil)
 //   HAS_COLOR_MATRIX   brightness/contrast/invert/grayscale/sepia/hue-rotate/saturate
 //   HAS_BLEND_MASK     multiplies by the mask image's alpha (mask-image)
 //   HAS_DROP_SHADOW    the source's alpha times the shadow colour, inside texCoordMinMax
@@ -32,6 +35,7 @@ uniform sampler u_htmluiPost_smp;
 #endif
 
 in vec2 v_uv;
+in vec2 v_dst;
 
 out vec4 g_finalColor;
 
@@ -71,6 +75,11 @@ vec4 tap(float i, float weight){
 void main() {
 #if defined(HAS_PASSTHROUGH)
     g_finalColor = source(v_uv) * htmluiPost.params.x;
+    if (htmluiPost.params.w > 0.5){
+        vec2 p = v_dst * htmluiPost.params.yz;
+        vec2 inside = clamp(min(p - htmluiPost.texCoordMinMax.xy, htmluiPost.texCoordMinMax.zw - p) + 0.5, 0.0, 1.0);
+        g_finalColor *= inside.x * inside.y;
+    }
 #elif defined(HAS_COLOR_MATRIX)
     // without alpha transforms the matrix applies to premultiplied colour directly; the
     // constant column is then scaled by alpha

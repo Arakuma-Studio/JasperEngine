@@ -446,6 +446,8 @@ TEST(RenderRecordTest, AContextWithEffectsRemovedBeforeTheFrameEnds){
 // one of them reaching beyond the viewport (a region layer), batched and replayed call by call
 TEST(RenderRecordTest, StencilAuditHoldsAcrossPassBreaks){
     JASPER_REQUIRE_GPU();
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     const std::string rml = R"(<rml><head><style>
 body { margin: 0; width: 240px; height: 160px; }
 div { display: block; }

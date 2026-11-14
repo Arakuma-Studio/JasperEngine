@@ -88,6 +88,10 @@ private:
 		uintptr_t decorator_data = 0;
 		BoxArea clip_area = BoxArea::Border; // a decorator's (fork, S92-F2: the rounded clip box of GetClipShapes)
 		Geometry clip_mask; // rounded clip box: the anti-aliased shape the layer is masked with
+		// Fork (S92-F4): the clip box's fill area (relative to the element's border offset) and its box: the window of
+		// the mask's layers.
+		Rectanglef clip_rect;
+		int clip_box_index = 0;
 		SharedPtr<void> image_owner; // the application's image (ImageSourceHandler)
 		// A cross-fade (an interpolated background-image): the images added in a layer (BlendMode::Plus), as Chromium's
 		// CrossfadeGeneratedImage draws them.
