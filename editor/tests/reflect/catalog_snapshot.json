@@ -9743,6 +9743,7 @@
     "enabled",
     "exposedValues",
     "inlineEffect",
+    "legacyFrom",
     "playOnAwake",
     "playbackSpeed",
     "seed",
@@ -9776,6 +9777,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -9833,6 +9839,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -29471,6 +29482,11 @@
     15,
     2199023255552,
     false
+   ],
+   "legacyFrom": [
+    16,
+    0,
+    true
    ],
    "playOnAwake": [
     0,
