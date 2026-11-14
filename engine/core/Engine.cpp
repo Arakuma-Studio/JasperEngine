@@ -2760,15 +2760,19 @@ void Engine::runFrame(bool draw){
             scenes[i]->compactComponents();
         }
         // the late transform pass (S95 REQ-5): what onPostUpdate, the timers, the coroutines and
-        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame;
-        // the 3D listener follows a camera moved then. Nothing moved: one compare per scene
+        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame
+        // (a Camera Follow follows a target moved then); the 3D listener and sources are heard where
+        // they are drawn. Nothing moved: one compare per scene
+        bool lateMoved = false;
         bool viewMoved = false;
         for (int i = 0; i < scenes.size(); i++) {
-            viewMoved = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms() || viewMoved;
+            const LateTransformResult late = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms();
+            lateMoved = lateMoved || late.moved;
+            viewMoved = viewMoved || late.viewMoved;
         }
-        if (viewMoved) {
+        if (lateMoved) {
             for (int i = 0; i < scenes.size(); i++) {
-                scenes[i]->getSystem<AudioSystem>()->placeLateListener();
+                scenes[i]->getSystem<AudioSystem>()->updateLate(viewMoved);
             }
         }
         // what was for this frame only (the virtual sources' deltas) goes
