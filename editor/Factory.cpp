@@ -2076,6 +2076,7 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     if (body.linearDamping != def.linearDamping) code << ind << "rigidbody2d.linearDamping = " << formatFloat(body.linearDamping) << ";\n";
     if (body.angularDamping != def.angularDamping) code << ind << "rigidbody2d.angularDamping = " << formatFloat(body.angularDamping) << ";\n";
     if (body.fixedRotation != def.fixedRotation) code << ind << "rigidbody2d.fixedRotation = " << formatBool(body.fixedRotation) << ";\n";
+    if (body.allowFastRotation != def.allowFastRotation) code << ind << "rigidbody2d.allowFastRotation = " << formatBool(body.allowFastRotation) << ";\n";
     if (body.collisionDetection != def.collisionDetection) code << ind << "rigidbody2d.collisionDetection = CollisionDetectionMode2D::CONTINUOUS;\n";
     if (body.sleepingMode == RigidbodySleepMode2D::NEVER_SLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::NEVER_SLEEP;\n";
     if (body.sleepingMode == RigidbodySleepMode2D::START_ASLEEP) code << ind << "rigidbody2d.sleepingMode = RigidbodySleepMode2D::START_ASLEEP;\n";
@@ -3290,6 +3291,23 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
+    // S96: the physics world settings away from their defaults (Scene::set + the field's key)
+    {
+        const SceneSettings defaults;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const double value = getPhysicsWorldSetting(field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings());
+            if (value == getPhysicsWorldSetting(field, defaults.physics2DWorld, defaults.physics3DWorld)) continue;
+            std::string setter = field.key;
+            setter[0] = (char)std::toupper((unsigned char)setter[0]);
+            out << ind2 << "scene->set" << setter << "(";
+            switch (field.type) {
+                case PhysicsWorldSettingField::Type::Float: out << formatFloat((float)value); break;
+                case PhysicsWorldSettingField::Type::Int: out << (int)value; break;
+                case PhysicsWorldSettingField::Type::Bool: out << formatBool(value != 0.0); break;
+            }
+            out << ");\n";
+        }
+    }
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";

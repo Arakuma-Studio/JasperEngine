@@ -385,6 +385,10 @@ namespace jasperengine {
         
         static double deltatime;
         static double maxDeltatime;
+        // S96 WP-E: the fixed steps a frame may run (0: automatic), and the steps dropped over it
+        static int maxFixedStepsPerFrame;
+        static uint64_t droppedFixedSteps;
+        static bool reportedDroppedFixedSteps;
         static float framerate;
         static double framePeriod;
         static double frameCpuTime;
@@ -777,6 +781,20 @@ namespace jasperengine {
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();
         static void setMaxDeltatime(float seconds);
+
+        // The fixed steps one frame may run (Time.maximumFixedStepsPerFrame). 0 (default) is
+        // automatic, getFixedStepCap: as many as the longest frame's game time needs, so the cap
+        // never drops what maxDeltatime lets through. Negative values are taken as 0.
+        static void setMaxFixedStepsPerFrame(int steps);
+        static int getMaxFixedStepsPerFrame();
+        // The cap of the next frame: maxFixedStepsPerFrame, or ceil(the longest frame's game time
+        // (the fixed frame delta when set, else maxDeltatime, times a time scale above 1) /
+        // updateTime) + 1, plus the whole steps the last frame left (a fixed step made shorter)
+        static int getFixedStepCap();
+        // Fixed steps the cap dropped since the Play (editor) or the run started; the first drop
+        // logs one warning naming both settings
+        static uint64_t getDroppedFixedSteps();
+        static void resetDroppedFixedSteps();
 
         // Monotonic wall-clock time in seconds, independent of scene pause / update loop.
         static double getSystemTime();
