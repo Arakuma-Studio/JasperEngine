@@ -794,6 +794,8 @@ async def test_development_build_crash_report():
 async def test_desktop_build_and_run(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+    # (alone with -k, the new project's scene is untitled: a build needs a saved one)
+    await ed.call("save_project", untitled_scene_dir="scenes")
     out = ed.scratch.root / "export-desktop"
     t0 = time.monotonic()
     # the suite's compile path check (docs/testing.md): compiled from source, whatever runtimes exist
@@ -903,6 +905,8 @@ async def test_compile_build_removes_stale_files(ed: Editor):
     beside it, and a folder that is not an output folder is refused for either method alike"""
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build a real Desktop player (compiles the engine)")
+    # (alone with -k, the new project's scene is untitled: a build needs a saved one)
+    await ed.call("save_project", untitled_scene_dir="scenes")
     out = ed.scratch.root / "export-desktop"
     (out / "assets").mkdir(parents=True, exist_ok=True)
     (out / "assets" / "old.png").write_bytes(b"an earlier build's")

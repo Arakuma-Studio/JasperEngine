@@ -120,7 +120,10 @@ namespace {
     void writeComponents(rt::Writer& w, EntityRegistry* registry, Entity entity, bool skipPrefabLink, bool noParent) {
         std::vector<std::pair<const rt::ComponentTable*, const void*>> written;
         std::vector<std::unique_ptr<DerivedReset>> resets;
-        std::unique_ptr<MeshComponent> counted;
+        // a mesh's vertex counts as its load gives them, set on the component for the write and put
+        // back after
+        MeshComponent* counted = nullptr;
+        std::vector<unsigned int> drawnCounts;
         for (ComponentType type : Catalog::findComponents(registry, entity)) {
             if (skipPrefabLink && type == ComponentType::PrefabComponent) continue;
             const rt::ComponentTable* table = tableOf(type);
@@ -132,16 +135,11 @@ namespace {
                 component = withDerivedDefaults(*desc, component, *resets.back());
             }
             if (type == ComponentType::MeshComponent) {
-                // the vertex counts the mesh's load gives, set when a frame draws it (as a save writes them)
-                const MeshComponent& mesh = *static_cast<const MeshComponent*>(component);
-                bool drawnOnly = false;
-                for (unsigned int s = 0; s < mesh.numSubmeshes; s++)
-                    drawnOnly = drawnOnly || mesh.submeshes[s].vertexCount != MeshSystem::loadedVertexCount(mesh, mesh.submeshes[s]);
-                if (drawnOnly) {
-                    counted = std::make_unique<MeshComponent>(mesh);
-                    for (unsigned int s = 0; s < counted->numSubmeshes; s++)
-                        counted->submeshes[s].vertexCount = MeshSystem::loadedVertexCount(*counted, counted->submeshes[s]);
-                    component = counted.get();
+                // set when a frame draws the mesh: a build writes what its load gives (as a save does)
+                counted = const_cast<MeshComponent*>(static_cast<const MeshComponent*>(component));
+                for (unsigned int s = 0; s < counted->numSubmeshes; s++) {
+                    drawnCounts.push_back(counted->submeshes[s].vertexCount);
+                    counted->submeshes[s].vertexCount = MeshSystem::loadedVertexCount(*counted, counted->submeshes[s]);
                 }
             }
             written.emplace_back(table, component);
@@ -192,6 +190,7 @@ namespace {
                 rt::writeComponent(w, *table, component, ctx);
             }
         }
+        for (size_t s = 0; counted && s < drawnCounts.size(); s++) counted->submeshes[s].vertexCount = drawnCounts[s];
     }
 
 }
