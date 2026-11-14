@@ -45,6 +45,7 @@ int JasperEngineWeb::screenHeight;
 
 double JasperEngineWeb::mousePosX;
 double JasperEngineWeb::mousePosY;
+unsigned int JasperEngineWeb::canvasButtonsDown = 0;
 
 int JasperEngineWeb::sampleCount = 0;
 
@@ -490,6 +491,9 @@ int JasperEngineWeb::init(int argc, char **argv){
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
     emscripten_set_mousedown_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseup_callback(canvas.c_str(), 0, true, mouse_callback);
+    // the release of a press on the canvas outside it (S93 R2): bubbling, so the canvas's own
+    // listener has had a release on the canvas first
+    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, window_mouseup_callback);
     emscripten_set_mousemove_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, mouse_callback);
@@ -575,6 +579,7 @@ void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
     emscripten_set_mousedown_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseup_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
     emscripten_set_mousemove_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, NULL);
@@ -1152,6 +1157,19 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
     return 0;
 }
 
+static int webMouseModifiers(const EmscriptenMouseEvent* e){
+    int modifiers = 0;
+    if (e->ctrlKey) modifiers |= D_MODIFIER_CONTROL;
+    if (e->shiftKey) modifiers |= D_MODIFIER_SHIFT;
+    if (e->altKey) modifiers |= D_MODIFIER_ALT;
+    if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
+    return modifiers;
+}
+
+// the canvas's top-left corner in the page's client coordinates (CSS pixels)
+EM_JS(double, jasper_canvas_client_left, (), { return Module.canvas ? Module.canvas.getBoundingClientRect().left : 0; });
+EM_JS(double, jasper_canvas_client_top, (), { return Module.canvas ? Module.canvas.getBoundingClientRect().top : 0; });
+
 EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
 
     int width = JasperEngineWeb::screenWidth;
@@ -1177,11 +1195,7 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         mousePosY += e->movementY * webCanvasPixelRatio;
     }
 
-    int modifiers = 0;
-    if (e->ctrlKey) modifiers |= D_MODIFIER_CONTROL;
-    if (e->shiftKey) modifiers |= D_MODIFIER_SHIFT;
-    if (e->altKey) modifiers |= D_MODIFIER_ALT;
-    if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
+    const int modifiers = webMouseModifiers(e);
 
     jasperengine::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
     // a capture the browser ended (Esc, the tab hidden) locks again at the next click
@@ -1190,7 +1204,10 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         emscripten_request_pointerlock(canvas.c_str(), 0);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && e->buttons != 0){
-        jasperengine::Engine::systemMouseDown(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        const int button = jasperengine_mouse_button(e->button);
+        if (button >= 0 && button < 32)
+            canvasButtonsDown |= 1u << button;
+        jasperengine::Engine::systemMouseDown(button, (float)mousePosX, (float)mousePosY, modifiers);
         // a press on a document text field: the textarea keeps the focus the press would move
         if (jasperengine::Engine::wantsTextComposition()){
             jasper_ime_focus(1);
@@ -1198,7 +1215,10 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         }
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEUP){
-        jasperengine::Engine::systemMouseUp(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        const int button = jasperengine_mouse_button(e->button);
+        if (button >= 0 && button < 32)
+            canvasButtonsDown &= ~(1u << button);
+        jasperengine::Engine::systemMouseUp(button, (float)mousePosX, (float)mousePosY, modifiers);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEENTER){
         jasperengine::Engine::systemMouseEnter();
@@ -1207,6 +1227,21 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         jasperengine::Engine::systemMouseLeave();
     }
 
+    return 0;
+}
+
+// A press on the canvas released anywhere else in the page (or outside the window, where the
+// browser still sends the release to the page): the engine gets it at its canvas position, which
+// is off the canvas, and gives a press the game got its release clamped to the canvas (S93 R2).
+// A release the canvas had (its listener runs first) cleared the button's bit: no second one
+EM_BOOL JasperEngineWeb::window_mouseup_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
+    const int button = jasperengine_mouse_button(e->button);
+    if (button < 0 || button >= 32 || !(canvasButtonsDown & (1u << button)))
+        return 0;
+    canvasButtonsDown &= ~(1u << button);
+    const double x = (e->clientX - jasper_canvas_client_left()) * webCanvasPixelRatio;
+    const double y = (e->clientY - jasper_canvas_client_top()) * webCanvasPixelRatio;
+    jasperengine::Engine::systemMouseUp(button, (float)x, (float)y, webMouseModifiers(e));
     return 0;
 }
 

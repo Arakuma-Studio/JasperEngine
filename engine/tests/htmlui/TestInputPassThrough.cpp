@@ -15,6 +15,8 @@
 #include "object/ui/UIDataModel.h"
 #include "object/ui/UIEvent.h"
 #include "object/ui/UIValue.h"
+#include "htmlui/compat/DiagnosticCodes.h"
+#include "htmlui/compat/Diagnostics.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
@@ -365,21 +367,132 @@ TEST_F(InputPassThroughTest, AListeningPageTakesThePointer){
     shortBody.setVisible(false);
     GpuEnvironment::drawFrames(1);
 
-    // a listener on the document (the <html> element) counts too, and a wheel listener takes the
-    // whole page (the decision is per document)
-    const uint64_t wheel = hud.addEventListener("wheel", [](UIEvent&){});
+    // a listener on the document (the <html> element) counts too (the decision is per
+    // document); a wheel listener takes only the wheel (S93 R4: before, it took the whole page)
+    int wheels = 0;
+    const uint64_t wheel = hud.addEventListener("wheel", [&](UIEvent&){ wheels++; });
     click(900, 600);
-    EXPECT_EQ(gameDowns, 1);
+    EXPECT_EQ(gameDowns, 2) << "a wheel listener does not take presses";
     Engine::systemMouseScroll(0, -1, 0);
     EXPECT_EQ(gameScrolls, 0);
+    EXPECT_EQ(wheels, 1) << "the page's wheel listener got the wheel on its empty part";
     hud.removeEventListener(wheel);
+    Engine::systemMouseScroll(0, -1, 0);
+    EXPECT_EQ(gameScrolls, 1);
+    EXPECT_EQ(wheels, 1);
+    // a press listener on the document
+    const uint64_t down = hud.addEventListener("mousedown", [](UIEvent&){});
     click(900, 600);
     EXPECT_EQ(gameDowns, 2);
+    hud.removeEventListener(down);
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 3);
     // keys and other non-pointer listeners do not take the pointer
     const uint64_t keys = hud.addEventListener("keydown", [](UIEvent&){});
     click(900, 600);
-    EXPECT_EQ(gameDowns, 3);
+    EXPECT_EQ(gameDowns, 4);
     hud.removeEventListener(keys);
+}
+
+namespace {
+    class PassThrough : public InputPassThroughTest {
+    protected:
+        void SetUp() override{
+            InputPassThroughTest::SetUp();
+            Engine::onTouchEnd.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ gameTouchEnds++; }));
+            Engine::onTouchMove.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ gameTouchMoves++; }));
+        }
+
+        void TearDown() override{
+            Engine::onTouchEnd.remove(callbackTag);
+            Engine::onTouchMove.remove(callbackTag);
+            InputPassThroughTest::TearDown();
+        }
+
+        int gameTouchEnds = 0, gameTouchMoves = 0;
+
+        // the HTMLUI-INPUT-0001 diagnostics of a document
+        std::vector<htmlui::compat::Diagnostic> pressListenerNotes(const UIDocument& document){
+            std::vector<htmlui::compat::Diagnostic> notes;
+            for (const htmlui::compat::Diagnostic& diagnostic : system().getDiagnostics(document.getEntity())){
+                if (diagnostic.code == htmlui::compat::codes::PagePressListener)
+                    notes.push_back(diagnostic);
+            }
+            return notes;
+        }
+    };
+}
+
+// AC5 (S93 R4, R5, U19): only press listeners make a transparent page take presses on its empty
+// parts. A drag tracker on <body> (move, up, over, out listeners) leaves the presses, touches
+// and moves to the game; a wheel listener takes only the wheel; a click listener takes the
+// presses and says so once, with HTMLUI-INPUT-0001
+TEST_F(PassThrough, MoveListenerOnBodyDoesNotTakePresses){
+    UIDocument hud = add("hud", "html, body { margin: 0; }\nbody { min-height: 100vh; }\n", "<p>HUD</p>", 0);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+
+    std::vector<uint64_t> tracker;
+    for (const char* type : {"pointermove", "pointerup", "pointerover", "pointerout", "mousemove", "mouseup", "mouseover", "mouseout"})
+        tracker.push_back(hud.getBody().addEventListener(type, [](UIEvent&){}));
+    tracker.push_back(hud.addEventListener("pointermove", [](UIEvent&){}));
+
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 1) << "a move listener does not take presses";
+    EXPECT_EQ(gameUps, 1);
+    EXPECT_FALSE(system().eventOnPointerMove(0, 900, 600, 0, false, false));
+    Engine::systemTouchStart(1, 900, 600);
+    Engine::systemTouchMove(1, 880, 600);
+    Engine::systemTouchEnd(1, 880, 600);
+    EXPECT_EQ(gameTouches, 1);
+    EXPECT_EQ(gameTouchMoves, 1);
+    EXPECT_EQ(gameTouchEnds, 1);
+    EXPECT_TRUE(pressListenerNotes(hud).empty()) << "a page that takes no press is not reported";
+    EXPECT_EQ(TestSystem::get().countLogs(0, "HTMLUI-INPUT-0001"), 0u);
+
+    // a wheel listener: the wheel only
+    int wheels = 0;
+    const uint64_t wheel = hud.getBody().addEventListener("wheel", [&](UIEvent&){ wheels++; });
+    Engine::systemMouseScroll(0, -1, 0);
+    EXPECT_EQ(wheels, 1);
+    EXPECT_EQ(gameScrolls, 0);
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 2);
+    EXPECT_TRUE(pressListenerNotes(hud).empty());
+    hud.getBody().removeEventListener(wheel);
+
+    // a click listener takes the presses, and the change is reported once per event type
+    int bodyClicks = 0;
+    const uint64_t onClick = hud.getBody().addEventListener("click", [&](UIEvent&){ bodyClicks++; });
+    click(900, 600);
+    click(900, 600);
+    EXPECT_EQ(bodyClicks, 2);
+    EXPECT_EQ(gameDowns, 2);
+    std::vector<htmlui::compat::Diagnostic> notes = pressListenerNotes(hud);
+    ASSERT_EQ(notes.size(), 1u);
+    EXPECT_EQ(notes[0].severity, htmlui::compat::Severity::Info);
+    EXPECT_EQ(notes[0].subject, "click");
+    EXPECT_NE(notes[0].message.find("'click'"), std::string::npos) << notes[0].message;
+    EXPECT_NE(notes[0].message.find("<body>"), std::string::npos) << notes[0].message;
+    EXPECT_NE(notes[0].message.find("every press on its empty parts"), std::string::npos) << notes[0].message;
+    EXPECT_EQ(TestSystem::get().countLogs(0, "HTMLUI-INPUT-0001"), 1u) << "the Console line";
+    // another press type on the document: a note of its own
+    const uint64_t onDown = hud.addEventListener("pointerdown", [](UIEvent&){});
+    hud.getBody().removeEventListener(onClick);
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 2);
+    notes = pressListenerNotes(hud);
+    ASSERT_EQ(notes.size(), 2u);
+    EXPECT_EQ(notes[1].subject, "pointerdown");
+    EXPECT_NE(notes[1].message.find("<html>"), std::string::npos) << notes[1].message;
+    hud.removeEventListener(onDown);
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 3);
+
+    // (each removes only its own element's listeners)
+    for (uint64_t id : tracker){
+        hud.getBody().removeEventListener(id);
+        hud.removeEventListener(id);
+    }
 }
 
 // "click outside closes the dropdown": a mousedown listener on the upper document closes its

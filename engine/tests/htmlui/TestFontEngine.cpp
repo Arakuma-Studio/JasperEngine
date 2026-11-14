@@ -178,12 +178,36 @@ TEST_F(RmlFontEngineTest, FamilyListSplitAndFallback){
     EXPECT_EQ(chain[1], FontRegistry::getBuiltInArabic().get());
     EXPECT_EQ(chain[2], FontRegistry::getBuiltInLatin().get());
 
-    // a fallback face is in every chain, after the families asked for
+    // a fallback face's family is in every chain, after the families asked for, in the text's style (S93 R16: upright
+    // text takes the family's upright face, here the built-in Roboto; before, the italic fallback face itself)
     ASSERT_TRUE(engine.LoadFontFace("fonts/Roboto-Italic.ttf", 0, true, Rml::Style::FontWeight::Auto));
     chain = engine.getChain(handle("Heavy", 16, Rml::Style::FontWeight::Bold));
+    ASSERT_EQ(chain.size(), 3u);
+    EXPECT_EQ(chain[0]->getLabel(), "fonts/Roboto-Bold.ttf");
+    EXPECT_EQ(chain[1], FontRegistry::getBuiltInLatin().get());
+    EXPECT_EQ(chain[2], FontRegistry::getBuiltInArabic().get());
+    chain = engine.getChain(handle("Heavy", 16, Rml::Style::FontWeight::Bold, Rml::Style::FontStyle::Italic));
     ASSERT_EQ(chain.size(), 4u);
     EXPECT_EQ(chain[0]->getLabel(), "fonts/Roboto-Bold.ttf");
     EXPECT_EQ(chain[1]->getLabel(), "fonts/Roboto-Italic.ttf");
+}
+
+TEST_F(RmlFontEngineTest, FallbackFaceFollowsWeightAndStyle){
+    // S93 R16: a fallback family with a regular and a bold face: bold text falls back to the bold face, regular text to the
+    // regular one (before, every text to the face registered first). (Roboto Italic stands in as the family's regular.)
+    ASSERT_TRUE(engine.LoadFontFace("fonts/Roboto-Italic.ttf", 0, "Fallback Sans", Rml::Style::FontStyle::Normal,
+                                    Rml::Style::FontWeight::Normal, true));
+    ASSERT_TRUE(engine.LoadFontFace("fonts/Roboto-Bold.ttf", 0, "Fallback Sans", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold,
+                                    true));
+    FontRegistry::registerFace(FontRegistry::getBuiltInArabic(), "Boxes", 400, 0, false);
+
+    std::vector<const FontFace*> bold = engine.getChain(handle("Boxes", 24, Rml::Style::FontWeight::Bold));
+    ASSERT_GE(bold.size(), 2u);
+    EXPECT_EQ(bold[0], FontRegistry::getBuiltInArabic().get());
+    EXPECT_EQ(bold[1]->getLabel(), "fonts/Roboto-Bold.ttf");
+    std::vector<const FontFace*> regular = engine.getChain(handle("Boxes", 24));
+    ASSERT_GE(regular.size(), 2u);
+    EXPECT_EQ(regular[1]->getLabel(), "fonts/Roboto-Italic.ttf");
 }
 
 TEST_F(RmlFontEngineTest, EmptyFamilyUsesDefault){

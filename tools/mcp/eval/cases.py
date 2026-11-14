@@ -1340,6 +1340,66 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_html_ui_prewarm",
+        "kind": "guard",
+        "what_happened": "The JasperArcade port wrote its own UIWarm.lua (hidden layers shown off-screen for a frame) to stop "
+                         "the first show of outlined text stalling; S93 R15 added doc:prewarm and the guide's 'Prewarming text'.",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Fonts > 'Prewarming text': doc:prewarm(), HtmlUI.prewarmText, data-warm",
+        "source": "JasperArcade port, docs/port/ENGINE_LIMITATIONS.md U30 (scripts/shared/ui/UIWarm.lua); spec S93 R15",
+        "files": {"README.md": README,
+                  "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><link rel=\"stylesheet\" href=\"pause.css\"></head>\n<body>\n"
+                                          "<div id=\"pause\"><h1>PAUSED</h1><button id=\"resume\">Resume</button></div>\n"
+                                          "</body></html>\n",
+                  "assets/ui/pause.css": "#pause { display: none; }\n#pause.open { display: block; }\n"
+                                         "h1 { font-size: 160px; font-effect: outline(12px #000), glow(4px 10px 0px 6px #000); }\n",
+                  "assets/ui/pause.lua": "local Pause = { properties = {} }\n\nfunction Pause:init()\n"
+                                         "    self.doc = UIDocument(self.scene, self.entity)\nend\n\n"
+                                         "function Pause:open()\n    self.doc:getElementById(\"pause\").classList:add(\"open\")\nend\n\n"
+                                         "return Pause\n"},
+        "prompt": "The first time the pause menu (assets/ui/pause.html, its script assets/ui/pause.lua) opens, the game hitches "
+                  "for a moment: the big outlined PAUSED title. Later opens are smooth. Fix the first open in the script; don't "
+                  "play the game.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("assets/ui/pause.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"prewarm\s*\("]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"left\s*=\s*[\"']?-\d{3,}"]},
+                   "must_not_call": ["play"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_html_ui_page_press_listener",
+        "kind": "guard",
+        "what_happened": "S93 R4 changed the pass-through rule: only press listeners (click, mousedown, pointerdown, ...) on a "
+                         "transparent page make it take presses; the old guide listed mouseup and mousemove too, which now "
+                         "take nothing, so a 'release outside closes it' handler on mouseup never runs.",
+        "text_at_issue": "Guide 'Pointer input and pass-through': 'add a press listener (click, dblclick, contextmenu, mousedown, "
+                         "pointerdown ...) on the document or doc.body ... Move, up, over, out ... listeners on the page take "
+                         "nothing'",
+        "source": "docs/specs/S93-htmlui-gaps.md R4, D3",
+        "prompt": "The pause overlay assets/ui/pause.html is transparent around its #panel. In assets/ui/pause.lua, hide the "
+                  "overlay when the player clicks or taps anywhere outside the panel.",
+        "files": {
+            "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><style>html, body { margin: 0; } #panel { margin: 120px auto; "
+                                    "width: 320px; background: #222; color: #fff; padding: 24px; }</style></head>\n"
+                                    "<body><div id=\"panel\"><h1>Paused</h1><button id=\"resume\">Resume</button></div>"
+                                    "</body></html>\n",
+            "assets/ui/pause.lua": "---@class pause : ScriptInstance\nlocal pause = {}\n\nfunction pause:init()\n"
+                                   "    local doc = UIDocument(self.scene, self.entity)\n"
+                                   "    doc:getElementById(\"resume\"):addEventListener(\"click\", function() doc:hide() end)\n"
+                                   "end\n\nreturn pause\n",
+        },
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("pause: #panel (320x180) with #resume; the page around it is transparent.",
+                                               {"elements": [{"selector": "#panel"}, {"selector": "#resume"}]})},
+            {"tool": "read_console", "result": ok("No new console entries.", {"entries": []})},
+        ],
+        # the page's own listener: on the document or its body (the button's click is there already)
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"(doc|body)\s*:\s*addEventListener\(\s*[\"'](click|mousedown|pointerdown)[\"']"]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"addEventListener\(\s*[\"'](mouseup|pointerup)[\"']"]}},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_ui_tween_for_game_time",
         "kind": "bad",
         "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "

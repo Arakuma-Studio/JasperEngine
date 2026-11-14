@@ -2314,6 +2314,12 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
 | `HTMLUI-CSS-0024` | warning | **Blurred effect on a bitmap font** (`bitmap-font-effect`): A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a text-shadow without blur. |
 
+### FONT
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-FONT-0001` | info | **Characters drawn by a fallback font** (`fallback-glyph`): Characters of the text are not in the first available face of its font-family list; a fallback face (a later family of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that has the characters, or name one that has them after it in font-family. Reported once the text is drawn, and by the checks that lay the document out (inspect_ui of a file). |
+
 ### FX
 
 | Code | Severity | Meaning |
@@ -2403,6 +2409,12 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
 | `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
+
+### INPUT
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-INPUT-0001` | info | **Page takes presses** (`page-press-listener`): A transparent page (the document or its <body>) lets presses through its empty parts to the documents below and the game, until it listens for a press: a click, dblclick, contextmenu, mousedown, pointerdown or touchstart listener on the document or <body> (addEventListener or data-event-*) makes the document take every press there, as a modal or a "click outside" handler wants. Listen on the elements that take the press otherwise; move, up, over and out listeners on the page take nothing, and a wheel listener takes only the wheel. |
 
 ### SEL
 

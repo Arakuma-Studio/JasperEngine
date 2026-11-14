@@ -392,6 +392,47 @@ async def test_cli_ui_widget_codes():
     check_eq(code, 1, "an error exits 1")
 
 
+async def test_live_document_reports_fallback_glyphs(ed: Editor):
+    """S93 R17 (AC21, deviation: check --ui compiles without RmlUi or fonts, so the report comes from a
+    document that draws): text whose first available face lacks characters a fallback face draws gives
+    HTMLUI-FONT-0001 (info) at the element's line, naming the characters and the family; a face that has
+    them all reports nothing."""
+    ed.require_tools("create_scene", "create_entity", "set_properties", "eval_lua", "editor_status")
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>t</title><style>\n"
+            "@font-face { font-family: 'AhemNoO'; src: url('ahem-no-oacute.ttf'); }\n"
+            "#title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+            "#plain { font-family: sans-serif; }\n"
+            "</style></head>\n<body>\n"
+            "<div id=\"title\">CA\u00d1\u00d3N</div>\n"
+            "<div id=\"plain\">CA\u00d1\u00d3N</div>\n"
+            "</body>\n</html>\n")
+    (ed.project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "engine" / "tests" / "htmlui" / "fixtures" / "fonts" / "Ahem-no-Oacute.ttf",
+                ed.project / "assets" / "ui" / "ahem-no-oacute.ttf")
+    write(ed.project, "assets/ui/fallback_title.html", html)
+    await ed.call("editor_status")
+    made = await ed.call("create_scene", name="UiFallbackGlyphs", type="UI")
+    scene = made["scene"]["id"]
+    ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Title")
+    await ed.call("set_properties", scene=scene, entity=ent["entity_id"],
+                  values={"uidocument": {"filename": "assets/ui/fallback_title.html"}})
+    code = ("local d = UIDocument(scene, entity('Title')); local out = {} "
+            "for _, x in ipairs(d:getDiagnostics()) do if x.code == 'HTMLUI-FONT-0001' then "
+            "out[#out + 1] = {x.file, x.line, x.severity, x.message} end end return out")
+    found = []
+    # the report follows the frame that draws the text: ask until it is there (a hang guard, not a duration)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        values = (await ed.call("eval_lua", allow_edit_mode=True, scene=scene, code=code))["values"]
+        found = values[0] or []
+        if found:
+            break
+        await ed.call("editor_status")
+    ed.check_eq([(f[0], f[1], f[2]) for f in found], [("ui/fallback_title.html", line_of(html, 'id="title"'), "info")],
+                f"one report at the title, none for the face that has every letter: {found}")
+    ed.check("U+00D3" in found[0][3] and "ahemnoo, sans-serif" in found[0][3].lower(), f"it names the character and the family: {found}")
+
+
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
         write(project, "assets/ui/x.css", ".x { background-blend-mode: multiply; }\n")

@@ -1968,6 +1968,21 @@ OVERRIDES = {
     },
 }
 
+# S93 R15: HtmlUI.prewarmImage and prewarmText read their arguments by hand
+OVERRIDES[('UIDocument', 'prewarm')] = {
+    'doc': ['Makes the glyphs of every text of the document (display: none parts too) and of its data-warm attributes, and its',
+            'images, before they show. `{images = false}`: the text only.'],
+    'overloads': [([('options?', '{images: boolean?}')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmImage')] = {
+    'doc': ['Decodes images on a background thread and uploads a few a frame, so the first frame that shows them is complete.',
+            'Paths as in CSS: an asset path, with a `#xywh=x,y,w,h` or `#sprite=<name>` region. The images stay cached while',
+            'the UIPrewarm lives.'],
+    'overloads': [([('paths', 'string|string[]')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmText')] = {
+    'doc': ['Makes the glyphs of a text (base, distance and font-effect glyphs) on background jobs before it is shown, at the',
+            'scale of every context drawing now; raises an error for bad options or a font-effect that does not parse.'],
+    'overloads': [([('options', 'UIPrewarmTextOptions')], 'UIPrewarm')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -2802,6 +2817,8 @@ OVERRIDES.update({
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # S93 R15: the prewarm's callback
+    ('UIPrewarm', 'onDone'): ('fun()|nil', False),
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),

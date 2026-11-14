@@ -55,19 +55,11 @@ function UIDataModel:get(path) end
 ---@param value any
 function UIDataModel:set(path, value) end
 
----What HtmlUI.prewarmImage returns. `onDone` (write-only) runs once on the main thread when every
----image is decoded and uploaded (at once when set after that). The images stay cached while it lives.
----@class UIPrewarm
----@field done boolean # (read-only) every image decoded and uploaded (or failed)
----@field progress number # (read-only) 0..1
----@field onDone fun()|nil
-
----Process-wide HTML UI functions (S93)
----@class HtmlUI
-HtmlUI = {}
-
----Decodes images on a background thread and uploads a few a frame, so the first frame that shows
----them is complete. Paths as in CSS: an asset path, with a `#xywh=x,y,w,h` or `#sprite=<name>` region.
----@param paths string|string[]
----@return UIPrewarm
-function HtmlUI.prewarmImage(paths) end
+---What HtmlUI.prewarmText makes ready: the font as CSS names it, and its font-effect.
+---@class UIPrewarmTextOptions
+---@field family string|nil a font-family list (default "sans-serif")
+---@field size number|nil px (default 16)
+---@field weight number|"normal"|"bold"|nil (default 400)
+---@field style "normal"|"italic"|nil
+---@field effect string|nil a font-effect value: "outline(15px #000)", "glow(4px 12px 0px 8px #000)"
+---@field text string the characters to make ready

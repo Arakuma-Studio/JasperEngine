@@ -152,6 +152,9 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=web-pointer` (after `WEB_PROJECT=web-pointer tools/build.sh web`) drags mouse presses off a
+  canvas smaller than the window (`drags`: trusted CDP mouse events): each release reaches the game
+  once, clamped to the canvas (S93 R2).
 - `GATE=pixel-perfect` (after
   `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
   a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and

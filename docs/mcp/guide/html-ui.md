@@ -584,8 +584,10 @@ colour is multiplied by the element's `opacity`):
 
 Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are drawn on the GPU
 from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
-first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
-glyphs.
+first frame before those glyphs exist) are drawn from CPU glyphs, made in time linear in the
+glyph's area whatever the width (a 324 px glyph's 15 px outline in about a millisecond). Effects of
+one shape share their CPU glyphs: an `outline(4px red)` and a `glow(4px 0px 3px 2px blue)` draw
+from the same bitmaps, moved and tinted.
 
 ### Animated text: `text-effect`
 
@@ -1331,8 +1333,8 @@ transforms, clipping and filters apply to them as to `<img>`.
   external `<image href>` files (`data:` URIs only).
 - Raster images decode on a background thread: the first frame lays the image out at its size
   and draws nothing for it, the frame after its decode draws it (a 2048 px PNG in a few frames).
-  A screen that must appear whole uses `decoding="sync"` on its `<img>`, or
-  `HtmlUI.prewarmImage(paths)` while the player is elsewhere. Play with `fixed_fps`, a fixed UI time
+  A screen that must appear whole uses `decoding="sync"` on its `<img>`, or `doc:prewarm()` /
+  `HtmlUI.prewarmImage(paths)` while the player is elsewhere (Prewarming text and images). Play with `fixed_fps`, a fixed UI time
   and screenshots wait for the decode, so goldens and `screenshot` never catch an image missing.
 - A region is cut into its own texture, so `repeat`, `round` and `space` tile the region alone. A
   region outside the image or an unknown sprite draws nothing, with a warning `HTMLUI-GEN-0008`
@@ -1513,9 +1515,36 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 - C++ can load a face before documents use it: `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")`
   (`#include "htmlui/HtmlUI.h"`).
+- A character the first available face of `font-family` lacks comes from the next family of
+  the list that has it, then the registered fallback fonts, then Roboto and Noto Sans Arabic,
+  each in the text's weight and style (synthesized when the family has no such face), with the
+  text's `font-effect` and `text-effect`. `HTMLUI-FONT-0001` (info) names such characters in
+  `doc:getDiagnostics()` once the text is drawn (`check --ui` does not lay documents out).
+  Fix it with a font that has them, or name one after the first in `font-family`.
 - A character no loaded font covers draws a missing-glyph box; control characters draw
   nothing. Text is rasterized at each context's pixel ratio (the screen's, or `pixelRatio` for
   documents on meshes), so it stays sharp.
+
+### Prewarming text and images
+
+The glyph and image caches outlive documents, scenes and a lost view: a screen shown a second time
+makes no glyph and decodes no image. The first show makes them in its frame; when a screen must
+appear whole on its first frame (a pause menu, a big outlined countdown), make them before:
+
+```lua
+local job = doc:prewarm()              -- every text and image of the document, display: none parts too
+job.onDone = function() print("ready") end   -- also job.done, job.progress (0..1)
+HtmlUI.prewarmText{ family = "Title", size = 324, weight = 700,
+                    effect = "outline(15px #000)", text = "GO!0123456789" }
+HtmlUI.prewarmImage({ "ui/power-ups.png", "ui/atlas.png#sprite=star" })
+```
+
+- `doc:prewarm()` reads each element's font, size and `font-effect` as styled now, the text of
+  `data-warm="0123456789:"` attributes (characters a script will write later), and the images of
+  its `<img>` elements and style sheets (`doc:prewarm{ images = false }`: text only).
+- The glyphs are made on background jobs and put in the atlas within `HtmlUI.prewarmBudgetMs` a
+  frame (default 2); images decode in the background and upload a few a frame. With a fixed clock
+  (play's `fixed_fps`, a fixed UI time) a prewarm is done at the next update.
 
 ### Icons
 
@@ -1584,12 +1613,15 @@ page or the document.**
 - Where a page has neither, the pointer goes on to the next document below (lower
   `sortOrder` or scene layer), then to the game. A HUD under a transparent menu document still
   gets clicks where the menu has nothing, and the game gets the rest.
-- To make a transparent page take every pointer event (a modal, "click outside closes the
-  menu"), give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a pointer listener
-  (`click`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `wheel`, with
-  `addEventListener` or `data-event-*`) on the document or `doc.body`. It is decided per
-  document and follows the listeners: removing the last one gives the empty parts back.
-  `body` is only as tall as its content, so listen on the document to catch every empty part.
+- To make a transparent page take every press (a modal, "click outside closes the menu"),
+  give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a press listener (`click`,
+  `dblclick`, `contextmenu`, `mousedown`, `pointerdown`, with `addEventListener` or
+  `data-event-*`) on the document or `doc.body`. The Console and `doc:getDiagnostics()` then
+  note `HTMLUI-INPUT-0001` once. It is decided per document and follows the listeners:
+  removing the last one gives the empty parts back. `body` is only as tall as its content, so
+  listen on the document to catch every empty part.
+- Move, up, over, out, enter and leave listeners on the page take nothing (a drag tracker on
+  `body` does not block the game's joystick); a `wheel` listener takes only the wheel.
 
 ```lua
 local doc = UIDocument(self.scene, self.entity)
@@ -1605,9 +1637,15 @@ end)
 - An element is hit only where it is drawn: through every `transform` on it and its ancestors,
   inside the clips of `overflow` (rounded corners included) and `clip-path`. `mask-image` does
   not clip the hit area (CSS Masking).
-- A press that no document takes blurs the focused field. A release, and the moves of a drag,
-  go to whoever got the press. The wheel is taken when it scrolls an element (one step is 80
-  px) or the pointer is over content.
+- A press that no document takes blurs the focused field.
+- **The press decides who owns a pointer.** A finger or mouse button the game got at its press
+  stays the game's until its release: its moves and release reach `onTouchMove`/`onTouchEnd`
+  (`onMouseMove`/`onMouseUp`) also over a document or a popup shown meanwhile, which still see
+  it hover. A press a document took keeps its moves and release, also over the game.
+- A release outside the canvas of a press the game got reaches it at the nearest canvas point;
+  a document's is cancelled.
+- The wheel is taken when it scrolls an element (one step is 80 px) or the pointer is over
+  content.
 
 ### Focus, keys and gamepads
 
@@ -2091,6 +2129,9 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `geometricPrecision` always draws distance fields (any size, 3D, no re-rasterization).
   `text-shadow` blurs and `font-effect` outlines, glows and blurs up to 0.3 em are drawn from the
   distance glyphs without layers; larger ones fall back to layers (or CPU glyphs).
+- **Glyphs are made once.** The glyph cache outlives documents and scenes; a screen's first show
+  makes its glyphs in its frame (`glyphsRasterized`, `textEffectFallbacks` in `inspect_ui`
+  `render_stats`): `doc:prewarm()` makes them before (Prewarming text, above).
 - **Keep documents small**: hundreds of elements, not thousands. Long lists: page or window
   them in Lua. One document per screen; hide the screens you do not show (`doc:hide()`, or a
   class with `display: none`) instead of destroying and rebuilding them.

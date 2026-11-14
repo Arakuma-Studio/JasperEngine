@@ -3274,11 +3274,14 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `UIDocument.markdownToHtml(text)`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
-- `HtmlUI.prewarmImage(path or {paths})` decodes images on a background thread and uploads a
-  few a frame, so the first frame that shows them is complete (paths as in CSS: an asset path,
-  `#xywh=` or `#sprite=` regions too). It returns a `UIPrewarm`: ro `done`, `progress` (0..1);
-  `onDone = fn` runs once on the main thread when done (at once when already done). The images stay
-  cached while the `UIPrewarm` lives, then within the image cache's budget.
+- Prewarm (made before they show; `jasper://docs/html-ui` "Prewarming text"): `doc:prewarm([{images =
+  false}])` (the glyphs of every text, `display: none` parts too, and of `data-warm` attributes, and
+  the document's images), `HtmlUI.prewarmText{family, size, weight, style, effect, text}` and
+  `HtmlUI.prewarmImage(path or {paths})` (paths as in CSS: an asset path, `#xywh=` or `#sprite=`
+  regions too) return a `UIPrewarm`: ro `done`, `progress` (0..1), rw `onDone` (a function, called
+  once on the main thread when done; the next frame when already done). Prewarmed images stay
+  cached while the `UIPrewarm` lives, then within the image cache's budget. rw
+  `HtmlUI.prewarmBudgetMs` (main-thread ms a frame for placing glyphs, default 2).
 - `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
   `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
   `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first
