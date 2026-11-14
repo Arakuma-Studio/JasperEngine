@@ -46,7 +46,8 @@ async def test_k_pattern_script(ed: Editor):
     ed.check("particlesystem" in components and "points" not in components, f"migrated onto its target: {components}")
 
     start = (await ed.call("read_console", limit=1)).get("next_cursor")
-    await ed.call("play", action="start", fixed_fps=60, auto_pause=True)
+    # the project's start scene is the other one: Play runs this one
+    await ed.call("play", action="start", scene=sid, fixed_fps=60, auto_pause=True)
     try:
         r = await ed.call("eval_lua", code=KFX)
         ed.check_eq(r["values"][0], True, "ParticleSystem(scene, FxConfettiSystem) is the migrated system")
