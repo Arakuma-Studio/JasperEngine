@@ -26,7 +26,9 @@
 #include "Project.h"
 #include "manager/SceneManager.h"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -97,6 +99,65 @@ TEST(BitmapText, ScaleThroughTheTextComponent){
             EXPECT_NEAR(std::fmod(std::fabs(p.x), (float)k), 0.0f, 1e-4f) << size;
             EXPECT_NEAR(std::fmod(std::fabs(p.y), (float)k), 0.0f, 1e-4f) << size;
         }
+    }
+}
+
+TEST(BitmapText, AutoSizeFitsWholeScales){
+    // S93 R37 with a bitmap font: Auto Size takes the largest whole multiple of the native size
+    // within Min..Max whose layout fits the fixed box (brute force over the scales), else Min's
+    struct Case { std::string text; unsigned int width, height; bool multiline; unsigned int min, max; };
+    const std::vector<Case> cases = {
+        {"SCORE 120", 300, 40, false, 9, 90},                       // the height limits it
+        {"GAME OVER", 100, 200, false, 9, 90},                      // the width limits it
+        {"Press any key to continue", 120, 120, true, 9, 90},       // wrapped lines
+        {"A", 300, 300, true, 9, 45},                               // Max limits it
+        {"Far too long a line for this box", 20, 5, false, 18, 90}, // nothing fits: Min's scale
+        {"Hp 99", 400, 400, false, 20, 25},                         // no multiple in range: Max's
+    };
+    for (const Case& c : cases){
+        BitmapTextScene t(c.text, 9);
+        TextComponent& text = t.text();
+        RectTransformComponent& layout = t.scene.getComponent<RectTransformComponent>(t.entity);
+        text.fixedWidth = true;
+        text.fixedHeight = true;
+        text.multiline = c.multiline;
+        layout.width = c.width;
+        layout.height = c.height;
+        text.autoSize = true;
+        text.fontSizeMin = c.min;
+        text.fontSizeMax = c.max;
+        t.update();
+        ASSERT_TRUE(text.bitmapText) << c.text;
+        const pixelart::BitmapFont& font = *text.bitmapText->getFont();
+        const unsigned int native = (unsigned int)font.getNativeSize();
+
+        const unsigned int maxScale = std::max(c.max / native, 1u);
+        const unsigned int minScale = std::clamp((c.min + native - 1) / native, 1u, maxScale);
+        unsigned int expected = minScale;
+        for (unsigned int k = minScale; k <= maxScale; k++){
+            int width = 0, height = 0;
+            pixelart::BitmapText::measure(font, c.text, c.multiline, (int)(c.width / k), width, height);
+            if ((unsigned int)width * k <= c.width && (unsigned int)height * k <= c.height)
+                expected = k;
+        }
+        EXPECT_EQ(text.pixelScale, (int)expected) << c.text;
+        EXPECT_EQ(text.autoFontSize, expected * native) << c.text;
+        EXPECT_EQ(effectiveFontSize(text), expected * native) << c.text;
+        EXPECT_FLOAT_EQ(text.pixelUnit, (float)expected) << c.text;
+        // still whole font pixels, and inside the box when it fits
+        for (const Vector3& p : t.positions()){
+            EXPECT_NEAR(std::fmod(std::fabs(p.x), (float)expected), 0.0f, 1e-4f) << c.text;
+            if (expected > minScale)
+                EXPECT_LE(p.x, (float)c.width + 1e-4f) << c.text;
+        }
+        EXPECT_EQ(layout.width, c.width) << "the fixed box stays";
+
+        // off: fontSize again (9 is x1)
+        text.autoSize = false;
+        text.needUpdateText = true;
+        t.update();
+        EXPECT_EQ(text.pixelScale, 1) << c.text;
+        EXPECT_EQ(effectiveFontSize(text), 9u) << c.text;
     }
 }
 

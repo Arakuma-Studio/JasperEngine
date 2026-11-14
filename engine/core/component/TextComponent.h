@@ -47,7 +47,8 @@ namespace jasperengine{
         TextHorizontalAlignment horizontalAlignment = TextHorizontalAlignment::LEFT;
         TextVerticalAlignment verticalAlignment = TextVerticalAlignment::TOP;
         // TMP Auto Size: the largest whole font size in [fontSizeMin, fontSizeMax] whose layout
-        // fits the fixed box (fontSize is then not used); a vector font's
+        // fits the fixed box (fontSize is then not used); a bitmap font's largest whole multiple
+        // of its native size there
         bool autoSize = false;
         unsigned int fontSizeMin = 18;
         unsigned int fontSizeMax = 72;

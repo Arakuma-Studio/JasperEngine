@@ -266,7 +266,7 @@ namespace {
     // a bitmap font's rows (S51 R22): pixel outline neighbours; a vector font's: SDF softness, dilate
     // (the bitmap rows are the Text drawer's own: InspectorPixelFont.cpp)
     bool textIsVector(const void* text) { return !::jasperengine::pixelart::isBitmapFontPath(static_cast<const TextComponent*>(text)->font[0]); }
-    bool textAutoSizes(const void* text) { return textIsVector(text) && static_cast<const TextComponent*>(text)->autoSize; }
+    bool textAutoSizes(const void* text) { return static_cast<const TextComponent*>(text)->autoSize; }
 
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
@@ -288,8 +288,9 @@ namespace {
                  .updateFlags = kText, .label = "Vertical Alignment",
                  .tooltip = "The lines inside the fixed height: Top, Middle, Bottom, or Baseline (the first baseline on the middle)."),
         JE_FIELD(TextComponent, autoSize, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas, .label = "Auto Size",
-                 .tooltip = "The largest whole font size from Min to Max whose text fits the fixed width and height.",
-                 .group = "Auto Size", .visibleIf = &textIsVector),
+                 .tooltip = "The largest whole font size from Min to Max whose text fits the fixed width and height "
+                            "(a bitmap font: the largest multiple of its native size).",
+                 .group = "Auto Size"),
         JE_FIELD(TextComponent, fontSizeMin, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
                  .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Min", .group = "Auto Size", .visibleIf = &textAutoSizes),
         JE_FIELD(TextComponent, fontSizeMax, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,

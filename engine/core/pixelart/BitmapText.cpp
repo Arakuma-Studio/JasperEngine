@@ -62,9 +62,13 @@ namespace jasperengine::pixelart {
     }
 
     void BitmapText::measure(const BitmapFont& font, const std::string& text, int& width, int& height){
+        measure(font, text, false, 0, width, height);
+    }
+
+    void BitmapText::measure(const BitmapFont& font, const std::string& text, bool wrap, int widthPx, int& width, int& height){
         bool invalid = false;
         const std::vector<uint32_t> cp = StringUtils::decodeUtf8ToCodepoints(text, invalid);
-        const std::vector<BitmapLine> lines = layoutLines(font, cp, false, 0);
+        const std::vector<BitmapLine> lines = layoutLines(font, cp, wrap, widthPx);
         width = 0;
         for (const BitmapLine& line : lines){
             int pen = 0, right = line.width;

@@ -1927,9 +1927,16 @@ void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
 }
 
 bool UISystem::fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout){
-    // a vector font in a fixed box (a bitmap font keeps its multiples of the native size)
     const bool box = (text.fixedWidth && layout.width > 0) || (text.fixedHeight && layout.height > 0);
-    if (!text.autoSize || !box || !text.loaded || !text.stbtext || text.bitmapText){
+    if (text.bitmapText){
+        // a bitmap font draws only at whole multiples of its native size (S51 R7): the largest
+        // scale whose multiple lies in [fontSizeMin, fontSizeMax] and fits; its atlas is the same
+        // at every scale, so nothing reloads
+        text.autoFontSize = (text.autoSize && box) ? fitBitmapTextAutoSize(text, layout) : 0;
+        return false;
+    }
+    // a vector font in a fixed box
+    if (!text.autoSize || !box || !text.loaded || !text.stbtext){
         const bool changed = text.autoFontSize != 0;
         text.autoFontSize = 0;
         return changed && text.loaded && effectiveFontSize(text) != text.atlasFontSize;
@@ -1941,6 +1948,25 @@ bool UISystem::fitTextAutoSize(TextComponent& text, const RectTransformComponent
     });
     text.autoFontSize = fitted;
     return fitted != text.atlasFontSize;
+}
+
+unsigned int UISystem::fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const{
+    const pixelart::BitmapFont& font = *text.bitmapText->getFont();
+    const unsigned int native = (unsigned int)std::max(font.getNativeSize(), 1);
+    // the scales whose sizes lie in the range; a range holding none takes the scale nearest to it
+    const unsigned int maxScale = std::max(text.fontSizeMax / native, 1u);
+    const unsigned int minScale = std::clamp((std::max(text.fontSizeMin, 1u) + native - 1) / native, 1u, maxScale);
+    const bool wrap = text.fixedWidth && text.multiline;
+    const unsigned int k = TextAlignment::fitSize(minScale, maxScale, [&](unsigned int scale){
+        const float unit = getBitmapTextUnit((int)scale);
+        // as BitmapText::createText lays it out
+        const int widthPx = (int)std::floor((float)layout.width / unit + 1e-4f);
+        int width = 0, height = 0;
+        pixelart::BitmapText::measure(font, text.text, wrap, widthPx, width, height);
+        return (!text.fixedWidth || std::ceil((float)width * unit - 1e-4f) <= (float)layout.width) &&
+               (!text.fixedHeight || std::ceil((float)height * unit - 1e-4f) <= (float)layout.height);
+    });
+    return k * native;
 }
 
 bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){

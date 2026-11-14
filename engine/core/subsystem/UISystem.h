@@ -196,6 +196,8 @@ namespace jasperengine{
         // S93 R37 Auto Size: the size whose layout fits the fixed box (Text::autoFontSize); true
         // when the loaded atlas is of another size
         bool fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout);
+        // a bitmap font's fit: a whole multiple of its native size
+        unsigned int fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const;
         // S93 R37: the lines in the box by the Text's alignment (before the pivot moves the block)
         void alignTextGlyphs(TextComponent& text, UIComponent& ui, const RectTransformComponent& layout, float ascent, float pivotStep);
         void finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,

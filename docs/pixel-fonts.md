@@ -46,6 +46,8 @@ Fields and HTML UI (`@font-face`) take it too.
 
 - **Font Size** steps in multiples of the font's native size, shown as `18 (9 × 2)`. A note under
   it gives the native size, the scale and the device pixels per font pixel.
+- **Auto Size** in a fixed width or height draws at the largest multiple of the native size from
+  **Min** to **Max** that fits the box (Min's multiple when none fits).
 - **Outline Width** is 0, 1 or 2 font pixels, grown through 4 or 8 **Neighbors**.
 - **Shadow Offset** is in whole font pixels; softness and dilate do not apply.
 - With a **Pixel Perfect Camera**, the text lands on the art grid. Without one, every font pixel is

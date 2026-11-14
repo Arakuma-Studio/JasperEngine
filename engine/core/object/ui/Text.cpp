@@ -618,7 +618,7 @@ int Text::getPixelScale() const{
     if (!pixelart::isBitmapFontPath(textcomp.font[0]))
         return 0;
     if (textcomp.bitmapText)
-        return pixelart::pixelScaleFor(textcomp.fontSize, textcomp.bitmapText->getFont()->getNativeSize());
+        return pixelart::pixelScaleFor(effectiveFontSize(textcomp), textcomp.bitmapText->getFont()->getNativeSize());
     // not loaded yet: the font's own native size
     std::shared_ptr<pixelart::BitmapFont> font = pixelart::BitmapFontPool::get(textcomp.font[0]);
     return font ? pixelart::pixelScaleFor(textcomp.fontSize, font->getNativeSize()) : 0;
@@ -627,7 +627,7 @@ int Text::getPixelScale() const{
 unsigned int Text::getEffectiveFontSize() const{
     const TextComponent& textcomp = getComponent<TextComponent>();
     const int k = getPixelScale();
-    // a vector font: the size Auto Size fitted, else fontSize
+    // a vector font: the size Auto Size fitted, else fontSize (a bitmap font's k holds its fit)
     if (k == 0)
         return effectiveFontSize(textcomp);
     std::shared_ptr<pixelart::BitmapFont> font = textcomp.bitmapText ? textcomp.bitmapText->getFont() : pixelart::BitmapFontPool::get(textcomp.font[0]);
