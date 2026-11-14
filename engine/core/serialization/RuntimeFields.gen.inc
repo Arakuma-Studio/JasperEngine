@@ -1643,6 +1643,7 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
+    JE_RF_ENTITY(ParticleSystemComponent, legacyFrom, 0x0c6e8893u, Entity),
 };
 const StructTable kBody_ParticleSystemComponent{"particlesystem", kBody_ParticleSystemComponent_fields, std::size(kBody_ParticleSystemComponent_fields)};
 
