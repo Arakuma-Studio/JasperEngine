@@ -2308,6 +2308,12 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
 | `HTMLUI-CSS-0024` | warning | **Blurred effect on a bitmap font** (`bitmap-font-effect`): A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a text-shadow without blur. |
 
+### FONT
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-FONT-0001` | by case (info) | **Characters drawn by a fallback font** (`fallback-glyph`): Characters of the text are not in the first available face of its font-family list; a fallback face (a later family of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that has the characters, or name one that has them after it in font-family. An info at runtime (the text drawn), a warning from check --ui (the documents' static text). |
+
 ### FX
 
 | Code | Severity | Meaning |
