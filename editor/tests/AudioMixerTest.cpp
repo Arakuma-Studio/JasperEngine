@@ -879,6 +879,24 @@ TEST_F(AudioSourceTest, MovedVoicesFollowTheirSourceToAnotherScene) {
     EXPECT_FALSE(soloud().isValidVoiceHandle(handle));
 }
 
+// S97 REQ-22 (AC21): a free voice of a clip loops until stopped
+TEST_F(AudioSourceTest, FreeVoiceLoopsUntilStopped) {
+    writeTone(root / "assets" / "blip.wav", 0.1);
+    ASSERT_EQ(luaL_dostring(L,
+        "loopedBlip = Audio.play('blip.wav', {loop = true})\n"
+        "onceBlip = Audio.play('blip.wav')\n"
+        "assert(loopedBlip:isValid() and onceBlip:isValid())\n"), LUA_OK) << lua_tostring(L, -1);
+    run(1.0);
+    ASSERT_EQ(luaL_dostring(L,
+        "assert(loopedBlip:isPlaying(), 'the loop plays on past its 0.1 s')\n"
+        "assert(not onceBlip:isValid(), 'without loop it ended')\n"
+        "loopedBlip:stop()\n"), LUA_OK) << lua_tostring(L, -1);
+    run(0.05);
+    ASSERT_EQ(luaL_dostring(L,
+        "assert(not loopedBlip:isPlaying())\n"
+        "loopedBlip = nil; onceBlip = nil\n"), LUA_OK) << lua_tostring(L, -1);
+}
+
 // ================================================================== review regressions
 
 TEST_F(AudioMixerRuntimeTest, ALiveEditKeepsTheVoiceBuffersWhenTheVoiceLimitStays) {

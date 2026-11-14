@@ -4772,6 +4772,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isPaused", &AudioSource::isPaused)
         .addFunction("isStopped", &AudioSource::isStopped)
         .addProperty("sound3D", &AudioSource::isSound3D, &AudioSource::setSound3D)
+        // 0 = 2D .. 1 = 3D (Unity's spatialBlend); a source without a Transform is 2D
+        .addProperty("spatialBlend", &AudioSource::getSpatialBlend, &AudioSource::setSpatialBlend)
         .addProperty("clockedSound", &AudioSource::isClockedSound, &AudioSource::setClockedSound)
         .addProperty("volume", &AudioSource::getVolume, &AudioSource::setVolume)
         .addProperty("speed", &AudioSource::getSpeed, &AudioSource::setSpeed)

@@ -10192,6 +10192,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     panSettings.help = "-1 left, 0 center, 1 right";
     propertyRow(RowPropertyType::Float, cpType, "pan", "Pan", sceneProject, entities, panSettings);
 
+    // Unity's Spatial Blend (S97 REQ-18, REQ-38)
+    RowSettings blendSettings = floatSettings;
+    blendSettings.floatMin = 0.0f;
+    blendSettings.floatMax = 1.0f;
+    blendSettings.format = "2D %.2f 3D";
+    blendSettings.help = "0 plays 2D (Pan, no distance attenuation); 1 plays 3D from the GameObject's position; between them a mix without Doppler. A source without a Transform plays 2D.";
+    propertyRow(RowPropertyType::Float_0_1, cpType, "spatialBlend", "Spatial Blend", sceneProject, entities, blendSettings);
+
     propertyRow(RowPropertyType::Bool, cpType, "looping", "Looping", sceneProject, entities, compactSettings);
     propertyRow(RowPropertyType::DoublePositive, cpType, "loopingPoint", "Loop Point", sceneProject, entities, doubleSettings);
     propertyRow(RowPropertyType::Bool, cpType, "protectVoice", "Protect Voice", sceneProject, entities, compactSettings);
@@ -10237,10 +10245,12 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
     }
 
+    // the 3D settings matter where the blend has some 3D and a Transform places it
     bool show3DSettings = false;
     for (Entity entity : entities){
         Signature signature = sceneProject->scene->getSignature(entity);
-        show3DSettings = show3DSettings || signature.test(sceneProject->scene->getComponentId<Transform>());
+        show3DSettings = show3DSettings || (signature.test(sceneProject->scene->getComponentId<Transform>()) &&
+                                            sceneProject->scene->getComponent<AudioSourceComponent>(entity).spatialBlend > 0.0f);
     }
 
     endTable();

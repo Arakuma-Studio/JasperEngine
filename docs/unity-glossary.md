@@ -420,6 +420,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| `AudioSource.spatialBlend` (2D / 3D slider) | `spatialBlend` (Inspector Spatial Blend, 0 = 2D .. 1 = 3D); every new Audio Source is a GameObject, 2D at 0; `sound3D` sets 0 or 1 |
+| A looping `AudioSource` made for one sound (`loop = true`, then `Play`) | `Audio.play(path, {loop = true})` -> `SoundHandle` (`stop()` ends it), or an Audio Source with `looping` |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Terrain
