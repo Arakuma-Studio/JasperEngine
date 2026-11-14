@@ -1887,7 +1887,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | Member | Kind | Notes |
 |---|---|---|
 | `position` | rw `Vector3` | local position |
-| `setPosition(x, y, z)`, `setPosition(x, y)` | method | |
+| `setPosition(x, y [, z])` | method | z 0 when left out |
 | `getWorldPosition()` | method | Vector3 |
 | `rotation` | rw `Quaternion` | |
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
@@ -1904,6 +1904,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
+| (no Transform) | | On a GameObject without a Transform (an action, a tween) `position`, `rotation`, `scale`, `parent`, the matrices and `getWorld*()` are nil; setting one raises `GameObject '<name>' has no Transform` |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
