@@ -5385,4 +5385,45 @@ CASES = [
                    "must_not_call": [{"tool": "write_file"}], "edits_must_not": [r"\.(meta|fbx)$"]},
         "max_turns": 10,
     },
+    # ---- S98 WP-6: what ships (Asset Stripping)
+    {
+        "id": "guard_build_stripped_computed_paths",
+        "kind": "guard",
+        "what_happened": "New result fields (S98 REQ-10): under Asset Stripping: Referenced Only a build leaves out assets "
+                         "nothing references; build_project gives stripped_count and stripped_bytes and its next names "
+                         "player.always_include, so an agent whose script loads files by a path it builds puts them there "
+                         "instead of reporting a finished build that cannot load its levels.",
+        "text_at_issue": "build_project result: 'stripped_count', 'stripped_bytes', 'build_report'; next: 'build_report lists "
+                         "each asset left out and why; a script that builds a path at runtime needs its file in "
+                         "player.always_include (set_project_settings)'",
+        "source": "S98 REQ-10, REQ-46 (new result fields); the JasperArcade port's E24 ledger item",
+        "prompt": "Build the desktop game into /work/dodge-build. Our level select loads assets/levels/level1.png, level2.png "
+                  "and so on by building the file name in Lua, so make sure the build can still load every level.",
+        "mocks": [
+            {"tool": "build_project", "after": "set_project_settings", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 0, "stripped_bytes": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 3, "stripped_bytes": 412310,
+                                                   "next": "build_report lists each asset left out and why; a script that builds a "
+                                                           "path at runtime needs its file in player.always_include (set_project_settings)"}})},
+            {"tool": "get_project_settings", "result": ok(
+                "player.asset_stripping: referenced_only\nplayer.always_include: []\nplayer.exclude_from_build: []",
+                {"settings": {"player.asset_stripping": "referenced_only", "player.always_include": [], "player.exclude_from_build": []}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 setting(s); saved to project.yaml.",
+                                                          {"applied": ["player.always_include"]})},
+        ],
+        "shell": [{"match": r"build-report\.json", "output": json.dumps({"stripped": [
+            {"path": "assets/levels/level2.png", "bytes": 140211, "reason": "unreferenced"},
+            {"path": "assets/levels/level3.png", "bytes": 139870, "reason": "unreferenced"},
+            {"path": "assets/textures/old_logo.png", "bytes": 132229, "reason": "unreferenced"}]})}],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.always_include": "*"}}}],
+                   "max_calls": {"build_project": 3}},
+        "max_turns": 12,
+    },
 ]

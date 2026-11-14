@@ -848,6 +848,23 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // Project Settings > Player > Build > Asset Stripping (docs/specs/S98-editor-tooling-gaps.md
+    // REQ-8, project.yaml export.assetStripping, export.alwaysInclude, export.exclude). Ship All
+    // Assets is what a project without the keys did; new projects strip (D3). The lists hold
+    // project-relative globs (editor/export/AssetStripping.h); Exclude wins over Always Include.
+    enum class AssetStrippingMode { ShipAll, ReferencedOnly };
+
+    struct AssetStrippingSettings {
+        AssetStrippingMode mode = AssetStrippingMode::ShipAll;
+        std::vector<std::string> alwaysInclude;
+        std::vector<std::string> exclude;
+
+        bool operator==(const AssetStrippingSettings& other) const {
+            return mode == other.mode && alwaysInclude == other.alwaysInclude && exclude == other.exclude;
+        }
+        bool operator!=(const AssetStrippingSettings& other) const { return !(*this == other); }
+    };
+
     // Project Settings > Player > Logging (project.yaml "playerLogging"). The defaults are what
     // games did before: everything from Info on to the platform log, no file, no backtraces.
     struct PlayerLoggingSettings {
@@ -1045,6 +1062,7 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        AssetStrippingSettings assetStripping;
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
@@ -1418,7 +1436,8 @@ namespace jasperengine::editor{
         // FBX files the loaded scenes use, with the scenes where a model of one is not loaded
         std::map<std::filesystem::path, std::vector<const SceneProject*>> collectSceneModelFiles() const;
         void updateSceneImports(SceneProject* sceneProject);
-        // Imports every FBX in the assets, since scripts can load any of them by path
+        // Imports every FBX in the assets a build would ship (S98 REQ-12: Asset Stripping), since
+        // scripts can load any of them by path (off the main thread: Play start)
         void importFbxModels();
 
         std::string libName;
@@ -2129,6 +2148,8 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        const AssetStrippingSettings& getAssetStripping() const { return assetStripping; }
+        void setAssetStripping(const AssetStrippingSettings& settings) { assetStripping = settings; }
         // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
         // the editor draws from
         const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }

@@ -263,3 +263,15 @@ differently, on purpose:
    Terrain, not a hidden chunk.
 3. Paint Trees places Trees by default in new strokes. Place As: GameObject keeps what it did.
 4. A disabled Terrain hides its foliage. `sculpt_terrain`'s `place_object` keeps today's result.
+
+## What a build ships (S98)
+
+An upgraded project ships every asset, as before: its `project.yaml` has no
+`export.assetStripping` key, which means **Ship All Assets**, and opening or saving it writes none.
+Projects created with this editor start on **Referenced Only**: a build ships what its scenes,
+project settings and the string literals of its Lua and C++ sources reach, plus **Always Include**
+(Project Settings > Player > Build; [shipping](shipping.md#what-ships-asset-stripping)). To switch
+an upgraded project, pick Referenced Only there, build once, and read the Build Report's list of
+what was left out: a file a script finds by a path it builds at runtime goes into Always Include.
+A build also no longer ships a second copy of a custom shader source under the assets folder's
+own path: the one at its project-relative path (where the game reads it) stays.

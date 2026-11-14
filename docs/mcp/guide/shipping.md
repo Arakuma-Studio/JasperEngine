@@ -58,6 +58,15 @@ overrides without building, one project undo step, saved to project.yaml at once
 Settings window shows it while open). `build_project shaders` does the same before a build. Exclude
 a variant only when nothing draws with it: an excluded shader the game needs draws nothing.
 
+**What ships** (Project Settings > Player > Build, `set_project_settings`): `player.asset_stripping`
+`ship_all` ships every asset (a project without the key); `referenced_only` (new projects) ships
+what the build's scenes and project settings reference, the files Lua and C++ string literals
+name, and `player.always_include` (project-relative globs, `*`, `**`). `player.exclude_from_build`
+leaves its globs out under either mode. Lua scripts always ship. The result's `stripped_count`,
+`stripped_bytes` and `build_report` (its `stripped[]`: path, bytes, reason) say what was left out;
+a Development Build's player logs "<path> was stripped from the build" when a script loads one.
+A path a script builds at runtime (`"level" .. n`) needs its files in `player.always_include`.
+
 Every mode's result carries `warnings[{code, message}]` and `notes[]`: `W-EXPORT-FOLDER-SKIPPED`
 (an earlier export inside the project, left out: move it out), `W-SCENE-NOT-SAVED` (an untitled
 scene shipped as it is: save_scene with a path), `W-SHADER-FORK-MISSING` (variants of a deleted

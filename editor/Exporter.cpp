@@ -1269,6 +1269,8 @@ void editor::Exporter::runExport() {
     if (!checkMissingAssets()) return;
     resolveShaderKeys();
     if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!planAssetStripping()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyGenerated()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     // Lua before assets, which skips the sources the lua tree took
@@ -2950,6 +2952,8 @@ bool editor::Exporter::writeAssetMap() {
     std::vector<AssetMap::Entry> entries;
     project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
         if (info.type == AssetType::ProceduralMaterial) return; // editor-only: copyAssets leaves it out
+        // nor an asset Asset Stripping or Exclude From Build left out (S98 REQ-9): the game cannot load it
+        if (!strippingPlan.leftOutReason(info.path).empty()) return;
         const AssetTypeInfo& type = AssetTypes::info(info.type);
         std::string path = info.path;
         if (type.base == AssetPathBase::Assets) {
@@ -3095,7 +3099,9 @@ bool editor::Exporter::gatherImportedAssets() {
             if (importer.getProject() != project) importer.attach(project);
             if (first) {
                 project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
-                    if (info.type == AssetType::AsepriteSprite) paths.push_back((project->getProjectPath() / info.path).string());
+                    // (S98 REQ-9: one the build leaves out is not imported)
+                    if (info.type == AssetType::AsepriteSprite && strippingPlan.leftOutReason(info.path).empty())
+                        paths.push_back((project->getProjectPath() / info.path).string());
                 });
                 for (const std::string& path : paths) {
                     if (!importer.record(path) && !importer.isPending(path)) importer.reimport(path);
@@ -3340,6 +3346,11 @@ bool editor::Exporter::cookTextures() {
     }
     // S87 R25: a Title Art language the build leaves out is not cooked
     for (const std::string& dropped : titleLanguages.droppedFiles) inputs.erase(dropped);
+    // S98 REQ-9: nor a texture Asset Stripping or Exclude From Build leaves out
+    for (auto it = inputs.begin(); it != inputs.end();) {
+        if (!strippingPlan.leftOutReason(it->second.projectRelative).empty()) it = inputs.erase(it);
+        else ++it;
+    }
     // S45: the export family's atlases cook under their je-imported/ path (R16: lossless pages as
     // S14 quality none, RGBA8 + Zstandard; the others as the project's sprites); a packed texture
     // only sprites read is not cooked
@@ -3466,7 +3477,11 @@ bool editor::Exporter::cookModels() {
     auto gatheredFuture = gathered.get_future();
     editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &families, &gatherError, &gathered]() {
         project->getAssetIndex().waitUntilReady();
-        gathered.set_value(ModelExport::gather(*project, families, inputs, gatherError));
+        // S98 REQ-9, REQ-12: a model the build leaves out is not cooked, nor an FBX imported for it
+        const std::string assetsRoot = project->getAssetRoots().assetsDir;
+        gathered.set_value(ModelExport::gather(*project, families, inputs, gatherError, [this, &assetsRoot](const std::string& assetPath) {
+            return strippingPlan.leftOutReason(assetsRoot.empty() ? assetPath : assetsRoot + "/" + assetPath).empty();
+        }));
     });
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
@@ -3511,6 +3526,11 @@ bool editor::Exporter::cookModels() {
 }
 
 void editor::Exporter::measureBuildContent(const fs::path& contentRoot) {
+    // S98 REQ-10: what Asset Stripping and Exclude From Build left out, once each, in path order
+    std::sort(leftOutAssets.begin(), leftOutAssets.end(), [](const BuildReportLeftOut& a, const BuildReportLeftOut& b) { return a.path < b.path; });
+    leftOutAssets.erase(std::unique(leftOutAssets.begin(), leftOutAssets.end(),
+                                    [](const BuildReportLeftOut& a, const BuildReportLeftOut& b) { return a.path == b.path; }), leftOutAssets.end());
+    buildReport.leftOut = leftOutAssets;
     std::map<std::string, std::pair<std::string, uint64_t>> cooked = cookedModelSizes;
     for (const auto& [file, source] : BuildReport::cookedTextures(contentRoot / "assets", project->getAssetsPath())) cooked[file] = source;
     for (const char* tree : {"assets", "lua", "scenes", "prefabs"}) {
@@ -3537,6 +3557,8 @@ bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::st
     result.buildReport = file;
     result.buildBytes = buildReport.totalBytes;
     result.buildCategories = buildReport.categories;
+    result.strippedCount = buildReport.leftOutCount();
+    result.strippedBytes = buildReport.leftOutBytes();
     BuildReport::setLast(file);
     Out::info("%s", buildReport.summary().c_str());
     return true;
@@ -3652,6 +3674,8 @@ bool editor::Exporter::copyAssets() {
         return false;
     }
     const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
+    const std::string assetsRoot = project->getAssetRoots().assetsDir;
+    const bool runtimeShaders = project->isRuntimeShadersEnabled();
 
     // References are relative to this directory, so its contents become the export root, linked
     // folders included, at the paths the editor reaches them by
@@ -3689,6 +3713,22 @@ bool editor::Exporter::copyAssets() {
             return stop();
         }
 
+        // S98 REQ-8, REQ-9: what Asset Stripping or Exclude From Build leaves out, and an earlier
+        // build's copy of it (an FBX's import too)
+        if (!AssetTypes::isMetaFile(relPath) && !shouldSkipExportSupportFile(relPath) &&
+                (!isDirectory || AssetTypes::isFolderAsset(entry.path().filename().string()))) {
+            const std::string projectRelative = assetsRoot.empty() ? relPath.generic_string() : assetsRoot + "/" + relPath.generic_string();
+            if (leftOutOfBuild(projectRelative, entry.path())) {
+                if (!removeStale(assetsDst / relPath)) return stop();
+                if (FbxImporter::isFbxFile(entry.path())) {
+                    fs::path importRelPath = relPath;
+                    importRelPath += ".glb";
+                    if (!removeStale(assetsDst / importRelPath)) return stop();
+                }
+                return TreeStep::Skip;
+            }
+        }
+
         // An .aseprite file ships as its import (copyImportedAssets), never itself
         if (SpriteSheetPool::isAsepritePath(relPath.generic_string())) return TreeStep::Skip;
 
@@ -3714,6 +3754,9 @@ bool editor::Exporter::copyAssets() {
         if (titleLanguages.droppedFiles.count(relPath.generic_string())) return TreeStep::Enter;
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
         if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
+        // S98 REQ-11: a shader source ships once, at the project-relative path the runtime reads
+        // (copyCustomShaderSources)
+        if (!isDirectory && isShippedShaderSource(entry.path(), runtimeShaders)) return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
 
         // A texture only sprites read, packed in an atlas, ships as the atlas's pages only (S45 R19)
         if (atlasOnlySources.count(relPath.generic_string())) {
@@ -3985,6 +4028,69 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
     return true;
 }
 
+bool editor::Exporter::isShippedShaderSource(const fs::path& path, bool runtimeShaders) {
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == ".vert" || ext == ".frag" || (runtimeShaders && ext == ".glsl");
+}
+
+bool editor::Exporter::planAssetStripping() {
+    setProgress("Planning what ships...", 0.25f);
+    leftOutAssets.clear();
+    std::promise<void> planned;
+    auto plannedFuture = planned.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &planned]() {
+        try {
+            strippingPlan = AssetStrippingPlan::make(*project);
+            planned.set_value();
+        } catch (...) {
+            planned.set_exception(std::current_exception());
+        }
+    });
+    try {
+        plannedFuture.get();
+    } catch (const std::exception& e) {
+        setError(std::string("Asset Stripping: ") + e.what());
+        return false;
+    }
+    if (!strippingPlan.referencedOnly()) return true;
+    // REQ-12: the FBX files the build ships are imported (copyAssets copies their .glb), and the
+    // textures an import links ship beside it
+    const fs::path projectPath = project->getProjectPath();
+    const std::set<std::string> referenced = strippingPlan.referenced();
+    for (const std::string& path : referenced) {
+        const fs::path fbxPath = projectPath / FileUtils::pathFromUtf8(path);
+        std::error_code ec;
+        if (!FbxImporter::isFbxFile(fbxPath) || !fs::is_regular_file(fbxPath, ec) || !strippingPlan.leftOutReason(path).empty()) continue;
+        const fs::path glbPath = project->getImportedModelPath(fbxPath);
+        if (!project->importFbxModel(fbxPath) || FbxImporter::getState(fbxPath, glbPath, project->getAssetsPath()) != FbxImporter::State::UpToDate) {
+            setError("Cannot export: " + path + " could not be imported");
+            return false;
+        }
+        for (const fs::path& linked : FbxImporter::findLinkedFiles(fbxPath, glbPath))
+            strippingPlan.keep(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(linked)));
+    }
+    return true;
+}
+
+bool editor::Exporter::leftOutOfBuild(const std::string& projectRelative, const fs::path& absolute) {
+    const std::string reason = strippingPlan.leftOutReason(projectRelative);
+    if (reason.empty()) return false;
+    uint64_t bytes = 0;
+    std::error_code ec;
+    if (fs::is_directory(absolute, ec)) {
+        for (fs::recursive_directory_iterator it(absolute, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+            std::error_code sizeError;
+            if (it->is_regular_file(sizeError)) bytes += it->file_size(sizeError);
+        }
+    } else {
+        bytes = fs::file_size(absolute, ec);
+        if (ec) bytes = 0;
+    }
+    leftOutAssets.push_back({projectRelative, bytes, reason});
+    return true;
+}
+
 bool editor::Exporter::copyCustomShaderSources() {
     // Without runtime compilation a game still reads the manifests of its forks (parameter
     // defaults, textures, render state) from their entry points: those ship, includes do not
@@ -4007,10 +4113,13 @@ bool editor::Exporter::copyCustomShaderSources() {
         std::error_code fileError;
         if (!entry.is_regular_file(fileError)) return TreeStep::Skip;
 
-        std::string ext = entry.path().extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
-        if (ext != ".vert" && ext != ".frag" && ext != ".glsl") return TreeStep::Skip;
-        if (!runtimeShaders && ext == ".glsl") return TreeStep::Skip;
+        if (!isShippedShaderSource(entry.path(), runtimeShaders)) return TreeStep::Skip;
+        // S98 REQ-8: Exclude From Build applies to shader sources too
+        if (leftOutOfBuild(relPath.generic_string(), entry.path())) {
+            if (removeStale(assetsDst / relPath)) return TreeStep::Skip;
+            failed = true;
+            return TreeStep::Stop;
+        }
 
         if (!copyOrFail(entry.path(), assetsDst / relPath)) {
             failed = true;
@@ -4062,6 +4171,7 @@ bool editor::Exporter::copyLua() {
     // Sharing the assets root, copyAssets() ships everything but the Lua sources under the
     // same path; Android merges both trees into one and fails the build on duplicates.
     const bool luaRootIsAssetsRoot = (luaSrc == getAssetsSourceDir());
+    const std::string luaRoot = project->getAssetRoots().luaDir;
 
     bool failed = false;
     walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
@@ -4083,6 +4193,11 @@ bool editor::Exporter::copyLua() {
         if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
         // nor does a Procedural Material in a Lua root of its own (S90 R4)
         if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Skip;
+        // nor a file Exclude From Build names (S98 REQ-8; Asset Stripping keeps every Lua source)
+        {
+            const std::string projectRelative = luaRoot.empty() ? relPath.generic_string() : luaRoot + "/" + relPath.generic_string();
+            if (leftOutOfBuild(projectRelative, entry.path())) return TreeStep::Skip;
+        }
 
         if (!copyOrFail(entry.path(), luaDst / relPath)) {
             failed = true;
