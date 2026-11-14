@@ -8050,6 +8050,16 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     // Static variables for shape parameters
     static PrimitiveParameters shapeParams;
 
+    // S98 F1: the .mesh the geometry comes from (Unity's Mesh Filter's Mesh), for meshes whose
+    // geometry is not a model's or a generator's
+    bool meshAssetRow = !entities.empty();
+    for (Entity entity : entities) meshAssetRow = meshAssetRow && MeshAssetFiles::canShowMeshAsset(sceneProject->scene, entity);
+    if (meshAssetRow) {
+        RowSettings settingsMeshAsset;
+        settingsMeshAsset.help = "The .mesh asset the geometry comes from; none: the mesh's own (the component's menu > Save Mesh As Asset... makes one)";
+        propertyRow(RowPropertyType::Asset, cpType, "meshAsset", "Mesh", sceneProject, entities, settingsMeshAsset);
+    }
+
     // Add New Geometry property row
     propertyHeader("Geometry");
     if (ImGui::Button("Create Primitive")){

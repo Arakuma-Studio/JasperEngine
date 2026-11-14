@@ -1361,11 +1361,10 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_mesh_geometry";
         tool.title = "Set Mesh Geometry";
         tool.description =
-            "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
-            "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
-            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
-            "Omitted values take defaults, not current ones. Not for models, sprites, tilemaps, polygons, "
-            "terrains. save_as: also write it to a .mesh asset the mesh then shows (alone: the current geometry).";
+            "Replace a mesh's geometry with a generated primitive. Sizes: plane width/depth, wall width/height, box "
+            "width/height/depth, sphere radius, cylinder/capsule radius/top_radius/height, torus radius/ring_radius; "
+            "segments tiles, slices/stacks, sides/rings. Omitted values: defaults. Not for models or generated "
+            "meshes. save_as: also a .mesh asset it then shows (alone: the current geometry).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1374,7 +1373,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"width", number("")},
             {"height", number("")},
             {"depth", number("")},
-            {"radius", number("Base radius for cylinder/capsule.")},
+            {"radius", number("")},
             {"top_radius", number("Default: radius.")},
             {"ring_radius", number("")},
             {"tiles", integer("")},

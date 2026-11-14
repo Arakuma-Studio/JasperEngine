@@ -49,7 +49,7 @@ async def test_scene_save_moves_large_meshes_into_mesh_assets(ed: Editor):
     ed.check(info["vertex_count"] > 100 and info["index_count"] > 0, f"the sphere's geometry: {info}")
     ed.check_eq(sorted(u["entity"]["name"] for u in info["users"]), ["Ball", "Twin"], f"who shows it: {info['users']}")
     listed = await ed.call("list_assets", pattern="*.mesh", type="mesh")
-    ed.check(any(a["path"] == asset for a in listed["assets"]), f"list_assets type mesh: {listed}")
+    ed.check(any(a["path"] == asset for a in listed["entries"]), f"list_assets type mesh: {listed}")
 
     # saved again: not a byte changes
     await ed.call("save_scene", scene=sid)
@@ -104,7 +104,7 @@ async def test_a_script_assigns_a_mesh_asset(ed: Editor):
     await ed.call("create_entity", scene=sid, type="sphere", name="Source")
     await ed.call("set_mesh_geometry", scene=sid, entity="Source", shape="torus", save_as="meshes/ring.mesh")
     await ed.call("create_entity", scene=sid, type="cube", name="Target")
-    await ed.call("play", action="start")
+    await ed.call("play", action="start", scene=sid)
     try:
         r = await ed.call("eval_lua", code="local m = object('Target', 'Mesh'); m.meshAsset = 'meshes/ring.mesh'; "
                                             "return {asset = m.meshAsset, width = m:getAABB():getSize().x}")

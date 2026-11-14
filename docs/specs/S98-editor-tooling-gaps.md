@@ -774,7 +774,9 @@ Avoiding conflicts:
   - **MCP.** Extended, no new tool: `set_mesh_geometry save_as` (alone: the current geometry; with
     `shape`: the new one), `get_asset_info` on a `.mesh` (format, vertices, indices, submeshes,
     attributes, bounds, users in the open scenes), `list_assets type: mesh`, `set_properties`
-    `mesh.meshAsset`. Eval cases `guard_mesh_save_as_asset`, `guard_mesh_asset_info`.
+    `mesh.meshAsset`. Eval case `guard_mesh_save_as_asset`. The core listing was at its budget:
+    `set_mesh_geometry`'s text was shortened to fit `save_as`, and `get_asset_info`'s description
+    does not list `.mesh` (its result does; the meshes guide names the call).
   - **For WP-6 (asset stripping):** a `.mesh` is referenced through the reflection asset rows
     (`AssetRefSchema`, `AssetKind::Mesh`), which the dependency walk follows; nothing is needed
     beyond what any `AssetRef` field gets, but the stripping test should include one.

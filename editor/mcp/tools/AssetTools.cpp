@@ -4356,8 +4356,7 @@ void registerAssetTools(McpRegistry& registry) {
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
-            "linked submeshes; .mesh vertices, submeshes, bounds, users; shader includes, forks using it; Lua syntax; scene status; "
-            "unsaved code editor edits.";
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

@@ -5249,8 +5249,7 @@ CASES = [
         "what_happened": "New text (S98 F1): set_mesh_geometry's save_as writes a mesh's geometry to a .mesh asset the mesh "
                          "then shows; an agent asked to make a GameObject's mesh reusable saves it there instead of exporting "
                          "a model by hand, copying the scene YAML's buffers or writing the bytes from Lua.",
-        "text_at_issue": "set_mesh_geometry: 'save_as: also write it to a .mesh asset the mesh then shows (alone: the current "
-                         "geometry).'",
+        "text_at_issue": "set_mesh_geometry: 'save_as: also a .mesh asset it then shows (alone: the current geometry).'",
         "source": "S98 F1 (new parameter); ledger E1 (scene files embed mesh buffers)",
         "prompt": "Make the Rock GameObject's mesh a reusable asset at assets/meshes/rock.mesh so other scenes can use it. "
                   "Keep its current shape.",
@@ -5270,28 +5269,6 @@ CASES = [
         "checks": {"calls": [{"tool": "set_mesh_geometry", "args": {"save_as": "re:rock\\.mesh$"}}],
                    "must_not_call": ["eval_lua", "write_file"]},
         "max_turns": 10,
-    },
-    {
-        "id": "guard_mesh_asset_info",
-        "kind": "guard",
-        "what_happened": "New text (S98 F1): get_asset_info reads a .mesh file's vertices, submeshes, bounds and the GameObjects "
-                         "showing it; an agent asked about one reads it there, not by opening the binary file or placing it.",
-        "text_at_issue": "get_asset_info: '.mesh vertices, submeshes, bounds, users'",
-        "source": "S98 F1 (new result text); no failure on record",
-        "prompt": "How many vertices does assets/meshes/rock.mesh have, and which GameObjects use it? Don't change the scene.",
-        "mocks": [
-            {"tool": "get_asset_info", "args": {"path": "re:rock\\.mesh"}, "result": ok(
-                "assets/meshes/rock.mesh: mesh (GUID 4f1c...): 612 vertices, 3240 indices, 1 submesh(es), shown by 2 "
-                "GameObject(s) of the open scenes.",
-                {"path": "assets/meshes/rock.mesh", "type": "mesh", "vertex_count": 612, "index_count": 3240,
-                 "users": [{"scene": "Main", "entity": {"id": 12, "path": "Rock"}},
-                           {"scene": "Main", "entity": {"id": 31, "path": "Cliff/Rock 2"}}]})},
-            {"tool": "list_assets", "result": ok("1 asset: assets/meshes/rock.mesh (mesh)",
-                                                {"assets": [{"path": "assets/meshes/rock.mesh", "type": "mesh"}]})},
-        ],
-        "checks": {"calls": [{"tool": "get_asset_info", "args": {"path": "re:rock\\.mesh"}}],
-                   "must_not_call": ["create_entity", "set_mesh_geometry", "eval_lua"], "reply_must": [r"612", r"Rock"]},
-        "max_turns": 8,
     },
     # ---- S98 WP-3: MCP tool fixes (create_prefab overwrite, wait at time scale 0, eval_lua's timeout, Material Creation Mode)
     {
