@@ -115,6 +115,24 @@ namespace jasperengine{
     } volumetric_composite_t;
 
     // What a view's last frame ran (get_atmosphere_info)
+    // A point or spot light the volumetric fog considered in the last frame (docs/specs/vapor.md
+    // R13, R14, R17). reason is empty when scattered, else why not: "intensity",
+    // "volumetric_intensity", "distance", "frustum" or "tier_cap".
+    struct AtmosphereFogLight{
+        Entity entity = NULL_ENTITY;
+        bool scattered = false;
+        bool shadowed = false;      // scattered with its shadows in the fog
+        std::string reason;
+    };
+
+    // A Local Volumetric Fog volume the volumetric fog considered in the last frame (R17). reason
+    // is empty when used, else why not: "distance", "frustum" or "tier_cap".
+    struct AtmosphereFogVolume{
+        Entity entity = NULL_ENTITY;
+        bool used = false;
+        std::string reason;
+    };
+
     struct AtmosphereInfo{
         AtmosphereQuality quality = AtmosphereQuality::OFF;
         AtmosphereQuality platformDefault = AtmosphereQuality::OFF;
@@ -129,6 +147,8 @@ namespace jasperengine{
         int volumesUsed = 0;
         int volumesCulled = 0;
         int localLights = 0;
+        std::vector<AtmosphereFogLight> fogLights;     // every light considered, scattered or not
+        std::vector<AtmosphereFogVolume> fogVolumes;   // every volume considered, used or not
         bool forcedDepthPrePass = false;
         bool clouds = false;
         bool cloudsActive = false;
