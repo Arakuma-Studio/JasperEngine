@@ -6,8 +6,8 @@
 // first, capped by the tier, with the reason of every light left out.
 
 #include "subsystem/AtmosphereRenderer.h"
-#include "subsystem/RenderSystem.h"
-#include "math/Matrix4.h"
+#include "component/CameraComponent.h"
+#include "math/Plane.h"
 
 #include <gtest/gtest.h>
 
@@ -17,11 +17,15 @@ using namespace jasperengine;
 
 namespace {
 
-    // a camera at the origin looking down -Z, 60 degrees high, square, 0.1 to 100 m
+    // a camera at the origin looking down -Z, 90 degrees wide and high, 0.1 to 100 m (inward normals)
     void cameraPlanes(Plane planes[6]){
-        const Matrix4 view = Matrix4::lookAtMatrix(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, -1.0f), Vector3(0.0f, 1.0f, 0.0f));
-        const Matrix4 projection = Matrix4::perspectiveMatrix(1.0471976f, 1.0f, 0.1f, 100.0f);
-        RenderSystem::updateCameraFrustumPlanes(projection * view, planes);
+        const float s = 0.70710678f;
+        planes[FRUSTUM_PLANE_NEAR] = Plane(0.0f, 0.0f, -1.0f, -0.1f);
+        planes[FRUSTUM_PLANE_FAR] = Plane(0.0f, 0.0f, 1.0f, 100.0f);
+        planes[FRUSTUM_PLANE_LEFT] = Plane(s, 0.0f, -s, 0.0f);
+        planes[FRUSTUM_PLANE_RIGHT] = Plane(-s, 0.0f, -s, 0.0f);
+        planes[FRUSTUM_PLANE_BOTTOM] = Plane(0.0f, s, -s, 0.0f);
+        planes[FRUSTUM_PLANE_TOP] = Plane(0.0f, -s, -s, 0.0f);
     }
 
     FogLightCandidate light(Entity entity, const Vector3& position, float range){
