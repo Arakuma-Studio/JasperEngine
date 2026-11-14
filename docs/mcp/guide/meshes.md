@@ -37,6 +37,7 @@ Model import and cook settings, detail levels (LOD) and render budgets: the `mes
 | `generate_lods` | automatic, on, off | automatic |
 | `lod_count`, `lod_reduction` | 1-3; preserve_detail, balanced, smallest (used when `generate_lods` is on) | 3, balanced |
 | `ship_source` | true, false | false |
+| `material_creation_mode` | import, none (FBX only, every platform: no `platform`) | import |
 
 With `platform` (desktop, mobile, web) the settings are that platform's override. `reset: [...]`
 puts settings back to their defaults. They live in the model's `.meta` under
@@ -60,6 +61,12 @@ status is `failed` and exports stop until it is exported again without it), `glt
 `gltf-cook-transcodes` (Draco, WebP: the cook removes them, nothing to do). A record's
 `transcoded` lists what the cook decoded; `authored_lod_primitives` counts the primitives whose
 levels are the file's own `MSFT_lod`.
+
+An FBX import logs one Console warning per model that counts what it could not carry over
+("Hall.fbx: 3 textures not found (Wall.psd, Floor.png, +1); tiling/offset not imported on 2
+textures"); `inspect_models` lists each as an `fbx-import-warning` issue. When the scene's own
+materials replace the FBX's, `material_creation_mode: none` imports none: no texture is looked for or
+warned about, and every submesh draws with the default material.
 
 ### Budgets
 

@@ -92,7 +92,8 @@ Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (
 `project.yaml`, the project fails to load).
 
 The same findings come back from MCP: `check_script` and `check_shader` return `findings` in this
-format, and `compile_scripts` returns the same diagnostics as `errors`/`warnings`
+format (`check_shader` returns `isError` when a shader fails or a finding is an error, as the exit
+code 1 here), and `compile_scripts` returns the same diagnostics as `errors`/`warnings`
 (`{file, line, column, message}`).
 
 ## Stochastic Tiling warnings

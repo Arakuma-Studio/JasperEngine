@@ -1,5 +1,6 @@
 """Public console, play-session, Lua evaluation and input contracts on an owned empty project."""
 
+import harness
 from harness import Editor, skip
 from htmlui_pixels import decode_png
 
@@ -99,6 +100,43 @@ async def test_eval_lua_values_errors_and_timeout(ed: Editor):
         ed.check(loop.is_error and "timed out" in loop.text, loop.text)
         ed.check_eq((await ed.call("get_play_state"))["state"], "playing",
                     "an evaluation failure does not crash the running scene")
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+
+
+async def test_eval_lua_timeout_names_parameter(ed: Editor):
+    """S98 REQ-24 / AC22: the timeout error says the limit that ran out and names the parameter, its
+    maximum and the route for longer work."""
+    await ed.call("play", action="start", auto_pause=True, fixed_fps=60)
+    try:
+        loop = await ed.call_raw("eval_lua", {"code": "while true do end", "timeout_seconds": 0.2})
+        ed.check(loop.is_error, loop.text)
+        ed.check("timed out after 0.2 s" in loop.text, f"the limit that ran out: {loop.text}")
+        ed.check("timeout_seconds" in loop.text and "60" in loop.text, f"names the parameter and its maximum: {loop.text}")
+        ed.check("wait {until}" in loop.text, f"names the route for longer work: {loop.text}")
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+
+
+async def test_wait_game_seconds_time_scale_zero(ed: Editor):
+    """S98 REQ-23 / AC21: a game_seconds wait into a game whose time scale is 0 (its own pause menu)
+    ends after 1 s of it, successfully, with reason time_scale_zero and a next; a frames wait still
+    runs its frames."""
+    await ed.call("play", action="start", auto_pause=True, fixed_fps=60)
+    try:
+        await ed.call("eval_lua", code="Time.timeScale = 0")
+        raw = await ed.call_raw("wait", {"game_seconds": 2})
+        ed.check(not raw.is_error, f"a paused game is not a failure: {raw.text}")
+        data = raw.value
+        ed.check_eq(data.get("reason"), "time_scale_zero", f"{raw.text}")
+        ed.check("time scale is 0" in data.get("next", ""), f"next names the cause and the routes: {data}")
+        ed.check_eq(data.get("game_seconds"), 0, "no game time passed")
+        harness.over_budget("wait game_seconds at time scale 0", {"elapsed": data["elapsed_seconds"]}, 3.0)
+        frames = await ed.call("wait", frames=10)
+        ed.check_eq((frames["reason"], frames["frames"]), ("frames", 10), "a frames wait is unchanged")
+        await ed.call("eval_lua", code="Time.timeScale = 1")
+        timed = await ed.call("wait", game_seconds=0.5)
+        ed.check_eq(timed["reason"], "game_seconds", "with the time scale back the wait runs its game time")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
 

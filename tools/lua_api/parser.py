@@ -389,6 +389,7 @@ class CppClass:
         self.methods = {}
         self.fields = {}
         self.typedefs = {}
+        self.namespace = ''  # the enclosing namespaces ("jasperengine::titleart")
 
     def __repr__(self):
         return f'CppClass({self.qual})'
@@ -408,6 +409,7 @@ class CppModel:
         self.enums = {}      # simple name and Outer::Inner -> CppEnum
         self.typedefs = {}   # name -> type text
         self.functions = {}  # free functions: name -> [CppFunc]
+        self._namespaces = []  # the namespaces being parsed, outermost first
 
     # ── parsing ──────────────────────────────────────────────────────────────
 
@@ -443,7 +445,10 @@ class CppModel:
                     j += 1
                 if j < end and toks[j].t == '{':
                     k = skip_balanced(toks, j)
+                    names = [x.t for x in toks[i + 1:j] if x.k == 'id']
+                    self._namespaces.extend(names)
                     self._parse_scope(src, toks, j + 1, k - 1, None, outer)
+                    del self._namespaces[len(self._namespaces) - len(names):]
                     i = k
                 else:
                     i = j + 1
@@ -567,6 +572,7 @@ class CppModel:
         qual = '::'.join(outer + [name])
         doc = src.doc_before(toks[start].line)
         cls = CppClass(name, qual, doc)
+        cls.namespace = '::'.join(self._namespaces)
         cls.bases = bases
         cls._default_public = kind != 'class'
         self._register_class(cls, outer)
@@ -813,6 +819,11 @@ class CppModel:
         lst = self.classes.get(base)
         if not lst:
             return None
+        # a simple name is the engine's own class before a nested one or one of another namespace
+        # of the same name (titleart's Grid, TiledLights' Grid are not the bound Grid)
+        if '::' not in base:
+            own = [c for c in lst if c.qual == c.name and (not c.namespace or strip_ns(c.namespace + '::') == '')]
+            lst = own or lst
         # prefer a definition with members
         best = max(lst, key=lambda c: len(c.methods) + len(c.fields))
         return best
@@ -2759,6 +2770,7 @@ OVERRIDES.update({
 # title, what failed, why and the fix) are lua_CFunctions; a parameter value is a number, a
 # boolean, a string or a colour (Vector3/Vector4, linear)
 _TITLE_VALUE = 'number|boolean|string|Vector3|Vector4'
+_TITLE_PLAY_OPTIONS = '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}'
 OVERRIDES.update({
     ('TitleArt', '__call'): {
         'doc': ['The Title Art Renderer of a GameObject: `TitleArt(scene, entity)`. Raises when the GameObject has none',
@@ -2796,7 +2808,15 @@ OVERRIDES.update({
         'overloads': [([], 'string[]')]},
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
-        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+        'overloads': [([('name', 'string'), ('options?', _TITLE_PLAY_OPTIONS)], 'boolean')]},
+    ('TitleArt', 'playOverlay'): {
+        'doc': ['Plays the animation `name` on top of the one playing (overlays play in any number). False (warned',
+                'once) for an unknown name.'],
+        'overloads': [([('name', 'string'), ('options?', _TITLE_PLAY_OPTIONS)], 'boolean')]},
+    ('TitleArt', 'stop'): {
+        'doc': ['Stops every animation, or the one named (false when it was not playing); the pose stays (`reset`',
+                'restores the still).'],
+        'overloads': [([], ''), ([('name', 'string')], 'boolean')]},
 })
 
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
