@@ -4354,7 +4354,6 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
     terrain.ranges[terrain.levels - 1] = lastLevel;
 }
 
-
 // A generated primitive replaces the geometry: the mesh no longer shows its .mesh asset (S98 F1)
 static void dropMeshAssetLink(MeshComponent& mesh){
     mesh.meshAsset.clear();
