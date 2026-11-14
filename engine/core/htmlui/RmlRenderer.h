@@ -617,8 +617,17 @@ namespace jasperengine {
             Rml::CompiledGeometryHandle geometry;
             Rml::Vector2f translation;
             Rml::Matrix4f transform;      // getCurrentTransform's, when it was drawn
+            // S92 R5: the scissor it was drawn with (maskHistory replays it exactly)
+            bool scissored = false;
+            Rml::Rectanglei scissorPixels;
         };
         std::vector<MaskOp> maskOps;
+        // S92 R5: every stencil write into layer 0's shared depth-stencil this frame, in order, with
+        // its scissor: a shared depth-stencil a DONTCARE store dropped is cleared and gets them all
+        // again, the stencil it held outside the current mask's scissor included
+        std::vector<MaskOp> maskHistory;
+        bool sharedDsReplay = false;      // the shared depth-stencil was dropped and cleared this frame
+        void drawMaskOp(const MaskOp& op);
         uint64_t maskVersion = 0;
         uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's
         std::vector<StencilAuditEntry>* stencilAudit = nullptr;

@@ -201,11 +201,15 @@ namespace jasperengine { namespace test {
         }
 
         // frames until one is drawn (the UI shader variants compile, one per frame, on the
-        // first ones), then one more so anything loaded during the first frame is in place
+        // first ones), then one more so anything loaded during the first frame is in place; that
+        // one is replayed (S92 R1 would keep it when nothing changed): its statistics are a drawn
+        // frame's
         bool renderUntilDrawn(int maxFrames = 30){
             for (int i = 0; i < maxFrames; i++){
-                if (renderFrame())
+                if (renderFrame()){
+                    renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
                     return renderFrame();
+                }
             }
             return false;
         }
