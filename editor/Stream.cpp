@@ -3078,6 +3078,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             localizationNode["languages"] = list;
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        if (!localization.rememberLanguage) localizationNode["rememberLanguage"] = false;
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
@@ -4077,6 +4078,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
         }
+        if (localizationNode["rememberLanguage"]) localization.rememberLanguage = localizationNode["rememberLanguage"].as<bool>(true);
     }
 
     if (node["application"] && node["application"].IsMap()) {

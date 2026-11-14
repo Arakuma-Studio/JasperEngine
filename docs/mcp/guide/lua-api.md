@@ -871,6 +871,40 @@ local Items = require("data.items")
 local price = Items.sword.price
 ```
 
+### 2.4.4 Localization (static): String Tables
+
+Unity's Localization package. Texts live in `.stringtable` assets (Assets > Create > String
+Table; Window > Localization > String Tables; MCP `edit_string_table`): keys, with a value per
+language of Project Settings > Localization.
+
+| Member | What |
+|---|---|
+| `Localization.get(key [, args])` | the key's value in the game's language, else its base language (`pt-BR` -> `pt`), else the project default, else the key itself (warned once per key). `"Table:key"` looks in one table (its file name); a bare key in every table (a key two tables define is a `check` error) |
+| `Localization.has(key)` | boolean |
+| `Localization.language` | rw: the game's language (the resolved one, never `""`). It is TitleArt's: setting it is `TitleArt.setLanguage`, so titles and strings switch together; `""` goes back to the device's languages; an invalid tag raises |
+| `Localization.languages` | ro: the project's languages (else the tables') |
+| `Localization.onLanguageChanged` | the event of `TitleArt.onLanguageChanged`: `(code)` once per change |
+
+`args`: the list part fills `{0}`, `{1}`, the string keys fill `{name}`; `{{` and `}}` are
+braces. A plural value (forms `zero`, `one`, `two`, `few`, `many`, `other`) picks its form by
+the `count` argument (else the first of the list) under the CLDR rules of the value's
+language; without a number it shows `other`. The start language is the device's (the Game
+view's Device > Language in Play) matched against the project's languages; with Project
+Settings > Localization > Remember Language Choice (default on) a language the game chose is
+stored in UserSettings and applied at the next start.
+
+```lua
+Localization.language = "es"                                  -- titles follow
+local label = Localization.get("menu.play")                   -- "Jugar"
+local coins = Localization.get("hud.coins", { count = 3 })    -- "3 monedas"
+local hello = Localization.get("greet", { "Ana" })            -- "Hola {0}" -> "Hola Ana"
+Localization.onLanguageChanged:add("hud", function(code) Log.info("language " .. code) end)
+```
+
+Bound text: a Text's `localizationKey` (Inspector: Localization Key) shows the key's value and
+follows the language; an HTML UI element with `data-loc="key"` (and `data-loc-args='{"count":
+3}'`) too, and `el:setLocalized(key [, args])` does it from Lua.
+
 ### 2.5 System (static)
 
 `System.getScreenWidth()`, `getScreenHeight()`, `isTouchDevice()`, `isFullscreen()`,
@@ -2651,7 +2685,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); `localizationKey` (a String Tables key the text follows, §2.4.4); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |

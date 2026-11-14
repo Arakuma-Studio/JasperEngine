@@ -967,6 +967,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerTitleArtClasses(L);
+    // after TitleArt: Localization.onLanguageChanged is its event
+    registerLocalizationClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
 #if JASPERENGINE_NOISE

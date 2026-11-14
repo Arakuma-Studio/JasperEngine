@@ -78,6 +78,11 @@ namespace jasperengine::editor {
     // by content: XML -> XLIFF, else CSV
     bool parseTitleStrings(const std::string& text, const std::string& format, TitleStringsFile& out, std::string& error);
 
+    // the quoting the exports use, for String Tables' (S95 REQ-29): an RFC 4180 CSV field, XML text
+    // or an attribute value
+    std::string titleStringsCsvField(const std::string& value);
+    std::string titleStringsXmlEscape(const std::string& value, bool attribute);
+
     // the rows of `file` that are this document's: its `file` column, else its namespace
     bool titleStringRowIsFor(const TitleStringRow& row, const std::string& documentFile, const titleart::TitleArtDoc& doc);
 

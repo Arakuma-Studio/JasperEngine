@@ -344,6 +344,26 @@ Device.onThermalStateChanged = function(state)
 end
 ```
 
+## String Tables (localization)
+
+A game's texts in each language live in String Tables (Unity's Localization package), not in
+scripts:
+
+1. Project Settings > Localization > Languages: the languages the game ships.
+2. Assets > Create > String Table makes a `.stringtable`; Window > Localization > String Tables
+   edits it: a grid of keys by languages with search, Add Key, remove, the missing cells marked in
+   red, and below it the selected key's details (rename, multi-line text, Plural with a field per
+   form the language uses). Every edit is one undo step. Import and Export move the strings
+   through CSV or XLIFF for translators.
+3. Show them: a Text's Localization Key (picked in its Inspector), `data-loc="key"` on an HTML UI
+   element, or `Localization.get(key, args)` in Lua (`docs/mcp/guide/lua-api.md` 2.4.4).
+
+The language is the device's, the Game view's Device > Language in Play, or the one the game
+sets with `Localization.language` (the same value as `TitleArt.setLanguage`); Remember Language
+Choice keeps a chosen one for the next start. `jasperengine-editor check` (with `--lua`) reports a
+table that does not load and a key two tables define. Agents use `edit_string_table`
+(`docs/mcp/guide/localization.md`).
+
 ## The Lua API as data
 
 One parser (`tools/lua_api`) reads the Lua bindings at build time and writes `lua-api.json`.

@@ -6,6 +6,8 @@
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/Localization.h"
+#include "localization/StringTable.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -3505,6 +3507,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
+    settings.localization = getLocalizationConfig();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3521,6 +3524,32 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     return settings;
 }
 
+LocalizationConfig editor::Project::getLocalizationConfig() const{
+    LocalizationConfig config;
+    config.languages = localizationSettings.languages;
+    config.rememberLanguage = localizationSettings.rememberLanguage;
+    for (const std::filesystem::path& file : ProjectChecks::findProjectFiles(getAssetsPath(), {StringTable::EXTENSION})) {
+        config.tables.push_back(normalizeToAssetsRelative(file).generic_string());
+    }
+    return config;
+}
+
+void editor::Project::applyLocalization(){
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    Localization::configure(getLocalizationConfig());
+}
+
+void editor::Project::localizationFilesChanged(const std::vector<std::filesystem::path>& changed){
+    for (const std::filesystem::path& path : changed) {
+        if (Util::isStringTableFile(path.string())) {
+            // the list (a table added or removed), then the contents
+            applyLocalization();
+            Localization::reloadTables();
+            return;
+        }
+    }
+}
+
 void editor::Project::applyPresentationSettings(){
     // what an earlier Play changed (focus, pause, frame rate) does not carry over
     Engine::resetApplicationState();
@@ -3530,7 +3559,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
     // S87: a Play starts in the device's language with the project's default
     TitleArtLanguage::setGlobal("");
-    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    // S95 REQ-27: the String Tables, and the language a previous Play chose when it is remembered
+    applyLocalization();
+    Localization::start();
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -7835,6 +7866,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         // unlike the other settings it applies while editing too, textures are shared with Play
         Engine::setTextureStrategy(textureStrategy);
+        // the String Tables show in Edit mode too (a Text's Localization Key, data-loc)
+        applyLocalization();
         editor::getEditorHost().reportLoadingProgress("Finishing project load...");
 
         // Guarantee a non-empty name: project.yaml files without a "name" field
@@ -11713,6 +11746,9 @@ void editor::Project::stop(uint32_t sceneId) {
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
 
+            // the language the game chose lasts for the Play (Remember Language Choice stored it)
+            Localization::stop();
+            TitleArtLanguage::setGlobal("");
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();
 

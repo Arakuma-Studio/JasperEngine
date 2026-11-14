@@ -85,7 +85,7 @@ namespace {
         {"Audio Mixer", "window.audioMixer"}, {"Particle Effect", "window.particleEffect"}, {"Sound Browser", "window.soundBrowser"}, {"Audio Captures", "window.audioCaptures"},
         {"Color Picker", "window.colorPicker"},
         {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Voxel Volume", "window.voxelVolume"}, {"Voxel Slice", "window.voxelSlice"},
-        {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
+        {"Input Actions", "window.inputActions"}, {"String Tables", "window.stringTables"}, {"Navigation", "window.navigation"},
         {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"},
         {"Pixel Art Check", "window.pixelArtCheck"}, {"Physics Placement", "window.physicsPlacement"},
         {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
