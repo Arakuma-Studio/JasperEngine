@@ -82,6 +82,8 @@ void LuaBinding::registerCoroutineClasses(lua_State *L){
         .addStaticProperty("frameCount", &Time::getFrameCount)
         .addStaticProperty("timeScale", &Time::getTimeScale, &Time::setTimeScale)
         .addStaticProperty("maximumDeltaTime", &Time::getMaximumDeltaTime, &Time::setMaximumDeltaTime)
+        .addStaticProperty("maximumFixedStepsPerFrame", &Time::getMaximumFixedStepsPerFrame, &Time::setMaximumFixedStepsPerFrame)
+        .addStaticProperty("droppedFixedSteps", &Time::getDroppedFixedSteps)
         .addStaticProperty("captureDeltaTime", &Time::getCaptureDeltaTime, &Time::setCaptureDeltaTime)
         .addStaticProperty("smoothDeltaTime", &Time::getSmoothDeltaTime)
         .addStaticProperty("inFixedTimeStep", &Time::isInFixedTimeStep)

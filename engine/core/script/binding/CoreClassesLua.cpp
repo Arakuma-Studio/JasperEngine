@@ -47,6 +47,7 @@
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
+#include "script/binding/PhysicsQueriesLua.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Contact2D.h"
@@ -885,8 +886,9 @@ namespace{
         }
     }
 
-    // Physics.raycast(scene, ray [, layerMask]) or (scene, origin, direction, maxDistance [, layerMask]),
-    // and the 2D versions with Vector2 origin and direction
+    // Physics.raycast(scene, ray [, layerMask [, options]]) or (scene, origin, direction, maxDistance
+    // [, layerMask [, options]]), and the 2D versions with Vector2 origin and direction. options:
+    // luaphysics::readQueryOptions (S96 REQ-12)
     template<typename VectorT, bool all, bool is2D>
     int luaRaycast(lua_State* L){
         const char* function = is2D ? (all ? "Physics2D.raycastAll" : "Physics2D.raycast")
@@ -894,37 +896,40 @@ namespace{
         Scene* scene = luaSceneArg(L, function);
 
         Ray ray;
-        uint32_t layerMask;
+        QueryOptions options;
+        std::vector<Entity> ignore;
         if (luaRayArg(L, 2, ray)){
-            layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 4, function, is2D, options, ignore);
         }else{
             if (!luabridge::isInstance<VectorT>(L, 2) || !luabridge::isInstance<VectorT>(L, 3)){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             auto origin = luabridge::get<VectorT>(L, 2);
             auto direction = luabridge::get<VectorT>(L, 3);
             if (!origin || !direction){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             const float maxDistance = (float)luaL_checknumber(L, 4);
-            layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 6, function, is2D, options, ignore);
 
             const VectorT originValue = origin.value();
             const VectorT directionValue = direction.value();
             if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
                 if (all){
-                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }else{
 #ifdef JASPERENGINE_PHYSICS_3D
                 if (all){
-                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }
@@ -934,17 +939,17 @@ namespace{
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             if (all){
-                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics2D::raycast(scene, ray, options));
             }
 #endif
         }else{
 #ifdef JASPERENGINE_PHYSICS_3D
             if (all){
-                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics::raycast(scene, ray, options));
             }
 #endif
         }
@@ -3426,6 +3431,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<float, float, float>(&Scene::setGravity3D))
         .addProperty("physicsInterpolation", &Scene::isPhysicsInterpolation, &Scene::setPhysicsInterpolation)
         .addProperty("physics2DSubSteps", &Scene::getPhysics2DSubSteps, &Scene::setPhysics2DSubSteps)
+        // S96: the 2D world's units, rotation cap and tuning, and the 3D solver (physics.md "World settings")
+        .addProperty("physics2DPointsPerMeter", &Scene::getPhysics2DPointsPerMeter, &Scene::setPhysics2DPointsPerMeter)
+        .addProperty("physics2DMaxRotation", &Scene::getPhysics2DMaxRotation, &Scene::setPhysics2DMaxRotation)
+        .addProperty("physics2DContactHertz", &Scene::getPhysics2DContactHertz, &Scene::setPhysics2DContactHertz)
+        .addProperty("physics2DContactDampingRatio", &Scene::getPhysics2DContactDampingRatio, &Scene::setPhysics2DContactDampingRatio)
+        .addProperty("physics2DContactPushSpeed", &Scene::getPhysics2DContactPushSpeed, &Scene::setPhysics2DContactPushSpeed)
+        .addProperty("physics2DJointHertz", &Scene::getPhysics2DJointHertz, &Scene::setPhysics2DJointHertz)
+        .addProperty("physics2DJointDampingRatio", &Scene::getPhysics2DJointDampingRatio, &Scene::setPhysics2DJointDampingRatio)
+        .addProperty("physics2DBounceThreshold", &Scene::getPhysics2DBounceThreshold, &Scene::setPhysics2DBounceThreshold)
+        .addProperty("physics2DMaxLinearSpeed", &Scene::getPhysics2DMaxLinearSpeed, &Scene::setPhysics2DMaxLinearSpeed)
+        .addProperty("physics2DWarmStarting", &Scene::isPhysics2DWarmStarting, &Scene::setPhysics2DWarmStarting)
+        .addProperty("physics2DContinuous", &Scene::isPhysics2DContinuous, &Scene::setPhysics2DContinuous)
+        .addProperty("physics2DSleep", &Scene::isPhysics2DSleep, &Scene::setPhysics2DSleep)
+        .addProperty("physics3DVelocityIterations", &Scene::getPhysics3DVelocityIterations, &Scene::setPhysics3DVelocityIterations)
+        .addProperty("physics3DPositionIterations", &Scene::getPhysics3DPositionIterations, &Scene::setPhysics3DPositionIterations)
+        .addProperty("physics3DBounceThreshold", &Scene::getPhysics3DBounceThreshold, &Scene::setPhysics3DBounceThreshold)
+        .addProperty("physics3DSleepThreshold", &Scene::getPhysics3DSleepThreshold, &Scene::setPhysics3DSleepThreshold)
+        .addProperty("physics3DSpeculativeDistance", &Scene::getPhysics3DSpeculativeDistance, &Scene::setPhysics3DSpeculativeDistance)
+        .addProperty("physics3DCollisionSteps", &Scene::getPhysics3DCollisionSteps, &Scene::setPhysics3DCollisionSteps)
         .addProperty("ssaoEnabled", &Scene::isSSAOEnabled, &Scene::setSSAOEnabled)
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)

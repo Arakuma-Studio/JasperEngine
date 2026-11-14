@@ -23,6 +23,7 @@
 #include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "Engine.h"
 #include "search/SearchPalette.h"
 #include "widget/ColorPickerWindow.h"
 #include "widget/CurveField.h"
@@ -795,6 +796,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // fixed steps the per-frame cap dropped in this Play (Time.maximumFixedStepsPerFrame, S96)
+        {"physics", {{"dropped_fixed_steps", Engine::getDroppedFixedSteps()}}},
         // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
         {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
@@ -817,6 +820,10 @@ void reportEditorStatus(const CallPtr& call) {
     if (!unsavedScenes.empty()) text += " Unsaved scenes: " + unsavedScenes.dump() + ".";
     if (!jobs.empty()) text += " Running jobs: " + std::to_string(jobs.size()) + ".";
     if (!dialog.is_null()) text += " Open dialog: \"" + info.title + "\".";
+    if (Engine::getDroppedFixedSteps() > 0) {
+        text += " Dropped fixed steps: " + std::to_string(Engine::getDroppedFixedSteps()) +
+                " (frames needed more than Time.maximumFixedStepsPerFrame).";
+    }
     call->ok(text, data);
 }
 

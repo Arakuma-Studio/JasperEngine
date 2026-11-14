@@ -18,9 +18,14 @@
 #include "yaml-cpp/yaml.h"
 
 #include "Jolt/Core/Memory.h"
+#include "Jolt/Physics/PhysicsStepListener.h"
 
+#include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <random>
@@ -605,4 +610,102 @@ TEST(Physics3DBody, DebugDrawLines2D) {
     Physics::setDebugDraw(false);
     physics->draw();
     EXPECT_EQ(physics->getDebugLineCount(), 0u);
+}
+
+// ---- S96 REQ-35: the 3D world settings ---------------------------------------------------------
+
+namespace {
+
+    // Jolt calls a step listener once per collision step
+    class CountingStepListener : public JPH::PhysicsStepListener {
+    public:
+        std::atomic<int> steps{0};
+        void OnStep(const JPH::PhysicsStepListenerContext&) override { steps++; }
+    };
+
+    // ten boxes stacked on a floor, a little off centre each, stepped; their poses
+    std::vector<float> stackPoses(World3D& world, int steps, const std::function<void()>& afterFirstStep = nullptr) {
+        world.floor();
+        std::vector<Entity> boxes;
+        for (int i = 0; i < 10; i++) {
+            boxes.push_back(world.box(Vector3(0.03f * (float)(i % 3), 0.5f + 1.01f * (float)i, 0.02f * (float)(i % 2)), Vector3(1, 1, 1), BodyType::DYNAMIC));
+        }
+        world.load();
+        world.step(1);
+        if (afterFirstStep) afterFirstStep();
+        world.step(steps - 1);
+        std::vector<float> poses;
+        for (Entity e : boxes) {
+            const Vector3 p = world.rb(e).getPosition();
+            const Quaternion q = world.rb(e).getRotation();
+            poses.insert(poses.end(), {p.x, p.y, p.z, q.w, q.x, q.y, q.z});
+        }
+        return poses;
+    }
+
+    float horizontalDrift(const std::vector<float>& poses) {
+        float drift = 0.0f;
+        for (size_t i = 0; i < poses.size(); i += 7) drift += std::fabs(poses[i]) + std::fabs(poses[i + 2]);
+        return drift;
+    }
+
+}
+
+// The scene's 3D solver settings reach Jolt when the world is made and when they change: velocity
+// iterations change a stack's drift, collision steps run Jolt's collision passes per fixed step,
+// and settings at their defaults (or changed and set back) step the same bits as before they
+// existed. Red for the first two: the world never got Jolt settings and stepped one pass
+TEST(Physics3DBody, WorldSettingsApply) {
+    std::vector<float> reference;
+    {
+        World3D world;
+        reference = stackPoses(world, 600);
+    }
+    {
+        World3D world;
+        const std::vector<float> roundTrip = stackPoses(world, 600, [&]() {
+            ScenePhysics3DSettings changed;
+            changed.velocityIterations = 3;
+            changed.positionIterations = 5;
+            changed.bounceThreshold = 4.0f;
+            changed.sleepThreshold = 0.5f;
+            changed.speculativeDistance = 0.1f;
+            changed.collisionSteps = 3;
+            world.scene.setPhysics3DWorldSettings(changed);
+            world.scene.setPhysics3DWorldSettings(ScenePhysics3DSettings());
+        });
+        ASSERT_EQ(roundTrip.size(), reference.size());
+        EXPECT_EQ(std::memcmp(roundTrip.data(), reference.data(), reference.size() * sizeof(float)), 0) << "defaults step the same bits";
+    }
+
+    float driftOne = 0.0f;
+    {
+        World3D world;
+        world.scene.setPhysics3DVelocityIterations(1);
+        driftOne = horizontalDrift(stackPoses(world, 300));
+        EXPECT_EQ(world.physics()->getWorld3D()->GetPhysicsSettings().mNumVelocitySteps, 1u);
+    }
+    float driftTen = 0.0f;
+    {
+        World3D world;
+        driftTen = horizontalDrift(stackPoses(world, 300));
+    }
+    std::printf("[WorldSettingsApply] stack drift: 1 velocity iteration %.4f m, 10 iterations %.4f m\n", driftOne, driftTen);
+    EXPECT_NE(driftOne, driftTen);
+
+    World3D world;
+    world.sphere(Vector3(0, 5, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step(1);
+    CountingStepListener listener;
+    world.physics()->getWorld3D()->AddStepListener(&listener);
+    world.step(1);
+    EXPECT_EQ(listener.steps.load(), 1) << "one collision step by default";
+    world.scene.setPhysics3DCollisionSteps(2);
+    world.scene.setPhysics3DSpeculativeDistance(0.05f);
+    listener.steps = 0;
+    world.step(1);
+    EXPECT_EQ(listener.steps.load(), 2);
+    EXPECT_FLOAT_EQ(world.physics()->getWorld3D()->GetPhysicsSettings().mSpeculativeContactDistance, 0.05f);
+    world.physics()->getWorld3D()->RemoveStepListener(&listener);
 }

@@ -5406,6 +5406,7 @@
    "icon": "ef8491",
    "key": "rigidbody2d",
    "known_keys": [
+    "allowFastRotation",
     "angularDamping",
     "autoCenterOfMass",
     "autoInertia",
@@ -5426,6 +5427,11 @@
    ],
    "name": "Rigidbody2DComponent",
    "properties_of_default": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
@@ -5508,6 +5514,11 @@
     ]
    },
    "properties_without_component": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
@@ -29873,6 +29884,11 @@
    ]
   },
   "Rigidbody2DComponent": {
+   "allowFastRotation": [
+    0,
+    281474976710656,
+    true
+   ],
    "angularDamping": [
     2,
     281474976710656,

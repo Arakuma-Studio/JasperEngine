@@ -9,6 +9,7 @@
 #include "math/Ray.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "physics/PhysicsQueryOptions.h"
 
 #include <atomic>
 #include <cstdint>
@@ -96,15 +97,30 @@ namespace jasperengine{
         static void setDebugDrawContacts(bool debugDrawContacts);
         static bool isDebugDrawContacts();
 
+        // Unity Physics.queriesHitTriggers (true) and queriesHitBackfaces (false): the defaults of
+        // the queries' triggers (USE_GLOBAL) and hitBackfaces options, process-wide
+        static void setQueriesHitTriggers(bool hitTriggers);
+        static bool getQueriesHitTriggers();
+        static void setQueriesHitBackfaces(bool hitBackfaces);
+        static bool getQueriesHitBackfaces();
+        // an options' rules with those defaults applied
+        static bool hitsTriggers(const QueryOptions& options);
+        static bool hitsBackfaces(const QueryOptions& options);
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Closest hit of the 3D bodies on a layer in layerMask. With a Ray, distance is
         // the fraction of ray.direction (as Ray::intersects); with origin, direction and
-        // maxDistance it is in world units along the normalized direction (Unity).
+        // maxDistance it is in world units along the normalized direction (Unity). A collider
+        // containing the origin is not hit (Unity) unless options.hitFromInside.
         static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static RayReturn raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static RayReturn raycast(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static RayReturn raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options);
         // Every collider hit, nearest first, one hit per collider
         static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static std::vector<RayReturn> raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static std::vector<RayReturn> raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options);
 #endif
     };
 
@@ -123,11 +139,25 @@ namespace jasperengine{
         static void setLayerCollisionMask(int layer, uint32_t layerMask);
         static void resetLayerCollisionMatrix();
 
+        // Unity Physics2D.queriesHitTriggers (true) and queriesStartInColliders (false here,
+        // true in Unity: S96 D5), the defaults of the triggers and startInColliders options
+        static void setQueriesHitTriggers(bool hitTriggers);
+        static bool getQueriesHitTriggers();
+        static void setQueriesStartInColliders(bool startInColliders);
+        static bool getQueriesStartInColliders();
+        static bool hitsTriggers(const QueryOptions& options);
+        static bool startsInColliders(const QueryOptions& options);
+
 #ifdef JASPERENGINE_PHYSICS_2D
+        // A collider containing the origin is hit (at distance 0) only with startInColliders
         static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static RayReturn raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static RayReturn raycast(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static RayReturn raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options);
         static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static std::vector<RayReturn> raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static std::vector<RayReturn> raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options);
 #endif
     };
 

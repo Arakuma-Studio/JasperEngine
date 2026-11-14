@@ -664,4 +664,45 @@ Per-package done: its ACs green (targeted: `UNIT_TEST_ARGS=--gtest_filter=...`,
 
 ## Deviations
 
-(none yet)
+WP-B (queries):
+- `QueryOptions` and its enums live in `engine/core/physics/PhysicsQueryOptions.h` (included by
+  `PhysicsLayers.h`, `Ray.cpp` and both query modules, which would otherwise include each other),
+  and `engine/core/script/binding/PhysicsQueriesLua.h` shares the options parser with
+  `CoreClassesLua.cpp`'s ray casts. `layerMask` is a field of `QueryOptions`.
+- AC-15's bench is `engine/tests/core/physics/PhysicsQueriesBenchTest.cpp` (suite
+  `PhysicsQueriesBench`): the core test target globs `*Test.cpp`. It measures the C++ budgets; the
+  Lua budget of REQ-41 is not measured by a test.
+- One rule for every 3D cast: a collider the shape starts in is reported (distance 0) only with
+  `hitFromInside`, `...All` included (Unity's `SphereCastAll` always reports them).
+- The engine's own rays (particle world collision, Foot IK) pass `hitFromInside = true`, so
+  REQ-14 changes only what scripts and agents ask.
+- `PhysicsQueries3D::overlapPoint` / `checkPoint` (C++ only) serve `query_physics` `shape: point`
+  in 3D; `query_physics` `hit_from_inside` also sets 2D `startInColliders`.
+- `Rigidbody2D:cast` returns the nearest hit or nil and `castAll` every one (Unity's `Cast` fills
+  an array), matching `sweepTest` / `sweepTestAll`.
+- 2D `Overlap*` (first) returns the collider of the lowest GameObject then collider index, so the
+  answer is deterministic.
+
+- **WP-E, REQ-36 automatic cap.** The automatic cap is `ceil(F / fixedDeltaTime) + 1` where `F` is the
+  longest game time a frame can have: `Time.captureDeltaTime` when set (it replaces the measured
+  delta and is not capped by `maximumDeltaTime`), else `Time.maximumDeltaTime`, times `Time.timeScale`
+  when above 1, plus the whole steps the last frame left (only after `fixedDeltaTime` was made
+  shorter). At time scale 1 without a capture delta it is the spec's formula; the spec's alone
+  would drop steps a capture delta or a time scale above 1 lets through (a regression against the
+  old cap of 100). The warning fires only when a whole step is dropped (the old code also warned
+  when exactly 100 steps ran and nothing was left).
+- **WP-E, REQ-39 cooked scenes.** Cooked format 1.6 appends the physics world settings as a
+  field-tagged record and also `physics2DSubSteps`, which prebuilt players never received (a
+  missing setting of the same family, `SceneSettingsCodec.cpp`).
+- **WP-E, D10/D11.** The structs are `ScenePhysics2DSettings` / `ScenePhysics3DSettings`: the editor
+  already has `editor::Physics3DWorldSettings` (the project's world capacity), and the spec's names
+  are ambiguous in every editor source using both namespaces. The 2D one holds `pointsPerMeter` too,
+  so one setter takes every 2D setting; one field table (`physicsWorldSettingFields`, `engine/core/physics/WorldSettings.h`) drives
+  Stream, the cooked record, Catalog, MCP, the Inspector and the generated scene code. The Box2D
+  patch also sets the default in `src/types.c`. PhysicsSystem's new members live in
+  `engine/core/subsystem/PhysicsSystemWorldSettings.cpp`.
+- **WP-E, AC-27/AC-30 test names.** `DefaultsAreBitIdentical` compares, in one binary, a world made
+  from Box2D's own defaults with one made and one updated through the settings, and an engine scene
+  whose settings changed and went back with one that never changed (no recorded poses: they would
+  pin one compiler's floats). The AC-30 test is `CoroutineTest.FixedStepCapFollowsMaximumDeltaTime`
+  (the fixture of `ScriptSchedulerTest.cpp`).

@@ -824,7 +824,12 @@ bool ParticleSubsystem::castWorldRay(const void* context, const float from[3], c
         return false;
     // extended by the radius: the contact is a radius before the surface
     direction = direction * ((length + radius) / length);
-    const RayReturn result = Physics::raycast(self->scene, Ray(point(from), direction), layers);
+    // a particle inside a collider still collides with it (before Physics.raycast took Unity's
+    // start-inside rule, S96 REQ-14)
+    QueryOptions options;
+    options.layerMask = layers;
+    options.hitFromInside = true;
+    const RayReturn result = Physics::raycast(self->scene, Ray(point(from), direction), options);
     if (!result.hit)
         return false;
     hit.position[0] = result.point.x; hit.position[1] = result.point.y; hit.position[2] = result.point.z;

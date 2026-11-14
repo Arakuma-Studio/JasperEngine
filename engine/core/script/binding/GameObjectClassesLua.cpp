@@ -5255,6 +5255,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("enableSleep", &Rigidbody2D::isEnableSleep, &Rigidbody2D::setEnableSleep)
         .addProperty("awake", &Rigidbody2D::isAwake, &Rigidbody2D::setAwake)
         .addProperty("fixedRotation", &Rigidbody2D::isFixedRotation, &Rigidbody2D::setFixedRotation)
+        // not capped by the scene's physics2DMaxRotation (wheels)
+        .addProperty("allowFastRotation", &Rigidbody2D::isAllowFastRotation, &Rigidbody2D::setAllowFastRotation)
         .addProperty("bullet", &Rigidbody2D::isBullet, &Rigidbody2D::setBullet)
         .addProperty("type", &Rigidbody2D::getType, &Rigidbody2D::setType)
         .addProperty("enabled", &Rigidbody2D::isEnabled, &Rigidbody2D::setEnabled)

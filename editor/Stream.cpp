@@ -5102,6 +5102,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    // S96: the world settings away from their defaults, a flat key each (old scenes keep none)
+    {
+        const SceneSettings defaults;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const double value = getPhysicsWorldSetting(field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings());
+            if (value == getPhysicsWorldSetting(field, defaults.physics2DWorld, defaults.physics3DWorld)) continue;
+            switch (field.type) {
+                case PhysicsWorldSettingField::Type::Float: sceneNode[field.key] = (float)value; break;
+                case PhysicsWorldSettingField::Type::Int: sceneNode[field.key] = (int)value; break;
+                case PhysicsWorldSettingField::Type::Bool: sceneNode[field.key] = value != 0.0; break;
+            }
+        }
+    }
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -5295,6 +5308,20 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    // S96: the world settings; an absent key is its default (StreamSchema lists the keys)
+    {
+        SceneSettings settings;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const YAML::Node value = node[field.key];
+            if (!value) continue;
+            const double number = field.type == PhysicsWorldSettingField::Type::Bool ? (YamlNumbers::as<bool>(value) ? 1.0 : 0.0)
+                                : field.type == PhysicsWorldSettingField::Type::Int ? (double)YamlNumbers::as<int>(value)
+                                : (double)YamlNumbers::as<float>(value);
+            setPhysicsWorldSetting(field, settings.physics2DWorld, settings.physics3DWorld, number);
+        }
+        scene->setPhysics2DWorldSettings(settings.physics2DWorld);
+        scene->setPhysics3DWorldSettings(settings.physics3DWorld);
+    }
 
     // absent restores the defaults, so decoding into a reused scene (play restore) is exact
     scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));
