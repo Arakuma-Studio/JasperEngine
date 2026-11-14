@@ -306,13 +306,16 @@ TEST_F(AudioSourceSlotsEditorTest, SecondSourceIsAHiddenChildThatFollows) {
 
     // Reset and Paste Component Values never take a source out of its place
     registry->getComponent<AudioSourceComponent>(horn).volume = 0.25;
-    ASSERT_TRUE(history()->addCommandNoMerge(editor::ComponentValuesCmd::buildReset(project.get(), scene->id, {horn},
-                                                                                      editor::ComponentType::AudioSourceComponent)));
+    editor::Command* reset = editor::ComponentValuesCmd::buildReset(project.get(), scene->id, {horn}, editor::ComponentType::AudioSourceComponent);
+    ASSERT_NE(reset, nullptr);
+    ASSERT_TRUE(history()->addCommandNoMerge(reset));
     EXPECT_DOUBLE_EQ(registry->getComponent<AudioSourceComponent>(horn).volume, 1.0);
     EXPECT_EQ(registry->getComponent<AudioSourceComponent>(horn).slot, 1) << "Reset keeps the slot";
 
     // Move Down swaps the two slots
-    ASSERT_TRUE(history()->addCommandNoMerge(editor::buildMoveAudioSourceSlot(project.get(), scene->id, horn, 1)));
+    editor::Command* moveDown = editor::buildMoveAudioSourceSlot(project.get(), scene->id, horn, 1);
+    ASSERT_NE(moveDown, nullptr);
+    ASSERT_TRUE(history()->addCommandNoMerge(moveDown));
     EXPECT_EQ(AudioSourceSlots::getSlots(registry, car), (std::vector<Entity>{siren, horn}));
     EXPECT_EQ(editor::buildMoveAudioSourceSlot(project.get(), scene->id, horn, 1), nullptr) << "the last moves no further down";
     ASSERT_TRUE(history()->undo());
