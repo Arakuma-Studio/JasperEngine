@@ -55,6 +55,13 @@ namespace {
         // upstream's shader globals (before S11's lobes on SYNC#4)
         ShaderGlobalBindings shaderGlobalBindings;
         MaterialBlendMode blendMode;
+        // S94's Blend Mode Custom factors (after the lobes, not part of their budget)
+        MaterialBlendFactor blendSrc;
+        MaterialBlendFactor blendDst;
+        MaterialBlendFactor blendSrcAlpha;
+        MaterialBlendFactor blendDstAlpha;
+        MaterialBlendOp blendOp;
+        MaterialBlendOp blendOpAlpha;
         MaterialCullMode cullMode;
         MaterialDepthWrite depthWrite;
         MaterialDepthTest depthTest;

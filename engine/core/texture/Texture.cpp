@@ -587,6 +587,15 @@ void Texture::invalidateRender(){
     }
 }
 
+bool Texture::isReady() const{
+    if (framebuffer)
+        return framebuffer->isCreated();
+    if (id.empty())
+        return false;
+    std::shared_ptr<TextureRender> made = TexturePool::get(getRenderId());
+    return made && made->isCreated();
+}
+
 TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();

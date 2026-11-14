@@ -804,7 +804,7 @@ void setMainCameraTool(const CallPtr& call) {
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
                          PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms,
-                         WaterWakeResolution };
+                         WaterWakeResolution, AmbientMode };
 
 struct SceneSetting {
     std::string name;
@@ -827,6 +827,10 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
+        {"ambient_mode", SettingKind::AmbientMode, "ambient source: color (global_illumination_color), gradient (sky, equator and ground colours)"},
+        {"ambient_sky_color", SettingKind::Vector3, "gradient ambient from above [r,g,b] (sRGB)"},
+        {"ambient_equator_color", SettingKind::Vector3, "gradient ambient from the side [r,g,b] (sRGB)"},
+        {"ambient_ground_color", SettingKind::Vector3, "gradient ambient from below [r,g,b] (sRGB)"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
         {"lit_quality", SettingKind::LitQuality, "the built-in Lit's quality: standard (as before), high (specular anti-aliasing, direct-light energy compensation; new scenes)"},
         {"physical_light_ev100", SettingKind::Float, "Physical Light Exposure, EV100 -6..24 (Sunny 15, Overcast 12, Interior 7, Night 2): only lights in lux, candela or lumen"},
@@ -1082,6 +1086,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
+        case SettingKind::AmbientMode:
         case SettingKind::ShadowDebugView:
         case SettingKind::PlanarReflectionResolution:
         case SettingKind::WaterWakeResolution:
@@ -1105,6 +1110,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::WaterWakeResolution: return McpValues::enumTable("water_wake_resolution");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
+        case SettingKind::AmbientMode: return McpValues::enumTable("ambient_mode");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -1241,6 +1247,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
                                                         : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::AmbientMode:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<AmbientMode>(setting.name)
+                                                        : Catalog::getSceneProperty<AmbientMode>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
                                                         : Catalog::getSceneProperty<TextureFilter>(scene, setting.name)),
@@ -1373,6 +1383,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
+        case SettingKind::AmbientMode:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -1388,6 +1399,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 return new ScenePropertyCmd<WaterWakeResolution>(project, id, name, (WaterWakeResolution)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
+            if (setting.kind == SettingKind::AmbientMode) return new ScenePropertyCmd<AmbientMode>(project, id, name, (AmbientMode)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:

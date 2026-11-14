@@ -2264,14 +2264,22 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 SortingSettings changed = current;
                 if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
                     changed.mode = TransparencySortMode::DEFAULT;
-                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
-                const char* modes[] = {"Default", "Custom Axis"};
+                // Unity's order of the modes
+                static const TransparencySortMode order[] = {TransparencySortMode::DEFAULT, TransparencySortMode::PERSPECTIVE,
+                                                             TransparencySortMode::ORTHOGRAPHIC, TransparencySortMode::CUSTOM_AXIS};
+                const char* modes[] = {"Default", "Perspective", "Orthographic", "Custom Axis"};
+                int mode = 0;
+                for (int m = 0; m < 4; m++) {
+                    if (order[m] == current.mode) mode = m;
+                }
                 ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
-                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 4))
+                    changed.mode = order[mode];
                 UIProbe::item("graphics.transparency_sort_mode");
-                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
-                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                endSettingsRow("How transparent objects sort, far first. Perspective: by the distance to the camera. Orthographic: by "
+                               "depth along the camera's view. Default: Orthographic for orthographic cameras, else Perspective. "
+                               "Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first.");
                 applySorting(changed);
             }
             if (settingsui::beginRow("graphics.transparency_sort_axis")) {

@@ -888,7 +888,7 @@ bool jasperengine::readJlut(const uint8_t* data, size_t size, CubeLut& out, std:
     return true;
 }
 
-bool jasperengine::loadColorLut(const std::string& path, CubeLut& out, std::string* error){
+bool jasperengine::loadColorLut(const std::string& path, CubeLut& out, std::string* error, bool flipGreen){
     out = CubeLut();
     std::string message;
     bool loaded = false;
@@ -925,7 +925,7 @@ bool jasperengine::loadColorLut(const std::string& path, CubeLut& out, std::stri
         PostColorLut::Strip strip;
         loaded = PostColorLut::loadStrip(path, strip, &message);
         if (loaded)
-            PostColorLut::stripToCubeLut(strip, out);
+            PostColorLut::stripToCubeLut(strip, out, flipGreen);
     }
     if (!loaded){
         out = CubeLut();
@@ -935,14 +935,22 @@ bool jasperengine::loadColorLut(const std::string& path, CubeLut& out, std::stri
     return loaded;
 }
 
-std::shared_ptr<const CubeLut> jasperengine::getCachedColorLut(const std::string& path){
+namespace {
+    // a flipped strip's entry beside the plain one (no path holds the separator)
+    std::string colorLutCacheKey(const std::string& path, bool flipGreen){
+        return flipGreen ? path + "\n#flipGreen" : path;
+    }
+}
+
+std::shared_ptr<const CubeLut> jasperengine::getCachedColorLut(const std::string& path, bool flipGreen){
     if (path.empty())
         return nullptr;
     Cache& c = cache();
+    const std::string key = colorLutCacheKey(path, flipGreen);
     uint64_t generation;
     {
         std::lock_guard<std::mutex> lock(c.mutex);
-        const auto it = c.entries.find(path);
+        const auto it = c.entries.find(key);
         if (it != c.entries.end())
             return it->second.lut;
         generation = c.generation;
@@ -950,18 +958,18 @@ std::shared_ptr<const CubeLut> jasperengine::getCachedColorLut(const std::string
     // loaded without the lock: other paths stay available meanwhile
     CacheEntry entry;
     std::shared_ptr<CubeLut> lut = std::make_shared<CubeLut>();
-    if (loadColorLut(path, *lut, &entry.error))
+    if (loadColorLut(path, *lut, &entry.error, flipGreen))
         entry.lut = std::move(lut);
     std::lock_guard<std::mutex> lock(c.mutex);
     if (generation != c.generation)
         return entry.lut;
-    return c.entries.emplace(path, std::move(entry)).first->second.lut;
+    return c.entries.emplace(key, std::move(entry)).first->second.lut;
 }
 
-std::string jasperengine::getCachedColorLutError(const std::string& path){
+std::string jasperengine::getCachedColorLutError(const std::string& path, bool flipGreen){
     Cache& c = cache();
     std::lock_guard<std::mutex> lock(c.mutex);
-    const auto it = c.entries.find(path);
+    const auto it = c.entries.find(colorLutCacheKey(path, flipGreen));
     return it != c.entries.end() ? it->second.error : std::string();
 }
 
@@ -971,6 +979,8 @@ void jasperengine::invalidateColorLutCache(const std::string& path){
     c.generation++;
     if (path.empty())
         c.entries.clear();
-    else
+    else{
         c.entries.erase(path);
+        c.entries.erase(colorLutCacheKey(path, true));
+    }
 }

@@ -302,6 +302,9 @@ namespace jasperengine::editor {
         // shader library textures (by @texture uniform) and features of a material or component
         static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
         static std::vector<std::pair<std::string, Texture>> decodeShaderTextures(const YAML::Node& node);
+        // Property Overrides (S94 F7): {values: {...}, textures: {...}}, each written when it has some
+        static YAML::Node encodePropertyOverrides(const ShaderPropertyOverrides& overrides, bool embedData);
+        static ShaderPropertyOverrides decodePropertyOverrides(const YAML::Node& node);
         static YAML::Node encodeShaderFeatures(const std::vector<std::string>& features);
         static std::vector<std::string> decodeShaderFeatures(const YAML::Node& node);
         // the shaderTextures, shaderFeatures and (when given) blendMode/depthWrite keys of a

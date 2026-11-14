@@ -322,3 +322,27 @@ TEST(StreamScene, WaterWakeSettings){
     read.setWaterWakeFade(1000.0f);
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
+
+// S94 F15: the Environment Lighting Source and the gradient's colours are written away from their
+// defaults only (an old scene reads as Color with Unity's gradient), and read back
+TEST(StreamScene, AmbientGradientSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("ambientMode"), std::string::npos) << "defaults are not written";
+    EXPECT_EQ(plainYaml.find("ambientSkyColor"), std::string::npos);
+
+    Scene scene;
+    scene.setAmbientMode(AmbientMode::GRADIENT);
+    scene.setAmbientGradient(Vector3(0.5f, 0.75f, 1.0f), Vector3(0.25f, 0.5f, 0.25f), Vector3(0.5f, 0.25f, 0.0f));
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(read.getAmbientMode(), AmbientMode::GRADIENT);
+    EXPECT_NEAR(read.getAmbientSkyColor().z, 1.0f, 1e-4f);
+    EXPECT_NEAR(read.getAmbientEquatorColor().y, 0.5f, 1e-4f);
+    EXPECT_NEAR(read.getAmbientGroundColor().x, 0.5f, 1e-4f);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    EXPECT_EQ(read.getAmbientMode(), AmbientMode::COLOR);
+    EXPECT_EQ(dumpScene(&read), plainYaml) << "a default read back writes nothing of it";
+}
