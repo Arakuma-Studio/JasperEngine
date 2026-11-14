@@ -5299,6 +5299,61 @@ CASES = [
                    "must_not_call": ["add_component"]},
         "max_turns": 10,
     },
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
     # ---- S94 F15: the Environment Lighting Source (Unity's gradient ambient)
     {
         "id": "guard_ambient_gradient_setting",

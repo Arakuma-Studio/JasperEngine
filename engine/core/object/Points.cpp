@@ -2,11 +2,85 @@
 // SPDX-License-Identifier: MIT
 
 #include "Points.h"
+#include "Log.h"
+#include "Scene.h"
+#include "component/ParticleSystemComponent.h"
+#include "object/ParticleSystem.h"
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
+
+namespace {
+
+    // a sprite frame in UV units (0..1), with room for rounding at the edges
+    bool isUvRect(const Rect& rect){
+        const float values[4] = {rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight()};
+        return std::all_of(std::begin(values), std::end(values), [](float v){ return v >= -0.001f && v <= 1.001f; });
+    }
+
+    // the pixel rects a Sprite takes (Sprite:addFrame) given to a Points: they sample far outside
+    // the texture, so it is said once per Points (S94 F1, the port's R54)
+    void warnFrameUnits(bool& warned, const Rect& rect){
+        if (warned || isUvRect(rect))
+            return;
+        warned = true;
+        Log::warn("[Points] addSpriteFrame rect is in UV units (0..1), got (%g, %g, %g, %g): divide a pixel rect by the texture size (Sprite:addFrame takes pixels)",
+                  rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+    }
+
+    particles::ParticleBlend particleBlendOf(MaterialBlendMode blendMode){
+        switch (blendMode){
+            case MaterialBlendMode::PREMULTIPLIED: return particles::ParticleBlend::Premultiplied;
+            case MaterialBlendMode::ADDITIVE: return particles::ParticleBlend::Additive;
+            case MaterialBlendMode::MULTIPLY: return particles::ParticleBlend::Multiply;
+            default: return particles::ParticleBlend::Alpha;
+        }
+    }
+
+    MaterialBlendMode materialBlendOf(particles::ParticleBlend blend){
+        switch (blend){
+            case particles::ParticleBlend::Premultiplied: return MaterialBlendMode::PREMULTIPLIED;
+            case particles::ParticleBlend::Additive: return MaterialBlendMode::ADDITIVE;
+            case particles::ParticleBlend::Multiply: return MaterialBlendMode::MULTIPLY;
+            default: return MaterialBlendMode::ALPHA;
+        }
+    }
+
+    // the frames an old Points held, as the effect's Texture Sheet Animation sprites (what the
+    // S20 migration made of them): the module holds the rects; it animates with an old sprite
+    // initializer's list once every frame the list picks exists (an effect whose list picks a
+    // missing frame does not compile), as LegacyParticleConverter sets it
+    void holdSprites(particles::TextureSheetAnimationModule& sheet){
+        if (!sheet.present){
+            sheet.present = true;
+            sheet.enabled = false;
+        }
+        sheet.mode = particles::TextureSheetMode::Sprites;
+        if (!sheet.startFrameList.empty()){
+            sheet.enabled = std::all_of(sheet.startFrameList.begin(), sheet.startFrameList.end(),
+                                        [&](int frame){ return frame >= 0 && (size_t)frame < sheet.sprites.size(); });
+        }
+        if (sheet.sprites.empty())
+            sheet.enabled = false;
+    }
+
+}
+
+ParticleSystemComponent* Points::legacyParticles(const char* call) const{
+    if (scene->findComponent<PointsComponent>(entity))
+        return nullptr;
+    ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
+    if (particles && !particles->legacyPointsNoted){
+        particles->legacyPointsNoted = true;
+        Log::warn("[Particles] Points:%s on '%s', whose Particle System draws its particles now: forwarded to the effect (ps.textureSheetAnimation sprites for frames, ps.renderer for the blend and depth write); deprecated",
+                  call, getName().c_str());
+    }
+    return particles;
+}
 
 Points::Points(Scene* scene): GameObject(scene){
     addComponent<PointsComponent>();
@@ -288,8 +362,31 @@ bool Points::isAutoTransparency() const{
 }
 
 void Points::addSpriteFrame(int id, const std::string& name, Rect rect){
+    if (legacyParticles("addSpriteFrame")){
+        if (id < 0 || (size_t)id >= particles::kMaxSpriteFrames){
+            Log::error("Cannot set frame %s at id %i: a Particle System's sprites go from 0 to %zu", name.c_str(), id, particles::kMaxSpriteFrames - 1);
+            return;
+        }
+        // an effect's sprites are UV rects: a pixel one would make it fail to compile
+        if (!isUvRect(rect)){
+            Log::error("Points:addSpriteFrame on '%s': frame %i not added, its rect is in UV units (0..1), got (%g, %g, %g, %g): divide a pixel rect by the texture size",
+                       getName().c_str(), id, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+            return;
+        }
+        auto unit = [](float v){ return std::clamp(v, 0.0f, 1.0f); };
+        ParticleSystem system(scene, entity);
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        particles::TextureSheetAnimationModule& sheet = document.textureSheetAnimation;
+        if (sheet.sprites.size() <= (size_t)id)
+            sheet.sprites.resize((size_t)id + 1);
+        sheet.sprites[id] = {unit(rect.getX()), unit(rect.getY()), unit(rect.getWidth()), unit(rect.getHeight())};
+        holdSprites(sheet);
+        system.setEffectDocument(document);
+        return;
+    }
     PointsComponent& pointscomp = getComponent<PointsComponent>();
     if (pointscomp.framesRect.validIndex(id)){
+        warnFrameUnits(pointscomp.frameUnitsWarned, rect);
         pointscomp.framesRect[id] = {name, rect};
         if ((unsigned int)(id + 1) > pointscomp.numFramesRect){
             pointscomp.numFramesRect = id + 1;
@@ -304,6 +401,15 @@ void Points::addSpriteFrame(int id, const std::string& name, Rect rect){
 }
 
 void Points::addSpriteFrame(const std::string& name, float x, float y, float width, float height){
+    if (legacyParticles("addSpriteFrame")){
+        const size_t next = ParticleSystem(scene, entity).getEffectDocument().textureSheetAnimation.sprites.size();
+        if (next >= particles::kMaxSpriteFrames){
+            Log::error("Cannot add frame %s: a Particle System has at most %zu sprites", name.c_str(), particles::kMaxSpriteFrames);
+            return;
+        }
+        addSpriteFrame((int)next, name, Rect(x, y, width, height));
+        return;
+    }
     PointsComponent& pointscomp = getComponent<PointsComponent>();
 
     int id = (int)pointscomp.numFramesRect;
@@ -324,6 +430,17 @@ void Points::addSpriteFrame(Rect rect){
 }
 
 void Points::removeSpriteFrame(int id){
+    if (legacyParticles("removeSpriteFrame")){
+        ParticleSystem system(scene, entity);
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        std::vector<particles::SpriteRect>& sprites = document.textureSheetAnimation.sprites;
+        if (id >= 0 && (size_t)id < sprites.size()){
+            sprites.erase(sprites.begin() + id);
+            holdSprites(document.textureSheetAnimation);
+            system.setEffectDocument(document);
+        }
+        return;
+    }
     PointsComponent& pointscomp = getComponent<PointsComponent>();
     if (id >= 0 && (unsigned int)id < pointscomp.numFramesRect){
         for (unsigned int i = id; i + 1 < pointscomp.numFramesRect; i++){
@@ -340,6 +457,11 @@ void Points::removeSpriteFrame(int id){
 }
 
 void Points::removeSpriteFrame(const std::string& name){
+    if (legacyParticles("removeSpriteFrame")){
+        Log::warn("[Particles] Points:removeSpriteFrame(\"%s\") on '%s': a Particle System's sprites have no names; remove one by its index",
+                  name.c_str(), getName().c_str());
+        return;
+    }
     PointsComponent& pointscomp = getComponent<PointsComponent>();
 
     for (int id = (int)pointscomp.numFramesRect - 1; id >= 0; id--){
@@ -453,6 +575,15 @@ bool Points::isShaderFeatureEnabled(const std::string& define) const{
 }
 
 void Points::setBlendMode(MaterialBlendMode blendMode){
+    if (legacyParticles("blendMode")){
+        ParticleSystem system(scene, entity);
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        if (document.renderer.blend != particleBlendOf(blendMode)){
+            document.renderer.blend = particleBlendOf(blendMode);
+            system.setEffectDocument(document);
+        }
+        return;
+    }
     PointsComponent& points = getComponent<PointsComponent>();
 
     if (points.blendMode != blendMode){
@@ -462,12 +593,26 @@ void Points::setBlendMode(MaterialBlendMode blendMode){
 }
 
 MaterialBlendMode Points::getBlendMode() const{
+    if (legacyParticles("blendMode")){
+        return materialBlendOf(ParticleSystem(scene, entity).getEffectDocument().renderer.blend);
+    }
     PointsComponent& points = getComponent<PointsComponent>();
 
     return points.blendMode;
 }
 
 void Points::setDepthWrite(MaterialDepthWrite depthWrite){
+    if (legacyParticles("depthWrite")){
+        ParticleSystem system(scene, entity);
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        // a particle draws without depth writes unless asked (the Renderer's default)
+        const bool write = depthWrite == MaterialDepthWrite::ENABLED;
+        if (document.renderer.depthWrite != write){
+            document.renderer.depthWrite = write;
+            system.setEffectDocument(document);
+        }
+        return;
+    }
     PointsComponent& points = getComponent<PointsComponent>();
 
     if (points.depthWrite != depthWrite){
@@ -477,6 +622,9 @@ void Points::setDepthWrite(MaterialDepthWrite depthWrite){
 }
 
 MaterialDepthWrite Points::getDepthWrite() const{
+    if (legacyParticles("depthWrite")){
+        return ParticleSystem(scene, entity).getEffectDocument().renderer.depthWrite ? MaterialDepthWrite::ENABLED : MaterialDepthWrite::DISABLED;
+    }
     PointsComponent& points = getComponent<PointsComponent>();
 
     return points.depthWrite;
