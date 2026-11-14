@@ -19,7 +19,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GOLDEN = "engine/tests/htmlui/golden/"
 LEDGER = os.path.join(ROOT, "docs", "html-ui", "goldens-S16.md")
-CATEGORIES = {"sdf-aa", "analytic-clip", "analytic-shadow", "exact-scale-text", "gpu-text-effect"}
+CATEGORIES = {"sdf-aa", "analytic-clip", "analytic-shadow", "exact-scale-text", "gpu-text-effect", "filter-blur"}
 MAX_UNREVIEWED = 60
 
 
