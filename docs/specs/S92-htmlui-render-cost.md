@@ -964,8 +964,13 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   text misses once when the page grows (`inset-clip`'s warm frame before B1 made its shapes analytic).
 - **R9 window.** The result kept is the composite's scissor within what RmlUi asked the layer to cover
   (the region frame's granules around it are empty), so it moves with its element. A blur's halved
-  passes sample a grid of 2^levels px: the window's phase on that grid is in the key, so a blurred
-  element hits after moves by whole grid steps, any move otherwise.
+  levels start at its window (not at the frame's 64-px granules): a blurred result is the same
+  wherever its element is, so equal elements share one entry. A window the viewport crops (an element
+  at its edge) starts its levels at the crop: `TestRenderFilterRegion`'s edge blurs differ from the
+  same square further in by up to 3 levels of 255, not 2.
+- **R9 content keys.** A gradient of more than four stops keys by its stop-table row's stops (not the
+  row); the clip mask a scope starts in keys only where a draw is tested against it. An equal scope
+  later in the same replay draws the earlier one's result, so cards4's four glows store one.
 - **R9 trailing opacity.** Applied in the composite's passthrough for cached scopes only (a miss and a
   hit draw the same image the same way: byte-identical); uncached composites keep the opacity pass.
 - **R9 frames.** "Unused for 120 frames" counts replays (a kept frame, R1, replays nothing). A stored
@@ -980,12 +985,19 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   cache's copies; a layer's filter chain is several passes, so the bound is checked per pass: layerPixels
   <= 1.5 x the granule-rounded windows of the layers each pass serves (`getLastLayerPassStats`), and no
   pass of a layer within the viewport is the target's size.
-- **R29 cold column (4x, after B1).** static 1, rounded-gradient 1, btn 3 (<= 4), inset-clip 1, o2-frame 1,
-  card 32 (budget 7), cards4 128 (budget 25). card and cards4 keep four polygon clip-path mask scopes and a
-  blurred glow per card: each mask scope is its layer's pass, the mask layer's, the mask copy and the mask
-  filter. The four cards do not share entries (each gradient primitive names its own stop-table row, the
-  glow's blur grid phase differs). Warm is 1 pass for every row (16 hits for cards4), idle 1 (A's kept frame
-  makes it 0). Red control: A's state gave warm = cold (btn 15, card 32, cards4 128 at 4x).
+- **R29 cold column, met (4x and 1x).** static 1, rounded-gradient 1, btn 3 (<= 4), card 7 (<= 7),
+  inset-clip 1, cards4 7 (<= 25), o2-frame 1; `RenderLayerCost.ArcadePatterns` asserts them. Before
+  (B2 merged with B1): card 32, cards4 128. What took them there:
+  - convex `clip-path: polygon()` of at most 16 points clips in the shaders (S92-F6, `u_fs_htmluiClip`'s
+    polygon, the nearest edge's screen distance as coverage): the octagon outer, band, fill and window
+    push no layer (each was its layer's pass, the mask layer's, the mask copy and the mask filter);
+  - a blurred drop shadow is drawn by the blur's first pass, two halvings go in one pass of four
+    bilinear taps (the 4 x 4 box two passes gave, without their 8-bit intermediate), and the passes end
+    in temp (no copy): the 10 px glow is 4 post-process passes;
+  - card's 7: layer 0, the glow's layer, the glow's 4 post-process passes (shadow + two halvings,
+    vertical, horizontal, upscale with the source over it), layer 0 again for the composite and the
+    text. cards4: the same, the other three glows drawn from the first's result.
+  Warm is 1 pass for every row, idle 1 (A's kept frame makes it 0).
 - **U27 gap (from B1).** A filtered element whose window reaches past its ancestors' scissor is composited
   through a rectangle of that scissor; the rectangle now carries its shape (S92-F5) and a scope whose masks
   are all rectangles on the target's axes is analytic: the composite's passthrough clips by coverage at the
@@ -994,5 +1006,8 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   region tests, `RenderPrimitive.MatchesTheMeshPath`, `.GradientBackgroundsNeedNoMaskLayer`,
   `.GradientsWithManyStops`, `RenderClip.ClipPathBasicShapesAreAnalytic`, `RenderBatch.NoMergeAcrossLayersFiltersShadersOrStencil`,
   `RenderP1Test.PassCounts`, `.BackdropCompositeFusedExactly`, `RenderRecordTest.StencilAuditHoldsAcrossPassBreaks`,
-  `RmlRendererP1GoldenTest.LayersNested`. No golden image changed (the htmlui golden, browser-parity and
-  scene suites pass unchanged on glcore).
+  `RmlRendererP1GoldenTest.LayersNested`. No golden image was rewritten: the htmlui golden, browser-parity
+  and scene suites pass within their tolerances on glcore and Vulkan with the blur and polygon changes.
+- **Polygon clip-path.** Only convex polygons (both fill rules agree there) of at most 16 points clip
+  analytically; a concave or self-intersecting one keeps the mask layer
+  (`RenderClip.ClipPathBasicShapesAreAnalytic` now pins that with a concave polygon). Editor shader cache v69.

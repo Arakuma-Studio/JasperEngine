@@ -54,7 +54,7 @@ namespace {
     // empty pages and dedicated buffers kept for reuse; beyond it a free one is destroyed
     const size_t maximumFreeBytes = 16 * 1024 * 1024;
 
-    static_assert(sizeof(float) * 28 == 112, "u_fs_htmluiClip is 112 bytes");
+    static_assert(sizeof(float) * (28 + 32) == 240, "u_fs_htmluiClip is 240 bytes");
 
     // u_fs_htmluiGradient
     struct GradientParams {
@@ -1973,6 +1973,11 @@ void RmlRenderer::RenderToClipMaskShape(Rml::ClipMaskOperation operation, Rml::C
     record.rect = shape.rect;
     for (int i = 0; i < 4; i++)
         record.radii[i] = shape.radii[i];
+    for (Rml::Vector2f& point : record.polygon)
+        point = Rml::Vector2f(0.0f, 0.0f);
+    record.polygonPoints = std::clamp(shape.polygon_points, 0, (int)Rml::ClipShape::MaxPolygonPoints);
+    for (int i = 0; i < record.polygonPoints; i++)
+        record.polygon[i] = shape.polygon[(size_t)i];
     commandClipShapes.push_back(record);
     commands.back().i[0] = (int32_t)commandClipShapes.size();
 }
@@ -2589,11 +2594,12 @@ void RmlRenderer::applyFilter(RmlFilterContext& context, const RmlCompiledFilter
         // a pixel shows the source at its position minus the offset (top-down, so no flip of y)
         shadow.uvTransform[2] = -filter.offset.x * scale.x / (float)size.x;
         shadow.uvTransform[3] = -filter.offset.y * scale.y / (float)size.y;
-        drawPost(context.secondary(), LoadAction::CLEAR, shadow, postTargetState(BlendMode::NONE));
-
+        // blurred: the shadow drawn by the blur's first pass (S92: no pass of its own)
         const float sigma = filter.sigma * scale.x;
         if (sigma >= 0.5f)
-            blurInto(context.secondary(), context.secondary(), context.tertiary(), sigma, window, size);
+            blurInto(context.primary(), context.secondary(), context.tertiary(), sigma, window, size, &shadow);
+        else
+            drawPost(context.secondary(), LoadAction::CLEAR, shadow, postTargetState(BlendMode::NONE));
 
         // the source over its shadow
         PostDraw over;
@@ -2611,10 +2617,12 @@ void RmlRenderer::applyFilter(RmlFilterContext& context, const RmlCompiledFilter
 }
 
 void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float desiredSigma, Rml::Rectanglei window,
-                           Rml::Vector2i size){
+                           Rml::Vector2i size, const PostDraw* first){
     // RmlUi GL3 RenderBlur, with a read-only source: the first pass reads source, every later
     // one ping-pongs between destination and temp; the result lands in destination. The images
-    // are the size of the layer's frame (the target's, or a region layer's: P7-F2)
+    // are the size of the layer's frame (the target's, or a region layer's: P7-F2). `first`: a
+    // pass of its own variant and parameters (a drop shadow) that the first pass draws instead of
+    // copying the source (S92: in the same pass as the first downscale)
     window = window.Valid() ? window.Intersect(fullRect(size.x, size.y)) : fullRect(size.x, size.y);
     if (isEmpty(window))
         return;
@@ -2626,34 +2634,71 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     const int width = std::max(size.x, 1);
     const int height = std::max(size.y, 1);
     const Rml::Rectanglei full = fullRect(width, height);
-    Rml::Rectanglei scissor = window;
 
-    // downscale by halves with bilinear filtering; with an odd size the UVs are scaled so the
-    // fetches fall between texels (a 50% blend of neighbours)
+    // S92: the halved levels hold the window from their origin, so the result moves with the window
+    // (a cached layer's result is the same wherever its element is: R9). Two halvings go in one
+    // pass of four bilinear taps, each the mean of 2 x 2 texels (the 4 x 4 box of two passes). The
+    // passes ping-pong so that the last one lands in temp, where the blur starts; an in-place blur
+    // (source is destination) starts in temp and copies when it must
+    const Rml::Vector2i origin = passLevel > 0 ? window.p0 : Rml::Vector2i(0, 0);
+    Rml::Rectanglei scissor = passLevel > 0 ? Rml::Rectanglei::FromCorners(window.p0 - origin, window.p1 - origin) : window;
     const Rml::Rectanglei half = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(width / 2, 1), std::max(height / 2, 1)));
-    const float uvScaleX = (width % 2 == 1) ? (1.0f - 1.0f / (float)width) : 1.0f;
-    const float uvScaleY = (height % 2 == 1) ? (1.0f - 1.0f / (float)height) : 1.0f;
+    const int downscales = (passLevel >= 2) ? passLevel - 1 : passLevel;
+    const bool inPlace = &source == &destination;
+
+    // the first pass's variant and parameters (its source and placement are set by the pass)
+    auto prepare = [&](PostDraw& draw){
+        if (first)
+            draw = *first;
+        else
+            draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    };
 
     Framebuffer* from = &source;
-    for (int i = 0; i < passLevel; i++){
-        scissor.p0 = (scissor.p0 + Rml::Vector2i(1)) / 2;
-        scissor.p1 = Rml::Math::Max(scissor.p1 / 2, scissor.p0);
-        Framebuffer* to = (i % 2 == 0) ? &temp : &destination;
+    bool fromSource = true;
+    int level = 0;
+    for (int i = 0; i < downscales; i++){
+        const int halvings = (i == 0 && passLevel >= 2) ? 2 : 1;
+        for (int h = 0; h < halvings; h++){
+            scissor.p0 = (scissor.p0 + Rml::Vector2i(1)) / 2;
+            scissor.p1 = Rml::Math::Max(scissor.p1 / 2, scissor.p0);
+        }
+        level += halvings;
+        const bool toTemp = inPlace ? (i % 2 == 0) : ((downscales - 1 - i) % 2 == 0);
+        Framebuffer* to = toTemp ? &temp : &destination;
         PostDraw draw;
-        draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+        if (fromSource)
+            prepare(draw);
+        else
+            draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
         draw.source = &from->getRender().getColorTexture();
         draw.viewport = half;
         draw.scissor = scissor;
-        draw.uvTransform[0] = uvScaleX;
-        draw.uvTransform[1] = uvScaleY;
+        // a destination pixel j holds the source's texels (halvings) x j .. from the window's origin
+        const float step = (float)(1 << halvings);
+        const float baseX = fromSource ? (float)origin.x / (float)width : 0.0f;
+        const float baseY = fromSource ? (float)origin.y / (float)height : 0.0f;
+        draw.uvTransform[0] = step * (float)half.Width() / (float)width;
+        draw.uvTransform[1] = step * (float)half.Height() / (float)height;
+        draw.uvTransform[2] = baseX + (fromSource && first ? first->uvTransform[2] : 0.0f);
+        draw.uvTransform[3] = baseY + (fromSource && first ? first->uvTransform[3] : 0.0f);
+        if (halvings == 2){
+            draw.params.weights[1] = 1.0f / (float)width;
+            draw.params.weights[2] = 1.0f / (float)height;
+            draw.params.weights[3] = 1.0f;
+        }
         drawPost(*to, LoadAction::CLEAR, draw, postTargetState(BlendMode::NONE));
         from = to;
+        fromSource = false;
     }
 
-    // the data goes to temp, wherever the last downscale left it
-    if (passLevel % 2 == 0){
+    // the data in temp, if the passes did not leave it there (no downscale, an in-place blur)
+    if (from != &temp){
         PostDraw copy;
-        copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+        if (fromSource)
+            prepare(copy);
+        else
+            copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
         copy.source = &from->getRender().getColorTexture();
         copy.viewport = full;
         copy.scissor = scissor;
@@ -2700,7 +2745,7 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     upscale.viewport = window;
     drawPost(destination, LoadAction::CLEAR, upscale, postTargetState(BlendMode::NONE));
 
-    const Rml::Rectanglei exact = Rml::Rectanglei::FromCorners(scissor.p0 * (1 << passLevel), scissor.p1 * (1 << passLevel));
+    const Rml::Rectanglei exact = Rml::Rectanglei::FromCorners(scissor.p0 * (1 << level) + origin, scissor.p1 * (1 << level) + origin);
     if (exact != window && !isEmpty(exact)){
         upscale.viewport = exact;
         drawPost(destination, LoadAction::LOAD, upscale, postTargetState(BlendMode::NONE));

@@ -150,7 +150,9 @@ void RmlRenderer::noteLayerPass(Rml::Rectanglei full, TargetKind kind, int index
         if (index <= 0 || index >= (int)frames.size())
             return;
         window = frames[(size_t)index].window;
+        layerPassStats.layerPasses++;
     }else if (kind == TargetKind::POSTPROCESS){
+        layerPassStats.postPasses++;
         const int layer = (filterSourceLayer >= 0) ? filterSourceLayer : layersSize - 1;
         window = (layer >= 0 && layer < (int)frames.size()) ? frames[(size_t)layer].window : standardFrame();
     }else{
@@ -207,8 +209,16 @@ uint64_t RmlRenderer::scopeSignature(size_t first, size_t end, Rml::Vector2i ori
         stateHash = h;
     };
     hashState();
-    // the mask of a clip the scope starts in (it is tested against an outer clip)
-    uint64_t h = layerCacheMix(0x5c09eull, start.clipOn ? start.mask : 0);
+    // the mask the scope starts with (an outer clip's), where a draw is tested against it or a
+    // mask intersects it: a scope that sets its own first keys the same after any other
+    uint64_t h = 0x5c09eull;
+    bool maskIsStart = true, startMixed = false;
+    auto useStartMask = [&](){
+        if (maskIsStart && !startMixed){
+            h = layerCacheMix(h, start.mask);
+            startMixed = true;
+        }
+    };
 
     for (size_t i = first; i < end; i++){
         const Command& c = commands[i];
@@ -231,6 +241,13 @@ uint64_t RmlRenderer::scopeSignature(size_t first, size_t end, Rml::Vector2i ori
             continue;
         default:
             break;
+        }
+        if (c.type == CommandType::CLIP_MASK){
+            if ((Rml::ClipMaskOperation)c.flag == Rml::ClipMaskOperation::Intersect)
+                useStartMask();
+            maskIsStart = false;
+        }else if (state.clipOn){
+            useStartMask();
         }
         h = layerCacheMix(h, (uint64_t)c.type);
         h = layerCacheMix(h, stateHash);
@@ -266,8 +283,18 @@ uint64_t RmlRenderer::scopeSignature(size_t first, size_t end, Rml::Vector2i ori
             h = layerCacheMix(h, offset(c.x, c.y));
             break;
         case CommandType::PRIMITIVES:
+            // the instances by content: a gradient of more than four stops by its row's stops, not
+            // the row it got (equal elements' gradients have rows of their own)
             h = layerCacheMix(h, (uint64_t)(uint32_t)c.i[1]);
-            h = layerCacheMix(h, layerCachePair(c.i[2], c.i[3]));
+            for (int k = 0; k < c.i[1]; k++){
+                HtmlUIPrimitive instance = commandPrimitives[(size_t)(c.i[0] + k)];
+                if (instance.params[0] == (float)HtmlUIPrimitive::GRADIENT && instance.f[1] > (float)HtmlUIPrimitive::GRADIENT_STOPS){
+                    const size_t row = (size_t)std::max(instance.e[0], 0.0f);
+                    h = layerCacheMix(h, row < stopRowHashes.size() ? stopRowHashes[row] : 0);
+                    instance.e[0] = 0.0f;
+                }
+                h = layerCacheBytesHash(h, &instance, sizeof(HtmlUIPrimitive));
+            }
             h = layerCacheMix(h, offset(c.x, c.y));
             break;
         case CommandType::SAVE_TEXTURE:
@@ -450,39 +477,22 @@ void RmlRenderer::planLayerCache(){
         key = layerCacheMix(key, layerCachePair(candidate.window.Width(), candidate.window.Height()));
         key = layerCacheMix(key, (uint64_t)samples);
         key = layerCacheMix(key, layerCacheFloat(pixel.x) | (layerCacheFloat(pixel.y) << 32));
-        // A blur's halved passes sample a grid of 2^levels target px (region frames start on
-        // granules): the result moves with its window only by whole steps of that grid. The
-        // scope's own filters and those of the scopes inside it
-        int levels = 0;
-        for (uint32_t k = candidate.push; k <= candidate.composite; k++){
+        // A blur's halved levels start at its window (blurInto): its result moves with the window.
+        // An effect filter reads its own coordinates: where it is is part of its result
+        bool absolute = false;
+        for (uint32_t k = candidate.push; k <= candidate.composite && !absolute; k++){
             const Command& c = commands[k];
             if (c.type != CommandType::COMPOSITE)
                 continue;
-            const int count = (k == candidate.composite) ? scope.filters : c.i[3];
-            for (int f = 0; f < count; f++){
+            for (int f = 0; f < c.i[3]; f++){
                 const Rml::CompiledFilterHandle handle = commandFilters[(size_t)(c.i[2] + f)];
-                if (!handle)
-                    continue;
-                if (htmlui::EffectRenderer::isEffectHandle(handle)){
-                    // an effect reads its own coordinates
-                    levels = 31;
-                    continue;
-                }
-                const RmlCompiledFilter& filter = *reinterpret_cast<const RmlCompiledFilter*>(handle);
-                const float sigma = filter.sigma * pixel.x;
-                if (filter.type == RmlCompiledFilter::Type::BLUR || (filter.type == RmlCompiledFilter::Type::DROP_SHADOW && sigma >= 0.5f)){
-                    int passLevel = 0;
-                    float rest = 0.0f;
-                    sigmaToParameters(sigma, passLevel, rest);
-                    levels = std::max(levels, passLevel);
-                }
+                if (handle && htmlui::EffectRenderer::isEffectHandle(handle))
+                    absolute = true;
             }
         }
-        if (levels > 0){
-            const int mask = (levels >= 31) ? -1 : (1 << levels) - 1;
-            key = layerCacheMix(key, layerCachePair(candidate.window.Left() & mask, candidate.window.Top() & mask));
-            key = layerCacheMix(key, layerCachePair(candidate.frame.Left() & mask, candidate.frame.Top() & mask));
-            key = layerCacheMix(key, layerCachePair(candidate.frame.Width() & 1, candidate.frame.Height() & 1));
+        if (absolute){
+            key = layerCacheMix(key, layerCachePair(candidate.window.Left(), candidate.window.Top()));
+            key = layerCacheMix(key, layerCachePair(candidate.frame.Left(), candidate.frame.Top()));
         }
         scope.key = key;
 

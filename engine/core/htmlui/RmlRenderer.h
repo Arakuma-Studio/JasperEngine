@@ -519,7 +519,9 @@ namespace jasperengine {
         // R30 (tests): the last frame's layer and post-process passes, each by the 64-px granules
         // of the window of the layer it serves (what RmlUi asked the layer to cover; the whole
         // target for a layer pushed without one), and the largest such pass's render area
-        struct LayerPassStats { uint64_t windowPixels = 0; uint32_t largestPass = 0; };
+        // and how many were layer passes and post-process passes (the rest of stats.passes: layer 0's
+        // and the cache's copies)
+        struct LayerPassStats { uint64_t windowPixels = 0; uint32_t largestPass = 0; uint32_t layerPasses = 0; uint32_t postPasses = 0; };
         LayerPassStats getLastLayerPassStats() const { return layerPassStats; }
 
     private:
@@ -698,7 +700,9 @@ namespace jasperengine {
         void stencilClear(uint8_t value);
         bool drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state);
         // size: the images' (the layer's frame)
-        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window, Rml::Vector2i size);
+        // first: the first pass's variant and parameters instead of a copy of the source (a drop shadow)
+        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window, Rml::Vector2i size,
+                      const PostDraw* first = nullptr);
         void applyFilter(RmlFilterContext& context, const RmlCompiledFilter& filter);
         Framebuffer* postTarget(int index);
 
@@ -800,14 +804,19 @@ namespace jasperengine {
         struct ClipShapeRecord {
             Rml::Rectanglef rect;            // relative to the mask's translation
             Rml::Vector2f radii[4];          // top-left, top-right, bottom-right, bottom-left
+            // S92: a convex polygon (counter-clockwise, relative to the translation) the rect bounds; 0: none
+            int polygonPoints = 0;
+            Rml::Vector2f polygon[Rml::ClipShape::MaxPolygonPoints];
         };
         // u_fs_htmluiClip (includes/htmlui_sdf.glsl)
         struct ClipParams {
             float rect[2][4] = {};           // x, y, width, height (document px, before the element transform)
             float radiiX[2][4] = {};
             float radiiY[2][4] = {};
-            float params[4] = {};            // x: shapes, y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
+            float params[4] = {};            // x: shapes, y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF),
+                                             // z: the shape that is a polygon + 1 (0: none), w: its points
             float text[4] = {};              // MTSDF: effect, dilation, blur sigma (document px), distance range (texels)
+            float polygon[Rml::ClipShape::MaxPolygonPoints / 2][4] = {};   // S92: the polygon's points, two a row
         };
         enum class ScopeMode : uint8_t { STENCIL, ELIDED, ANALYTIC };
         // the commands under one clip mask list: from its CLIP_ENABLE to the next one

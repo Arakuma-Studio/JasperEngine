@@ -249,6 +249,9 @@ uint64_t RmlRenderer::signatureOf(size_t first, size_t end, Rml::Vector2i origin
                                       shape.radii[0].x, shape.radii[0].y, shape.radii[1].x, shape.radii[1].y,
                                       shape.radii[2].x, shape.radii[2].y, shape.radii[3].x, shape.radii[3].y};
             h = frameFloats(h, values, 12);
+            // S92: a convex polygon's points
+            if (shape.polygonPoints > 0)
+                h = frameFloats(frameMix(h, (uint64_t)shape.polygonPoints), &shape.polygon[0].x, (size_t)shape.polygonPoints * 2);
         }
         return h;
     };

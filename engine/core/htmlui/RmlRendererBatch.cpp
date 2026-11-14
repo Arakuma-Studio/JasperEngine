@@ -670,10 +670,16 @@ void RmlRenderer::planClipScopes(){
         // S92 (U27): masks that are all rectangles on the target's axes clip a layer composite in
         // the composite's shader (compositeRect) instead of the stencil
         bool squareMasks = !masks.empty();
+        int polygons = 0;
         for (const Mask& mask : masks){
             if (mask.shape < 0 || mask.operation == Rml::ClipMaskOperation::SetInverse){
                 elidable = analytic = squareMasks = false;
                 break;
+            }
+            // S92: a convex polygon clips in the shaders only (its bounds admit what it may not)
+            if (commandClipShapes[(size_t)mask.shape].polygonPoints > 0){
+                elidable = squareMasks = false;
+                polygons++;
             }
             const AxisMap map = axisMapOf(matrixOf(mask.transform));
             if (!map.valid){
@@ -705,6 +711,10 @@ void RmlRenderer::planClipScopes(){
             }
             regions.push_back(region);
         }
+
+        // one polygon per scope fits u_fs_htmluiClip
+        if (polygons > 1)
+            analytic = false;
 
         // the content: up to the next clip change
         int contentTransform = t;
@@ -839,6 +849,14 @@ void RmlRenderer::planClipScopes(){
             scope.clip.params[0] = (float)masks.size();
             for (size_t m = 0; m < masks.size(); m++){
                 const ClipShapeRecord& shape = commandClipShapes[(size_t)masks[m].shape];
+                if (shape.polygonPoints > 0){
+                    scope.clip.params[2] = (float)(m + 1);
+                    scope.clip.params[3] = (float)shape.polygonPoints;
+                    for (int i = 0; i < shape.polygonPoints; i++){
+                        scope.clip.polygon[i / 2][(i % 2) * 2] = shape.polygon[i].x + masks[m].translation.x;
+                        scope.clip.polygon[i / 2][(i % 2) * 2 + 1] = shape.polygon[i].y + masks[m].translation.y;
+                    }
+                }
                 scope.clip.rect[m][0] = shape.rect.Left() + masks[m].translation.x;
                 scope.clip.rect[m][1] = shape.rect.Top() + masks[m].translation.y;
                 scope.clip.rect[m][2] = shape.rect.Width();
