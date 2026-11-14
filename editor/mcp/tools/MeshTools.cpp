@@ -692,7 +692,7 @@ void editor::mcp::registerMeshTools(McpRegistry& registry) {
                 {"lod_count", integer("", 1, 3)},
                 {"lod_reduction", stringEnum("", {"preserve_detail", "balanced", "smallest"})},
                 {"ship_source", boolean("")},
-                {"rest_pose", stringEnum("FBX: a take's first frame as the imported pose.", {"node_values", "first_frame"})},
+                {"rest_pose", stringEnum("", {"node_values", "first_frame"})},
                 {"rest_pose_take", string("")}
             })},
             {"platform", platform},

@@ -6136,7 +6136,8 @@ bool firstVec3(const tinygltf::Model& gltf, int accessorIndex, double out[3]) {
     if (accessor.type != TINYGLTF_TYPE_VEC3 || accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.count == 0 ||
         accessor.bufferView < 0 || accessor.bufferView >= (int)gltf.bufferViews.size()) return false;
     const tinygltf::BufferView& view = gltf.bufferViews[(size_t)accessor.bufferView];
-    if (!view.extensions.empty() || view.buffer < 0 || view.buffer >= (int)gltf.buffers.size()) return false;
+    // a compressed view (a cook's KHR_meshopt_compression) is decoded into its buffer by the parse
+    if (view.buffer < 0 || view.buffer >= (int)gltf.buffers.size()) return false;
     const size_t at = view.byteOffset + accessor.byteOffset;
     const std::vector<unsigned char>& data = gltf.buffers[(size_t)view.buffer].data;
     if (at + 12 > data.size()) return false;

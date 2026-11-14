@@ -95,6 +95,10 @@
         }
     },
     "exceptions": {
+        "set_model_import_settings": {
+            "limit": 1780,
+            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1697 measured + 5 %)"
+        },
         "visualize_navigation": {
             "limit": 1725,
             "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
