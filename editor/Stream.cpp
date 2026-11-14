@@ -3430,7 +3430,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // one entry per file: two scenes on one file would each load and overwrite the other
         std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
-            if (sceneProject.filepath.empty()) {
+            // untitled, or opened without joining the build (S98 REQ-28: the workspace has it)
+            if (sceneProject.filepath.empty() || !sceneProject.inBuild) {
                 continue;
             }
             const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
@@ -4511,6 +4512,27 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
             if (loadedScene.sceneType == SceneType::SCENE_3D) {
                 static_cast<SceneRender3D*>(loadedScene.sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
+            }
+        }
+    }
+
+    // The tabs of scene files project.yaml does not list: opened out of the build (S98 REQ-28),
+    // as they were when the project closed
+    if (hasTabs) {
+        for (const TabEntry& tab : workspace.getTabs()) {
+            if (tab.type != TabType::SCENE || tab.filepath.empty() || fs::path(tab.filepath).extension() != ".scene" ||
+                listedFiles.count(project->sceneFileKey(tab.filepath))) {
+                continue;
+            }
+            const fs::path scenePath = project->getProjectPath() / tab.filepath;
+            std::error_code ec;
+            if (!fs::is_regular_file(scenePath, ec) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
+                continue;
+            }
+            if (project->loadScene(scenePath, true, true, true)) {
+                if (SceneProject* opened = project->getScene(project->findSceneByPath(scenePath))) {
+                    opened->inBuild = false;
+                }
             }
         }
     }

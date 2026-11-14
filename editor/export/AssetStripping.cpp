@@ -207,7 +207,8 @@ editor::AssetStrippingPlan editor::AssetStrippingPlan::make(Project& project) {
     // the build's scenes and what project.yaml names (its scene list and standalone prefabs as
     // edges; the window icon, the audio mixer and every other path as literals)
     for (const SceneProject& scene : project.getScenes()) {
-        if (!scene.filepath.empty()) add(FileUtils::pathToGenericUtf8(project.normalizeToProjectRelative(projectPath / scene.filepath)));
+        // a scene opened without being listed is in no build (S98 REQ-28)
+        if (!scene.filepath.empty() && scene.inBuild) add(FileUtils::pathToGenericUtf8(project.normalizeToProjectRelative(projectPath / scene.filepath)));
     }
     // a scene never saved ships as the editor holds it (S98 REQ-4), and the index has no file of it
     for (SceneProject& scene : project.getScenes()) {

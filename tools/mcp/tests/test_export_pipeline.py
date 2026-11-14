@@ -6,7 +6,8 @@ checks what landed:
 - an earlier export left inside the project is left out of the next one, with W-EXPORT-FOLDER-SKIPPED;
   an output folder inside the project is refused by MCP and the CLI alike;
 - the saved shader keys of a deleted fork go at the next save (a split vert|frag fork keeps its own);
-- Stop saves the variants of the objects scripts made during Play, in scenes a load replaced too;
+- Stop puts the variants of the objects scripts made during Play, in scenes a load replaced too, in the
+  warm-up list, never in a scene file;
 - a never-saved scene is cooked (game.json loads it), with W-SCENE-UNSAVED;
 - the web page step (export-settings/apply.cmake) writes index.html and always links a favicon;
 - a source export in a folder named with spaces, @ and glob characters configures with every source.
@@ -198,8 +199,9 @@ async def test_dead_fork_keys_dropped(ed: Editor):
 
 
 async def test_play_created_objects_record_variants(ed: Editor):
-    """Stop saves the variants of what scripts made: the played scene's (collected when a load
-    replaced it) and the loaded scene's (collected at Stop, before the scripts went)"""
+    """Stop puts the variants of what scripts made in the warm-up list (ShaderWarmup.json), never in
+    a scene file (S98 REQ-27): the played scene's (collected when a load replaced it) and the loaded
+    scene's (collected at Stop, before the scripts went)"""
     second = await ed.call("create_scene", name="Second", path="scenes/Second.scene")
     second_id = second["scene"]["id"]
     await ed.call("create_entity", name="SecondSpawner", type="empty", scene=second_id)
@@ -211,24 +213,29 @@ async def test_play_created_objects_record_variants(ed: Editor):
     await ed.call("save_project")
 
     main_file, second_file = scene_file(ed, "Main"), scene_file(ed, "Second")
-    main_before, second_before = len(saved_keys(main_file)), len(saved_keys(second_file))
+    main_before, second_before = main_file.read_bytes(), second_file.read_bytes()
+    warmup = ed.project / "ShaderWarmup.json"
+
+    def customs() -> list[str]:
+        return [s.get("custom", "") for s in json.loads(warmup.read_text())["shaders"]] if warmup.exists() else []
+
+    def found(feature: str) -> bool:
+        return any(feature in c for c in customs())
+
     await ed.call("play", action="start", scene="Main")
     await ed.call("wait", until="secondReady == true", timeout_seconds=120)
     await ed.call("wait", frames=30)
     await ed.call("play", action="stop", keep_changes="none")
-    # Stop saves the keys from a main-thread task: a few frames later
+    # Stop adds them from a main-thread task: a few frames later
     for _ in range(100):
-        if len(saved_keys(main_file)) > main_before and len(saved_keys(second_file)) > second_before:
+        if found("PBR_CLEARCOAT") and found("PBR_SHEEN"):
             break
         await ed.call("editor_status")
         await asyncio.sleep(0.1)
 
-    def features(path: Path) -> list[str]:
-        return [str(k.get("customShader", "")) for k in saved_keys(path)]
-    ed.check(any("PBR_CLEARCOAT" in f for f in features(main_file)),
-             f"the played scene has the clearcoat sphere's variant ({main_before} keys before): {features(main_file)}")
-    ed.check(any("PBR_SHEEN" in f for f in features(second_file)),
-             f"the loaded scene has the sheen sphere's variant ({second_before} keys before): {features(second_file)}")
+    ed.check(found("PBR_CLEARCOAT"), f"the played scene's clearcoat sphere's variant is listed: {customs()}")
+    ed.check(found("PBR_SHEEN"), f"the loaded scene's sheen sphere's variant is listed: {customs()}")
+    ed.check(main_file.read_bytes() == main_before and second_file.read_bytes() == second_before, "Stop wrote no scene file")
 
 
 async def test_never_saved_scene_ships(ed: Editor):

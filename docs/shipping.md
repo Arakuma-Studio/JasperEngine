@@ -71,8 +71,9 @@ something missing.
   exported workspace alone: Android Studio keeps its `local.properties` and caches.
 - **Shader variants**: a scene's saved variants of a fork whose files were deleted go at its next
   save; one that only Build Settings or the warm-up list still names is
-  left out with `W-SHADER-FORK-MISSING`. Stop saves the variants of what scripts made during Play
-  (also in scenes a load replaced), so the build ships them.
+  left out with `W-SHADER-FORK-MISSING`. Stop adds the variants of what scripts made during Play
+  (also in scenes a load replaced) to the warm-up list (`ShaderWarmup.json`), so the build ships
+  them; it writes no scene file.
 - **A scene never saved**, or one with unsaved changes, ships as the editor holds it (`W-SCENE-UNSAVED`;
   Build Settings lists a never-saved one with a **Save...** button). A never-saved scene that is not
   open fails the build.

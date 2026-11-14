@@ -404,6 +404,7 @@ bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor
                                     std::string& error) {
     bool defaultSky = false;
     for (const SceneProject& sceneProject : project->getScenes()) {
+        if (!sceneProject.inBuild) continue;   // opened without being listed (S98 REQ-28)
         if (!sceneProject.scene) {
             error = "scene " + sceneProject.name + " is not loaded for the cook";
             return false;

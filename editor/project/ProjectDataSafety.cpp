@@ -525,11 +525,16 @@ bool editor::Project::restoreSceneFromBackup(uint32_t sceneId) {
     }
     const fs::path path = sceneProject->filepath;
     const bool selected = getSelectedSceneId() == sceneId;
+    // one out of the build leaves the editor as it closes (S98 REQ-28): it comes back as one
+    const bool inBuild = sceneProject->inBuild;
     // reopened with the backup's content: a fresh scene, its undo history empty
     closeScene(sceneId, true);
     setNextRecoveryChoice(RecoveryChoice::Restore);
-    const bool loaded = loadScene(getProjectPath() / path, true, false, true);
+    const bool loaded = loadScene(getProjectPath() / path, true, !inBuild, true);
     nextRecoveryChoice.reset();
+    if (SceneProject* reopened = loaded && !inBuild ? getScene(findSceneByPath(getProjectPath() / path)) : nullptr) {
+        reopened->inBuild = false;
+    }
     if (loaded && selected) {
         const uint32_t reopened = findSceneByPath(getProjectPath() / path);
         if (reopened != NULL_PROJECT_SCENE) setSelectedSceneId(reopened);

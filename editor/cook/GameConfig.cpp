@@ -38,6 +38,7 @@ player::PlayerConfig editor::cook::makeGameConfig(Project& project, const GameCo
     }
     game.startScene = target.startScene != 0 ? target.startScene : project.getStartSceneId();
     for (const SceneProject& scene : project.getScenes()) {
+        if (!scene.inBuild) continue;   // opened without being listed (S98 REQ-28)
         player::GameScene item;
         item.id = scene.id;
         item.name = scene.name;
