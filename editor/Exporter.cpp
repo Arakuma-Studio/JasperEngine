@@ -78,6 +78,7 @@
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteAtlasCook.h"
 #include "sprite/SpriteSheetBuilder.h"
+#include "texture/PsdLayerImport.h"
 #include "sprite/SpriteSheetSources.h"
 #include "asset/DepEdge.h"
 #include "asset/ImportedAssets.h"
@@ -3151,6 +3152,16 @@ bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     auto ship = [&](const fs::path& from, const std::string& to) { return copyOrFail(from, assetsDst / editor::FileUtils::pathFromUtf8(to)); };
     // S45: texture sheets, then the atlases (a packed member's remap replaces its own sheet)
     for (const auto& [texture, file] : textureSheetFiles) {
+        // S94 F48: a layered PSD/PSB's import (its sheet and pages, lossless) under its cache key
+        if (isPsdPath(texture) && PsdLayerImporter::get().isLayered(texture)) {
+            for (const auto& [key, cacheFile] : PsdLayerImporter::get().exportedFiles(texture)) {
+                const std::string to = std::string(ImportedAssets::kImportedDir) + "/" + PsdLayerImporter::kCacheDir + "/" +
+                                       cacheFile.parent_path().filename().string() + "/" + cacheFile.filename().string();
+                if (!ship(cacheFile, to)) return false;
+                files[ImportedAssets::reference(texture, key)] = to;
+            }
+            continue;
+        }
         const std::string to = std::string(ImportedAssets::kImportedDir) + "/sheets/" + fs::path(file).filename().string();
         if (!ship(file, to)) return false;
         files[ImportedAssets::reference(texture, "sheet")] = to;
