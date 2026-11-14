@@ -143,7 +143,7 @@ TEST_F(NavBakeTest, NoPhysicsWorld){
     }
     if (test::envFlag("JASPER_TEST_UPDATE_FIXTURES")) {
         recorded[tag] = result.polys;
-        std::ofstream out(path);
+        std::ofstream out(path, std::ios::binary);   // LF on every platform
         for (const auto& entry : recorded)
             out << entry.first << " " << entry.second << "\n";
         return;

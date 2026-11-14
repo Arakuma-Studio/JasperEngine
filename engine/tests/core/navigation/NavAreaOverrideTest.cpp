@@ -91,7 +91,7 @@ TEST_F(NavAreaOverrideTest, HashesUnchangedWithoutRuntimeVolumes){
     }
     if (test::envFlag("JASPER_TEST_UPDATE_FIXTURES")) {
         recorded[tag] = hashes;
-        std::ofstream out(path);
+        std::ofstream out(path, std::ios::binary);   // LF on every platform
         for (const auto& platform : recorded) {
             for (const auto& tile : platform.second) {
                 char hex[17];

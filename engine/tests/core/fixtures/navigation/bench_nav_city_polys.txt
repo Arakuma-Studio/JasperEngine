@@ -1,2 +1,3 @@
 apple-clang-arm64 2670
 linux-gcc-x86_64 2643
+windows-msvc-x86_64 2643
