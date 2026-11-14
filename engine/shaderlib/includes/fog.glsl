@@ -5,11 +5,13 @@
 // its own (u_fs_fog), so a shader that reads nothing else of the frame block (an unlit
 // sprite, a tilemap) does not upload it for fog.
 //
-// The height fog (Fog type Height) is compiled into the fogged mesh variants (HAS_HEIGHT_FOG,
-// defined with HAS_FOG for MESH): the same functions then evaluate includes/height_fog.glsl,
+// The height fog (Fog type Height) is compiled into the fogged mesh and particle variants
+// (HAS_HEIGHT_FOG, defined with HAS_FOG for MESH and PARTICLES): the same functions then
+// evaluate includes/height_fog.glsl,
 // colour * T + S along the view ray, from its block (u_fs_heightFog), when the block says the
 // scene fog is a height fog (colour mode >= 0), else the distance fog below. No variant bit:
-// the 32-bit mesh key has none free (S10 took the retired bit 5).
+// the 32-bit mesh key had none free (S10 took the retired bit 5), and a particle variant takes
+// the mesh's scheme so both fog alike.
 #ifndef FOG_GLSL
 #define FOG_GLSL
 
