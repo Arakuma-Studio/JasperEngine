@@ -553,7 +553,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     // shader forks are named by their project-relative paths, inside the assets directory or not
     // (the generated main.cpp reads them from here first, as Project::findShaderFile does)
     content += "    add_definitions(\"-DJASPERENGINE_PROJECT_PATH=\\\"${PROJECT_ROOT}\\\"\")\n";
-    // the cooked scenes, prefabs and game.json the editor keeps up to date (Project::writeSceneSource)
+    // the cooked scenes, prefabs and game.json the editor keeps up to date (Project::writeCookedScene)
     content += "    add_definitions(\"-DJASPERENGINE_COOKED_PATH=\\\"${INTERNAL_DIR}/cooked\\\"\")\n";
     content += "\n";
     content += "    # The compiled shader cache sits in this user's cache directory and is named\n";

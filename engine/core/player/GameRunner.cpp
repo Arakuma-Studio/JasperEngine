@@ -12,6 +12,7 @@
 #include "device/Device.h"
 #include "input/InputActions.h"
 #include "io/Data.h"
+#include "io/StrippedAssets.h"
 #include "manager/PrefabManager.h"
 #include "manager/SceneManager.h"
 #include "native/NativeBridge.h"
@@ -20,6 +21,7 @@
 #include "particles/ParticleWorld.h"
 #include "pixelart/BitmapTextCache.h"
 #include "pixelart/ScreenTransition.h"
+#include "player/ContentManifest.h"
 #include "player/RunControl.h"
 #include "registry/PhysicsLayers.h"
 #include "registry/SortingLayers.h"
@@ -188,7 +190,18 @@ bool player::readGameConfig(const std::string& contentUrl, PlayerConfig& out, st
         return false;
     }
     const std::string text(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
-    return PlayerConfig::parse(text, out, error);
+    if (!PlayerConfig::parse(text, out, error)) return false;
+    // a Compile build's Development Build names the setting at a load of an asset it left out
+    // (S98 REQ-10; the prebuilt player reads its manifest itself); the IDE's build has no manifest
+    Data manifestData;
+    if (manifestData.open((contentUrl + "content-manifest.json").c_str()) == FileErrors::FILEDATA_OK) {
+        ContentManifest manifest;
+        std::string manifestError;
+        const std::string manifestText(reinterpret_cast<const char*>(manifestData.getMemPtr()), manifestData.length());
+        if (ContentManifest::parse(manifestText, manifest, manifestError)) StrippedAssets::set(manifest.stripped);
+        else Log::warn("content-manifest.json: %s", manifestError.c_str());
+    }
+    return true;
 }
 
 void player::applySettings(const PlayerConfig& game) {

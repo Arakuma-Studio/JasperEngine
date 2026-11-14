@@ -33,7 +33,7 @@ namespace jasperengine::player {
     };
 
     // game.json under `contentUrl` ("content://", or a folder path ending in '/'); false with a
-    // message saying what is wrong
+    // message saying what is wrong. A content-manifest.json beside it gives StrippedAssets its list.
     JASPERENGINE_API bool readGameConfig(const std::string& contentUrl, PlayerConfig& out, std::string& error);
 
     // The settings, before any scene: what game.json holds besides its scenes and prefabs
