@@ -65,7 +65,7 @@ python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
 # what Android's default asset filter drops: a folder starting with "_" (it must ship) and a
 # hidden file (it stays out, said)
 mkdir -p "$OUT/debug/assets/_Onboarding"
-cp "$OUT/debug/assets/mask.png" "$OUT/debug/assets/_Onboarding/a.png"
+echo '{"step": 1}' > "$OUT/debug/assets/_Onboarding/level.json"
 touch "$OUT/debug/assets/_Onboarding/.gitkeep"
 # the emulator's renderer has no ASTC: without ETC2 cooks these textures fail to load there
 printf 'texture:\n  androidEtc2Fallback: true\n' >> "$OUT/debug/project.yaml"
@@ -173,13 +173,13 @@ JSON
     AAB=\$OUT/debug-aab/UnifiedLighting.aab
     unzip -Z1 \$APK > \$OUT/logs/apk-entries.txt
     unzip -Z1 \$AAB > \$OUT/logs/aab-entries.txt
-    grep -qx 'assets/game/assets/_Onboarding/a.png' \$OUT/logs/apk-entries.txt || fail 'the APK lost the _Onboarding folder'
+    grep -qx 'assets/game/assets/_Onboarding/level.json' \$OUT/logs/apk-entries.txt || fail 'the APK lost the _Onboarding folder'
     grep -q '\.gitkeep' \$OUT/logs/apk-entries.txt && fail 'the APK holds a hidden file'
     grep -q 'W-ANDROID-ASSET-IGNORED.*_Onboarding/.gitkeep' \$OUT/logs/debug-apk.log || fail 'the hidden file is left out without a word'
     ok 'a folder starting with _ ships; a hidden file is left out, named'
     [[ \$(\$BT/aapt2 dump packagename \$APK | tr -d '\r') == com.jasperengine.packaging.dbg ]] || fail 'the debug key package has no Debug Package Suffix'
     ok 'the debug-key package is com.jasperengine.packaging.dbg (Debug Package Suffix)'
-    grep -qx 'game_content/assets/game/assets/_Onboarding/a.png' \$OUT/logs/aab-entries.txt || fail 'the bundle content is not in game_content'
+    grep -qx 'game_content/assets/game/assets/_Onboarding/level.json' \$OUT/logs/aab-entries.txt || fail 'the bundle content is not in game_content'
     grep -q '^base/assets/game/' \$OUT/logs/aab-entries.txt && fail 'the bundle base module still holds content'
     java -jar \$OUT/bundletool.jar dump manifest --bundle=\$AAB --module=game_content > \$OUT/logs/game_content-manifest.xml
     grep -q 'dist:install-time' \$OUT/logs/game_content-manifest.xml || { cat \$OUT/logs/game_content-manifest.xml; fail 'game_content is not install-time'; }
@@ -192,9 +192,9 @@ JSON
     diff \$OUT/logs/apk-content.txt \$OUT/logs/universal-content.txt > \$OUT/logs/universal-diff.txt \
         || { head -20 \$OUT/logs/universal-diff.txt; fail 'the universal APK of the bundle lacks content the APK has'; }
     ok \"the bundle's content is the install-time pack game_content; its universal APK holds all \$(wc -l < \$OUT/logs/apk-content.txt) files\"
-    export JASPER_TEST_ANDROID_DROP_ENTRY=assets/game/assets/_Onboarding/a.png
+    export JASPER_TEST_ANDROID_DROP_ENTRY=assets/game/assets/_Onboarding/level.json
     must_refuse 'lacks 1 file(s) of the game' debug apk dropped-apk
-    must_refuse 'game_content/assets/game/assets/_Onboarding/a.png' debug aab dropped-aab
+    must_refuse 'game_content/assets/game/assets/_Onboarding/level.json' debug aab dropped-aab
     unset JASPER_TEST_ANDROID_DROP_ENTRY
 "
 echo "ok: the packaging, signing and bundletool checks passed"
@@ -227,10 +227,10 @@ if [[ "${ANDROID_PACKAGING_SOURCE:-0}" == 1 ]]; then
         jarsigner -verify app/build/outputs/bundle/debug/app-debug.aab | grep -q 'jar verified' || { echo 'FAIL: the bundle of the source export is not signed'; exit 1; }
         unzip -Z1 app/build/outputs/apk/debug/app-debug.apk > /src/$OUT/logs/source-apk-entries.txt
         unzip -Z1 app/build/outputs/bundle/debug/app-debug.aab > /src/$OUT/logs/source-aab-entries.txt
-        grep -qx 'assets/_Onboarding/a.png' /src/$OUT/logs/source-apk-entries.txt || { echo 'FAIL: the source APK lost the _Onboarding folder'; exit 1; }
+        grep -qx 'assets/_Onboarding/level.json' /src/$OUT/logs/source-apk-entries.txt || { echo 'FAIL: the source APK lost the _Onboarding folder'; exit 1; }
         [[ \$(\$BT/aapt2 dump packagename app/build/outputs/apk/debug/app-debug.apk | tr -d '\r') == com.jasperengine.packaging.dbg ]] \
             || { echo 'FAIL: the source debug APK has no Debug Package Suffix'; exit 1; }
-        grep -qx 'game_content/assets/_Onboarding/a.png' /src/$OUT/logs/source-aab-entries.txt \
+        grep -qx 'game_content/assets/_Onboarding/level.json' /src/$OUT/logs/source-aab-entries.txt \
             || { echo 'FAIL: the source bundle content is not in the asset pack game_content'; exit 1; }
         if grep -q '^base/assets/_Onboarding/' /src/$OUT/logs/source-aab-entries.txt; then echo 'FAIL: the source bundle base holds content'; exit 1; fi
         # the debug type native code is optimised (RelWithDebInfo: -O2), not AGP's Debug -O0

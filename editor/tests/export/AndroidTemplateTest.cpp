@@ -10,7 +10,11 @@
 
 #include "Exporter.h"
 #include "Project.h"
+#include "Stream.h"
+#include "Workspace.h"
+#include "command/type/AndroidSettingsCmd.h"
 #include "platform/AndroidPackager.h"
+#include "settings/SettingsRegistry.h"
 
 #include <gtest/gtest.h>
 
@@ -73,7 +77,8 @@ TEST(AndroidTemplate, IgnoreAssetsPatternKeepsUnderscoreDirs) {
     std::string error;
     const std::string gradle = exportGradle(*project, dir / "export", error);
     ASSERT_FALSE(gradle.empty()) << error;
-    EXPECT_NE(gradle.find(std::string("ignoreAssetsPattern = '") + platform::kAndroidIgnoreAssetsPattern + "'"), std::string::npos) << gradle;
+    EXPECT_NE(gradle.find(std::string("def jasperIgnoreAssets = '") + platform::kAndroidIgnoreAssetsPattern + "'"), std::string::npos) << gradle;
+    EXPECT_NE(gradle.find("ignoreAssetsPattern = jasperIgnoreAssets"), std::string::npos) << gradle;
     EXPECT_EQ(std::string(platform::kAndroidIgnoreAssetsPattern).find("<dir>_*"), std::string::npos);
     // the prebuilt package leaves out the same names
     EXPECT_FALSE(platform::isIgnoredAndroidAsset("_Onboarding"));
@@ -160,4 +165,38 @@ TEST(AndroidTemplate, BundlesCarryTheInstallTimeAssetPack) {
     const std::string gradle = TestTempDir::read(workspace / "app" / "build.gradle");
     EXPECT_NE(gradle.find("assetPacks = [\":game_content\"]"), std::string::npos) << gradle;
     EXPECT_NE(gradle.find("jasperengineSyncAssetPack"), std::string::npos) << gradle;
+}
+
+// android.debugPackageSuffix (REQ-14, REQ-44, REQ-50): absent in old projects, a dot and one
+// identifier through set_project_settings, kept by project.yaml, one undo step from the window
+TEST(AndroidTemplate, DebugPackageSuffixSetting) {
+    Project old;
+    Stream::decodeProject(&old, YAML::Load("name: Old\n"), Workspace());
+    EXPECT_EQ(old.getAndroidProjectSettings().debugPackageSuffix, "");
+    EXPECT_FALSE(Stream::encodeProject(&old)["android"]) << "the default writes nothing";
+
+    TestTempDir dir("android-suffix-setting");
+    auto project = projectIn(dir / "game");
+    SettingsContext ctx;
+    ctx.projectPtr = project.get();
+    const SettingRow* row = SettingsRegistry::get().find("android.debug_package_suffix");
+    ASSERT_NE(row, nullptr);
+    std::string error;
+    for (const char* bad : {"dbg", ".1dbg", ".d-b", "."}) EXPECT_FALSE(row->set(ctx, mcp::Json(bad), false, error)) << bad;
+    for (const char* good : {".dbg", ".debug", ".dev.local", ""}) EXPECT_TRUE(row->set(ctx, mcp::Json(good), false, error)) << good << ": " << error;
+    ASSERT_TRUE(row->set(ctx, mcp::Json(".dbg"), true, error)) << error;
+
+    const std::string yaml = YAML::Dump(Stream::encodeProject(project.get()));
+    EXPECT_NE(yaml.find("debugPackageSuffix: .dbg"), std::string::npos) << yaml;
+    Project loaded;
+    Stream::decodeProject(&loaded, YAML::Load(yaml), Workspace());
+    EXPECT_EQ(loaded.getAndroidProjectSettings().debugPackageSuffix, ".dbg");
+
+    AndroidProjectSettings changed = project->getAndroidProjectSettings();
+    changed.debugPackageSuffix = ".debug";
+    AndroidSettingsCmd command(project.get(), changed);
+    ASSERT_TRUE(command.execute());
+    EXPECT_EQ(project->getAndroidProjectSettings().debugPackageSuffix, ".debug");
+    command.undo();
+    EXPECT_EQ(project->getAndroidProjectSettings().debugPackageSuffix, ".dbg");
 }

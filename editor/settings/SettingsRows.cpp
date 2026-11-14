@@ -1468,7 +1468,7 @@ std::vector<Setting> mcpSettingsTable() {
         add(stringSetting("android.debug_package_suffix", "Debug Package Suffix: appended to the package name of Android debug builds "
                           "(\".debug\"), so they install beside the release one. Empty: the same package.",
                           [](Project& p) -> std::string& { return p.getAndroidProjectSettings().debugPackageSuffix; },
-                          [](const std::string& v) { return v.size() > 1 && v[0] == '.' && isDottedIdentifier(v.substr(1), javaIdPart); },
+                          [](const std::string& v) { return v.size() > 1 && v[0] == '.' && isDottedIdentifier("x" + v, javaIdPart); },
                           "a dot and a Java identifier, like .debug"));
         add(stringSetting("ios.team_id", "The Apple Developer team id that signs iOS device builds (DEVELOPMENT_TEAM).",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().teamId; }));

@@ -10,6 +10,7 @@
 #include "util/PlatformRules.h"
 #include "io/AtomicFile.h"
 #include "platform/AndroidTools.h"
+#include "util/FileUtils.h"
 #include "util/ZipArchive.h"
 
 #include <algorithm>
@@ -397,15 +398,16 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
     if (!copyTree(package.contentDir, assets / "game", error)) return false;
     std::vector<std::string> content, ignored;
     for (auto it = fs::recursive_directory_iterator(assets, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        const std::string relative = it->path().lexically_relative(assets).generic_string();
-        if (isIgnoredAndroidAsset(it->path().filename().string())) {
-            ignored.push_back(relative);
+        const std::string relative = FileUtils::pathToGenericUtf8(it->path().lexically_relative(assets));
+        if (isIgnoredAndroidAsset(FileUtils::pathToUtf8(it->path().filename()))) {
+            // named as the content has it (below assets/game)
+            ignored.push_back(FileUtils::pathToGenericUtf8(it->path().lexically_relative(assets / "game")));
             if (it->is_directory(ec)) it.disable_recursion_pending();
             continue;
         }
         if (it->is_regular_file(ec)) content.push_back(relative);
     }
-    for (const std::string& relative : ignored) fs::remove_all(assets / relative, ec);
+    for (const std::string& relative : ignored) fs::remove_all(assets / "game" / FileUtils::pathFromUtf8(relative), ec);
     if (!ignored.empty()) {
         std::string list;
         for (size_t i = 0; i < ignored.size() && i < 5; i++) list += (i ? ", " : "") + ignored[i];

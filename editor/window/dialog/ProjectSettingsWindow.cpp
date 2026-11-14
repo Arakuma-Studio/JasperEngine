@@ -410,7 +410,8 @@ static unsigned int parseAndroidVersionCode(const std::string& value) {
 
 // Debug Package Suffix: a dot and a Java identifier (".debug"), as applicationIdSuffix appends it
 static bool isAndroidPackageSuffixValid(const std::string& value) {
-    return value.size() > 1 && value[0] == '.' && isJavaPackageNameValid(value.substr(1));
+    // (a package name of the suffix after any first part: one identifier is enough)
+    return value.size() > 1 && value[0] == '.' && isJavaPackageNameValid("x" + value);
 }
 
 static bool isAndroidVersionCodeValid(const std::string& value) {

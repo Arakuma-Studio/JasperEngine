@@ -41,6 +41,18 @@ gradle.taskGraph.whenReady { graph ->
                          "build the bundle in a Gradle run of its own for the install-time asset pack game_content")
     }
 }
+// Android's asset filter: AGP's default without "<dir>_*", which leaves out every folder starting
+// with "_" (Unity names such as Textures/_Glows); hidden and VCS files stay out. The syncs apply it
+// too, so the asset pack and the content check below see what ships, and the names are said.
+def jasperIgnoreAssets = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+def jasperIgnored = { String name ->
+    def lower = name.toLowerCase()
+    jasperIgnoreAssets.split(':').any { token ->
+        def pattern = token.replaceFirst('^!', '').toLowerCase()
+        pattern.startsWith('*') ? lower.endsWith(pattern.substring(1)) :
+            pattern.endsWith('*') ? lower.startsWith(pattern.substring(0, pattern.length() - 1)) : lower == pattern
+    }
+}
 [jasperengineSyncAssets: false, jasperengineSyncAssetPack: true].each { taskName, pack ->
     def destination = pack ? jasperenginePackAssetsDir : jasperengineAssetsDir
     // a Sync of no files is skipped (NO-SOURCE) and would leave an earlier run's content there
@@ -50,6 +62,7 @@ gradle.taskGraph.whenReady { graph ->
         // an empty folder: the asset pack's collection fails on a missing one
         doLast { destination.mkdirs() }
     }
+    def leftOut = new TreeSet<String>()
     tasks.register(taskName, Sync) {
         dependsOn clear
         from(projectSourceRootAbs + '/assets') {
@@ -57,10 +70,18 @@ gradle.taskGraph.whenReady { graph ->
         }
         from(projectSourceRootAbs + '/lua')
         into destination
-        exclude { jasperContent.inPack != pack }
+        exclude { element ->
+            if (jasperContent.inPack != pack) return true
+            if (!jasperIgnored(element.name)) return false
+            leftOut << element.relativePath.pathString
+            return true
+        }
         inputs.property("contentInPack", providers.provider { jasperContent.inPack })
         // the export keeps the two trees apart: a path in both is a project error
         duplicatesStrategy = DuplicatesStrategy.FAIL
+        doLast {
+            if (leftOut) logger.lifecycle("JasperEngine: Android packages leave out hidden and version control files: " + leftOut.join(", "))
+        }
     }
 }
 if (!jasperPlayer) {
@@ -106,12 +127,11 @@ android {
     // installs it (tools/ci/check_android_image.sh)
     ndkVersion = "28.2.13676358"
     // videos stay uncompressed in the APK: the decoders open them by file descriptor
-    // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8).
-    // The asset filter is Android's default without "<dir>_*", which leaves out every folder
-    // starting with "_" (Unity names such as Textures/_Glows); hidden and VCS files stay out
+    // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8);
+    // the asset filter keeps folders starting with "_" (jasperIgnoreAssets)
     androidResources {
         noCompress 'mp4', 'm4v', 'mov', 'webm'
-        ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        ignoreAssetsPattern = jasperIgnoreAssets
     }
     if (!jasperPlayer) {
         assetPacks = [":game_content"]
