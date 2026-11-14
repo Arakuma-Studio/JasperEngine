@@ -5249,8 +5249,8 @@ CASES = [
                          "language the project does not ship and answers the keys each language still misses. Asked to "
                          "fill a table's missing translations, agents should use it (the localization group) rather than "
                          "hand-edit the JSON, which gives no undo, no check of the plural forms and no missing report. The "
-                         "tool is in a group, so only the guide's Other areas entry leads to it.",
-        "text_at_issue": "Guide 'Other areas': 'localization (edit_string_table)'; edit_string_table description: 'set writes "
+                         "tool is in a group, so only the guide's Other areas entry and Tool groups line lead to it.",
+        "text_at_issue": "Guide 'Other areas': 'localization' and the Tool groups line's 'localization'; edit_string_table description: 'set writes "
                          "{key: {language: text or plural forms or null, comment}} in one undo step'.",
         "source": "S95 WP-6 (new tool text); no failure on record",
         "prompt": "assets/Localization/UI.stringtable lacks Spanish for two keys: menu.quit is \"Salir\", and hud.lives is "
