@@ -59,7 +59,9 @@ async def test_import_unity_controller_and_mask(ed: Editor):
     ed.check("set_state" in out.get("next", ""), f"unmapped items give a next: {out.get('next')}")
     layers = json.loads((ed.project / path).read_text())["layers"]
     ed.check_eq([layer["name"] for layer in layers], ["Base Layer", "Upper"])
-    ed.check_eq(layers[1]["mask"]["path"], "anim/UpperBody.mask")
+    # relative to the project's assets folder (this project's is its root)
+    ed.check_eq(layers[1]["mask"]["path"], "assets/anim/UpperBody.mask")
+    ed.check(layers[1]["mask"]["guid"] == json.loads((ed.project / "assets" / "anim" / "UpperBody.mask").read_text())["guid"], layers[1]["mask"])
 
     mask = "assets/anim/upper.mask"
     out = await ed.call("edit_avatar_mask", {"path": mask, "create": {"unity": str(ANIMATIONS / "UpperBody.mask")}})
