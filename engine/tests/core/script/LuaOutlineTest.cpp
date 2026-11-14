@@ -9,6 +9,7 @@
 #include "component/OutlineComponent.h"
 #include "object/Primitive.h"
 #include "script/LuaBinding.h"
+#include "util/Color.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -66,8 +67,9 @@ TEST(LuaOutline, HandleAddsAndEditsTheComponent){
     EXPECT_FLOAT_EQ(outline->width, 0.05f);
     EXPECT_FALSE(outline->includeChildren);
     EXPECT_FALSE(outline->enabled);
-    // stored linear: sRGB 0.5 is about 0.214
-    EXPECT_NEAR(outline->color.y, 0.214f, 0.002f);
+    // stored linear, as the engine converts sRGB
+    EXPECT_NEAR(outline->color.y, Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).y, 1e-5f);
+    EXPECT_LT(outline->color.y, 0.25f);
     EXPECT_FLOAT_EQ(outline->color.w, 0.75f);
 }
 
