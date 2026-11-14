@@ -594,9 +594,10 @@ TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
     sun.setType(LightType::DIRECTIONAL);
     sun.setDirection(0.2f, -1.0f, -0.3f);
     sun.setColor(1.0f, 1.0f, 1.0f);
-    sun.setIntensity(1.0f);
+    // dim enough that nothing saturates: a tint shows in the channels' ratios
+    sun.setIntensity(0.4f);
     sun.setShadows(false);
-    scene.setGlobalIllumination(0.5f, Vector3(1.0f, 1.0f, 1.0f));
+    scene.setGlobalIllumination(0.2f, Vector3(1.0f, 1.0f, 1.0f));
     Fog fog(&scene);
     fog.setType(FogType::HEIGHT);
     fog.setColorMode(FogColorMode::LIT);
@@ -626,7 +627,8 @@ TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
     writePng(getOutputDirectory() + "/atmosphere_lit_volume.png", image, width, (int)GpuEnvironment::target().getHeight());
     int insideX = 0, insideY = 0, outsideX = 0, outsideY = 0;
     ASSERT_TRUE(project(camera, Vector3(0.0f, 3.0f, -10.0f), insideX, insideY));
-    ASSERT_TRUE(project(camera, Vector3(12.0f, 3.0f, -39.0f), outsideX, outsideY));
+    // beside the volume on screen: the fog alone, up to the wall
+    ASSERT_TRUE(project(camera, Vector3(22.0f, 3.0f, -39.0f), outsideX, outsideY));
     auto mean = [&](int x, int y, int c){
         double sum = 0.0;
         for (int j = y - 2; j < y + 2; j++)
@@ -642,6 +644,7 @@ TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
     EXPECT_LT(outsideR, outsideG * 0.5);
     // the volume is bright and white: only the thin green fog in front of it tints it
     EXPECT_GT(insideR, 60.0);
+    EXPECT_LT(insideG, 250.0);
     EXPECT_GT(insideR, insideG * 0.8);
     EXPECT_NEAR(insideB, insideR, insideR * 0.05);
     EXPECT_NO_ENGINE_ERRORS();
