@@ -15,7 +15,7 @@ EDITOR = {"create": True, "name": "Physics World Settings"}
 
 async def test_world_settings_scene_lua_and_step_cap(ed: Editor):
     ed.require_tools("set_scene_settings", "get_scene_settings", "edit_colliders", "play", "wait", "eval_lua", "editor_status")
-    sid = (await ed.call("create_scene", name="World", type="2d"))["scene"]["id"]
+    sid = (await ed.call("create_scene", path="scenes/World.scene", name="World", type="2d"))["scene"]["id"]
 
     names = ["physics_2d_points_per_meter", "physics_2d_max_rotation", "physics_2d_bounce_threshold",
              "physics_2d_warm_starting", "physics_3d_velocity_iterations", "physics_3d_collision_steps"]
@@ -44,11 +44,11 @@ async def test_world_settings_scene_lua_and_step_cap(ed: Editor):
     error = await ed.call("set_scene_settings", scene=sid, settings={"physics_2d_points_per_meter": 0}, expect_error=True)
     ed.check("physics_2d_points_per_meter" in error, error)
 
-    wheel = (await ed.call("create_entity", scene=sid, name="Wheel", type="rigidbody2d", position=[0, 300]))["entity_id"]
+    wheel = (await ed.call("create_entity", scene=sid, name="Wheel", type="rigidbody2d", position=[0, 300, 0]))["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=wheel, body_type="dynamic", add=[{"shape": "circle", "radius": 32}],
                   body={"allow_fast_rotation": True})
     props = await ed.call("get_entity", scene=sid, entity=wheel, components=["rigidbody2d"], properties=["allowFastRotation"])
-    ed.check("True" in str(props) or "true" in str(props), f"allowFastRotation saved on the body: {props}")
+    ed.check(props["components"]["rigidbody2d"]["allowFastRotation"] is True, f"edit_colliders body allow_fast_rotation: {props}")
     await ed.call("save_scene", scene=sid)
 
     await ed.call("play", action="start", scene=sid, fixed_fps=60, auto_pause=True)
@@ -63,11 +63,14 @@ async def test_world_settings_scene_lua_and_step_cap(ed: Editor):
         status = await ed.call("editor_status")
         ed.check_eq(status["physics"]["dropped_fixed_steps"], 0, "nothing dropped with the automatic cap")
 
-        # 240 Hz steps in 60 fps frames, at most one a frame: three dropped each frame
-        await ed.call("eval_lua", code="Time.fixedDeltaTime = 1 / 240; Time.maximumFixedStepsPerFrame = 1")
+        # 240 Hz steps in 60 fps frames, at most one a frame: the others dropped
+        start = (await ed.call("eval_lua", code="Time.fixedDeltaTime = 1 / 240; Time.maximumFixedStepsPerFrame = 1; "
+                                                "return Time.frameCount"))["values"][0]
         await ed.call("wait", frames=10)
-        dropped = (await ed.call("eval_lua", code="return Time.droppedFixedSteps"))["values"][0]
-        ed.check(25 <= dropped <= 31, f"about 3 a frame over 10 frames: {dropped}")
+        dropped, frames = (await ed.call("eval_lua", code="return {Time.droppedFixedSteps, Time.frameCount}"))["values"][0]
+        frames -= start
+        # each 60 fps frame holds 4 steps of 1/240 s, less a hair (the step is a float): 2 or 3 dropped
+        ed.check(frames > 0 and 2 * frames <= dropped <= 3 * frames, f"2 or 3 a frame: {dropped} over {frames} frames")
         status = await ed.call("editor_status")
         ed.check_eq(status["physics"]["dropped_fixed_steps"], dropped, "editor_status counts them too")
         warnings = await ed.call("read_console", types=["warning"], contains="fixed step(s):", limit=20)

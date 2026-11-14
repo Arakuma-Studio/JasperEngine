@@ -14079,7 +14079,7 @@ void editor::InspectorWindow::show(){
                     auto physicsWorldFoldout = [&](bool is3D) {
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        const bool open = ImGui::TreeNodeEx(is3D ? "World##physics_3d_world" : "World##physics_2d_world", ImGuiTreeNodeFlags_SpanAllColumns);
+                        const bool open = ImGui::TreeNodeEx(is3D ? "World##physics_3d_world" : "World##physics_2d_world", ImGuiTreeNodeFlags_SpanAvailWidth);
                         ImGui::SetItemTooltip("The solver's tuning (Unity's Physics settings): iterations, bounce and sleep thresholds, stiffness");
                         if (!open) return;
                         for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
