@@ -14,6 +14,7 @@
 #include "Project.h"
 #include "texture/Material.h"
 #include "texture/TextureCookQueue.h"
+#include "texture/TextureExport.h"
 
 #include <unistd.h>
 
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -94,6 +96,35 @@ TEST(ProjectTextureSources, LeavesExrOutOfExport) {
     const std::vector<std::string> sources = projectTextureSources(*h.project, true);
     EXPECT_NE(std::find(sources.begin(), sources.end(), "listed.png"), sources.end());
     EXPECT_EQ(std::find(sources.begin(), sources.end(), "source.exr"), sources.end());
+}
+
+// S94 F50: a game cannot decode TIFF or PSB, so export cooks them; a reference that reads the
+// source file itself (an HTML UI image) stops the export, naming the file and the reader
+TEST(ProjectTextureSources, CooksTiffAndPsbAndRefusesTheirSourceReaders) {
+    AssetFilesProject& h = assetFilesProject();
+    ASSERT_TRUE(h.ready);
+    const fs::path assets = h.project->getAssetsPath();
+    std::ofstream(assets / "photo.tif", std::ios::binary) << "tif";
+    std::ofstream(assets / "art.psb", std::ios::binary) << "psb";
+    h.project->refreshAssetDatabase(true);
+    const std::vector<std::string> sources = projectTextureSources(*h.project, true);
+    EXPECT_NE(std::find(sources.begin(), sources.end(), "photo.tif"), sources.end());
+    EXPECT_NE(std::find(sources.begin(), sources.end(), "art.psb"), sources.end());
+    std::map<std::string, TextureCookInputs> inputs;
+    std::string error;
+    h.project->getAssetIndex().waitUntilReady();
+    ASSERT_TRUE(TextureExport::gather(*h.project, inputs, error)) << error;
+    EXPECT_EQ(inputs.count("photo.tif"), 1u);
+
+    std::ofstream(assets / "menu.html") << "<html><body><img src=\"photo.tif\"/></body></html>\n";
+    h.project->refreshAssetDatabase(true);
+    h.project->getAssetIndex().waitUntilReady();
+    EXPECT_FALSE(TextureExport::gather(*h.project, inputs, error));
+    EXPECT_NE(error.find("photo.tif"), std::string::npos) << error;
+    EXPECT_NE(error.find("menu.html"), std::string::npos) << "names the reader: " << error;
+    fs::remove(assets / "menu.html");
+    h.project->refreshAssetDatabase(true);
+    h.project->getAssetIndex().waitUntilReady();
 }
 
 TEST(ProjectResolveAsset, AHitTouchesNothingAndAMissImportsOnlyThatPath) {

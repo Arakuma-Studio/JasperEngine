@@ -1248,6 +1248,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/texture/TiffReader.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
     ${EDITOR_DIR}/window/ImporterFields.cpp
     ${EDITOR_DIR}/window/ModelImporterView.cpp
