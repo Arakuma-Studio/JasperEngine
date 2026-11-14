@@ -44,6 +44,7 @@
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
 #include "io/AtomicFile.h"
+#include "profiler/Profile.h"
 #include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/CompiledController.h"
@@ -9224,6 +9225,7 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
         }
     }
     // what the Scene view hides (R22, R23) has no icon or gizmo there either
+    JE_PROFILE_SCOPE("Scene View Gizmos");
     sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneview::visibleEntities(*sceneProject, sceneProject->entities),
                                       sceneProject->mainCamera, sceneProject->displaySettings);
 }

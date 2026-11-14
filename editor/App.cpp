@@ -3117,14 +3117,17 @@ void editor::App::show(){
     dockspace_id = ImGui::GetID("MyDockspace");
 
     // the version control snapshot and the diffs before the windows read them (S29)
-    vcsUi->update();
-    showMenu();
-    EditorDiagnostics::pollNotices();
-    showCrashNotice();
-    mainToolbar->show();
-    statusBar->show();
-    showFooter();
-    showHangToast();
+    {
+        JE_PROFILE_SCOPE("Menu and Toolbars");
+        vcsUi->update();
+        showMenu();
+        EditorDiagnostics::pollNotices();
+        showCrashNotice();
+        mainToolbar->show();
+        statusBar->show();
+        showFooter();
+        showHangToast();
+    }
 
     isInitialized = true;
 
@@ -3177,10 +3180,20 @@ void editor::App::show(){
         processNextSaveDialog();
     }
 
-    hierarchyWindow->show();
-    projectWindow->show();
+    {
+        JE_PROFILE_SCOPE("Hierarchy");
+        // Maximize On Play covers the panels: the Hierarchy is not built under it (S98 REQ-31)
+        hierarchyWindow->show(gameWindow->isMaximizedNow());
+    }
+    {
+        JE_PROFILE_SCOPE("Project Window");
+        projectWindow->show();
+    }
     imageViewerWindow->show();
-    consoleWindow->show();
+    {
+        JE_PROFILE_SCOPE("Console");
+        consoleWindow->show();
+    }
     animationWindow->show();
     animatorWindow->show();
     avatarWindow->show();
@@ -3225,7 +3238,10 @@ void editor::App::show(){
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
-    inspectorWindow->show();
+    {
+        JE_PROFILE_SCOPE("Inspector");
+        inspectorWindow->show();
+    }
     mcpActivityWindow->show();
     systemsWindow->show();
     missingAssetsWindow->show();
@@ -3243,12 +3259,18 @@ void editor::App::show(){
     playModeChangesWindow->show();
     bookmarksWindow->show();
     codeEditor->show();
-    gameWindow->show();
+    {
+        JE_PROFILE_SCOPE("Game Window");
+        gameWindow->show();
+    }
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
     if (project.getActivePrefabStage()) {
         dockTabWindow(SceneWindow::PREFAB_STAGE_WINDOW_ID);
     }
-    sceneWindow->show();
+    {
+        JE_PROFILE_SCOPE("Scene Window");
+        sceneWindow->show();
+    }
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
     drawSaveProjectAsTemplate();
@@ -4372,7 +4394,7 @@ void editor::App::engineRender(){
         // Beside a running game the Engine's frame is the game's: another scene's view
         // draws on its own, so the game still updates once per frame
         if (project.getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
-            if (sceneProject.isVisible && sceneNeedsRender(sceneProject, isSelected)) {
+            if (sceneProject.isVisible && !gameWindow->isMaximizedNow() && sceneNeedsRender(sceneProject, isSelected)) {
                 renderSceneBesideGame(sceneProject);
             }
             continue;
@@ -4586,7 +4608,8 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     const int sceneWidth = sceneWindow->getWidth(sceneProject.id);
     const int sceneHeight = sceneWindow->getHeight(sceneProject.id);
-    const bool sceneViewShown = sceneProject.isVisible && sceneWidth > 0 && sceneHeight > 0;
+    // Maximize On Play covers the Scene view: it updates no gizmo and draws nothing (S98 REQ-31)
+    const bool sceneViewShown = sceneProject.isVisible && sceneWidth > 0 && sceneHeight > 0 && !gameWindow->isMaximizedNow();
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
