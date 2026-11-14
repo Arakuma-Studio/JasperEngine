@@ -368,7 +368,8 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         setRadii(instance.e, instance.f, primitive.clip_radii);
         break;
     case Rml::BoxPrimitive::Kind::Gradient: {
-        // the fill area painted by the gradient (htmlui_gradient.frag's p, v and stops, at most four)
+        // the fill area painted by the gradient: htmlui_gradient.frag's function, p and v, its stops
+        // (four in the instance, more in the shader's row of the stop table)
         instance.params[0] = (float)HtmlUIPrimitive::GRADIENT;
         const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(primitive.shader);
         if (!shader)
@@ -377,20 +378,25 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         instance.d[1] = shader->p.y;
         instance.d[2] = shader->v.x;
         instance.d[3] = shader->v.y;
-        const int count = std::min((int)shader->stopPositions.size(), (int)HtmlUIPrimitive::GRADIENT_STOPS);
-        for (int i = 0; i < count; i++){
-            instance.e[i] = shader->stopPositions[(size_t)i];
-            const Rml::Colourf& c = shader->stopColors[(size_t)i];
-            setColor(instance.border[i], Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * 255.0f), (Rml::byte)std::lround(c.green * 255.0f),
-                                                                   (Rml::byte)std::lround(c.blue * 255.0f), (Rml::byte)std::lround(c.alpha * 255.0f)));
+        const int count = std::min((int)shader->stopPositions.size(), (int)HtmlUIPrimitive::GRADIENT_TABLE_STOPS);
+        if (count > HtmlUIPrimitive::GRADIENT_STOPS){
+            instance.e[0] = (float)std::max(shader->stopRow, 0);
+        }else{
+            for (int i = 0; i < count; i++){
+                instance.e[i] = shader->stopPositions[(size_t)i];
+                const Rml::Colourf& c = shader->stopColors[(size_t)i];
+                setColor(instance.border[i], Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * 255.0f), (Rml::byte)std::lround(c.green * 255.0f),
+                                                                       (Rml::byte)std::lround(c.blue * 255.0f), (Rml::byte)std::lround(c.alpha * 255.0f)));
+            }
         }
-        instance.f[0] = (shader->function == RmlCompiledShader::Function::RADIAL) ? 1.0f : 0.0f;
+        instance.f[0] = (float)(int)shader->function;
         instance.f[1] = (float)count;
         // the shader's (0, 0) in the area's px (a background tile's origin) and the tiles' period
+        // (negative: one tile of that length)
         instance.params[1] = primitive.gradient_origin.x;
         instance.params[3] = primitive.gradient_origin.y;
-        instance.f[2] = std::max(primitive.gradient_repeat.x, 0.0f);
-        instance.f[3] = std::max(primitive.gradient_repeat.y, 0.0f);
+        instance.f[2] = primitive.gradient_repeat.x;
+        instance.f[3] = primitive.gradient_repeat.y;
         break;
     }
     }
@@ -400,9 +406,13 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
 bool RmlRenderer::SupportsGradientPrimitive(Rml::CompiledShaderHandle handle){
     if (!sdfPrimitivesEnabled || !handle || htmlui::EffectRenderer::isEffectHandle(handle))
         return false;
+    // every function, plain and repeating, of up to 16 stops (S92 R7): at most four in the
+    // instance, more through the stop table; a list longer than 16 keeps the mesh path
     const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(handle);
-    const bool plain = shader->function == RmlCompiledShader::Function::LINEAR || shader->function == RmlCompiledShader::Function::RADIAL;
-    return plain && !shader->stopPositions.empty() && shader->stopPositions.size() <= (size_t)HtmlUIPrimitive::GRADIENT_STOPS;
+    const size_t count = shader->stopPositions.size();
+    if (count == 0 || shader->declaredStops > (size_t)HtmlUIPrimitive::GRADIENT_TABLE_STOPS)
+        return false;
+    return count <= (size_t)HtmlUIPrimitive::GRADIENT_STOPS || shader->stopRow >= 0;
 }
 
 bool RmlRenderer::classifyQuadList(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, std::vector<HtmlUIPrimitive>* instances){
@@ -475,7 +485,15 @@ void RmlRenderer::RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives
         const size_t first = commandPrimitives.size();
         for (const Rml::BoxPrimitive& primitive : primitives)
             commandPrimitives.push_back(toInstance(primitive, Rml::Vector2f(0.0f, 0.0f)));
-        const uint64_t hash = hashBytes(0x2545f4914f6cdd1dull, commandPrimitives.data() + first, primitives.size() * sizeof(HtmlUIPrimitive));
+        uint64_t hash = hashBytes(0x2545f4914f6cdd1dull, commandPrimitives.data() + first, primitives.size() * sizeof(HtmlUIPrimitive));
+        // a gradient's stops in the table are what it draws too (a row is used again by another
+        // gradient once released)
+        for (const Rml::BoxPrimitive& primitive : primitives){
+            const RmlCompiledShader* shader = primitive.kind == Rml::BoxPrimitive::Kind::Gradient ? reinterpret_cast<const RmlCompiledShader*>(primitive.shader)
+                                                                                                    : nullptr;
+            if (shader && shader->stopRow >= 0 && (size_t)shader->stopRow < stopRowHashes.size())
+                hash = mix(hash, stopRowHashes[(size_t)shader->stopRow]);
+        }
         command.i[2] = (int32_t)(uint32_t)(hash & 0xffffffffull);
         command.i[3] = (int32_t)(uint32_t)(hash >> 32);
         return;
@@ -547,6 +565,10 @@ bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_
             break;
         }
     }
+    // the gradients' stop table (S92 R7): white while no gradient has a row
+    if (primStopsSlot.first >= 0)
+        primObject.addTexture(primStopsSlot, ShaderStageType::FRAGMENT, currentStopTable());
+    auditStencilDraw(state);
     if (!primObject.beginDraw(state))
         return false;
     // `matrix` is to the target's clip space, the layer drawn into covers `frame` of it
@@ -1472,6 +1494,7 @@ void RmlRenderer::drawRun(const BatchRun& run){
             geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, run.texture ? run.texture->render : &placeholderWhite);
             stats.textureBinds++;
             noteDrawn(run.texture);
+            auditStencilDraw(state);
             if (!geometryObject.beginDraw(state))
                 return;
             HtmlUIParams params;

@@ -80,8 +80,17 @@ public:
 	void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
 	/// Fork (S16-F4): whether the rectangle (absolute, before any transform) is drawn wholly outside the scissor region, so that
 	/// painting it may be skipped: the render interface culls (RenderInterface::CullsOffscreenPaint), a scissor region is set
-	/// and no transform applies. False when unsure.
+	/// and no transform applies but a scale and translation (fork, S92-F3). False when unsure.
 	bool IsOutsideScissor(Rectanglef rectangle);
+	/// Fork (S92-F3): a transform that only scales and translates (no rotation, skew or perspective), from document px to
+	/// document px, and a rectangle mapped by it.
+	struct AxisAlignedTransform {
+		Vector2f scale = Vector2f(1.f);
+		Vector2f offset = Vector2f(0.f);
+		Rectanglef Map(Rectanglef rectangle) const;
+	};
+	/// Fork (S92-F3): the transform as one (none: the identity); false when it rotates, skews or projects.
+	static bool GetAxisAlignedTransform(const Matrix4f* transform, AxisAlignedTransform& out);
 	/// Fork (S16-F5): RenderInterface::SupportsGradientPrimitive of the shader, and its handle for the primitive.
 	bool SupportsGradientPrimitive(const CompiledShader& shader, CompiledShaderHandle& handle);
 
@@ -161,6 +170,21 @@ public:
 	/// Its window (window coordinates), invalid when unbounded.
 	Rectanglei GetClipRootWindow() const { return clip_roots.empty() ? Rectanglei::MakeInvalid() : clip_roots.back().window; }
 
+	/// Fork (S92-F2): the clip of an element's 'clip-path' basic shape drawn without a mask layer: its shapes (an analytic
+	/// clip for the render interface, their meshes for the stencil) and the scissor region of their bounds (invalid: none).
+	/// Everything drawn until it is popped is clipped by it as by an ancestor's overflow clip, intersected with the clips
+	/// ElementUtilities::GetRenderClippingRegion finds; within an effects layer pushed after it (PushClipRoot), only that
+	/// layer's composite is (P7-F1). Pushed and popped by ElementEffects around the element.
+	struct ShapeClip {
+		ClipMaskGeometryList masks;
+		Rectanglei bounds;
+		size_t clip_root_depth = 0;
+	};
+	void PushShapeClip(ClipMaskGeometryList masks, Rectanglei bounds);
+	void PopShapeClip();
+	const Vector<ShapeClip>& GetShapeClips() const { return shape_clips; }
+	size_t GetClipRootDepth() const { return clip_roots.size(); }
+
 	/// Fork (P7-F2): the region the top layer covers (window coordinates): the viewport, or the region of a layer pushed
 	/// with PushLayer(region) beyond it, and of the layers pushed on it. Scissor regions are clamped to it.
 	Rectanglei GetLayerRegion() const;
@@ -223,6 +247,7 @@ private:
 		Rectanglei window;
 	};
 	Vector<ClipRoot> clip_roots;
+	Vector<ShapeClip> shape_clips;
 
 	friend class RenderManagerAccess;
 };

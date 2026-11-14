@@ -303,9 +303,13 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	{
 		group_opacity.Release();
 	}
-	// Masks: mask-image layers (ElementBackgroundLayers, phase 3 p3-paint).
+	// Masks: mask-image layers (ElementBackgroundLayers, phase 3 p3-paint); fork (S92-F2): a clip-path basic shape alone
+	// clips instead.
 	const bool has_mask = element->GetComputedValues().has_mask_image();
-	const bool layer = (!filters.empty() || has_mask || (group && group_opacity));
+	ClipMaskGeometryList shape_clips;
+	if (render_stage == RenderStage::Enter)
+		shape_clipped = (has_mask && filters.empty() && backdrop_filters.empty() && !(group && group_opacity) && ShapeClips(shape_clips));
+	const bool layer = (!filters.empty() || (has_mask && !shape_clipped) || (group && group_opacity));
 
 	if (!decorators.empty())
 	{
@@ -322,12 +326,41 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		}
 	}
 
-	if (!layer && backdrop_filters.empty())
+	if (!layer && backdrop_filters.empty() && !shape_clipped)
 		return;
 
 	RenderManager* render_manager = element->GetRenderManager();
 	if (!render_manager)
 		return;
+
+	if (shape_clipped)
+	{
+		if (render_stage == RenderStage::Enter)
+		{
+			// the shapes' bounds as a scissor region where the transform keeps them a rectangle
+			Rectanglef bounds = Rectanglef::MakeInvalid();
+			for (const ClipMaskGeometry& clip : shape_clips)
+			{
+				const Rectanglef rect = clip.shape.rect.Translate(clip.absolute_offset);
+				bounds = (bounds.Valid() ? bounds.Intersect(rect) : rect);
+			}
+			RenderManager::AxisAlignedTransform axis_aligned;
+			Rectanglei scissor = Rectanglei::MakeInvalid();
+			if (bounds.Valid() && RenderManager::GetAxisAlignedTransform(shape_clips.front().transform, axis_aligned))
+			{
+				bounds = axis_aligned.Map(bounds);
+				Math::ExpandToPixelGrid(bounds);
+				scissor = Rectanglei(bounds);
+			}
+			render_manager->PushShapeClip(std::move(shape_clips), scissor);
+		}
+		else if (render_stage == RenderStage::Exit)
+		{
+			render_manager->PopShapeClip();
+			shape_clipped = false;
+		}
+		return;
+	}
 
 	Rectanglei initial_scissor_region = render_manager->GetScissorRegion();
 
@@ -516,6 +549,38 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 			render_manager->SetScissorRegion(initial_scissor_region);
 		}
 	}
+}
+
+// Whether drawing the element or its subtree may push a layer (a filter, backdrop filter, mask, group opacity or text shadow
+// blur): the renderer's analytic clip does not reach into a layer, and a stencil clip is coarser than the mask layer at one
+// sample, so such a shape keeps its mask layer.
+static bool SubtreeMayPushLayers(Element* element)
+{
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+	{
+		Element* child = element->GetChild(i);
+		const ComputedValues& computed = child->GetComputedValues();
+		if (computed.has_filter() || computed.has_backdrop_filter() || computed.has_mask_image() || computed.opacity() < 1.f ||
+			computed.has_text_shadow())
+			return true;
+		if (SubtreeMayPushLayers(child))
+			return true;
+	}
+	return false;
+}
+
+bool ElementEffects::ShapeClips(ClipMaskGeometryList& out)
+{
+	out.clear();
+	if (!mask_layers)
+		mask_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Mask);
+	if (!mask_layers->GetClipShapes(element, out) || SubtreeMayPushLayers(element))
+	{
+		out.clear();
+		return false;
+	}
+	return true;
 }
 
 void ElementEffects::DirtyEffects()
