@@ -1041,6 +1041,9 @@ void RmlRenderer::planRuns(){
     const size_t count = commands.size();
     for (size_t ci = 0; ci < count; ci++){
         const Command& c = commands[ci];
+        // S92 R9: what a scope drawn from the layer cache draws is not replayed
+        if (!cacheOps.empty() && cacheOps[ci] == CacheOp::SKIP)
+            continue;
         switch (c.type){
         case CommandType::TRANSFORM: {
             const int next = c.flag ? c.i[0] : -1;

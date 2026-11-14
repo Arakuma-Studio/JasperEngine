@@ -891,6 +891,11 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
         return nullptr;
     }
     texture->render = texture->ownedRender.get();
+    // S92 R9: a small one by its texels (a layer scope's key; larger ones keep their serial)
+    if (rgba && size[0] <= kLayerCachePixelHashBytes){
+        texture->pixelHash = layerCacheTextureHash(rgba, size[0], width, height, (int)filter, (int)wrapU, (int)wrapV, (int)format);
+        texture->pixelHashVersion = texture->contentVersion;
+    }
 
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
@@ -1435,6 +1440,7 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
                                  : viewportSized ? fullRect(target->getWidth(), target->getHeight())
                                                  : fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
     activeFull = full;
+    noteLayerPass(full, kind, index);
     // sg_begin_pass sets both to the whole framebuffer on every backend (sokol_gfx.h: "sg_begin_pass()
     // will reset both the viewport and scissor rectangles"): applying them again was two backend
     // calls a pass, at once overridden by the first draw's
@@ -2001,6 +2007,7 @@ Rml::LayerHandle RmlRenderer::PushLayer(){
         const int index = recordLayers++;
         recordCommand(CommandType::PUSH_LAYER).i[0] = index;
         recordFrames.push_back(standardFrame());
+        recordedPushes++;
         return (Rml::LayerHandle)index;
     }
     return pushLayerNow();
@@ -2069,7 +2076,13 @@ Rml::LayerHandle RmlRenderer::PushLayerRegion(Rml::Rectanglei& region){
     const Rml::Rectanglei parent = getTopLayerFrame();
     const Rml::Rectanglei frame = regionFrame(pixels, parent, regionLimit(targetSize, SystemRender::getFeatures().maxTextureSize2D));
     const Rml::Rectanglei viewport = standardFrame();
-    if (isEmpty(frame) || (frame.p0.x >= viewport.p0.x && frame.p0.y >= viewport.p0.y && frame.p1.x <= viewport.p1.x && frame.p1.y <= viewport.p1.y)){
+    // S92 R10: a window within the viewport is a region layer of its own size too (an element's
+    // filter, mask or shadow loads and stores its granules, not the target), unless its granules
+    // cover as much as the target: an ordinary layer is then no larger and shares layer 0's
+    // depth-stencil
+    const bool inside = pixels.p0.x >= viewport.p0.x && pixels.p0.y >= viewport.p0.y && pixels.p1.x <= viewport.p1.x &&
+                        pixels.p1.y <= viewport.p1.y;
+    if (isEmpty(frame) || (inside && (int64_t)frame.Width() * frame.Height() >= (int64_t)viewport.Width() * viewport.Height())){
         region = Rml::Rectanglei::MakeInvalid();
         return PushLayer();
     }
@@ -2080,7 +2093,11 @@ Rml::LayerHandle RmlRenderer::PushLayerRegion(Rml::Rectanglei& region){
     command.flag = 1;
     command.a = commandRects.size();
     commandRects.push_back(frame);
+    // the window asked for, within the frame (S92 R30's measure)
+    command.b = commandRects.size() + 1;
+    commandRects.push_back(intersect(pixels, frame));
     recordFrames.push_back(frame);
+    recordedPushes++;
 
     // what it covers in document px: the requested region within the frame (a crop takes from it)
     const Rml::Vector2f scale = getPixelScale();
@@ -2091,7 +2108,7 @@ Rml::LayerHandle RmlRenderer::PushLayerRegion(Rml::Rectanglei& region){
     return (Rml::LayerHandle)index;
 }
 
-Rml::LayerHandle RmlRenderer::pushLayerNow(Rml::Rectanglei frame){
+Rml::LayerHandle RmlRenderer::pushLayerNow(Rml::Rectanglei frame, Rml::Rectanglei window){
     if (frameState != FrameState::ACTIVE)
         return 0;
 
@@ -2132,6 +2149,7 @@ Rml::LayerHandle RmlRenderer::pushLayerNow(Rml::Rectanglei frame){
     }
     if (!region && target && !target->ensureLayer(index))
         Log::error("[HTML UI] layer %d is not available: its content is not drawn", index);
+    frames[(size_t)index].window = isEmpty(window) ? frames[(size_t)index].rect : window;
     stats.layersPushed++;
     return (Rml::LayerHandle)index;
 }
@@ -2193,7 +2211,7 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
 }
 
 void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHandle destinationHandle, Rml::BlendMode blendMode,
-                                     Rml::Span<const Rml::CompiledFilterHandle> filters){
+                                     Rml::Span<const Rml::CompiledFilterHandle> filters, const LayerCacheScope* scope){
     if (frameState != FrameState::ACTIVE || !target)
         return;
 
@@ -2211,7 +2229,7 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
 
     // the second composite of a backdrop: the filter output straight into the destination,
     // within both composites' scissors (the layer is transparent beyond the first's)
-    if (deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend && ordinary){
+    if (!scope && deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend && ordinary){
         Framebuffer* post = postTarget(deferred.post);
         Framebuffer* destinationLayer = target->ensureLayer(destination);
         const Rml::Rectanglei scissor = intersect(deferred.scissor, currentScissorTarget());
@@ -2250,13 +2268,19 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     // resolved, so it can be read
     ensureResolved(*sourceLayer);
 
+    // S92 R9: a cached scope's trailing opacity is applied at the composite, outside its result
+    const Rml::Span<const Rml::CompiledFilterHandle> chain = scope ? Rml::Span<const Rml::CompiledFilterHandle>(filters.data(), (size_t)scope->filters)
+                                                                   : filters;
+    const float opacity = scope ? scope->opacity : 1.0f;
+
     // the filters run in the source layer's pixels (its frame), with post-process targets of its size
     RmlFilterContext context(*this, *sourceLayer, sourceFrame);
     filterFrame = sourceFrame;
-    if (!filters.empty()){
+    filterSourceLayer = source;
+    if (!chain.empty()){
         // the filter chain's targets, created on first use
         const bool targets = postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) && postTargetIn(context.postSet, 2);
-        for (Rml::CompiledFilterHandle handle : filters){
+        for (Rml::CompiledFilterHandle handle : chain){
             if (!handle)
                 continue;
             if (!targets)
@@ -2271,13 +2295,21 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
             stats.filtersApplied++;
         }
     }
+    filterSourceLayer = -1;
+    // a miss: the result kept, and drawn from the cache as a hit draws it (the same image)
+    if (scope){
+        if (const LayerCacheEntry* entry = storeLayerResult(*scope, context)){
+            drawCachedLayer(*entry, scope->window, destination, blendMode, opacity);
+            return;
+        }
+    }
 
     Framebuffer* destinationLayer = layerAt(destination);
     if (!destinationLayer)
         return;
     const Rml::Rectanglei destinationScissor = scissorIn(destinationFrame);
     // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
-    if (compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 && ordinary &&
+    if (!scope && compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 && ordinary &&
         destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(destinationScissor)){
         deferred.layer = destination;
         deferred.post = context.primaryIndex;
@@ -2289,6 +2321,7 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &context.primary().getRender().getColorTexture();
     draw.scissor = destinationScissor;
+    draw.params.params[0] = opacity;
     // P7-F2: the source placed by the target plane: a destination pixel p shows the source's
     // pixel p + destination.p0 - source.p0 (the identity between two ordinary layers)
     if (sourceFrame != destinationFrame){
@@ -3195,6 +3228,8 @@ void RmlRenderer::replayCommands(){
 
     // glyphs the recorded frame added to atlas pages, before anything draws
     updateAtlasTextures();
+    // the layer scopes drawn from the cache or kept in it (S92 R9)
+    planLayerCache();
     if (batching){
         replayBatched();
         return;
@@ -3210,6 +3245,12 @@ void RmlRenderer::replayCommands(){
 }
 
 void RmlRenderer::replayCommand(const Command& c){
+    // S92 R9: a scope drawn from the layer cache, or stored into it
+    if (!cacheOps.empty()){
+        const size_t index = (size_t)(&c - commands.data());
+        if (index < cacheOps.size() && cacheOps[index] != CacheOp::NONE && replayCached(index, c))
+            return;
+    }
     switch (c.type){
     case CommandType::GEOMETRY:
         drawRecordedGeometry(c.a, Rml::Vector2f(c.x, c.y), reinterpret_cast<HtmlUITexture*>(c.b));
@@ -3232,7 +3273,8 @@ void RmlRenderer::replayCommand(const Command& c){
         break;
     case CommandType::PUSH_LAYER: {
         // flag: a region layer (P7-F2), its frame in the rectangle pool
-        const int index = (int)pushLayerNow(c.flag ? commandRects[c.a] : Rml::Rectanglei::MakeInvalid());
+        const int index = (int)pushLayerNow(c.flag ? commandRects[c.a] : Rml::Rectanglei::MakeInvalid(),
+                                            c.b ? commandRects[c.b - 1] : Rml::Rectanglei::MakeInvalid());
         if (index != c.i[0])
             Log::error("[HTML UI] the replay pushed layer %d where the recording returned %d", index, c.i[0]);
         break;
@@ -3383,6 +3425,8 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     if (!recording)
         updateAtlasTextures();
     activeClipScope = -1;
+    recordedPushes = 0;
+    layerPassStats = LayerPassStats();
     if (recording){
         recordLayers = 1;
         commands.clear();
@@ -3427,6 +3471,11 @@ bool RmlRenderer::endFrame(){
     if (Framebuffer* layer = target->getLayer(0))
         ensureResolved(*layer);
     endPass();
+    // the layer cache after a replay: what it did not draw for a while goes (S92 R9)
+    if (!layerCache.empty() || !layerCacheFree.empty())
+        trimLayerCache();
+    cacheOps.clear();
+    stats.layerCacheBytes = (uint32_t)std::min<size_t>(layerCacheBytes, UINT32_MAX);
     // region layers left pushed go back to the pool; what was not used for a while goes (P7-F2)
     for (size_t i = 1; i < frames.size(); i++){
         if (frames[i].pool >= 0)
@@ -3534,6 +3583,7 @@ void RmlRenderer::releaseGpuResources(){
     destroyPipelineObjects();
     destroyGeometryBuffers();
     destroyGatherPages();
+    releaseLayerCache();
 
     // the handles stay valid for RmlUi, which releases them (Rml::ReleaseTextures)
     for (HtmlUITexture* texture : liveTextures){
@@ -3861,4 +3911,15 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
             if (id != 0) images.push_back(id);
         }
     }
+    // S92: the layer cache's images
+    auto addImage = [&images](const Framebuffer* framebuffer){
+        if (!framebuffer)
+            return;
+        uint32_t id = const_cast<Framebuffer*>(framebuffer)->getRender().getColorTexture().backend.get().id;
+        if (id != 0) images.push_back(id);
+    };
+    for (const auto& entry : layerCache)
+        addImage(entry.second.image.get());
+    for (const LayerCacheFreeImage& free : layerCacheFree)
+        addImage(free.image.get());
 }
