@@ -866,11 +866,24 @@ Avoiding conflicts:
     On Play the covered Hierarchy was built and the Scene view updated its gizmos each frame (now
     neither). The per-object gizmo objects cost a system entity each and a renderer update each;
     the shared batches write a renderer only when its lines or icons changed.
-  - Left above 1 ms: the Hierarchy's tree rebuild itself (3.8 ms, at most once per 0.5 s and 15
-    frames, or on a structural change).
+  - The Hierarchy's tree rebuild (`test_editor_cost.py::test_hierarchy_rebuild_budget`: the median
+    of the timed rebuilds in 120 frames, three runs, enforced with `JASPER_MCP_PERF_SLACK=1`): 2.28,
+    2.28, 2.41 ms before (red, over the 1 ms); 0.62-0.69 ms after in four runs (0.72 ms in a run
+    with `-j 3`). Phases measured first (one rebuild, ms): the row loop 0.6-0.9, the set of the scene's
+    GameObjects 0.36-0.48, freeing the old tree 0.23-0.33, the GameObjects without a Transform
+    0.16-0.35, the prefab passes 0.13-0.27; in the rows, the locked-parent scan 0.51 and the icon
+    chain 0.24 of 1.3. Now the timed rebuild, which catches what changes without a structural
+    command, fills the last rebuild's rows again in place while every row keeps its order and
+    parent (no allocation), from indexes made once (LockedParentIndex, the icons by signature, the
+    model ancestors); a structural change still rebuilds the whole tree, once per change: 1.6-1.9 ms with
+    the fixture, measured with phase scopes before the in-place refresh (the full path has since
+    only lost the set's rebuild and the rows' copies; not measured again: a capture cannot start
+    before the frame a command's rebuild runs in). `LockedParentIndex` now also answers the Voxel Volumes' and
+    splines' generated GameObjects, as `getLockedEntityParent` does (it had fallen behind).
   - On the tree merged with WP-3, WP-6 and the imports: 2.07-3.07 ms editor UI in four runs (one
     alone, three in parallel); one run among eight files with `-j 3` measured Hierarchy rows at
-    4.6 ms (editor-side 7.0 ms, within the 8 ms), as if no row were clipped. Not reproduced;
+    4.6 ms (editor-side 7.0 ms, within the 8 ms), as if no row were clipped. Not reproduced in
+    the eight runs since (four alone, four among other files with `-j 3`: 0.41-0.64 ms);
     unexplained.
   - `test_scene_view_icons.py` fails under load (three copies with `-j 3` on a build box) on the
     code before WP-5 as after it, by the same 0.056: the difference is the Scene view's camera
