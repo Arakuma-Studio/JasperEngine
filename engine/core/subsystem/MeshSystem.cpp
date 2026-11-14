@@ -6929,6 +6929,10 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
 }
 
 bool MeshSystem::isNodeHierarchyForced(Entity entity) const{
+    // Preserve Hierarchy (spec S94 F44): the one rule a model can choose, whatever its file holds
+    if (const ModelComponent* model = scene->findComponent<ModelComponent>(entity); model && model->preserveHierarchy){
+        return true;
+    }
     // the entity and its Transform ancestors (bounded: a broken parent loop ends the walk)
     Entity current = entity;
     for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){

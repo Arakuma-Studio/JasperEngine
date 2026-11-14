@@ -928,7 +928,10 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
-        scene->addComponent<ModelComponent>(entity, {});
+        // Project Settings > Mesh > Preserve Hierarchy for New Models (S94 F44)
+        ModelComponent model;
+        model.preserveHierarchy = project->getModelSettings().preserveHierarchyForNewModels;
+        scene->addComponent<ModelComponent>(entity, model);
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 

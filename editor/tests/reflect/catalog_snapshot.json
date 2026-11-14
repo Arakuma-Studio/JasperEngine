@@ -3808,6 +3808,7 @@
     "mergeStaticMeshes",
     "meshNodesMapping",
     "nodesIdMapping",
+    "preserveHierarchy",
     "skeleton"
    ],
    "name": "ModelComponent",
@@ -3835,6 +3836,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [
@@ -3867,6 +3873,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [

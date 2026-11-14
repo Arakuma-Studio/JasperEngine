@@ -1087,6 +1087,8 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // written only when off (an Animation Player plays the model's clips, 9.R15), so files with
     // models save as before; decoding reads a missing key as on, never as the old value
     if (!model.animationEntities) node["animationEntities"] = false;
+    // written only when on, so files with models save as before; a missing key reads as off
+    if (model.preserveHierarchy) node["preserveHierarchy"] = true;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -1156,6 +1158,19 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
                 model.animationEntities = value.as<bool>();
             } catch (const YAML::Exception&) {
                 model.animationEntities = true;
+            }
+        }
+    }
+    model.preserveHierarchy = false;
+    if (const YAML::Node value = node["preserveHierarchy"]; value && value.IsScalar() && !value.Scalar().empty()) {
+        bool flag = false;
+        if (YamlNumbers::readPlain(value.Scalar(), flag)) {
+            model.preserveHierarchy = flag;
+        } else {
+            try {
+                model.preserveHierarchy = value.as<bool>();
+            } catch (const YAML::Exception&) {
+                model.preserveHierarchy = false;
             }
         }
     }

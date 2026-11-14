@@ -37,6 +37,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/ModelComponent.h"
+#include "tiny_gltf.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
@@ -2882,6 +2883,9 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
     switch (property.type) {
         case PropertyType::Bool:
             if (!value.is_boolean()) return expect("true or false");
+            // a value the model's load reads: the reload that applies it is part of the step (S94 F47)
+            if (component == ComponentType::ModelComponent && ModelLoadCmd::isLoadOption(propertyName))
+                return ModelLoadCmd::setLoadOption(project, sceneId, entity, propertyName, value.get<bool>());
             return new PropertyCmd<bool>(project, sceneId, entity, component, propertyName, value.get<bool>(), onChanged);
         case PropertyType::String:
         case PropertyType::Asset:
@@ -3889,6 +3893,33 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
+std::string McpValues::modelNodeMeshError(SceneProject* sceneProject, Entity entity) {
+    Scene* scene = sceneProject && sceneProject->scene ? sceneProject->scene : nullptr;
+    if (!scene || !scene->isComponentRegistered<ModelComponent>() || scene->findComponent<MeshComponent>(entity)) return "";
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        const Entity root = models->getEntity(i);
+        if (!model.gltfModel) continue;
+        int node = -1;
+        for (const auto* mapping : {&model.nodesIdMapping, &model.bonesIdMapping}) {
+            for (const auto& [index, mapped] : *mapping) {
+                if (mapped == entity) node = index;
+            }
+        }
+        if (node < 0 || node >= (int)model.gltfModel->nodes.size() || model.gltfModel->nodes[(size_t)node].mesh < 0 ||
+            model.meshNodesMapping.count(node)) {
+            continue;
+        }
+        const MeshComponent* rootMesh = scene->findComponent<MeshComponent>(root);
+        if (!rootMesh || rootMesh->numSubmeshes == 0) continue;
+        return McpRefs::entityPath(sceneProject, entity) + " is a node of the model " + McpRefs::entityPath(sceneProject, root) +
+               ", whose own GameObject draws this node's mesh: set the mesh and material values on " + McpRefs::entityPath(sceneProject, root) +
+               ", or set model.preserveHierarchy true on it (every node then draws its own mesh).";
+    }
+    return "";
+}
+
 std::string McpValues::safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property) {
     static const std::set<std::string> driven = {
         "width", "height", "anchorPointLeft", "anchorPointTop", "anchorPointRight", "anchorPointBottom",
@@ -4101,8 +4132,10 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
         for (ComponentType component : order) {
             const std::string componentLabel = McpRefs::componentName(component);
             if (!McpRefs::hasComponent(scene, entity, component)) {
-                error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
-                        "components).";
+                const std::string drawnByRoot = component == ComponentType::MeshComponent ? modelNodeMeshError(scene, entity) : std::string();
+                error = !drawnByRoot.empty() ? drawnByRoot
+                                             : label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
+                                               "components).";
                 return false;
             }
             if (component == ComponentType::RectTransformComponent) {
