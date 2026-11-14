@@ -1713,6 +1713,7 @@ set(JASPERENGINE_SRCS
     core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
+    core/object/sound/AudioSourceSlots.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp

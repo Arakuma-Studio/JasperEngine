@@ -30,6 +30,7 @@
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "util/WorldTransforms.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
@@ -4939,6 +4940,8 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
 
     CameraTextureLink::resolve(sceneProject->scene);
     reportUnknownSortingLayers(sceneProject->scene);
+    // a broken Audio Source slot loads as an ordinary GameObject, never failing the load (S97 REQ-29)
+    AudioSourceSlots::repair(sceneProject->scene);
 }
 
 void editor::Stream::reportUnknownSortingLayers(Scene* scene){

@@ -2743,6 +2743,12 @@ the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount
 pitch, and right after `play()`. `play()` on a playing source starts it over; two sources play
 one clip at once.
 
+Several sources on one GameObject (Unity's `GetComponents<AudioSource>()`, `AddComponent`,
+`Destroy`): static `AudioSource.getAll(gameObject)` (its own source first, then the further ones in
+order), `AudioSource.add(gameObject)` (its own when it has none, else a further one: a hidden child
+at its origin, Spatial Blend 1) and `AudioSource.remove(source)`. The further ones are child
+entities: `getChildCount()` and `getChildren()` count them.
+
 ### 4.13 Rigidbody2D (EntityHandle) - 2D physics (Box2D)
 
 | Member | Kind | Notes |

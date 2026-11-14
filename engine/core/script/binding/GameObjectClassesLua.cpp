@@ -91,6 +91,7 @@
 #include "object/ui/CanvasGroup.h"
 #include "object/PixelPerfectCamera.h"
 #include "AudioSource.h"
+#include "AudioSourceSlots.h"
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
@@ -4810,6 +4811,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isFading", &AudioSource::isFading)
         .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
         .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
+        .addStaticFunction("getAll", &AudioSourceSlots::getAll)
+        .addStaticFunction("add", &AudioSourceSlots::add)
+        .addStaticFunction("remove", &AudioSourceSlots::remove)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 

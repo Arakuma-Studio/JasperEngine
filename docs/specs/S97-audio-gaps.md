@@ -524,6 +524,17 @@ REQ-18 to REQ-23, REQ-31.
   for the 100 KB file), with `AudioImportSettings.LoadTypeKeyRoundTripsAndApplies` for the key, the hash and the
   export table. The export check is in `test_build_method.py::test_prebuilt_build_hears_the_projects_mixer_and_audio_settings`
   (fast: a stand-in runtime) as well as `test_prebuilt_audio.py` (a real player, `JASPER_SLOW_BUILD=1`).
+- **WP-D, AC23/AC26 suite names: `AudioSourceSlotsTest` (runtime: AC23's play-and-follow half, AC25's engine half, AC26) and
+  `AudioSourceSlotsEditorTest` (AC23's commands, undo and listings, and `BrokenSlotsLoadWithAWarning`).** A fixture named
+  `AudioSourceSlots` would clash with the engine class of that name; the runtime and editor halves need different fixtures.
+- **WP-D, REQ-29 runs where the editor decodes a scene (`Stream::decodeSceneProjectEntities`)**, which opening, Play,
+  cooking and compiled exports all go through, so what a player loads is already repaired; the engine's cooked loader does
+  not repeat it. The pass itself is engine code (`AudioSourceSlots::repair`).
+- **WP-D, REQ-26: a new slot is at Spatial Blend 1, as Add Component's Audio Source on the GameObject; Move Up/Down reorder
+  the slots among themselves** (the GameObject's own source stays first). The slot sections are not recorded in
+  `get_inspector_layout`, which names one component of a type.
+- **WP-D, REQ-28: `get_entity` lists `audio_sources` only on a GameObject that has a slot**; `add_component`'s added entry of
+  a slot carries `audio_source` (its entity) and `slot`. `add_component AudioSource` values go to the new slot.
 
 ## Progress
 
