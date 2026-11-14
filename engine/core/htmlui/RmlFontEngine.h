@@ -251,7 +251,7 @@ namespace jasperengine {
             Rml::FontMetrics metrics = {};
             int version = 1;
             int epoch = 0;                 // the engine epoch version last saw
-            bool primaryListed = false;    // chain[0] is a face of the family list (not the default font)
+            bool primaryListed = false;    // chain[0] is a face of the family list, not a built-in one
             std::string family;            // the font-family list asked for
             // a bitmap face (S51 R15): its font and pixel scale k; then chain and faces are empty
             std::shared_ptr<pixelart::BitmapFont> bitmap;

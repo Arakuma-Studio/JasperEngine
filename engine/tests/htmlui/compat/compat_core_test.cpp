@@ -10,8 +10,11 @@
 
 #include "harness/RecordingRenderInterface.h"
 #include "harness/TestSystem.h"
+#include "TestPaths.h"
 
 #include "htmlui/compat/CompatApi.h"
+#include "htmlui/compat/DiagnosticCodes.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/Hash.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/VirtualFiles.h"
@@ -26,6 +29,8 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include <set>
 
 #include <map>
@@ -416,4 +421,39 @@ TEST(CompatApi, CheckDocumentCompilesTheDocument){
     EXPECT_EQ(missing.diagnostics[0].file, "ui/none.html");
     EXPECT_TRUE(isHtmlDocumentPath("ui/a.HTML"));
     EXPECT_FALSE(isHtmlDocumentPath("ui/a.rml"));
+}
+
+// S93 R17 (AC21): checkDocument without RmlUi (check --ui) resolves each text's font-family through the compile's RML and
+// RCSS and reads the document's @font-face files: inherited text whose own face lacks a character a fallback face draws
+// is a warning at its element; a generic family and letters the face has are not
+TEST(CompatApi, CheckReportsFallbackGlyphsWithoutRmlUi){
+    std::ifstream file(test::testPaths().sourceDir + "/fixtures/fonts/Ahem-no-Oacute.ttf", std::ios::binary);
+    ASSERT_TRUE(file.good());
+    const std::string font((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string html = "<!DOCTYPE html>\n<html>\n<head><style>\n"
+                             "@font-face { font-family: 'AhemNoO'; src: url('ahem.ttf'); }\n"
+                             ".title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+                             "#plain { font-family: sans-serif; }\n"
+                             "</style></head>\n<body>\n"
+                             "<div class=\"title\"><span>CA\xc3\x91\xc3\x93N</span></div>\n"
+                             "<div id=\"plain\">CA\xc3\x91\xc3\x93N</div>\n"
+                             "<div class=\"title\">CAN</div>\n"
+                             "</body>\n</html>\n";
+    CheckOptions options;
+    options.files = memoryFiles({{"ui/title.html", html}, {"ui/ahem.ttf", font}});
+    options.verifyWithRmlUi = false;
+    const CheckReport report = checkDocument("ui/title.html", options);
+    std::vector<Diagnostic> found;
+    for (const Diagnostic& diagnostic : report.diagnostics){
+        if (diagnostic.code == codes::FallbackGlyph)
+            found.push_back(diagnostic);
+    }
+    ASSERT_EQ(found.size(), 1u) << DocumentLoader::compile("ui/title.html", options.compat, options.files)->rml;
+    EXPECT_EQ(found[0].severity, Severity::Warning);
+    EXPECT_EQ(found[0].file, "ui/title.html");
+    EXPECT_EQ(found[0].line, 9u);
+    EXPECT_NE(found[0].message.find("U+00D3"), std::string::npos) << found[0].message;
+    EXPECT_NE(found[0].message.find("ui/ahem.ttf"), std::string::npos) << found[0].message;
+    EXPECT_NE(found[0].message.find("ahemnoo, sans-serif"), std::string::npos) << found[0].message;
+    EXPECT_EQ(found[0].message.find("U+00D1"), std::string::npos) << found[0].message;
 }
