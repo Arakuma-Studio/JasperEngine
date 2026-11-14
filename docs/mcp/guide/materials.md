@@ -136,6 +136,24 @@ Paint (clear coat), Velvet (sheen), Brushed Metal (anisotropy), Soap Bubble (iri
 Glass (transmission and volume), Tiled Floor (hex tiling). They set the built-in Lit on a
 material that had a library shader.
 
+## Outline
+
+To outline an object (hover, selection, team colour, an enemy through walls), add the **Outline**
+component (Add Component > Rendering > Outline; `add_component component="outline"`), not a
+material preset: it outlines the GameObject's Mesh and, with `includeChildren` (default on),
+every Mesh below it, so one Outline on a model root covers its skinned and nested meshes. Fields
+(`set_properties outline.*`, all undoable): `mode` `outline_all` (default, through walls),
+`outline_visible`, `outline_hidden`, `outline_and_silhouette` (covered parts filled),
+`silhouette_only`; `color` (linear, alpha blends); `width` in `widthUnits` `pixels` (default, the
+same on screen at any distance) or `world`; `includeChildren`; `enabled`. The nearest enabled
+Outline at or above a Mesh decides its look. It draws after the opaque queue (a 2D camera: after
+its sprites), two draws per outlined submesh, uses stencil bit 1 (the `outline_stencil` preset's:
+outlined objects never outline over each other) and costs nothing while disabled. Not outlined:
+Terrains, Tilemaps, Sprite Batch instances, lines and points. A flat quad facing the camera has no
+band in Pixels (its normal points at the camera): give it depth. Lua: `Outline(scene, entity)`
+(`jasper://docs/lua-api`). `apply_material_preset` on a GameObject without a Mesh applies to the
+meshes below it.
+
 ## Property Overrides
 
 Per-object colours or textures over one shared material (Unity's MaterialPropertyBlock, saved

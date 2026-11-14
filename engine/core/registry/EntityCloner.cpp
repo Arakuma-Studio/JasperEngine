@@ -55,6 +55,7 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
@@ -1367,6 +1368,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OutlineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

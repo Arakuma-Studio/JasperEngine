@@ -5242,6 +5242,41 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
     # ---- S94 F15: the Environment Lighting Source (Unity's gradient ambient)
     {
         "id": "guard_ambient_gradient_setting",

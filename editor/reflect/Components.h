@@ -151,6 +151,8 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kTilemapCollider2DDesc;
     // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
     extern const ComponentDesc kTitleArtRendererDesc;
+    // OutlineReflect.cpp (S94)
+    extern const ComponentDesc kOutlineDesc;
 
 }
 

@@ -56,6 +56,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kSpriteSortPoint;
     extern const EnumDesc kSpriteBatchMode;
     extern const EnumDesc kSpriteBatchSpace;
+    // the Outline (OutlineReflect.cpp, S94)
+    extern const EnumDesc kOutlineMode;
+    extern const EnumDesc kOutlineWidthUnits;
     extern const EnumDesc kJointAnchorSpace;
     extern const EnumDesc kCollisionDetection2D;
     extern const EnumDesc kSleepMode2D;

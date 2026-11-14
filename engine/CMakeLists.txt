@@ -1683,6 +1683,7 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
+    core/object/Outline.cpp
     core/object/tilemap/Grid.cpp
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
@@ -1841,6 +1842,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
+    core/script/binding/OutlineLua.cpp
     # S94 Property Overrides (MaterialPropertyBlock)
     core/script/binding/MaterialPropertyBlockLua.cpp
     core/script/binding/HitStopClassesLua.cpp
@@ -1914,6 +1916,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/RenderSystemSorting.cpp
+    core/subsystem/RenderSystemOutline.cpp
     core/subsystem/RenderSystemSpriteBatch.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp

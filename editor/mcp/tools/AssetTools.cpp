@@ -59,6 +59,7 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "htmlui/HtmlUiImporters.h"
 #include "htmlui/VideoImporter.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -2797,17 +2798,45 @@ void applyMaterialPresetTool(const CallPtr& call) {
     if (!submeshArg(call, -1, onlySubmesh)) return;
     const bool oneSubmesh = onlySubmesh >= 0;
 
+    // a GameObject without a Mesh (a model root) takes the preset on the Meshes below it (S94 F23)
+    Scene* scene = sceneProject->scene;
+    auto hasSubmeshes = [scene](Entity entity) {
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        return mesh && mesh->numSubmeshes > 0;
+    };
+    std::vector<Entity> targets;
+    std::vector<std::string> descended;
+    for (Entity entity : entities) {
+        if (hasSubmeshes(entity)) {
+            targets.push_back(entity);
+            continue;
+        }
+        size_t below = 0;
+        if (scene->findComponent<Transform>(entity)) {
+            auto transforms = scene->getComponentArray<Transform>();
+            const size_t first = transforms->getIndex(entity);
+            const size_t last = scene->findBranchLastIndex(entity);
+            for (size_t index = first + 1; index <= last && index < transforms->size(); index++) {
+                const Entity child = transforms->getEntity(index);
+                if (hasSubmeshes(child) && std::find(targets.begin(), targets.end(), child) == targets.end()) {
+                    targets.push_back(child);
+                    below++;
+                }
+            }
+        }
+        if (below == 0) {
+            call->fail(McpRefs::entityPath(sceneProject, entity) + " has no Mesh component with submeshes, nor any below it "
+                       "(presets set a mesh material: meshes, models, sprites, tilemaps).");
+            return;
+        }
+        descended.push_back(McpRefs::entityPath(sceneProject, entity) + " (" + std::to_string(below) + " mesh(es))");
+    }
+
     auto* multi = new MultiPropertyCmd();
     Json applied = Json::array();
     std::vector<std::string> unlinked;
-    for (Entity entity : entities) {
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
-        if (!mesh || mesh->numSubmeshes == 0) {
-            delete multi;
-            call->fail(McpRefs::entityPath(sceneProject, entity) + " has no Mesh component with submeshes (presets set a "
-                       "mesh material: meshes, models, sprites, tilemaps).");
-            return;
-        }
+    for (Entity entity : targets) {
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (oneSubmesh && (onlySubmesh < 0 || (unsigned int)onlySubmesh >= mesh->numSubmeshes)) {
             delete multi;
             call->fail("submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + " for " + McpRefs::entityPath(sceneProject, entity) + ".");
@@ -2848,7 +2877,18 @@ void applyMaterialPresetTool(const CallPtr& call) {
         text += " Unlinked from their .material file (now their own material; apply_material_preset path= changes a shared file):";
         for (const std::string& entry : unlinked) text += " " + entry + ";";
     }
-    call->ok(text, Json{{"preset", preset->id}, {"applied", applied}, {"sets", presetFieldsJson(project, *preset)}});
+    Json data{{"preset", preset->id}, {"applied", applied}, {"sets", presetFieldsJson(project, *preset)}};
+    if (!descended.empty()) {
+        std::string next = "Applied to the meshes below";
+        for (const std::string& entry : descended) next += " " + entry;
+        next += ", which have no Mesh of their own.";
+        // an outline of a whole object (a model, skinned children included) is the Outline component's
+        if (preset->id.find("outline") != std::string::npos || preset->id.find("silhouette") != std::string::npos)
+            next += " To outline a whole object, add the Outline component to its root instead (add_component "
+                    "outline; set_properties outline.mode, outline.color, outline.width).";
+        data["next"] = next;
+    }
+    call->ok(text, data);
 }
 
 // ------------------------------------------------------------------ shaders
