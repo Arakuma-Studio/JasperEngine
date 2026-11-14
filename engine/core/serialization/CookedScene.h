@@ -39,7 +39,7 @@ namespace jasperengine {
         constexpr uint16_t FORMAT_MAJOR = 1;
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
         // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
-        // 6: script list properties and their element type (S95 REQ-20)
+        // 6: script list properties (a value kind) and, after a Script component's scripts, their element types (S95 REQ-20)
         constexpr uint16_t FORMAT_MINOR = 6;
         constexpr size_t HEADER_BYTES = 28;
 

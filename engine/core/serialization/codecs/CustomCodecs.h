@@ -282,7 +282,6 @@ namespace jasperengine::cook {
             Codec<ScriptPropertyValue>::write(w, p.defaultValue);
             w.string(p.ptrTypeName);
             w.string(p.assetType);
-            Codec<ScriptPropertyType>::write(w, p.elementType);
         }
         static void read(Reader& r, ScriptProperty& p) {
             p.name = r.string();
@@ -292,7 +291,6 @@ namespace jasperengine::cook {
             Codec<ScriptPropertyValue>::read(r, p.defaultValue);
             p.ptrTypeName = r.string();
             p.assetType = r.string();
-            Codec<ScriptPropertyType>::read(r, p.elementType);
         }
     };
 
@@ -313,6 +311,34 @@ namespace jasperengine::cook {
             s.className = r.string();
             s.enabled = r.u8() != 0;
             Codec<std::vector<ScriptProperty>>::read(r, s.properties);
+        }
+    };
+
+    // a Script component's scripts, then (content 1.6, S95) the element type of each property in
+    // order: content cooked before ends after the scripts, and its properties read as Float lists
+    // never come (1.5 had no lists)
+    template<>
+    struct Codec<std::vector<ScriptEntry>> {
+        static void write(Writer& w, const std::vector<ScriptEntry>& v) {
+            w.varint(v.size());
+            for (const ScriptEntry& entry : v) Codec<ScriptEntry>::write(w, entry);
+            for (const ScriptEntry& entry : v) {
+                for (const ScriptProperty& property : entry.properties) Codec<ScriptPropertyType>::write(w, property.elementType);
+            }
+        }
+        static void read(Reader& r, std::vector<ScriptEntry>& v) {
+            const uint64_t count = r.varint();
+            if (count > r.remaining()) {
+                r.fail("an array of " + std::to_string(count) + " scripts in " + std::to_string(r.remaining()) + " bytes");
+                return;
+            }
+            v.clear();
+            v.resize(static_cast<size_t>(count));
+            for (ScriptEntry& entry : v) Codec<ScriptEntry>::read(r, entry);
+            if (r.atEnd()) return;
+            for (ScriptEntry& entry : v) {
+                for (ScriptProperty& property : entry.properties) Codec<ScriptPropertyType>::read(r, property.elementType);
+            }
         }
     };
 
