@@ -156,7 +156,9 @@ namespace {
         return false;
     }
 
+    // the next frame, replayed: the cache is measured on frames S92 R1 would keep when nothing changed
     bool nextFrame(RenderTestContext& render, CacheFrame& frame){
+        render.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
         if (!render.renderFrame())
             return false;
         frame.stats = render.renderer.getStats();
@@ -340,6 +342,8 @@ namespace {
         RecordedScope result;
         for (int i = 0; i < 30 && !result.drawn; i++){
             beginTestFrame();
+            // replayed: S92 R1 keeps a frame that records what the last one did
+            test.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
             test.renderer.beginFrame(test.target, test.contextSize);
             test.renderer.RenderGeometry(quad, Rml::Vector2f(4, 4), 0);
             Rml::Rectanglei region = Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(70, 50));

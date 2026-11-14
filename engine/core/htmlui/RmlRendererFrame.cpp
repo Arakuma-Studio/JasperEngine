@@ -373,7 +373,8 @@ bool RmlRenderer::keepRecordedFrame(){
     // draws again, so a test that switches sees the mode it asked for)
     signature = frameMix(signature, (uint64_t)(uint32_t)contextSize.x | ((uint64_t)(uint32_t)contextSize.y << 32));
     signature = frameMix(signature, (uint64_t)(uint32_t)targetSize.x | ((uint64_t)(uint32_t)targetSize.y << 32));
-    signature = frameMix(signature, ((uint64_t)target->getSampleCount() << 2) | ((uint64_t)batching << 1) | (uint64_t)primitivesFrame);
+    signature = frameMix(signature, ((uint64_t)target->getSampleCount() << 3) | ((uint64_t)isLayerCache() << 2) | ((uint64_t)batching << 1) |
+                                        (uint64_t)primitivesFrame);
     frameLiveSources = live;
     frameSignature = signature;
     lastSignatureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

@@ -475,6 +475,8 @@ TEST(RenderFrameReuse, DepthStencilDiscarded){
     FixtureRunner runner(640, 360, 4);
     ASSERT_TRUE(runner.valid());
     FrameReuseMode off(false);
+    // the replay's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     // no stencil use: no depth-stencil is stored
     std::string error;
     ASSERT_TRUE(runner.load("fixtures/s92/btn.html", &error)) << error;

@@ -645,16 +645,25 @@ namespace jasperengine {
             Rml::CompiledGeometryHandle geometry;
             Rml::Vector2f translation;
             Rml::Matrix4f transform;      // getCurrentTransform's, when it was drawn
-            // S92 R5: the scissor it was drawn with (maskHistory replays it exactly)
+            // S92 R5: the scissor it was drawn with (maskHistory replays it exactly), and the
+            // depth-stencil it went into (nullptr: layer 0's shared one, else a region layer's)
             bool scissored = false;
             Rml::Rectanglei scissorPixels;
+            const Framebuffer* attachment = nullptr;
         };
         std::vector<MaskOp> maskOps;
-        // S92 R5: every stencil write into layer 0's shared depth-stencil this frame, in order, with
-        // its scissor: a shared depth-stencil a DONTCARE store dropped is cleared and gets them all
-        // again, the stencil it held outside the current mask's scissor included
+        // S92 R5: every stencil write into each depth-stencil since it was last cleared (layer 0's
+        // shared one this frame, a region layer's since its push), in order, with its scissor: a
+        // depth-stencil a DONTCARE store dropped is cleared and gets them all again, the stencil
+        // it held outside the current mask's scissor included
         std::vector<MaskOp> maskHistory;
-        bool sharedDsReplay = false;      // the shared depth-stencil was dropped and cleared this frame
+        std::vector<const Framebuffer*> replayDs;   // dropped and cleared since (nullptr: the shared one)
+        // the mask version each dropped depth-stencil held when it was dropped
+        std::vector<std::pair<const Framebuffer*, uint64_t>> droppedVersions;
+        const Framebuffer* attachmentOf(int index) const;
+        // a dropped and cleared depth-stencil gets what it held back (its writes replayed, its
+        // version again), before anything tests or writes it; the layer is bound
+        void restoreDroppedMask(int index);
         void drawMaskOp(const MaskOp& op);
         uint64_t maskVersion = 0;
         uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's

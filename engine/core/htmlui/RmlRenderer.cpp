@@ -1405,13 +1405,28 @@ void RmlRenderer::endPass(bool resolve){
     // S92 R5, R12: what a DONTCARE store left is unknown: no mask is trusted across it (its
     // version is none), and a pass that loads it clears it
     if (activeKind == TargetKind::LAYER && activeDsDiscard){
+        // the version it held (a drop not restored yet keeps the one before it)
+        const bool pending = std::find(replayDs.begin(), replayDs.end(), activeDsAttachment) != replayDs.end();
+        auto keep = [&](uint64_t held){
+            if (pending)
+                return;
+            auto it = std::find_if(droppedVersions.begin(), droppedVersions.end(),
+                                   [this](const std::pair<const Framebuffer*, uint64_t>& d){ return d.first == activeDsAttachment; });
+            if (it != droppedVersions.end())
+                it->second = held;
+            else
+                droppedVersions.emplace_back(activeDsAttachment, held);
+        };
         if (activeDsAttachment){
             discardedRegionDs.push_back(activeDsAttachment);
             for (LayerFrame& frame : frames){
-                if (frame.framebuffer == activeDsAttachment)
+                if (frame.framebuffer == activeDsAttachment){
+                    keep(frame.maskVersion);
                     frame.maskVersion = 0;
+                }
             }
         }else{
+            keep(sharedMaskVersion);
             sharedDsDiscarded = true;
             sharedMaskVersion = 0;
         }
@@ -1456,8 +1471,15 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
             }else{
                 sharedDsDiscarded = false;
                 sharedMaskVersion = 0;
-                sharedDsReplay = true;
             }
+            if (std::find(replayDs.begin(), replayDs.end(), activeDsAttachment) == replayDs.end())
+                replayDs.push_back(activeDsAttachment);
+        }else if (activeDsAttachment && depthStencilLoad == LoadAction::CLEAR){
+            // a region layer's depth-stencil cleared with its push: nothing written into it yet
+            maskHistory.erase(std::remove_if(maskHistory.begin(), maskHistory.end(),
+                                             [this](const MaskOp& op){ return op.attachment == activeDsAttachment; }),
+                              maskHistory.end());
+            replayDs.erase(std::remove(replayDs.begin(), replayDs.end(), activeDsAttachment), replayDs.end());
         }
         if (!activeDsDiscard)
             stats.depthStencilStores++;
@@ -1965,6 +1987,15 @@ void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::Com
     // P7-F2: the operation goes into the depth-stencil of the layer it is drawn in; one that
     // intersects needs the mask before it there
     const int drawIndex = (deferred.layer >= 1 && deferred.layer == layersSize - 1) ? deferred.layer - 1 : layersSize - 1;
+    // S92 R5: a dropped depth-stencil gets what it held before anything is written into it
+    if (!replayDs.empty() && std::find(replayDs.begin(), replayDs.end(), attachmentOf(drawIndex)) != replayDs.end()){
+        // (bound as the operation's draw binds it: under a deferred composite, the layer below)
+        drawingMask = true;
+        const bool bound = bindDrawLayer(true);
+        drawingMask = false;
+        if (bound)
+            restoreDroppedMask(drawIndex);
+    }
     if (operation == Rml::ClipMaskOperation::Intersect)
         ensureMask(drawIndex);
     else
@@ -1972,9 +2003,9 @@ void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::Com
     MaskOp op{operation, handle, translation, transform};
     op.scissored = scissorEnabled;
     op.scissorPixels = scissorPixels;
+    op.attachment = attachmentOf(drawIndex);
     maskOps.push_back(op);
-    if (!isRegionLayer(drawIndex))
-        maskHistory.push_back(op);
+    maskHistory.push_back(op);
     maskVersion++;
 
     drawingMask = true;
@@ -2026,6 +2057,10 @@ void RmlRenderer::auditStencilDraw(const PipelineState& state){
     stencilAudit->push_back(entry);
 }
 
+const Framebuffer* RmlRenderer::attachmentOf(int index) const{
+    return isRegionLayer(index) ? frames[(size_t)index].framebuffer : nullptr;
+}
+
 uint64_t& RmlRenderer::maskVersionOf(int index){
     if (isRegionLayer(index))
         return frames[(size_t)index].maskVersion;
@@ -2054,22 +2089,59 @@ void RmlRenderer::drawMaskOp(const MaskOp& op){
     drawGeometry(geometry, op.translation, nullptr, layerState(BlendMode::NONE, ColorWriteMask::NONE, write));
 }
 
+void RmlRenderer::restoreDroppedMask(int index){
+    const Framebuffer* attachment = attachmentOf(index);
+    auto pending = std::find(replayDs.begin(), replayDs.end(), attachment);
+    if (pending == replayDs.end())
+        return;
+    replayDs.erase(pending);
+    const bool savedScissor = scissorEnabled;
+    const Rml::Rectanglei savedScissorPixels = scissorPixels;
+    const Rml::Matrix4f savedTransform = transform;
+    const bool savedClip = clipMaskEnabled;
+    const int savedOverride = drawIndexOverride;
+    const bool savedDrawing = drawingMask;
+    drawingMask = true;
+    drawIndexOverride = index;
+    clipMaskEnabled = false;
+    for (const MaskOp& op : maskHistory){
+        if (op.attachment != attachment)
+            continue;
+        scissorEnabled = op.scissored;
+        scissorPixels = op.scissorPixels;
+        drawMaskOp(op);
+    }
+    transform = savedTransform;
+    scissorEnabled = savedScissor;
+    scissorPixels = savedScissorPixels;
+    clipMaskEnabled = savedClip;
+    drawIndexOverride = savedOverride;
+    drawingMask = savedDrawing;
+    for (const std::pair<const Framebuffer*, uint64_t>& dropped : droppedVersions){
+        if (dropped.first == attachment)
+            maskVersionOf(index) = dropped.second;
+    }
+    stats.clipMasksRedrawn++;
+}
+
 void RmlRenderer::ensureMask(int index){
     if (index < 0 || index >= layersSize || drawingMask)
         return;
-    uint64_t& version = maskVersionOf(index);
-    if (version == maskVersion || maskOps.empty())
+    if (maskVersionOf(index) == maskVersion || maskOps.empty())
         return;
     // The clip mask was drawn into another depth-stencil (a region layer's own, or the shared one
     // while a region layer was the top one: RmlUi sets a filter's outer clip mask before its
     // composite): it is drawn again into this one, all of it (the scissor at each operation only
-    // limited where it went). S92 R5: a shared depth-stencil a DONTCARE store dropped (cleared
-    // since) gets every write it had this frame again, each within its own scissor: what it held
+    // limited where it went). S92 R5: a depth-stencil a DONTCARE store dropped (cleared since)
+    // first gets back what it held, every write it had, each within its own scissor
     if (!bindLayer(index))
         return;
-    const bool replay = sharedDsReplay && !isRegionLayer(index);
+    restoreDroppedMask(index);
+    uint64_t& version = maskVersionOf(index);
+    if (version == maskVersion)
+        return;
+    const Framebuffer* attachment = attachmentOf(index);
     const bool savedScissor = scissorEnabled;
-    const Rml::Rectanglei savedScissorPixels = scissorPixels;
     const Rml::Matrix4f savedTransform = transform;
     const bool savedClip = clipMaskEnabled;
     const int savedOverride = drawIndexOverride;
@@ -2077,26 +2149,16 @@ void RmlRenderer::ensureMask(int index){
     drawIndexOverride = index;
     scissorEnabled = false;
     clipMaskEnabled = false;
-    if (replay){
-        for (const MaskOp& op : maskHistory){
-            scissorEnabled = op.scissored;
-            scissorPixels = op.scissorPixels;
-            drawMaskOp(op);
-        }
-    }else{
-        for (const MaskOp& op : maskOps){
-            drawMaskOp(op);
-            // (what the shared depth-stencil holds from now on)
-            if (!isRegionLayer(index)){
-                MaskOp written = op;
-                written.scissored = false;
-                maskHistory.push_back(written);
-            }
-        }
+    for (const MaskOp& op : maskOps){
+        drawMaskOp(op);
+        // (what the depth-stencil holds from now on)
+        MaskOp written = op;
+        written.scissored = false;
+        written.attachment = attachment;
+        maskHistory.push_back(written);
     }
     transform = savedTransform;
     scissorEnabled = savedScissor;
-    scissorPixels = savedScissorPixels;
     clipMaskEnabled = savedClip;
     drawIndexOverride = savedOverride;
     drawingMask = false;
@@ -3452,7 +3514,8 @@ void RmlRenderer::replayCommands(){
     frames[0].rect = standardFrame();
     maskOps.clear();
     maskHistory.clear();
-    sharedDsReplay = false;
+    replayDs.clear();
+    droppedVersions.clear();
     maskVersion = 0;
     sharedMaskVersion = 0;
     activeClipScope = -1;
@@ -3648,7 +3711,8 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     recordFrames.assign(1, standardFrame());
     maskOps.clear();
     maskHistory.clear();
-    sharedDsReplay = false;
+    replayDs.clear();
+    droppedVersions.clear();
     maskVersion = 0;
     sharedMaskVersion = 0;
     layerClearPending.assign(std::max<size_t>(1, target->layers.size()), false);
