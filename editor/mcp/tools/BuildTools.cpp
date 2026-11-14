@@ -11,6 +11,7 @@
 // Builds never block the main thread: Exporter::startExport runs on its own thread (it hops to
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
+#include "util/CppIdentifier.h"
 #include "McpTools.h"
 #include "util/BuildDiagnostics.h"
 #include "util/SourceLocation.h"
@@ -30,7 +31,6 @@
 #include "EditorHost.h"
 #include "AppSettings.h"
 #include "Exporter.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
@@ -328,7 +328,7 @@ Json shaderOverridesJson(const ShaderOverrides& overrides) {
 }
 
 std::string appName(Project* project) {
-    return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    return project->getName().empty() ? "jasperengine-project" : toIdentifier(project->getName());
 }
 
 // The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
@@ -777,7 +777,7 @@ void buildProjectTool(const CallPtr& call) {
     const Json& args = call->args();
 
     if (ctx.isPlaying()) {
-        call->fail("Stop Play mode first: a build saves every scene.");
+        call->fail("Stop Play mode first: a build cooks the scenes as edited, not as playing.");
         return;
     }
     if (busy(call)) return;

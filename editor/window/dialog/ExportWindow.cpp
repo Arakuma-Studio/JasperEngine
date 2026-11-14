@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "ExportWindow.h"
 #include "command/type/ShaderOverridesCmd.h"
 #include "cook/BuildReport.h"
@@ -18,7 +19,6 @@
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
 #include "Theme.h"
-#include "Factory.h"
 #include "SettingsCategoryList.h"
 #include "window/ConsoleWindow.h"
 
@@ -698,7 +698,7 @@ void ExportWindow::drawSourceBackendsRow() {
 
 fs::path ExportWindow::builtPlayerPath() const {
     // Mirrors Exporter::getAppName()
-    std::string exeName = m_project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(m_project->getName());
+    std::string exeName = m_project->getName().empty() ? "jasperengine-project" : toIdentifier(m_project->getName());
     #ifdef _WIN32
     exeName += ".exe";
     #endif
@@ -1118,7 +1118,7 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
             break;
         }
     }
-    // a scene never saved ships as it is now (W-SCENE-NOT-SAVED)
+    // a scene never saved ships as it is now (W-SCENE-UNSAVED)
     if (hasSavedScenes) {
         for (const auto& scene : m_project->getScenes()) {
             if (!scene.filepath.empty() || !scene.scene) continue;

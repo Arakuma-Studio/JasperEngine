@@ -139,10 +139,6 @@ TEST(VoxelExport, SettingsOnlyLowerLimits) {
     EXPECT_EQ(limits.maxDimension, 256);
     EXPECT_EQ(limits.cpuBudget, 32 * 1024 * 1024);
     EXPECT_EQ(limits.meshBudget, 8 * 1024 * 1024);
-    EXPECT_EQ(generateVoxelSettingsCode(VoxelProjectSettings(), "    "), "");
-    const std::string code = generateVoxelSettingsCode(settings, "    ");
-    EXPECT_NE(code.find("setVoxelLimitsOverride"), std::string::npos);
-    EXPECT_NE(code.find("#if JASPERENGINE_VOXEL"), std::string::npos);
 
     // project.yaml: nothing unless set, and it reads back
     EXPECT_EQ(encodeVoxelProjectSettings(VoxelProjectSettings()).size(), 0u);

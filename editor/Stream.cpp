@@ -51,7 +51,6 @@
 #include "lattice/LatticeTypes.h"
 #include "object/CameraFollow.h"
 #include "object/CameraShaker.h"
-#include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
@@ -4822,7 +4821,6 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             } else {
                 info.prefabPath = pathNode.as<std::string>();
             }
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
     }

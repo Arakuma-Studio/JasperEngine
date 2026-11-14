@@ -122,26 +122,6 @@ namespace {
         return std::string();
     }
 
-    // a C++ float literal that reads back as the same float ("0.5f", "1.0f", "1e-05f")
-    std::string floatLiteral(float value) {
-        if (std::isinf(value)) return value > 0 ? "INFINITY" : "-INFINITY";
-        if (std::isnan(value)) return "0.0f";
-        std::string text = shortestText(value);
-        if (text.find_first_of(".e") == std::string::npos) text += ".0";
-        return text + "f";
-    }
-
-    const char* wrapLiteral(CurveWrapMode mode) {
-        switch (mode) {
-            case CurveWrapMode::Clamp: return "CurveWrapMode::Clamp";
-            case CurveWrapMode::Loop: return "CurveWrapMode::Loop";
-            case CurveWrapMode::PingPong: return "CurveWrapMode::PingPong";
-            case CurveWrapMode::Linear: return "CurveWrapMode::Linear";
-            case CurveWrapMode::LoopWithOffset: return "CurveWrapMode::LoopWithOffset";
-        }
-        return "CurveWrapMode::Clamp";
-    }
-
 }
 
 YAML::Node curvecodec::curveToYaml(const Curve& curve) {
@@ -257,40 +237,6 @@ bool curvecodec::minMaxGradientFromJson(const mcp::Json& json, particles::MinMax
     }
     value = std::move(read);
     return true;
-}
-
-std::string curvecodec::curveCppLiteral(const Curve& curve) {
-    std::string keys = "Curve({";
-    for (size_t i = 0; i < curve.keys.size(); i++) {
-        const CurveKey& k = curve.keys[i];
-        if (i > 0) keys += ", ";
-        keys += "CurveKey{" + floatLiteral(k.time) + ", " + floatLiteral(k.value) + ", " + floatLiteral(k.inTangent) + ", " +
-                floatLiteral(k.outTangent) + ", " + std::to_string((int)k.mode) + "}";
-    }
-    keys += "})";
-    if (curve.preWrapMode == CurveWrapMode::Clamp && curve.postWrapMode == CurveWrapMode::Clamp) return keys;
-    return std::string("[]{ Curve c = ") + keys + "; c.preWrapMode = " + wrapLiteral(curve.preWrapMode) +
-           "; c.postWrapMode = " + wrapLiteral(curve.postWrapMode) + "; return c; }()";
-}
-
-std::string curvecodec::gradientCppLiteral(const Gradient& gradient) {
-    auto vector3 = [](const Vector3& v) {
-        return "Vector3(" + floatLiteral(v.x) + ", " + floatLiteral(v.y) + ", " + floatLiteral(v.z) + ")";
-    };
-    std::string code = "[]{ Gradient g; g.colorKeys = {";
-    for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
-        if (i > 0) code += ", ";
-        code += "GradientColorKey{" + floatLiteral(gradient.colorKeys[i].time) + ", " + vector3(gradient.colorKeys[i].color) + "}";
-    }
-    code += "}; g.alphaKeys = {";
-    for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
-        if (i > 0) code += ", ";
-        code += "GradientAlphaKey{" + floatLiteral(gradient.alphaKeys[i].time) + ", " + floatLiteral(gradient.alphaKeys[i].alpha) + "}";
-    }
-    code += "};";
-    if (gradient.mode == GradientMode::Fixed) code += " g.mode = GradientMode::Fixed;";
-    if (gradient.linear) code += " g.linear = true;";
-    return code + " return g; }()";
 }
 
 mcp::Json curvecodec::curveSchema() {

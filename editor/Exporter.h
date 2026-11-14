@@ -206,7 +206,7 @@ namespace jasperengine::editor {
         // held while a build uses the shared compile tree (getSharedBuildCacheDir)
         std::unique_ptr<io::ScopedFileLock> sharedBuildLock;
 
-        // The UI Documents of the exported scenes, collected while loadAndSaveAllScenes() has
+        // The UI Documents of the exported scenes, collected while loadAndCookAllScenes() has
         // every scene loaded, for checkHtmlUIReferences()
         struct HtmlUIDocumentUse {
             std::string scene;
@@ -241,17 +241,19 @@ namespace jasperengine::editor {
         std::map<std::string, std::string> textureSheetFiles;
         std::set<std::string> atlasOnlySources;
 
-        // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
+        // S30: the Player build's report, the cooked scenes and prefabs loadAndCookAllScenes()
         // made while every scene was loaded, and the player runtime it stages
         ExportResult result;
         std::vector<cook::CookedFileBytes> cookedFiles;
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
+        // the C++ scripts of the build (scene_scripts.cpp), taken while its scenes are loaded
+        std::vector<SceneScriptSource> buildCppScripts;
         // assets-relative: the volumes some component ships with runtimeGeneration on (T6 R78)
         std::set<std::string> voxelKeptGenerators;
         std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases;
         std::shared_ptr<PlayerInfo> player;
         // S34: what the project reaches of the optional modules, found while every scene was
-        // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)
+        // loaded (loadAndCookAllScenes); a source export has no such answer (every module allowed)
         ModuleUsage moduleUsage;
         bool moduleUsageKnown = false;
         // the prebuilt build's player: the smallest installed variant with every needed module
@@ -386,6 +388,12 @@ namespace jasperengine::editor {
         // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
         unsigned int effectiveBuildJobs() const;
         bool runBuild();
+        // a Compile build's output staged beside its destination (S30 R7), swapped in by finishOutputStaging
+        bool beginOutputStaging();
+        bool finishOutputStaging();
+        void abandonOutputStaging();
+        fs::path finalDestinationDir;
+        bool outputStaged = false;
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
         // the pthreads build next to the single-thread one, the cross-origin isolation
@@ -400,15 +408,15 @@ namespace jasperengine::editor {
         bool collectPackedTreeEntries(const fs::path& dir, std::vector<fs::path>& out, const fs::path& keep = fs::path());
         bool removeResourcePack(const fs::path& packPath);
         bool writeNativeResourcePack(const fs::path& outputPath, bool& created);
-        bool clearGenerated();
-        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits after the clear while <path> exists
+        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits before the scenes are read while <path> exists
         void holdForTest();
-        bool loadAndSaveAllScenes();
+        bool loadAndCookAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
         // S37 R24: an event whose clip is missing is a build warning naming both
         void checkSoundEventClips();
         bool copyGenerated();
+        bool writeCompiledContent();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         // S80 R35: Title Art outputs stale or missing before the textures cook
@@ -485,6 +493,7 @@ namespace jasperengine::editor {
         // The exported project's sources (scenes, prefabs, scene_scripts.cpp, C++ scripts) in
         // the Xcode app targets, with the include directories CMake gives the game target
         bool addXcodeProjectSources(std::string& xcodeProject);
+        bool addXcodeProjectContent(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
         // Where the native plugins sit in an Xcode project: the source export's workspace (both

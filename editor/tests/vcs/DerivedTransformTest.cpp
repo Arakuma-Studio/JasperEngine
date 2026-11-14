@@ -12,7 +12,6 @@
 
 #include "support/EditorTestSupport.h"
 #include "util/Prefab.h"
-#include "Factory.h"
 #include "Stream.h"
 #include "StreamMigrations.h"
 #include "component/CameraComponent.h"
@@ -21,6 +20,8 @@
 #include "component/TerrainComponent.h"
 
 #include <gtest/gtest.h>
+
+#include "cook/SceneCooker.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -295,9 +296,8 @@ TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
     // as drawn: the fixture was saved after a draw
     const std::string drawn = encodeSceneText(decoded);
     ASSERT_NE(drawn.find("vertexCount: 6\n"), std::string::npos);
-    std::vector<std::string> drawnCode;
-    for (size_t i = 0; i < meshes->size(); i++)
-        drawnCode.push_back(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"));
+    auto cooked = [&]() { return editor::cook::SceneCooker::cookScene(scene, 1, decoded.scene->entities, NULL_ENTITY, SceneResources{}); };
+    const std::vector<uint8_t> drawnCooked = cooked();
     // never drawn: no count yet on a mesh with its own buffers (a model's mesh keeps what it has)
     size_t undrawn = 0;
     for (size_t i = 0; i < meshes->size(); i++) {
@@ -308,7 +308,5 @@ TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
     }
     ASSERT_GT(undrawn, 0u);
     EXPECT_EQ(encodeSceneText(decoded), drawn) << "a save depends on whether the meshes were drawn";
-    for (size_t i = 0; i < meshes->size(); i++)
-        EXPECT_EQ(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"), drawnCode[i])
-            << "the generated code of entity " << meshes->getEntity(i) << " depends on whether it was drawn";
+    EXPECT_EQ(cooked(), drawnCooked) << "a build's cooked scene depends on whether the meshes were drawn";
 }

@@ -22,7 +22,6 @@
 #include "object/Camera.h"
 
 #include "Catalog.h"
-#include "Factory.h"
 #include "Stream.h"
 #include "project/ProjectPrefabInternal.h"
 #include "util/ProjectUtils.h"
@@ -706,24 +705,6 @@ namespace {
         "safearea.includeExtraInsets = false;\n"
         "scene->addComponent<SafeAreaComponent>(entity, safearea);\n";
 
-}
-
-TEST(SafeAreaComponent, FactoryEmitsTheNonDefaults) {
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    SafeAreaComponent authored;
-    authored.top = false;
-    authored.includeExtraInsets = false;
-    scene.addComponent<SafeAreaComponent>(entity, authored);
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::SafeAreaComponent, "", "scene", "entity"), EMITTED_SAFE_AREA);
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedSafeArea(&built, builtEntity);
-    EXPECT_FALSE(built.getComponent<SafeAreaComponent>(builtEntity).top);
-    EXPECT_FALSE(built.getComponent<SafeAreaComponent>(builtEntity).includeExtraInsets);
-    EXPECT_TRUE(built.getComponent<SafeAreaComponent>(builtEntity).left);
 }
 
 // ---- 7. device profiles and the overlay --------------------------------------------------------

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "pixelart/BitmapFontCreate.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/NoiseGraphWindow.h"
@@ -103,7 +104,6 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
@@ -5899,7 +5899,7 @@ namespace {
             "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
         if (name.empty()) return "Enter a name.";
         if (identifierKind(kind)) {
-            if (editor::Factory::toIdentifier(name) != name) return "A script's name is its class: letters, digits and _, not starting with a digit.";
+            if (editor::toIdentifier(name) != name) return "A script's name is its class: letters, digits and _, not starting with a digit.";
             if (kind == editor::AssetCreateKind::LuaScript && luaKeywords.count(name)) return "\"" + name + "\" is a Lua keyword.";
         } else {
             if (name == "." || name == ".." || name.find_first_of("/\\:*?\"<>|") != std::string::npos) {

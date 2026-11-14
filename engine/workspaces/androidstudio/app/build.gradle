@@ -118,8 +118,9 @@ android {
                 res.srcDir jasperengineRootAbs+'/platform/android/player/res'
                 assets.srcDirs = []
             } else {
-                // the project's assets without the cooked textures other platforms load (S14 R9)
-                assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
+                // the project's assets without the cooked textures other platforms load (S14 R9), and
+                // game.json with the cooked scenes and prefabs at the root, beside them (S98 D1)
+                assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua',projectSourceRootAbs+'/content']
             }
         }
     }

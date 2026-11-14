@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "texture/TerrainSliceCook.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "util/SafeWrite.h"
@@ -44,7 +45,6 @@
 #include "util/PngWriter.h"
 #include "util/AtomicFileStream.h"
 #include "EditorHost.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "App.h"
@@ -1071,7 +1071,7 @@ std::string editor::Exporter::outputFolderRefusal(const Project* project, const 
         if (std::optional<fs::path> rel = inside(root)) refused = !skippedByScans(*rel);
     }
     if (!refused) return std::string();
-    const std::string app = project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    const std::string app = project->getName().empty() ? "jasperengine-project" : toIdentifier(project->getName());
     return "The output folder " + FileUtils::pathToGenericUtf8(dir) + " is inside the project: the editor would import the "
            "exported files as project assets. Choose a folder outside it, e.g. " +
            FileUtils::pathToGenericUtf8(project->getProjectPath().parent_path() / (app + "-build")) + ".";
@@ -1170,9 +1170,9 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 }
 
 void editor::Exporter::runExport() {
-    // The editor's regeneration of .jasperengine/generated (a change picked up meanwhile, a
-    // setting) waits for the whole export, which clears, rewrites and copies that folder. The
-    // export's terrain targets (loadAndSaveAllScenes) end with it
+    // The editor's regeneration of its cooked cache (a change picked up meanwhile, a setting)
+    // waits for the whole export, which loads and unloads the closed scenes. The export's
+    // terrain targets (loadAndCookAllScenes) end with it
     struct GeneratedExportGuard {
         Project* project;
         explicit GeneratedExportGuard(Project* p) : project(p) { if (project) project->beginGeneratedExport(); }
@@ -1212,7 +1212,7 @@ void editor::Exporter::runExport() {
         config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
 
-    // The scene sources describe the FBX imports that ship, so none may change mid-export
+    // The cooked scenes describe the FBX imports that ship, so none may change mid-export
     struct FbxImportPause {
         Project* project;
         explicit FbxImportPause(Project* project): project(project) {
@@ -1262,10 +1262,7 @@ void editor::Exporter::runExport() {
         return;
     }
 
-    if (!clearGenerated()) return;
-    holdForTest();
-    if (isCancelled()) { setError("Build cancelled"); return; }
-    if (!loadAndSaveAllScenes()) return;
+    if (!loadAndCookAllScenes()) return;
     if (!checkMissingAssets()) return;
     resolveShaderKeys();
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1291,6 +1288,9 @@ void editor::Exporter::runExport() {
     if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!writeCompiledContent()) return;
+    measureBuildContent(getExportProjectRoot() / "content");
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCppScripts()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1322,6 +1322,15 @@ void editor::Exporter::runExport() {
         if (isCancelled()) { setError("Build cancelled"); return; }
         if (!runBuild()) return;
         if (isCancelled()) { setError("Build cancelled"); return; }
+        // S30 R7, S98 REQ-7: the artifacts go to a staging folder swapped in once complete, so a
+        // file this build no longer writes is gone and a failed build leaves the old one as it was
+        if (!beginOutputStaging()) return;
+        struct StagingGuard {
+            Exporter* exporter;
+            ~StagingGuard() {
+                if (!exporter->holdFinish) exporter->abandonOutputStaging();
+            }
+        } stagingGuard{this};
         bool collected = (config.mode == ExportMode::Desktop)
             ? collectDesktopArtifacts()
             : collectWebArtifacts();
@@ -1345,6 +1354,8 @@ void editor::Exporter::runExport() {
 
         measureBuildEngine(config.destinationDir);
         if (!writeBuildReport(config.destinationDir, "compile")) return;
+        // (a Player build swaps once it has added its notices and manifest: runPlayerBuild)
+        if (!holdFinish && !finishOutputStaging()) return;
         setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
@@ -1379,8 +1390,8 @@ std::vector<int> editor::Exporter::terrainExportPlatforms() const {
     return platforms;
 }
 
-// Runs after loadAndSaveAllScenes(): saving a scene refreshes its cached keys, so
-// scenes that were closed or outdated have contributed before the overrides apply.
+// Runs after loadAndCookAllScenes(): the open scenes' keys come from what they hold now, the
+// closed ones' from their files, before the overrides apply.
 void editor::Exporter::resolveShaderKeys() {
     if (!project) {
         return;
@@ -1446,7 +1457,7 @@ std::string editor::Exporter::getAppName() const {
     if (!project || project->getName().empty()) {
         return "jasperengine-project";
     }
-    return Factory::toIdentifier(project->getName());
+    return toIdentifier(project->getName());
 }
 
 fs::path editor::Exporter::getProducedExecutable() const {
@@ -1892,6 +1903,43 @@ bool editor::Exporter::runBuild() {
     return true;
 }
 
+bool editor::Exporter::beginOutputStaging() {
+    std::error_code ec;
+    finalDestinationDir = fs::absolute(config.destinationDir, ec).lexically_normal();
+    stagingDir = finalDestinationDir.parent_path() / (finalDestinationDir.filename().string() + ".staging-" + std::to_string(io::currentProcessId()));
+    fs::remove_all(stagingDir, ec);
+    fs::create_directories(stagingDir, ec);
+    if (ec) {
+        setError("Failed to create " + stagingDir.string() + ": " + ec.message());
+        return false;
+    }
+    config.destinationDir = stagingDir;
+    outputStaged = true;
+    return true;
+}
+
+bool editor::Exporter::finishOutputStaging() {
+    if (!outputStaged) return true;
+    config.destinationDir = finalDestinationDir;
+    outputStaged = false;
+    if (!swapStagingIntoPlace()) {
+        std::error_code ec;
+        fs::remove_all(stagingDir, ec);
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(progressMutex);
+    if (!producedExecutable.empty()) producedExecutable = finalDestinationDir / producedExecutable.filename();
+    return true;
+}
+
+void editor::Exporter::abandonOutputStaging() {
+    if (!outputStaged) return;
+    std::error_code ec;
+    fs::remove_all(stagingDir, ec);
+    config.destinationDir = finalDestinationDir;
+    outputStaged = false;
+}
+
 bool editor::Exporter::collectDesktopArtifacts() {
     setProgressRaw("Copying artifacts...", 0.95f);
 
@@ -1992,10 +2040,18 @@ bool editor::Exporter::collectDesktopArtifacts() {
             }
         }
     }
+    // game.json and the cooked scenes and prefabs, at the content root (the folder of assets/)
+    if (fs::is_directory(projectRoot / "content", ec) &&
+        !walkFiles(projectRoot / "content", nullptr, [&](const fs::directory_entry& entry, const fs::path& rel) {
+            return copyOrFail(entry.path(), config.destinationDir / rel);
+        })) {
+        return false;
+    }
 
 #if defined(__linux__)
     const std::vector<std::string> settingsArgv = { Generator::cmakeProgram(),
-        "-DAPP_FILE=" + (fs::absolute(config.destinationDir) / exeName).string(), "-DWEB=OFF",
+        "-DAPP_FILE=" + ((outputStaged ? finalDestinationDir : fs::absolute(config.destinationDir)) / exeName).string(),
+        "-DAPP_OUTPUT=" + fs::absolute(config.destinationDir).string(), "-DWEB=OFF",
         "-P", (projectRoot / "export-settings" / "apply.cmake").string() };
     if (!commandRunner.run(settingsArgv, config.targetDir, [](const std::string& line) { Out::build("%s", line.c_str()); })) {
         setError("Failed to generate Linux launcher");
@@ -2401,30 +2457,8 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
     return true;
 }
 
-bool editor::Exporter::clearGenerated() {
-    setProgress("Clearing generated directory...", 0.05f);
-
-    fs::path generatedDir = project->getProjectInternalPath() / "generated";
-
-    std::error_code ec;
-    if (fs::exists(generatedDir, ec)) {
-        removeAllNoFollow(generatedDir, ec);
-        if (ec) {
-            setError("Failed to clear generated directory: " + ec.message());
-            return false;
-        }
-    }
-    fs::create_directories(generatedDir, ec);
-    if (ec) {
-        setError("Failed to recreate generated directory: " + ec.message());
-        return false;
-    }
-
-    return true;
-}
-
-// The harness holds an export at its most exposed point, the generated folder just cleared: while
-// <path> exists, after creating <path>.held to say the export got here
+// The harness holds an export before it reads the scenes: while <path> exists, after creating
+// <path>.held to say the export got here
 void editor::Exporter::holdForTest() {
     const char* hold = std::getenv("JASPER_TEST_EXPORT_HOLD");
     if (!hold || !*hold) return;
@@ -2437,8 +2471,9 @@ void editor::Exporter::holdForTest() {
     }
 }
 
-bool editor::Exporter::loadAndSaveAllScenes() {
-    setProgress("Saving scene sources...", 0.1f);
+bool editor::Exporter::loadAndCookAllScenes() {
+    setProgress("Cooking scenes...", 0.1f);
+    holdForTest();
 
     std::promise<bool> savePromise;
     auto saveFuture = savePromise.get_future();
@@ -2446,22 +2481,13 @@ bool editor::Exporter::loadAndSaveAllScenes() {
 
     editor::getEditorHost().enqueueMainThreadTask([this, &savePromise, &importError]() {
         try {
-            // before any scene saves: each save writes main.cpp, whose shipped terrain tiers are
-            // this export's (T3 R34), not the last export's
+            // this export's terrain tiers (T3 R34), which game.json ships, not the last export's
             project->beginTerrainExport(terrainExportPlatforms());
             std::vector<uint32_t> temporarilyLoaded;
             auto& scenes = project->getScenes();
 
             // Imports done before this export reload into the open scenes first
             bool imported = project->flushFbxReloads(importError);
-
-            // Prefab Mode's unsaved changes (Auto Save off) are the assets the build uses
-            for (size_t i = 0; i < project->getPrefabStageCount(); i++) {
-                PrefabStage* stage = project->getPrefabStageAt(i);
-                if (stage && project->hasUnsavedPrefabStage(stage->sceneProject.id)) {
-                    project->savePrefabStage(stage->sceneProject.id);
-                }
-            }
 
             // Load all unloaded scenes (opened=false to avoid UI side-effects)
             for (size_t i = 0; imported && i < scenes.size(); i++) {
@@ -2486,53 +2512,63 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 Out::warning("Scene %s is in the project and cannot be read: it is not in this build.", path.generic_string().c_str());
             }
 
-            // Every FBX model needs its current import before the sources describe it
+            // Every FBX model needs its current import before the cook describes it
             imported = imported && project->prepareFbxModelsForExport(importError);
 
-            // Save all scenes to regenerate their .cpp sources; one that did not load completely
-            // stops the export (its save would drop data). One not saved has its old source (the
-            // save writes it after the file): the export would build what the editor no longer
-            // shows, so it stops too (a save refused for a GameObject it would lose)
-            std::string degraded;
-            std::string notSaved;
+            // The build is what the editor shows (S98 D2): nothing is saved. A scene or a Prefab
+            // Mode stage with unsaved changes ships as it is, and says so
+            std::vector<std::string> unsavedNotOpen;
             for (size_t i = 0; imported && i < scenes.size(); i++) {
-                auto& sceneProject = scenes[i];
-                if (sceneProject.filepath.empty() || !sceneProject.scene) {
+                SceneProject& sceneProject = scenes[i];
+                if (sceneProject.filepath.empty()) {
+                    if (!sceneProject.scene) {
+                        unsavedNotOpen.push_back(sceneProject.name);
+                        continue;
+                    }
+                    warn("W-SCENE-UNSAVED", "Scene '" + sceneProject.name + "' has never been saved; it ships as it is in the editor. Save it to keep it.");
+                } else if (!sceneProject.scene) {
                     continue;
+                } else if (sceneProject.isModified) {
+                    warn("W-SCENE-UNSAVED", "Scene '" + sceneProject.name + "' (" + sceneProject.filepath.generic_string() +
+                                            ") has unsaved changes; it ships as it is in the editor, and its file stays as it was.");
                 }
                 if (project->isSceneSaveGated(&sceneProject)) {
-                    degraded += (degraded.empty() ? "" : ", ") + sceneProject.filepath.generic_string();
-                    continue;
+                    Out::warning("Scene '%s' did not load completely: this build lacks the %zu value(s) this editor could not read.",
+                                 sceneProject.name.c_str(), sceneProject.loadReport.dropped());
                 }
                 project->warnPreservedNotInBuild(sceneProject);
-                if (!project->saveSceneToPath(sceneProject.id, sceneProject.filepath)) {
-                    notSaved += (notSaved.empty() ? "'" : ", '") + sceneProject.name + "'";
+                project->updateSceneCppScripts(&sceneProject);
+                // the shader lists read these after the closed scenes unload; a save used to refresh them
+                std::set<ShaderKey> shaderKeys;
+                project->collectSavedShaderKeys(&sceneProject, shaderKeys);
+                project->dropDeadForkKeys(shaderKeys);
+                sceneProject.shaderKeys = std::move(shaderKeys);
+            }
+            for (size_t i = 0; imported && i < project->getPrefabStageCount(); i++) {
+                PrefabStage* stage = project->getPrefabStageAt(i);
+                if (stage && project->hasUnsavedPrefabStage(stage->sceneProject.id)) {
+                    warn("W-SCENE-UNSAVED", "Prefab " + stage->assetPath.generic_string() +
+                                            " has unsaved changes in Prefab Mode; it ships as it is there, and its file stays as it was.");
                 }
             }
 
-            // never-saved scenes: their sources from what the editor holds (the cooked path below
-            // ships them alike), and every scene main.cpp names has its source
-            std::vector<std::string> unsavedWritten, unsavedNotOpen, withoutSource;
-            if (imported && notSaved.empty() && degraded.empty()) {
-                project->writeUnsavedSceneSources(unsavedWritten, unsavedNotOpen);
-                // (a prebuilt player loads cooked scenes, not generated sources)
-                if (unsavedNotOpen.empty() && config.mode != ExportMode::Player) withoutSource = project->scenesWithoutSource();
-            }
-            for (const std::string& name : unsavedWritten) {
-                warn("W-SCENE-NOT-SAVED", "Scene '" + name + "' has never been saved; it ships as it is in the editor. Save it to keep it.");
-            }
-
-            // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
-            // loaded now (the same GameObjects the generated sources describe)
+            // the cooked scenes and prefabs every build loads (S30, S98 D1), from the scenes as
+            // they are loaded now and the Prefab Mode stages as they show
             cookedFiles.clear();
             cookedPrefabs.clear();
-            if (imported && config.mode == ExportMode::Player) {
+            if (imported && unsavedNotOpen.empty()) {
                 std::string cookError;
-                if (!cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError)) {
+                bool cooked = false;
+                project->withUnsavedPrefabStages([&]() {
+                    cooked = cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError);
+                });
+                if (!cooked) {
                     importError = "Cooking the scenes: " + cookError;
                     imported = false;
                 }
             }
+            // the C++ scripts the build compiles (scene_scripts.cpp)
+            buildCppScripts = project->getBuildCppScripts();
 
             // The UI Documents the build ships, checked by checkHtmlUIReferences()
             htmlUIDocuments.clear();
@@ -2549,7 +2585,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
-            // A disabled backend silently drops its components from the generated sources
+            // A disabled backend silently drops its components from the build
             auto warnDroppedPhysics = [&](const char* backend, auto usesBackend) {
                 std::string names;
                 for (const auto& sceneProject : scenes) {
@@ -2642,18 +2678,8 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
-            if (!notSaved.empty()) {
-                throw std::runtime_error("scene " + notSaved + " could not be saved (see the console)");
-            }
             if (!unsavedNotOpen.empty()) {
                 throw std::runtime_error("scene '" + unsavedNotOpen.front() + "' has never been saved and is not open: save it or remove it from the project");
-            }
-            if (!withoutSource.empty()) {
-                throw std::runtime_error("scene '" + withoutSource.front() + "' has no generated source, and the game's main.cpp loads it");
-            }
-            if (!degraded.empty()) {
-                throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
-                                         ". Save them first (Save Anyway drops what this editor could not read, Save As keeps the original).");
             }
             savePromise.set_value(imported);
         } catch (...) {
@@ -2667,7 +2693,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             return false;
         }
     } catch (const std::exception& e) {
-        setError(std::string("Scene save failed: ") + e.what());
+        setError(std::string("Scene cook failed: ") + e.what());
         return false;
     }
 
@@ -2808,111 +2834,52 @@ bool editor::Exporter::checkHtmlUIReferences() {
 }
 
 bool editor::Exporter::copyGenerated() {
-    setProgress("Copying generated files...", 0.2f);
-
-    fs::path generatedSrc = project->getProjectInternalPath() / "generated";
-    fs::path generatedDst = getExportProjectRoot();
+    setProgress("Writing the generated sources...", 0.2f);
     cppExportedPaths.clear();
+    const fs::path generatedDst = getExportProjectRoot();
 
-    std::error_code ec;
-    fs::create_directories(generatedDst, ec);
-    if (ec) {
-        setError("Failed to create " + FileUtils::pathToGenericUtf8(generatedDst) + ": " + ec.message());
-        return false;
+    // main.cpp, the same for every game (player::runGame with the C++ scripts' hooks), without
+    // its entry point: the exported build compiles the engine's own platform main.cpp, which
+    // defines main(). Generator brackets it with markers because the block is preprocessor-conditional.
+    std::string content = Generator::mainSource();
+    const std::string entryBegin = "// JASPERENGINE_ENTRY_POINT_BEGIN\n";
+    const std::string entryEnd = "// JASPERENGINE_ENTRY_POINT_END\n";
+    size_t pos = content.find(entryBegin);
+    if (pos != std::string::npos) {
+        size_t endPos = content.find(entryEnd, pos);
+        if (endPos != std::string::npos) {
+            endPos += entryEnd.size();
+            while (endPos < content.size() && content[endPos] == '\n') endPos++;
+            content.erase(pos, endPos - pos);
+        }
     }
+    if (!writeOrFail(generatedDst / "main.cpp", content)) return false;
 
-    // main.cpp is handled separately below. PlatformEditor.* is the GLFW host
-    // the editor used to emit into every project; projects created before it
-    // was dropped still carry the files, and the exported build globs every
-    // *.cpp under the project root, so a stale copy would be compiled.
-    static const std::set<std::string> excludedFiles = {
-        "main.cpp", "PlatformEditor.h", "PlatformEditor.cpp"
-    };
-
-    if (fs::exists(generatedSrc, ec)) {
-        const bool copied = walkFiles(generatedSrc, nullptr, [&](const fs::directory_entry& entry, const fs::path& relativePath) {
-            if (excludedFiles.count(FileUtils::pathToUtf8(relativePath.filename()))) return true;
-            if (!copyOrFail(entry.path(), generatedDst / relativePath)) return false;
-            cppExportedPaths.insert(relativePath);
-            return true;
-        });
-        if (!copied) return false;
-    }
-
-    // Process main.cpp: copy from Generator output but strip editor-specific parts
-    fs::path mainSrc = generatedSrc / "main.cpp";
-    if (fs::exists(mainSrc, ec)) {
-        std::ifstream ifs(mainSrc, std::ios::in | std::ios::binary);
-        if (!ifs) {
-            setError("Failed to read generated main.cpp");
-            return false;
-        }
-        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-        ifs.close();
-
-        // Remove the entry point (the exported build compiles the engine's own
-        // platform main.cpp, which already defines main()). Generator brackets
-        // it with markers because the block is preprocessor-conditional.
-        const std::string entryBegin = "// JASPERENGINE_ENTRY_POINT_BEGIN\n";
-        const std::string entryEnd = "// JASPERENGINE_ENTRY_POINT_END\n";
-        size_t pos = content.find(entryBegin);
-        if (pos != std::string::npos) {
-            size_t endPos = content.find(entryEnd, pos);
-            if (endPos != std::string::npos) {
-                endPos += entryEnd.size();
-                while (endPos < content.size() && content[endPos] == '\n') endPos++;
-                content.erase(pos, endPos - pos);
-            }
-        }
-
-        // Update start scene if user selected one
-        if (config.startSceneId != 0) {
-            std::string startSceneName;
-            for (const auto& sceneProject : project->getScenes()) {
-                if (sceneProject.id == config.startSceneId) {
-                    startSceneName = sceneProject.name;
-                    break;
-                }
-            }
-            if (!startSceneName.empty()) {
-                std::string loadPrefix = "SceneManager::loadScene(\"";
-                pos = content.find(loadPrefix);
-                const size_t nameStart = pos == std::string::npos ? pos : pos + loadPrefix.size();
-                const size_t nameEnd = pos == std::string::npos ? pos : content.find("\")", nameStart);
-                if (nameEnd == std::string::npos) {
-                    // the default start would ship instead of the chosen one
-                    setError("The generated main.cpp has no start scene to replace with '" + startSceneName + "'");
-                    return false;
-                }
-                content.replace(nameStart, nameEnd - nameStart, startSceneName);
-            }
-        }
-
-        if (!writeOrFail(generatedDst / "main.cpp", content)) return false;
-    }
-
-    // Also copy scene_scripts.cpp
-    fs::path sceneScriptsSrc = project->getProjectInternalPath() / "scene_scripts.cpp";
-    if (fs::exists(sceneScriptsSrc, ec)) {
-        std::ifstream ifs(sceneScriptsSrc, std::ios::in | std::ios::binary);
-        if (!ifs) {
-            setError("Failed to read generated scene_scripts.cpp");
-            return false;
-        }
-
-        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-        const std::string editorOnlyComment = "// JasperEngine API headers for this project are provided by .jasperengine/engine-api; see generated CMakeLists.txt for local and upstream source references.\n";
-        const std::string exportComment = "// This file binds scene script metadata to compiled C++ and Lua scripts for the current build configuration.\n";
-        size_t commentPos = content.find(editorOnlyComment);
-        if (commentPos != std::string::npos) {
-            content.replace(commentPos, editorOnlyComment.size(), exportComment);
-        }
-
-        if (!writeOrFail(generatedDst / "scene_scripts.cpp", content)) return false;
-        cppExportedPaths.insert("scene_scripts.cpp");
-    }
-
+    // the C++ scripts' entry points, from the scripts of the scenes as they were cooked
+    if (!writeOrFail(generatedDst / "scene_scripts.cpp", Generator::sceneScriptsSource(project->getProjectPath(), buildCppScripts))) return false;
+    cppExportedPaths.insert("scene_scripts.cpp");
     return true;
+}
+
+// A Compile build's content, the prebuilt player's (S98 D1): game.json, the cooked scenes and
+// prefabs under content/, which each platform's build puts at the game's content root (beside
+// assets/ and lua/), and the default sky's faces under assets/
+bool editor::Exporter::writeCompiledContent() {
+    setProgress("Writing the cooked scenes...", 0.45f);
+    const fs::path projectRoot = getExportProjectRoot();
+    std::error_code ec;
+    removeAllNoFollow(projectRoot / "content", ec);
+    for (const cook::CookedFileBytes& file : cookedFiles) {
+        const bool asset = file.relativePath.rfind("assets/", 0) == 0;
+        const fs::path target = (asset ? projectRoot : projectRoot / "content") / FileUtils::pathFromUtf8(file.relativePath);
+        const io::WriteResult written = io::writeFileAtomic(target, std::string_view(reinterpret_cast<const char*>(file.bytes.data()), file.bytes.size()));
+        if (!written.ok()) {
+            setError("Failed to write " + target.string() + ": " + io::describeWriteError(written));
+            return false;
+        }
+    }
+    contentDir = projectRoot / "content";
+    return writeGameConfig();
 }
 
 bool editor::Exporter::checkMissingAssets() {
@@ -4839,18 +4806,24 @@ if(WEB)
         file(WRITE "${output}/index.html" "${html}")
     endif()
 else()
+    # the launcher names where the game will be (APP_FILE); a staged build writes it into its
+    # staging folder (APP_OUTPUT), swapped into place after
+    set(write "${output}")
+    if(APP_OUTPUT)
+        set(write "${APP_OUTPUT}")
+    endif()
     set(executable "${APP_FILE}")
     foreach(character IN ITEMS "\\" "\"" "`" "$")
         string(REPLACE "${character}" "\\${character}" executable "${executable}")
     endforeach()
     set(entry "[Desktop Entry]\nType=Application\nName=${name}\nComment=${comment}\nCategories=${categories}\nExec=\"${executable}\"\nPath=${output}\nTerminal=false\nStartupWMClass=${app}\n")
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../app_icon.png")
-        file(COPY "${CMAKE_CURRENT_LIST_DIR}/../app_icon.png" DESTINATION "${output}")
+        file(COPY "${CMAKE_CURRENT_LIST_DIR}/../app_icon.png" DESTINATION "${write}")
         string(APPEND entry "Icon=${output}/app_icon.png\n")
     else()
-        file(REMOVE "${output}/app_icon.png")
+        file(REMOVE "${write}/app_icon.png")
     endif()
-    file(WRITE "${output}/${app}.desktop" "${entry}")
+    file(WRITE "${write}/${app}.desktop" "${entry}")
 endif()
 )cmake";
     if (!writeOrFail(settingsDir / "apply.cmake", script)) return false;
@@ -5645,7 +5618,8 @@ bool editor::Exporter::writeAppleProjectSettings() {
     layout.pluginsPath = "$(SRCROOT)/../../project/plugins/native";
     layout.engineHeaders = "$(SRCROOT)/../../platform/apple";
     layout.entitlements = "ios/JasperEngine.entitlements";
-    if (!addXcodeProjectSources(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) || !addNativePluginsToXcode(xcodeProject, layout)) return false;
+    if (!addXcodeProjectSources(xcodeProject) || !addXcodeProjectContent(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) ||
+        !addNativePluginsToXcode(xcodeProject, layout)) return false;
     if (!writeNativeAppleFiles()) return false;
     // the privacy manifests (the template's resources): the engine's, the project's and the plugins'
     for (const char* platform : {"ios", "macos"}) {
@@ -5779,6 +5753,67 @@ bool editor::Exporter::writeAppleProjectSettings() {
         if (!writeOrFail(appIconSetDir / "Contents.json", contents)) return false;
     }
 
+    return true;
+}
+
+// game.json and the cooked scenes and prefabs (S98 D1) in both apps' resources, beside assets/ and
+// lua/: the bundle's resources are an Apple game's content root
+bool editor::Exporter::addXcodeProjectContent(std::string& xcodeProject) {
+    struct Item {
+        std::string path;
+        std::string name;
+        const char* type;
+    };
+    const std::vector<Item> items = {{"content/scenes", "scenes", "folder"}, {"content/prefabs", "prefabs", "folder"},
+                                     {"content/game.json", "game.json", "text.json"}};
+    std::string fileReferences, buildFiles;
+    std::vector<std::string> groupEntries;
+    std::map<std::string, std::vector<std::string>> resources;
+    const std::vector<std::string> targets = {"JasperEngine iOS", "JasperEngine macOS"};
+    std::error_code ec;
+    for (const Item& item : items) {
+        if (!fs::exists(getExportProjectRoot() / FileUtils::pathFromUtf8(item.path), ec)) continue;
+        const std::string fileId = xcodeObjectId("content:" + item.path);
+        if (xcodeProject.find(fileId) == std::string::npos) {
+            fileReferences += "\t\t" + fileId + " /* " + item.name + " */ = {isa = PBXFileReference; lastKnownFileType = " + item.type +
+                              "; path = " + pbxString(item.path) + "; sourceTree = \"<group>\"; };\n";
+        }
+        groupEntries.push_back(fileId + " /* " + item.name + " */");
+        for (const std::string& target : targets) {
+            const std::string buildId = xcodeObjectId("content:" + target + ":" + item.path);
+            if (xcodeProject.find(buildId) == std::string::npos) {
+                buildFiles += "\t\t" + buildId + " /* " + item.name + " in Resources */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " +
+                              item.name + " */; };\n";
+            }
+            resources[target].push_back(buildId + " /* " + item.name + " in Resources */");
+        }
+    }
+    if (groupEntries.empty()) return true;
+    for (const auto& [section, objects] : {std::pair<std::string, std::string>{"PBXBuildFile", buildFiles}, {"PBXFileReference", fileReferences}}) {
+        const size_t sectionEnd = xcodeProject.find("/* End " + section + " section */");
+        if (sectionEnd == std::string::npos) {
+            setError("Apple export template has no " + section + " section");
+            return false;
+        }
+        xcodeProject.insert(sectionEnd, objects);
+    }
+    const PbxRange projectGroup = findPbxObjectContaining(xcodeProject, "PBXGroup", "\n\t\t\tpath = ../../project;\n");
+    if (!addPbxListEntries(xcodeProject, projectGroup, "children", groupEntries)) {
+        setError("Apple export template has no project group");
+        return false;
+    }
+    for (const std::string& target : targets) {
+        const PbxRange native = findPbxObjectContaining(xcodeProject, "PBXNativeTarget", "\n\t\t\tname = " + pbxString(target) + ";\n");
+        std::string phaseId;
+        for (const std::string& id : pbxListIds(xcodeProject, native, "buildPhases")) {
+            const PbxRange phase = findPbxObject(xcodeProject, id);
+            if (phase.found() && xcodeProject.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) phaseId = id;
+        }
+        if (phaseId.empty() || !addPbxListEntries(xcodeProject, findPbxObject(xcodeProject, phaseId), "files", resources[target])) {
+            setError("Apple export template has no resources phase in \"" + target + "\"");
+            return false;
+        }
+    }
     return true;
 }
 

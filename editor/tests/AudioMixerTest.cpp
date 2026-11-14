@@ -1143,36 +1143,6 @@ TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
 
 // ================================================================== GeneratorAudioTest
 
-TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
-    EXPECT_EQ(Generator::audioInitSource(AudioSettings()), "") << "the defaults: nothing";
-    AudioSettings settings;
-    settings.mixer = "audio/Main.mixer";
-    settings.maxRealVoices = 16;
-    settings.maxVoices = 100;
-    settings.sampleRate = 48000;
-    const std::string source = Generator::audioInitSource(settings);
-    EXPECT_NE(source.find("AudioSystem::configure({16, 100, 48000});"), std::string::npos) << source;
-    EXPECT_NE(source.find("AudioMixer::load(\"audio/Main.mixer\");"), std::string::npos) << source;
-    EXPECT_LT(source.find("AudioSystem::configure"), source.find("AudioMixer::load"));
-
-    // main.cpp has them before the first scene loads
-    const fs::path project = fs::temp_directory_path() / ("jasper-generator-audio-" + std::to_string(::getpid()));
-    fs::remove_all(project);
-    fs::create_directories(project / "assets");
-    const fs::path internal = project / ".jasperengine";
-    Generator generator;
-    const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
-    generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                        TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
-                        ShaderCreationProjectSettings(), false, {}, PlayerSettings(), settings);
-    const std::string mainCpp = scriptdata::readFile(internal / "generated" / "main.cpp");
-    const size_t load = mainCpp.find("AudioMixer::load(\"audio/Main.mixer\")");
-    ASSERT_NE(load, std::string::npos);
-    EXPECT_LT(load, mainCpp.find("SceneManager::loadScene"));
-    fs::remove_all(project);
-}
-
 // ================================================================== BF14: audio and engine bug fixes
 // (found comparing the unmerged snd/sound-layer branch with this engine)
 
@@ -1333,23 +1303,6 @@ TEST_F(AudioSourceTest, PlayStartAndStopRestoreTheGlobalVolume) {
 }
 
 // ---- B13: an exported game keeps a saved Paused state --------------------------------------------
-
-TEST(AudioSourceSerializationTest, AnExportedSourceKeepsItsSavedState) {
-    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::AudioSourceComponent);
-    reflect::CodegenContext ctx;
-    ctx.variable = "audio";
-    AudioSourceComponent audio;
-    audio.state = AudioSourceState::Paused;
-    std::string code = reflect::cppAssignments(desc, &audio, ctx);
-    EXPECT_NE(code.find("audio.state = AudioSourceState::Paused;"), std::string::npos) << "as the editor's Play loads it:\n" << code;
-    EXPECT_EQ(code.find("startTrigger"), std::string::npos);
-
-    // Playing starts through startTrigger, from Stopped
-    audio.state = AudioSourceState::Playing;
-    code = reflect::cppAssignments(desc, &audio, ctx);
-    EXPECT_NE(code.find("audio.state = AudioSourceState::Stopped;"), std::string::npos) << code;
-    EXPECT_NE(code.find("audio.startTrigger = true;"), std::string::npos) << code;
-}
 
 // ---- B6: the platform's pause is not the game's pauseAll ----------------------------------------
 
@@ -1742,24 +1695,6 @@ TEST_F(AudioMixerRuntimeTest, ANewProjectHoldsItsCeilingAtTheOutput) {
     EXPECT_GT(output.truePeakDb, -3.0) << "the limiter holds it at its ceiling, not under";
     ASSERT_TRUE(output.integrated && master.integrated);
     EXPECT_NEAR(*output.integrated, *master.integrated, 0.1);
-}
-
-TEST(GeneratorAudioTest, TheOutputStageAndTheIosSessionReachTheExportedInit) {
-    AudioSettings settings;
-    settings.outputStage = "linear";
-    settings.iosSessionCategory = "ambient";
-    EXPECT_NE(Generator::audioInitSource(settings).find(
-                  "AudioSystem::configure({32, 256, 0, AudioOutputStage::Linear, IosAudioSession::Ambient});"), std::string::npos)
-        << Generator::audioInitSource(settings);
-    settings.outputStage = "roundoff";
-    settings.iosSessionCategory = "solo_ambient";
-    EXPECT_NE(Generator::audioInitSource(settings).find("AudioOutputStage::Roundoff, IosAudioSession::SoloAmbient"), std::string::npos);
-    settings.iosSessionCategory = "playback";
-    EXPECT_NE(Generator::audioInitSource(settings).find("IosAudioSession::Playback"), std::string::npos);
-    // the settings that only measure change no code
-    AudioSettings measuring;
-    measuring.loudnessTargetLufs = -14.0f;
-    EXPECT_EQ(Generator::audioInitSource(measuring), "");
 }
 
 TEST(PlayerConfigAudioTest, TheOutputStageAndTheIosSessionTravelInGameJson) {

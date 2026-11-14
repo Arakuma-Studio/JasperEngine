@@ -114,6 +114,7 @@ namespace jasperengine::editor{
 
     namespace cook {
         class SceneCooker;
+        struct CookedPrefabInfo;
     }
 
     struct LocalBuildSettings;
@@ -1143,6 +1144,8 @@ namespace jasperengine::editor{
 
         // True when the standalone build sources need an update on the main thread
         std::atomic<bool> generatedSourcesDirty{false};
+        // the prefabs writeCookedPrefabs cooked last, which the cache's game.json names
+        std::vector<cook::CookedPrefabInfo> cookedCachePrefabs;
         // An export and updateGeneratedSources never write .jasperengine/generated at once: the
         // exports running (beginGeneratedExport), and the lock the regeneration writes under
         mutable std::mutex generatedMutex;
@@ -1422,7 +1425,6 @@ namespace jasperengine::editor{
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
 
-        void updateSceneCppScripts(SceneProject* sceneProject);
         void updateScenePrefabs(SceneProject* sceneProject);
         void removePrefabInstanceTracking(uint32_t sceneId, Entity rootEntity);
 
@@ -1554,9 +1556,19 @@ namespace jasperengine::editor{
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         void applyFirstDrawSettings(SceneProject* sceneProject) const;
-        void writeSceneSource(SceneProject* sceneProject);
-        bool hasMissingSceneSources() const;
-        void writeMissingSceneSources();
+        // The project's own CMake build's content (<internal>/cooked): the scene (as `sceneId` when
+        // not 0: a Play copy of it) and the build's prefabs, cooked as a build cooks them
+        void writeCookedScene(SceneProject* sceneProject, uint32_t sceneId = 0);
+        // `body` with the scene as its file would hold it now (unsaved edits included), decoded into
+        // a scratch scene: what a build cooks, nothing the editor's drawing or loading made in it.
+        // False (with why) when it cannot be written: a save that would lose a GameObject.
+        bool withAuthoredScene(SceneProject* source, const std::function<void(SceneProject& authored)>& body, std::string& error);
+        void writeCookedPrefabs();
+        void clearCookedScene(uint32_t sceneId);
+        bool hasCookedScene(uint32_t sceneId) const;
+        bool hasMissingCookedScenes() const;
+        void writeMissingCookedScenes();
+        // main.cpp, CMakeLists.txt, scene_scripts.cpp and the cache's game.json
         void configureGenerator();
         void saveModifiedChildScenes(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
         bool hasSceneUnsavedChangesImpl(uint32_t sceneId, std::unordered_set<uint32_t>& visited) const;
@@ -1636,6 +1648,8 @@ namespace jasperengine::editor{
 
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
+        // the C++ scripts a loaded scene's Script components name, into its list
+        void updateSceneCppScripts(SceneProject* sceneProject);
         // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated
         // CMakeLists.txt), as Play does before it builds, without playing: the C++ script lists
         // of the loaded scenes are collected again first. Returns the scripts the build compiles.
@@ -1741,13 +1755,10 @@ namespace jasperengine::editor{
         // has drawn, so the same scene saves the same list whatever rendered before
         void collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
-        // An export's sources of the scenes never saved (it cleared the generated folder; main.cpp
-        // names every scene): written from what the editor holds, their names in `written`; a
-        // never-saved scene that is not loaded has nothing to write and goes to `notOpen`.
-        // Main thread.
-        void writeUnsavedSceneSources(std::vector<std::string>& written, std::vector<std::string>& notOpen);
-        // The scenes the generated main.cpp names that have no generated source
-        std::vector<std::string> scenesWithoutSource() const;
+        // <internal>/cooked: the project's own CMake build's game.json, scenes and prefabs
+        std::filesystem::path getCookedCacheDir() const;
+        // Deletes the generated scene_*/prefab_* C++ an editor before S98 left in <internal>/generated
+        void removeGeneratedSceneSources();
 
         std::string getName() const;
         // The C++ scripts library's name (the project name as an identifier)
@@ -3349,7 +3360,7 @@ namespace jasperengine::editor{
         std::unordered_set<Entity> collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level = {});
         // Prefab assets baked for the export: each prefab instantiated in a scratch scene
         // (every layer applied, like the editor's instances), its GameObjects in
-        // build_prefab_* order (Factory::BakedPrefab)
+        // member order (BakedPrefab, cook/SceneCooker.h)
         std::map<std::filesystem::path, std::shared_ptr<BakedPrefab>> bakePrefabsForExport();
 
         //=== Prefab Mode (editor/PrefabStage.cpp, PREFABS.md section 16) ===
@@ -3383,6 +3394,9 @@ namespace jasperengine::editor{
         PrefabStage* getPrefabStageAt(size_t index) { return index < prefabStages.size() ? prefabStages[index].get() : nullptr; }
         size_t getPrefabStageDepth(uint32_t sceneId) const;  // 1-based, 0 for a scene
         bool hasUnsavedPrefabStage(uint32_t sceneId) const;
+        // Runs `body` (an export's cook) with each Prefab Mode stage that has unsaved changes as its
+        // asset's content, nothing written; the stages' asset paths
+        std::vector<std::filesystem::path> withUnsavedPrefabStages(const std::function<void()>& body);
         bool hasUnsavedPrefabStages() const;
         // A regular scene for what needs one (Play, the build's start scene, the workspace):
         // the scene Prefab Mode was entered from for a stage, sceneId itself otherwise

@@ -10,7 +10,6 @@
 
 #include "AppSettings.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "JasperEngine.h"
 #include "Project.h"
 #include "StreamMigrations.h"
@@ -99,20 +98,6 @@ TEST(SceneDefaultShaderUniforms, StreamRoundTrip) {
         EXPECT_TRUE(old.scene->scene->getDefaultShaderUniforms(type).empty());
     const std::string text = encodeSceneText(old);
     EXPECT_EQ(text.find("ShaderUniforms"), std::string::npos) << text;
-}
-
-TEST(SceneDefaultShaderUniforms, GeneratedFactory) {
-    DecodedScene decoded = decodeSceneText(sceneText(kWithValues), "Defaults.scene");
-    const std::string code = Factory::createScene(0, decoded.scene->scene, 4343, "Defaults", {}, NULL_ENTITY, fs::path("/project"),
-                                                  fs::path("/project/.jasperengine/generated"));
-    EXPECT_NE(code.find("scene->setDefaultShaderUniforms(ShaderType::MESH, {{\"baseColor\", Vector4("), std::string::npos) << code;
-    EXPECT_NE(code.find("scene->setDefaultShaderUniforms(ShaderType::LINES, {{\"width\", Vector4("), std::string::npos);
-    EXPECT_EQ(code.find("ShaderType::UI, {"), std::string::npos);
-
-    DecodedScene old = decodeSceneText(sceneText(""), "Old.scene");
-    const std::string oldCode = Factory::createScene(0, old.scene->scene, 4343, "Old", {}, NULL_ENTITY, fs::path("/project"),
-                                                     fs::path("/project/.jasperengine/generated"));
-    EXPECT_EQ(oldCode.find("setDefaultShaderUniforms"), std::string::npos);
 }
 
 TEST(SceneDefaultShaderUniforms, CookedRoundTrip) {

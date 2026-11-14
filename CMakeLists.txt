@@ -814,6 +814,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+    ${EDITOR_DIR}/cook/GameConfig.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
     ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
@@ -842,7 +843,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
-    ${EDITOR_DIR}/Factory.cpp
     ${EDITOR_DIR}/Out.cpp
     ${EDITOR_DIR}/Platform.cpp
     ${EDITOR_DIR}/Project.cpp
@@ -869,7 +869,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Resolve.cpp
     ${EDITOR_DIR}/reflect/YamlCodec.cpp
     ${EDITOR_DIR}/reflect/Schema.cpp
-    ${EDITOR_DIR}/reflect/Codegen.cpp
     ${EDITOR_DIR}/reflect/Remap.cpp
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
