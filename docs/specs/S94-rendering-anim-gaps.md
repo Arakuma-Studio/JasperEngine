@@ -829,3 +829,25 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P8 (F49) what draws skinned.** A frame drawn Sliced, or instanced by a Sprite Batch, draws its
   quad (a 9-slice and the instance buffer carry no bone weights). Preview Pose bends the mesh in the
   Skinning Editor only; the scene's pose is the bone GameObjects'.
+- **P3, F15 (gradient ambient).** The SH ambient, `frame.ambient`, Lit's camera block and every
+  variant without `'Agr'` carry the gradient's average over every direction (sky/4 + equator/2 +
+  ground/4); `'Agr'` variants swap that share for the exact gradient (`includes/ambient.glsl`,
+  a block of its own). So shaders without normals (particles), old forks and a build missing an
+  `'Agr'` variant draw a gradient scene with a uniform average instead of no ambient. The built-in
+  Lit takes `'Agr'` only without the sky's IBL (the IBL replaces the scene ambient there). Cooked
+  scene format minor 7 (6 is S92's), MESH bit 55, shader cache v69.
+- **P3, F17 (sky after opaques).** No scene-input exception was needed: the scene-colour copy is
+  taken after the opaque queue and the sky in both orders. Besides a camera without depth test,
+  the sky also stays first under a Video Player's far plane (drawn over it without depth). The
+  pass-list check of AC17 is the draw order in `SkyGpu.DrawsAfterTheOpaqueQueue`.
+- **P3, F18.** Per-Vertex Mapping samples the panorama's base level (`textureLod` 0): no
+  per-fragment LOD without derivatives or a transcendental. Documented: keep it off for a
+  panorama minified on screen.
+- **P3, F21.** The cube map is not mirrored by a z flip: the engine samples the cube in its own
+  right-handed space with the GPU's face rule, so a Unity face set loads with +X and -X swapped
+  and every face mirrored left to right (and `rotation` = -`_Rotation`). That is a convention, not
+  a bug, so no scene migration. The formula for Skybox/Panoramic is in the manifest description
+  (and so `docs/shaders/library.md`); both are in `docs/unity-glossary.md` (the cube map is not a
+  library shader).
+- **P3, F16.** An inactive sky entity stops drawing and feeding probes, as a hidden one; its IBL
+  keeps lighting the scene, as `visible = false` does.

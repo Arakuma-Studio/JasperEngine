@@ -1734,6 +1734,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("PREMULTIPLIED", MaterialBlendMode::PREMULTIPLIED)
         .addVariable("ADDITIVE", MaterialBlendMode::ADDITIVE)
         .addVariable("MULTIPLY", MaterialBlendMode::MULTIPLY)
+        .addVariable("CUSTOM", MaterialBlendMode::CUSTOM)
+        .endNamespace();
+
+    // Blend Mode Custom (Unity's ShaderLab Blend factors and BlendOp)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendFactor")
+        .addVariable("ZERO", MaterialBlendFactor::ZERO)
+        .addVariable("ONE", MaterialBlendFactor::ONE)
+        .addVariable("SRC_COLOR", MaterialBlendFactor::SRC_COLOR)
+        .addVariable("ONE_MINUS_SRC_COLOR", MaterialBlendFactor::ONE_MINUS_SRC_COLOR)
+        .addVariable("SRC_ALPHA", MaterialBlendFactor::SRC_ALPHA)
+        .addVariable("ONE_MINUS_SRC_ALPHA", MaterialBlendFactor::ONE_MINUS_SRC_ALPHA)
+        .addVariable("DST_COLOR", MaterialBlendFactor::DST_COLOR)
+        .addVariable("ONE_MINUS_DST_COLOR", MaterialBlendFactor::ONE_MINUS_DST_COLOR)
+        .addVariable("DST_ALPHA", MaterialBlendFactor::DST_ALPHA)
+        .addVariable("ONE_MINUS_DST_ALPHA", MaterialBlendFactor::ONE_MINUS_DST_ALPHA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendOp")
+        .addVariable("ADD", MaterialBlendOp::ADD)
+        .addVariable("SUBTRACT", MaterialBlendOp::SUBTRACT)
+        .addVariable("REVERSE_SUBTRACT", MaterialBlendOp::REVERSE_SUBTRACT)
+        .addVariable("MIN", MaterialBlendOp::MIN)
+        .addVariable("MAX", MaterialBlendOp::MAX)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1980,6 +2005,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
+    // the Environment Lighting Source (scene.ambientMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AmbientMode")
+        .addVariable("COLOR", AmbientMode::COLOR)
+        .addVariable("GRADIENT", AmbientMode::GRADIENT)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
@@ -2063,6 +2095,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ACESCCT", LutInputEncoding::ACESCCT)
         .addVariable("CINEON", LutInputEncoding::CINEON)
         .addVariable("DAVINCI_INTERMEDIATE", LutInputEncoding::DAVINCI_INTERMEDIATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VignetteFalloff")
+        .addVariable("SMOOTHNESS", VignetteFalloff::SMOOTHNESS)
+        .addVariable("RADII", VignetteFalloff::RADII)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2512,6 +2550,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
         .addProperty("lutInputEncoding", &PostProcessingSettings::lutInputEncoding, &PostProcessingSettings::lutInputEncoding)
         .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
+        .addProperty("lutFlipGreen", &PostProcessingSettings::lutFlipGreen, &PostProcessingSettings::lutFlipGreen)
         .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
         .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
         .addProperty("monochromeIntensity", &PostProcessingSettings::monochromeIntensity, &PostProcessingSettings::monochromeIntensity)
@@ -2520,6 +2559,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("vignetteSmoothness", &PostProcessingSettings::vignetteSmoothness, &PostProcessingSettings::vignetteSmoothness)
         .addProperty("vignetteRoundness", &PostProcessingSettings::vignetteRoundness, &PostProcessingSettings::vignetteRoundness)
         .addProperty("vignetteColor", &PostProcessingSettings::vignetteColor, &PostProcessingSettings::vignetteColor)
+        .addProperty("vignetteFalloff", &PostProcessingSettings::vignetteFalloff, &PostProcessingSettings::vignetteFalloff)
+        .addProperty("vignetteStart", &PostProcessingSettings::vignetteStart, &PostProcessingSettings::vignetteStart)
+        .addProperty("vignetteEnd", &PostProcessingSettings::vignetteEnd, &PostProcessingSettings::vignetteEnd)
         .addProperty("ditherEnabled", &PostProcessingSettings::ditherEnabled, &PostProcessingSettings::ditherEnabled)
         .addProperty("fxaaEnabled", &PostProcessingSettings::fxaaEnabled, &PostProcessingSettings::fxaaEnabled)
         .addProperty("chromaticAberrationEnabled", &PostProcessingSettings::chromaticAberrationEnabled, &PostProcessingSettings::chromaticAberrationEnabled)
@@ -2989,6 +3031,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setCubePaths", &Texture::setCubePaths)
         .addFunction("setFramebuffer", &Texture::setFramebuffer)
         .addFunction("load", &Texture::load)
+        // its GPU texture exists: swapping it onto a mesh shows it at once (no stand-in frame)
+        .addProperty("ready", &Texture::isReady)
         .addFunction("destroy", &Texture::destroy)
         .addFunction("getRender", &Texture::getRender)
         .addFunction("getPath", &Texture::getPath)
@@ -3092,6 +3136,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addConstructor<void (*) (void)>()
         .addProperty("shader", &MaterialPass::shader, &MaterialPass::shader)
         .addProperty("blendMode", &MaterialPass::blendMode, &MaterialPass::blendMode)
+        .addProperty("blendSrc", &MaterialPass::blendSrc, &MaterialPass::blendSrc)
+        .addProperty("blendDst", &MaterialPass::blendDst, &MaterialPass::blendDst)
+        .addProperty("blendSrcAlpha", &MaterialPass::blendSrcAlpha, &MaterialPass::blendSrcAlpha)
+        .addProperty("blendDstAlpha", &MaterialPass::blendDstAlpha, &MaterialPass::blendDstAlpha)
+        .addProperty("blendOp", &MaterialPass::blendOp, &MaterialPass::blendOp)
+        .addProperty("blendOpAlpha", &MaterialPass::blendOpAlpha, &MaterialPass::blendOpAlpha)
         .addProperty("cullMode", &MaterialPass::cullMode, &MaterialPass::cullMode)
         .addProperty("depthWrite", &MaterialPass::depthWrite, &MaterialPass::depthWrite)
         .addProperty("depthTest", &MaterialPass::depthTest, &MaterialPass::depthTest)
@@ -3222,6 +3272,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // shader is "" (built-in Lit), "library:<name>" or a project fork
         .addProperty("shader", &Material::shader, &Material::shader)
         .addProperty("blendMode", &Material::blendMode, &Material::blendMode)
+        .addProperty("blendSrc", &Material::blendSrc, &Material::blendSrc)
+        .addProperty("blendDst", &Material::blendDst, &Material::blendDst)
+        .addProperty("blendSrcAlpha", &Material::blendSrcAlpha, &Material::blendSrcAlpha)
+        .addProperty("blendDstAlpha", &Material::blendDstAlpha, &Material::blendDstAlpha)
+        .addProperty("blendOp", &Material::blendOp, &Material::blendOp)
+        .addProperty("blendOpAlpha", &Material::blendOpAlpha, &Material::blendOpAlpha)
         .addProperty("cullMode", &Material::cullMode, &Material::cullMode)
         .addProperty("depthWrite", &Material::depthWrite, &Material::depthWrite)
         .addProperty("depthTest", &Material::depthTest, &Material::depthTest)
@@ -3403,6 +3459,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        // the Environment Lighting Source (AmbientMode.COLOR, GRADIENT) and the gradient's colours
+        // (sRGB; globalIlluminationIntensity scales them)
+        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
+        .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
+        .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
+        .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)
+        .addFunction("setAmbientGradient", &Scene::setAmbientGradient)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
         // physical units are drawn at (EV100)

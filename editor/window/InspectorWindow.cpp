@@ -540,6 +540,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<LitQuality>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, AmbientMode>) {
+                const char* sourceNames[] = { "Color", "Gradient" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
+                if (changed) {
+                    value = static_cast<AmbientMode>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, PlanarReflectionResolution>) {
                 const char* resolutionNames[] = { "Off", "Quarter", "Half", "Full" };
                 int currentItem = std::clamp(static_cast<int>(value), 0, 3);
@@ -8320,6 +8328,8 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     drawBlendShapes(sceneProject, entities);
 
     drawCustomShaderRow(cpType, ShaderType::MESH, sceneProject, entities);
+    // over every submesh's material (S94 F7)
+    drawPropertyOverridesRows(cpType, sceneProject, entities, -1);
 
     unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entities[0]).numSubmeshes;
     for (Entity& entity : entities){
@@ -8461,6 +8471,9 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
         propertyRow(RowPropertyType::Vector4, cpType, "submeshes["+std::to_string(s)+"].textureRect", "Texture Rect", sceneProject, entities, settingsTextureRect);
 
         endTable();
+        // a mesh of several submeshes: each one's over the Mesh's
+        if (numSubmeshes > 1)
+            drawPropertyOverridesRows(cpType, sceneProject, entities, s);
 
         if (submeshGenerated) ImGui::EndDisabled();
         ImGui::PopID();
@@ -13866,13 +13879,24 @@ void editor::InspectorWindow::show(){
 
             LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
-                ImGui::SeparatorText("Global Illumination");
+                ImGui::SeparatorText("Environment Lighting");
 
                 if (ImGui::BeginTable("scene_globalillum_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
+                    drawScenePropertyRow<AmbientMode>(sceneProject, "ambient_mode", "Source", ScenePropertyInputType::Combo, 6 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "Where the ambient light comes from (Unity's Environment Lighting Source):\n"
+                        "- Color: one colour from every direction\n"
+                        "- Gradient: the Sky Color from above, the Equator Color from the side and the Ground Color from below\n"
+                        "Intensity scales either. A sky's image-based lighting replaces both on the built-in Lit.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientMode>(sceneProject->scene, "ambient_mode") == AmbientMode::GRADIENT) {
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);
+                    } else {
+                        drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
+                    }
                     drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
 
                     ImGui::EndTable();

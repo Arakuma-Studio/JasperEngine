@@ -4919,6 +4919,8 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
+		4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
 		4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
 		4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
 		4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479920E96CC7362C45 /* SpriteSkin.cpp */; };
@@ -9505,6 +9507,7 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MaterialPropertyBlockLua.cpp; sourceTree = "<group>"; };
 		4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinning.cpp; sourceTree = "<group>"; };
 		4A534E479920E96CC7362C45 /* SpriteSkin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkin.cpp; sourceTree = "<group>"; };
 		4A534E4714A162309B607880 /* SpriteSkinLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinLua.cpp; sourceTree = "<group>"; };
@@ -10080,6 +10083,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */,
 				4A534E4714A162309B607880 /* SpriteSkinLua.cpp */,
 			);
 			path = binding;
@@ -19535,6 +19539,7 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */,
 				4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */,
 				4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */,
 				4A534E475E95808F07B4BD61 /* SpriteSkinLua.cpp in Sources */,
@@ -20497,6 +20502,7 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */,
 				4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */,
 				4A534E471C14304D7A66D95F /* SpriteSkin.cpp in Sources */,
 				4A534E47EB53B33EA27F4522 /* SpriteSkinLua.cpp in Sources */,

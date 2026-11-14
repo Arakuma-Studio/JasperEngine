@@ -369,7 +369,7 @@ bool PostColorLut::loadStrip(const std::string& path, Strip& strip, std::string*
     return true;
 }
 
-void PostColorLut::stripToCubeLut(const Strip& strip, CubeLut& lut){
+void PostColorLut::stripToCubeLut(const Strip& strip, CubeLut& lut, bool flipGreen){
     lut = CubeLut();
     lut.fromStrip = true;
     const int n = strip.size;
@@ -379,8 +379,8 @@ void PostColorLut::stripToCubeLut(const Strip& strip, CubeLut& lut){
     lut.lut3D.resize((size_t)n * n * n * 3);
     for (int b = 0; b < n; b++){
         for (int g = 0; g < n; g++){
-            // green 0 is the bottom row (Unity's strips)
-            const size_t row = (size_t)(n - 1 - g) * strip.width;
+            // green 0 is the bottom row (Unity's strips), the top row with flipGreen
+            const size_t row = (size_t)(flipGreen ? g : n - 1 - g) * strip.width;
             for (int r = 0; r < n; r++){
                 const uint8_t* src = &strip.rgb[(row + (size_t)b * n + r) * 3];
                 float* dst = &lut.lut3D[(((size_t)b * n + g) * n + r) * 3];

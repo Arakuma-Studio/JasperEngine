@@ -196,6 +196,7 @@
     "morphWeights",
     "normAdjustJoint",
     "normAdjustWeight",
+    "propertyOverrides",
     "receiveIBL",
     "receiveLights",
     "receiveShadows",
@@ -323,6 +324,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -445,6 +456,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -515,7 +536,37 @@
      16,
      true
     ],
+    "submeshes[].material.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrcAlpha": [
      13,
      8,
      true
@@ -570,7 +621,37 @@
      68719476760,
      true
     ],
+    "submeshes[].material.extraPass.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.extraPass.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrcAlpha": [
      13,
      8,
      true
@@ -1068,6 +1149,16 @@
     "submeshes[].primitiveType": [
      13,
      8,
+     true
+    ],
+    "submeshes[].propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "submeshes[].propertyOverrides.values": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[].textureRect": [
@@ -27573,6 +27664,16 @@
     0,
     true
    ],
+   "propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "propertyOverrides.values": [
+    15,
+    68719476736,
+    true
+   ],
    "receiveIBL": [
     0,
     8,
@@ -27643,7 +27744,37 @@
     16,
     true
    ],
+   "submeshes[N].material.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrcAlpha": [
     13,
     8,
     true
@@ -27698,7 +27829,37 @@
     68719476760,
     true
    ],
+   "submeshes[N].material.extraPass.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.extraPass.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrcAlpha": [
     13,
     8,
     true
@@ -28196,6 +28357,16 @@
    "submeshes[N].primitiveType": [
     13,
     8,
+    true
+   ],
+   "submeshes[N].propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "submeshes[N].propertyOverrides.values": [
+    15,
+    68719476736,
     true
    ],
    "submeshes[N].textureRect": [
@@ -33307,7 +33478,8 @@
     "ALPHA",
     "PREMULTIPLIED",
     "ADDITIVE",
-    "MULTIPLY"
+    "MULTIPLY",
+    "CUSTOM"
    ]
   },
   "MaterialCullMode": {

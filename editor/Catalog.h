@@ -542,6 +542,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
                 if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
+                if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
@@ -615,6 +616,26 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     return scene->getGlobalIlluminationIntensity();
+                }
+            }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    return scene->getAmbientMode();
+                }
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientSkyColor();
+                }
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientEquatorColor();
+                }
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientGroundColor();
                 }
             }
             else if (propertyName == "max_lights_per_object") {
@@ -870,6 +891,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
             if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
             if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
+            if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
             if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
             // Add other types as needed
         }
@@ -926,6 +948,18 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.globalIllumIntensity;
+            }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) return d.ambientMode;
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientSkyColor);
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientEquatorColor);
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientGroundColor);
             }
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) return d.maxLightsPerObject;
@@ -1155,6 +1189,26 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setGlobalIllumination(value);
+                }
+            }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    scene->setAmbientMode(value);
+                }
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientSkyColor(value);
+                }
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientEquatorColor(value);
+                }
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientGroundColor(value);
                 }
             }
             else if (propertyName == "max_lights_per_object") {

@@ -692,6 +692,10 @@ uint64_t ShaderPool::getDirectionalOnlyProperty(){
     return shaderPropertyBit(44);
 }
 
+uint64_t ShaderPool::getAmbientGradientProperty(){
+    return shaderPropertyBit(55);
+}
+
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
 // fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
@@ -791,7 +795,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 55;
+        case ShaderType::MESH:   return 56;
         case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -928,6 +932,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 53: return shortName ? "Twd" : "Terrain World";
             // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
             case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
+            // S94 F15: the scene's gradient ambient (getAmbientGradientProperty)
+            case 55: return shortName ? "Agr" : "Ambient Gradient";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1397,7 +1403,8 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
     // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
     // bits a manifest shader's: never in one variant)
-    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // ('Agr' after them: without it a Gradient scene's ambient is its average over every direction)
+    static const int meshBits[] = {43, 42, 44, 55, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Agr Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 

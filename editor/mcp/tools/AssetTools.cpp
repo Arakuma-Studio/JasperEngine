@@ -708,7 +708,7 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                     "alphaMode, emissiveFactor, emissiveStrength, pbr, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
                     "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
                     "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
@@ -2977,8 +2977,11 @@ void forkShaderTool(const CallPtr& call) {
             data = Json{{"custom_shader", base}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submeshes", indices}};
         }
         data["source"] = source;
-        if (sourceManifest->depth)
-            data["note"] = "Its depth passes use the engine's depth program (a fork has none of its own).";
+        if (sourceManifest->depth) {
+            std::error_code ec;
+            if (fs::exists(project->getProjectPath() / (base + "_depth.vert"), ec) || fs::exists(project->getProjectPath() / (base + "_depth.frag"), ec))
+                data["note"] = "Its depth program came along as " + base + "_depth (.vert/.frag): change it alike, or shadows stop following.";
+        }
         finish(base, data, "Forked " + source + " to " + base + " (.vert/.frag, with its manifest) and pointed the material at it.");
         return;
     }
@@ -3607,14 +3610,31 @@ void setShaderUniformTool(const CallPtr& call) {
     if (!resolveShaderComponent(call, where, shaderType)) return;
     int submesh = -1;
     if (!materialParamsTarget(call, scene, where.entity, where.component, submesh)) return;
+    // override: the Mesh's Property Override (S94 F7), every submesh's or (submesh) one's
+    const bool overrideValue = args.value("override", false);
+    if (overrideValue && where.component != ComponentType::MeshComponent) {
+        call->fail("override is a Mesh's Property Override; this component's parameters are its own (leave override out).");
+        return;
+    }
+    const bool overrideSubmesh = overrideValue && args.contains("submesh");
     // a submesh material's parameters, or the component's shaderUniforms
-    const std::string property = submesh >= 0 ? "submeshes[" + std::to_string(submesh) + "].material.shaderParams" : "shaderUniforms";
+    const std::string property = overrideValue
+        ? (overrideSubmesh ? "submeshes[" + std::to_string(submesh) + "].propertyOverrides.values" : std::string("propertyOverrides.values"))
+        : (submesh >= 0 ? "submeshes[" + std::to_string(submesh) + "].material.shaderParams" : "shaderUniforms");
     ShaderUniformValues* current = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, property);
     if (!current) {
         call->fail("The component has no shader uniforms.");
         return;
     }
-    const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component, property);
+    // (an override is checked against the shader its submesh draws with)
+    const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component,
+        overrideValue ? "submeshes[" + std::to_string(std::max(submesh, 0)) + "].material.shaderParams" : property);
+    // the built-in Lit takes its two colours as overrides
+    if (overrideValue && !remove && shader.empty() && name != "baseColorFactor" && name != "emissiveFactor") {
+        call->fail("The built-in Lit takes overrides of baseColorFactor and emissiveFactor (colours linear); '" + name +
+                   "' is a custom or library shader's parameter (give the material a shader).");
+        return;
+    }
     const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
     const ShaderManifestProperty* declaredProperty = manifest ? manifest->findProperty(name) : nullptr;
     if (!remove && ShaderReference::isLibrary(shader) && !manifest) {
@@ -3648,22 +3668,36 @@ void setShaderUniformTool(const CallPtr& call) {
         call->fail("Could not change the uniform.");
         return;
     }
-    if (submesh >= 0) {
-        const Submesh& sub = scene->getComponent<MeshComponent>(where.entity).submeshes[submesh];
+    if (submesh >= 0 || overrideValue) {
+        const Submesh& sub = scene->getComponent<MeshComponent>(where.entity).submeshes[std::max(submesh, 0)];
         for (const CustomUniformBlock* block : {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams}) {
             appendUniformMembers(declaredMembers, *block, values);
         }
     } else {
         componentUniformMembers(declaredMembers, warnings, scene, where.entity, where.component, values);
     }
-    // a manifest parameter is declared even while its variant still builds
-    const std::string note = remove || declaredProperty ? "" : uniformSetNote(declaredMembers, name, declared);
-    declared = declared || declaredProperty != nullptr;
+    // a manifest parameter is declared even while its variant still builds (the Lit's colours too)
+    const bool litColor = overrideValue && shader.empty();
+    const std::string note = remove || declaredProperty || litColor ? "" : uniformSetNote(declaredMembers, name, declared);
+    declared = declared || declaredProperty != nullptr || litColor;
     Json result = {{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
                    {"property", property}, {"name", name}, {"declared", declared}};
     if (!remove) result["value"] = vec4Array(value);
-    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) +
-             (submesh >= 0 ? " (submesh " + std::to_string(submesh) + " material)" : std::string()) + "." + note, result);
+    // a Mesh value a material parameter of the same name hides (S94 F8): said, with the fix
+    if (!overrideValue && !remove && property == "shaderUniforms" && where.component == ComponentType::MeshComponent) {
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(where.entity);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+            if (ShaderUniforms::warnShadowedByMaterial(scene, where.entity, scene->getEntityName(where.entity), name,
+                                                       mesh.submeshes[s].material.shaderParams)) {
+                result["next"] = "Submesh " + std::to_string(s) + "'s material sets '" + name +
+                                 "', which wins over this value: set it again with override: true (a Property Override) to win.";
+                break;
+            }
+        }
+    }
+    const std::string target = overrideValue ? (overrideSubmesh ? " (submesh " + std::to_string(submesh) + " Property Override)" : std::string(" (Property Override)"))
+                                             : (submesh >= 0 ? " (submesh " + std::to_string(submesh) + " material)" : std::string());
+    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) + target + "." + note, result);
 }
 
 void listShadersTool(const CallPtr& call) {
@@ -4583,8 +4617,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh), "
-            "pass_index or shader_type (the scene's default shader). Undeclared names are stored but unused.";
+            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh; override: "
+            "the Mesh's Property Override, over its materials), pass_index or shader_type (the scene default).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4595,7 +4629,8 @@ void registerAssetTools(McpRegistry& registry) {
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
                        {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},
-            {"remove", withDefault(boolean(""), false)}
+            {"remove", withDefault(boolean(""), false)},
+            {"override", withDefault(boolean(""), false)}
         }, {"name"});
         tool.handler = setShaderUniformTool;
         registry.addTool(std::move(tool));
