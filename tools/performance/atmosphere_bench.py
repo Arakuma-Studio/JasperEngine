@@ -203,13 +203,14 @@ async def measure(ed: Editor, frames: int, gpu_size: tuple[int, int] | None = No
         finally:
             await ed.call("play", action="stop")
         results[name] = {"frame_ms": statistics.median(times), "passes": info["passes"], "vram_mb": info["vramBytes"] / 2 ** 20,
-                         "local_lights": info.get("localLights", 0),
+                         "local_lights": info.get("fog", {}).get("volumetric", {}).get("localLights", 0),
                          "vram_screen_mb": info.get("vramScreenBytes", info["vramBytes"]) / 2 ** 20, "tier": tier,
                          "render_size": size}
         if gpu is not None:
             results[name]["gpu"] = gpu
         print(f"{name:18s} {results[name]['frame_ms']:7.3f} ms  {results[name]['vram_mb']:6.2f} MB  "
-              f"{', '.join(p['label'] for p in info['passes'])}"
+              + (f"{results[name]['local_lights']} fog lights  " if name in FOG_LIGHTS else "")
+              + f"{', '.join(p['label'] for p in info['passes'])}"
               + (f"  GPU frame {gpu['_frame']:.3f} ms, atmosphere {atmosphere_ms(gpu):.3f} ms at {size[0]}x{size[1]}" if gpu else ""))
     return results
 
