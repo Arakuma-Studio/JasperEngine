@@ -5068,6 +5068,23 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    // the Environment Lighting Source (S94): written only away from its defaults
+    // (the colours are compared in sRGB with a tolerance: a default read back through the sRGB
+    // setters may differ in its last bits)
+    {
+        const SceneSettings ambientDefaults;
+        auto differs = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientMode() != ambientDefaults.ambientMode)
+            sceneNode["ambientMode"] = StreamSchema::ambientMode().toString(scene->getAmbientMode());
+        if (differs(scene->getAmbientSkyColor(), Color::linearTosRGB(ambientDefaults.ambientSkyColor)))
+            sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
+        if (differs(scene->getAmbientEquatorColor(), Color::linearTosRGB(ambientDefaults.ambientEquatorColor)))
+            sceneNode["ambientEquatorColor"] = encodeVector3(scene->getAmbientEquatorColor());
+        if (differs(scene->getAmbientGroundColor(), Color::linearTosRGB(ambientDefaults.ambientGroundColor)))
+            sceneNode["ambientGroundColor"] = encodeVector3(scene->getAmbientGroundColor());
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
@@ -5234,6 +5251,15 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setGlobalIllumination(YamlNumbers::as<float>(node["globalIlluminationIntensity"]));
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
+    }
+
+    // the Environment Lighting Source (S94); an absent key is the default (Color, Unity's gradient)
+    {
+        const SceneSettings ambientDefaults;
+        scene->setAmbientMode(node["ambientMode"] ? decodeEnum(node, "ambientMode", StreamSchema::ambientMode()) : ambientDefaults.ambientMode);
+        scene->setAmbientSkyColor(node["ambientSkyColor"] ? decodeVector3(node["ambientSkyColor"]) : Color::linearTosRGB(ambientDefaults.ambientSkyColor));
+        scene->setAmbientEquatorColor(node["ambientEquatorColor"] ? decodeVector3(node["ambientEquatorColor"]) : Color::linearTosRGB(ambientDefaults.ambientEquatorColor));
+        scene->setAmbientGroundColor(node["ambientGroundColor"] ? decodeVector3(node["ambientGroundColor"]) : Color::linearTosRGB(ambientDefaults.ambientGroundColor));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact

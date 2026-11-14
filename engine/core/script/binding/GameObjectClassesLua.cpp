@@ -1452,6 +1452,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float, const float>(&Skybox::setColor))
         .addProperty("alpha", &Skybox::getAlpha, &Skybox::setAlpha)
         .addProperty("rotation", &Skybox::getRotation, &Skybox::setRotation)
+        // false draws no sky (nor its probe captures) and keeps its lighting (S94 F16)
+        .addProperty("visible", &Skybox::isVisible, &Skybox::setVisible)
+        .addFunction("setVisible", &Skybox::setVisible)
         .addProperty("customShader", &Skybox::getCustomShader, &Skybox::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),

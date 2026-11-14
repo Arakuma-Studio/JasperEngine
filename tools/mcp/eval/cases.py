@@ -5242,4 +5242,33 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 F15: the Environment Lighting Source (Unity's gradient ambient)
+    {
+        "id": "guard_ambient_gradient_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F15): set_scene_settings takes ambient_mode gradient and the sky, equator and "
+                         "ground colours; an agent porting Unity's trilight ambient sets them instead of writing a shader "
+                         "or faking it with lights.",
+        "text_at_issue": "get_scene_settings: 'ambient_mode = color' with 'ambient source: color (global_illumination_color), "
+                         "gradient (sky, equator and ground colours)' and ambient_sky_color, ambient_equator_color, "
+                         "ambient_ground_color",
+        "source": "S94 F15 (new setting text); no failure on record",
+        "prompt": "The Unity scene I am porting uses Environment Lighting Source Gradient: sky (0.4, 0.6, 1.0), equator "
+                  "(0.5, 0.5, 0.5), ground (0.3, 0.2, 0.1), intensity 1. Make this scene's ambient light the same.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nglobal_illumination_color = [1.0,1.0,1.0] (ambient light color [r,g,b] (sRGB))\n"
+                "global_illumination_intensity = 0.1 (ambient light intensity)\nambient_mode = color (ambient source: color "
+                "(global_illumination_color), gradient (sky, equator and ground colours))\nambient_sky_color = "
+                "[0.212,0.227,0.259] (gradient ambient from above [r,g,b] (sRGB))\nambient_equator_color = [0.114,0.125,0.133] "
+                "(gradient ambient from the side [r,g,b] (sRGB))\nambient_ground_color = [0.047,0.043,0.035] (gradient "
+                "ambient from below [r,g,b] (sRGB))",
+                {"scene_id": 1, "settings": {"global_illumination_intensity": 0.1, "ambient_mode": "color"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set scene setting(s) (one undo step).", {"scene_id": 1})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_mode": "gradient"}}}],
+                   "must_not_call": ["fork_shader", "create_entity"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 8,
+    },
 ]

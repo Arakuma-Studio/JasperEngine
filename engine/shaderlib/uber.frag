@@ -366,7 +366,10 @@ void main(){
 
     #ifdef UBER_VIGNETTE
         highp vec2 vp = gl_FragCoord.xy * uber.vignetteScaleOffset.xy - uber.vignetteScaleOffset.zw;
-        mediump float w = clamp(dot(vp, vp) * uber.vignetteLutScan.x + uber.vignetteLutScan.y, 0.0, 1.0);
+        // (a negative scale: the Radii falloff, over the length; includes/post_color.glsl)
+        highp float vd = dot(vp, vp);
+        vd = uber.vignetteLutScan.x < 0.0 ? -sqrt(vd) : vd;
+        mediump float w = clamp(vd * uber.vignetteLutScan.x + uber.vignetteLutScan.y, 0.0, 1.0);
         color = mix(color, uber.vignetteColor.rgb, w * w * (3.0 - 2.0 * w) * uber.vignetteColor.a);
     #endif
     #ifdef UBER_FILM_DAMAGE

@@ -86,14 +86,16 @@ namespace jasperengine{
     // loads a LUT file through the engine's file io (project, packed and Android asset paths):
     // a .cube (in a game its sibling <name>.jlut instead when one exists, as exports ship it), a
     // .jlut, or any other image as a PNG strip (PostColorLut::loadStrip). False with a logged
-    // error otherwise, also returned in error
-    JASPERENGINE_API bool loadColorLut(const std::string& path, CubeLut& out, std::string* error = nullptr);
+    // error otherwise, also returned in error. flipGreen reads a strip's rows from the top
+    // (PostProcessingSettings::lutFlipGreen; a .cube or .jlut is unaffected)
+    JASPERENGINE_API bool loadColorLut(const std::string& path, CubeLut& out, std::string* error = nullptr, bool flipGreen = false);
 
     // the LUT of a path, loaded (loadColorLut) the first time any thread asks for it and shared
     // afterwards; null for an empty path or a LUT that failed to load (logged once)
-    JASPERENGINE_API std::shared_ptr<const CubeLut> getCachedColorLut(const std::string& path);
+    // (with flipGreen, its own entry)
+    JASPERENGINE_API std::shared_ptr<const CubeLut> getCachedColorLut(const std::string& path, bool flipGreen = false);
     // why the cached load of a path failed (empty when it loaded or was not asked for)
-    JASPERENGINE_API std::string getCachedColorLutError(const std::string& path);
+    JASPERENGINE_API std::string getCachedColorLutError(const std::string& path, bool flipGreen = false);
     // drops the cached LUT of a path (the file changed), or every cached LUT for an empty path
     JASPERENGINE_API void invalidateColorLutCache(const std::string& path = "");
 
