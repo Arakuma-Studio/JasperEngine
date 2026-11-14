@@ -381,6 +381,14 @@ namespace {
          "runs its passes every frame. A warning while over the soft budget; an error when the hard cap (64 simulations) "
          "refuses a new one, which then draws nothing. Hide the elements whose simulations should stop: a simulation that is "
          "not drawn does not step."},
+
+        // ---- INPUT
+        {codes::PagePressListener, I, false, "page-press-listener", "Page takes presses",
+         "A transparent page (the document or its <body>) lets presses through its empty parts to the documents below and the "
+         "game, until it listens for a press: a click, dblclick, contextmenu, mousedown, pointerdown or touchstart listener on "
+         "the document or <body> (addEventListener or data-event-*) makes the document take every press there, as a modal or a "
+         "\"click outside\" handler wants. Listen on the elements that take the press otherwise; move, up, over and out "
+         "listeners on the page take nothing, and a wheel listener takes only the wheel."},
     };
 
     char toLower(char c){
@@ -455,6 +463,7 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::IMP: return "IMP";
         case DiagArea::SVG: return "SVG";
         case DiagArea::FX: return "FX";
+        case DiagArea::INPUT: return "INPUT";
     }
     return "GEN";
 }

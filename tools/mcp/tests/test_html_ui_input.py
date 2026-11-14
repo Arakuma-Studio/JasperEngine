@@ -70,6 +70,8 @@ local InputProbe = {
         { name = "clicks", type = "int", default = 0 },
         { name = "touchClicks", type = "int", default = 0 },
         { name = "touchPointers", type = "string", default = "" },
+        { name = "touchMoves", type = "int", default = 0 },
+        { name = "touchEnds", type = "int", default = 0 },
     }
 }
 
@@ -79,6 +81,8 @@ function InputProbe:init()
     RegisterEngineEvent(self, "onCharInput")
     RegisterEngineEvent(self, "onMouseScroll")
     RegisterEngineEvent(self, "onTouchStart")
+    RegisterEngineEvent(self, "onTouchMove")
+    RegisterEngineEvent(self, "onTouchEnd")
 end
 
 function InputProbe:attach()
@@ -98,9 +102,43 @@ function InputProbe:onKeyDown(key, rep, mods) self.keyDowns = self.keyDowns + 1;
 function InputProbe:onCharInput(c) self.chars = self.chars + 1 end
 function InputProbe:onMouseScroll(x, y, mods) self.scrolls = self.scrolls + 1 end
 function InputProbe:onTouchStart(pointer, x, y) self.touches = self.touches + 1 end
+function InputProbe:onTouchMove(pointer, x, y) self.touchMoves = self.touchMoves + 1 end
+function InputProbe:onTouchEnd(pointer, x, y)
+    self.touchEnds = self.touchEnds + 1
+    print("InputProbe onTouchEnd " .. self.touchEnds .. " finger " .. pointer)
+end
 
 return InputProbe
 """
+
+# S93 AC6: a full-screen popup (a dim page with an OK button), hidden until a script shows it
+POPUP_DOC = "assets/ui/popup.html"
+
+POPUP_HTML = """<html>
+<head>
+    <style>
+        html, body { margin: 0; width: 100%; height: 100%; }
+        body { background-color: rgba(0, 0, 0, 0.5); }
+        #ok { position: absolute; left: 540px; top: 320px; width: 200px; height: 80px; background-color: #808080; }
+    </style>
+</head>
+<body><div id="ok"></div></body>
+</html>
+"""
+
+POPUP_PROBE = """---@class PopupProbe : ScriptInstance
+local PopupProbe = { properties = { { name = "clicks", type = "int", default = 0 } } }
+
+function PopupProbe:show()
+    local doc = UIDocument(self.scene, self.entity)
+    doc:getElementById("ok"):addEventListener("click", function() self.clicks = self.clicks + 1 end)
+    doc:show()
+end
+
+return PopupProbe
+"""
+
+P_POPUP_OK = (640, 360)
 
 GRAY = (128, 128, 128)
 GREEN = (0, 255, 0)
@@ -175,6 +213,11 @@ async def setup_and_play(ed: Editor):
     await ed.call("add_component", scene=scene, entity=menu, component="UIDocument",
                   values={"uidocument": {"filename": DOC}})
     await ed.call("create_script", kind="lua", name="InputProbe", content=PROBE, scene=scene, entity=menu)
+    await ed.call("write_file", path=POPUP_DOC, content=POPUP_HTML)
+    popup = (await ed.call("create_entity", scene=scene, type="empty", name="Popup"))["entity_id"]
+    await ed.call("add_component", scene=scene, entity=popup, component="UIDocument",
+                  values={"uidocument": {"filename": POPUP_DOC, "sortOrder": 10, "enabled": False}})
+    await ed.call("create_script", kind="lua", name="PopupProbe", content=POPUP_PROBE, scene=scene, entity=popup)
     await ed.call("save_scene", scene=scene, path="scenes/HtmlUiInput")
 
     started = await ed.call("play", action="start", scene=scene)
@@ -293,6 +336,33 @@ async def test_two_touch_pointers(ed: Editor):
 
     await send(ed, {"type": "touch", "action": "tap", "pointer": 2, "x": P_BODY[0], "y": P_BODY[1]})
     ed.check_eq(await probe(ed, "touches"), touches + 1, "a touch on the body did not reach the game")
+
+
+async def test_joystick_survives_popup(ed: Editor):
+    """S93 AC6 (U29): a finger the game got at its press (a joystick) stays the game's when a script
+    shows a full-screen popup under it: its moves and its release over the popup's button reach the
+    game's onTouchMove / onTouchEnd, and the button is not clicked."""
+    moves = await probe(ed, "touchMoves")
+    ends = await probe(ed, "touchEnds")
+    try:
+        await send(ed, {"type": "touch", "action": "start", "pointer": 3, "x": P_BODY[0], "y": P_BODY[1]})
+        await ed.call("eval_lua", code="script('Popup', 'PopupProbe'):show()")
+        await send(ed, {"type": "wait", "frames": 2},
+                   {"type": "touch", "action": "move", "pointer": 3, "x": P_POPUP_OK[0], "y": P_POPUP_OK[1]},
+                   {"type": "touch", "action": "end", "pointer": 3, "x": P_POPUP_OK[0], "y": P_POPUP_OK[1]})
+        ed.check_eq(await probe(ed, "touchMoves"), moves + 1, "the game's finger moving over the popup reached onTouchMove")
+        ed.check_eq(await probe(ed, "touchEnds"), ends + 1, "the game's finger lifted over the popup reached onTouchEnd")
+        entries = await ed.console_since(None, limit=1000)
+        lines = [e.get("message", "") for e in entries
+                 if "InputProbe onTouchEnd" in e.get("message", "") and e.get("message", "").endswith("finger 3")]
+        ed.check_eq(len(lines), 1, f"one onTouchEnd line of finger 3 in the Console: {lines}")
+        ed.check_eq((await ed.call("eval_lua", code="return script('Popup', 'PopupProbe').clicks"))["values"][0], 0,
+                    "the popup's button was clicked by a finger it never got")
+        ed.check_eq((await ed.call("eval_lua", code="return Input.touchCount"))["values"][0], 0, "a finger stayed down in Input")
+    finally:
+        # the popup goes, so the next test sees the menu
+        await ed.call("eval_lua", code="UIDocument(script('Popup', 'PopupProbe').scene, script('Popup', 'PopupProbe').entity):hide()")
+        await send(ed, {"type": "wait", "frames": 2})
 
 
 async def test_mouse_leave_clears_hover(ed: Editor):
