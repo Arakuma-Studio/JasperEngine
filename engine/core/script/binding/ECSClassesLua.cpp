@@ -385,6 +385,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogColorMode")
         .addVariable("COLOR", FogColorMode::COLOR)
         .addVariable("SKY", FogColorMode::SKY)
+        .addVariable("LIT", FogColorMode::LIT)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

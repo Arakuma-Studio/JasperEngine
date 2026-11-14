@@ -215,7 +215,16 @@ namespace {
         // the height fog's fields, written only away from their defaults: a distance fog's file is as it was
         JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault | CodegenIfChanged,
                  .tooltip = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
-                            "sky shader with a horizonColor property).",
+                            "sky shader with a horizonColor property). Lit: the fog scatters the sun and the scene ambient by its Albedo, "
+                            "so one look holds from day to night.",
+                 .group = "Height Fog"),
+        JE_FIELD(FogComponent, albedo, .flags = ColorLinear | OmitIfDefault | CodegenIfChanged,
+                 .tooltip = "Lit: the share of the light the fog scatters, per channel. Dark values absorb, white scatters everything.",
+                 .group = "Height Fog"),
+        JE_FIELD(FogComponent, ambientMultiplier, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
+                 .tooltip = "Lit: how much of the scene ambient the fog scatters. 0: lit by the sun alone.", .group = "Height Fog"),
+        JE_FIELD(FogComponent, emissive, .flags = ColorLinear | Hdr | OmitIfDefault | CodegenIfChanged,
+                 .tooltip = "Lit: light the fog gives off itself, whatever lights it (a glowing, toxic or infernal fog).",
                  .group = "Height Fog"),
         JE_FIELD(FogComponent, attenuationDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The distance light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.",

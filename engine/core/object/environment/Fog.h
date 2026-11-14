@@ -49,6 +49,10 @@ namespace jasperengine{
         float getAnisotropy() const;
         bool isSkyFill() const;
         float getSkyFillAngle() const;
+        // colour mode LIT
+        Vector3 getAlbedo() const;
+        float getAmbientMultiplier() const;
+        Vector3 getEmissive() const;
 
         void setColorMode(FogColorMode colorMode);
         void setAttenuationDistance(float attenuationDistance);
@@ -61,6 +65,9 @@ namespace jasperengine{
         void setAnisotropy(float anisotropy);
         void setSkyFill(bool skyFill);
         void setSkyFillAngle(float skyFillAngle);
+        void setAlbedo(Vector3 albedo);
+        void setAmbientMultiplier(float ambientMultiplier);
+        void setEmissive(Vector3 emissive);
 
         // Volumetric fog (a height fog's option)
         bool isVolumetric() const;

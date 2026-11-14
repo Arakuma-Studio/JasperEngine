@@ -18,10 +18,12 @@ namespace jasperengine{
 		HEIGHT
     };
 
-    // where the height fog's colour comes from: its Color, or the sky's horizon
+    // where the height fog's colour comes from: its Color, the sky's horizon, or the scene's
+    // light scattered by the fog (LIT: albedo times the sun and the scene ambient, plus emissive)
     enum class FogColorMode{
         COLOR,
-        SKY
+        SKY,
+        LIT
     };
 
     // The scene's fog: the first FogComponent of the scene is used (RenderSystem). The
@@ -38,6 +40,11 @@ namespace jasperengine{
 		// baseHeight, falling exponentially above it to 1/1000 of that at maximumHeight,
 		// over the view ray's part from startDistance to maxFogDistance (meters).
 		FogColorMode colorMode = FogColorMode::COLOR;
+		// colour mode LIT: the share of the light the fog scatters (linear, per channel), the
+		// scene ambient's weight in that light, and light the fog gives off itself (linear, HDR)
+		Vector3 albedo = Vector3(1.0f, 1.0f, 1.0f);
+		float ambientMultiplier = 1.0f;
+		Vector3 emissive = Vector3(0.0f, 0.0f, 0.0f);
 		float attenuationDistance = 400.0f;
 		float baseHeight = 0.0f;
 		float maximumHeight = 50.0f;

@@ -233,3 +233,27 @@ void Fog::setWind(float x, float y, float z){
 bool Fog::applyPreset(const std::string& preset){
     return AtmospherePresets::applyFogPreset(preset, getComponent<FogComponent>());
 }
+
+Vector3 Fog::getAlbedo() const{
+    return Color::linearTosRGB(getComponent<FogComponent>().albedo);
+}
+
+float Fog::getAmbientMultiplier() const{
+    return getComponent<FogComponent>().ambientMultiplier;
+}
+
+Vector3 Fog::getEmissive() const{
+    return Color::linearTosRGB(getComponent<FogComponent>().emissive);
+}
+
+void Fog::setAlbedo(Vector3 albedo){
+    getComponent<FogComponent>().albedo = Color::sRGBToLinear(albedo);
+}
+
+void Fog::setAmbientMultiplier(float ambientMultiplier){
+    getComponent<FogComponent>().ambientMultiplier = ambientMultiplier;
+}
+
+void Fog::setEmissive(Vector3 emissive){
+    getComponent<FogComponent>().emissive = Color::sRGBToLinear(emissive);
+}

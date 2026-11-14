@@ -3211,7 +3211,8 @@ makes a GameObject with one.
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
-  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; volumetric
+  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; colour mode
+  `FogColorMode.LIT`: rw `albedo`, `ambientMultiplier`, `emissive`; volumetric
   fog: rw `volumetric`, `volumetricDistance`, `lightShafts`, `noiseIntensity`, `noiseScale`,
   `wind` (Vector3, also `setWind(x, y, z)`), `qualityOverride` (`AtmosphereQualityOverride.*`);
   `applyPreset(id)` ("morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night";

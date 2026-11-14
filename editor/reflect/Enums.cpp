@@ -235,6 +235,7 @@ namespace {
     constexpr EnumItem kFogColorModeItems[] = {
         {v(FogColorMode::COLOR), "color", "Constant Color", "FogColorMode::COLOR"},
         {v(FogColorMode::SKY), "sky", "Sky Color", "FogColorMode::SKY"},
+        {v(FogColorMode::LIT), "lit", "Lit", "FogColorMode::LIT"},
     };
 
     constexpr EnumItem kFogTypeItems[] = {
