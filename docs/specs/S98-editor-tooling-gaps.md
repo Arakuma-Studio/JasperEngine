@@ -811,6 +811,10 @@ Avoiding conflicts:
     the shared batches write a renderer only when its lines or icons changed.
   - Left above 1 ms: the Hierarchy's tree rebuild itself (3.8 ms, at most once per 0.5 s and 15
     frames, or on a structural change).
+  - On the tree merged with WP-3, WP-6 and the imports: 2.07-3.07 ms editor UI in four runs (one
+    alone, three in parallel); one run among eight files with `-j 3` measured Hierarchy rows at
+    4.6 ms (editor-side 7.0 ms, within the 8 ms), as if no row were clipped. Not reproduced;
+    unexplained.
   - `test_scene_view_icons.py` fails under load (three copies with `-j 3` on a build box) on the
     code before WP-5 as after it, by the same 0.056: the difference is the Scene view's camera
     gauge fading between the shots (pixels x 6-37), not the icon, which is back. Not changed here.
