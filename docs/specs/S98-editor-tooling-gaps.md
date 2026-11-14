@@ -744,6 +744,19 @@ Avoiding conflicts:
   (`JASPER_TEST_FLAT_NEW_PROJECT=1`, docs/testing.md): the suite's tests address assets at the
   project root. `test_project_create.py` and the template generator use the real layout.
 
+- **WP-5, AC24 (a):** the AC24 fixture logs no "No free system entity slot" on the code before
+  WP-5 (its gizmos took about 450 of the 1,000 system slots), so `test_editor_cost.py` guards it
+  and the red run is `SceneRenderGizmos.SystemEntitiesPerKind` (500 lights and 500 bodies: the
+  slot error, then an exception, before WP-5; at most 3 system entities after). The test is in
+  `editor/tests/render/`, which the AC names.
+- **WP-5, REQ-30:** the icons are one instanced billboard sprite over an atlas of the five icon
+  images (one icon batch per view, as specified); the lines are one `LineRenderer` per kind, in
+  the scene for depth-tested kinds and in the tools layer for the ones drawn over the meshes, as
+  before. A Game view pass that hid the batches makes them write their renderer again when they
+  show (no stale instance list).
+- **WP-5, REQ-31:** Maximize On Play covers the editor's panels: the covered Hierarchy is not
+  built and the covered Scene view updates and draws nothing (Unity hides them too).
+
 ## Progress
 
 - **WP-3, E37 measurement** (unchanged editor, headless, llvmpipe; `JASPER_MCP_TRACE=1`):
@@ -751,3 +764,22 @@ Avoiding conflicts:
   with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
   Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
   1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.
+- **WP-5, REQ-31 profile** (`test_editor_cost.py`, its generated fixture: 1,500 GameObjects under 12
+  groups, Hierarchy expanded, nothing selected; Release editor, headless, llvmpipe, build box;
+  median frame of 60 of `capture_profile`). Before WP-5 (the base with only the new scopes):
+  Editor UI 8.09 ms (Hierarchy 6.14, of which its rows 3.07; Inspector 0.74; Scene Window 0.11),
+  Scene View Gizmos 0.55 ms: editor-side 8.64 ms. Play with the Game view maximised: Hierarchy
+  2.94 + Scene View Gizmos 0.63 + Scene Window 0.08 = 3.65 ms. After: Editor UI 2.40-2.52 ms
+  (Hierarchy 0.58-0.72, rows 0.46-0.62; Inspector 0.62-0.85), Scene View Gizmos 0.31-0.41 ms:
+  editor-side 2.71-2.93 ms; maximised Play 0.06 ms (only the Scene window's tab).
+  - Findings: the Hierarchy drew every row (now only the visible ones); its timed 0.5 s tree
+    rebuild (3.8 ms with 1,500 GameObjects) ran on every frame of an editor slower than 2 fps (one
+    run measured it at the median, Hierarchy 4.4 ms): it now also waits 15 frames; under Maximize
+    On Play the covered Hierarchy was built and the Scene view updated its gizmos each frame (now
+    neither). The per-object gizmo objects cost a system entity each and a renderer update each;
+    the shared batches write a renderer only when its lines or icons changed.
+  - Left above 1 ms: the Hierarchy's tree rebuild itself (3.8 ms, at most once per 0.5 s and 15
+    frames, or on a structural change).
+  - `test_scene_view_icons.py` fails under load (three copies with `-j 3` on a build box) on the
+    code before WP-5 as after it, by the same 0.056: the difference is the Scene view's camera
+    gauge fading between the shots (pixels x 6-37), not the icon, which is back. Not changed here.

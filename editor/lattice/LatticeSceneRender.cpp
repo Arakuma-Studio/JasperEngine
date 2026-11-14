@@ -9,7 +9,6 @@
 #include "component/Transform.h"
 #include "util/Angle.h"
 #include "component/CameraComponent.h"
-#include "subsystem/RenderSystem.h"
 
 #include "AppSettings.h"
 #include "Backend.h"
@@ -568,9 +567,8 @@ void SceneRender::hideLatticeCages(){
 }
 
 void SceneRender::destroyLatticeCages(){
-    const RenderSystem& render = *scene->getSystem<RenderSystem>();
-    deleteGizmos(latticeCageOverlay, render);
-    deleteGizmos(latticeCageDepth, render);
+    deleteGizmos(latticeCageOverlay);
+    deleteGizmos(latticeCageDepth);
     latticeCages.clear();
     delete latticeFalloffLines;
     latticeFalloffLines = nullptr;

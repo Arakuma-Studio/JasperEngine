@@ -339,6 +339,7 @@ namespace jasperengine::editor{
         void dropGoneGizmos(GizmoIconBatch& batch, const RenderSystem& render);
         void deleteGizmos(GizmoLineBatch& batch, const RenderSystem& render);
         void deleteGizmos(GizmoIconBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoLineBatch& batch);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
 

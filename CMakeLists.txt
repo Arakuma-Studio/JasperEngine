@@ -1442,7 +1442,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/ViewCameraMirror.cpp
     ${EDITOR_DIR}/render/SceneRender2D.cpp
     ${EDITOR_DIR}/render/SceneRender3D.cpp
-    ${EDITOR_DIR}/render/GizmoBatch.cpp
     ${EDITOR_DIR}/render/gizmo/TranslateGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/RotateGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/ScaleGizmo.cpp
