@@ -1823,6 +1823,8 @@ void editor::InspectorWindow::drawBlendFactorRows(ComponentType cpType, ScenePro
     row.enumEntries = &ops;
     row.help = "How the two products combine (Unity's BlendOp). Min and Max ignore the factors.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "blendOp", "Blend Op", sceneProject, entities, row);
+    row.help = "The operation of the alpha channel (BlendOp's second value).";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendOpAlpha", "Alpha Blend Op", sceneProject, entities, row);
 }
 
 void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,

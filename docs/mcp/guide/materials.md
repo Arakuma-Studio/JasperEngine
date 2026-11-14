@@ -151,7 +151,8 @@ material's parameter of the same name wins over it).
 
 `blendMode: custom` with `blendSrc`, `blendDst`, `blendSrcAlpha`, `blendDstAlpha` (`one`, `zero`,
 `src_color`, `src_alpha`, `dst_color`, `dst_alpha`, `one_minus_...`) and `blendOp` (`add`,
-`subtract`, `reverse_subtract`, `min`, `max`): Unity's ShaderLab `Blend` and `BlendOp`. Unity's
+`subtract`, `reverse_subtract`, `min`, `max`; `blendOpAlpha` the alpha channel's): Unity's ShaderLab
+`Blend` and `BlendOp`. Unity's
 2x multiply (`Blend DstColor SrcColor`) is `blendSrc: dst_color, blendDst: src_color`. It draws in
 the transparent queue like any other blend.
 

@@ -85,6 +85,7 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("blendSrcAlpha", from.blendSrcAlpha, to.blendSrcAlpha);
     field("blendDstAlpha", from.blendDstAlpha, to.blendDstAlpha);
     field("blendOp", from.blendOp, to.blendOp);
+    field("blendOpAlpha", from.blendOpAlpha, to.blendOpAlpha);
     field("cullMode", from.cullMode, to.cullMode);
     field("depthWrite", from.depthWrite, to.depthWrite);
     field("depthTest", from.depthTest, to.depthTest);

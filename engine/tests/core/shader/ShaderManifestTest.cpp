@@ -488,7 +488,7 @@ TEST(ShaderManifest, RequireVertexNormals){
     EXPECT_FALSE(manifest.hasErrors());
     EXPECT_NE(manifest.require & ShaderRequire_VertexNormals, 0u);
     EXPECT_EQ(manifest.require & ShaderRequire_Normals, 0u);
-    const std::vector<std::string> defines = manifest.getRequireDefines({});
+    const std::vector<std::string> defines = manifest.getRequireDefines(std::vector<std::string>());
     EXPECT_EQ(std::find(defines.begin(), defines.end(), "SURFACE_NORMALS"), defines.end());
     EXPECT_NE(std::find(defines.begin(), defines.end(), "SURFACE_UV1"), defines.end());
     const std::vector<std::string> names = ShaderManifest::getRequireNames(manifest.require);

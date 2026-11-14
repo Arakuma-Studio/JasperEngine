@@ -238,12 +238,16 @@ namespace {
 
     // which override textures a block names decides what the shader binds (resolved at load);
     // values only rewrite the uniform blocks
-    void applyPropertyBlock(MeshComponent& mesh, ShaderPropertyOverrides& current, const ShaderPropertyOverrides& block){
+    void applyPropertyBlock(MeshComponent& mesh, OutOfLineValue<ShaderPropertyOverrides>& current, const ShaderPropertyOverrides& block){
         if (current == block)
             return;
-        if (current.textures != block.textures)
+        if (current->textures != block.textures)
             mesh.needReload = true;
-        current = block;
+        // an empty block takes nothing out of line
+        if (block.empty())
+            current.reset();
+        else
+            current = block;
         mesh.needUpdateShaderUniforms = true;
     }
 
@@ -271,14 +275,14 @@ void Mesh::setPropertyBlock(const ShaderPropertyOverrides& block, unsigned int s
 }
 
 ShaderPropertyOverrides Mesh::getPropertyBlock() const{
-    return getFirstMesh().mesh->propertyOverrides;
+    return getFirstMesh().mesh->propertyOverrides.get();
 }
 
 ShaderPropertyOverrides Mesh::getPropertyBlock(unsigned int submesh) const{
     const MeshTarget target = findSubmesh(submesh, "getPropertyBlock");
     if (!target.mesh)
         return ShaderPropertyOverrides();
-    return submeshAt(*target.mesh, submesh).propertyOverrides;
+    return submeshAt(*target.mesh, submesh).propertyOverrides.get();
 }
 
 void Mesh::setTexture(const std::string& id, TextureData data){

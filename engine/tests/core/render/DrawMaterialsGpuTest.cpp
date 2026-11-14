@@ -106,9 +106,11 @@ namespace {
             return sum;
         }
 
-        // a solid RGBA texture of its own id
+        // a solid RGBA texture of its own id (TextureData points at the pixels: they live on)
         static Texture solidTexture(const std::string& id, uint8_t r, uint8_t g, uint8_t b){
-            std::vector<uint8_t> pixels;
+            static std::map<std::string, std::vector<uint8_t>> kept;
+            std::vector<uint8_t>& pixels = kept[id];
+            pixels.clear();
             for (int i = 0; i < 4; i++){
                 pixels.push_back(r);
                 pixels.push_back(g);
@@ -214,7 +216,7 @@ TEST_F(RenderQueueGpu, SubmeshPriorityHullDrawsAfterOpaques){
     JASPER_REQUIRE_GPU();
     Mesh character(&scene);
     MeshComponent& mesh = character.getComponent<MeshComponent>();
-    makeTwoQuadMesh(mesh, 0.3f, 1.0f, 1.2f, 1.2f);
+    makeTwoQuadMesh(mesh, 0.3f, 1.0f, 0.8f, 1.2f);
     character.setReceiveLights(false);
     Material body;
     body.baseColorFactor = Vector4(0.0f, 0.0f, 1.0f, 1.0f);
@@ -239,12 +241,13 @@ TEST_F(RenderQueueGpu, SubmeshPriorityHullDrawsAfterOpaques){
     character.setMaterial(1, hull);
     ASSERT_TRUE(settle());
     EXPECT_TRUE(mesh.splitPriorities);
-    const DrawPixel hullOnly = at(Vector3(0.8f, 1.2f, 0.0f));
+    const DrawPixel hullOnly = at(Vector3(0.6f, 1.2f, 0.0f));
     EXPECT_GT(hullOnly.r, 200) << "the hull is erased by the floor drawn after it";
     EXPECT_LT(hullOnly.g, 40);
     const DrawPixel bodyPixel = at(Vector3(0.0f, 1.2f, 0.0f));
     EXPECT_GT(bodyPixel.r, 200) << "the hull (no depth test failure: it is in front) covers the body";
-    const DrawPixel floorPixel = at(Vector3(3.0f, -4.0f, 0.0f));
+    // past the hull's footprint on the screen
+    const DrawPixel floorPixel = at(Vector3(2.6f, -4.0f, 0.0f));
     EXPECT_GT(floorPixel.g, 200);
     EXPECT_NO_ENGINE_ERRORS();
 }

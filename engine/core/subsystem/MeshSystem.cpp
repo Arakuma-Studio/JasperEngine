@@ -717,6 +717,7 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
         material.blendSrcAlpha = savedMaterial.blendSrcAlpha;
         material.blendDstAlpha = savedMaterial.blendDstAlpha;
         material.blendOp = savedMaterial.blendOp;
+        material.blendOpAlpha = savedMaterial.blendOpAlpha;
     }
     if (fields & SubmeshOverride_CullMode)       material.cullMode       = savedMaterial.cullMode;
     if (fields & SubmeshOverride_DepthWrite)     material.depthWrite     = savedMaterial.depthWrite;

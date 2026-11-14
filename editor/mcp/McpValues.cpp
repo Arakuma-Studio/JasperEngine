@@ -2110,7 +2110,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, emissiveStrength, pbr, baseColorTexture, emissiveTexture, "
                     "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, stochasticTiling, "
                     "stochasticCellSize, stochasticBlendSharpness, stochasticContrast, stochasticRotation, shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp), cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
         }

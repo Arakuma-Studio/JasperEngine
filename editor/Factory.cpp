@@ -403,6 +403,8 @@ static std::string formatBlendFactors(const std::string& ind, const std::string&
     factor("blendDstAlpha", factors.dstAlpha, defaults.dstAlpha);
     if (factors.op != defaults.op)
         code += ind + target + ".blendOp = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.op) + ";\n";
+    if (factors.opAlpha != defaults.opAlpha)
+        code += ind + target + ".blendOpAlpha = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.opAlpha) + ";\n";
     return code;
 }
 
@@ -1300,9 +1302,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     if (!mesh.shaderUniforms.empty())
         code << ind << "mesh.shaderUniforms = " << formatShaderUniforms(mesh.shaderUniforms) << ";\n";
     // Property Overrides (S94 F7)
-    if (!mesh.propertyOverrides.values.empty())
-        code << ind << "mesh.propertyOverrides.values = " << formatShaderUniforms(mesh.propertyOverrides.values) << ";\n";
-    code << formatShaderTextures(indentSpaces, mesh.propertyOverrides.textures, "mesh.propertyOverrides.textures", projectPath);
+    if (!mesh.propertyOverrides->values.empty())
+        code << ind << "mesh.propertyOverrides.edit().values = " << formatShaderUniforms(mesh.propertyOverrides->values) << ";\n";
+    code << formatShaderTextures(indentSpaces, mesh.propertyOverrides->textures, "mesh.propertyOverrides.edit().textures", projectPath);
     // Kept for a model too: its load reads the count to find the edited submeshes.
     code << ind << "mesh.numSubmeshes = " << formatUInt(numSubmeshes) << ";\n";
     for (unsigned int s = 0; s < numSubmeshes; s++){
@@ -1344,9 +1346,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.normalTexture, "mesh.submeshes[" + idx + "].material.normalTexture", projectPath);
 
-        if (!mesh.submeshes[s].propertyOverrides.values.empty())
-            code << ind << "mesh.submeshes[" << idx << "].propertyOverrides.values = " << formatShaderUniforms(mesh.submeshes[s].propertyOverrides.values) << ";\n";
-        code << formatShaderTextures(indentSpaces, mesh.submeshes[s].propertyOverrides.textures, "mesh.submeshes[" + idx + "].propertyOverrides.textures", projectPath);
+        if (!mesh.submeshes[s].propertyOverrides->values.empty())
+            code << ind << "mesh.submeshes[" << idx << "].propertyOverrides.edit().values = " << formatShaderUniforms(mesh.submeshes[s].propertyOverrides->values) << ";\n";
+        code << formatShaderTextures(indentSpaces, mesh.submeshes[s].propertyOverrides->textures, "mesh.submeshes[" + idx + "].propertyOverrides.edit().textures", projectPath);
 
         // The UV set each texture samples: only a model or a linked material sets it, and an
         // overridden texture is put back together with it.

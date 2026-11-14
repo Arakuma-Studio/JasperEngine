@@ -568,10 +568,16 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     }
                     else valid = false;
                 }else if (key == "blendop"){
-                    if (!parseBlendOp(v, state.blendFactors.op)){
-                        report(lineNumber, true, "@state blendop= takes add, sub, revsub, min or max, got '" + value + "'");
+                    // <op> for colour and alpha, or <colourOp>,<alphaOp> (ShaderLab's BlendOp)
+                    const size_t comma = v.find(',');
+                    MaterialBlendOp op = MaterialBlendOp::ADD;
+                    MaterialBlendOp opAlpha = MaterialBlendOp::ADD;
+                    if (!parseBlendOp(v.substr(0, comma), op) || !parseBlendOp(comma == std::string::npos ? v : v.substr(comma + 1), opAlpha)){
+                        report(lineNumber, true, "@state blendop= takes add, sub, revsub, min or max, or <colour op>,<alpha op>, got '" + value + "'");
                         continue;
                     }
+                    state.blendFactors.op = op;
+                    state.blendFactors.opAlpha = opAlpha;
                     state.hasBlendOp = true;
                 }else if (key == "cull"){
                     if (v == "back") state.cull = MaterialCullMode::BACK;
@@ -1582,12 +1588,15 @@ void ShaderManifestState::apply(const ShaderManifestState& other){
     if (other.blend != MaterialBlendMode::AUTO) blend = other.blend;
     if (other.blend == MaterialBlendMode::CUSTOM){
         const MaterialBlendOp op = blendFactors.op;
+        const MaterialBlendOp opAlpha = blendFactors.opAlpha;
         blendFactors = other.blendFactors;
         blendFactors.op = op;
+        blendFactors.opAlpha = opAlpha;
     }
     if (other.hasBlendOp){
         hasBlendOp = true;
         blendFactors.op = other.blendFactors.op;
+        blendFactors.opAlpha = other.blendFactors.opAlpha;
     }
     if (other.cull != MaterialCullMode::AUTO) cull = other.cull;
     if (other.depthWrite != MaterialDepthWrite::AUTO) depthWrite = other.depthWrite;

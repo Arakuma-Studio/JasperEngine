@@ -61,6 +61,7 @@ namespace {
         MaterialBlendFactor blendSrcAlpha;
         MaterialBlendFactor blendDstAlpha;
         MaterialBlendOp blendOp;
+        MaterialBlendOp blendOpAlpha;
         MaterialCullMode cullMode;
         MaterialDepthWrite depthWrite;
         MaterialDepthTest depthTest;

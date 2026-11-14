@@ -707,7 +707,7 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                     "alphaMode, emissiveFactor, emissiveStrength, pbr, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
                     "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
                     "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp), cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }

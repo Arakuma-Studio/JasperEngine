@@ -2026,7 +2026,7 @@ batch together. E.g. `local b = MaterialPropertyBlock(); b:setColor("baseColor",
 `blendSrcAlpha`, `blendDstAlpha` (`MaterialBlendFactor.*`: `ZERO`, `ONE`, `SRC_COLOR`,
 `SRC_ALPHA`, `DST_COLOR`, `DST_ALPHA` and the `ONE_MINUS_` forms) and `blendOp`
 (`MaterialBlendOp.*`: `ADD`, `SUBTRACT`, `REVERSE_SUBTRACT`, `MIN`, `MAX`; Min and Max ignore the
-factors): Unity's `Blend DstColor SrcColor` is `blendSrc = DST_COLOR, blendDst = SRC_COLOR`.
+factors) with `blendOpAlpha` for the alpha channel: Unity's `Blend DstColor SrcColor` is `blendSrc = DST_COLOR, blendDst = SRC_COLOR`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
 them; on a mesh of several submeshes every After pass draws after all of its submeshes and

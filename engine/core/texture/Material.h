@@ -78,9 +78,11 @@ namespace jasperengine{
         MaterialBlendFactor srcAlpha = MaterialBlendFactor::ONE;
         MaterialBlendFactor dstAlpha = MaterialBlendFactor::ZERO;
         MaterialBlendOp op = MaterialBlendOp::ADD;
+        MaterialBlendOp opAlpha = MaterialBlendOp::ADD;
 
         bool operator == (const MaterialBlendFactors& other) const {
-            return src == other.src && dst == other.dst && srcAlpha == other.srcAlpha && dstAlpha == other.dstAlpha && op == other.op;
+            return src == other.src && dst == other.dst && srcAlpha == other.srcAlpha && dstAlpha == other.dstAlpha && op == other.op &&
+                   opAlpha == other.opAlpha;
         }
         bool operator != (const MaterialBlendFactors& other) const { return !(*this == other); }
     };
@@ -200,6 +202,7 @@ namespace jasperengine{
         MaterialBlendFactor blendSrcAlpha = MaterialBlendFactor::ONE;
         MaterialBlendFactor blendDstAlpha = MaterialBlendFactor::ZERO;
         MaterialBlendOp blendOp = MaterialBlendOp::ADD;
+        MaterialBlendOp blendOpAlpha = MaterialBlendOp::ADD;
         MaterialCullMode cullMode = MaterialCullMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
@@ -216,6 +219,7 @@ namespace jasperengine{
             factors.srcAlpha = blendSrcAlpha;
             factors.dstAlpha = blendDstAlpha;
             factors.op = blendOp;
+            factors.opAlpha = blendOpAlpha;
             return factors;
         }
 
@@ -253,6 +257,21 @@ namespace jasperengine{
             return values == other.values && textures == other.textures;
         }
         bool operator != (const ShaderPropertyOverrides& other) const { return !(*this == other); }
+    };
+
+    // the textures a submesh draws with when its Property Overrides name some (made at load,
+    // RenderSystem::resolveOverrideTextures): its material's shader textures with the overrides'
+    // over them, and the built-in Lit's base colour texture an override names
+    struct JASPERENGINE_API SubmeshOverrideTextures {
+        std::vector<std::pair<std::string, Texture>> shaderTextures;
+        bool hasShaderTextures = false;
+        Texture baseColor;
+        bool hasBaseColor = false;
+
+        bool operator == (const SubmeshOverrideTextures& other) const {
+            return shaderTextures == other.shaderTextures && hasShaderTextures == other.hasShaderTextures &&
+                   baseColor == other.baseColor && hasBaseColor == other.hasBaseColor;
+        }
     };
 
     // Material::extraPass: a MaterialPass kept out of line, so the materials without one (most
@@ -331,6 +350,7 @@ namespace jasperengine{
         MaterialBlendFactor blendSrcAlpha = MaterialBlendFactor::ONE;
         MaterialBlendFactor blendDstAlpha = MaterialBlendFactor::ZERO;
         MaterialBlendOp blendOp = MaterialBlendOp::ADD;
+        MaterialBlendOp blendOpAlpha = MaterialBlendOp::ADD;
         MaterialCullMode cullMode = MaterialCullMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
@@ -411,6 +431,7 @@ namespace jasperengine{
             factors.srcAlpha = blendSrcAlpha;
             factors.dstAlpha = blendDstAlpha;
             factors.op = blendOp;
+            factors.opAlpha = blendOpAlpha;
             return factors;
         }
     };

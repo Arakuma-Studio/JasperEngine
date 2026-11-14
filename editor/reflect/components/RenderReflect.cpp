@@ -184,14 +184,21 @@ namespace {
     };
     const StructDesc kPropertyOverridesStruct = JE_STRUCT_DESC(ShaderPropertyOverrides, "ShaderPropertyOverrides", kPropertyOverridesFields);
 
+    // out of line (OutOfLineValue): made on an edit, read as the empty defaults while unset
+    void* submeshOverridesRef(void* submesh) { return &static_cast<Submesh*>(submesh)->propertyOverrides.edit(); }
+    const void* submeshOverridesPeek(const void* submesh) { return &static_cast<const Submesh*>(submesh)->propertyOverrides.get(); }
+    void* meshOverridesRef(void* mesh) { return &static_cast<MeshComponent*>(mesh)->propertyOverrides.edit(); }
+    const void* meshOverridesPeek(const void* mesh) { return &static_cast<const MeshComponent*>(mesh)->propertyOverrides.get(); }
+
     constexpr FieldDesc kSubmeshFields[] = {
         JE_FIELD(Submesh, material, .ops = &ops::MaterialStruct<Material>, .flags = ListWhole, .updateFlags = kSubmeshAll),
         JE_FIELD(Submesh, primitiveType, .enumDesc = &enums::kPrimitiveType, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, faceCulling, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureShadow, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureRect),
-        JE_FIELD(Submesh, propertyOverrides, .ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct,
-                 .updateFlags = kSubmeshAll, .label = "Property Overrides"),
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &submeshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &submeshOverridesPeek}),
     };
 
 }
@@ -252,8 +259,9 @@ namespace {
         JE_FIELD(MeshComponent, customDepthShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         // Unity's MaterialPropertyBlock, saved (S94 F7): over every submesh's material
-        JE_FIELD(MeshComponent, propertyOverrides, .ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct,
-                 .updateFlags = kSubmeshAll, .label = "Property Overrides"),
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &meshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &meshOverridesPeek}),
         JE_FIELD(MeshComponent, numSubmeshes),
         JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights

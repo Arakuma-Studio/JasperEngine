@@ -524,8 +524,8 @@ namespace {
     void writeSubmeshCustomUniforms(const Scene* scene, const MeshComponent& mesh, Submesh& submesh){
         UniformChain chain;
         // Property Overrides first (S94 F7): the submesh's, then the Mesh's
-        chain.submeshOverride = submesh.propertyOverrides.values.empty() ? nullptr : &submesh.propertyOverrides.values;
-        chain.rendererOverride = mesh.propertyOverrides.values.empty() ? nullptr : &mesh.propertyOverrides.values;
+        chain.submeshOverride = submesh.propertyOverrides->values.empty() ? nullptr : &submesh.propertyOverrides->values;
+        chain.rendererOverride = mesh.propertyOverrides->values.empty() ? nullptr : &mesh.propertyOverrides->values;
         chain.values = &submesh.material.shaderParams;
         chain.fallback = &mesh.shaderUniforms;
         // a material with a shader of its own never inherits the scene's
@@ -658,7 +658,7 @@ namespace {
         }
     }
 
-    // Blend Mode Custom's factors as the backend's blend state (one operation for colour and alpha)
+    // Blend Mode Custom's factors and operations as the backend's blend state
     BlendState toBlendState(const MaterialBlendFactors& factors){
         BlendState state;
         state.enabled = true;
@@ -667,7 +667,7 @@ namespace {
         state.srcFactorAlpha = toBlendFactor(factors.srcAlpha);
         state.dstFactorAlpha = toBlendFactor(factors.dstAlpha);
         state.opRGB = toBlendOperation(factors.op);
-        state.opAlpha = state.opRGB;
+        state.opAlpha = toBlendOperation(factors.opAlpha);
         return state;
     }
 
@@ -3581,20 +3581,18 @@ const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, con
 }
 
 void RenderSystem::resolveOverrideTextures(const MeshComponent& mesh, Submesh& submesh){
-    submesh.overriddenShaderTextures.clear();
-    submesh.hasOverriddenShaderTextures = false;
-    submesh.overriddenBaseColorTexture = Texture();
-    submesh.hasOverriddenBaseColor = false;
-    if (mesh.propertyOverrides.textures.empty() && submesh.propertyOverrides.textures.empty())
+    submesh.overrideTextures.reset();
+    if (mesh.propertyOverrides->textures.empty() && submesh.propertyOverrides->textures.empty())
         return;
+    SubmeshOverrideTextures& made = submesh.overrideTextures.edit();
     std::vector<std::pair<std::string, Texture>> textures = submesh.material.shaderTextures;
     // the Mesh's, then the submesh's over them
-    for (const ShaderPropertyOverrides* overrides : {&mesh.propertyOverrides, (const ShaderPropertyOverrides*)&submesh.propertyOverrides}){
+    for (const ShaderPropertyOverrides* overrides : {&mesh.propertyOverrides.get(), &submesh.propertyOverrides.get()}){
         for (const auto& [uniform, texture] : overrides->textures){
             if (uniform == "baseColorTexture"){
                 // the built-in Lit's (a shader's own uniforms are u_*)
-                submesh.overriddenBaseColorTexture = texture;
-                submesh.hasOverriddenBaseColor = true;
+                made.baseColor = texture;
+                made.hasBaseColor = true;
                 continue;
             }
             auto found = std::find_if(textures.begin(), textures.end(), [&uniform](const auto& entry){ return entry.first == uniform; });
@@ -3602,23 +3600,25 @@ void RenderSystem::resolveOverrideTextures(const MeshComponent& mesh, Submesh& s
                 found->second = texture;
             else
                 textures.push_back({uniform, texture});
-            submesh.hasOverriddenShaderTextures = true;
+            made.hasShaderTextures = true;
         }
     }
-    if (submesh.hasOverriddenShaderTextures)
-        submesh.overriddenShaderTextures = std::move(textures);
+    if (made.hasShaderTextures)
+        made.shaderTextures = std::move(textures);
 }
 
 std::vector<std::pair<std::string, Texture>>& RenderSystem::drawnShaderTextures(Submesh& submesh){
-    return submesh.hasOverriddenShaderTextures ? submesh.overriddenShaderTextures : submesh.material.shaderTextures;
+    SubmeshOverrideTextures* made = submesh.overrideTextures.editIfSet();
+    return (made && made->hasShaderTextures) ? made->shaderTextures : submesh.material.shaderTextures;
 }
 
 Texture* RenderSystem::drawnBaseColor(Submesh& submesh){
-    return submesh.hasOverriddenBaseColor ? &submesh.overriddenBaseColorTexture : nullptr;
+    SubmeshOverrideTextures* made = submesh.overrideTextures.editIfSet();
+    return (made && made->hasBaseColor) ? &made->baseColor : nullptr;
 }
 
 bool RenderSystem::findOverrideValue(const MeshComponent& mesh, const Submesh& submesh, const std::string& name, Vector4& value){
-    for (const ShaderUniformValues* values : {&submesh.propertyOverrides.values, &mesh.propertyOverrides.values}){
+    for (const ShaderUniformValues* values : {&submesh.propertyOverrides->values, &mesh.propertyOverrides->values}){
         if (ShaderUniforms::has(*values, name)){
             value = ShaderUniforms::get(*values, name);
             return true;
@@ -3629,7 +3629,7 @@ bool RenderSystem::findOverrideValue(const MeshComponent& mesh, const Submesh& s
 
 Vector4 RenderSystem::drawnBaseColorFactor(const MeshComponent& mesh, const Submesh& submesh){
     Vector4 value;
-    if ((mesh.propertyOverrides.values.empty() && submesh.propertyOverrides.values.empty()) ||
+    if ((mesh.propertyOverrides->values.empty() && submesh.propertyOverrides->values.empty()) ||
             !findOverrideValue(mesh, submesh, "baseColorFactor", value))
         return submesh.material.baseColorFactor;
     return value;
@@ -3637,7 +3637,7 @@ Vector4 RenderSystem::drawnBaseColorFactor(const MeshComponent& mesh, const Subm
 
 Vector3 RenderSystem::drawnEmissiveFactor(const MeshComponent& mesh, const Submesh& submesh){
     Vector4 value;
-    if ((mesh.propertyOverrides.values.empty() && submesh.propertyOverrides.values.empty()) ||
+    if ((mesh.propertyOverrides->values.empty() && submesh.propertyOverrides->values.empty()) ||
             !findOverrideValue(mesh, submesh, "emissiveFactor", value))
         return submesh.material.emissiveFactor;
     return Vector3(value.x, value.y, value.z);
@@ -3645,7 +3645,7 @@ Vector3 RenderSystem::drawnEmissiveFactor(const MeshComponent& mesh, const Subme
 
 const Material& RenderSystem::drawnLitMaterial(const MeshComponent& mesh, const Submesh& submesh, std::optional<Material>& scratch){
     // nothing is looked up for a renderer without overrides (most of them)
-    if (mesh.propertyOverrides.values.empty() && submesh.propertyOverrides.values.empty())
+    if (mesh.propertyOverrides->values.empty() && submesh.propertyOverrides->values.empty())
         return submesh.material;
     Vector4 baseColor;
     Vector4 emissive;
@@ -4136,8 +4136,8 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
 
     const Material& material = submesh.material;
     // (or a Property Override's: the variant samples one)
-    inputs.baseColorTexture = !material.baseColorTexture.empty() || submesh.propertyOverrides.findTexture("baseColorTexture") ||
-                              mesh.propertyOverrides.findTexture("baseColorTexture");
+    inputs.baseColorTexture = !material.baseColorTexture.empty() || submesh.propertyOverrides->findTexture("baseColorTexture") ||
+                              mesh.propertyOverrides->findTexture("baseColorTexture");
     inputs.metallicRoughnessTexture = !material.metallicRoughnessTexture.empty();
     inputs.normalTexture = !material.normalTexture.empty();
     inputs.occlusionTexture = !material.occlusionTexture.empty();
@@ -6094,7 +6094,7 @@ bool RenderSystem::materialRendersOutdated(const Submesh& submesh){
     if (material.baseColorTexture.isRenderOutdated() || material.metallicRoughnessTexture.isRenderOutdated() ||
             material.occlusionTexture.isRenderOutdated() || material.emissiveTexture.isRenderOutdated() ||
             material.normalTexture.isRenderOutdated() || shaderTexturesRenderOutdated(material.shaderTextures) ||
-            shaderTexturesRenderOutdated(submesh.overriddenShaderTextures) || submesh.overriddenBaseColorTexture.isRenderOutdated() ||
+            shaderTexturesRenderOutdated(submesh.overrideTextures->shaderTextures) || submesh.overrideTextures->baseColor.isRenderOutdated() ||
             shaderTexturesRenderOutdated(material.extraPass->shaderTextures))
         return true;
     for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
@@ -13465,10 +13465,11 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
             for (auto& shaderTexture : submesh.material.shaderTextures){
                 shaderTexture.second.destroy();
             }
-            for (auto& shaderTexture : submesh.overriddenShaderTextures){
-                shaderTexture.second.destroy();
+            if (SubmeshOverrideTextures* made = submesh.overrideTextures.editIfSet()){
+                for (auto& shaderTexture : made->shaderTextures)
+                    shaderTexture.second.destroy();
+                made->baseColor.destroy();
             }
-            submesh.overriddenBaseColorTexture.destroy();
             if (MaterialPass* pass = submesh.material.extraPass.editIfSet()){
                 for (auto& shaderTexture : pass->shaderTextures){
                     shaderTexture.second.destroy();

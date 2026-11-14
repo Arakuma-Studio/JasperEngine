@@ -428,15 +428,12 @@ namespace jasperengine{
         bool hasMorphTangent = false;
 
         bool alphaBlend = false;
-        // this submesh's Property Overrides, over the Mesh's (MeshComponent::propertyOverrides)
-        ShaderPropertyOverrides propertyOverrides;
-        // set at load: the shader textures it binds, its material's with the overrides' over them;
-        // empty when no override names a texture (the material's are bound: drawnShaderTextures)
-        std::vector<std::pair<std::string, Texture>> overriddenShaderTextures;
-        bool hasOverriddenShaderTextures = false;
-        // set at load: the built-in Lit's base colour texture an override names (drawnBaseColor)
-        Texture overriddenBaseColorTexture;
-        bool hasOverriddenBaseColor = false;
+        // this submesh's Property Overrides, over the Mesh's (MeshComponent::propertyOverrides),
+        // out of line: almost no submesh has them
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
+        // set at load when an override names a texture: what it binds (RenderSystem's
+        // drawnShaderTextures, drawnBaseColor); unset otherwise
+        OutOfLineValue<SubmeshOverrideTextures> overrideTextures;
         // set at load: its queue order, the material's sortPriority plus its shader's @state
         // priority= (lower first)
         int sortPriority = 0;
@@ -578,8 +575,8 @@ namespace jasperengine{
         // (under its materials' parameters: Property Overrides win over those)
         ShaderUniformValues shaderUniforms;
         // Property Overrides of every submesh (Unity's MaterialPropertyBlock, saved): over the
-        // materials' values; a submesh's own (Submesh::propertyOverrides) win over these
-        ShaderPropertyOverrides propertyOverrides;
+        // materials' values; a submesh's own (Submesh::propertyOverrides) win over these; out of line
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
         bool needUpdateShaderUniforms = false;
         // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
         // bind globals (Material::shaderGlobalBindings) were last written

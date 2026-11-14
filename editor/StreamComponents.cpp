@@ -175,7 +175,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
         encodeShaderRef(node, "customDepthShader", mesh.customDepthShader);
     if (!mesh.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(mesh.shaderUniforms);
-    if (!mesh.propertyOverrides.empty())
+    if (!mesh.propertyOverrides->empty())
         node["propertyOverrides"] = encodePropertyOverrides(mesh.propertyOverrides, embedTextureData);
 
     return node;
@@ -292,7 +292,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["customShader"]) mesh.customShader = decodeShaderRef(node, "customShader");
     if (node["customDepthShader"]) mesh.customDepthShader = decodeShaderRef(node, "customDepthShader");
     mesh.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
-    mesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    if (node["propertyOverrides"]) mesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    else mesh.propertyOverrides.reset();
     mesh.needUpdateShaderUniforms = true;
 
     if (node["enabled"]) mesh.enabled = YamlNumbers::as<bool>(node["enabled"]);

@@ -285,6 +285,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
                 state["blendDstAlpha"] = enumToJson((int)s.blendFactors.dstAlpha, factor);
             }
             state["blendOp"] = enumToJson((int)s.blendFactors.op, *enumTable("material_blend_op"));
+            state["blendOpAlpha"] = enumToJson((int)s.blendFactors.opAlpha, *enumTable("material_blend_op"));
         }
         if (s.cull != MaterialCullMode::AUTO) state["cullMode"] = enumToJson((int)s.cull, *enumTable("material_cull_mode"));
         if (s.depthWrite != MaterialDepthWrite::AUTO) state["depthWrite"] = enumToJson((int)s.depthWrite, *enumTable("material_depth_write"));
@@ -677,7 +678,7 @@ bool McpValues::colorWriteFromJson(const Json& value, int& out, std::string& err
 
 bool McpValues::isMaterialShaderLibraryKey(const std::string& key) {
     static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "shaderGlobalBindings", "blendMode",
-                                       "blendSrc", "blendDst", "blendSrcAlpha", "blendDstAlpha", "blendOp", "cullMode", "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority",
+                                       "blendSrc", "blendDst", "blendSrcAlpha", "blendDstAlpha", "blendOp", "blendOpAlpha", "cullMode", "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority",
                                        "lighting", "stencil", "colorWrite", "extraPass"};
     for (const char* known : keys) {
         if (key == known) return true;
@@ -703,6 +704,7 @@ void shaderStateToJson(Project* project, SceneProject* scene, const T& value, Js
         out["blendSrcAlpha"] = McpValues::enumToJson((int)value.blendSrcAlpha, factor);
         out["blendDstAlpha"] = McpValues::enumToJson((int)value.blendDstAlpha, factor);
         out["blendOp"] = McpValues::enumToJson((int)value.blendOp, *McpValues::enumTable("material_blend_op"));
+        out["blendOpAlpha"] = McpValues::enumToJson((int)value.blendOpAlpha, *McpValues::enumTable("material_blend_op"));
     }
     out["cullMode"] = McpValues::enumToJson((int)value.cullMode, *McpValues::enumTable("material_cull_mode"));
     out["depthWrite"] = McpValues::enumToJson((int)value.depthWrite, *McpValues::enumTable("material_depth_write"));
@@ -819,6 +821,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
         !enumKey("blendSrcAlpha", "material_blend_factor", out.blendSrcAlpha) ||
         !enumKey("blendDstAlpha", "material_blend_factor", out.blendDstAlpha) ||
         !enumKey("blendOp", "material_blend_op", out.blendOp) ||
+        !enumKey("blendOpAlpha", "material_blend_op", out.blendOpAlpha) ||
         !enumKey("cullMode", "material_cull_mode", out.cullMode) ||
         !enumKey("depthWrite", "material_depth_write", out.depthWrite) ||
         !enumKey("depthTest", "material_depth_test", out.depthTest)) {

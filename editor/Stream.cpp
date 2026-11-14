@@ -809,7 +809,7 @@ void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, Material
 
 namespace {
 
-    // Blend Mode Custom's factors, each away from its default (One Zero, One Zero, Add)
+    // Blend Mode Custom's factors, each away from its default (One Zero, One Zero, Add, Add)
     template<typename T>
     void encodeBlendFactors(YAML::Node& node, const T& owner) {
         const MaterialBlendFactors defaults;
@@ -820,6 +820,7 @@ namespace {
         if (factors.srcAlpha != defaults.srcAlpha) node["blendSrcAlpha"] = names.toString(factors.srcAlpha);
         if (factors.dstAlpha != defaults.dstAlpha) node["blendDstAlpha"] = names.toString(factors.dstAlpha);
         if (factors.op != defaults.op) node["blendOp"] = editor::StreamSchema::materialBlendOp().toString(factors.op);
+        if (factors.opAlpha != defaults.opAlpha) node["blendOpAlpha"] = editor::StreamSchema::materialBlendOp().toString(factors.opAlpha);
     }
 
     template<typename T>
@@ -831,6 +832,7 @@ namespace {
         owner.blendSrcAlpha = node["blendSrcAlpha"] ? editor::decodeEnum(node, "blendSrcAlpha", names) : defaults.srcAlpha;
         owner.blendDstAlpha = node["blendDstAlpha"] ? editor::decodeEnum(node, "blendDstAlpha", names) : defaults.dstAlpha;
         owner.blendOp = node["blendOp"] ? editor::decodeEnum(node, "blendOp", editor::StreamSchema::materialBlendOp()) : defaults.op;
+        owner.blendOpAlpha = node["blendOpAlpha"] ? editor::decodeEnum(node, "blendOpAlpha", editor::StreamSchema::materialBlendOp()) : defaults.opAlpha;
     }
 
 }
@@ -1847,7 +1849,7 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
 
-    if (!submesh.propertyOverrides.empty()) node["propertyOverrides"] = encodePropertyOverrides(submesh.propertyOverrides, embedTextureData);
+    if (!submesh.propertyOverrides->empty()) node["propertyOverrides"] = encodePropertyOverrides(submesh.propertyOverrides, embedTextureData);
 
     // The fields the next model load must keep instead of taking them from the file.
     if (submesh.overrideFields != 0) {
@@ -1890,7 +1892,8 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["faceCulling"]) submesh.faceCulling = YamlNumbers::as<bool>(node["faceCulling"]);
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
     // omitted when empty: an absent key is none
-    submesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    if (node["propertyOverrides"]) submesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    else submesh.propertyOverrides.reset();
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
     submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint64_t>(node["overrideFields"]) : 0;

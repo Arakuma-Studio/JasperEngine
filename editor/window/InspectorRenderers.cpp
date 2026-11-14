@@ -829,13 +829,11 @@ void editor::InspectorWindow::drawPropertyOverridesRows(ComponentType cpType, Sc
     const std::string prefix = submesh < 0 ? std::string("propertyOverrides.") : "submeshes[" + std::to_string(submesh) + "].propertyOverrides.";
     const std::string valuesProperty = prefix + "values";
     const std::string texturesProperty = prefix + "textures";
-    ShaderUniformValues* valuesRef = Catalog::getPropertyRef<ShaderUniformValues>(scene, entity, cpType, valuesProperty);
-    OverrideTextures* texturesRef = Catalog::getPropertyRef<OverrideTextures>(scene, entity, cpType, texturesProperty);
-    if (!valuesRef || !texturesRef)
-        return;
-    // copies: a command may change them while the rows are drawn
-    const ShaderUniformValues values = *valuesRef;
-    const OverrideTextures textures = *texturesRef;
+    // read without making them (out of line: an edit makes them); copies, as a command may
+    // change them while the rows are drawn
+    const ShaderPropertyOverrides& current = submesh < 0 ? mesh->propertyOverrides.get() : mesh->submeshes[submesh].propertyOverrides.get();
+    const ShaderUniformValues values = current.values;
+    const OverrideTextures textures = current.textures;
 
     const std::string label = (submesh < 0 ? std::string("Property Overrides") : "Submesh " + std::to_string(submesh) + " Property Overrides") +
                               (values.empty() && textures.empty() ? "" : " (" + std::to_string(values.size() + textures.size()) + ")") +

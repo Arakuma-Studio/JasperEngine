@@ -509,8 +509,9 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   opaque meshes at 0).
 - `// @state blend=<src>,<dst>[,<srcAlpha>,<dstAlpha>] blendop=<op>`: ShaderLab's `Blend` and
   `BlendOp` (factors `One`, `Zero`, `SrcColor`, `SrcAlpha`, `DstColor`, `DstAlpha` and the
-  `OneMinus` forms; ops `add`, `sub`, `revsub`, `min`, `max`); a material sets its own with
-  `blendMode: custom` and `blendSrc`, `blendDst`, `blendSrcAlpha`, `blendDstAlpha`, `blendOp`.
+  `OneMinus` forms; ops `add`, `sub`, `revsub`, `min`, `max`, or `<colour op>,<alpha op>`); a
+  material sets its own with `blendMode: custom` and `blendSrc`, `blendDst`, `blendSrcAlpha`,
+  `blendDstAlpha`, `blendOp`, `blendOpAlpha`.
 - `// @texture <uniform> <default> main`: the texture `Mesh:setTexture` writes (else the first
   `@texture`).
 - `// @depth` with `<name>_depth.vert` / `<name>_depth.frag` beside a fork: its own depth

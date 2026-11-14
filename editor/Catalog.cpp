@@ -156,6 +156,7 @@ namespace {
         {"material.blendSrcAlpha", SubmeshOverride_BlendMode},
         {"material.blendDstAlpha", SubmeshOverride_BlendMode},
         {"material.blendOp", SubmeshOverride_BlendMode},
+        {"material.blendOpAlpha", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
         {"material.depthTest", SubmeshOverride_DepthTest},

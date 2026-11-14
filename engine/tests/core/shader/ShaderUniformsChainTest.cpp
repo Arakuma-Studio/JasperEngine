@@ -136,7 +136,7 @@ TEST(ShaderUniformsChain, PropertyOverridesWin) {
 // S94 F8 (AC8): a Mesh value its material's parameter of the same name hides warns once per
 // GameObject and name, naming Property Overrides; a name the material does not set is silent
 TEST(ShaderUniforms, ShadowedMeshUniformWarnsOnce) {
-    LogCapture log;
+    test::LogCapture log;
     const ShaderUniformValues material = {{"zoneColor", Vector4(1, 0, 0, 1)}};
     static int sceneTag = 0;
     EXPECT_TRUE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 7, "Zone", "zoneColor", material));
