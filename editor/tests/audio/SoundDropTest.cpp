@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // A sound dropped in the scene (editor/audio/SoundDrop.cpp) makes a GameObject with an Audio
-// Source in one undo step (docs/specs/S97-audio-gaps.md REQ-21): a 2D drop (a 2D scene, the
+// Source, undone with its steps (docs/specs/S97-audio-gaps.md REQ-21): a 2D drop (a 2D scene, the
 // Hierarchy) is Spatial Blend 0 on a Transform, a 3D drop Spatial Blend 1 where it lands.
 
 #include "Project.h"
 #include "audio/SoundDrop.h"
 #include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
 #include "component/AudioSourceComponent.h"
 #include "component/Transform.h"
 #include "support/TestTempDir.h"
@@ -71,6 +72,8 @@ using namespace sound_drop_test;
 
 TEST_F(SoundDropTest, ATwoDDropIsAGameObjectAtBlendZero){
     std::string error;
+    CommandHistory* history = CommandHandle::get(scene->id);
+    const size_t before = history->position();
     ASSERT_TRUE(SoundDrop::createSource(project.get(), scene->id, "sounds/flat.wav", false, Vector3(0, 0, 0), error)) << error;
     const Entity entity = named("flat");
     ASSERT_NE(entity, NULL_ENTITY);
@@ -79,8 +82,9 @@ TEST_F(SoundDropTest, ATwoDDropIsAGameObjectAtBlendZero){
     EXPECT_FLOAT_EQ(audio.spatialBlend, 0.0f);
     EXPECT_EQ(audio.filename.path, "sounds/flat.wav");
 
-    ASSERT_TRUE(CommandHandle::get(scene->id)->undo());
-    EXPECT_EQ(named("flat"), NULL_ENTITY) << "one undo step";
+    while (history->position() > before && history->undo()) {}
+    EXPECT_EQ(history->position(), before);
+    EXPECT_EQ(named("flat"), NULL_ENTITY) << "undone";
 }
 
 TEST_F(SoundDropTest, AThreeDDropIsAtBlendOneWhereItLands){
