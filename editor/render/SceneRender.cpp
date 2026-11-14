@@ -27,14 +27,6 @@
 #include "spline/SplineEditor.h"
 #include "profiler/Profile.h"
 
-#include "resources/icons/camera-icon_png.h"
-#include "resources/icons/audio-source-icon_png.h"
-
-// defined by resources/icons/bulb-icon_png.h, included in SceneRender3D.cpp
-// (the xxd headers define non-static arrays, so they link in one TU only)
-extern unsigned char bulb_icon_png[];
-extern unsigned int bulb_icon_png_len;
-
 #include "Backend.h"
 #include "Project.h"
 #include "navigation/NavigationEditor.h"
@@ -106,47 +98,76 @@ void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& r
 
 void editor::SceneRender::dropGoneGizmos(){
     const RenderSystem& render = *scene->getSystem<RenderSystem>();
-    dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
+    dropGoneGizmos(latticeCageOverlay, render);
+    dropGoneGizmos(latticeCageDepth, render);
     dropGoneGizmos(particleShapeLines, render);
 }
 
-void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
-    if (lines.find(entity) == lines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        lines[entity] = overlay(new LineRenderer(scene));
+void editor::SceneRender::flushGizmos(GizmoLineBatch& batch){
+    if (!batch.getRenderer() && batch.size() > 0){
+        Scene* target = batch.isToolsLayer() ? toolslayer.getScene() : scene;
+        ScopedDefaultEntityPool sys(*target, EntityPool::System);
+        LineRenderer* lines = new LineRenderer(target);
+        if (target == scene){
+            overlay(lines);
+        }
+        batch.setRenderer(lines);
     }
+    batch.flush();
+}
+
+void editor::SceneRender::flushGizmos(GizmoIconBatch& batch){
+    if (!batch.getSprite() && batch.size() > 0){
+        // 3D views draw the icons in the scene (billboards), 2D views in the tools layer
+        Scene* target = batch.isBillboard() ? scene : toolslayer.getScene();
+        ScopedDefaultEntityPool sys(*target, EntityPool::System);
+        Sprite* icons = new Sprite(target);
+        if (target == scene){
+            overlay(icons);
+        }
+        batch.setSprite(icons);
+    }
+    batch.flush();
+}
+
+void editor::SceneRender::dropGoneGizmos(GizmoLineBatch& batch, const RenderSystem& render){
+    if (batch.getRenderer() && isGizmoGone(batch.getRenderer(), render)){
+        deleteGizmo(batch.getRenderer(), render);
+        batch.forgetRenderer();
+    }
+}
+
+void editor::SceneRender::dropGoneGizmos(GizmoIconBatch& batch, const RenderSystem& render){
+    if (batch.getSprite() && isGizmoGone(batch.getSprite(), render)){
+        deleteGizmo(batch.getSprite(), render);
+        batch.forgetSprite();
+    }
+}
+
+void editor::SceneRender::deleteGizmos(GizmoLineBatch& batch, const RenderSystem& render){
+    deleteGizmo(batch.getRenderer(), render);
+    batch.forgetRenderer();
+}
+
+void editor::SceneRender::deleteGizmos(GizmoIconBatch& batch, const RenderSystem& render){
+    deleteGizmo(batch.getSprite(), render);
+    batch.forgetSprite();
 }
 
 // the selected Particle System's shape in the 2D Scene view (the 3D view's are in its particle
 // lines, SceneRender3D): the effect's Shape module outline (ParticleCompiler::shapeOutline)
-void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current){
+void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected){
     const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
     const Transform* transform = scene->findComponent<Transform>(entity);
     if (!ps || !transform) return;
-    current.insert(entity);
-    ensureOverlayLines(particleShapeLines, entity);
-    LineRenderer* lines = particleShapeLines[entity];
-    lines->clearLines();
     const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(*ps);
     const bool visible = selected && transform->visible && document && document->shape.present && document->shape.enabled;
-    lines->setVisible(visible);
     if (!visible) return;
     std::vector<Vector3> segments;
     particles::ParticleCompiler::shapeOutline(document->shape, segments);
     const Vector4 color(0.45f, 0.8f, 1.0f, 1.0f);
     for (size_t i = 0; i + 1 < segments.size(); i += 2){
-        lines->addLine(transform->modelMatrix * segments[i], transform->modelMatrix * segments[i + 1], color);
-    }
-}
-
-void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current){
-    for (auto it = particleShapeLines.begin(); it != particleShapeLines.end();){
-        if (current.find(it->first) == current.end()){
-            delete it->second;
-            it = particleShapeLines.erase(it);
-        }else{
-            ++it;
-        }
+        particleShapeLines.addLine(transform->modelMatrix * segments[i], transform->modelMatrix * segments[i + 1], color);
     }
 }
 
@@ -208,9 +229,7 @@ editor::SceneRender::~SceneRender(){
     terrainOverlay.reset();
     destroySplineOverlay();
     delete wireframeLines;
-    for (auto& pair : particleShapeLines) {
-        delete pair.second;
-    }
+    deleteGizmos(particleShapeLines, *scene->getSystem<RenderSystem>());
     VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
     delete physicsLines;
@@ -628,11 +647,6 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
     return result;
 }
 
-void editor::SceneRender::hideEntityGizmos(Entity entity){
-    auto shape = particleShapeLines.find(entity);
-    if (shape != particleShapeLines.end()) shape->second->setVisible(false);
-}
-
 bool editor::SceneRender::gizmoActive(Entity entity) const{
     return !scene->hasInactiveEntities() || scene->isEntityActiveInHierarchy(entity);
 }
@@ -655,6 +669,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
+    particleShapeLines.hide();
     if (navigationOverlay) navigationOverlay->hide();
     if (terrainOverlay) terrainOverlay->hide();
     hideSplineOverlay();
@@ -4120,80 +4135,6 @@ int editor::SceneRender::hitTestInstance(Entity entity, float x, float y){
     return bestIndex;
 }
 
-void editor::SceneRender::setupCameraIcon(CameraObjects& co){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(camera_icon_png, camera_icon_png_len);
-    co.icon->setTexture("editor:resources:camera_icon", iconData);
-    co.icon->setSize(128, 128);
-    co.icon->setReceiveLights(false);
-    co.icon->setCastShadows(false);
-    co.icon->setReceiveShadows(false);
-    co.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::setupSoundIcon(SoundObjects& so){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(audio_source_icon_png, audio_source_icon_png_len);
-    so.icon->setTexture("editor:resources:sound_icon", iconData);
-    so.icon->setSize(128, 128);
-    so.icon->setReceiveLights(false);
-    so.icon->setCastShadows(false);
-    so.icon->setReceiveShadows(false);
-    so.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::setupLight2DIcon(Light2DObjects& lo){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(bulb_icon_png, bulb_icon_png_len);
-    lo.icon->setTexture("editor:resources:bulb_icon", iconData);
-    lo.icon->setSize(128, 128);
-    lo.icon->setReceiveLights(false);
-    lo.icon->setCastShadows(false);
-    lo.icon->setReceiveShadows(false);
-    lo.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
-    if (cameraComponent.type == CameraType::CAMERA_UI){
-        co.lines->clearLines();
-        co.type = CameraType::CAMERA_UI;
-        return;
-    }
-
-    bool changed = false;
-    if (co.type != cameraComponent.type) changed = true;
-    if (co.isMainCamera != isMainCamera) changed = true;
-    if (co.fullFrustum != fullFrustum) changed = true;
-    if (cameraComponent.type == CameraType::CAMERA_PERSPECTIVE){
-        if (co.yfov != cameraComponent.yfov || co.aspect != cameraComponent.aspect ||
-            co.nearClip != cameraComponent.nearClip || co.farClip != cameraComponent.farClip){
-            changed = true;
-        }
-    }else if (cameraComponent.type == CameraType::CAMERA_ORTHO){
-        if (co.leftClip != cameraComponent.leftClip || co.rightClip != cameraComponent.rightClip ||
-            co.bottomClip != cameraComponent.bottomClip || co.topClip != cameraComponent.topClip ||
-            co.nearClip != cameraComponent.nearClip || co.farClip != cameraComponent.farClip){
-            changed = true;
-        }
-    }
-
-    if (!changed) return;
-
-    co.type = cameraComponent.type;
-    co.isMainCamera = isMainCamera;
-    co.fullFrustum = fullFrustum;
-    co.yfov = cameraComponent.yfov;
-    co.aspect = cameraComponent.aspect;
-    co.nearClip = cameraComponent.nearClip;
-    co.farClip = cameraComponent.farClip;
-    co.leftClip = cameraComponent.leftClip;
-    co.rightClip = cameraComponent.rightClip;
-    co.bottomClip = cameraComponent.bottomClip;
-    co.topClip = cameraComponent.topClip;
-
-    drawCameraFrustumLines(co.lines, cameraComponent, isMainCamera, fullFrustum);
-}
-
 std::array<Vector3, 8> editor::cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum){
     // near and far as rendered (a perspective near <= 0 draws with the clamped one)
     const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
@@ -4236,12 +4177,18 @@ std::array<Vector3, 8> editor::cameraGizmoCorners(const CameraComponent& camera,
             Vector3(fl, ft, -farClip), Vector3(fr, ft, -farClip), Vector3(fl, fb, -farClip), Vector3(fr, fb, -farClip)};
 }
 
-void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
-    lines->clearLines();
-
+void editor::SceneRender::drawCameraFrustumLines(GizmoLineBatch& batch, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum,
+                                                 const Matrix4& toWorld){
     if (cameraComponent.type == CameraType::CAMERA_UI){
         return;
     }
+    // placed by toWorld (the lines are the camera's own space)
+    struct Placed{
+        GizmoLineBatch& batch;
+        const Matrix4& toWorld;
+        void addLine(const Vector3& a, const Vector3& b, const Vector4& color){ batch.addLine(toWorld * a, toWorld * b, color); }
+    } placed{batch, toWorld};
+    Placed* lines = &placed;
 
     Vector4 color(0.8f, 0.8f, 0.8f, 1.0f);
     if (isMainCamera){
