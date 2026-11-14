@@ -1225,8 +1225,10 @@ The other subsystems (from `self.scene:getActionSystem()`, `getMeshSystem()`, ..
 
 `AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the mixer's Master
 bus holds, as in the app pause but apart from it; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
-= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
-`isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
+= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead; held until
+`unload`), `unload(path [, loadType])` (Unity's UnloadAudioData: the preload pin goes and the cached
+copies nothing holds drop; returns how many; a held clip goes at its release), `getLoadState(path [,
+loadType])` (`AudioLoadState.*` of a clip in the cache), `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.
 
 `Audio` (static, free voices with no AudioSource): `Audio.play(eventOrClip [, opts])` -> `SoundHandle`
@@ -2706,8 +2708,9 @@ end
 
 Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
 
-Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
-`isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
+Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)` (the old clip stays cached, so
+switching back decodes nothing), `destroySound()` (stops it and frees its clip when nothing else holds
+it), `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()` (0 until `loadState` is Loaded), `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
 `getAudioSourceComponent()`.
 rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`, `sound3D`,
@@ -2715,7 +2718,10 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 (`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`, `outputGroup` (the
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
-`ignoreListenerPause`.
+`ignoreListenerPause`. Read-only: `loadState` (`AudioLoadState.*`: Loading from `loadSound` until
+the clip is ready, then Loaded or Failed; Unloaded without a request).
+`getAudioSourceComponent().onLoad = function(ok) ... end` runs once for each `loadSound` (and the
+scene's own load of the clip), in a later audio update, never inside the call.
 Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
 set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
 `minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
@@ -3511,6 +3517,7 @@ gate.area = 0 ; gate:remove()
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |
 | `AudioLoadType` | `Auto`, `DecompressOnLoad`, `CompressedInMemory`, `Streaming` |
+| `AudioLoadState` | `Unloaded`, `Loading`, `Loaded`, `Failed` |
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |

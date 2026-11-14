@@ -166,8 +166,11 @@ namespace {
 
     void releaseFreePlay(FreePlay& play) {
         const uint32_t generation = play.generation + 1;
+        const bool heldSamples = !play.voices.empty();
         play = FreePlay();
         play.generation = generation;
+        // its clips may be unused now: the pool keeps them within its budget (S97 REQ-8)
+        if (heldSamples) SoundPool::trimUnused();
     }
 
     // a voice of it still valid; the entry goes when none is and it is not about to start
@@ -435,7 +438,15 @@ namespace {
 
     constexpr double oneShotLoadWait = 0.25;
 
-    enum EventKind { EventStart, EventPause, EventStop };
+    enum EventKind { EventStart, EventPause, EventStop, EventLoaded, EventLoadFailed };
+
+    // a load asked for (loadSound, the scene's preload) is over: onLoad is due in the next update
+    void finishLoad(AudioSourceComponent& audio, bool ok) {
+        if (!audio.loadRequested) return;
+        audio.loadRequested = false;
+        audio.loadEventPending = true;
+        audio.loadEventOk = ok;
+    }
 
     // Where a scene's camera hears from, in its own world: its position (a perspective camera), or
     // the centre of its view (an orthographic or UI camera, whose view spans [leftClip, rightClip]
@@ -950,6 +961,8 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
     }
 
     if (!audio.sample){
+        // (a clip that failed is not asked for again until the file changes or loadSound)
+        if (!audio.loaded && !audio.loadFailed) audio.loadRequested = true;
         SoundLoadResult result = SoundPool::loadClip(audio.filename, audio.loadType);
         if (result.state == ResourceLoadState::Loading) {
             return false;
@@ -962,6 +975,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
             audio.state = AudioSourceState::Stopped;
             audio.sample.reset();
             audio.pendingOneShots.clear();
+            finishLoad(audio, false);
             return false;
         }
 
@@ -977,6 +991,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
     audio.length = SoundPool::getLength(audio.sample.get());
     audio.loaded = true;
     audio.loadFailed = false;
+    finishLoad(audio, true);
 
     return true;
 }
@@ -992,18 +1007,36 @@ bool AudioSystem::loadSound(AudioSourceComponent& audio){
 bool AudioSystem::preload(const std::string& filename, AudioLoadType loadType){
     SoundLoadResult result = SoundPool::loadClip(filename, loadType);
     if (result.state == ResourceLoadState::Failed) return false;
-    if (result.data) SoundPool::pin(result.id);
-    // async loading: the pool finishes it; the next call (or the first play) holds it
+    // (a load on its way is pinned when it arrives)
+    SoundPool::pin(result.id);
     return true;
 }
 
+int AudioSystem::unload(const std::string& filename, const AudioLoadType* loadType){
+    return SoundPool::unload(filename, loadType);
+}
+
+AudioLoadState AudioSystem::getLoadState(const std::string& filename, AudioLoadType loadType){
+    return SoundPool::getLoadState(filename, loadType);
+}
+
+AudioLoadState AudioSystem::getLoadState(const AudioSourceComponent& audio){
+    if (audio.loadFailed) return AudioLoadState::Failed;
+    if (audio.loaded && audio.sample) return AudioLoadState::Loaded;
+    if (audio.loadRequested) return AudioLoadState::Loading;
+    return AudioLoadState::Unloaded;
+}
+
+// The source lets its clip go: unused, the pool keeps it within its budget, so switching back
+// decodes nothing (S97 REQ-9); AudioSource.destroySound drops it
 void AudioSystem::releaseSample(AudioSourceComponent& audio){
     audio.loaded = false;
     audio.loadFailed = false;
+    audio.loadRequested = false;
     audio.length = 0;
     audio.sample.reset();
     if (!audio.sampleKey.empty()) {
-        SoundPool::remove(audio.sampleKey);
+        SoundPool::release(audio.sampleKey);
         audio.sampleKey.clear();
     }
 }
@@ -1027,7 +1060,8 @@ void AudioSystem::preloadSoundAssets(){
             continue;
         }
 
-        if (!audio.loaded) {
+        // (a loadSound of the clip already loaded, before the view: its onLoad is due too)
+        if (!audio.loaded || audio.loadRequested) {
             loadSoundSample(audio);
         }
     }
@@ -2117,6 +2151,12 @@ void AudioSystem::update(double dt){
 
         Entity entity = audios->getEntity(i);
 
+        // a load that ended since the last update: onLoad after the loop, never inside loadSound
+        if (audio.loadEventPending) {
+            audio.loadEventPending = false;
+            events.push_back({entity, audio.loadEventOk ? EventLoaded : EventLoadFailed});
+        }
+
         // only what a source needs is subscribed; a scene without flags pays this one test
         if ((audio.playOn | audio.boundPlayOn) != 0) {
             const uint32_t desired = audio.enabled && scene->isEntityActiveInHierarchy(entity) ? (audio.playOn & AudioPlayOn_All) : 0u;
@@ -2291,7 +2331,7 @@ void AudioSystem::update(double dt){
                         audio.sampleKey = fresh.id;
                         audio.sampleGeneration = SoundPool::generation(audio.filename);
                         audio.length = SoundPool::getLength(audio.sample.get());
-                        if (previousKey != fresh.id) SoundPool::remove(previousKey);
+                        if (previousKey != fresh.id) SoundPool::release(previousKey);
                     }
                 }
 
@@ -2376,7 +2416,10 @@ void AudioSystem::update(double dt){
             }
         }
 
-        updateFade(audio, dt, unscaledDt, events, entity);
+        // a fade of a start still waiting for its clip begins with the voice (S97 REQ-14)
+        const bool waitingForClip = hasClip && !audio.loaded && audio.handle == 0 &&
+                                    (audio.startTrigger || audio.state == AudioSourceState::Playing);
+        if (!waitingForClip) updateFade(audio, dt, unscaledDt, events, entity);
         applyPause(audio);
 
         if (!inited) continue;
@@ -2454,6 +2497,8 @@ void AudioSystem::update(double dt){
         if (!audio) continue;
         if (kind == EventStart) audio->onStart.call();
         else if (kind == EventPause) audio->onPause.call();
+        else if (kind == EventLoaded) audio->onLoad.call(true);
+        else if (kind == EventLoadFailed) audio->onLoad.call(false);
         else audio->onStop.call();
     }
 }

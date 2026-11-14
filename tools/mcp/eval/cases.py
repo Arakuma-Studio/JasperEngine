@@ -2465,6 +2465,28 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_small_loop_streams_by_clip_load_type",
+        "groups_enabled": ["audio"],
+        "files": {"assets/ambience/rain.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S97 AU2: a clip's Load Type was per Audio Source only, so agents asked to stream a sub-1-MiB loop set "
+                         "loadType on one source (others kept decoding it) or wrote the .meta by hand; the clip's own Load Type is "
+                         "the load_type import settings key.",
+        "text_at_issue": "set_audio_import_settings' description and settings key list (load_type); jasper://docs/sound's import settings table",
+        "source": "S97 REQ-16, REQ-43 (b) (spec-first)",
+        "prompt": "assets/ambience/rain.wav is a 700 KB loop several sources and Audio.play use. Make it stream from disk "
+                  "everywhere instead of being decoded into memory.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/ambience/rain.wav: -24.0 LUFS, 4.000 s",
+                {"items": [{"n": 1, "path": "assets/ambience/rain.wav", "settings": {"load_type": "streaming"},
+                            "resolved": {"sample_rate": 44100, "frames": 176400}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"load_type": "streaming"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_placeholder_coin_finds_the_group",
         "kind": "guard",
         "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
