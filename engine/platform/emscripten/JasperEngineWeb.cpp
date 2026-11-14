@@ -960,6 +960,8 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         if (!loadedIDB)
             jasperengine::Log::warn("user data not restored after 3 s; saves may be missing");
         projectStarted = true;
+        // the canvas's size: the scripts' init sees the first frame's layout
+        jasperengine::Engine::setStartScreenSize(screenWidth, screenHeight);
         jasperengine::Engine::systemStartProject();
         jasperengine::Engine::systemViewLoaded();
         changeCanvasSize(screenWidth, screenHeight);

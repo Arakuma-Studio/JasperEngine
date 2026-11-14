@@ -196,6 +196,10 @@ Engine::FrameStats Engine::currentFrameStats;
 double Engine::maxDeltatime = 0.25;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
+double Engine::projectUpdateTime = 1.0 / 60.0;
+bool Engine::sceneUpdateTimeApplied = false;
+int Engine::startScreenWidth = 0;
+int Engine::startScreenHeight = 0;
 
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
@@ -596,8 +600,24 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
         refreshCanvas(true);
     }else{
         // Scenes and scripts can start before the view exists; the screen refines this once it loads
-        Engine::canvasWidth = canvasWidth;
-        Engine::canvasHeight = canvasHeight;
+        layoutBeforeView();
+    }
+}
+
+void Engine::setStartScreenSize(int width, int height){
+    startScreenWidth = std::max(width, 0);
+    startScreenHeight = std::max(height, 0);
+    if (!viewLoaded)
+        layoutBeforeView();
+}
+
+void Engine::layoutBeforeView(){
+    if (startScreenWidth > 0 && startScreenHeight > 0 && preferredCanvasWidth > 0 && preferredCanvasHeight > 0){
+        computeViewLayout(startScreenWidth, startScreenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                          Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    }else{
+        Engine::canvasWidth = preferredCanvasWidth;
+        Engine::canvasHeight = preferredCanvasHeight;
     }
 }
 
@@ -618,6 +638,8 @@ void Engine::setScalingMode(Scaling scalingMode){
 
     if (viewLoaded){
         refreshCanvas(true);
+    }else{
+        layoutBeforeView();
     }
 }
 
@@ -871,6 +893,30 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+void Engine::setProjectUpdateTime(double seconds){
+    if (!(seconds > 0.0) || !std::isfinite(seconds)){
+        Log::warn("Engine::setProjectUpdateTime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    projectUpdateTime = seconds;
+    updateTime = seconds;
+    sceneUpdateTimeApplied = false;
+}
+
+double Engine::getProjectUpdateTime(){
+    return projectUpdateTime;
+}
+
+void Engine::applySceneUpdateTime(double sceneSeconds){
+    if (sceneSeconds > 0.0 && std::isfinite(sceneSeconds)){
+        updateTime = sceneSeconds;
+        sceneUpdateTimeApplied = true;
+    }else if (sceneUpdateTimeApplied){
+        updateTime = projectUpdateTime;
+        sceneUpdateTimeApplied = false;
+    }
 }
 
 int Engine::getFixedStepsLeft(){
@@ -2713,6 +2759,22 @@ void Engine::runFrame(bool draw){
         // their holes in the component arrays closed now, not by whatever reads next
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->compactComponents();
+        }
+        // the late transform pass (S95 REQ-5): what onPostUpdate, the timers, the coroutines and
+        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame
+        // (a Camera Follow follows a target moved then); the 3D listener and sources are heard where
+        // they are drawn. Nothing moved: one compare per scene
+        bool lateMoved = false;
+        bool viewMoved = false;
+        for (int i = 0; i < scenes.size(); i++) {
+            const LateTransformResult late = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms();
+            lateMoved = lateMoved || late.moved;
+            viewMoved = viewMoved || late.viewMoved;
+        }
+        if (lateMoved) {
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<AudioSystem>()->updateLate(viewMoved);
+            }
         }
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();

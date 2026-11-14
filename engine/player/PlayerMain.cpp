@@ -321,6 +321,10 @@ JASPERENGINE_INIT void init() {
     Engine::setFoliageQualityDefaults(game.foliageQuality[0], game.foliageQuality[1], game.foliageQuality[2], game.foliageQualityUncapped);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
+    // Project Settings > Time and Input > Simulate Touch From Mouse, before the first scene's init
+    Engine::setProjectUpdateTime(game.fixedTimestep);
+    Engine::setMaxDeltatime(static_cast<float>(game.maximumDeltaTime));
+    if (game.simulateTouchFromMouse) Engine::setCallTouchInMouseEvent(true);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
 #if JASPERENGINE_VOXEL

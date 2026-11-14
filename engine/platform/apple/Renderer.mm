@@ -55,6 +55,8 @@ static CGSize _screenSize;
         std::fprintf(stderr, "JasperEngine: exiting with code %d\n", launched);
         std::exit(launched);
     }
+    // the view's drawable exists: the scripts' init sees the first frame's canvas
+    jasperengine::Engine::setStartScreenSize((int)view.drawableSize.width, (int)view.drawableSize.height);
     jasperengine::Engine::systemInit((int)arguments.size(), argv.data(), new JasperEngineApple());
     // --screenshot reads the composite on sokol's queue
     jasperengine::installMetalReadback();

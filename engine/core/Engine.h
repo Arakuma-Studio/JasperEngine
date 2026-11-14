@@ -393,6 +393,12 @@ namespace jasperengine {
         static FrameStats currentFrameStats;
         
         static double updateTime;
+        // Project Settings > Time > Fixed Timestep, and whether a scene's own step is applied (D-7)
+        static double projectUpdateTime;
+        static bool sceneUpdateTimeApplied;
+        // the screen the platform will show before the view exists (setStartScreenSize)
+        static int startScreenWidth;
+        static int startScreenHeight;
 
         static double timeScale;
         static double fixedDeltatime;
@@ -501,6 +507,8 @@ namespace jasperengine {
         // and the debug overlay's camera (Canvas Scaler), Screen.safeArea; with notify, the events
         // of a view change when the canvas or the view rect changed (a nested call does not notify)
         static void refreshCanvas(bool notify);
+        // before the view: the canvas of the start screen (setStartScreenSize), else the preferred
+        static void layoutBeforeView();
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
@@ -579,6 +587,11 @@ namespace jasperengine {
         // screenHeight: systemViewChanged's rule, for a view other than the Engine's own
         static void computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
                                       int& canvasWidth, int& canvasHeight, Rect& viewRect);
+        // The platform's screen size before the view exists (the window it opens, the web
+        // canvas, the iOS view), set before systemStartProject: the canvas a script's init
+        // reads is then the first frame's layout. 0: unknown (Android before its window), so
+        // init reads the preferred size and onCanvasChanged follows when the view loads.
+        static void setStartScreenSize(int width, int height);
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
@@ -686,6 +699,16 @@ namespace jasperengine {
         static void setUpdateTimeMS(unsigned int updateTimeMS);
         static void setUpdateTime(float updateTime);
         static float getUpdateTime();
+
+        // Project Settings > Time > Fixed Timestep (seconds, > 0): sets the fixed step now and is
+        // the step a scene load returns to (applySceneUpdateTime). Exports call it before init,
+        // Play at its start. Double, so 1/60 stays the exact step of the default.
+        static void setProjectUpdateTime(double seconds);
+        static double getProjectUpdateTime();
+        // A scene that becomes the main scene of a load: its Fixed Timestep override (> 0) is the
+        // step; none (0) after a scene that had one brings the project's back; else the step a
+        // script set stays (Unity keeps Time.fixedDeltaTime across loads).
+        static void applySceneUpdateTime(double sceneSeconds);
 
         // Interpolation alpha in [0,1) representing how far between the previous and the next
         // fixed-update step the current rendered frame is. Useful for visual interpolation of

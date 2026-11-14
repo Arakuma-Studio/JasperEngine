@@ -6,10 +6,12 @@
 // bound by pointer (a GameObject of a scene), a registry method and a static property. Each case is
 // the median of 7 runs of a Lua loop, printed as a [bench] line in nanoseconds per call; the
 // benchmark server E compares builds (the shared thunk code, -Os) with them. No budget: the
-// numbers are compared between builds of one machine, not against a constant.
+// numbers are compared between builds of one machine, not against a constant. S95: the dispatch
+// of 1 000 scripts' onUpdate.
 
 #include "Scene.h"
 #include "script/LuaBinding.h"
+#include "Engine.h"
 #include "object/GameObject.h"
 #include "ecs/EcsTestUtil.h"
 
@@ -89,4 +91,38 @@ TEST(LuaBindingBench, CallsAndProperties){
     lua_pushnil(L);
     lua_setglobal(L, "benchScene");
     runLua(L, "collectgarbage()");
+}
+
+// S95 REQ-34: 1 000 scripts' onUpdate (RegisterEngineEvent), one Engine.onUpdate dispatch; the
+// handler is looked up by name at each call (REQ-7), within 5% of the dispatch before it (builds
+// compared on one machine, as above)
+TEST(LuaBindingBench, EngineEventDispatch){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    constexpr int scripts = 1000;
+    ASSERT_EQ(runLua(L, "benchDispatch = {}\n"
+                        "local Script = {}\n"
+                        "function Script:onUpdate() self.n = self.n + 1 end\n"
+                        "for i = 1, " + std::to_string(scripts) + " do\n"
+                        "  local instance = setmetatable({ n = 0 }, { __index = Script })\n"
+                        "  RegisterEngineEvent(instance, 'onUpdate', 'benchDispatch' .. i)\n"
+                        "  benchDispatch[i] = instance\n"
+                        "end\n"), "");
+    for (int i = 0; i < 20; i++) Engine::onUpdate.call();   // warm-up
+    constexpr int dispatches = 200;
+    constexpr int runs = 7;
+    std::vector<double> samples;
+    for (int run = 0; run < runs; run++){
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < dispatches; i++) Engine::onUpdate.call();
+        const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count();
+        samples.push_back(ns / ((double)dispatches * scripts));
+    }
+    std::sort(samples.begin(), samples.end());
+    std::printf("[bench] Lua engine event dispatch (1000 onUpdate): %.1f ns per handler\n", samples[runs / 2]);
+
+    ASSERT_EQ(runLua(L, "assert(benchDispatch[1].n == " + std::to_string(20 + dispatches * runs) + ", 'every dispatch ran')\n"
+                        "for i = 1, " + std::to_string(scripts) + " do Engine.onUpdate:remove('benchDispatch' .. i) end\n"
+                        "benchDispatch = nil\ncollectgarbage()"), "");
 }

@@ -61,6 +61,9 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
@@ -17509,10 +17512,484 @@ uint16_t RenderSystem::getScenePipelines() const{
     return pipelines;
 }
 
+//-----The transform stage-----
+
+// What the update builds from the world matrices once they are propagated (S95 REQ-5): the
+// update runs it for the whole scene, the late transform pass (updateLateTransforms) again for
+// what moved after it. Each piece reads the needUpdate flags the propagation left.
+
+bool RenderSystem::updateSkinBindingBones(){
+    bool touched = false;
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (int i = 0; i < models->size(); i++) {
+        ModelComponent& model = models->getComponentFromIndex(i);
+        for (const ModelSkinBinding& binding : model.skinBindings) {
+            // an Animator wrote this skin's matrices from its pose (AnimatorSystem)
+            if (binding.animatorDriven)
+                continue;
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(binding.mesh);
+            Transform* meshTransform = scene->findComponent<Transform>(binding.mesh);
+            if (!mesh || !meshTransform)
+                continue;
+
+            bool dirty = meshTransform->needUpdate;
+            for (Entity joint : binding.joints) {
+                if (dirty)
+                    break;
+                Transform* jointTransform = scene->findComponent<Transform>(joint);
+                dirty = jointTransform && jointTransform->needUpdate;
+            }
+            if (!dirty)
+                continue;
+
+            const Matrix4 inverseMeshTransform = meshTransform->modelMatrix.inverse();
+            // Scale 0 makes this NaN; posing the skinned AABB with it trips setExtents.
+            if (!inverseMeshTransform.isValid())
+                continue;
+
+            const size_t jointCount = std::min(binding.joints.size(), binding.inverseBindMatrices.size());
+            for (size_t jointIndex = 0; jointIndex < jointCount &&
+                    mesh->bonesMatrix.validIndex(static_cast<int>(jointIndex)); jointIndex++) {
+                Transform* jointTransform = scene->findComponent<Transform>(binding.joints[jointIndex]);
+                if (jointTransform)
+                    mesh->bonesMatrix[jointIndex] = inverseMeshTransform * jointTransform->modelMatrix *
+                        binding.inverseBindMatrices[jointIndex];
+            }
+            mesh->needUpdateBones = true;
+            mesh->needUpdateAABB = true;
+            touched = true;
+        }
+    }
+    return touched;
+}
+
+void RenderSystem::updateCameraView(CameraComponent& camera, Transform& cameraTransform, Entity cameraEntity){
+    if (cameraTransform.needUpdate){
+        camera.needUpdate = true;
+    }
+
+    if (camera.needUpdate){
+        updateCamera(camera, cameraTransform);
+        // R8: a Pixel Perfect Camera draws from its snapped position
+        if (!pixelPerfectDrives.empty()){
+            if (PixelPerfectDrive* drive = findPixelPerfectDrive(cameraEntity))
+                snapPixelPerfectView(camera, cameraTransform, *drive);
+        }
+    }
+}
+
+void RenderSystem::updateInstancedMeshView(Entity entity, MeshComponent& mesh, InstancedMeshComponent& instmesh, Transform& transform,
+                                       CameraComponent& mainCamera, Transform& mainCameraTransform, bool batchSort, bool batchSortChanged){
+    if (instmesh.distanceFade){
+        // The range is a model-space distance, so the eye moves into that space
+        // instead: scaling the range into world space breaks on a scaled mesh.
+        const Matrix4 inverseModel = transform.modelMatrix.inverse();
+        instmesh.fadeEyeLocal = inverseModel.isValid() ?
+            (inverseModel * fadeEyePosition) : fadeEyePosition;
+    }
+
+    // a Particle System's sort mode: by distance (opaque too) or its own order
+    const InstanceSortMode particleSort = instmesh.particle.alignment != InstanceAlignment::None ? instmesh.particle.sort : InstanceSortMode::Auto;
+    bool sortTransparentInstances = batchSort && ((mesh.isTransparent() && particleSort == InstanceSortMode::Auto) ||
+                                                  particleSort == InstanceSortMode::ByDistance);
+    // instances that face or scale with the camera are rebuilt when it moves
+    const bool cameraBound = instmesh.instancedBillboard || instmesh.particle.cameraDependent();
+
+    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    // cut again once the eye moves past the margin the lists were cut with
+    const float eyeDx = instmesh.fadeEyeLocal.x - instmesh.lastFadeCullEye.x;
+    const float eyeDz = instmesh.fadeEyeLocal.z - instmesh.lastFadeCullEye.z;
+    const bool eyeMoved = eyeDx * eyeDx + eyeDz * eyeDz > instmesh.lastCullSlack * instmesh.lastCullSlack;
+    const bool fadeSelectionChanged = cullEnd != instmesh.lastFadeCullEnd || cullNear != instmesh.lastFadeCullNear ||
+        ((cullEnd >= 0.0f || cullNear > 0.0f) && eyeMoved);
+    bool instancesNeedUpdate = instmesh.needUpdateInstances || mesh.needUpdateAABB ||
+        batchSortChanged || fadeSelectionChanged;
+
+    if (instancesNeedUpdate && !cameraBound){
+        updateInstancedMesh(instmesh, mesh, transform, mainCamera, mainCameraTransform);
+    }
+
+    // billboards face the camera and camera-aligned particles follow it: like a
+    // transparent sort, they are rebuilt on every camera move, opaque or not
+    if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || cameraBound))){
+        // The instance buffer is shared by every camera and sokol allows one
+        // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
+        // fixes the batch order and every other camera reuses it.
+        if (cameraBound){
+            updateInstancedMesh(instmesh, mesh, transform, mainCamera, mainCameraTransform);
+        }
+        if (sortTransparentInstances){
+            sortInstancedMesh(instmesh, mesh, transform, mainCamera, mainCameraTransform);
+        }
+    }
+
+    instmesh.needUpdateInstances = false;
+    if (instancesNeedUpdate){
+        scene->markPickDirty(entity);
+    }
+
+    InstanceViewSettings viewSettings = {instmesh.cullInstances, mesh.castsShadowMaps(), mesh.lodEnabled, mesh.lodBias, instmesh.cullDistance};
+    if (transform.needUpdate || viewSettings != instmesh.viewSettings){
+        instmesh.viewSettings = viewSettings;
+        instanceViewsDirty = true;
+    }
+}
+
+void RenderSystem::updateMeshWorldBounds(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh){
+    // Bones cancel out this mesh's model matrix, so the shader draws at
+    // modelMatrix * bonesMatrix[b] * vertex and modelMatrix * aabb mis-sizes the box
+    // once posed. Each bone bounds only its own share: the whole aabb per bone works
+    // too, but unions body-sized boxes over the skeleton. Local space so the editor
+    // draws the same box.
+    mesh.skinnedAABB.setNull();
+    // only a skinned mesh draws through its bones (loadMesh set hasSkinning above, in
+    // this iteration): a rigid one's palette, if it holds one, moves nothing
+    bool skinned = false;
+    for (unsigned int s = 0; s < mesh.numSubmeshes && !skinned; s++)
+        skinned = mesh.submeshes[s].hasSkinning;
+    if (!instmesh && skinned){
+        const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.stored());
+        for (size_t b = 0; b < boneBounds; b++){
+            if (!mesh.bonesAABB[b].isNull()){
+                mesh.skinnedAABB.merge(mesh.bonesMatrix[b] * mesh.bonesAABB[b]);
+            }
+        }
+
+        if (mesh.skinnedAABB.isNull()){ // no per-bone bounds to pose
+            const Matrix4 identityMatrix;
+            for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++){
+                const Matrix4& bone = mesh.bonesMatrix[b];
+                if (bone != identityMatrix){
+                    mesh.skinnedAABB.merge(bone * mesh.aabb);
+                }
+            }
+        }
+    }
+    // a Vertex Animator's bounds over its clips in place of the vertices' (an
+    // instanced mesh's aabb already holds its instances' animated bounds)
+    const AABB& meshBounds = (!instmesh && !mesh.animatedBounds.isNull()) ? mesh.animatedBounds : mesh.aabb;
+    mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * meshBounds)
+                                               : (transform.modelMatrix * mesh.skinnedAABB);
+    // as far as its lattices can move a vertex (spec 5.5), so culling, light
+    // assignment and framing keep the deformed mesh
+    const float latticePadding = (mesh.lattice.count > 0) ? mesh.lattice.worldPadding : 0.0f;
+    if (latticePadding > 0.0f && !mesh.worldAABB.isNull() && mesh.worldAABB.isFinite()){
+        const Vector3 grow(latticePadding, latticePadding, latticePadding);
+        mesh.worldAABB.setExtents(mesh.worldAABB.getMinimum() - grow, mesh.worldAABB.getMaximum() + grow);
+    }
+
+    mesh.needUpdateAABB = false;
+    scene->markPickDirty(entity);
+
+    // Tilemap chunk bounds are refreshed with the mesh AABB: rebuilding a
+    // tilemap recalculates that AABB, and MeshSystem updates before this
+    // system, so new chunks are always current before draw().
+    if (signature.test(scene->getComponentId<TilemapComponent>())){
+        TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
+        for (TilemapChunk& chunk : tilemap.chunks){
+            chunk.worldAABB = transform.modelMatrix * chunk.aabb;
+            if (latticePadding > 0.0f && !chunk.worldAABB.isNull() && chunk.worldAABB.isFinite()){
+                const Vector3 grow(latticePadding, latticePadding, latticePadding);
+                chunk.worldAABB.setExtents(chunk.worldAABB.getMinimum() - grow, chunk.worldAABB.getMaximum() + grow);
+            }
+        }
+    }
+}
+
+void RenderSystem::updateViewDependents(size_t index, Entity entity, Signature signature, Transform& transform,
+                                    CameraComponent& mainCamera, Transform& mainCameraTransform){
+    // need to be updated for every camera
+    if (!hasMultipleCameras){
+        // a batched mesh draws without its MVP: made when a draw of it alone reads it
+        // (ensureBatchMVP); its distance still sorts it
+        BatchRecord* lazy = batchLazyMVP ? findBatchRecord(entity) : nullptr;
+        if (lazy && !lazy->ui && !transform.billboard){
+            lazy->mvpStale = true;
+            transform.distanceToCamera = (mainCameraTransform.worldPosition - transform.worldPosition).length();
+        }else{
+            updateMVP(index, transform, mainCamera, mainCameraTransform);
+        }
+    }
+
+    // Select the main camera's CDLOD cut (view 0) once per frame; both the
+    // shadow depth pass and the main color pass use it. Render-to-texture
+    // cameras select their own views (1..N-1) during draw().
+    if (signature.test(scene->getComponentId<TerrainComponent>())){
+        TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+
+        updateTerrain(terrain, transform, mainCamera, mainCameraTransform, terrain.views[0]);
+    }
+
+    if (signature.test(scene->getComponentId<AudioSourceComponent>())){
+        AudioSourceComponent& audio = scene->getComponent<AudioSourceComponent>(entity);
+
+        audio.needUpdate = true;
+    }
+}
+
+bool RenderSystem::updateModelAndBones(Entity entity, Signature signature, Transform& transform){
+    bool driven = false;
+    if (signature.test(scene->getComponentId<ModelComponent>())){
+        ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+
+        model.inverseDerivedTransform = transform.modelMatrix.inverse();
+    }
+
+    if (signature.test(scene->getComponentId<BoneComponent>())){
+        BoneComponent& bone = scene->getComponent<BoneComponent>(entity);
+
+        if (bone.model != NULL_ENTITY && bone.index >= 0){
+            ModelComponent* model = scene->findComponent<ModelComponent>(bone.model);
+
+            if (model && model->skinBindings.empty()) {
+                Matrix4 skinning = model->inverseDerivedTransform * transform.modelMatrix * bone.offsetMatrix;
+
+                auto updateDrivenMesh = [&](MeshComponent* drivenMesh) {
+                    if (!drivenMesh || !drivenMesh->bonesMatrix.validIndex(bone.index))
+                        return;
+                    drivenMesh->bonesMatrix[bone.index] = skinning;
+                    drivenMesh->needUpdateBones = true;
+                    drivenMesh->needUpdateAABB = true;
+                    driven = true;
+                };
+
+                // Single-mesh / flattened models keep their skinned geometry on the model
+                // entity's own mesh. Multi-node skinned models split each mesh node into a
+                // child entity (each with its own MeshComponent), so the same bone must drive
+                // every child mesh that shares this skeleton.
+                // A moved bone changes the skinned bounds, so flag the driven mesh(es)
+                // for a world-AABB rebuild. Bones are processed after their mesh in this
+                // loop, so this takes effect next frame with the fresh bonesMatrix.
+                updateDrivenMesh(scene->findComponent<MeshComponent>(bone.model));
+
+                for (auto const& meshNode : model->meshNodesMapping){
+                    updateDrivenMesh(scene->findComponent<MeshComponent>(meshNode.second));
+                }
+            }
+        }
+    }
+    return driven;
+}
+
+
+void RenderSystem::updateFrameLights(CameraComponent& mainCamera, Transform& mainCameraTransform, int numLights){
+    // every light as the objects' lists copy it, then the lights each mesh is lit by
+    updateSceneLights();
+    updateObjectLights();
+    // the capsules, Capsules Only casters and the lights taking capsule and contact shadows
+    updateLightingOcclusion(mainCameraTransform);
+
+    // the shadow casters of this update, then the shadow cameras fitted with them
+    updateShadowCasters();
+    updateLightCameras(mainCamera, mainCameraTransform);
+    processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
+    if (hasLights2D){
+        processLights2D();
+    }
+
+    // build the merged occluder segment list once per frame (world transforms are
+    // final here); draw() uploads it at most once, even when the same scene is
+    // drawn multiple times per frame (e.g. open as a tab AND layered as a child scene)
+    if (hasShadows2D && hasShadow2DAtlas){
+        shadowCaster2DVertexCount = buildShadowCaster2DSegments();
+        shadowCaster2DNeedUpdateBuffer = (shadowCaster2DVertexCount > 0);
+    }else{
+        shadowCaster2DVertexCount = 0;
+        shadowCaster2DNeedUpdateBuffer = false;
+    }
+}
+
+// S95 REQ-5, D-3: what onPostUpdate, a timer, a coroutine or a PixelFX or transition callback
+// moved after the update is drawn in this frame, not the next. The update's gate is the change
+// tick it ended at: nothing stamped since (the Transform and Camera arrays' newest change) costs
+// one compare each. Else the branches of the Transforms stamped since are propagated, and the
+// transform stage runs for them: sprite batches, skins, lattice followers, the cameras' matrices,
+// bounds, MVPs, lights. A moved main camera leaves every MVP to the draw (mainViewMVPStale), as a
+// frame with several cameras does: the late pass never walks the static Transforms.
+LateTransformResult RenderSystem::updateLateTransforms(){
+    if (!lateTransformReady || paused)
+        return LateTransformResult();
+    // Camera Follow (Unity's follow cameras in LateUpdate): a follower whose target moved since
+    // the update steps again first; the stamps it leaves are what the gate below sees
+    if (scene->getComponentArray<CameraFollowComponent>()->size() > 0)
+        scene->getSystem<CameraControlSystem>()->updateLateFollowers();
+    ComponentArray<Transform>* transforms = scene->getComponentArray<Transform>();
+    ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
+    const Tick gate = lateTransformGate;
+    if (transforms->getLastChangedTick() <= gate && cameras->getLastChangedTick() <= gate)
+        return LateTransformResult();
+
+    const Entity mainCameraEntity = scene->getCamera();
+    if (!scene->findComponent<CameraComponent>(mainCameraEntity) || !scene->findComponent<Transform>(mainCameraEntity)){
+        lateTransformGate = scene->getChangeClock().sample();
+        return LateTransformResult();
+    }
+
+    // the branches of what changed, parents first (a branch is contiguous after its root); a
+    // branch's root has an up-to-date parent: anything above it that changed came first
+    transforms->settle();
+    lateChangedSlots.clear();
+    if (transforms->getLastChangedTick() > gate){
+        Tick tick = 0;
+        auto update = [this](Transform& transform, Entity entity){ updateTransform(transform, entity); };
+        auto visit = [this](size_t index){ lateChangedSlots.push_back((uint32_t)index); };
+        const size_t count = transforms->size();
+        for (size_t i = transforms->findChangedAfterSettled(0, gate); i < count; i = transforms->findChangedAfterSettled(i, gate)){
+            const size_t last = scene->findBranchLastIndex(transforms->getEntity(i));
+            // stamped without a move (a visibility change): its flag is cleared below
+            if (!transforms->getComponentFromIndex(i).needUpdate)
+                lateChangedSlots.push_back((uint32_t)i);
+            propagateTransformRange(*scene, *transforms, i, last + 1, tick, update, visit);
+            i = last + 1;
+        }
+    }
+
+    // a world-space Sprite Batch packs with its new matrix; the skins and the lattice followers
+    // follow their moved joints and lattices (the followers' moves are stamped, so the loop
+    // below sees them)
+    updateSpriteBatches();
+    bool boundsPending = updateSkinBindingBones();
+    if (scene->getComponentArray<LatticeFollowerComponent>()->size() > 0){
+        scene->getSystem<LatticeSystem>()->lateUpdate();
+        // the followers it moved, with the rest, in array order
+        transforms->settle();
+        lateChangedSlots.clear();
+        for (size_t i = transforms->findChangedAfterSettled(0, gate); i < transforms->size(); i = transforms->findChangedAfterSettled(i + 1, gate))
+            lateChangedSlots.push_back((uint32_t)i);
+    }
+    LatticeRender::prepare(scene, latticeState);
+
+    for (size_t i = 0; i < cameras->size(); i++){
+        CameraComponent& camera = cameras->getComponentFromIndex(i);
+        const Entity cameraEntity = cameras->getEntity(i);
+        if (Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity))
+            updateCameraView(camera, *cameraTransform, cameraEntity);
+    }
+    const bool viewMoved = scene->getComponent<CameraComponent>(mainCameraEntity).needUpdate;
+    if (viewMoved){
+        // the mirrors' cameras follow it (this may add camera entities: the references after)
+        updateMirrors(mainCameraEntity);
+    }
+    CameraComponent& mainCamera = scene->getComponent<CameraComponent>(mainCameraEntity);
+    Transform& mainCameraTransform = scene->getComponent<Transform>(mainCameraEntity);
+    const bool batchSort = sortsByDistance(mainCamera);
+    if (viewMoved){
+        fadeEyePosition = mainCameraTransform.worldPosition;
+        if (!pixelPerfectDrives.empty())
+            refreshPixelPerfectCameras();
+        updateMainLodView(mainCamera, mainCameraTransform);
+        instanceViewsDirty = true;
+        auto skys = scene->getComponentArray<SkyboxComponent>();
+        if (skys->size() > 0 && !hasMultipleCameras)
+            updateSkyViewProjection(skys->getComponentFromIndex(0), mainCamera);
+        mainViewMVPStale = true;
+
+        // what follows the view without moving: camera-facing and sorted instances, sorted
+        // points, the terrain cut (the moved ones below)
+        auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+        for (size_t i = 0; i < instmeshes->size(); i++){
+            InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+            const Entity entity = instmeshes->getEntity(i);
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            Transform* transform = scene->findComponent<Transform>(entity);
+            if (mesh && transform && !transform->needUpdate && !instmesh.foliage)
+                updateInstancedMeshView(entity, *mesh, instmesh, *transform, mainCamera, mainCameraTransform, batchSort, false);
+        }
+        auto pointsArray = scene->getComponentArray<PointsComponent>();
+        for (size_t i = 0; i < pointsArray->size(); i++){
+            PointsComponent& points = pointsArray->getComponentFromIndex(i);
+            Transform* transform = scene->findComponent<Transform>(pointsArray->getEntity(i));
+            if (transform && !transform->needUpdate && points.isTransparent() && batchSort)
+                sortPoints(points, *transform, mainCamera, mainCameraTransform);
+        }
+        auto terrains = scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++){
+            TerrainComponent& terrain = terrains->getComponentFromIndex(i);
+            Transform* transform = scene->findComponent<Transform>(terrains->getEntity(i));
+            if (transform && !transform->needUpdate && scene->findComponent<MeshComponent>(terrains->getEntity(i)))
+                updateTerrain(terrain, *transform, mainCamera, mainCameraTransform, terrain.views[0]);
+        }
+    }
+
+    // the moved ones: what the update's object loop does for a moved Transform, but loads
+    bool lightsMoved = false;
+    for (const uint32_t i : lateChangedSlots){
+        Transform& transform = transforms->getComponentFromIndex(i);
+        transform.needUpdateChildVisibility = false;
+        if (!transform.needUpdate)
+            continue;
+        const Entity entity = transforms->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+
+        if (signature.test(scene->getComponentId<MeshComponent>())){
+            MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+            if (instmesh && !instmesh->foliage){
+                updateInstancedMeshView(entity, mesh, *instmesh, transform, mainCamera, mainCameraTransform, batchSort, false);
+            }
+            updateMeshWorldBounds(entity, signature, mesh, transform, instmesh);
+            lightsMoved = true;
+        }else if (signature.test(scene->getComponentId<UIComponent>())){
+            UIComponent& ui = scene->getComponent<UIComponent>(entity);
+            ui.worldAABB = transform.modelMatrix * ui.aabb;
+            ui.needUpdateAABB = false;
+            scene->markPickDirty(entity);
+        }else if (signature.test(scene->getComponentId<PointsComponent>())){
+            PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+            if (points.isTransparent() && batchSort){
+                sortPoints(points, transform, mainCamera, mainCameraTransform);
+            }
+        }else if (signature.test(scene->getComponentId<LightComponent>())){
+            LightComponent& light = scene->getComponent<LightComponent>(entity);
+            updateLightFromScene(light, transform, mainCamera, mainCameraTransform);
+            light.needUpdateShadowCamera = false;
+            lightsMoved = true;
+        }else if (signature.test(scene->getComponentId<Light2DComponent>())){
+            lightsMoved = true;
+        }
+
+        updateViewDependents(i, entity, signature, transform, mainCamera, mainCameraTransform);
+        boundsPending = updateModelAndBones(entity, signature, transform) || boundsPending;
+
+        transform.needUpdate = false;
+    }
+
+    // the meshes whose bones or Sprite Batch instances changed above, moved or not
+    if (boundsPending || (scene->isComponentRegistered<SpriteBatchComponent>() && scene->getComponentArray<SpriteBatchComponent>()->size() > 0)){
+        auto meshes = scene->getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++){
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            if (!mesh.needUpdateAABB)
+                continue;
+            const Entity entity = meshes->getEntity(i);
+            if (Transform* transform = scene->findComponent<Transform>(entity))
+                updateMeshWorldBounds(entity, scene->getSignature(entity), mesh, *transform, scene->findComponent<InstancedMeshComponent>(entity));
+        }
+    }
+
+    for (size_t i = 0; i < cameras->size(); i++){
+        cameras->getComponentFromIndex(i).needUpdate = false;
+    }
+
+    // the lights' records and shadow cameras, when a light, a lit or casting mesh, or the view
+    // they are fitted to moved (a scene without lights has none)
+    if ((frameNumLights > 0 || hasLights2D) && (lightsMoved || boundsPending || viewMoved))
+        updateFrameLights(mainCamera, mainCameraTransform, frameNumLights);
+
+    lateTransformGate = scene->getChangeClock().sample();
+    LateTransformResult result;
+    result.moved = true;
+    result.viewMoved = viewMoved;
+    return result;
+}
+
 void RenderSystem::update(double dt){
 #ifdef JASPERENGINE_EDITOR
     frameDrawn = false;
 #endif
+    // the late transform pass waits for this update's gate
+    lateTransformReady = false;
     // shadow maps drawn before this update hold another scene
     shadowEpoch++;
     updateSerial = updateSerial + 1 ? updateSerial + 1 : 1;
@@ -17587,6 +18064,7 @@ void RenderSystem::update(double dt){
     qualitySSAO = qualitySSAONow;
 
     int numLights = checkLightsAndShadow();
+    frameNumLights = numLights;
 
     // changed post-processing settings: LUT bakes and the variant bit the objects load with below
     applyPostProcessing();
@@ -17623,45 +18101,7 @@ void RenderSystem::update(double dt){
         updateTransform(transform, entity);
     });
 
-    auto models = scene->getComponentArray<ModelComponent>();
-    for (int i = 0; i < models->size(); i++) {
-        ModelComponent& model = models->getComponentFromIndex(i);
-        for (const ModelSkinBinding& binding : model.skinBindings) {
-            // an Animator wrote this skin's matrices from its pose (AnimatorSystem)
-            if (binding.animatorDriven)
-                continue;
-            MeshComponent* mesh = scene->findComponent<MeshComponent>(binding.mesh);
-            Transform* meshTransform = scene->findComponent<Transform>(binding.mesh);
-            if (!mesh || !meshTransform)
-                continue;
-
-            bool dirty = meshTransform->needUpdate;
-            for (Entity joint : binding.joints) {
-                if (dirty)
-                    break;
-                Transform* jointTransform = scene->findComponent<Transform>(joint);
-                dirty = jointTransform && jointTransform->needUpdate;
-            }
-            if (!dirty)
-                continue;
-
-            const Matrix4 inverseMeshTransform = meshTransform->modelMatrix.inverse();
-            // Scale 0 makes this NaN; posing the skinned AABB with it trips setExtents.
-            if (!inverseMeshTransform.isValid())
-                continue;
-
-            const size_t jointCount = std::min(binding.joints.size(), binding.inverseBindMatrices.size());
-            for (size_t jointIndex = 0; jointIndex < jointCount &&
-                    mesh->bonesMatrix.validIndex(static_cast<int>(jointIndex)); jointIndex++) {
-                Transform* jointTransform = scene->findComponent<Transform>(binding.joints[jointIndex]);
-                if (jointTransform)
-                    mesh->bonesMatrix[jointIndex] = inverseMeshTransform * jointTransform->modelMatrix *
-                        binding.inverseBindMatrices[jointIndex];
-            }
-            mesh->needUpdateBones = true;
-            mesh->needUpdateAABB = true;
-        }
-    }
+    updateSkinBindingBones();
 
     // transforms and bones are current: the lattice followers move (and their subtrees with
     // them), then the bindings are packed into the meshes the loop below loads and bounds
@@ -17709,6 +18149,14 @@ void RenderSystem::update(double dt){
 
     // the Pixel Perfect Cameras' layouts and clips, before the cameras make their matrices (S41)
     updatePixelPerfect(mainCameraEntity);
+
+    // the MVPs a late camera move left to a draw that did not come (updateLateTransforms): made
+    // in the object loop below
+    if (mainViewMVPStale){
+        mainViewMVPStale = false;
+        if (CameraComponent* mainCameraComponent = scene->findComponent<CameraComponent>(mainCameraEntity))
+            mainCameraComponent->needUpdate = true;
+    }
 
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
@@ -17762,18 +18210,7 @@ void RenderSystem::update(double dt){
             hasMultipleCameras = true;
         }
 
-        if (cameraTransform.needUpdate){
-            camera.needUpdate = true;
-        }
-        
-        if (camera.needUpdate){
-            updateCamera(camera, cameraTransform);
-            // R8: a Pixel Perfect Camera draws from its snapped position
-            if (!pixelPerfectDrives.empty()){
-                if (PixelPerfectDrive* drive = findPixelPerfectDrive(cameraEntity))
-                    snapPixelPerfectView(camera, cameraTransform, *drive);
-            }
-        }
+        updateCameraView(camera, cameraTransform, cameraEntity);
     }
 
     // the scene camera's water reflection passes rewrite the shared MVPs as other cameras do
@@ -17992,60 +18429,7 @@ void RenderSystem::update(double dt){
             InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
             // a foliage prototype has no instances of its own: its bounds and lists are FoliageSystem's
             if (instmesh && !instmesh->foliage){
-                if (instmesh->distanceFade){
-                    // The range is a model-space distance, so the eye moves into that space
-                    // instead: scaling the range into world space breaks on a scaled mesh.
-                    const Matrix4 inverseModel = transform.modelMatrix.inverse();
-                    instmesh->fadeEyeLocal = inverseModel.isValid() ?
-                        (inverseModel * fadeEyePosition) : fadeEyePosition;
-                }
-
-                // a Particle System's sort mode: by distance (opaque too) or its own order
-                const InstanceSortMode particleSort = instmesh->particle.alignment != InstanceAlignment::None ? instmesh->particle.sort : InstanceSortMode::Auto;
-                bool sortTransparentInstances = batchSort && ((mesh.isTransparent() && particleSort == InstanceSortMode::Auto) ||
-                                                              particleSort == InstanceSortMode::ByDistance);
-                // instances that face or scale with the camera are rebuilt when it moves
-                const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
-
-                const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
-                const float cullNear = instanceFadeCullNear(*instmesh, mesh, *scene);
-                // cut again once the eye moves past the margin the lists were cut with
-                const float eyeDx = instmesh->fadeEyeLocal.x - instmesh->lastFadeCullEye.x;
-                const float eyeDz = instmesh->fadeEyeLocal.z - instmesh->lastFadeCullEye.z;
-                const bool eyeMoved = eyeDx * eyeDx + eyeDz * eyeDz > instmesh->lastCullSlack * instmesh->lastCullSlack;
-                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd || cullNear != instmesh->lastFadeCullNear ||
-                    ((cullEnd >= 0.0f || cullNear > 0.0f) && eyeMoved);
-                bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
-                    batchSortChanged || fadeSelectionChanged;
-
-                if (instancesNeedUpdate && !cameraBound){
-                    updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
-                }
-
-                // billboards face the camera and camera-aligned particles follow it: like a
-                // transparent sort, they are rebuilt on every camera move, opaque or not
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || cameraBound))){
-                    // The instance buffer is shared by every camera and sokol allows one
-                    // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
-                    // fixes the batch order and every other camera reuses it.
-                    if (cameraBound){
-                        updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
-                    }
-                    if (sortTransparentInstances){
-                        sortInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
-                    }
-                }
-
-                instmesh->needUpdateInstances = false;
-                if (instancesNeedUpdate){
-                    scene->markPickDirty(entity);
-                }
-
-                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castsShadowMaps(), mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
-                if (transform.needUpdate || viewSettings != instmesh->viewSettings){
-                    instmesh->viewSettings = viewSettings;
-                    instanceViewsDirty = true;
-                }
+                updateInstancedMeshView(entity, mesh, *instmesh, transform, mainCamera, mainCameraTransform, batchSort, batchSortChanged);
             }
 
             if (meshLodToggled && mesh.loadCalled && !mesh.needReload){
@@ -18273,64 +18657,7 @@ void RenderSystem::update(double dt){
 #endif
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
-                // Bones cancel out this mesh's model matrix, so the shader draws at
-                // modelMatrix * bonesMatrix[b] * vertex and modelMatrix * aabb mis-sizes the box
-                // once posed. Each bone bounds only its own share: the whole aabb per bone works
-                // too, but unions body-sized boxes over the skeleton. Local space so the editor
-                // draws the same box.
-                mesh.skinnedAABB.setNull();
-                // only a skinned mesh draws through its bones (loadMesh set hasSkinning above, in
-                // this iteration): a rigid one's palette, if it holds one, moves nothing
-                bool skinned = false;
-                for (unsigned int s = 0; s < mesh.numSubmeshes && !skinned; s++)
-                    skinned = mesh.submeshes[s].hasSkinning;
-                if (!instmesh && skinned){
-                    const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.stored());
-                    for (size_t b = 0; b < boneBounds; b++){
-                        if (!mesh.bonesAABB[b].isNull()){
-                            mesh.skinnedAABB.merge(mesh.bonesMatrix[b] * mesh.bonesAABB[b]);
-                        }
-                    }
-
-                    if (mesh.skinnedAABB.isNull()){ // no per-bone bounds to pose
-                        const Matrix4 identityMatrix;
-                        for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++){
-                            const Matrix4& bone = mesh.bonesMatrix[b];
-                            if (bone != identityMatrix){
-                                mesh.skinnedAABB.merge(bone * mesh.aabb);
-                            }
-                        }
-                    }
-                }
-                // a Vertex Animator's bounds over its clips in place of the vertices' (an
-                // instanced mesh's aabb already holds its instances' animated bounds)
-                const AABB& meshBounds = (!instmesh && !mesh.animatedBounds.isNull()) ? mesh.animatedBounds : mesh.aabb;
-                mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * meshBounds)
-                                                           : (transform.modelMatrix * mesh.skinnedAABB);
-                // as far as its lattices can move a vertex (spec 5.5), so culling, light
-                // assignment and framing keep the deformed mesh
-                const float latticePadding = (mesh.lattice.count > 0) ? mesh.lattice.worldPadding : 0.0f;
-                if (latticePadding > 0.0f && !mesh.worldAABB.isNull() && mesh.worldAABB.isFinite()){
-                    const Vector3 grow(latticePadding, latticePadding, latticePadding);
-                    mesh.worldAABB.setExtents(mesh.worldAABB.getMinimum() - grow, mesh.worldAABB.getMaximum() + grow);
-                }
-
-                mesh.needUpdateAABB = false;
-                scene->markPickDirty(entity);
-
-                // Tilemap chunk bounds are refreshed with the mesh AABB: rebuilding a
-                // tilemap recalculates that AABB, and MeshSystem updates before this
-                // system, so new chunks are always current before draw().
-                if (signature.test(scene->getComponentId<TilemapComponent>())){
-                    TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
-                    for (TilemapChunk& chunk : tilemap.chunks){
-                        chunk.worldAABB = transform.modelMatrix * chunk.aabb;
-                        if (latticePadding > 0.0f && !chunk.worldAABB.isNull() && chunk.worldAABB.isFinite()){
-                            const Vector3 grow(latticePadding, latticePadding, latticePadding);
-                            chunk.worldAABB.setExtents(chunk.worldAABB.getMinimum() - grow, chunk.worldAABB.getMaximum() + grow);
-                        }
-                    }
-                }
+                updateMeshWorldBounds(entity, signature, mesh, transform, instmesh);
             }
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
@@ -18443,78 +18770,11 @@ void RenderSystem::update(double dt){
         }
 
         if (mainCamera.needUpdate || transform.needUpdate){
-
-            // need to be updated for every camera
-            if (!hasMultipleCameras){
-                // a batched mesh draws without its MVP: made when a draw of it alone reads it
-                // (ensureBatchMVP); its distance still sorts it
-                BatchRecord* lazy = batchLazyMVP ? findBatchRecord(entity) : nullptr;
-                if (lazy && !lazy->ui && !transform.billboard){
-                    lazy->mvpStale = true;
-                    transform.distanceToCamera = (mainCameraTransform.worldPosition - transform.worldPosition).length();
-                }else{
-                    updateMVP(i, transform, mainCamera, mainCameraTransform);
-                }
-            }
-
-            // Select the main camera's CDLOD cut (view 0) once per frame; both the
-            // shadow depth pass and the main color pass use it. Render-to-texture
-            // cameras select their own views (1..N-1) during draw().
-            if (signature.test(scene->getComponentId<TerrainComponent>())){
-                TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-
-                updateTerrain(terrain, transform, mainCamera, mainCameraTransform, terrain.views[0]);
-            }
-            
-            if (signature.test(scene->getComponentId<AudioSourceComponent>())){
-                AudioSourceComponent& audio = scene->getComponent<AudioSourceComponent>(entity);
-
-                audio.needUpdate = true;
-            }
-
+            updateViewDependents(i, entity, signature, transform, mainCamera, mainCameraTransform);
         }
 
         if (transform.needUpdate){
-
-            if (signature.test(scene->getComponentId<ModelComponent>())){
-                ModelComponent& model = scene->getComponent<ModelComponent>(entity);
-
-                model.inverseDerivedTransform = transform.modelMatrix.inverse();
-            }
-
-            if (signature.test(scene->getComponentId<BoneComponent>())){
-                BoneComponent& bone = scene->getComponent<BoneComponent>(entity);
-
-                if (bone.model != NULL_ENTITY && bone.index >= 0){
-                    ModelComponent* model = scene->findComponent<ModelComponent>(bone.model);
-
-                    if (model && model->skinBindings.empty()) {
-                        Matrix4 skinning = model->inverseDerivedTransform * transform.modelMatrix * bone.offsetMatrix;
-
-                        auto updateDrivenMesh = [&](MeshComponent* drivenMesh) {
-                            if (!drivenMesh || !drivenMesh->bonesMatrix.validIndex(bone.index))
-                                return;
-                            drivenMesh->bonesMatrix[bone.index] = skinning;
-                            drivenMesh->needUpdateBones = true;
-                            drivenMesh->needUpdateAABB = true;
-                        };
-
-                        // Single-mesh / flattened models keep their skinned geometry on the model
-                        // entity's own mesh. Multi-node skinned models split each mesh node into a
-                        // child entity (each with its own MeshComponent), so the same bone must drive
-                        // every child mesh that shares this skeleton.
-                        // A moved bone changes the skinned bounds, so flag the driven mesh(es)
-                        // for a world-AABB rebuild. Bones are processed after their mesh in this
-                        // loop, so this takes effect next frame with the fresh bonesMatrix.
-                        updateDrivenMesh(scene->findComponent<MeshComponent>(bone.model));
-
-                        for (auto const& meshNode : model->meshNodesMapping){
-                            updateDrivenMesh(scene->findComponent<MeshComponent>(meshNode.second));
-                        }
-                    }
-                }
-            }
-
+            updateModelAndBones(entity, signature, transform);
         }
 
         transform.needUpdateChildVisibility = false;
@@ -18528,30 +18788,11 @@ void RenderSystem::update(double dt){
         }
     }
 
-    // every light as the objects' lists copy it, then the lights each mesh is lit by
-    updateSceneLights();
-    updateObjectLights();
-    // the capsules, Capsules Only casters and the lights taking capsule and contact shadows
-    updateLightingOcclusion(mainCameraTransform);
+    updateFrameLights(mainCamera, mainCameraTransform, numLights);
 
-    // the shadow casters of this update, then the shadow cameras fitted with them
-    updateShadowCasters();
-    updateLightCameras(mainCamera, mainCameraTransform);
-    processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
-    if (hasLights2D){
-        processLights2D();
-    }
-
-    // build the merged occluder segment list once per frame (world transforms are
-    // final here); draw() uploads it at most once, even when the same scene is
-    // drawn multiple times per frame (e.g. open as a tab AND layered as a child scene)
-    if (hasShadows2D && hasShadow2DAtlas){
-        shadowCaster2DVertexCount = buildShadowCaster2DSegments();
-        shadowCaster2DNeedUpdateBuffer = (shadowCaster2DVertexCount > 0);
-    }else{
-        shadowCaster2DVertexCount = 0;
-        shadowCaster2DNeedUpdateBuffer = false;
-    }
+    // what moves from here to the draw is the late transform pass's (updateLateTransforms)
+    lateTransformGate = scene->getChangeClock().sample();
+    lateTransformReady = true;
 }
 
 //-----Per-camera lighting and shadow maps-----
@@ -18758,6 +18999,8 @@ void RenderSystem::draw(){
     drawFramePasses();
     drawCameras(true);
     endBatchFrame();
+    // the main camera's pass made every MVP with its view
+    mainViewMVPStale = false;
 
 #ifdef JASPERENGINE_EDITOR
     frameDrawn = true;
@@ -18948,7 +19191,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 #else
     const bool primaryPass = true;
 #endif
-    const bool perCameraMVP = primaryPass && (hasMultipleCameras || hasReflectionProbes);
+    // (a main camera moved after the update makes them in its pass too: updateLateTransforms)
+    const bool perCameraMVP = primaryPass && (hasMultipleCameras || hasReflectionProbes || mainViewMVPStale);
 
     // the frame block of this camera (its depth, G-buffer and colour passes below read it)
     updatePassFrame(camera, cameraTransform);

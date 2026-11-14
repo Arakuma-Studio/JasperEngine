@@ -849,6 +849,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
         {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
         {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
+        {"fixed_timestep", SettingKind::Float, "seconds per fixed step while this is the main scene; 0 = the project's time.fixed_timestep"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"mesh_lod_cross_fade", SettingKind::Bool, "dithered cross-fade between detail levels (fading objects draw twice for the duration; off: no fade shaders built or shipped)"},
@@ -1323,6 +1324,9 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name == "capsule_shadow_softness" && (value.get<float>() < 0.0f || value.get<float>() > 2.0f)) return expect("0 to 2");
             if (name == "water_wake_area" && (value.get<float>() < 8.0f || value.get<float>() > 1024.0f)) return expect("8 to 1024");
             if (name == "water_wake_fade" && (value.get<float>() < 0.1f || value.get<float>() > 120.0f)) return expect("0.1 to 120");
+            if (name == "fixed_timestep" && value.get<double>() != 0.0 &&
+                (value.get<double>() < Project::minFixedTimestep || value.get<double>() > Project::maxFixedTimestep))
+                return expect("0 (the project's) or 0.0001 to 10");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
