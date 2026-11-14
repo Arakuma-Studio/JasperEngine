@@ -12,7 +12,8 @@
 # (S20 R20-R26, docs/perf/particles.md), je-bench-nav navigation's (S19 R25-R30,
 # docs/perf/navigation.md), je-bench-splines the splines' (S18 R18-R21, docs/perf/splines.md),
 # je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md), je-bench-audio the loudness
-# meter's and the limiter's (S38 R16-R17)
+# meter's and the limiter's (S38 R16-R17), je-bench-late-transforms the late transform pass's (S95
+# REQ-33, REQ-35)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -313,7 +314,9 @@ add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.
 add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 # je-bench-terrain: the terrain engine's budgets (T1 R47, R48, R50-R52, docs/perf/terrain.md)
 add_executable(je-bench-terrain ${CMAKE_CURRENT_SOURCE_DIR}/bench/TerrainBench.cpp)
-set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage je-bench-terrain)
+# je-bench-late-transforms: the late transform pass and the on-demand world pose (S95 REQ-33, REQ-35, AC-9)
+add_executable(je-bench-late-transforms ${CMAKE_CURRENT_SOURCE_DIR}/bench/LateTransformPassBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage je-bench-terrain je-bench-late-transforms)
 # je-bench-voxel: the Voxel Volume budgets (T6 R55, R56)
 if(JASPERENGINE_VOXEL)
     add_executable(je-bench-voxel ${CMAKE_CURRENT_SOURCE_DIR}/bench/VoxelBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
@@ -346,7 +349,7 @@ if(JASPERENGINE_TITLE_ART_3D AND JASPERENGINE_TITLE_ART_MESHER)
     set_target_properties(je-bench-titlemesh PROPERTIES FOLDER "tests")
 endif()
 
-foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-voxel)
+foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-voxel je-bench-late-transforms)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")

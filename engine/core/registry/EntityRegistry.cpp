@@ -364,6 +364,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
+            transformArray->markChanged(transformArray->getEntity(i));
             // no visibility cascade: the children and theirs keep their own flags
             hadChildren = true;
         }
@@ -1096,6 +1097,9 @@ void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
+        // Changed<Transform>: a reparenting after the scenes' update is drawn that frame (the late
+        // transform pass, S95 REQ-5)
+        componentManager.getComponentArray<Transform>()->markChanged(child);
     }
 
 }
