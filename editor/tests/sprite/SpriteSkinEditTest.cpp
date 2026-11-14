@@ -73,7 +73,7 @@ TEST(SpriteSkinTest, AutoWeightsNormalised) {
 
 TEST(SpriteSkinTest, AutoGeometryCoversTheOpaquePixels) {
     // a 32 x 32 page whose frame (the whole page) has an opaque 8 x 12 block at (12, 10)
-    pixelart::PixelImage page(32, 32);
+    editor::pixelart::PixelImage page(32, 32);
     for (int y = 10; y < 22; y++) {
         for (int x = 12; x < 20; x++) page.set(x, y, {255, 255, 255, 255});
     }
@@ -99,7 +99,7 @@ TEST(SpriteSkinTest, AutoGeometryCoversTheOpaquePixels) {
     EXPECT_EQ(maxY, 24.0f);
     EXPECT_TRUE(skin.weights.empty());
 
-    pixelart::PixelImage empty(32, 32);
+    editor::pixelart::PixelImage empty(32, 32);
     EXPECT_FALSE(sprite::autoGeometry(empty, frame, settings, skin, error));
 }
 

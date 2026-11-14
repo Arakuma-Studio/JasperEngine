@@ -113,8 +113,8 @@ TEST(PsdLayerImportTest, LayersBecomeSprites) {
     for (const SpriteFrame& frame : result.sheet.frames) {
         EXPECT_EQ(frame.key.rfind("layer:", 0), 0u) << frame.key;
         // the page holds the layer's colour where the frame is
-        const pixelart::PixelImage& page = result.pages[frame.page];
-        const pixelart::PixelRgba pixel = page.at(static_cast<int>(frame.rect.getX()) + 1, static_cast<int>(frame.rect.getY()) + 1);
+        const editor::pixelart::PixelImage& page = result.pages[frame.page];
+        const editor::pixelart::PixelRgba pixel = page.at(static_cast<int>(frame.rect.getX()) + 1, static_cast<int>(frame.rect.getY()) + 1);
         EXPECT_EQ(pixel[3], 255) << frame.name;
     }
     EXPECT_EQ(result.pages[frames["Body"]->page].at(static_cast<int>(frames["Body"]->rect.getX()) + 2, static_cast<int>(frames["Body"]->rect.getY()) + 2)[0], 200);

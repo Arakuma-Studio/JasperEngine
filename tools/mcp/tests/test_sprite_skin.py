@@ -64,7 +64,7 @@ async def test_setup(ed: Editor):
     made = await ed.call("set_sprite_frames", scene=S["scene"], create={"name": "Arm"}, sheet=TEXTURE, frame=0)
     check(made.get("sheet") == TEXTURE, f"a sheet Sprite of the texture: {made}")
     await ed.call("set_properties", scene=S["scene"], entity="Arm",
-                  properties={"sprite": {"width": 48, "height": 192, "pivotPreset": "bottom_center"}})
+                  values={"sprite": {"width": 48, "height": 192, "pivotPreset": "bottom_center"}})
 
 
 async def test_bones_geometry_weights_one_undo(ed: Editor):
@@ -111,14 +111,18 @@ async def test_play_pose(ed: Editor):
     try:
         await ed.call("wait", frames=5)
         rest = await screenshot(ed, S["scene"])
-        posed = await ed.call("eval_lua", scene=S["scene"], code="""
+        seen = await ed.call("eval_lua", scene=S["scene"], code="""
             local skin = SpriteSkin(scene, entity("Arm"))
-            local upper = GameObject(scene, skin.bones[2])
-            upper:setRotation(0, 0, 60)
-            return {skinned = skin.skinned, bones = #skin.bones, count = skin.skinBoneCount}
+            return {skinned = skin.skinned, bones = skin.bones, count = skin.skinBoneCount, upper = entity("upper")}
         """)
-        value = posed.get("value", posed)
-        check(value.get("skinned") is True and value.get("bones") == 2 and value.get("count") == 2, f"Lua sees the skin: {posed}")
+        value = (seen.get("values") or [{}])[0]
+        check(value.get("skinned") is True and value.get("count") == 2, f"Lua sees the skin: {seen}")
+        check(len(value.get("bones", [])) == 2 and value["bones"][1] == value.get("upper"), f"bones lists the bone GameObjects: {seen}")
+        await ed.call("eval_lua", scene=S["scene"], code="""
+            local skin = SpriteSkin(scene, entity("Arm"))
+            object(skin.bones[2]):setRotation(0, 0, 60)
+            return true
+        """)
         await ed.call("wait", frames=3)
         bent = await screenshot(ed, S["scene"])
         check(changed_pixels(rest, bent) > 500, "turning the upper bone bends the Sprite in the Game view")
@@ -199,7 +203,7 @@ async def test_psd_layers(ed: Editor):
     text = (ed.project / prefab).read_text()
     check("Head" in text and "Hat" in text and "frameName" in text, f"the prefab has the group and the sprites: {text[:400]}")
     await ed.call("sync_files", paths=[prefab])
-    placed = await ed.call("instantiate_prefab", scene=S["scene"], path=prefab)
+    placed = await ed.call("instantiate_prefab", scene=S["scene"], prefab=prefab)
     check(placed, f"instantiated: {placed}")
     found = await ed.call("find_entities", scene=S["scene"], name="Hat")
     check(found.get("entities"), "the Hat layer is a GameObject")
