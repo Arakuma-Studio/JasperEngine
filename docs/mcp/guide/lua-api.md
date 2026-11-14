@@ -521,8 +521,8 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
-| `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
-| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
+| `canvasWidth`, `canvasHeight` | ro | current canvas, never 0: in `init()` the first frame's layout where the screen is known before the view (desktop windows, web, iOS); on Android the project size, and `onCanvasChanged` fires before the first `onUpdate` when the window differs |
+| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size |
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
@@ -541,7 +541,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `mouseCursor` | rw | `CursorType.*` |
 | `mouseMode` | rw | `MouseMode.*` |
 | `setMousePosition(x, y)` | static fn | |
-| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags |
+| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags; `callTouchInMouseEvent` (the mouse is also finger 0) starts at Project Settings > Input > Simulate Touch From Mouse (`input.simulate_touch_from_mouse`) |
 | `isUIEventReceived()` | static fn | |
 | `platform` | ro | `Platform.*` |
 | `graphicBackend` | ro | `GraphicBackend.*` |
@@ -1270,6 +1270,7 @@ Entities are plain integers (`0` = none).
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
+| `fixedTimestep` (number, rw) | the fixed step (seconds) while this is the main scene, 0 = the project's (default); the scene setting `fixed_timestep`. A load into this scene applies it before its scripts' `init`; a load into a scene without one after it brings the project's back. Setting it at runtime takes effect at the next load: change the running step with `Time.fixedDeltaTime` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
@@ -1609,7 +1610,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 |---|---|---|
 | `deltaTime` | ro | game seconds of this frame (times `timeScale`, 0 during a hit-stop); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime`; inside a Hit Stop Exempt GameObject's callbacks the delta without the hit-stop |
 | `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
-| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
+| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`): starts at Project Settings > Time > Fixed Timestep (`time.fixed_timestep`, default 1/60); a scene's Fixed Timestep (`scene.fixedTimestep`) applies when a load makes it the main scene; a value set here survives loads into scenes without one |
 | `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
 | `time` | ro | game seconds since start (inside a fixed step, `fixedTime`) |
 | `fixedTime` | ro | sum of the fixed steps run (inside a step: the time at its start) |
@@ -1618,7 +1619,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `timeSinceLevelLoad` | ro | game seconds since the last `SceneManager.loadScene` (or Play start) |
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
-| `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `maximumDeltaTime` | rw | cap of a frame's delta: starts at Project Settings > Time > Maximum Allowed Timestep (`time.maximum_delta_time`, default 0.25); values <= 0 are ignored with a warning |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
 | `smoothDeltaTime` | ro | exponential average of `deltaTime` |
 | `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
@@ -2520,7 +2521,7 @@ end
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
-`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
+`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `useTarget`, `up` (Vector3), `autoResize`,
 `renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
 (`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
 `oitWeightScale` (`jasper://docs/lighting`).
@@ -2531,9 +2532,13 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 `rotatePosition(a)`, `elevateView(a)`, `elevatePosition(a)`, `walkForward(d)`, `zoom(d)`,
 `slide(d)`, `slideForward(d)`, `slideUp(d)`, `getViewMatrix()`, `getProjectionMatrix()`,
 `getViewProjectionMatrix()`, `getDistanceFromTarget()`, `updateCamera()`.
-A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
-ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
-cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
+`Camera(scene)` aims with the GameObject's rotation (`useTarget` false), as Unity and the editor's
+GameObject > Camera do: forward is `rotation * Vector3(0, 0, -1)`. `setTarget(...)` or assigning
+`target` turns target mode on (`useTarget` true): the view is a look-at of the target and the
+rotation is ignored until `useTarget = false` (`disableTarget()`). A script that relied on a new
+camera looking at the origin without a target sets `cam.useTarget = true` (or `setTarget(0, 0, 0)`).
+Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch), cos(pitch)cos(yaw)) * distance, then
+`setTarget(target)`.
 `camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).
 
 ### 4.9.2 PixelPerfectCamera (EntityHandle)
@@ -3762,56 +3767,54 @@ Rigidbody wrappers by index.
     `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
     (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
     also returns the copy's script.
-19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
-    `init`; use `Engine.preferredCanvasWidth/Height` there.
-20. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
+19. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
     `string.format` for other layouts.
-21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
+20. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+21. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
     also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
     for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
     automatically.
-23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
-25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+24. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+25. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
-27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+26. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
     (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
     `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
     `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
-28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+27. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
-29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+28. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
     equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
     for a persistent manager, or keep shared state in a `require`d module table.
-30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+29. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
     name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
-31. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+30. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
     and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
     coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
     (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
     metamethod or another C callback raise too ("waits cannot cross a C function").
-32. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+31. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
     `timeScale = 0` but not while the app is in the background or the editor's Play is paused
     (unlike Unity's wall clock).
-33. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+32. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
     GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
     on reactivation: start them again (in `onEnable`, or where you reactivate).
-34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+33. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
-35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+34. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
 

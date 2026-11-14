@@ -573,6 +573,79 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "control_time_settings",
+        "kind": "control",
+        "what_happened": "A game port set Time.fixedDeltaTime in every scene's init and reset it by hand at Play stop, "
+                         "as there was no project setting (S95 REQ-13 adds Project Settings > Time).",
+        "text_at_issue": "get_project_settings rows time.fixed_timestep and time.maximum_delta_time (their descriptions)",
+        "source": "S95 spec, ledger item S14 (a port's Framework.lua fixed-step reset)",
+        "files": GAME_FILES,
+        "prompt": "Physics should run at 50 Hz in the whole game, in Play and in builds, and a hitch should never give the "
+                  "game a frame longer than 0.1 s.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "time.fixed_timestep", "page": "Time", "label": "Fixed Timestep", "scope": "project",
+                              "value": 1 / 60},
+                             {"key": "time.maximum_delta_time", "page": "Time", "label": "Maximum Allowed Timestep",
+                              "scope": "project", "value": 0.25}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "time.fixed_timestep = 0.02; time.maximum_delta_time = 0.1",
+                {"settings": {"time.fixed_timestep": 0.02, "time.maximum_delta_time": 0.1}})},
+            {"tool": "get_project_settings", "result": ok(
+                "time.fixed_timestep = 0.0166667 (Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before "
+                "init in builds and at Play start; a scene's fixed_timestep overrides it while that scene is the main scene.); "
+                "time.maximum_delta_time = 0.25 (Longest frame delta in seconds (default 0.25): a longer frame is clamped "
+                "(Time.maximumDeltaTime).)",
+                {"settings": {"time.fixed_timestep": 1 / 60, "time.maximum_delta_time": 0.25},
+                 "schema": {"time.fixed_timestep": {"type": "number", "description":
+                                "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and "
+                                "at Play start; a scene's fixed_timestep overrides it while that scene is the main scene."},
+                            "time.maximum_delta_time": {"type": "number", "description":
+                                "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime)."}}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["time.fixed_timestep", "time.maximum_delta_time"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"time.fixed_timestep": "re:^0\\.02$"}}},
+                             {"tool": "set_project_settings", "args": {"values": {"time.maximum_delta_time": "re:^0\\.1$"}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "control_simulate_touch_from_mouse",
+        "kind": "control",
+        "what_happened": "A touch-only game port set Engine.callTouchInMouseEvent from a script for desktop testing; the "
+                         "Game view's Simulate Touch is a per-user preference and builds never had it (S95 REQ-12).",
+        "text_at_issue": "get_project_settings row input.simulate_touch_from_mouse (its description); configure_game_view "
+                         "simulate_touch",
+        "source": "S95 spec, ledger item S8 (a port's Framework.lua mouseAsTouch)",
+        "files": GAME_FILES,
+        "prompt": "Our game is touch-only. Make the mouse act as a finger for the whole team: in Play and in the desktop "
+                  "and web builds.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "input.simulate_touch_from_mouse", "page": "Input", "label": "Simulate Touch From Mouse",
+                              "scope": "project", "value": False},
+                             {"key": "preferences.simulate_touch", "page": "General", "section": "Game View",
+                              "label": "Simulate Touch", "scope": "preference", "value": False}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = true", {"settings": {"input.simulate_touch_from_mouse": True}})},
+            {"tool": "get_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = false (The mouse also acts as finger 0 (onTouchStart/Move/End with the "
+                "mouse events; Engine.callTouchInMouseEvent) in Play and in desktop and web builds. The Game view's Simulate "
+                "Touch preference is per user.)",
+                {"settings": {"input.simulate_touch_from_mouse": False}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["input.simulate_touch_from_mouse"]})},
+            {"tool": "configure_game_view", "result": ok("Game view: simulate_touch on (this editor only).",
+                                                        {"changed": ["simulate_touch"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"input.simulate_touch_from_mouse": True}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_duplicate_name",
         "kind": "bad",
         "what_happened": "create_entity renamed the new camera \"Main Camera 2\" because the name was taken; the agent then "

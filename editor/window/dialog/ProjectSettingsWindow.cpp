@@ -230,6 +230,7 @@ enum class ProjectCategory {
     Voxels,    // drawn from its settings rows (no page of its own here)
     TitleArt,
     Localization,
+    Time,
     Count
 };
 
@@ -1024,6 +1025,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
+    m_simulateTouchFromMouse = project->isSimulateTouchFromMouse();
+    m_fixedTimestep = project->getFixedTimestep();
+    m_maximumDeltaTime = project->getMaximumDeltaTime();
     m_inputStatus.clear();
     m_inputActionsFiles.clear();
     {
@@ -1286,6 +1290,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
         case ProjectCategory::Localization: drawLocalizationSettings(); break;
+        case ProjectCategory::Time: drawTimeSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -3284,6 +3289,14 @@ void ProjectSettingsWindow::drawInputSettings() {
                 endSettingsRow("The radial deadzone of stick and axis bindings of AXIS and VECTOR2 actions that set none of their own.");
             }
 
+            if (settingsui::beginRow("input.simulate_touch_from_mouse")) {
+                if (projectBeginSettingsRow("Simulate Touch From Mouse", m_simulateTouchFromMouse)) m_simulateTouchFromMouse = false;
+                ImGui::Checkbox("##SimulateTouchFromMouse", &m_simulateTouchFromMouse);
+                endSettingsRow("The mouse also acts as finger 0 (onTouchStart, onTouchMove, onTouchEnd beside the mouse events) "
+                    "in Play and in desktop and web builds: a touch game plays with a mouse. The Game view's Simulate Touch "
+                    "is a per-user preference for testing.");
+            }
+
             if (settingsui::beginRow("input.rebinding_overrides")) {
                 projectBeginSettingsRow("Rebinding Overrides");
                 ImGui::BeginDisabled(m_inputActionsAsset.empty());
@@ -3517,6 +3530,34 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
+    }
+    endSettingsPanel();
+}
+
+// Project Settings > Time (Unity's): applied before init in builds and at Play start
+void ProjectSettingsWindow::drawTimeSettings() {
+    if (beginSettingsPanel("##TimeSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("time.fixed_timestep")) {
+                if (projectBeginSettingsRow("Fixed Timestep", m_fixedTimestep != Project::defaultFixedTimestep))
+                    m_fixedTimestep = Project::defaultFixedTimestep;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble("##FixedTimestep", &m_fixedTimestep, 0.001, 0.01, "%.6f s");
+                m_fixedTimestep = std::clamp(m_fixedTimestep, Project::minFixedTimestep, Project::maxFixedTimestep);
+                endSettingsRow("Seconds per fixed step: onFixedUpdate and physics run at 1 / this rate (Time.fixedDeltaTime; "
+                    "default 1/60). A scene's Fixed Timestep (Inspector > Scene > Time) overrides it while it is the main scene.");
+            }
+            if (settingsui::beginRow("time.maximum_delta_time")) {
+                if (projectBeginSettingsRow("Maximum Allowed Timestep", m_maximumDeltaTime != Project::defaultMaximumDeltaTime))
+                    m_maximumDeltaTime = Project::defaultMaximumDeltaTime;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble("##MaximumDeltaTime", &m_maximumDeltaTime, 0.01, 0.1, "%.4f s");
+                m_maximumDeltaTime = std::clamp(m_maximumDeltaTime, Project::minFixedTimestep, Project::maxFixedTimestep);
+                endSettingsRow("The longest frame the game is given (Time.maximumDeltaTime; default 0.25 s): a hitch is "
+                    "clamped, so physics and scripts never take a huge step.");
+            }
+            ImGui::EndTable();
+        }
     }
     endSettingsPanel();
 }
@@ -6097,6 +6138,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setSimulateTouchFromMouse(m_simulateTouchFromMouse);
+    m_project->setFixedTimestep(m_fixedTimestep);
+    m_project->setMaximumDeltaTime(m_maximumDeltaTime);
     m_project->setPixelArtSettings(m_pixelArt);
     m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
     // a built-in Default Palette is the project's copy of it (S43 R7), made now

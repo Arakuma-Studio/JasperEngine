@@ -170,7 +170,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "setGravity3D", "getPostProcessUniform", "isPostProcessPassEnabled", "canReceiveUIEvents",
             "getActionSystem", "getAudioSystem", "getPhysicsSystem", "getNavigationSystem", "getChangeTick",
             "findEntitiesWith", "findChangedEntities", "markChanged", "camera", "backgroundColor",
-            "gravity2D", "gravity3D", "physicsInterpolation", "enableUIEvents", "maxLightsPerObject",
+            "gravity2D", "gravity3D", "physicsInterpolation", "fixedTimestep", "enableUIEvents", "maxLightsPerObject",
             "shadowQuality", "litQuality", "effectiveShadowTier"}},
         // the hierarchy, the transform, visibility, destruction, and the components above that draw
         // nothing (not instantiate: a clone can land in a scene of other lighting; not
@@ -187,7 +187,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
         // its projection, transform and culling (not its render target, sorting or depth test)
         {"Camera", {
             "activate", "setOrtho", "setPerspective", "setType", "setTarget", "disableTarget",
-            "isUsingTarget", "setUp", "getUp", "getDirection", "getRight", "getWorldTarget",
+            "isUsingTarget", "useTarget", "setUp", "getUp", "getDirection", "getRight", "getWorldTarget",
             "getWorldDirection", "getWorldUp", "getWorldRight", "getViewMatrix", "getProjectionMatrix",
             "getViewProjectionMatrix", "rotateView", "rotatePosition", "elevateView", "elevatePosition",
             "walkForward", "zoom", "slide", "slideForward", "slideUp", "screenToRay",

@@ -42,6 +42,7 @@
 #include <cerrno>
 #include <map>
 #include <sstream>
+#include <iomanip>
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
@@ -2628,6 +2629,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
+    mainContent += timeAndTouchInitSource(fixedTimestep, maximumDeltaTime, simulateTouchFromMouse);
     // Project Settings > Navigation: the agent types and areas every navmesh and grid reads
     mainContent += navigationSettingsCode;
     // Project Settings > Voxels: what the project lowers of this platform's limits (T6 R7)
@@ -2935,6 +2937,23 @@ std::string editor::Generator::inputSettingsInitSource(const std::string& action
     // a project without an actions asset keeps the engine's Unity Input Manager defaults
     if (!actionsAsset.empty())
         source += "    InputActions::loadDefault(" + Factory::formatString(actionsAsset) + ");\n";
+    return source;
+}
+
+std::string editor::Generator::timeAndTouchInitSource(double fixedTimestep, double maximumDeltaTime, bool simulateTouchFromMouse) {
+    // every digit of the double: 1/120 is the step the editor's Play runs
+    auto exact = [](double value) {
+        std::ostringstream text;
+        text << std::showpoint << std::setprecision(17) << value;
+        return text.str();
+    };
+    std::string source;
+    if (fixedTimestep != 1.0 / 60.0)
+        source += "    Engine::setProjectUpdateTime(" + exact(fixedTimestep) + ");\n";
+    if (maximumDeltaTime != 0.25)
+        source += "    Engine::setMaxDeltatime(" + exact(maximumDeltaTime) + "f);\n";
+    if (simulateTouchFromMouse)
+        source += "    Engine::setCallTouchInMouseEvent(true);\n";
     return source;
 }
 
