@@ -34,7 +34,7 @@ namespace {
 
 }
 
-TEST(RuntimeShaderCompilerRelaunch, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
+TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
     JASPER_REQUIRE_GPU();
     if (!RuntimeShaderCompiler::isSupported()) GTEST_SKIP() << "this build has no runtime compiler";
     const bool enabled = RuntimeShaderCompiler::isEnabled(), async = RuntimeShaderCompiler::isAsync();

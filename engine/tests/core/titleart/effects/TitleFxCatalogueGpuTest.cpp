@@ -9,7 +9,7 @@
 //   check covers them; written on glcore, Vulkan matches), with
 //   S80 §6.12's golden limits; TitleFxGoldenGpu.PatternKinds: each pattern kind of §6.6.28 through
 //   Pattern Fill. TitleFxGoldenGpu.SeeASettingChange is the goldens' red control.
-// - TitleFxDeterminism (AC5): two renders of each case are identical; a seed change changes them.
+// - TitleFxDeterminismGpu (AC5): two renders of each case are identical; a seed change changes them.
 // - TitleFxFallbackGpu (AC6): the RGBA8 path (TITLE_ART_TEST_NO_FLOAT_TARGETS) agrees with the
 //   float path within each definition's class (F0, F1, F2 of §6.5); the mobile Light Glow (D11)
 //   agrees with the desktop one within F1. Red control: without the light headroom (D14) Light
@@ -151,7 +151,7 @@ namespace {
     };
 
     class TitleFxGoldenGpu : public TitleFxCatalogueGpu {};
-    class TitleFxDeterminism : public TitleFxCatalogueGpu {};
+    class TitleFxDeterminismGpu : public TitleFxCatalogueGpu {};
     class TitleFxFallbackGpu : public TitleFxCatalogueGpu {};
     class TitleFxScaleGpu : public TitleFxCatalogueGpu {};
     class LightGlowGpu : public TitleFxCatalogueGpu {};
@@ -236,7 +236,7 @@ TEST_F(TitleFxGoldenGpu, SeeASettingChange) {
 }
 
 // R15, D7: a render is a function of the document; a seed changes it
-TEST_F(TitleFxDeterminism, Effects) {
+TEST_F(TitleFxDeterminismGpu, Effects) {
     LinearImage title;
     std::string titleError;
     ASSERT_TRUE(titleInput(title, titleError)) << titleError;
