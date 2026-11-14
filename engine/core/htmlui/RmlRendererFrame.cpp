@@ -80,7 +80,7 @@ namespace {
     }
 
     std::atomic<bool> frameReuseEnabled{true};
-    std::atomic<bool> depthStencilDiscard{true};
+    std::atomic<uint8_t> depthStencilDiscard{(uint8_t)RmlRenderer::DepthStencilDiscard::PLANNED};
     // -1: JASPER_HTMLUI_VERIFY_KEPT decides (read once)
     std::atomic<int> keptVerification{-1};
 
@@ -94,8 +94,8 @@ bool RmlRenderer::isFrameReuse(){
     return frameReuseEnabled;
 }
 
-void RmlRenderer::setDepthStencilDiscardForTesting(bool enabled){
-    depthStencilDiscard = enabled;
+void RmlRenderer::setDepthStencilDiscardForTesting(DepthStencilDiscard mode){
+    depthStencilDiscard = (uint8_t)mode;
 }
 
 void RmlRenderer::setKeptFrameVerificationForTesting(bool enabled){
@@ -871,7 +871,9 @@ void RmlRenderer::planDepthStencil(){
             dsLastStencil = (int64_t)i;
     }
     replayPosition = 0;
-    dsPlanned = depthStencilDiscard;
+    const DepthStencilDiscard mode = (DepthStencilDiscard)depthStencilDiscard.load();
+    dsPlanned = mode != DepthStencilDiscard::OFF;
+    dsEveryPass = mode == DepthStencilDiscard::EVERY_PASS;
 }
 
 //-------------------------------------------------------------------------------------------

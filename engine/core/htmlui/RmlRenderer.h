@@ -492,9 +492,12 @@ namespace jasperengine {
         // a comparison still pending, done now when its frame was committed; false when none is pending
         bool checkKeptFrame();
         uint32_t getKeptMismatchCount() const { return keptMismatchCount; }
-        // R5 (tests): false stores every depth-stencil, as before S92; the images are the same.
-        // Read by the replay
-        static void setDepthStencilDiscardForTesting(bool enabled);
+        // R5 (tests): OFF stores every depth-stencil, as before S92; PLANNED (the default) stores
+        // one only when a later pass tests it; EVERY_PASS stores none, so every later stencil test
+        // finds its mask dropped and draws it again (the fallback a wrong plan relies on). The
+        // images are the same. Read by the replay
+        enum class DepthStencilDiscard : uint8_t { OFF, PLANNED, EVERY_PASS };
+        static void setDepthStencilDiscardForTesting(DepthStencilDiscard mode);
         // R4: the composite's draws over the renderer's life (one per drawComposite that drew)
         uint64_t getCompositeDrawCount() const { return compositeDraws; }
 
@@ -1075,6 +1078,7 @@ namespace jasperengine {
         std::vector<uint32_t> dsNextBreak;
         int64_t dsLastStencil = -1;
         bool dsPlanned = false;
+        bool dsEveryPass = false;            // DepthStencilDiscard::EVERY_PASS (tests)
         size_t replayPosition = 0;
         bool activeDsDiscard = false;        // the open pass stores its depth-stencil DONTCARE
         const Framebuffer* activeDsAttachment = nullptr;   // nullptr: the shared one

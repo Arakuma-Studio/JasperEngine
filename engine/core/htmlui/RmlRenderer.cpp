@@ -1397,12 +1397,19 @@ void RmlRenderer::endPass(bool resolve){
             r.stale = Rml::Rectanglei::MakeInvalid();
     }
     pass.endRenderPass();
-    // S92 R5: what a DONTCARE store left is unknown
+    // S92 R5, R12: what a DONTCARE store left is unknown: no mask is trusted across it (its
+    // version is none), and a pass that loads it clears it
     if (activeKind == TargetKind::LAYER && activeDsDiscard){
-        if (activeDsAttachment)
+        if (activeDsAttachment){
             discardedRegionDs.push_back(activeDsAttachment);
-        else
+            for (LayerFrame& frame : frames){
+                if (frame.framebuffer == activeDsAttachment)
+                    frame.maskVersion = 0;
+            }
+        }else{
             sharedDsDiscarded = true;
+            sharedMaskVersion = 0;
+        }
     }
     activeDsDiscard = false;
     activeRegions = nullptr;
@@ -1429,7 +1436,7 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
             if ((int64_t)position > dsLastStencil){
                 depthStencilLoad = LoadAction::DONTCARE;
                 activeDsDiscard = true;
-            }else if ((int64_t)dsNextBreak[position] > dsLastStencil){
+            }else if (dsEveryPass || (int64_t)dsNextBreak[position] > dsLastStencil){
                 activeDsDiscard = true;
             }
         }

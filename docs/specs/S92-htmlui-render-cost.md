@@ -832,7 +832,10 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   another pass; one with no stencil use after it also loads `DONTCARE`. A depth-stencil stored
   `DONTCARE` and bound again is cleared and its mask version reset, so a wrong guess costs a mask
   redraw, never a wrong clip. AC5's bound is checked against the same frame with every
-  depth-stencil stored (`setDepthStencilDiscardForTesting(false)`): fewer stores, the same image.
+  depth-stencil stored (`setDepthStencilDiscardForTesting(OFF)`): fewer stores, the same image. R12's
+  part in R5 (left to S92-A by B1): a `DONTCARE` store resets that depth-stencil's mask version at
+  once; with every store dropped (`EVERY_PASS`) each stencil test draws its mask again, the audit
+  holds and the image is the same.
 - **R1 and the replay tests.** Tests that count a replay's passes, draws or run-cache hits on
   repeated identical frames now turn frame reuse off for their scope (`FrameReuseMode`), and the S16
   benchmarks replay every frame (`S16Mode`); R33 is measured with reuse on and off.

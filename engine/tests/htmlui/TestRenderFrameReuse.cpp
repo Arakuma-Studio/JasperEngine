@@ -501,16 +501,33 @@ TEST(RenderFrameReuse, DepthStencilDiscarded){
     const HtmlUIRenderStats stencil = clipped.next();
     const std::vector<uint8_t> discarded = clipped.layer();
     // every depth-stencil stored, as before: the same image, a store per layer pass
-    RmlRenderer::setDepthStencilDiscardForTesting(false);
+    RmlRenderer::setDepthStencilDiscardForTesting(RmlRenderer::DepthStencilDiscard::OFF);
     const HtmlUIRenderStats stored = clipped.again();
     const std::vector<uint8_t> kept = clipped.layer();
-    RmlRenderer::setDepthStencilDiscardForTesting(true);
+    RmlRenderer::setDepthStencilDiscardForTesting(RmlRenderer::DepthStencilDiscard::PLANNED);
     std::printf("[ s92 ] rotated clip: %u passes, %u stencil draws, %u depth-stencil stores (%u storing every one)\n", stencil.passes,
                 stencil.stencilDraws, stencil.depthStencilStores, stored.depthStencilStores);
     EXPECT_GT(stencil.stencilDraws, 0u);
     EXPECT_EQ(stencil.passes, stored.passes);
     EXPECT_LT(stencil.depthStencilStores, stored.depthStencilStores) << "the last pass on each depth-stencil stores it";
     EXPECT_EQ(firstDifference(discarded, kept), -1) << "the images with and without the discards";
+
+    // R12: a mask is never trusted across a store that dropped it. Every pass dropping its
+    // depth-stencil: each later stencil test draws its mask again (its version reset at the store),
+    // the attachment it tests holds the current mask, and the image is the same
+    RmlRenderer::setDepthStencilDiscardForTesting(RmlRenderer::DepthStencilDiscard::EVERY_PASS);
+    std::vector<RmlRenderer::StencilAuditEntry> audit;
+    runner.renderer()->setStencilAuditForTesting(&audit);
+    const HtmlUIRenderStats dropped = clipped.again();
+    runner.renderer()->setStencilAuditForTesting(nullptr);
+    const std::vector<uint8_t> redrawn = clipped.layer();
+    RmlRenderer::setDepthStencilDiscardForTesting(RmlRenderer::DepthStencilDiscard::PLANNED);
+    EXPECT_EQ(dropped.depthStencilStores, 0u);
+    EXPECT_GT(dropped.clipMasksRedrawn, stencil.clipMasksRedrawn) << "the masks dropped by the stores drawn again";
+    ASSERT_FALSE(audit.empty());
+    for (const RmlRenderer::StencilAuditEntry& entry : audit)
+        EXPECT_EQ(entry.attachmentVersion, entry.maskVersion) << "a stencil test against a dropped mask";
+    EXPECT_EQ(firstDifference(redrawn, kept), -1) << "the image with every depth-stencil dropped";
 }
 
 TEST(RenderFrameReuse, VerificationReportsAStaleKeptFrame){
