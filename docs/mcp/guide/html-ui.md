@@ -1518,8 +1518,9 @@ about 1000 particles (one mesh is rebuilt each frame).
 - A character the first available face of `font-family` lacks comes from the next family of
   the list that has it, then the registered fallback fonts, then Roboto and Noto Sans Arabic,
   each in the text's weight and style (synthesized when the family has no such face), with the
-  text's `font-effect` and `text-effect`. `HTMLUI-FONT-0001` (info) names such characters in
-  `doc:getDiagnostics()` once the text is drawn (`check --ui` does not lay documents out).
+  text's `font-effect` and `text-effect`. `HTMLUI-FONT-0001` names such characters: an info in
+  `doc:getDiagnostics()` once the text is drawn, a warning from `check --ui` for the static text of
+  the document's own fonts.
   Fix it with a font that has them, or name one after the first in `font-family`.
 - A character no loaded font covers draws a missing-glyph box; control characters draw
   nothing. Text is rasterized at each context's pixel ratio (the screen's, or `pixelRatio` for

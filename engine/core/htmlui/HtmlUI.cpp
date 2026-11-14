@@ -163,6 +163,8 @@ void HtmlUI::release(){
     ThorVGRuntime::release();
 
     Engine::onViewDestroyed.remove(viewDestroyedTag);
+    // the shared images stay for the next documents: the cache hears a view loss from now on
+    HtmlUIImageCache::get().watchViewLoss();
 }
 
 bool HtmlUI::isInitialized(){

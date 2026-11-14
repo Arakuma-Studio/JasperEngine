@@ -8,6 +8,7 @@
 #include "TestDocumentCommon.h"
 
 #include "Engine.h"
+#include "HtmlUIImageCache.h"
 #include "HtmlUITexture.h"
 #include "RmlRenderer.h"
 #include "RmlFontEngine.h"
@@ -736,5 +737,39 @@ TEST_F(UIDocumentSystemTest, GlyphCacheSurvivesViewLoss){
         ASSERT_TRUE(page->atlasGeneration);
         EXPECT_EQ(page->uploadedGeneration, *page->atlasGeneration);
     }
+    EXPECT_EQ(errors(), 0u);
+}
+
+TEST_F(UIDocumentSystemTest, ImageCacheLetsGoOfTexturesOnViewLossWithoutDocuments){
+    // S93 R19: the shared image cache keeps released images for the next documents, beyond the last context and RmlUi
+    // itself. A view lost while no document is up (a scene without UI, the Android background) takes their textures: the
+    // cache lets go of them then, so a document loaded before the view comes back decodes and uploads its images again
+    // instead of reusing dead ones (they drew nothing: IntegrationTest.ScriptsUseDocumentsBeforeTheViewLoads after
+    // another test had shown the same image)
+    HtmlUIImageCache& images = HtmlUIImageCache::get();
+    {
+        SceneFixture fixture;
+        UIDocument document = fixture.addDocument("arcade-shell/shell.html");
+        drawShell(fixture, document);
+    }
+    ASSERT_EQ(HtmlUI::getReferenceCount(), 0);
+    std::vector<uint32_t> handles;
+    images.getGpuHandles(handles);
+    ASSERT_FALSE(handles.empty()) << "the atlas stays cached after its document";
+
+    Engine::systemViewDestroyed();
+    handles.clear();
+    images.getGpuHandles(handles);
+    EXPECT_TRUE(handles.empty()) << "textures of the lost view are kept";
+    Engine::systemViewLoaded();
+    Engine::systemViewChanged();
+
+    const uint64_t decodes = images.getCounters().decodes;
+    const uint64_t uploads = images.getCounters().uploads;
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("arcade-shell/shell.html");
+    drawShell(fixture, document);
+    EXPECT_GT(images.getCounters().decodes, decodes);
+    EXPECT_GT(images.getCounters().uploads, uploads);
     EXPECT_EQ(errors(), 0u);
 }

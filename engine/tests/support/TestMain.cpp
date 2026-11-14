@@ -11,6 +11,7 @@
 #include "TestPaths.h"
 #if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
 #include "HtmlUI.h"
+#include "HtmlUIImageCache.h"
 #include "RmlFontEngine.h"
 #include "media/VideoSourceFactory.h"
 #endif
@@ -34,13 +35,15 @@ namespace {
     };
 
 #if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
-    // The engine's glyph cache outlives RmlUi (S93 R13): each HTML UI test starts with an empty one, as
-    // its counters and atlas expectations assume, unless RmlUi is still up from an earlier test
+    // The engine's glyph and image caches outlive RmlUi (S93 R13, R19): each HTML UI test starts with empty
+    // ones, as its counters and atlas expectations assume, unless RmlUi is still up from an earlier test
     class FontCacheReset : public ::testing::EmptyTestEventListener {
     public:
         void OnTestStart(const ::testing::TestInfo&) override{
-            if (!jasperengine::HtmlUI::isInitialized())
-                jasperengine::HtmlUI::getFontEngine().ReleaseFontResources();
+            if (jasperengine::HtmlUI::isInitialized())
+                return;
+            jasperengine::HtmlUI::getFontEngine().ReleaseFontResources();
+            jasperengine::HtmlUIImageCache::get().clear();
         }
     };
 #endif
