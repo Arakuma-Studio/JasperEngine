@@ -72,6 +72,7 @@
 #include "vcs/VcsService.h"
 #include "vcs/SceneDiffTracker.h"
 #include <cstdlib>
+#include <cstring>
 #include "util/SafeWrite.h"
 #include "util/VersionControlFiles.h"
 #include "util/FbxImporter.h"
@@ -1146,8 +1147,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     // call's deny-by-default guard refuses: the editor names the one file it writes (util/SafeWrite.h)
     jasperengine::editor::safewrite::EditorInternal ownImport(glbPath);
     const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
-    for (const std::string& warning : result.warnings) {
-        editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
+    // one line per model (S98 REQ-34): the list is the model's import report
+    if (!result.warnings.empty()) {
+        editor::Out::warning("%s", editor::FbxImporter::summarizeWarnings(fbxName, result.warnings).c_str());
     }
     if (!result.success) {
         editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
@@ -7334,6 +7336,17 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
+            // S98 REQ-36: Unity's layout, the project's assets and its Lua scripts in folders of
+            // their own (a project.yaml without the keys still means "."); the MCP test harness
+            // keeps the flat layout its tests are written against (JASPER_TEST_FLAT_NEW_PROJECT)
+            const char* flat = std::getenv("JASPER_TEST_FLAT_NEW_PROJECT");
+            if (!flat || std::strcmp(flat, "1") != 0) {
+                assetsDir = newProjectAssetsDir;
+                luaDir = newProjectLuaDir;
+                std::error_code dirError;
+                FileUtils::createDirectories(projectPath / assetsDir, dirError);
+                FileUtils::createDirectories(projectPath / luaDir, dirError);
+            }
             refreshTrustedRoots();   // the folder exists now
 
             // a new project is locked like an opened one (R10); the editor's own temporary

@@ -5242,4 +5242,109 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S98 WP-3: MCP tool fixes (create_prefab overwrite, wait at time scale 0, eval_lua's timeout, Material Creation Mode)
+    {
+        "id": "bad_prefab_replace_by_delete_and_create",
+        "kind": "bad",
+        "what_happened": "E2 (JasperArcade port): create_prefab refused an existing path, so the agent deleted the .prefab and created "
+                         "it again; the new file had a new GUID and every scene that placed the prefab lost its instances.",
+        "text_at_issue": "create_prefab's overwrite parameter ('Replace the prefab at path; GUID and instances stay.') and its "
+                         "refusal naming overwrite",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E2; S98 REQ-21",
+        "prompt": "I edited the Enemy GameObject in this scene (new collider, bigger sprite). Save it over prefabs/Enemy.prefab: "
+                  "Level1 and Level2 place that prefab and must get the change.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nEnemy [14] sprite collider2d transform",
+                                                   {"entities": [{"id": 14, "path": "Enemy"}]})},
+            {"tool": "create_prefab", "args": {"overwrite": True}, "result": ok(
+                "Overwrote prefabs/Enemy.prefab with the GameObject: same GUID, every open instance updated with its overrides kept, "
+                "the GameObject is now an instance of it (one undo step).",
+                {"scene_id": 1, "prefabs": [{"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718",
+                                             "overwritten": True, "instance": {"id": 14, "name": "Enemy"}}]})},
+            {"tool": "create_prefab", "result": err(
+                "A file already exists at \"prefabs/Enemy.prefab\". Pass overwrite: true to replace its content (its GUID and instances "
+                "stay), or pick another path; to make an existing instance follow another prefab use replace_prefab.")},
+            {"tool": "get_prefab_info", "result": ok("prefabs/Enemy.prefab: 3 GameObjects, used by 2 scenes (Level1: 4, Level2: 2).",
+                                                     {"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718"})},
+            {"tool": "list_prefabs", "result": ok("1 prefab: prefabs/Enemy.prefab (6 instances in 2 scenes).",
+                                                  {"prefabs": [{"path": "prefabs/Enemy.prefab"}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_prefab", "args": {"path": "re:Enemy", "overwrite": True}}],
+                   "must_not_call": [{"tool": "delete_asset"}, {"tool": "move_asset"}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_wait_game_seconds_paused_game",
+        "kind": "guard",
+        "what_happened": "E44 (JasperArcade port): a game paused itself with Engine.timeScale = 0 (its pause menu); wait {game_seconds} "
+                         "then ran 60 s and failed as stalled, and the agent restarted Play. Now the wait ends after 1 s with "
+                         "reason time_scale_zero and a next naming seconds, frames or unpausing.",
+        "text_at_issue": "wait's next on a time-scale-0 game: 'the time scale is 0: wait with seconds or frames, or unpause'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E44; S98 REQ-23",
+        "playing": True,
+        "prompt": "The game is running. Let it play for 2 seconds of game time, then tell me whether the score went up "
+                  "(script('GameController').score).",
+        "mocks": [
+            {"tool": "wait", "args": {"game_seconds": "*"}, "result": ok(
+                "Waited 1.02 s, 61 frame(s), game time +0.000 s; the time scale is 0, so game time does not advance: wait with "
+                "seconds or frames, or unpause. No new console output.",
+                {"state": "playing", "reason": "time_scale_zero", "game_seconds": 0.0, "frames": 61,
+                 "next": "the time scale is 0: wait with seconds or frames, or unpause"})},
+            {"tool": "wait", "result": ok("Waited 2.0 s, 120 frame(s), game time +0.000 s. No new console output.",
+                                          {"state": "playing", "reason": "seconds", "game_seconds": 0.0, "frames": 120})},
+            {"tool": "eval_lua", "result": ok("0, \"paused\"", {"values": [0, "paused"]})},
+            {"tool": "get_play_state", "result": ok("Playing Main (time_scale 0).", {"state": "playing", "time_scale": 0})},
+        ],
+        "checks": {"must_not_call": [{"tool": "play", "args": {"action": "stop"}}, {"tool": "play", "args": {"action": "start"}}],
+                   "max_calls": {"wait": 3},
+                   "reply_must": [r"(?i)time.?scale|paused|pause menu"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_eval_lua_timeout_parameter",
+        "kind": "guard",
+        "what_happened": "E17/E43 (JasperArcade port): eval_lua stopped a slow call after 5 s with 'infinite loop?', and the agent "
+                         "split the work into many calls or gave up. The error now names timeout_seconds and its 60 s maximum.",
+        "text_at_issue": "eval_lua's timeout error: 'timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it "
+                         "as a coroutine in a script and wait with wait {until}'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E17, E43; S98 REQ-24",
+        "playing": True,
+        "prompt": "In the running game, call LevelGen.rebuildAll() through eval_lua (it regenerates every level and takes about "
+                  "15 seconds) and tell me how many levels it returns.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"timeout_seconds": "*"}, "result": ok("12", {"values": [12]})},
+            {"tool": "eval_lua", "result": err(
+                "eval_lua: timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it as a coroutine in a "
+                "script and wait with wait {until}")},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"timeout_seconds": "*"}}],
+                   "max_calls": {"eval_lua": 3},
+                   "reply_must": [r"\b12\b"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_fbx_texture_warnings_no_materials",
+        "kind": "bad",
+        "what_happened": "E39/E40 (JasperArcade port): FBX models whose materials the game replaced logged a 'Texture not found' "
+                         "line per texture on every import; with no import setting to skip materials, the agent edited the .meta "
+                         "by hand or stripped the textures from the FBX. Material Creation Mode None imports no materials.",
+        "text_at_issue": "set_model_import_settings' settings.material_creation_mode ('FBX: none imports no materials or textures.')",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E39, E40; S98 REQ-35",
+        "groups_enabled": ["meshes"],
+        "files": {"models/Hall.fbx": "binary placeholder"},
+        "prompt": "models/Hall.fbx floods the Console with 'Texture not found' warnings on every import. We put our own materials on "
+                  "it in the scene anyway, so it should not import any materials. Make that so.",
+        "mocks": [
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["models/Hall.fbx"], "unchanged": 0, "models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": []}]})},
+            {"tool": "inspect_models", "result": ok(
+                "1 model: models/Hall.fbx cooked, 3 warning(s): Hall.fbx: Texture not found: Wall.psd ...",
+                {"models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": [
+                    {"code": "fbx-import-warning", "severity": "warning", "message": "Hall.fbx: Texture not found: Wall.psd"}]}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"material_creation_mode": "none"}}}],
+                   "must_not_call": [{"tool": "write_file"}], "edits_must_not": [r"\.(meta|fbx)$"]},
+        "max_turns": 10,
+    },
 ]

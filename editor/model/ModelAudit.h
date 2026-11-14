@@ -49,6 +49,8 @@ namespace jasperengine::editor {
         ModelReadWriteDecision readWrite;
         // what the loader finds in the source (S53 R5): the cook's record, then the model's last load
         std::vector<GltfDiagnostic> diagnostics;
+        // an FBX's: the warnings of the import its .glb came from (S98 REQ-34, the import report)
+        std::vector<std::string> importWarnings;
         std::vector<ModelIssue> issues;
 
         // the numbers the Audit's columns show: the cook's when cooked, else the header's
