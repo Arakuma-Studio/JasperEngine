@@ -415,7 +415,8 @@ Native or exactly rewritten, as in Chrome:
   `outline-offset`; `opacity` as a group (the subtree fades as one image); `filter`
   (`blur`, `drop-shadow`, `brightness`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
   `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mask-image`/`mask` layers;
-  `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`);
+  `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`, `xywh()`,
+  `rect()`, `calc()` lengths; they clip the hit area too);
   `object-fit`; `image-rendering: pixelated`; `accent-color` and `appearance: none` on form
   controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default). Filters apply
   left to right to the element and everything it contains (overflowing children too);
@@ -656,7 +657,7 @@ is the global `document`.
 | Classes and style | `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`; `style.backgroundColor` or `style["background-color"]` (write: inline, `""` or nil removes; read: the computed value as CSS text), `style:getPropertyValue/setProperty/removeProperty`, `style.cssText` |
 | Forms | `value`, `checked`, `disabled` (read the new value in `input`/`change` listeners from `event.target.value`) |
 | Focus and actions | `focus()`, `blur()`, `click()`; `<dialog>`: `show()`, `showModal()`, `close([value])`; `<lottie>`: `play()`, `pause()`, `stop()`, `seek(s)`, ... |
-| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight` (all 0 for an element with `display: none` on it or an ancestor, a `data-if` that is false, or one not in the document, as in a browser), `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
+| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight` (all 0 for an element with `display: none` on it or an ancestor, a `data-if` that is false, or one not in the document, as in a browser), `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])`, `scrollVelocity` (Vector2 px/s, settable), `stopScrolling()` (drag scrolling, Input and focus) |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. The engine's own attributes (`data-htmlui-*`) and
@@ -1567,6 +1568,9 @@ end)
 
 - `pointer-events: none` removes an element from hit testing: a full-screen HUD wrapper with
   it is click-through, and its children can set `pointer-events: auto`.
+- An element is hit only where it is drawn: through every `transform` on it and its ancestors,
+  inside the clips of `overflow` (rounded corners included) and `clip-path`. `mask-image` does
+  not clip the hit area (CSS Masking).
 - A press that no document takes blurs the focused field. A release, and the moves of a drag,
   go to whoever got the press. The wheel is taken when it scrolls an element (one step is 80
   px) or the pointer is over content.
@@ -1636,6 +1640,24 @@ devices). A finger that starts on a scrollable box pans it once it moves past a 
 where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
 controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
 Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Drag scrolling (uGUI ScrollRect).** Engine properties on the scroll container (browsers
+ignore them); the defaults keep the touch pan and inertia above:
+
+- `scroll-drag: touch | pointer` (default `touch`): `pointer` lets the mouse and pen drag the
+  content too. A mouse press that moves 10 px pans: the press gets `pointercancel` and clicks
+  nothing. Use it for game lists; desktop pages keep the wheel and scrollbars.
+- `scroll-movement: clamped | elastic | unrestricted` (Movement Type, default `clamped`):
+  `elastic` rubber-bands a drag past an edge and springs back in `scroll-elasticity` (default
+  `0.1s`); `unrestricted` lets the content go anywhere.
+- `scroll-inertia: auto | none` and `scroll-deceleration-rate: auto | <number>` (Inertia and
+  Deceleration Rate: the share of the velocity kept per second, uGUI's default is `0.135`).
+- It runs on the unscaled UI clock. Lua: `el.scrollVelocity` (Vector2, px/s; set it to fling)
+  and `el:stopScrolling()`.
+
+```css
+.list { overflow-y: auto; scroll-drag: pointer; scroll-movement: elastic; scroll-deceleration-rate: 0.135; }
+```
 
 **Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
 `pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →

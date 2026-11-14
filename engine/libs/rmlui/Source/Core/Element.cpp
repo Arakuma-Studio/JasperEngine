@@ -693,7 +693,7 @@ void Element::UpdateDirtyAbsoluteOffsetAndRenderBoxData()
 	{
 		// Add any parent scrolling onto our position as well.
 		if (offset_parent)
-			offset_from_ancestors -= offset_parent->scroll_offset;
+			offset_from_ancestors -= offset_parent->scroll_offset + offset_parent->scroll_overscroll;
 
 		// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
 		for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
@@ -1538,6 +1538,15 @@ void Element::SetScrollTop(float scroll_top)
 		DirtyAbsoluteOffset();
 
 		DispatchEvent(EventId::Scroll, Dictionary());
+	}
+}
+
+void Element::SetScrollOverscroll(Vector2f overscroll)
+{
+	if (overscroll != scroll_overscroll)
+	{
+		scroll_overscroll = overscroll;
+		DirtyAbsoluteOffset();
 	}
 }
 

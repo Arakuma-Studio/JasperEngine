@@ -427,6 +427,11 @@ public:
 	/// Sets the top scroll offset of the element.
 	/// @param[in] scroll_top The element's new top scroll offset.
 	void SetScrollTop(float scroll_top);
+	/// Fork (S93 R9): how far past its scroll range a scroll container draws its content (px, per axis: negative before the
+	/// start, positive past the end), on top of the scroll offset: the elastic or unrestricted overscroll of drag scrolling
+	/// (ScrollPhysics). The scroll offset stays within its range; 0 for a clamped container.
+	Vector2f GetScrollOverscroll() const { return scroll_overscroll; }
+	void SetScrollOverscroll(Vector2f overscroll);
 	/// Gets the width of the scrollable content of the element; it includes the element padding but not its margin.
 	/// @return The width (in pixels) of the scrollable content of the element.
 	float GetScrollWidth();
@@ -904,6 +909,8 @@ private:
 
 	// The offset this element adds to its logical children due to scrolling content.
 	Vector2f scroll_offset;
+	// Fork (S93 R9): SetScrollOverscroll, added to the scroll offset of its logical children.
+	Vector2f scroll_overscroll;
 
 	// The size of the element.
 	struct PositionedBox {

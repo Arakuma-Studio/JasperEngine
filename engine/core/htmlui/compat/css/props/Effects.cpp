@@ -188,6 +188,8 @@ std::optional<std::string> jasperengine::htmlui::compat::clipPathShape(DeclConte
     NormalizeContext normalize;
     normalize.options = &context.session.options;
     normalize.resolveVar = [&context](const ComponentValue& var, ValueList& out){ return context.session.staticVar(var, out); };
+    // the html-shape decorator evaluates calc(), min(), max() and clamp() against the reference box (S93, U23)
+    normalize.calcNative = true;
     NormalizeResult normalized = ValueNormalizer::normalize(declaration.value, normalize);
     if (!normalized.ok)
         return std::nullopt;
@@ -229,6 +231,5 @@ std::optional<std::string> jasperengine::htmlui::compat::clipPathShape(DeclConte
             return std::nullopt;
         shape = "inset(0)";
     }
-    context.reportAt(declaration.ref, Severity::Info, codes::ApproximatedMinor, "clip-path clips the drawing, not the pointer hit area");
     return "html-shape(" + serializeString(box.empty() ? shape : shape + " " + box) + ")";
 }
