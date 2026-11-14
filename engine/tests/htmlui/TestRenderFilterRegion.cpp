@@ -82,7 +82,8 @@ namespace {
     }
 
     // the square straddles the edge (shift 0) or lies 64 px further in (a whole number of the
-    // region layers' 64 px granules: the blur's halved passes sample the same grid)
+    // region layers' 64 px granules; S92: the blur's halved levels start at each window, which
+    // the viewport crops at the edge)
     std::string edgeDocument(Edge edge, int shift, const std::string& filter, const std::string& extra = ""){
         const bool horizontal = (edge == Edge::LEFT || edge == Edge::RIGHT);
         int left = 48, top = 48;
@@ -160,7 +161,9 @@ TEST(RenderFilterRegion, BlurReadsTheContentBeyondTheViewport){
                 const Strip strip = edgeStrip(edge, 27);
                 const int difference = maxDifference(atEdge.rgba, strip.x, strip.y, reference.rgba, strip.x + strip.dx, strip.y + strip.dy,
                                                      strip.w, strip.h);
-                EXPECT_LE(difference, 2) << "the blur at the edge differs from the square's blur further in";
+                // (S92: a blur's halved levels start at its window, which the viewport crops for the
+                // square at the edge, not at the 64 px granules both shared: a level of difference more)
+                EXPECT_LE(difference, 3) << "the blur at the edge differs from the square's blur further in";
                 EXPECT_EQ(SystemRender::getNestedPassCount(), nestedBefore) << "a render pass began inside another";
             }
         }
@@ -221,7 +224,7 @@ TEST(RenderFilterRegion, TransformedElementAtTheEdge){
             const Strip strip = edgeStrip(Edge::LEFT, 27);
             const int difference = maxDifference(atEdge.rgba, strip.x, strip.y, reference.rgba, strip.x + strip.dx, strip.y + strip.dy, strip.w,
                                                  strip.h);
-            EXPECT_LE(difference, 2) << "the transformed square's blur at the edge differs from its blur further in";
+            EXPECT_LE(difference, 3) << "the transformed square's blur at the edge differs from its blur further in";
         }
     }
 }

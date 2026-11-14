@@ -419,6 +419,71 @@ bool BasicShape::toRoundedRect(float width, float height, Rml::Element* element,
     return true;
 }
 
+bool BasicShape::toConvexPolygon(float width, float height, Rml::Element* element, std::vector<Rml::Vector2f>& points) const{
+    points.clear();
+    const size_t open = text.find('(');
+    if (!(width > 0.0f) || !(height > 0.0f) || open == std::string::npos || text.back() != ')')
+        return false;
+    if (lower(trim(text.substr(0, open))) != "polygon")
+        return false;
+    const std::vector<std::string> tokens = tokenize(text.substr(open + 1, text.size() - open - 2));
+    // the fill rule changes nothing for a convex polygon
+    size_t start = 0;
+    if (!tokens.empty() && (lower(tokens[0]) == "nonzero" || lower(tokens[0]) == "evenodd")){
+        if (tokens.size() < 2 || tokens[1] != ",")
+            return false;
+        start = 2;
+    }
+    const Resolver r{element, width, height};
+    std::vector<std::string> pair;
+    const auto flush = [&]() -> bool {
+        float x, y;
+        if (pair.size() != 2 || !r.length(pair[0], width, x) || !r.length(pair[1], height, y))
+            return false;
+        // a point equal to the one before it adds no edge
+        if (points.empty() || points.back() != Rml::Vector2f(x, y))
+            points.push_back(Rml::Vector2f(x, y));
+        pair.clear();
+        return true;
+    };
+    for (size_t i = start; i < tokens.size(); i++){
+        if (tokens[i] == ","){
+            if (!flush())
+                return false;
+        }else{
+            pair.push_back(tokens[i]);
+        }
+    }
+    if (!flush())
+        return false;
+    if (points.size() > 1 && points.front() == points.back())
+        points.pop_back();
+    const size_t n = points.size();
+    if (n < 3 || n > (size_t)Rml::ClipShape::MaxPolygonPoints)
+        return false;
+    // convex and simple: every turn the same way, and once around (a star turns twice)
+    double area = 0.0, turning = 0.0;
+    int sign = 0;
+    for (size_t i = 0; i < n; i++){
+        const Rml::Vector2f a = points[i], b = points[(i + 1) % n], c = points[(i + 2) % n];
+        area += (double)a.x * b.y - (double)b.x * a.y;
+        const double ex = b.x - a.x, ey = b.y - a.y, fx = c.x - b.x, fy = c.y - b.y;
+        const double cross = ex * fy - ey * fx;
+        if (std::abs(cross) > 1e-9){
+            const int turn = cross > 0.0 ? 1 : -1;
+            if (sign != 0 && turn != sign)
+                return false;
+            sign = turn;
+        }
+        turning += std::atan2(cross, ex * fx + ey * fy);
+    }
+    if (sign == 0 || std::abs(std::abs(turning) - 2.0 * 3.14159265358979323846) > 1e-3 || std::abs(area) < 1e-6)
+        return false;
+    if (area < 0.0)
+        std::reverse(points.begin(), points.end());
+    return true;
+}
+
 std::string BasicShape::toSvg(float width, float height, Rml::Element* element, std::string* error) const{
     if (!(width > 0.0f) || !(height > 0.0f)){
         fail(error, "the reference box is empty");
@@ -563,7 +628,31 @@ Rml::DecoratorDataHandle HtmlShapeDecorator::GenerateElementData(Rml::Element* e
     // fades the mask (only an opaque mask is a clip)
     Rml::Rectanglef rect;
     Rml::Array<Rml::Vector2f, 4> radii;
-    if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toRoundedRect(box.Width(), box.Height(), element, rect, radii) &&
+    std::vector<Rml::Vector2f> polygon;
+    if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toConvexPolygon(box.Width(), box.Height(), element, polygon)){
+        // S92: a convex polygon() too, its bounds the rectangle; a fan of it for the stencil
+        Rml::Vector2f lo = polygon[0], hi = polygon[0];
+        data->clipShape.polygon_points = (int)polygon.size();
+        Rml::Mesh clipMesh;
+        for (size_t i = 0; i < polygon.size(); i++){
+            const Rml::Vector2f point = polygon[i] + box.TopLeft();
+            data->clipShape.polygon[i] = point;
+            lo = Rml::Math::Min(lo, polygon[i]);
+            hi = Rml::Math::Max(hi, polygon[i]);
+            Rml::Vertex vertex;
+            vertex.position = point;
+            vertex.colour = Rml::ColourbPremultiplied(255);
+            clipMesh.vertices.push_back(vertex);
+            if (i >= 2){
+                clipMesh.indices.push_back(0);
+                clipMesh.indices.push_back((int)i - 1);
+                clipMesh.indices.push_back((int)i);
+            }
+        }
+        data->clipShape.rect = Rml::Rectanglef::FromCorners(lo, hi).Translate(box.TopLeft());
+        data->clipGeometry = renderManager->MakeGeometry(std::move(clipMesh));
+        data->clips = (bool)data->clipGeometry;
+    }else if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toRoundedRect(box.Width(), box.Height(), element, rect, radii) &&
         rect.Width() > 0.0f && rect.Height() > 0.0f){
         data->clipShape.rect = rect.Translate(box.TopLeft());
         Rml::CornerSizes2 corners;

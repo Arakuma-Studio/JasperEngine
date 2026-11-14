@@ -25,9 +25,21 @@ struct ClipShape {
 	Array<Vector2f, 4> radii = {};    // top-left, top-right, bottom-right, bottom-left: horizontal (x) and vertical (y); a corner
 	                                  // with a radius <= 0 is square
 	const Matrix4f* transform = nullptr; // the transform the mask is drawn with (nullptr: none), valid during the call only
+	// Fork (S92-F6): a convex polygon of polygon_points (3 to MaxPolygonPoints, relative to the mask's translation, in
+	// order around it) instead of the rectangle, which then bounds it (radii unused); 0: the rectangle
+	static constexpr int MaxPolygonPoints = 16;
+	int polygon_points = 0;
+	Array<Vector2f, MaxPolygonPoints> polygon = {};
 };
 inline bool operator==(const ClipShape& a, const ClipShape& b)
 {
+	if (a.polygon_points != b.polygon_points)
+		return false;
+	for (int i = 0; i < a.polygon_points; i++)
+	{
+		if (a.polygon[i] != b.polygon[i])
+			return false;
+	}
 	return a.rect.TopLeft() == b.rect.TopLeft() && a.rect.BottomRight() == b.rect.BottomRight() && a.radii == b.radii &&
 		a.transform == b.transform;
 }

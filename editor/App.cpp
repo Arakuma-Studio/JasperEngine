@@ -6131,7 +6131,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      conic and repeating functions, a single tile (a negative period). (S93's branch holds v66
     //      for its own sources: a shared cache of either must not serve the other's programs.)
     // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v68";
+    // v69: S92's u_fs_htmluiClip: a convex polygon (clip-path polygon(), includes/htmlui_sdf.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v69";
 }
 
 void editor::App::pushTabNotificationStyle(){
