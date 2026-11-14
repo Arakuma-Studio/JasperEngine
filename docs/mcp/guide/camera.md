@@ -21,7 +21,8 @@ Shakers**, then the UI layout and `RenderSystem`, which builds the view matrices
 - A target moved in `onUpdate`, by physics or by an animation is followed the same frame. The
   follower composes the target's local transforms itself and does not use the world matrices
   cached by the last render.
-- Writes made in `onPostUpdate` reach the camera one frame late.
+- A target moved in `onPostUpdate` is followed the next frame. A camera a script moves itself
+  in `onPostUpdate` (no Camera Follow) is drawn there the same frame.
 - A held simulation or a paused app freezes everything. The offset holds.
 
 ## Shakes

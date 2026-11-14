@@ -4282,6 +4282,25 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_lua_api_frame_order",
+        "kind": "guard",
+        "what_happened": "A Unity port wrote its own LateUpdate module because a camera moved in onPostUpdate was drawn a "
+                         "frame late and a handler swapped after RegisterEngineEvent kept the old function (JasperArcade "
+                         "S13, S24, S26); the engine now draws what onPostUpdate moves that frame, getWorldPosition is "
+                         "current, and handlers are looked up by name at each call.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 1.3 (the lookup by name; onPostUpdate's row), 2.17 frame order, "
+                         "4.2 getWorldPosition",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-5, REQ-6, REQ-7",
+        "prompt": "Going by the editor's Lua API guide: my camera script sets its position from the player's "
+                  "getWorldPosition() in onPostUpdate, after the player moved in onUpdate. Is the camera drawn a frame late, "
+                  "so I need a workaround? And after RegisterEngineEvent(self, 'onUpdate'), if I assign "
+                  "self.onUpdate = self.fastUpdate, which function runs on the next frame? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"(same|this) frame", r"fastUpdate"],
+                   "reply_must_not": [r"(is|are|gets?|be) drawn (a|one) frame late", r"(the )?old (one|function|method|onUpdate) (still )?runs"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_lua_api_model_parts",
         "kind": "guard",
         "what_happened": "On a model imported from a glTF with several mesh nodes, Mesh/Model calls changed the root's empty mesh; "

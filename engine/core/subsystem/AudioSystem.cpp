@@ -1984,6 +1984,7 @@ void AudioSystem::destroy(){
 }
 
 void AudioSystem::update(double dt){
+    listenerPlacedScene = nullptr;
 #if JASPERENGINE_SOUND_LAYER
     if (deferredPending.load(std::memory_order_relaxed)) {
         std::vector<std::function<void()>> calls;
@@ -2443,6 +2444,7 @@ void AudioSystem::update(double dt){
 }
 
 void AudioSystem::placeListener(Scene& listenerScene){
+    listenerPlacedScene = &listenerScene;
     const CameraPose pose = cameraPose(listenerScene);
     const Vector3& position = pose.position;
     const Vector3& view = pose.view;
@@ -2452,6 +2454,12 @@ void AudioSystem::placeListener(Scene& listenerScene){
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
     if (inited){
         getSoloud().update3dAudio();
+    }
+}
+
+void AudioSystem::placeLateListener(){
+    if (listenerPlacedScene && Engine::isSceneRunning(listenerPlacedScene)){
+        placeListener(*listenerPlacedScene);
     }
 }
 

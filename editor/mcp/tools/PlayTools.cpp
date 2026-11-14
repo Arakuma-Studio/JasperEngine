@@ -70,6 +70,7 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/NavigationSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
@@ -2594,6 +2595,19 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 }
             }
             addRuntimeState(sp->scene, entity, type, onlyProps, props);
+            // the world pose as a script's getWorldPosition() reads it now (S95 REQ-6), not the last
+            // transform pass's: what eval_lua or set_runtime_property moved since shows
+            if (type == ComponentType::Transform) {
+                TransformPose pose = computeWorldPose(*sp->scene, entity);
+                auto world = [&](const char* name, PropertyType kind, void* value) {
+                    if (!onlyProps.empty() && !onlyProps.count(name)) return;
+                    PropertyData data{kind, 0, nullptr, value};
+                    props[name] = McpValues::readProperty(ctx, name, data);
+                };
+                world("worldPosition", PropertyType::Vector3, &pose.position);
+                world("worldRotation", PropertyType::Quat, &pose.rotation);
+                world("worldScale", PropertyType::Vector3, &pose.scale);
+            }
         }
         if (type == ComponentType::CameraShakerComponent) {
             props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));

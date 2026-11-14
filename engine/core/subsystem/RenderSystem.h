@@ -1065,6 +1065,15 @@ namespace jasperengine{
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
+		// the late transform pass (updateLateTransforms): the change tick the update ended at,
+		// whether this frame's update reached it, its light count, and a main camera moved after
+		// it whose MVPs the draw makes (else the next update)
+		Tick lateTransformGate = 0;
+		bool lateTransformReady = false;
+		int frameNumLights = 0;
+		bool mainViewMVPStale = false;
+		// the Transform slots the late pass moved or saw stamped, ascending (capacity kept)
+		std::vector<uint32_t> lateChangedSlots;
 		bool capturingReflectionProbe = false;
 		// batch order currently baked into the shared points/instance arrays
 		bool lastBatchSort = true;
@@ -2466,6 +2475,18 @@ namespace jasperengine{
 		void updateSwapchainRedirect();
 		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
+		// the transform stage (S95 REQ-5): what update() builds from the propagated world matrices,
+		// run again by updateLateTransforms for what moved after it. Each reads the needUpdate
+		// flags of the propagation; the bool ones say whether a mesh's bounds need making
+		bool updateSkinBindingBones();
+		void updateCameraView(CameraComponent& camera, Transform& cameraTransform, Entity cameraEntity);
+		void updateInstancedMeshView(Entity entity, MeshComponent& mesh, InstancedMeshComponent& instmesh, Transform& transform,
+		                             CameraComponent& mainCamera, Transform& mainCameraTransform, bool batchSort, bool batchSortChanged);
+		void updateMeshWorldBounds(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh);
+		void updateViewDependents(size_t index, Entity entity, Signature signature, Transform& transform,
+		                          CameraComponent& mainCamera, Transform& mainCameraTransform);
+		bool updateModelAndBones(Entity entity, Signature signature, Transform& transform);
+		void updateFrameLights(CameraComponent& mainCamera, Transform& mainCameraTransform, int numLights);
 
 		void createEmptyTextures();
 		static void destroyEmptyTextures();
@@ -4049,6 +4070,11 @@ namespace jasperengine{
 
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform, Entity entity);
+		// S95 REQ-5: after onPostUpdate, the timers and the coroutines, before the draw
+		// (Engine::runFrame): propagates what moved since this scene's update and runs the
+		// transform stage for it. Nothing moved: one compare. True when the main camera's view
+		// moved (the audio listener follows it).
+		bool updateLateTransforms();
 		void updateCamera(CameraComponent& camera, Transform& transform);
 		void updateMirrors(Entity mainCameraEntity);
 		Entity createMirrorCamera(Entity mirrorEntity);

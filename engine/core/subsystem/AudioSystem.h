@@ -164,6 +164,8 @@ namespace jasperengine{
 		bool motionFresh = false;
 		// the 3D listener at that scene's camera (the main scene's, for every scene's system)
 		void placeListener(Scene& listenerScene);
+		// the scene this frame's update placed the listener at, if it did (placeLateListener)
+		Scene* listenerPlacedScene = nullptr;
 		bool outputRequested = false;
 		// off while the scheduler skips the system (Systems window): its sounds hold too
 		bool schedulerEnabled = true;
@@ -453,6 +455,9 @@ namespace jasperengine{
 		static void moveSourceVoices(Scene* from, AudioSourceComponent& source, Scene* to, AudioSourceComponent& target);
 		void setListenerEnabled(bool enabled);
 		bool isListenerEnabled() const;
+		// the listener this frame's update placed, again at its camera's pose now: a camera moved
+		// after the update (the late transform pass, S95 REQ-5) is heard where it is drawn
+		void placeLateListener();
 		// sounds playing now (getVoiceCount: not the mixer's buses) and the most that play at once
 		// (0, 0 before the output opens)
 		static void getVoiceCounts(uint32_t& active, uint32_t& max);
