@@ -289,7 +289,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
-| ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
+| ScriptableObject, `[CreateAssetMenu]`, `List<T>` fields | Data Asset: a `.dataasset` of a data class (a Lua module marked `---@dataasset`, its `properties` the fields; `type = "list", of = ...`); Assets > Create > Data Asset > <class>; a script property typed with the class; Lua `DataAsset.load/loadAll/create`; MCP `edit_data_asset`: jasper://docs/lua-api 2.4.3 |
 
 ## Debugging
 

@@ -179,9 +179,14 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
 | `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
+| `"list"` with `of = <any type of this table but list>` (Unity's `List<T>`) | a Lua array of `of` values; an unassigned reference in it is `false` | an array of `of`'s defaults (`{1, 2}`, `{{0, 1, 0}}`), or none (empty) |
+| a data class name (`"ItemData"`), or `"asset"` with `assetType = "dataasset"` (any class) | that Data Asset's shared table (2.4.3), or `nil` when left None | a path (`"items/sword.dataasset"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
+
+A data class name wins over a script of the same name. The Inspector shows a list as rows with Add (+),
+reorder and Remove, and a Data Asset field as a picker of the class's assets.
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
@@ -855,21 +860,58 @@ most 3 s), so `init` reads them; if the restore takes longer, `data://` writes r
 them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
 paths, but on Web call `System.syncFileSystem()` after writing.
 
-Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
-(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
-{allowComments = true})`), exported with them; or a Lua data module shared by every
-script that requires it:
+Data assets (Unity ScriptableObjects) are the `.dataasset` files of 2.4.3; plain data a game only
+reads can also be a JSON file (`Json.readFile("asset://levels/1.json", {allowComments = true})`)
+or a Lua module every script `require`s.
+
+### 2.4.3 DataAsset (static): Data Assets, Unity's ScriptableObject
+
+A **data class** is a Lua module whose first lines hold `---@dataasset`: its `properties` (1.2,
+without GameObject references: an asset outlives the scenes) are the fields of its assets, its
+functions their methods. Make an asset with Assets > Create > Data Asset > <class> (or MCP
+`edit_data_asset`); the Inspector edits its values, with undo. A script property typed with the
+class name holds one.
 
 ```lua
--- lua/data/items.lua
-return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- lua/data/ItemData.lua
+---@dataasset
+local ItemData = {
+    properties = {
+        { name = "displayName", type = "string", default = "Item" },
+        { name = "price", type = "int", default = 10 },
+        { name = "icon", type = "asset", assetType = "texture" },
+        { name = "upgrade", type = "ItemData" },
+        { name = "tags", type = "list", of = "string" },
+    }
+}
+function ItemData:label() return self.displayName .. " (" .. self.price .. ")" end
+return ItemData
 ```
 
+| Function | Returns |
+|---|---|
+| `DataAsset.load(pathOrGuid)` | the asset's table (path relative to the assets folder, `asset://`, or its GUID), or `nil, message` |
+| `DataAsset.loadAll(className)` | every asset of the class the game ships, sorted by path (one that does not load is left out, warned), or `nil, message` |
+| `DataAsset.create(className)` | a new table of the class with its defaults, of no file, or `nil, message` |
+| `DataAsset.classOf(t)` / `DataAsset.pathOf(t)` | the class / file of an asset's table, `nil` for anything else (`pathOf` of a created one) |
+
 ```lua
--- in a script
-local Items = require("data.items")
-local price = Items.sword.price
+local Shop = { properties = { { name = "featured", type = "ItemData" }, { name = "stock", type = "list", of = "ItemData" } } }
+function Shop:start()
+    print(self.featured:label())
+    for _, item in ipairs(DataAsset.loadAll("ItemData")) do print(item.displayName, item.price) end
+end
+return Shop
 ```
+
+- One table per asset and run: every property, list and `load` gets the same table, made on its first
+  use (an asset's references to other Data Assets are their tables too; cycles are fine).
+- Changes made to a table in the game stay in that run and are never written to the file (Unity's
+  editor keeps them; JasperEngine never does). The next Play reads the files again.
+- A field the file lacks has its class default; a value of no field (a field renamed in the class)
+  stays in the file, unused, and the Inspector and `edit_data_asset` report it.
+- Exports ship every `.dataasset` (references at their current paths) and an index of the classes
+  (`je-dataassets.json`) for `loadAll`; C++ games read the JSON themselves.
 
 ### 2.5 System (static)
 
