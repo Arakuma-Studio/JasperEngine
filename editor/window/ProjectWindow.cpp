@@ -2638,7 +2638,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
-                        project->importFbxModel(currentPath / file.name, true);
+                        // converted on the import queue's job: the editor keeps drawing (S98 REQ-32)
+                        project->requestModelImport(currentPath / file.name, true);
                         if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(currentPath / file.name)) {
                             const std::string assetPath = project->normalizeToAssetsRelative(currentPath / file.name).generic_string();
                             ModelCookQueue::get().invalidate(assetPath);
@@ -4016,8 +4017,23 @@ void editor::ProjectWindow::thumbnailStep() {
                 // never needs full 4K maps): that is a preview load, which bakes node transforms into
                 // one static mesh, with no entities to build for a picture.
                 // GPU work is deferred to the main thread; ModelRender frames whatever entities exist.
-                // An FBX previews through its import, created here on first sight
-                const bool loadable = !FbxImporter::isFbxFile(thumbFile.path) || project->importFbxModel(thumbFile.path);
+                // An FBX previews through its import, queued here on first sight: a step never
+                // waits, so the thumbnail is asked again once the import lands (S98 REQ-32)
+                const Project::ModelImport import = FbxImporter::isFbxFile(thumbFile.path)
+                    ? project->requestModelImport(thumbFile.path) : Project::ModelImport::Ready;
+                if (import == Project::ModelImport::Pending) {
+                    const fs::path path = thumbFile.path;
+                    project->whenModelImported(path, [this, path]() { requestThumbnailGeneration(path, true); });
+                    {
+                        std::lock_guard<std::mutex> lock(thumbnailMutex);
+                        pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
+                        thumbnailWorkerBusy = false;
+                    }
+                    thumbnailCondition.notify_all();
+                    scheduleThumbnailStep();
+                    return;
+                }
+                const bool loadable = import == Project::ModelImport::Ready;
 
                 Engine::AsyncThreadScope loadAsyncScope;
                 MeshSystem::setImageDecodeMaxDimension(256);

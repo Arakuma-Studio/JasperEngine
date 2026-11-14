@@ -118,6 +118,8 @@ namespace jasperengine::editor{
         size_t cacheEntityCount = SIZE_MAX;
         size_t cacheChildSignature = SIZE_MAX;
         double cacheBuildTime = -1.0;
+        int cacheBuildFrame = 0;
+        static constexpr int HIERARCHY_TIMED_REBUILD_FRAMES = 15;
         std::string cachedSearch;
         bool cachedMatchCase = false;
 
@@ -183,6 +185,15 @@ namespace jasperengine::editor{
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
         void showToolbar();
         void showTreeNode(TreeNode& node);
+        // the open state a row's TreeNode takes this frame (search, first show, reveal), for the
+        // drawn and the clipped row alike
+        void setNextOpenState(const TreeNode& node, bool hasSearch, bool isModelWithChildren);
+        // A row outside the panel's visible part keeps its height and walks its open children,
+        // drawing nothing (S98 REQ-31: only the visible rows of a large scene are drawn): true when
+        // the row was clipped. Called with the row's ImGui id pushed.
+        bool showClippedRow(TreeNode& node, bool hasSearch);
+        // a drawn entity row's height with its spacing (0 until one is drawn: nothing is clipped)
+        float entityRowStep = 0.0f;
         void syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId = NULL_PROJECT_SCENE, Entity collapsedAncestor = NULL_ENTITY);
         bool collectRevealPath(TreeNode& node);
         void pushNodeImGuiId(const TreeNode& node);
@@ -300,7 +311,8 @@ namespace jasperengine::editor{
 
         HierarchyWindow(Project* project, SceneWindow* sceneWindow);
 
-        void show();
+        // covered: Maximize On Play hides the panel, which is not built (it keeps no focus)
+        void show(bool covered = false);
 
         // "This scene did not load completely" above the tree, when the scene has dropped load issues
 
