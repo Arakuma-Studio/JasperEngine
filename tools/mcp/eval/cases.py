@@ -5242,4 +5242,61 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P7 model import: rest pose and the GameObject that draws a model's mesh
+    {
+        "id": "guard_model_rest_pose_first_frame",
+        "kind": "guard",
+        "what_happened": "New text (S94 F40): get_model_info reports first_frame_differs (a take starting with the hips away from "
+                         "the file's nodes, CLEIVER's 5.6 m) and its next names set_model_import_settings rest_pose: first_frame; "
+                         "an agent fixes the pose there instead of moving bones by hand.",
+        "text_at_issue": "get_model_info next: 'Its clips start with the root or hips away from where the file's nodes put them "
+                         "... set_model_import_settings with settings {rest_pose: \"first_frame\"} ...'",
+        "source": "S94 F40 (new result text); ARCADE R37",
+        "prompt": "The Cleiver model stands about 5 metres too low compared to how it looks in its animations. Fix the model so it "
+                  "imports in the right pose.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCleiver [30] model", {"entities": [{"id": 30, "path": "Cleiver"}]})},
+            {"tool": "get_model_info", "result": ok(
+                "Model \"Cleiver\": 1 mesh(es), 52 bone(s), 1 animation(s).",
+                {"model": {"id": 30, "name": "Cleiver"}, "file": "assets/models/cleiver@T-Pose.fbx", "loading": False,
+                 "first_frame_differs": [{"animation": "mixamo.com", "node": "Hips", "node_translation": [0, 0.2, 0],
+                                          "first_frame": [0, 5.8, 0], "distance": 5.6}],
+                 "next": "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                         "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: "
+                         "\"first_frame\"} (rest_pose_take names another take) does the same, and the model reloads."})},
+            {"tool": "get_entity", "result": ok("Cleiver [30] components: model mesh transform", {"id": 30, "name": "Cleiver"})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/cleiver@T-Pose.fbx"], "unchanged": 0, "models": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"rest_pose": "first_frame"}}}],
+                   "must_not_call": ["set_properties", "set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_model_node_material_on_root",
+        "kind": "guard",
+        "what_happened": "New text (S94 F45): a mesh value sent to a model node whose mesh the model's own GameObject draws fails "
+                         "naming that GameObject and preserveHierarchy; the agent sets it on the root (or turns Preserve Hierarchy "
+                         "on) instead of giving up or adding a Mesh to the node.",
+        "text_at_issue": "set_properties error: 'Shark/Body is a node of the model Shark, whose own GameObject draws this node's "
+                         "mesh: set the mesh and material values on Shark, or set model.preserveHierarchy true on it ...'",
+        "source": "S94 F45 (new error text); ARCADE R52 (M's shark)",
+        "prompt": "Turn off shadow casting on the shark's Body mesh (GameObject Shark/Body).",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nShark [50] model\nShark/Body [51] bone",
+                                                  {"entities": [{"id": 50, "path": "Shark"}, {"id": 51, "path": "Shark/Body"}]})},
+            {"tool": "set_properties", "args": {"entity": "re:(?i)^(51|Shark/Body)$"}, "result": err(
+                "Shark/Body is a node of the model Shark, whose own GameObject draws this node's mesh: set the mesh and material "
+                "values on Shark, or set model.preserveHierarchy true on it (every node then draws its own mesh).")},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 50 \"Shark\".", {"entity": {"id": 50}})},
+            {"tool": "get_entity", "result": ok("Shark/Body [51] components: bone transform", {"id": 51, "name": "Body"})},
+            {"tool": "get_model_info", "result": ok("Model \"Shark\": 1 mesh(es), 12 bone(s), 0 animation(s).",
+                {"model": {"id": 50, "name": "Shark"}, "mesh_nodes": [{"node": 1, "name": "Body", "entity": {"id": 51},
+                                                                       "drawn_by": {"id": 50, "name": "Shark"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:(?i)^(50|Shark)$"}}],
+                   "must_not_call": ["add_component"]},
+        "max_turns": 10,
+    },
 ]

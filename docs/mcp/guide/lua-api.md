@@ -2094,7 +2094,8 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `getAnimationCount()`,
+`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `preserveHierarchy` (rw: set it
+before `loadModel` to give every node of the file its own GameObject), `getAnimationCount()`,
 `getPoseAnimator()` (the model's PoseAnimator, added when missing),
 `getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
 extraMapped, error?}`: its Avatar; nil without bones).
