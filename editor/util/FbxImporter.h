@@ -50,6 +50,10 @@ namespace jasperengine::editor {
         // Textures the .glb links that no longer exist
         static std::vector<std::filesystem::path> findMissingLinkedFiles(const std::filesystem::path& fbxPath,
                                                                          const std::filesystem::path& glbPath);
+        // The files the import links by URI (textures inside the assets folder): an export that
+        // ships the import ships them beside it (S98 REQ-9)
+        static std::vector<std::filesystem::path> findLinkedFiles(const std::filesystem::path& fbxPath,
+            const std::filesystem::path& glbPath);
 
         // Textures inside assetsRoot are linked, others embedded. An up-to-date .glb is kept unless forced.
         // The FBX's Material Creation Mode (its sidecar's import.modelImporter) decides whether

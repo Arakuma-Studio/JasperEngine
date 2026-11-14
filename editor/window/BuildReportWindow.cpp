@@ -95,8 +95,10 @@ void BuildReportWindow::show(){
     const float categoryWidth = ImGui::CalcTextSize("Category  ").x;
     const float cellPadding = ImGui::GetStyle().CellPadding.x * 2.0f;
     const float tableFloor = ImGui::GetFontSize() * 34.0f + categoryWidth + sizeWidth * 2.0f + cellPadding * 5.0f;
+    // with assets left out (S98 REQ-10) the two lists share the height
+    const float filesHeight = report.leftOut.empty() ? 0.0f : ImGui::GetContentRegionAvail().y * 0.5f;
     if (ImGui::BeginTable("build_report_files", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                                       ImGuiTableFlags_SizingFixedFit, ImVec2(0.0f, 0.0f), std::max(ImGui::GetContentRegionAvail().x, tableFloor))){
+                                                       ImGuiTableFlags_SizingFixedFit, ImVec2(0.0f, filesHeight), std::max(ImGui::GetContentRegionAvail().x, tableFloor))){
         ImGui::TableSetupScrollFreeze(1, 1);
         ImGui::TableSetupColumn("File", ImGuiTableColumnFlags_WidthStretch, 3.0f);
         ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed, categoryWidth);
@@ -131,6 +133,34 @@ void BuildReportWindow::show(){
             ImGui::PopID();
         }
         ImGui::EndTable();
+    }
+    // S98 REQ-10, REQ-45: what Asset Stripping (unreferenced) and Exclude From Build left out
+    if (!report.leftOut.empty()){
+        ImGui::Separator();
+        ImGui::TextDisabled("Left out of the build: %zu asset(s), %s (Project Settings > Player > Build)", report.leftOutCount(),
+                            BuildReport::formatBytes(report.leftOutBytes()).c_str());
+        if (ImGui::BeginTable("build_report_left_out", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+                                                             ImGuiTableFlags_SizingFixedFit)){
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("Asset", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+            ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, sizeWidth);
+            ImGui::TableSetupColumn("Reason", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+            ImGui::TableHeadersRow();
+            int row = 0;
+            for (const BuildReportLeftOut& entry : report.leftOut){
+                ImGui::PushID(row++);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                // a click shows it in the Inspector
+                if (ImGui::Selectable(entry.path.c_str())) project->setInspectedAssets({FileUtils::pathFromUtf8(entry.path)});
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(BuildReport::formatBytes(entry.bytes).c_str());
+                ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(entry.reason.c_str());
+                if (entry.reason == "unreferenced" && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Nothing the build ships references it. A script that loads it by a path it builds needs it in Always Include.");
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
     }
     ImGui::End();
 }

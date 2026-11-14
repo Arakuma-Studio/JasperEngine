@@ -3038,6 +3038,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // S98 REQ-8: written only when set, so an old project's file stays as it was
+        const AssetStrippingSettings& stripping = project->getAssetStripping();
+        if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
+        if (!stripping.alwaysInclude.empty()) exportNode["alwaysInclude"] = stripping.alwaysInclude;
+        if (!stripping.exclude.empty()) exportNode["exclude"] = stripping.exclude;
 
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
@@ -4026,6 +4031,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        {
+            // S98 REQ-50: absent keys are Ship All Assets and empty lists
+            AssetStrippingSettings stripping;
+            const YAML::Node& mode = exportNode["assetStripping"];
+            if (mode && mode.IsScalar() && mode.as<std::string>() == "referencedOnly") stripping.mode = AssetStrippingMode::ReferencedOnly;
+            for (const char* key : {"alwaysInclude", "exclude"}) {
+                const YAML::Node& list = exportNode[key];
+                if (!list || !list.IsSequence()) continue;
+                std::vector<std::string>& globs = std::string(key) == "exclude" ? stripping.exclude : stripping.alwaysInclude;
+                for (const YAML::Node& item : list)
+                    if (item.IsScalar() && !item.as<std::string>().empty()) globs.push_back(item.as<std::string>());
+            }
+            project->setAssetStripping(stripping);
+        }
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];

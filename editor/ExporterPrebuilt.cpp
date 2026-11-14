@@ -503,6 +503,8 @@ bool editor::Exporter::runPrebuilt() {
     if (!selectPlayerVariant()) return false;
     resolveShaderKeys();
     if (cancelled()) return false;
+    if (!planAssetStripping()) return false;
+    if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
     checkSoundEventClips();
@@ -773,6 +775,14 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         manifest.playerId = player->id;
         auto exe = player->executables.find(player->executable);
         if (exe != player->executables.end()) manifest.playerSha256 = exe->second;
+    }
+    // S98 REQ-10: a Development Build names what it left out, so a load of one says why
+    if (config.developmentBuild) {
+        const std::string assetsRoot = project->getAssetRoots().assetsDir;
+        for (const BuildReportLeftOut& item : buildReport.leftOut) {
+            const bool inAssets = assetsRoot.empty() || item.path.rfind(assetsRoot + "/", 0) == 0;
+            manifest.stripped[inAssets && !assetsRoot.empty() ? item.path.substr(assetsRoot.size() + 1) : item.path] = item.reason;
+        }
     }
     if (!prebuilt) {
         manifest.notices = compileNotices;

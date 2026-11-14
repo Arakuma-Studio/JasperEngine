@@ -588,6 +588,15 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
+        // S98 REQ-10: what Asset Stripping and Exclude From Build left out, listed in the report
+        if (!r.result.buildReport.empty()) {
+            result["build_report"] = FileUtils::pathToGenericUtf8(r.result.buildReport);
+            result["stripped_count"] = r.result.strippedCount;
+            result["stripped_bytes"] = r.result.strippedBytes;
+            if (r.result.strippedCount > 0)
+                result["next"] = "build_report lists each asset left out and why; a script that builds a path at runtime needs its file in "
+                                 "player.always_include (set_project_settings)";
+        }
         std::string message;
         if (r.mode == ExportMode::Player) {
             const ExportResult& report = r.result;

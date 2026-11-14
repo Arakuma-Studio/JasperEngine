@@ -13,6 +13,7 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "io/StrippedAssets.h"
 #include "player/ContentManifest.h"
 #include "player/GameRunner.h"
 #include "player/Launch.h"
@@ -175,6 +176,9 @@ namespace {
             for (const std::string& problem : problems) report("Content check failed: " + problem);
             return EXIT_CONTENT_MISMATCH;
         }
+
+        // a Development Build names the setting at a load of an asset its build left out
+        StrippedAssets::set(manifest.stripped);
 
         if (!readContent("game.json", text)) return failContent("game.json is missing");
         if (!PlayerConfig::parse(text, game, error)) return failContent(error);

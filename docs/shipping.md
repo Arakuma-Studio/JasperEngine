@@ -186,6 +186,39 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## What ships: Asset Stripping
+
+**Project Settings > Player > Build > Asset Stripping** decides which assets a build carries
+(docs/specs/S98-editor-tooling-gaps.md REQ-8 to REQ-12):
+
+- **Ship All Assets**: every asset of the assets folder, as builds always did. A project whose
+  `project.yaml` has no `export.assetStripping` key uses it, so an older project ships what it
+  shipped before.
+- **Referenced Only** (new projects): what the build's scenes reference, followed through the
+  prefabs, materials, shaders, models, UI documents and stylesheets, animation, particle and
+  sound assets they use; what project settings name (the window icon, the audio mixer); every
+  file a string literal in a Lua or C++ source, or a JSON data file, names by path
+  (`Texture("ui/logo.png")` keeps `ui/logo.png`); and **Always Include**. An FBX ships its
+  import only when something reaches it, and Play and the export import only those.
+
+Lua scripts, shader sources, scenes and data files always ship whole. **Always Include** and
+**Exclude From Build** are lists of project-relative globs (`*` within a folder, `**` across
+folders; a plain folder path names everything below it). Exclude From Build applies under both
+modes and wins over Always Include. The Project window's context menu adds or removes the
+selection with **Exclude From Build** and **Always Include in Build** (each one undo step).
+
+A path a script builds at runtime (`"level" .. n .. ".png"`) is the one reference the build
+cannot see: put those files in Always Include. The Build Report (Window > Analysis > Build Report,
+`build-report.json` next to the build) lists every asset left out with its size and its reason
+(`unreferenced`, or `excluded: <glob>`), and `build_project` gives `stripped_count` and
+`stripped_bytes`. A **Development Build** also lists them in `content-manifest.json`: when the
+game loads one, its log says "`<path>` was stripped from the build (Asset Stripping: Referenced
+Only): add it to Always Include" (or names the Exclude From Build glob). A release build carries
+no list.
+
+A custom shader's `.vert`/`.frag` (and its `.glsl` includes with runtime shaders on) ships once,
+at the project-relative path a fork's `customShader` names.
+
 ## The shaders a build ships
 
 Build Settings lists the shader variants a build compiles: what each scene needs, what every build
