@@ -10,6 +10,7 @@
 #include "UIDataModel.h"
 #include "UIReloadReport.h"
 #include "UIValue.h"
+#include "htmlui/HtmlUIClock.h"
 #include "htmlui/HtmlUIRenderStats.h"
 #include "htmlui/compat/Diagnostics.h"
 
@@ -90,6 +91,10 @@ namespace jasperengine{
         void show(); void hide();
         void setVisible(bool visible); bool isVisible() const;   // component.enabled
         void setSortOrder(int sortOrder); int getSortOrder() const;   // higher draws on top
+        // S93 R35: Unscaled Time (default) or Game Time for its CSS animations and transitions,
+        // anime, effects, Lottie and text effects; applied at once, running animations keep
+        // their progress
+        void setUpdateMode(UIDocumentUpdateMode mode); UIDocumentUpdateMode getUpdateMode() const;
 
         UIElement getElementById(const std::string& id) const;
         UIElement getBody() const;                       // the document element (RML body)

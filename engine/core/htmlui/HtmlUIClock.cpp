@@ -12,12 +12,32 @@ using namespace jasperengine;
 namespace {
 
     double accumulatedTime = 0.0;
+    double gameTime = 0.0;
     std::optional<double> fixedTime;
 
 }
 
 double HtmlUIClock::now(){
     return fixedTime ? *fixedTime : accumulatedTime;
+}
+
+double HtmlUIClock::now(UIDocumentUpdateMode mode){
+    return mode == UIDocumentUpdateMode::GAME_TIME ? gameTime : now();
+}
+
+int HtmlUIClock::animationClockOf(UIDocumentUpdateMode mode){
+    return mode == UIDocumentUpdateMode::GAME_TIME ? 1 : 0;
+}
+
+UIDocumentUpdateMode HtmlUIClock::modeOfAnimationClock(int clock){
+    return clock == 1 ? UIDocumentUpdateMode::GAME_TIME : UIDocumentUpdateMode::UNSCALED_TIME;
+}
+
+void HtmlUIClock::advanceGame(double scaledSeconds){
+    if (fixedTime || !std::isfinite(scaledSeconds) || scaledSeconds <= 0.0)
+        return;
+
+    gameTime += scaledSeconds;
 }
 
 void HtmlUIClock::advance(double unscaledSeconds){
@@ -46,5 +66,6 @@ std::optional<double> HtmlUIClock::getFixedTime(){
 
 void HtmlUIClock::reset(){
     accumulatedTime = 0.0;
+    gameTime = 0.0;
     fixedTime.reset();
 }

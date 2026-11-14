@@ -1,8 +1,8 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// The Text component's Inspector (S51 R22): its table's rows, and with a bitmap font a Pixel Font
-// section: Font Size stepping in multiples of the native size, the pixel Outline Width and its
+// The Text component's Inspector (S51 R22): its table's rows, the Alignment buttons (S93 R37), and
+// with a bitmap font a Pixel Font section: Font Size stepping in multiples of the native size, the pixel Outline Width and its
 // Neighbors, a whole-pixel Shadow Offset and a note of the scale. Each edit is one undo step.
 
 #include "InspectorWindow.h"
@@ -38,6 +38,26 @@ namespace {
         multi->setNoMerge();
     }
 
+    // one row of TMP's alignment buttons: the selected one drawn pressed; the clicked value or -1
+    int ipfAlignmentRow(const char* id, const char* const* labels, const char* const* tips, int count, int selected){
+        int clicked = -1;
+        for (int i = 0; i < count; i++){
+            if (i > 0)
+                ImGui::SameLine(0.0f, 2.0f);
+            const bool on = i == selected;
+            if (on)
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+            char button[64];
+            std::snprintf(button, sizeof(button), "%s##%s%d", labels[i], id, i);
+            if (ImGui::Button(button))
+                clicked = i;
+            if (on)
+                ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("%s", tips[i]);
+        }
+        return clicked;
+    }
+
     void ipfLabel(const char* label){
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -51,6 +71,27 @@ namespace {
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
+
+    // S93 R37: TextMeshPro's Alignment, two rows of buttons (each click one undo step)
+    beginTable(cpType, getLabelSize("Outline Width"), "textalignment");
+    ipfLabel("Alignment");
+    static const char* const horizontal[] = {ICON_FA_ALIGN_LEFT, ICON_FA_ALIGN_CENTER, ICON_FA_ALIGN_RIGHT, ICON_FA_ALIGN_JUSTIFY};
+    static const char* const horizontalTips[] = {"Left", "Center", "Right", "Justified: wrapped lines fill the width (a paragraph's last line stays left)"};
+    const int h = ipfAlignmentRow("textAlignH", horizontal, horizontalTips, 4, (int)text.horizontalAlignment);
+    UIProbe::item("text.horizontalAlignment");
+    if (h >= 0)
+        ipfCommit<int>(project, sceneProject, entities, "horizontalAlignment", h);
+    ipfLabel("");
+    static const char* const vertical[] = {ICON_FA_ARROWS_UP_TO_LINE, ICON_FA_GRIP_LINES, ICON_FA_ARROWS_DOWN_TO_LINE, ICON_FA_UNDERLINE};
+    static const char* const verticalTips[] = {"Top", "Middle", "Bottom", "Baseline: the first line's baseline on the middle"};
+    const int v = ipfAlignmentRow("textAlignV", vertical, verticalTips, 4, (int)text.verticalAlignment);
+    UIProbe::item("text.verticalAlignment");
+    if (v >= 0)
+        ipfCommit<int>(project, sceneProject, entities, "verticalAlignment", v);
+    endTable();
+    if (text.verticalAlignment != TextVerticalAlignment::TOP && !text.fixedHeight)
+        ImGui::TextDisabled("Vertical alignment needs a Fixed size Height");
+
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;
 

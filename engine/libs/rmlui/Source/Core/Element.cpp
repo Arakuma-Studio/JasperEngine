@@ -693,7 +693,7 @@ void Element::UpdateDirtyAbsoluteOffsetAndRenderBoxData()
 	{
 		// Add any parent scrolling onto our position as well.
 		if (offset_parent)
-			offset_from_ancestors -= offset_parent->scroll_offset;
+			offset_from_ancestors -= offset_parent->scroll_offset + offset_parent->scroll_overscroll;
 
 		// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
 		for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
@@ -1538,6 +1538,15 @@ void Element::SetScrollTop(float scroll_top)
 		DirtyAbsoluteOffset();
 
 		DispatchEvent(EventId::Scroll, Dictionary());
+	}
+}
+
+void Element::SetScrollOverscroll(Vector2f overscroll)
+{
+	if (overscroll != scroll_overscroll)
+	{
+		scroll_overscroll = overscroll;
+		DirtyAbsoluteOffset();
 	}
 }
 
@@ -3492,7 +3501,7 @@ ElementAnimationList::iterator Element::StartAnimation(PropertyId property_id, c
 	if (!value.definition)
 		return animations.end();
 
-	const double start_time = Clock::GetElapsedTime() + (double)delay;
+	const double start_time = GetAnimationClockTime() + (double)delay;
 	animations.push_back(
 		ElementAnimation{property_id, ElementAnimationOrigin::User, value, *this, start_time, 0.0f, num_iterations, alternate_direction});
 	auto it = animations.end() - 1;
@@ -3607,7 +3616,7 @@ bool Element::StartTransition(const Transition& transition, const Property& star
 
 	CancelTransition(transition.id);
 
-	ElementAnimation animation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, Clock::GetElapsedTime(), 0.0f, 1, false};
+	ElementAnimation animation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, GetAnimationClockTime(), 0.0f, 1, false};
 	if (!animation.IsInitalized() || !animation.AddKey(transition.duration, target_value, *this, transition.tween, true))
 		return false;
 	animation.SetTransitionData(transition, reversing_adjusted_start, reversing_shortening_factor);
@@ -3660,7 +3669,7 @@ void Element::HandleAnimationProperty()
 		return;
 	dirty_animation = false;
 
-	const double now = Clock::GetElapsedTime();
+	const double now = GetAnimationClockTime();
 	const AnimationList* animation_list = (animation_displayed ? meta->computed_values.animation() : nullptr);
 	const StyleSheet* stylesheet = (animation_list ? GetStyleSheet() : nullptr);
 
@@ -3764,6 +3773,18 @@ void Element::HandleAnimationProperty()
 		DispatchEvent(event.id, event.parameters);
 }
 
+double Element::GetAnimationClockTime()
+{
+	ElementDocument* document = GetOwnerDocument();
+	return document ? document->GetAnimationTime() : Clock::GetElapsedTime();
+}
+
+void Element::ShiftAnimationStartTimes(double delta)
+{
+	for (ElementAnimation& animation : animations)
+		animation.ShiftStartTime(delta);
+}
+
 void Element::AdvanceAnimations()
 {
 	if (animations.empty())
@@ -3772,7 +3793,7 @@ void Element::AdvanceAnimations()
 		return;
 	}
 
-	const double time = Clock::GetElapsedTime();
+	const double time = GetAnimationClockTime();
 	Vector<PendingAnimationEvent> events;
 	bool running = false;
 

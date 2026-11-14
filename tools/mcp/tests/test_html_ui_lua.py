@@ -150,6 +150,20 @@ LINKS_HTML = """<html>
 </html>
 """
 
+UPDATE_MODE_HTML = """<html>
+<head>
+    <title>update mode</title>
+    <style>
+        body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
+        @keyframes slide { from { left: 0px; } to { left: 400px; } }
+        #runner { position: absolute; left: 0px; top: 50px; width: 40px; height: 40px; background-color: #ff8800;
+                  animation: slide 4s linear infinite; }
+    </style>
+</head>
+<body><div id="runner"></div></body>
+</html>
+"""
+
 
 async def test_external_link_opens_url(ed: Editor):
     """S93 R32 (AC36): a click on a remote <a href> opens it with System.openURL (recorded; a headless editor opens
@@ -174,3 +188,48 @@ async def test_external_link_opens_url(ed: Editor):
         ed.check_eq([u["url"] for u in urls], ["https://example.com/page"])
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_update_mode_property(ed: Editor):
+    """S93 R35 / AC40: create_ui_document takes the Update Mode (snake_case keys); at
+    Engine.timeScale = 0 a Game Time document's @keyframes hold, an Unscaled Time one's run on."""
+    try:
+        made = await ed.call("create_scene", name="HtmlUiUpdateMode", type="UI")
+        scene = made["scene"]["id"]
+        await ed.call("write_file", path="assets/ui/update_mode.html", content=UPDATE_MODE_HTML)
+        game = await ed.call("create_ui_document", scene=scene, html="assets/ui/update_mode.html", name="GameDoc",
+                             properties={"update_mode": "game"})
+        unscaled = await ed.call("create_ui_document", scene=scene, html="assets/ui/update_mode.html", name="UnscaledDoc")
+        got = await ed.call("get_entity", scene=scene, entity=game["entity"]["id"], components=["uidocument"])
+        ed.check_eq(got["components"]["uidocument"]["updateMode"], "game", "create_ui_document set the Update Mode")
+        await ed.call("save_scene", scene=scene, path="scenes/HtmlUiUpdateMode")
+
+        await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
+        await ed.call("wait", frames=5)
+        await lua(ed, "Engine.timeScale = 0")
+        await ed.call("wait", frames=2)
+
+        async def left(entity) -> float:
+            r = await ed.call("inspect_ui", scene=scene, entity=entity, selector="#runner", detail="full", styles=["left"])
+            styles = {x["property"]: x for x in r["details"][0]["styles"]}
+            return float(str(styles["left"]["value"]).replace("px", ""))
+
+        game_before, unscaled_before = await left(game["entity"]["id"]), await left(unscaled["entity"]["id"])
+        await ed.call("wait", frames=30)
+        game_after, unscaled_after = await left(game["entity"]["id"]), await left(unscaled["entity"]["id"])
+        ed.check_eq(game_after, game_before, "a Game Time document's @keyframes hold at time scale 0")
+        ed.check(unscaled_after > unscaled_before + 20, f"an Unscaled Time one runs on: {unscaled_before} -> {unscaled_after}")
+
+        # Lua reads and switches it
+        values = await lua(ed, """
+            local doc = object('GameDoc', 'UIDocument')
+            local was = doc.updateMode == UIDocumentUpdateMode.GAME_TIME
+            doc.updateMode = UIDocumentUpdateMode.UNSCALED_TIME
+            return was, doc.updateMode == UIDocumentUpdateMode.UNSCALED_TIME
+        """)
+        ed.check_eq(values, [True, True], "doc.updateMode")
+        await ed.call("wait", frames=30)
+        ed.check(await left(game["entity"]["id"]) > game_after + 20, "switched to Unscaled Time, it runs at time scale 0")
+    finally:
+        await lua(ed, "Engine.timeScale = 1")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)

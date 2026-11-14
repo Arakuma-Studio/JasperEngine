@@ -385,6 +385,12 @@ enum class PropertyId : uint16_t {
 	TextAutosize,
 	// Fork (S93 R30): 'mix-blend-mode' (Compositing and Blending 1): the element drawn as a layer, blended with its backdrop.
 	MixBlendMode,
+	// Fork (S93 R8): drag scrolling physics of a scroll container (read when a press starts a pan; ScrollPhysics).
+	ScrollDrag,
+	ScrollMovement,
+	ScrollElasticity,
+	ScrollInertia,
+	ScrollDecelerationRate,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,

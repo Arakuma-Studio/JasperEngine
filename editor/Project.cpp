@@ -1896,7 +1896,9 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
     if (!isValidHtmlUiGlyphAtlasMiB(htmlUiRender.glyphAtlasMiB))
         htmlUiRender.glyphAtlasMiB = std::clamp(htmlUiRender.glyphAtlasMiB, minHtmlUiGlyphAtlasMiB, maxHtmlUiGlyphAtlasMiB);
     // the editor's documents follow at once
+    htmlUiRender.imageCacheMiB = std::clamp(htmlUiRender.imageCacheMiB, -1, maxHtmlUiImageCacheMiB);
     UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+    UIDocumentSystem::setHtmlUiImageCacheMiB(htmlUiRender.imageCacheMiB);
 }
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{

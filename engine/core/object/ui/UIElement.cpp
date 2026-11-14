@@ -889,6 +889,25 @@ void UIElement::setScrollTop(float value){
     element->SetScrollTop(value);
 }
 
+Vector2 UIElement::getScrollVelocity() const{
+    HTMLUI_ELEMENT(Vector2(0, 0))
+    Rml::Context* context = element->GetContext();
+    const Rml::Vector2f velocity = context ? context->GetScrollVelocity(element) : Rml::Vector2f(0.0f);
+    return Vector2(velocity.x, velocity.y);
+}
+
+void UIElement::setScrollVelocity(const Vector2& velocity){
+    HTMLUI_ELEMENT()
+    if (Rml::Context* context = element->GetContext())
+        context->SetScrollVelocity(element, Rml::Vector2f(velocity.x, velocity.y));
+}
+
+void UIElement::stopScrolling(){
+    HTMLUI_ELEMENT()
+    if (Rml::Context* context = element->GetContext())
+        context->StopScrolling(element);
+}
+
 float UIElement::getScrollLeft() const{
     HTMLUI_ELEMENT(0.0f)
     return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollLeft() : 0.0f;

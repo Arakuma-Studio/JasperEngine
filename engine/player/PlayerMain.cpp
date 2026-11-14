@@ -336,6 +336,7 @@ JASPERENGINE_INIT void init() {
     Engine::setTextureDefaults(game.textureDefaults[0], game.textureDefaults[1], game.textureDefaults[2]);
     UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
+    UIDocumentSystem::setHtmlUiImageCacheMiB(game.imageCacheMiB);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
     Engine::setDynamicBatchingDefault(game.dynamicBatching);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);

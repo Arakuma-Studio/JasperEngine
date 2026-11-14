@@ -304,6 +304,7 @@ namespace {
         {"html", "id", R, FF::None, R, "data-html-id", "the root id is reserved; selectors on the author id are rewritten", ""},
         {"iframe", "height", N, FF::None, N, "", "intrinsic size hint (below author CSS)", ""},
         {"iframe", "width", N, FF::None, N, "", "intrinsic size hint (below author CSS)", ""},
+        {"img", "decoding", N, FF::None, N, "", "async (default): decoded on a background thread, drawn once decoded; sync: decoded before the first frame that shows it", ""},
         {"img", "height", N, FF::None, N, "", "intrinsic size hint (below author CSS)", ""},
         {"img", "sizes", R, FF::None, R, "src", "evaluated at load to choose the srcset candidate", ""},
         {"img", "srcset", R, FF::None, R, "src", "candidate chosen at load by the dp ratio (Info)", ""},

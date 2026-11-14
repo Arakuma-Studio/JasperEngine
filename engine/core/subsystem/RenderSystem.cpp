@@ -19844,6 +19844,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     size_t canvasSkipLast = 0;
     bool canvasSkipping = false;
     Entity canvasSkipGroup = NULL_ENTITY;
+    // the scene's World Space UI Documents (S93 R36): none, nothing looks for them
+    UIDocumentSystem* worldDocuments = scene->getSystem<UIDocumentSystem>().get();
+    if (worldDocuments && !worldDocuments->hasWorldDocuments())
+        worldDocuments = nullptr;
 
     // 2D sorting (S52 R3): a pass without distance sort draws in this frame's gathered order (UI
     // subtrees in place), each draw with its batcher bucket; with defaults, the hierarchy's
@@ -19900,6 +19904,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // pass draws: an object hidden, culled or out of view takes no copy)
         if (sceneColorPending && drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
             takeSceneColor();
+        }
+
+        // a World Space UI Document (S93 R36): its quad sorts with the transparent objects, a 2D
+        // pass draws it in place
+        if (worldDocuments && signature.test(scene->getComponentId<UIDocumentComponent>()) && transform.visible &&
+                isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask)){
+            if (distanceSort)
+                transparentRenders.push_back({TransparentRenderType::UI_DOCUMENT, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                              objectDistance(transform), 0, transparentOrder++});
+            else
+                worldDocuments->drawWorldDocument(entity, camera, targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
         }
 
         if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
@@ -20149,6 +20164,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::TRAIL){
             drawTrail(renderData.entity, *renderData.trail, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::UI_DOCUMENT){
+            worldDocuments->drawWorldDocument(renderData.entity, camera, targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
         }
     }
 

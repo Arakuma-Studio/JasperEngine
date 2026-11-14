@@ -54,6 +54,9 @@ MANUAL_SYMBOLS = [
     ('UIElement', 'getAttributes', 'Method', 'UIElement:getAttributes() -> table<string, string>'),
     ('UIElement', 'querySelectorAll', 'Method', 'UIElement:querySelectorAll(selector) -> UIElement[] (array, 1-based)'),
     ('UIElement', 'close', 'Method', 'UIElement:close(returnValue) (<dialog>; dispatches close)'),
+    ('HtmlUI', 'prewarmImage', 'StaticMethod',
+     'HtmlUI.prewarmImage(path or {paths}) -> UIPrewarm (done, progress, onDone = fn): images decoded off the main thread '
+     'and uploaded a few a frame, so the first frame that shows them is complete'),
     ('UIDocument', 'addEventListener', 'Method',
      'UIDocument:addEventListener(type, function(event) end, capture or {capture=, once=}) (a pointer listener makes a '
      'transparent page take the pointer)'),

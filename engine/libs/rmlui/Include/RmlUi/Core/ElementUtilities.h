@@ -70,6 +70,10 @@ public:
 	/// @return True if a clipping region exists for the element and clip_origin and clip_window were set, false if not.
 	static bool GetClippingRegion(Element* element, Rectanglei& clip_region, ClipMaskGeometryList* clip_mask_list = nullptr,
 		bool force_clip_self = false, const Element* clip_root = nullptr);
+	/// Fork (S93 R6): whether a point in window coordinates is within the clips the element's clipping ancestors paint (the
+	/// ancestors GetClippingRegion finds): each ancestor's clip area is tested in that ancestor's projected space, its
+	/// rounded corners included. False where a projection is singular.
+	static bool IsPointWithinClip(Element* element, Vector2f point);
 	/// Fork (P7-F1): the scissor region and the clip mask SetClippingRegion applies, without applying them: the clips of the
 	/// element's ancestors up to the render manager's clip root, within the clip root's window.
 	/// @return True if the scissor region is set (valid), false if the element is not scissored.

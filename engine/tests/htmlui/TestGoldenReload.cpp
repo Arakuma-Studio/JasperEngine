@@ -11,6 +11,7 @@
 
 #include "HtmlUI.h"
 #include "HtmlUIContext.h"
+#include "HtmlUIImageCache.h"
 #include "RmlRenderer.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -105,8 +106,9 @@ TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
     // twice the same scene: images, an SVG and text (font pages), drawn, then the scene goes
     // (as a scene reload drops it before loading it again)
     size_t firstRoundBuffers = 0;
+    HtmlUIImageCache::get().clear();
     for (int round = 0; round < 2; round++){
-        std::vector<uint32_t> buffers, images;
+        std::vector<uint32_t> buffers, images, cached;
         {
             SceneFixture fixture;
             fixture.addDocument("render/images.rml");
@@ -125,9 +127,13 @@ TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
             EXPECT_GE(buffers.size(), 4u) << "round " << round;
             if (round == 0) firstRoundBuffers = buffers.size();
             else EXPECT_EQ(buffers.size(), firstRoundBuffers);
-            EXPECT_GE(images.size(), 5u) << "round " << round;   // + the placeholder
+            EXPECT_GE(images.size(), 2u) << "round " << round;   // the placeholder, a font page
+            // S93 R19: the file images (checker, alpha50; compat rasterizes the SVG itself) are the process image cache's
+            HtmlUIImageCache::get().getGpuHandles(cached);
+            EXPECT_EQ(cached.size(), 2u) << "round " << round;
             for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
             for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));
+            for (uint32_t id : cached) EXPECT_TRUE(isImageValid(id));
             ASSERT_NE(context->getTarget(), nullptr);
         }
 
@@ -135,5 +141,9 @@ TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
         EXPECT_EQ(HtmlUI::getContextCount(), 0u);
         for (uint32_t id : buffers) EXPECT_FALSE(isBufferValid(id)) << "round " << round << " buffer " << id;
         for (uint32_t id : images) EXPECT_FALSE(isImageValid(id)) << "round " << round << " image " << id;
+        // released into the cache's LRU, so the reloaded scene neither decodes nor uploads them; gone once cleared
+        for (uint32_t id : cached) EXPECT_TRUE(isImageValid(id)) << "round " << round << " cached image " << id;
+        HtmlUIImageCache::get().clear();
+        for (uint32_t id : cached) EXPECT_FALSE(isImageValid(id)) << "round " << round << " cached image " << id;
     }
 }

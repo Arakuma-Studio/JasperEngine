@@ -2264,6 +2264,12 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 	// -- Text auto size (fork, S93 R31): read by the document's fit, which sets the font-size override --
 	case PropertyId::TextAutosize:
+	// -- Scroll physics (fork, S93 R8): read by the context when a press may pan, no computed value --
+	case PropertyId::ScrollDrag:
+	case PropertyId::ScrollMovement:
+	case PropertyId::ScrollElasticity:
+	case PropertyId::ScrollInertia:
+	case PropertyId::ScrollDecelerationRate:
 		break;
 
 	// Invalid properties
