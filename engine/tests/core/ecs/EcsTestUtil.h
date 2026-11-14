@@ -22,8 +22,8 @@ namespace jasperengine::test {
 #if JASPERENGINE_TERRAIN_WORLD
             "TerrainWorldSystem",
 #endif
-            "LatticeSystem", "VertexAnimatorSystem", "CameraControlSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "VideoPlayerSystem", "RenderSystem", "TrailSystem", "WaterInteractionSystem",
-            "NavigationSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"
+            "LatticeSystem", "VertexAnimatorSystem", "CameraControlSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "TitleArtSystem", "VideoPlayerSystem", "RenderSystem", "TrailSystem", "WaterInteractionSystem",
+            "NavigationSystem", "TilemapSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"
         };
         return names;
     }
