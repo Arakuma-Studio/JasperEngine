@@ -10,7 +10,6 @@
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MultiPropertyCmd.h"
-#include "component/MeshComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
 #include "component/WheelColliderComponent.h"
