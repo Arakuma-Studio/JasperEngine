@@ -231,6 +231,10 @@ namespace jasperengine{
         void applyLinearImpulse(const Vector2& impulse, const Vector2& point, bool wake);
         void applyLinearImpulseToCenter(const Vector2& impulse, bool wake);
         void applyAngularImpulse(float impulse, bool wake);
+
+        // S96 WP-E: not capped by the scene's Max Rotation Per Step (wheels), live
+        void setAllowFastRotation(bool allowFastRotation);
+        bool isAllowFastRotation() const;
     };
 }
 

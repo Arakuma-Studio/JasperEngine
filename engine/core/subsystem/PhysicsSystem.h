@@ -33,6 +33,7 @@
 
 #include "registry/TagManager.h"
 #include "physics/ContactTracker.h"
+#include "physics/WorldSettings.h"
 #include "object/physics/Collision.h"
 #include "object/physics/Collision2D.h"
 
@@ -100,6 +101,15 @@ namespace jasperengine{
 
 		bool interpolation;
 
+		// S96 WP-E: the world settings (scene settings, physics/WorldSettings.h); a change is
+		// applied to a live world at the next step (applyWorldSettings), a new pointsPerMeter at
+		// once (rescaleBodies2D) unless the 2D world is stepping
+		ScenePhysics2DSettings worldSettings2D;
+		ScenePhysics3DSettings worldSettings3D;
+		bool worldSettings2DDirty = false;
+		bool worldSettings3DDirty = false;
+		void applyWorldSettings();
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		b2WorldId world2D;
 		float pointsToMeterScale2D;
@@ -114,6 +124,11 @@ namespace jasperengine{
 
 		// the 2D CharacterControllers (S22 P5), moved on this world's queries
 		std::unique_ptr<CharacterController2DSystem> characters2D;
+
+		// S96 WP-E: every 2D body made again in metres of the new scale where it was, with its
+		// velocity in points per second and its follow state; its joints are made again before
+		// the next step (they went with the bodies)
+		void rescaleBodies2D(float pointsPerMeter);
 
 		// static body the joints without bodyB hold on to (Unity: connected to the world)
 		b2BodyId groundBody2D = b2_nullBodyId;
@@ -466,6 +481,14 @@ namespace jasperengine{
 		// rate (on by default; the scene setting physics_interpolation)
 		void setInterpolation(bool interpolation);
 		bool isInterpolation() const;
+
+		// S96 WP-E: the 2D world's units, rotation cap and tuning, and the 3D solver (the scene
+		// settings physics2D* / physics3D*), kept in range. Applied to a live world before its
+		// next step; a new pointsPerMeter rebuilds the 2D bodies and joints where they are
+		const ScenePhysics2DSettings& getWorldSettings2D() const;
+		void setWorldSettings2D(const ScenePhysics2DSettings& settings);
+		const ScenePhysics3DSettings& getWorldSettings3D() const;
+		void setWorldSettings3D(const ScenePhysics3DSettings& settings);
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
 
@@ -496,6 +519,7 @@ namespace jasperengine{
 		// contacts untouched) and the mass applied again. False when it must be made again.
 		bool reshapeCollider2DPolygon(Entity entity, Rigidbody2DComponent& body, size_t index);
 		std::vector<std::vector<Vector2>> getCollider2DPiecesLocal(Entity entity, Collider2D& collider);
+		// the scene setting physics2DPointsPerMeter (setWorldSettings2D)
 		void setPointsToMeterScale2D(float pointsToMeterScale2D);
 
 		bool isSteppingWorld2D() const;

@@ -255,6 +255,7 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| Time settings: Maximum Allowed Timestep (no fixed step dropped within it) | `Time.maximumDeltaTime` with `Time.maximumFixedStepsPerFrame` 0 (automatic); a cap above 0 drops steps past it (`Time.droppedFixedSteps`) |
 | A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Always Refresh (water, animated tiles and the shaders on the scene clock) |
 | HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 | HDRP Water Excluder (a boat's hull keeping the water out) | Water Excluder (`WaterExcluderComponent`): Convex Hull of the GameObject's mesh, Box or Sphere; also dry for buoyancy, `Water.sample` and the underwater fade |
@@ -476,6 +477,9 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
 | `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
 | Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+| Physics 2D settings: Max Rotation Speed (360), Velocity Threshold, Max Translation Speed | the scene's `physics2DMaxRotation` (45 degrees a step, Box2D's default), `physics2DBounceThreshold`, `physics2DMaxLinearSpeed`; the World foldout has Box2D's contact and joint stiffness too |
+| `Rigidbody2D` that must spin past Max Rotation Speed (wheels) | `allowFastRotation` (Box2D's; Unity has no per-body switch) |
+| pixels per unit of 2D physics (Unity: 1 unit = 1 m) | the scene's `physics2DPointsPerMeter` (64) |
 
 ## 3D physics: Unity names and their JasperEngine counterparts
 
@@ -497,6 +501,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
 | Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`) |
 | Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
+| Physics settings: Default Solver Iterations / Velocity Iterations, Bounce Threshold, Sleep Threshold, Default Contact Offset | the scene's `physics3DPositionIterations` / `physics3DVelocityIterations`, `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (Inspector > Scene > Physics > World); `physics3DCollisionSteps` has no Unity name |
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

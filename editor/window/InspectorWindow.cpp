@@ -14055,8 +14055,38 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Physics");
 
                 if (ImGui::BeginTable("scene_physics_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Interpolate"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Max Rotation Per Step"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    // S96: a physics world setting's row (physicsWorldSettingFields), one undo step each
+                    auto physicsWorldRow = [&](const PhysicsWorldSettingField& field) {
+                        switch (field.type) {
+                            case PhysicsWorldSettingField::Type::Float:
+                                drawScenePropertyRow<float>(sceneProject, field.snakeName, field.label, ScenePropertyInputType::DragFloat,
+                                                            6 * ImGui::GetFontSize(), field.minValue, field.maxValue, field.help);
+                                break;
+                            case PhysicsWorldSettingField::Type::Int:
+                                drawScenePropertyRow<int>(sceneProject, field.snakeName, field.label, ScenePropertyInputType::DragInt,
+                                                          6 * ImGui::GetFontSize(), field.minValue, field.maxValue, field.help);
+                                break;
+                            case PhysicsWorldSettingField::Type::Bool:
+                                drawScenePropertyRow<bool>(sceneProject, field.snakeName, field.label, ScenePropertyInputType::Checkbox,
+                                                           -1.0f, 0.0f, 1.0f, field.help);
+                                break;
+                        }
+                    };
+                    // the solver tuning of a world, folded: its defaults are what most games want
+                    auto physicsWorldFoldout = [&](bool is3D) {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+                        const bool open = ImGui::TreeNodeEx(is3D ? "World##physics_3d_world" : "World##physics_2d_world", ImGuiTreeNodeFlags_SpanAllColumns);
+                        ImGui::SetItemTooltip("The solver's tuning (Unity's Physics settings): iterations, bounce and sleep thresholds, stiffness");
+                        if (!open) return;
+                        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+                            if (field.is3D == is3D && field.advanced) physicsWorldRow(field);
+                        }
+                        ImGui::TreePop();
+                    };
 
                     if (sceneProject->sceneType == SceneType::SCENE_3D) {
                         drawScenePropertyRow<Vector3>(sceneProject, "physics_gravity_3d", "Gravity", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 1.0f,
@@ -14070,6 +14100,12 @@ void editor::InspectorWindow::show(){
                     if (sceneProject->sceneType != SceneType::SCENE_3D) {
                         drawScenePropertyRow<int>(sceneProject, "physics_2d_sub_steps", "Sub Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 1.0f, 16.0f,
                             "Box2D solver sub-steps of each fixed step (1-16, default 4). More sub-steps make joint chains, stacks and stiff springs steadier, at a cost.");
+                        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+                            if (!field.is3D && !field.advanced) physicsWorldRow(field);
+                        }
+                        physicsWorldFoldout(false);
+                    } else {
+                        physicsWorldFoldout(true);
                     }
 
                     ImGui::EndTable();
