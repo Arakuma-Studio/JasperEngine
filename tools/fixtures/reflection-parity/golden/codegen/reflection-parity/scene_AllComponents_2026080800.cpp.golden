@@ -112,7 +112,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1102);
     scene->recreateEntity(1103);
     scene->recreateEntity(1104);
-    scene->setLastEntity(1104);
+    scene->recreateEntity(1105);
+    scene->setLastEntity(1105);
 
     {
         // Entity 1001 (Transform)
@@ -3515,6 +3516,32 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         titleArt.animationUnscaledTime = false;
         titleArt.driveAnimation = "";
         scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
+    }
+
+    {
+        // Entity 1105 (FogZoneComponent)
+        scene->setEntityName(1105, "FogZoneComponent");
+
+        // Entity components initialization
+        FogZoneComponent fogzone;
+        fogzone.shape = FogZoneShape::SPHERE;
+        fogzone.size = Vector3(2.500000f, 6.100000f, 3.300000f);
+        fogzone.blendDistance = 7.200000f;
+        fogzone.priority = 4;
+        fogzone.weight = 0.600000f;
+        scene->addComponent<FogZoneComponent>(1105, fogzone);
+
+        Transform transform;
+        transform.position = Vector3(104.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1105, transform);
     }
 
     // Default Camera 1
