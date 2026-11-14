@@ -204,6 +204,8 @@ namespace {
 
 TEST(RenderClip, ClipPathBasicShapesAreAnalytic){
     JASPER_REQUIRE_GPU();
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     S16On s16;
     // the same shapes with a text shadow on the child (nothing to draw, but a possible layer
     // inside): the mask layer they took before (S92 R8)
@@ -264,7 +266,7 @@ namespace {
     // ScrollView draws its items: a layer each, which reads nothing beyond its element) and text,
     // scrolled so that rows are cut at both edges and others lie wholly beyond them. `transform` is
     // the panel's
-    std::string scaledListDocument(const std::string& transform, bool tiles){
+    std::string scaledListDocument(const std::string& transform, bool tiles, const std::string& tileFilter = "brightness(1.2)"){
         std::string rows;
         for (int i = 0; i < 40; i++){
             rows += "<div class=\"row\">";
@@ -277,7 +279,7 @@ namespace {
                           "#view { position: absolute; left: 10px; top: 20px; width: 140px; height: 70px; overflow: hidden; }"
                           ".row { height: 16px; font-size: 12px; color: #f0f0f0; font-family: sans-serif; }"
                           ".tile { float: left; width: 12px; height: 12px; margin-right: 4px; background-color: #e04040;"
-                          " filter: brightness(1.2); }",
+                          " filter: " + tileFilter + "; }",
                           "<div id=\"panel\"><div id=\"view\">" + rows + "</div></div>");
     }
 
@@ -333,6 +335,42 @@ TEST(RenderClip, TextInScaledScrollWithFilterLayers){
     ASSERT_TRUE(drawScrolled(scaledListDocument("rotate(0.5deg)", false), 4, turned));
     EXPECT_LE(scaled.stats.geometrySubmitted, plain.stats.geometrySubmitted + 2);
     EXPECT_GT(turned.stats.geometrySubmitted, scaled.stats.geometrySubmitted + 20);
+}
+
+// U27 with tiles whose filter reaches beyond them (a drop shadow): a cut row's filter window crosses
+// the viewport's edge, so the composite is clipped by the viewport's rectangle, in the composite's
+// shader (S92 B2) instead of a stencil mask of it; nothing of a tile or its shadow beyond the
+// edges (a scissor alone let half the samples of the row above it through on llvmpipe at 4
+// samples), with the layer cache on (its results drawn clipped) and off
+TEST(RenderClip, DropShadowTilesAcrossScaledClip){
+    JASPER_REQUIRE_GPU();
+    S16On s16;
+    for (bool cache : {true, false}){
+        for (int samples : {4, 1}){
+            const std::string label = std::string(cache ? "cache" : "no cache") + ", " + std::to_string(samples) + " samples";
+            const bool before = RmlRenderer::isLayerCache();
+            RmlRenderer::setLayerCacheForTesting(cache);
+            Frame frame;
+            const bool drawn = drawScrolled(scaledListDocument("translate(4px, 0px) scale(1.25)", true, "drop-shadow(#102080 0px 3px 0px)"), samples,
+                                            frame);
+            RmlRenderer::setLayerCacheForTesting(before);
+            ASSERT_TRUE(drawn) << label;
+            EXPECT_EQ(frame.stats.stencilDraws, 0u) << label;
+            EXPECT_GT(frame.stats.analyticClips, 0u) << label;
+            PixelProbe probe{frame.screen, width};
+            int strays = 0;
+            for (int y : {40, 42, 43, 44, 133, 134, 136, 140}){
+                for (int x = 50; x < 215; x++){
+                    const uint8_t* p = probe.at(x, y);
+                    if (std::abs(p[0] - 0x28) > 4 || std::abs(p[1] - 0x30) > 4 || std::abs(p[2] - 0x40) > 4)
+                        strays++;
+                }
+            }
+            EXPECT_EQ(strays, 0) << label;
+            // the tiles and their shadows inside
+            EXPECT_GT(paintedPixels(frame.screen, 48, 50, 215, 128), 500) << label;
+        }
+    }
 }
 
 TEST(RenderClip, RotatedClipKeepsStencil){

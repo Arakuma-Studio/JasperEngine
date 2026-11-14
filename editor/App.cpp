@@ -6130,7 +6130,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v67: S92's HTMLUI_PRIM gradients: up to 16 stops through the stop table (u_htmluiStops), the
     //      conic and repeating functions, a single tile (a negative period). (S93's branch holds v66
     //      for its own sources: a shared cache of either must not serve the other's programs.)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v67";
+    // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v68";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 
 #if defined(__APPLE__)
@@ -734,9 +735,40 @@ void RmlRenderer::drawCachedLayer(const LayerCacheEntry& entry, Rml::Rectanglei 
     const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
                             : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
                                                                     : BlendMode::PREMULTIPLIED;
+    if (!applyCompositeClip(draw, destinationFrame))
+        return;
     if (clipMaskEnabled)
         ensureMask(destination);
     drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(blend));
+}
+
+bool RmlRenderer::compositeClipActive() const{
+    return activeClipScope >= 0 && activeClipScope < (int)clipScopes.size() && clipScopes[(size_t)activeClipScope].mode == ScopeMode::ANALYTIC &&
+           clipScopes[(size_t)activeClipScope].compositeClip;
+}
+
+bool RmlRenderer::applyCompositeClip(PostDraw& draw, Rml::Rectanglei destinationFrame) const{
+    if (!compositeClipActive())
+        return true;
+    // A scissor at the clip's edge alone lets half the samples of the row above it and the column
+    // left of it through on Mesa's MSAA rasterizer (MsaaScissor.HtmlUIClipEdge); the shader's
+    // coverage at the pixel's centre leaves them out, and antialiases an edge within a pixel
+    const Rml::Rectanglef& clip = clipScopes[(size_t)activeClipScope].compositeRect;
+    const Rml::Vector2f origin(destinationFrame.p0);
+    const Rml::Vector2f p0 = clip.p0 - origin, p1 = clip.p1 - origin;
+    draw.params.params[1] = (float)destinationFrame.Width();
+    draw.params.params[2] = (float)destinationFrame.Height();
+    draw.params.params[3] = 1.0f;
+    draw.params.texCoordMinMax[0] = p0.x;
+    draw.params.texCoordMinMax[1] = p0.y;
+    draw.params.texCoordMinMax[2] = p1.x;
+    draw.params.texCoordMinMax[3] = p1.y;
+    const Rml::Rectanglei full = Rml::Rectanglei::FromSize(destinationFrame.Size());
+    const Rml::Rectanglei scissor = draw.scissor.Valid() ? draw.scissor : full;
+    const Rml::Vector2i c0 = Rml::Math::Max(scissor.p0, Rml::Vector2i((int)std::floor(p0.x), (int)std::floor(p0.y)));
+    const Rml::Vector2i c1 = Rml::Math::Min(scissor.p1, Rml::Vector2i((int)std::ceil(p1.x), (int)std::ceil(p1.y)));
+    draw.scissor = Rml::Rectanglei::FromCorners(c0, Rml::Math::Max(c0, c1));
+    return !layerCacheEmpty(draw.scissor);
 }
 
 void RmlRenderer::trimLayerCache(){

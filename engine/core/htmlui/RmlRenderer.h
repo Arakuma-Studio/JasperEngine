@@ -764,6 +764,10 @@ namespace jasperengine {
             uint32_t masks = 0;              // the mask draws of its list
             Rml::Rectanglei scissor;         // ELIDED: target px
             ClipParams clip;                 // ANALYTIC
+            // ANALYTIC with masks that are all rectangles on the target's axes: their intersection
+            // (target px), which clips a layer composite in its shader (S92, U27: no stencil)
+            bool compositeClip = false;
+            Rml::Rectanglef compositeRect;
         };
         enum class RunKind : uint8_t { VERTICES, INSTANCES };
         // a run cut into chunks of bounded size, each found in the run cache or gathered on its own
@@ -1083,6 +1087,12 @@ namespace jasperengine {
         // when the budget has no room for it and no equal scope of the replay draws it
         LayerCacheEntry* storeLayerResult(const LayerCacheScope& scope, RmlFilterContext& context);
         void drawCachedLayer(const LayerCacheEntry& entry, Rml::Rectanglei window, int destination, Rml::BlendMode blend, float opacity);
+        // a layer composite into a layer covering destinationFrame: within an analytic clip scope
+        // of rectangles, their clip in the shader (PASSTHROUGH: params.w on, texCoordMinMax the
+        // rectangle in destination px, params.yz its size) and the scissor within it; false when
+        // that leaves nothing to draw
+        bool applyCompositeClip(PostDraw& draw, Rml::Rectanglei destinationFrame) const;
+        bool compositeClipActive() const;
         // end of a replay: entries unused for kLayerCacheKeepFrames, and stored ones not drawn
         // again in the replay after, go; free images no store took, and beyond a few, go
         void trimLayerCache();

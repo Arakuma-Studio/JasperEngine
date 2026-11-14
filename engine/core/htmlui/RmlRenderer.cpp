@@ -2262,7 +2262,8 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
                 fusingDeferred = true;
                 if (clipMaskEnabled)
                     ensureMask(destination);
-                drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
+                if (applyCompositeClip(draw, destinationFrame))
+                    drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
                 fusingDeferred = false;
             }
             stats.compositesFused++;
@@ -2329,7 +2330,8 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
         return;
     const Rml::Rectanglei destinationScissor = scissorIn(destinationFrame);
     // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
-    if (!scope && compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 && ordinary &&
+    if (!scope && compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !compositeClipActive() && !context.isPrimaryLayer() &&
+        destination == layersSize - 1 && ordinary &&
         destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(destinationScissor)){
         deferred.layer = destination;
         deferred.post = context.primaryIndex;
@@ -2355,7 +2357,10 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
                             : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
                                                                     : BlendMode::PREMULTIPLIED;
-    // tested against the clip mask: the destination's depth-stencil holds it
+    // tested against the clip mask: the destination's depth-stencil holds it; or clipped in the
+    // composite's shader (S92, U27)
+    if (!applyCompositeClip(draw, destinationFrame))
+        return;
     if (clipMaskEnabled)
         ensureMask(destination);
     drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(blend));
