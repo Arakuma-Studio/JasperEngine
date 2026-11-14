@@ -32,7 +32,14 @@ namespace jasperengine::editor {
             std::filesystem::path found;
         };
 
-        GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot);
+        // The texture warnings' prefixes: an import's summary counts them (FbxImporter::summarizeWarnings)
+        static constexpr const char* TEXTURE_NOT_FOUND = "Texture not found: ";
+        static constexpr const char* TEXTURE_UV_TRANSFORM = "Texture tiling/offset is not imported: ";
+
+        // createMaterials false (Material Creation Mode None): no material and no texture is
+        // made or looked for, every primitive draws with the default material
+        GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot,
+                   bool createMaterials = true);
 
         bool build(std::string& error);
         // The .glb contents, with extras in its asset info; empty on failure
@@ -64,6 +71,7 @@ namespace jasperengine::editor {
         const ufbx_scene* scene;
         std::filesystem::path fbxPath;
         std::filesystem::path assetsRoot;
+        bool createMaterials = true;
         std::vector<std::string> warnings;
         std::set<std::string> warned;
 

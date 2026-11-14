@@ -1147,8 +1147,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     // call's deny-by-default guard refuses: the editor names the one file it writes (util/SafeWrite.h)
     jasperengine::editor::safewrite::EditorInternal ownImport(glbPath);
     const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
-    for (const std::string& warning : result.warnings) {
-        editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
+    // one line per model (S98 REQ-34): the list is the model's import report
+    if (!result.warnings.empty()) {
+        editor::Out::warning("%s", editor::FbxImporter::summarizeWarnings(fbxName, result.warnings).c_str());
     }
     if (!result.success) {
         editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
