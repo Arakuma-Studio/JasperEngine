@@ -740,6 +740,8 @@ namespace {
             }
         }
 
+        // every mesh draws an Outline's pass: the project's scripts make Outlines (S94 F22)
+        bool allOutlineKeys = false;
     private:
         Scene* scene;
         bool lentBaseColor = false;     // the mesh being collected shows a fluid's output
@@ -755,6 +757,12 @@ namespace {
         // a Tilemap Layer: its instanced variant with the frame clamp (S50)
         bool tileLayerKeys = false;
         uint8_t spriteAttributes = 0;
+        // S94 F22: the mesh being collected draws an Outline's pass (an Outline covers it, or the
+        // project's scripts make Outlines: allOutlineKeys, every mesh)
+        bool outlineKeys = false;
+        bool outlinedEntity(EntityRegistry* registry, Entity entity) const{
+            return allOutlineKeys || (registry && entity != NULL_ENTITY && RenderSystem::findOutline(registry, entity));
+        }
 
         static bool scenePixelSnaps(EntityRegistry* registry){
             if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
@@ -903,6 +911,17 @@ namespace {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
                     }
                 }
+                // an Outline's pass, as RenderSystem::loadOutlineRender picks it, in both width
+                // units (a script may switch them; no terrain, triangles only)
+                if (outlineKeys && !terrain && submesh.primitiveType == PrimitiveType::TRIANGLES){
+                    for (OutlineWidthUnits units : {OutlineWidthUnits::PIXELS, OutlineWidthUnits::WORLD}){
+                        const SubmeshShaderInputs outlineInputs = RenderSystem::getExtraPassShaderInputs(inputs, RenderSystem::getOutlinePass(units));
+                        const uint16_t outlineShaderId = ShaderPool::registerCustomShader(RenderSystem::getOutlineReference(units));
+                        for (const MeshShaderEnvironment& environment : environments){
+                            keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, outlineInputs).properties, outlineShaderId));
+                        }
+                    }
+                }
             }
         }
 
@@ -932,6 +951,13 @@ namespace {
         }
 
         void collectMesh(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
+            const bool outlinedBefore = outlineKeys;
+            outlineKeys = outlinedEntity(registry, entity);
+            collectMeshVariants(registry, entity, mesh);
+            outlineKeys = outlinedBefore;
+        }
+
+        void collectMeshVariants(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
             const InstancedMeshComponent* instmesh = registry->findComponent<InstancedMeshComponent>(entity);
             const bool mirror = registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = LatticeRender::isLatticeTarget(registry, entity);
@@ -1008,6 +1034,10 @@ namespace {
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);
             const VatTarget vat = vatTargetOf(registry, entity, vatMesh);
+            // (a node the scene does not have yet takes its model root's: outlineKeys set by collectModel)
+            const bool outlinedBefore = outlineKeys;
+            if (registry)
+                outlineKeys = outlinedEntity(registry, entity);
             for (size_t s = 0; s < probed.size(); s++){
                 Submesh submesh = probed[s];
                 if (s < mesh.numSubmeshes && mesh.submeshes[s].overrideFields != 0){
@@ -1015,6 +1045,7 @@ namespace {
                 }
                 collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror, lattice, vat);
             }
+            outlineKeys = outlinedBefore;
         }
 
         void collectModel(EntityRegistry* registry, Entity entity, const ModelComponent& model, std::unordered_set<Entity>& modelMeshes){
@@ -1050,11 +1081,14 @@ namespace {
                     collectModelSubmeshes(registry, nodeEntity, *nodeMesh, probe.root, probe.vatMesh);
                 }
             }
+            const bool outlinedBefore = outlineKeys;
+            outlineKeys = outlinedEntity(registry, entity);
             for (const auto& [nodeIndex, submeshes] : probe.nodes){
                 if (!mappedNodes.count(nodeIndex)){
                     collectModelSubmeshes(nullptr, NULL_ENTITY, *defaultMesh, submeshes, probe.vatMesh);
                 }
             }
+            outlineKeys = outlinedBefore;
         }
 
         // Terrain foliage: instanced meshes MeshSystem makes from each layer's model, merged
@@ -1486,7 +1520,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
                                                   const std::vector<std::string>& scriptPostProcessingFields,
                                                   bool scriptsSetShadowQuality, bool scriptsSetLitQuality,
-                                                  PbrTier mobilePbrTier, uint32_t terrainTiers){
+                                                  PbrTier mobilePbrTier, uint32_t terrainTiers, bool scriptsAddOutlines){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -1507,7 +1541,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         if (!resolved.insert(signature).second)
             return;
         collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
-                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers);
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers,
+                              scriptsAddOutlines);
     };
     QualityResolver::setTier(std::nullopt);
     QualityResolver::forceThermalResponse(ThermalState::Nominal);
@@ -1535,7 +1570,8 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                            bool scriptsSetPostProcessing,
                                                            const std::vector<std::string>& scriptPostProcessingFields,
                                                            bool allLightCapacities, bool scriptsSetShadowQuality,
-                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers){
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers,
+                                                           bool scriptsAddOutlines){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
@@ -1557,6 +1593,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                                                   scriptsSetLitQuality, mobilePbrTier, terrainTiers);
 
     Collector collector(scene, environments, postColor, keys);
+    collector.allOutlineKeys = scriptsAddOutlines;
     collector.collect(sceneContent);
     for (const ShaderVariantContent& prefab : prefabContents){
         if (prefab.registry){

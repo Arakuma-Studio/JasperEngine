@@ -2755,6 +2755,16 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_OutlineComponent_fields[] = {
+    JE_RF(OutlineComponent, enabled, 0x7ac7ddc2u, Bool),
+    JE_RF(OutlineComponent, mode, 0x21f8bb06u, Enum),
+    JE_RF(OutlineComponent, color, 0xd49eb1ecu, Vector4),
+    JE_RF(OutlineComponent, width, 0x7dbfee43u, Float),
+    JE_RF(OutlineComponent, widthUnits, 0xebe692beu, Enum),
+    JE_RF(OutlineComponent, includeChildren, 0xad9417e4u, Bool),
+};
+const StructTable kBody_OutlineComponent{"outline", kBody_OutlineComponent_fields, std::size(kBody_OutlineComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2874,6 +2884,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(OutlineComponent, "outline", 0x361ad8bdu),
     JE_RF_COMPONENTS_END
 };
 
