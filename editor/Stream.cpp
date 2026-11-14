@@ -3237,6 +3237,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
+        if (!android.debugPackageSuffix.empty()) androidNode["debugPackageSuffix"] = android.debugPackageSuffix;
         encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
         encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
         encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
@@ -4233,6 +4234,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (androidNode["keystore"]["path"]) android.keystorePath = FileUtils::pathFromUtf8(portablePath(androidNode["keystore"]["path"].as<std::string>()));
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
+        if (androidNode["debugPackageSuffix"]) android.debugPackageSuffix = androidNode["debugPackageSuffix"].as<std::string>();
         android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
         android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
         android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);

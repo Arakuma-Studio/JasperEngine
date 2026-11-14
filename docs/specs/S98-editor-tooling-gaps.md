@@ -727,7 +727,36 @@ Avoiding conflicts:
 
 ## Deviations
 
-(none yet)
+- **WP-2: F2 brought into scope (coordinator decision).** Source exports get the install-time asset
+  pack too: the template has a `game_content` module (`com.android.asset-pack`, install-time) and
+  `assetPacks = [":game_content"]`. Android puts asset packs in App Bundles only (an APK from
+  `assemble` carries none), so the content goes to the pack when a Gradle run builds bundles and no
+  APK (`bundleRelease`, Android Studio's APK from app bundle), decided from the task graph; a run that
+  builds an APK too keeps it in the base module of both and logs why. D11's "source exports keep one
+  module" no longer holds.
+- **WP-2, REQ-13: aapt2 applies no `<dir>_*` default.** `aapt2 link -A` (build-tools 36.0.0) keeps
+  `_Onboarding/` and drops only hidden files; it has no `--ignore-assets` option. So nothing is
+  passed to it; instead the prebuilt staging leaves out the names the template's pattern leaves out
+  (hidden and VCS files), with `W-ANDROID-ASSET-IGNORED` naming them, and the content check compares
+  every staged file with the finished package. The source route checks the same in Gradle
+  (`jasperengineVerifyContent` after `assemble*`/`bundle*`).
+- **WP-2, AC12 and AC14 run in `tools/ci/android_packaging.sh`** (the S67 route), not in an MCP
+  `test_android_package.py`: the MCP suite runs in the Linux image, which has no Android SDK,
+  bundletool or emulator. The script's step 3b checks the `_` folder, the hidden file, the drop hook
+  (`JASPER_TEST_ANDROID_DROP_ENTRY`), the pack's `dist:install-time`, the universal APK's content and
+  the suffix; step 4 runs the bundle on the emulator; `ANDROID_PACKAGING_SOURCE=1` checks the source
+  export's pack, suffix and `-O2`.
+- **WP-2, REQ-14: the debug type is a Development Build.** Besides `RelWithDebInfo` it passes
+  `JASPERENGINE_DEVELOPMENT_BUILD=ON` and `JASPERENGINE_HTMLUI_DEBUGGER=ON`: AGP's `Debug` config was
+  what made a debug APK (and the development Android player, built with `assembleDebug`) a
+  Development Build, so `RelWithDebInfo` alone would have dropped the profiler from both.
+- **WP-2, REQ-17:** the pinned CMake is 3.22.1, the version AGP 9.4.1 installed by default, so the
+  build's CMake does not change.
+- **WP-2, REQ-19:** with only the adaptive layers set, the legacy and round icons are composed from
+  them (the 72 dp a launcher's mask shows), so no template icon ships for Android 7 and older.
+- **WP-2, REQ-44:** the Android tab's Apply is one undo step (`AndroidSettingsCmd`) over every
+  Android row, Debug Package Suffix included; `set_project_settings` stays not undoable, as for
+  every row.
 
 ## Progress
 

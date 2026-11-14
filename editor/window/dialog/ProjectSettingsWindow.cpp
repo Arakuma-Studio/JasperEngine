@@ -58,6 +58,7 @@
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
+#include "command/type/AndroidSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "titleart/localisation/TitleLanguageNames.h"
@@ -405,6 +406,11 @@ static unsigned int parseAndroidVersionCode(const std::string& value) {
 
     if (parsed < 1 || parsed > 2100000000ull) return 0;  // Google Play's ceiling
     return static_cast<unsigned int>(parsed);
+}
+
+// Debug Package Suffix: a dot and a Java identifier (".debug"), as applicationIdSuffix appends it
+static bool isAndroidPackageSuffixValid(const std::string& value) {
+    return value.size() > 1 && value[0] == '.' && isJavaPackageNameValid(value.substr(1));
 }
 
 static bool isAndroidVersionCodeValid(const std::string& value) {
@@ -1130,6 +1136,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidPackageFormatIndex = indexOfName(androidPackageFormats, android.packageFormat);
     m_androidKeystorePath = android.keystorePath;
     snprintf(m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer), "%s", android.keystoreAlias.c_str());
+    snprintf(m_androidDebugPackageSuffixBuffer, sizeof(m_androidDebugPackageSuffixBuffer), "%s", android.debugPackageSuffix.c_str());
 
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
@@ -4813,6 +4820,15 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         endSettingsRow("The key of the keystore that signs the build.");
         ImGui::EndDisabled();
     }
+
+    if (settingsui::beginRow("android.debug_package_suffix")) {
+        if (projectBeginSettingsRow("Debug Package Suffix", m_androidDebugPackageSuffixBuffer[0] != '\0')) m_androidDebugPackageSuffixBuffer[0] = '\0';
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputTextWithHint("##AndroidDebugPackageSuffix", ".debug", m_androidDebugPackageSuffixBuffer, sizeof(m_androidDebugPackageSuffixBuffer));
+        endSettingsRow("Appended to the package name of debug builds, so a debug build installs beside the release one. "
+                       "Empty: debug and release share the package.");
+        drawOverrideWarning(m_androidDebugPackageSuffixBuffer, isAndroidPackageSuffixValid, "Use a dot and a Java identifier, for example .debug.");
+    }
 }
 
 // ---- Native Plugins
@@ -6194,7 +6210,8 @@ bool ProjectSettingsWindow::applySettings() {
     applyTextBuffer(ios.teamId, m_iosTeamIdBuffer);
     ios.exportMethod = iosExportMethods[std::clamp(m_iosExportMethodIndex, 0, static_cast<int>(IM_ARRAYSIZE(iosExportMethods)) - 1)];
 
-    AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
+    // one undoable step: the edits go into a copy that the command applies
+    AndroidProjectSettings android = m_project->getAndroidProjectSettings();
     applyOverride(android.applicationName, m_androidApplicationNameBuffer, inheritedName);
     applyOverride(android.packageName, m_androidPackageNameBuffer, inheritedIdentifier, isJavaPackageNameValid);
     // Anything but a positive integer goes back to inheriting the shared build.
@@ -6226,6 +6243,13 @@ bool ProjectSettingsWindow::applySettings() {
     android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
     android.keystorePath = m_androidKeystorePath;
     applyTextBuffer(android.keystoreAlias, m_androidKeystoreAliasBuffer);
+    if (isAndroidPackageSuffixValid(m_androidDebugPackageSuffixBuffer) || m_androidDebugPackageSuffixBuffer[0] == '\0')
+        applyTextBuffer(android.debugPackageSuffix, m_androidDebugPackageSuffixBuffer);
+    if (!(android == m_project->getAndroidProjectSettings())) {
+        auto* command = new AndroidSettingsCmd(m_project, android);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
 
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
     if (startScene && !startScene->filepath.empty()) {

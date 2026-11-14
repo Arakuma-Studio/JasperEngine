@@ -146,6 +146,7 @@ namespace jasperengine::editor {
         int m_androidPackageFormatIndex = 0;   // apk, aab
         fs::path m_androidKeystorePath;
         char m_androidKeystoreAliasBuffer[128] = {0};
+        char m_androidDebugPackageSuffixBuffer[64] = {0};
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
         bool m_allowInsecureHttp = false;

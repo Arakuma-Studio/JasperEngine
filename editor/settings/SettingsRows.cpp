@@ -1465,6 +1465,11 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().keystorePath; }));
         add(stringSetting("android.keystore_alias", "The key alias of the Android keystore.",
                           [](Project& p) -> std::string& { return p.getAndroidProjectSettings().keystoreAlias; }));
+        add(stringSetting("android.debug_package_suffix", "Debug Package Suffix: appended to the package name of Android debug builds "
+                          "(\".debug\"), so they install beside the release one. Empty: the same package.",
+                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().debugPackageSuffix; },
+                          [](const std::string& v) { return v.size() > 1 && v[0] == '.' && isDottedIdentifier(v.substr(1), javaIdPart); },
+                          "a dot and a Java identifier, like .debug"));
         add(stringSetting("ios.team_id", "The Apple Developer team id that signs iOS device builds (DEVELOPMENT_TEAM).",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().teamId; }));
         nameChoice("ios.export_method", "How an iOS archive is exported to an .ipa.", {"development", "ad-hoc", "app-store", "enterprise"},
@@ -4282,6 +4287,7 @@ const Placement placements[] = {
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
+    {"android.debug_package_suffix", "Player", "Android", "Debug Package Suffix", "android debug development applicationIdSuffix side by side install"},
     {"ios.team_id", "Player", "iOS", "Team ID", "ios signing apple developer"},
     {"ios.export_method", "Player", "iOS", "Export Method", "ios ipa app store ad hoc"},
     {"web.application_name", "Player", "Web", "App Name", "web page title"},

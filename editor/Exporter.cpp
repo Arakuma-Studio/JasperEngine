@@ -33,6 +33,7 @@
 #include "util/Util.h"
 #include <regex>
 #include "util/NativeExportAndroid.h"
+#include "platform/AndroidIcons.h"
 #include "util/NativePlugins.h"
 #include "platform/ExternalTools.h"
 #include "util/ApplePrivacy.h"
@@ -457,25 +458,6 @@ namespace {
     fs::path resolveProjectFile(editor::Project* project, const fs::path& path) {
         if (path.empty() || path.is_absolute()) return path;
         return project->getProjectPath() / path;
-    }
-
-    bool copyAndroidResourceFile(editor::Project* project, const fs::path& sourcePath, const fs::path& targetPath, std::string& error) {
-        if (sourcePath.empty()) return true;
-
-        std::error_code ec;
-        fs::create_directories(targetPath.parent_path(), ec);
-        if (ec) {
-            error = "Failed to create Android resource directory: " + ec.message();
-            return false;
-        }
-
-        fs::path source = resolveProjectFile(project, sourcePath);
-        fs::copy_file(source, targetPath, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            error = "Failed to copy Android icon " + source.string() + ": " + ec.message();
-            return false;
-        }
-        return true;
     }
 
     std::string stripDesktopEntryControlChars(const std::string& value) {
@@ -5046,8 +5028,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const fs::path manifestPath = androidAppDir / "src" / "main" / "AndroidManifest.xml";
     const fs::path stringsPath = androidAppDir / "src" / "main" / "res" / "values" / "strings.xml";
     const fs::path stylesPath = androidAppDir / "src" / "main" / "res" / "values" / "styles.xml";
-    const fs::path drawableDir = androidAppDir / "src" / "main" / "res" / "drawable";
-    const fs::path adaptiveIconDir = androidAppDir / "src" / "main" / "res" / "mipmap-anydpi-v26";
     const fs::path mainActivityPath = config.targetDir / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
 
     const std::string appName = project->getApplicationName(android.applicationName);
@@ -5059,7 +5039,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             "                abiFilters \"arm64-v8a\"\n"
             "                abiFilters \"x86\"\n"
             "                abiFilters \"armeabi-v7a\"\n"
-            "                abiFilters \"x86_64\""}) {
+            "                abiFilters \"x86_64\"", "    buildTypes {\n", "        debug {\n", "        release {\n"}) {
         if (gradle.find(marker) == std::string::npos) {
             setError("Incompatible Android Gradle export template: missing " + std::string(marker));
             return false;
@@ -5092,6 +5072,42 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         "                abiFilters \"x86_64\"",
         abiLine);
 
+    // Debug Package Suffix: the debug package installs beside the release one
+    if (!android.debugPackageSuffix.empty()) {
+        replaceAll(gradle, "        debug {\n",
+            "        debug {\n            applicationIdSuffix \"" + escapeGradleString(android.debugPackageSuffix) + "\"\n");
+    }
+    // Project Settings > Android > Keystore signs the release build, with the prebuilt route's
+    // password variables (never written); without one it is unsigned and Android Studio's
+    // Generate Signed Bundle / APK signs it
+    if (!android.keystorePath.empty()) {
+        const fs::path keystore = resolveProjectFile(project, android.keystorePath);
+        const std::string keystoreText = escapeGradleString(FileUtils::pathToGenericUtf8(keystore));
+        replaceAll(gradle, "        release {\n", "        release {\n            signingConfig signingConfigs.release\n");
+        replaceAll(gradle, "    buildTypes {\n",
+            "    signingConfigs {\n"
+            "        release {\n"
+            "            storeFile file(\"" + keystoreText + "\")\n"
+            "            storePassword System.getenv(\"JASPER_ANDROID_KS_PASS\")\n"
+            "            keyAlias \"" + escapeGradleString(android.keystoreAlias) + "\"\n"
+            "            keyPassword System.getenv(\"JASPER_ANDROID_KEY_PASS\") ?: System.getenv(\"JASPER_ANDROID_KS_PASS\")\n"
+            "        }\n"
+            "    }\n\n"
+            "    buildTypes {\n");
+        // a missing password fails the signing step with a Java stack: name the variable first
+        gradle += "\n// the release keystore's passwords (Project Settings > Android > Keystore)\n"
+                  "tasks.matching { it.name ==~ /(packageRelease|signReleaseBundle)/ }.configureEach { task ->\n"
+                  "    task.doFirst {\n"
+                  "        if (!System.getenv(\"JASPER_ANDROID_KS_PASS\")) {\n"
+                  "            throw new GradleException(\"Set JASPER_ANDROID_KS_PASS (and JASPER_ANDROID_KEY_PASS when the key has its own password) \" +\n"
+                  "                                      \"to sign the release build with " + keystoreText + "\")\n"
+                  "        }\n"
+                  "    }\n"
+                  "}\n";
+    } else {
+        Out::info("Android: the release build is unsigned (no Project Settings > Android > Keystore); debug builds use the debug key");
+    }
+
     // native plugins: the bridge and nativeplugins modules, repositories, gradle.properties,
     // and the manifest additions below
     NativeExportAndroid::Result nativeExport;
@@ -5105,38 +5121,15 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     }
     if (!writeOrFail(buildGradlePath, gradle)) return false;
 
-    const bool hasLauncherIcon = !android.launcherIcon.empty();
-    const bool hasAdaptiveIcon = !android.adaptiveIconForeground.empty() && !android.adaptiveIconBackground.empty();
-    std::string iconReference = "@mipmap/ic_launcher";
-
-    if (hasLauncherIcon) {
-        std::string copyError;
-        if (!copyAndroidResourceFile(project, android.launcherIcon, drawableDir / "ic_launcher.png", copyError)) {
-            setError(copyError);
+    // every density, round, and the adaptive layers over the template's own ic_launcher
+    platform::AndroidIcons icons;
+    {
+        std::string iconError;
+        if (!platform::writeAndroidLauncherIcons(android, project->getProjectPath(), androidAppDir / "src" / "main" / "res", "ic_launcher",
+                                                 icons, iconError)) {
+            setError(iconError);
             return false;
         }
-        iconReference = "@drawable/ic_launcher";
-    }
-
-    if (hasAdaptiveIcon) {
-        std::string copyError;
-        if (!copyAndroidResourceFile(project, android.adaptiveIconForeground, drawableDir / "ic_launcher_foreground.png", copyError)) {
-            setError(copyError);
-            return false;
-        }
-        if (!copyAndroidResourceFile(project, android.adaptiveIconBackground, drawableDir / "ic_launcher_background.png", copyError)) {
-            setError(copyError);
-            return false;
-        }
-
-        std::string adaptiveIcon;
-        adaptiveIcon += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        adaptiveIcon += "<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">\n";
-        adaptiveIcon += "    <background android:drawable=\"@drawable/ic_launcher_background\" />\n";
-        adaptiveIcon += "    <foreground android:drawable=\"@drawable/ic_launcher_foreground\" />\n";
-        adaptiveIcon += "</adaptive-icon>\n";
-        if (!writeOrFail(adaptiveIconDir / "ic_launcher.xml", adaptiveIcon)) return false;
-        iconReference = "@mipmap/ic_launcher";
     }
 
     // INTERNET: Internet Access "require", the permission ticked, or Http in the exported code
@@ -5218,7 +5211,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     if (!nativeExport.manifestXml.empty()) manifest += nativeExport.manifestXml + "\n";
     manifest += "    <application\n";
     manifest += std::string("        android:allowBackup=\"") + (android.allowBackup ? "true" : "false") + "\"\n";
-    manifest += "        android:icon=\"" + iconReference + "\"\n";
+    manifest += "        android:icon=\"@mipmap/ic_launcher\"\n";
+    if (!icons.roundIcon.empty()) manifest += "        android:roundIcon=\"" + icons.roundIcon + "\"\n";
     // plain http:// (cleartext): Project Settings > Player > Allow Insecure HTTP; localhost always
     manifest += "        android:networkSecurityConfig=\"@xml/network_security_config\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
@@ -5677,22 +5671,9 @@ bool editor::Exporter::writeAppleProjectSettings() {
         replacePlistStringValue(iosPlist, "CFBundleVersion",
             Project::toAppleVersion(project->getApplicationBuild(ios.buildNumber)));
         replacePlistBoolValue(iosPlist, "UIStatusBarHidden", ios.hideStatusBar);
-        // Player > Resolution and Presentation: the allowed set, the default first (a fixed
-        // default alone); iPad multitasking ignores orientation locks unless the app is full screen
-        {
-            const PresentationSettings& presentation = project->getPresentationSettings();
-            const uint8_t allowed = presentation.effectiveAllowedOrientations();
-            const std::vector<std::string> orientations =
-                PlatformRules::iosPlistOrientations(presentation.defaultOrientation, allowed);
-            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations", orientations);
-            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations~ipad", orientations);
-            const bool allFour = !PlatformRules::isFixedOrientation(presentation.defaultOrientation) &&
-                allowed == PlatformRules::ALL_ORIENTATIONS;
-            replacePlistBoolValue(iosPlist, "UIRequiresFullScreen", !allFour);
-            if (!allFour) {
-                Out::info("iOS: UIRequiresFullScreen is on (iPad Split View would ignore the orientations of Player settings "
-                          "unless all four are allowed)");
-            }
+        if (applyIosOrientations(iosPlist, project->getPresentationSettings())) {
+            Out::info("iOS: UIRequiresFullScreen is on (iPad Split View would ignore the orientations of Player settings "
+                      "unless all four are allowed)");
         }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
         writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
@@ -6015,6 +5996,18 @@ namespace {
 void editor::Exporter::applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
                                                const std::string& rawXml) {
     writeNativePlistEntries(plist, entries, rawXml);
+}
+
+bool editor::Exporter::applyIosOrientations(std::string& plist, const PresentationSettings& presentation) {
+    // the allowed set, the default first (a fixed default alone); iPad multitasking ignores
+    // orientation locks unless the app is full screen
+    const uint8_t allowed = presentation.effectiveAllowedOrientations();
+    const std::vector<std::string> orientations = PlatformRules::iosPlistOrientations(presentation.defaultOrientation, allowed);
+    replacePlistStringArray(plist, "UISupportedInterfaceOrientations", orientations);
+    replacePlistStringArray(plist, "UISupportedInterfaceOrientations~ipad", orientations);
+    const bool fullScreen = PlatformRules::iosRequiresFullScreen(presentation.defaultOrientation, allowed);
+    replacePlistBoolValue(plist, "UIRequiresFullScreen", fullScreen);
+    return fullScreen;
 }
 
 const std::vector<std::string>& editor::Exporter::appleEngineFrameworks(bool ios) {
