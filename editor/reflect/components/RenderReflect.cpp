@@ -572,6 +572,10 @@ namespace {
                 break;
             case ScriptPropertyType::Prefab: data.ref = &prop.valueRef<PrefabAsset>(); data.def = &prop.defaultValueRef<PrefabAsset>(); break;
             case ScriptPropertyType::Asset: data.ref = &prop.valueRef<AssetRef>(); data.def = &prop.defaultValueRef<AssetRef>(); break;
+            case ScriptPropertyType::List:
+                data.ref = &prop.valueRef<ScriptPropertyList>();
+                data.def = &prop.defaultValueRef<ScriptPropertyList>();
+                break;
             default: break;
         }
         return data;

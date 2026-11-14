@@ -565,6 +565,31 @@ Per package, before merging:
 
 ## Deviations
 
+### WP-6 String Tables
+
+- **`Localization.language` reads the resolved language.** Writing it is `TitleArt.setLanguage`
+  (one value, REQ-27). Reading it gives the language strings show (the device's or the Game view's
+  matched against the project's languages, never `""`), as Unity's `SelectedLocale` does, while
+  `TitleArt.getLanguage()` keeps returning the global value (`""` = Auto).
+- **File shape.** `{version: 1, entries: [{key, comment?, values: {language: text | {form: text}}}]}`:
+  a list keeps the authored order and leaves room for the translators' comment (the CSV context
+  column, the XLIFF note).
+- **Interchange of plurals.** CSV and XLIFF carry a plural value as an ICU plural
+  (`{count, plural, one {...} other {...}}`), which translation tools read; `#` imports as `{count}`.
+- **The duplicate-key check** runs with `check --lua` (and for a `.stringtable` given to `--files`
+  or the hook) as tool `strings`, and `edit_string_table` results list `duplicates`.
+- **`AssetType::StringTable = 36`.** 35 is left for WP-5's Data Assets, whatever order they land in
+  (the gap reads "unknown", as 27 once did).
+- **The prebuilt player** gets `localization` in `game.json` (languages, Remember Language Choice,
+  tables) and now also applies Project Settings > Localization > Default Language, which only
+  Compile builds set before.
+- **`TitleArt.onLanguageChanged` is cleared at Stop** and on a script's tag removal
+  (`Engine::clearAllSubscriptions`, `removeSubscriptionsByTag`): it is `Localization.onLanguageChanged`
+  too, and a Lua listener left from one Play would outlive its Lua state.
+- **`data-loc` text is never markup**: a translation cannot inject elements.
+- **The editor shows String Tables in Edit mode too** (a Text's Localization Key, `data-loc`), and a
+  table edited during Play applies at once.
+
 ### WP-4 (app lifecycle and HTML UI)
 
 - **D-11, `Rml::ReleaseCompiledGeometry` is not called.** `RmlRenderer` keeps every compiled

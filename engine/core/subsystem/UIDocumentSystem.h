@@ -300,6 +300,8 @@ namespace jasperengine{
         // is included before this header
         UIDocumentContext* context = nullptr;
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
+        // the Localization::generation() of the documents' data-loc texts (S95 REQ-28)
+        uint64_t localizedGeneration = 0;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
         float frameWidth = 0.0f, frameHeight = 0.0f;

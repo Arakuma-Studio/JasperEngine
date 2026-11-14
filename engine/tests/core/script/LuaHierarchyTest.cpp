@@ -3,14 +3,17 @@
 
 // Unity's Transform hierarchy on GameObject, C++ and Lua (scripting catch-up, Doriax 04501b15b
 // field gaps): parent, setParent(p, worldPositionStays), childCount, getChild, getChildren,
-// findChild("a/b"), and the parents a GameObject refuses.
+// findChild("a/b"), and the parents a GameObject refuses. S95: the transform members of an
+// entity without a Transform (REQ-3) and lookups among children of the same name (S16).
 
 #include "Scene.h"
+#include "action/Action.h"
 #include "component/Transform.h"
 #include "object/GameObject.h"
 #include "subsystem/RenderSystem.h"
 #include "script/LuaBinding.h"
 #include "../ecs/EcsTestUtil.h"
+#include "LogCapture.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -137,4 +140,98 @@ TEST(LuaHierarchy, SetParentRefusesCycleAndOtherScene){
     const GameObject strangerObject(&other, stranger);
     GameObject(&scene, child).setParent(&strangerObject);
     EXPECT_EQ(scene.getComponent<Transform>(child).parent, parent);  // another scene: refused
+}
+
+// S95 REQ-3 (S17): an action has no Transform. The getters give nil and log nothing; the setters
+// raise an error naming the GameObject
+TEST(LuaHierarchy, NoTransformGivesNil){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    Scene scene;
+    Action action(&scene);
+    scene.setEntityName(action.getEntity(), "Fade");
+    ASSERT_EQ(scene.findComponent<Transform>(action.getEntity()), nullptr);
+
+    luabridge::setGlobal(L, GameObject(&scene, action.getEntity()), "noTransform");
+    EXPECT_EQ(runLua(L, R"lua(
+        local go = noTransform
+        for _, name in ipairs({"getWorldPosition", "getWorldRotation", "getWorldScale"}) do
+            assert(go[name](go) == nil, name .. " is nil")
+        end
+        for _, name in ipairs({"position", "rotation", "scale", "parent", "localMatrix", "modelMatrix", "normalMatrix"}) do
+            assert(go[name] == nil, name .. " is nil")
+        end
+        local setters = {
+            function() go.position = Vector3(1, 2, 3) end,
+            function() go:setPosition(1, 2) end,
+            function() go:setPosition(1, 2, 3) end,
+            function() go.rotation = Quaternion() end,
+            function() go:setRotation(0, 90, 0) end,
+            function() go.scale = Vector3(2, 2, 2) end,
+            function() go:setScale(2) end,
+            function() go.localMatrix = Matrix4() end,
+            function() go.parent = nil end,
+            function() go:setParent(nil) end,
+        }
+        for i, setter in ipairs(setters) do
+            local ok, message = pcall(setter)
+            assert(not ok, "setter " .. i .. " raises")
+            assert(tostring(message):find("GameObject 'Fade' has no Transform", 1, true),
+                "setter " .. i .. " names it: " .. tostring(message))
+        end
+    )lua"), "");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// with a Transform the same members read and write it (the optional getters keep the values)
+TEST(LuaHierarchy, TransformMembersReadAndWrite){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    Scene scene;
+    const Entity mover = named(scene, "Mover");
+    luabridge::setGlobal(L, GameObject(&scene, mover), "mover");
+    EXPECT_EQ(runLua(L, R"lua(
+        mover:setPosition(1, 2)
+        assert(mover.position == Vector3(1, 2, 0), "(x, y): z is 0")
+        mover:setPosition(1, 2, 3)
+        assert(mover.position == Vector3(1, 2, 3), "(x, y, z)")
+        mover.scale = Vector3(2, 3, 4)
+        assert(mover.scale == Vector3(2, 3, 4), "scale")
+        mover:setScale(5)
+        assert(mover.scale == Vector3(5, 5, 5), "uniform scale")
+        mover:setRotation(0, 0, 90)
+        assert(mover.rotation == Quaternion(0, 0, 90), "rotation")
+        assert(mover:getWorldPosition() ~= nil and mover.modelMatrix ~= nil, "world values")
+    )lua"), "");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S95 AC-5 (S16): two children named alike under different parents are told apart by the parent
+TEST(LuaHierarchy, FindEntityUnderParent){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+
+    Scene scene;
+    const Entity a = named(scene, "A");
+    const Entity b = named(scene, "B");
+    const Entity blueA = named(scene, "Blue", a);
+    const Entity blueB = named(scene, "Blue", b);
+    EXPECT_EQ(scene.findEntity("Blue", b), blueB);
+    EXPECT_EQ(scene.findEntity("Blue", a), blueA);
+
+    luabridge::setGlobal(L, &scene, "hierScene");
+    luabridge::setGlobal(L, GameObject(&scene, b), "hierB");
+    lua_pushinteger(L, a); lua_setglobal(L, "A_ID");
+    lua_pushinteger(L, b); lua_setglobal(L, "B_ID");
+    lua_pushinteger(L, blueA); lua_setglobal(L, "BLUE_A");
+    lua_pushinteger(L, blueB); lua_setglobal(L, "BLUE_B");
+    EXPECT_EQ(runLua(L, R"lua(
+        assert(hierScene:findEntity("Blue", B_ID) == BLUE_B, "B's Blue")
+        assert(hierScene:findEntity("Blue", A_ID) == BLUE_A, "A's Blue")
+        local found = hierB:findChild("Blue")
+        assert(found and found.entity == BLUE_B, "findChild agrees")
+        assert(found.parent.entity == B_ID, "its parent is B")
+    )lua"), "");
 }

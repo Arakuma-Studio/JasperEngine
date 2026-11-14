@@ -13,7 +13,7 @@ import re
 import tempfile
 import unittest
 
-from lua_api import doctest, extract, stubs, suggestions
+from lua_api import doctest, extract, parser, stubs, suggestions
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 BINDINGS = os.path.join(REPO, 'engine', 'core', 'script', 'binding')
@@ -21,6 +21,7 @@ CORE = os.path.join(REPO, 'engine', 'core')
 FIXTURES = os.path.join(os.path.dirname(__file__), 'fixtures')
 
 _API = None
+_BUILDER = None
 
 
 def api():
@@ -28,6 +29,41 @@ def api():
     if _API is None:
         _API = extract.extract(BINDINGS, CORE, 'test')
     return _API
+
+
+def builder():
+    global _BUILDER
+    if _BUILDER is None:
+        _BUILDER = extract.build(BINDINGS, CORE)
+    return _BUILDER
+
+
+# a pointer to a math value: LuaBridge passes nil as nullptr and one value where the C++ reads
+# several (S95 REQ-2: Quaternion(nil) crashed, Quaternion(Vector3) read past it)
+_RAW_MATH_POINTER = re.compile(r'\b(?:Vector[234]|Matrix[34]|Quaternion)\s*\*')
+
+
+def raw_math_pointer_params(bd):
+    """`file:line Class.member type` for every Lua-callable parameter of a raw math pointer
+    type: constructor signatures and the arguments of functions (a method's self excluded)"""
+    found = []
+
+    def where(call):
+        return f'{os.path.relpath(call.src.path, REPO)}:{call.line}'
+
+    for c in bd.b.classes:
+        for call in c.ctors:
+            targs = list(call.targs) or [t for t in (bd.lambda_ctor_targ(a) for a in call.args) if t is not None]
+            for targ in targs:
+                text = parser.join_tokens(targ)
+                if _RAW_MATH_POINTER.search(text):
+                    found.append(f'{where(call)} {c.name} constructor {text}')
+        for m in c.members:
+            for params, _ret, _defaults in getattr(m, 'cpp_sigs', []):
+                for cpp_type, _name in params:
+                    if _RAW_MATH_POINTER.search(cpp_type):
+                        found.append(f'{where(m.call)} {c.name}.{m.name} {cpp_type}')
+    return found
 
 
 def check_schema(test, data):
@@ -146,6 +182,23 @@ class LuaApiJson(unittest.TestCase):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
                     self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel', 'terrainworld', 'terrainedit'}, m['name'])
+
+
+class BindingLint(unittest.TestCase):
+
+    def test_no_raw_math_pointer_parameters(self):
+        """S95 AC-3: no binding takes a pointer to a Vector, Matrix or Quaternion"""
+        self.assertEqual(raw_math_pointer_params(builder()), [])
+
+    def test_raw_math_pointer_check_sees_bindings(self):
+        """the check reads the C++ parameter types it looks at"""
+        quaternion = next(c for c in builder().b.classes if c.name == 'Quaternion')
+        from_axes = next(m for m in quaternion.members if m.name == 'fromAxes')
+        types = [t for params, _, _ in from_axes.cpp_sigs for t, _ in params]
+        self.assertEqual(types, ['const Vector3&'] * 3)
+        self.assertTrue(_RAW_MATH_POINTER.search('void(const Vector3*)'))
+        self.assertTrue(_RAW_MATH_POINTER.search('const Matrix4 *'))
+        self.assertFalse(_RAW_MATH_POINTER.search('const Vector3&'))
 
 
 class Emitters(unittest.TestCase):

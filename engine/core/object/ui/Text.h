@@ -101,6 +101,10 @@ namespace jasperengine{
         // TMP maxVisibleCharacters: characters past it are not drawn (-1 all)
         void setVisibleCharacters(int visibleCharacters);
         int getVisibleCharacters() const;
+        // Localization Key (S95 REQ-28): the text follows this String Tables key and the
+        // game's language ("" stops following; the text stays)
+        void setLocalizationKey(const std::string& key);
+        std::string getLocalizationKey() const;
 
         AABB getAABB() const;
         AABB getWorldAABB() const;

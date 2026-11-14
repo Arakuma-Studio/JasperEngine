@@ -202,6 +202,15 @@ namespace jasperengine::editor{
         inline static bool isSoundEventFile(const std::string& path) {
             return fileExtension(path) == ".soundevent";
         }
+        // a String Table (S95 REQ-25)
+        inline static bool isStringTableFile(const std::string& path) {
+            return fileExtension(path) == ".stringtable";
+        }
+
+        // Data Assets (S95)
+        inline static bool isDataAssetFile(const std::string& path) {
+            return fileExtension(path) == ".dataasset";
+        }
 
         // The Animator's assets (S21): controllers, avatar masks, montages
         inline static bool isAnimatorControllerFile(const std::string& path) {

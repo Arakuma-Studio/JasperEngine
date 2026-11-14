@@ -727,7 +727,8 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
 // values that end the settings record, the record's length and the string table offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    // 1.6 (S95) adds only to Script components, which this scene has none of
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);

@@ -2267,6 +2267,9 @@ Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& pro
             if (!ref.isSet()) return nullptr;
             return Json{{"path", ref.path}, {"guid", ref.guid.str()}};
         }
+        case ScriptPropertyType::List:
+            // a Lua property type: no C++ member holds one
+            break;
     }
     return nullptr;
 }
