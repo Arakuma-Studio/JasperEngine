@@ -17,7 +17,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"Sphere", 0x35e0411fu},
         {"Matrix3", 0x5afdc774u},
         {"Matrix4", 0xce8af031u},
-        {"Quaternion", 0x6f2e30e1u},
+        {"Quaternion", 0x3bbaca7eu},
         {"Plane", 0xdc3127fcu},
         {"AABB", 0xd4223d35u},
         {"OBB", 0xbf5e79a2u},
