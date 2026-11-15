@@ -4,4 +4,4 @@ import:
   textureImporter:
     version: 1
     type: default
-    inferredFrom: "colour: MeshComponent.submeshes[0].material.baseColorTexture of assets/scenes/Main.scene"
+    inferredFrom: no references

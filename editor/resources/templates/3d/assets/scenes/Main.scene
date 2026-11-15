@@ -1,6 +1,6 @@
-formatVersion: 8
-guid: 56ed355be241e031640cc80089f368cb
-id: 2261328660
+formatVersion: 9
+guid: f6a03bb0ce2f01de63e705cdc1fda30d
+id: 2027475379
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -244,7 +244,7 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: assets/materials/Ground.material
-              nameGuid: 00a1104fb204c88688d02c8c0b0ccb76
+              nameGuid: 29e527cd1eaa861164c481aadd1444e4
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
