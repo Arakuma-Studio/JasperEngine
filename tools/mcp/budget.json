@@ -96,8 +96,8 @@
     },
     "exceptions": {
         "set_model_import_settings": {
-            "limit": 1780,
-            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1697 measured + 5 %)"
+            "limit": 1765,
+            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1681 measured + 5 %)"
         },
         "visualize_navigation": {
             "limit": 1725,
