@@ -261,6 +261,13 @@ namespace {
         ImGui::EndTooltip();
     }
 
+    // the next button on this line when it fits, else on the next (a narrow Inspector)
+    void sameLineIfFits(const char* label) {
+        const float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine();
+        if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+    }
+
     struct ValueEdit {
         bool begin = false;     // a colour window opened on it
         bool changed = false;
@@ -495,7 +502,7 @@ void editor::InspectorWindow::drawFogProfileRow(ComponentType cpType, SceneProje
     }
     ImGui::SetItemTooltip("%s", zone ? "A new empty profile for this zone (assets/FogProfiles), linked. Add Field picks what it sets."
                                      : "Saves this Fog's look as a new profile (assets/FogProfiles), every field set, and links it.");
-    ImGui::SameLine();
+    inspectorfog::sameLineIfFits(ICON_FA_CLONE " Duplicate");
     ImGui::BeginDisabled(!profile || mixed);
     if (ImGui::Button(ICON_FA_CLONE " Duplicate##fog_profile_duplicate")) {
         FogProfileData data = *profile;
@@ -513,7 +520,7 @@ void editor::InspectorWindow::drawFogProfileRow(ComponentType cpType, SceneProje
     }
     ImGui::SetItemTooltip("Links a copy of the profile, so changing it changes only what uses the copy.");
     ImGui::EndDisabled();
-    ImGui::SameLine();
+    inspectorfog::sameLineIfFits(ICON_FA_LINK_SLASH " Unlink");
     ImGui::BeginDisabled(!ref.isSet() && !mixed);
     if (ImGui::Button(ICON_FA_LINK_SLASH " Unlink##fog_profile_unlink")) unlink();
     ImGui::SetItemTooltip("%s", zone ? "Clears the zone's profile: the zone has no effect without one."
