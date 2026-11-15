@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "support/EditorTestSupport.h"
+#include "support/PosixCompat.h"
 #include "LogCapture.h"
 
 #include "AppSettings.h"
@@ -19,7 +20,6 @@
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
 
-#include <unistd.h>
 #include <filesystem>
 #include <fstream>
 #include <memory>
