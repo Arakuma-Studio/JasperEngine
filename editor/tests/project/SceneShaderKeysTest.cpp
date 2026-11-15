@@ -6,7 +6,7 @@
 // same scene saves the same list before and after its meshes loaded (a loaded mesh records the
 // variants it was loaded with, and a depth variant only while shadows or SSAO ran), so a file
 // does not depend on the render history (test_reflection::test_golden_resave saw a depth variant
-// come and go). What a scene's file listed stays, and Play adds what its run loaded at Stop.
+// come and go). What a scene's file listed stays (Play's keys go to the warm-up list, S98 REQ-27).
 
 #include <gtest/gtest.h>
 
@@ -86,7 +86,7 @@ TEST_F(SceneShaderKeys, TheFilesKeysStay) {
     SceneProject sceneProject;
     sceneProject.id = 1;
     sceneProject.scene = scene.get();
-    // a key its file listed (or Play added at Stop): still saved
+    // a key its file listed (an older editor's Stop added some): still saved
     const ShaderKey recorded = ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(4) | shaderPropertyBit(7), 0);
     sceneProject.shaderKeys.insert(recorded);
     std::set<ShaderKey> saved;

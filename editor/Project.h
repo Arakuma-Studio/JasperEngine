@@ -89,6 +89,7 @@ namespace jasperengine::editor{
     namespace prefabinternal { struct ScratchEntity; }
     class ScriptPropertyCache;  // editor/util/ScriptPropertyCache.h
     class ScriptAttach;         // editor/util/ScriptAttach.h
+    class FbxImportQueue;       // editor/model/FbxImportQueue.h
     struct BakedPrefab;
     namespace vcs {
         class VcsService;
@@ -254,6 +255,10 @@ namespace jasperengine::editor{
         bool transientId = false;
         bool isVisible = false;
         bool opened = true;
+        // project.yaml lists it: the build's scenes (Build Settings). A file opened without being
+        // listed (S98 REQ-28) is false: open in a tab (the workspace remembers it), in no build,
+        // and closing it takes it out of the editor. A child scene of a listed one is listed.
+        bool inBuild = true;
         bool expandedInline = false;
         // a Play copy a game load put in place of the played scene: the editor camera's mirror in
         // it, which the Scene view draws it through (render/ViewCameraMirror.h)
@@ -850,6 +855,23 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // Project Settings > Player > Build > Asset Stripping (docs/specs/S98-editor-tooling-gaps.md
+    // REQ-8, project.yaml export.assetStripping, export.alwaysInclude, export.exclude). Ship All
+    // Assets is what a project without the keys did; new projects strip (D3). The lists hold
+    // project-relative globs (editor/export/AssetStripping.h); Exclude wins over Always Include.
+    enum class AssetStrippingMode { ShipAll, ReferencedOnly };
+
+    struct AssetStrippingSettings {
+        AssetStrippingMode mode = AssetStrippingMode::ShipAll;
+        std::vector<std::string> alwaysInclude;
+        std::vector<std::string> exclude;
+
+        bool operator==(const AssetStrippingSettings& other) const {
+            return mode == other.mode && alwaysInclude == other.alwaysInclude && exclude == other.exclude;
+        }
+        bool operator!=(const AssetStrippingSettings& other) const { return !(*this == other); }
+    };
+
     // Project Settings > Player > Logging (project.yaml "playerLogging"). The defaults are what
     // games did before: everything from Info on to the platform log, no file, no backtraces.
     struct PlayerLoggingSettings {
@@ -864,6 +886,8 @@ namespace jasperengine::editor{
 
     // editor/tests/PlayStartupScenesTest.cpp: builds a play session around a scenes vector
     struct PlaySessionTestAccess;
+    // editor/tests/project/ProjectPrefabMaterialsTest.cpp: Play's prefab templates
+    struct PrefabMaterialsTestAccess;
     // Project Settings > Player > Crash Handling (project.yaml "playerCrash", docs/crash-diagnostics.md).
     // The defaults are what a game does without the key.
     struct PlayerCrashSettings {
@@ -911,6 +935,7 @@ namespace jasperengine::editor{
 
     class Project{
         friend struct PlaySessionTestAccess;
+        friend struct PrefabMaterialsTestAccess;
     private:
 
         Conector conector;
@@ -1044,6 +1069,7 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        AssetStrippingSettings assetStripping;
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
@@ -1393,22 +1419,24 @@ namespace jasperengine::editor{
         // one whose prefab moved, went or came back is written again (from its file)
         void invalidateClosedSceneSources(const std::function<bool(const PrefabSceneInfo&)>& affected);
 
-        // FBX imports run on any thread; their models reload on the main one
-        struct FbxImportFailure {
-            uintmax_t size = 0;
-            std::filesystem::file_time_type time;
-        };
+        // FBX imports run on any thread but the main one (S98 D10: FbxImportQueue); their models
+        // reload on the main one
         std::mutex fbxImportMutex;
-        std::mutex fbxImportCallMutex; // held for a whole importFbxModel call
         std::atomic<bool> fbxImportsPaused{false};
         std::set<std::filesystem::path> exportedImports; // FBX an export's scenes use, kept as they are
         std::set<std::filesystem::path> modelReloads; // FBX whose loaded models may be out of date
-        std::map<std::filesystem::path, FbxImportFailure> failedFbxImports;
+        std::set<std::filesystem::path> modelLoadRetries; // FBX whose import failed: their waiting loads run
+        // what waits on the main thread for an FBX's import to end (whenModelImported)
+        std::vector<std::pair<std::filesystem::path, std::function<void()>>> modelImportWaiters;
         std::chrono::steady_clock::time_point lastFbxImportCheck;
         static constexpr double fbxImportCheckIntervalSec = 1.0;
-        // A Background job (S06); ~Project waits for it before the members it uses go
-        jobs::Task<std::map<std::filesystem::path, FbxImportFailure>> fbxImportScan;
+        // its job captures the project: ~Project waits for it before the members it uses go
+        std::unique_ptr<FbxImportQueue> fbxImports;
 
+        // Converts an FBX on the calling thread (FbxImportQueue's hook); true when its .glb is current
+        bool convertFbxModel(const std::filesystem::path& fbxPath, bool force);
+        // The engine's question for a model about to load (MeshSystem::setModelImportGate)
+        bool isModelLoadWaiting(const std::string& filename);
         void queueModelReload(const std::filesystem::path& fbxPath);
         // Reloads the models loaded from an older import; false while one of them is still loading
         bool reloadModelFile(const std::filesystem::path& fbxPath, bool synchronous = false);
@@ -1417,8 +1445,6 @@ namespace jasperengine::editor{
         // FBX files the loaded scenes use, with the scenes where a model of one is not loaded
         std::map<std::filesystem::path, std::vector<const SceneProject*>> collectSceneModelFiles() const;
         void updateSceneImports(SceneProject* sceneProject);
-        // Imports every FBX in the assets, since scripts can load any of them by path
-        void importFbxModels();
 
         std::string libName;
 
@@ -1554,9 +1580,6 @@ namespace jasperengine::editor{
         // modified
         void markSceneSaved(SceneProject* sceneProject);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
-        bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
-        // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy
-        bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         void applyFirstDrawSettings(SceneProject* sceneProject) const;
@@ -1743,7 +1766,7 @@ namespace jasperengine::editor{
         // lighting setup they can make (see ShaderVariantCollector)
         void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
         // The shader keys a save writes into the scene file (shaderKeys): what the content needs
-        // (collectRequiredShaderKeys) and the keys it had (its file's, Play's at Stop), never what
+        // (collectRequiredShaderKeys) and the keys it had (its file's), never what
         // has drawn, so the same scene saves the same list whatever rendered before
         void collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
@@ -2131,6 +2154,8 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        const AssetStrippingSettings& getAssetStripping() const { return assetStripping; }
+        void setAssetStripping(const AssetStrippingSettings& settings) { assetStripping = settings; }
         // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
         // the editor draws from
         const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }
@@ -2212,6 +2237,13 @@ namespace jasperengine::editor{
         std::filesystem::path getShaderWarmupPath() const;
         // Stop of a Play that recorded: the run's entries merged into the list file
         void finishShaderWarmupRecording();
+        // Stop: the variants a Play session drew with that the played scenes' own lists lack go
+        // to the warm-up list (S98 REQ-27), never into a scene file. `discovered`: by the editor
+        // scene each ran for
+        void addPlayShaderKeysToWarmup(const std::map<uint32_t, std::set<ShaderKey>>& discovered);
+        // `recorded` (a list's text, or empty) and `variants` merged into the list file, which is
+        // written (sorted, atomically) only when it gains an entry; true when it was written
+        bool mergeIntoShaderWarmup(const std::string& recorded, const std::set<ShaderKey>& variants);
         // empties the list file (and a recording in progress)
         bool clearShaderWarmup();
         const LoadingSettings& getLoadingSettings() const;
@@ -2408,12 +2440,37 @@ namespace jasperengine::editor{
         // deleted (R16), the lock released
         void endProjectSession();
 
-        // Reimports changed FBX files of the scenes' models and reloads them
+        // Once a frame: starts the queued FBX imports, reimports the scenes' changed FBX files and
+        // reloads their models
         void refreshFbxImports();
-        // Imports an FBX into its .glb when that is missing or stale, or always when forced. Any thread.
+        enum class ModelImport { Ready, Pending, Failed };
+        // Queues an FBX's import and never waits (S98 REQ-32): Ready when its .glb loads (an old one
+        // is reimported in the background and reloads), Pending while it is queued or converting,
+        // Failed when there is nothing to load. Any thread.
+        ModelImport requestModelImport(const std::filesystem::path& fbxPath, bool force = false);
+        // Queued or converting
+        bool isModelImportPending(const std::filesystem::path& fbxPath) const;
+        // Imports an FBX into its .glb when that is missing or stale, or always when forced, on the
+        // calling thread; false when there is nothing to load. Never waits on the main thread, where
+        // it only queues (requestModelImport).
         bool importFbxModel(const std::filesystem::path& fbxPath, bool force = false);
-        // An FBX model is imported when needed; false when it has nothing to load
-        bool prepareModelFile(const std::string& modelPath);
+        // Imports every FBX in the assets a build would ship (S98 REQ-12: Asset Stripping), since
+        // scripts can load any of them by path. Not on the main thread (Play startup, an export).
+        void importFbxModels();
+        // requestModelImport for a model path; Ready for a file that needs no import
+        ModelImport prepareModelFile(const std::string& modelPath);
+        // Runs `then` on the main thread once the FBX is no longer queued or converting (at once
+        // if it is not). Any thread.
+        void whenModelImported(const std::filesystem::path& fbxPath, std::function<void()> then);
+        // The import batch: conversions done and to do (editor_status, the MCP import job)
+        struct ModelImportProgress {
+            uint64_t batch = 0;
+            size_t done = 0;
+            size_t total = 0;
+            size_t failed = 0;
+            bool active = false;
+        };
+        ModelImportProgress getModelImportProgress() const;
         // The .glb an FBX is imported into
         std::filesystem::path getImportedModelPath(const std::filesystem::path& fbxPath) const;
         // Stops the reimports while an export reads the scenes
@@ -2428,8 +2485,15 @@ namespace jasperengine::editor{
         // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
         // before an edit made while playing)
         void reapplyLinkedMaterialFiles();
-        // `relativePath` was read again: every submesh linked to it takes `material`
+        // `relativePath` was read again: every submesh linked to it takes `material`, in the open
+        // scenes, the loaded prefab assets and their Prefab Mode stages (S98 REQ-29)
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
+        // Each submesh of `registry` that names a .material file (Material::name, S04 deviation 1)
+        // takes the file's current values, as a scene's do when it opens: a prefab follows its
+        // linked materials wherever it is read (Prefab Mode, instances, Play's templates, the cook
+        // and the export; S98 REQ-29). The prefab file is written only when the prefab is saved.
+        // updateRender: the registry draws (its meshes reload what changed). True when one changed.
+        bool applyLinkedMaterialFiles(EntityRegistry* registry, bool updateRender = false) const;
 
         //=== HTML UI hot reload ===
         // The scenes whose HTML UI documents hot reload (editor/reload): the loaded scenes, Prefab Mode
@@ -2525,8 +2589,9 @@ namespace jasperengine::editor{
         uint32_t createSceneNow(const std::string& name, SceneType type, const std::filesystem::path& saveAs = {},
                                 bool closePrevious = false, UnsavedChoice unsaved = UnsavedChoice::Cancel,
                                 std::string* error = nullptr);
-        // Opens a .scene file and selects it, adding it to the project when it is not listed
-        // yet; an open one is only selected. closePrevious closes the scene selected before
+        // Opens a .scene file and selects it; one project.yaml does not list opens out of the
+        // build (inBuild false, S98 REQ-28) and writes only the workspace. An open one is only
+        // selected. closePrevious closes the scene selected before
         // (once the new one loaded), `unsaved` deciding its changes. Returns the scene's id,
         // NULL_PROJECT_SCENE on failure.
         uint32_t openSceneNow(const std::filesystem::path& path, bool closePrevious = false,
@@ -2554,6 +2619,12 @@ namespace jasperengine::editor{
 
         std::vector<std::filesystem::path> findSceneFiles() const;
         uint32_t findSceneByPath(const std::filesystem::path& filepath) const;
+        // An open scene project.yaml does not list joins the build (Build Settings' Add Open
+        // Scenes, edit_build_scenes add), its child scenes with it; project.yaml is written. False
+        // when nothing changed (unknown, untitled, or listed already)
+        bool addSceneToBuild(uint32_t sceneId);
+        // The open scenes of a file project.yaml does not list, in tab order
+        std::vector<uint32_t> getOpenScenesNotInBuild() const;
         // One file per scene (docs/data-safety.md, "Scene files and identity"). The key two spellings of
         // one project file share: project-relative, lexically normal, generic, lower case on a
         // case-insensitive project volume

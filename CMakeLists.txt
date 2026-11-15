@@ -928,6 +928,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/AssetStripping.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
@@ -943,6 +944,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpModelImport.cpp
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
@@ -1060,6 +1062,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Materials.cpp
     ${EDITOR_DIR}/reload/handlers/Models.cpp
     ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/MeshAssets.cpp
     ${EDITOR_DIR}/reload/handlers/Shaders.cpp
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
@@ -1072,6 +1075,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/AssetMeta.cpp
     ${EDITOR_DIR}/asset/AssetRefSchema.cpp
     ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/MeshAssetFiles.cpp
     ${EDITOR_DIR}/asset/ContentHash.cpp
     ${EDITOR_DIR}/asset/DepEdge.cpp
     ${EDITOR_DIR}/asset/MissingAssetTracker.cpp
@@ -1260,6 +1264,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/model/ModelCookQueue.cpp
     ${EDITOR_DIR}/model/ModelCooker.cpp
     ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/FbxImportQueue.cpp
     ${EDITOR_DIR}/model/ModelHeader.cpp
     ${EDITOR_DIR}/model/ModelImportSettings.cpp
     ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
@@ -1549,6 +1554,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
+    ${EDITOR_DIR}/command/type/AssetStrippingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/AndroidSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp

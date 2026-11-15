@@ -588,6 +588,15 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
+        // S98 REQ-10: what Asset Stripping and Exclude From Build left out, listed in the report
+        if (!r.result.buildReport.empty()) {
+            result["build_report"] = FileUtils::pathToGenericUtf8(r.result.buildReport);
+            result["stripped_count"] = r.result.strippedCount;
+            result["stripped_bytes"] = r.result.strippedBytes;
+            if (r.result.strippedCount > 0)
+                result["next"] = "build_report lists each asset left out and why; a script that builds a path at runtime needs its file in "
+                                 "player.always_include (set_project_settings)";
+        }
         std::string message;
         if (r.mode == ExportMode::Player) {
             const ExportResult& report = r.result;
@@ -804,7 +813,7 @@ void buildProjectTool(const CallPtr& call) {
 
     // ---- scenes
     bool hasSavedScene = false;
-    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || !scene.filepath.empty();
+    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || (!scene.filepath.empty() && scene.inBuild);
     if (!hasSavedScene) {
         call->fail("No saved scene is in the build: save a scene first (save_project saves untitled scenes).");
         return;
@@ -829,13 +838,17 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("start_scene \"" + scene->name + "\" is untitled: save it first.");
             return;
         }
+        if (!scene->inBuild) {
+            call->fail("start_scene \"" + scene->name + "\" is not in the build: edit_build_scenes add puts it in.");
+            return;
+        }
         startScene = scene->id;
     }
     const SceneProject* start = project->getScene(startScene);
-    if (!start || start->filepath.empty()) {
+    if (!start || start->filepath.empty() || !start->inBuild) {
         startScene = NULL_PROJECT_SCENE;
         for (const SceneProject& scene : project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 startScene = scene.id;
                 break;
             }
@@ -1383,7 +1396,7 @@ void getBuildInfoTool(const CallPtr& call) {
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
-        if (scene.filepath.empty()) continue;
+        if (scene.filepath.empty() || !scene.inBuild) continue;
         scenes.push_back({{"id", scene.id}, {"name", scene.name}, {"start", scene.id == startId}});
     }
     data["scenes"] = scenes;

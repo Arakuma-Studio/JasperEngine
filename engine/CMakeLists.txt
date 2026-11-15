@@ -1636,6 +1636,7 @@ set(JASPERENGINE_SRCS
     core/io/JPak.cpp
     core/io/FileUtils.cpp
     core/io/ResourcePack.cpp
+    core/io/StrippedAssets.cpp
     core/io/watch/ExpectedWriteLedger.cpp
     core/io/watch/FileChangeCoalescer.cpp
     core/io/watch/FileIdentity.cpp
@@ -1926,6 +1927,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
     core/model/CookedModels.cpp
+    core/model/MeshAsset.cpp
     core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp

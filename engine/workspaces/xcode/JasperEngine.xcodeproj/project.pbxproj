@@ -4919,6 +4919,12 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47315BA78BA4D638EE /* StrippedAssets.h */; };
+		4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D91AB01B3A49CD25 /* MeshAsset.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9502,10 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E47A46D102198AF060B /* StrippedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StrippedAssets.cpp; sourceTree = "<group>"; };
+		4A534E47315BA78BA4D638EE /* StrippedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StrippedAssets.h; sourceTree = "<group>"; };
+		4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshAsset.cpp; sourceTree = "<group>"; };
+		4A534E47D91AB01B3A49CD25 /* MeshAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshAsset.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11348,6 +11358,8 @@
 				4A534E47AD19DC42C003CE33 /* CookedModels.h */,
 				4A534E47297026DDD66F700A /* ModelCpuData.cpp */,
 				4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */,
+				4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */,
+				4A534E47D91AB01B3A49CD25 /* MeshAsset.h */,
 			);
 			path = model;
 			sourceTree = "<group>";
@@ -11792,6 +11804,8 @@
 				A5E05A7C0000000000000001 /* watch */,
 				4A534E478A53FD45D6859CB8 /* JPak.cpp */,
 				4A534E477327188402907BEC /* JPak.h */,
+				4A534E47A46D102198AF060B /* StrippedAssets.cpp */,
+				4A534E47315BA78BA4D638EE /* StrippedAssets.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -16843,6 +16857,8 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
+				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19527,8 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */,
+				4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20488,8 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */,
+				4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

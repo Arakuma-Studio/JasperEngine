@@ -485,6 +485,8 @@ bool editor::Exporter::runPrebuilt() {
     if (!selectPlayerVariant()) return false;
     resolveShaderKeys();
     if (cancelled()) return false;
+    if (!planAssetStripping()) return false;
+    if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
     checkSoundEventClips();
@@ -601,6 +603,7 @@ bool editor::Exporter::writeGameConfig() {
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
     game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
+        if (!scene.inBuild) continue;   // opened without being listed (S98 REQ-28)
         player::GameScene item;
         item.id = scene.id;
         item.name = scene.name;
@@ -842,8 +845,9 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     manifest.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     {
         const std::vector<SceneProject>& scenes = project->getScenes();
-        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
-        if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
+        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene && scene.inBuild; });
+        const auto first = std::find_if(scenes.begin(), scenes.end(), [](const SceneProject& scene) { return scene.inBuild; });
+        if (!known && first != scenes.end()) manifest.startScene = first->id;
     }
     // the modules the content needs (S34 R3): a player without one of them refuses to start
     manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();
@@ -853,6 +857,14 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         manifest.playerId = player->id;
         auto exe = player->executables.find(player->executable);
         if (exe != player->executables.end()) manifest.playerSha256 = exe->second;
+    }
+    // S98 REQ-10: a Development Build names what it left out, so a load of one says why
+    if (config.developmentBuild) {
+        const std::string assetsRoot = project->getAssetRoots().assetsDir;
+        for (const BuildReportLeftOut& item : buildReport.leftOut) {
+            const bool inAssets = assetsRoot.empty() || item.path.rfind(assetsRoot + "/", 0) == 0;
+            manifest.stripped[inAssets && !assetsRoot.empty() ? item.path.substr(assetsRoot.size() + 1) : item.path] = item.reason;
+        }
     }
     if (!prebuilt) {
         manifest.notices = compileNotices;

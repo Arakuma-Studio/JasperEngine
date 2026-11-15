@@ -67,6 +67,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
+    // S98 F1: the geometry of a .mesh asset is the file's, so neither its buffers nor what they
+    // give (bounds, vertex counts) are written: a save is the same whether the file was read yet
+    if (!mesh.meshAsset.empty()) {
+        encodeAssetRef(node, "meshAsset", mesh.meshAsset);
+        encodeBuffers = false;
+        encodeGeneratedValues = false;
+    }
+
     if (encodeBuffers){
         node["buffer"] = encodeInterleavedBuffer(mesh.buffer);
         node["indices"] = encodeIndexBuffer(mesh.indices);
@@ -185,6 +193,13 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Use old values as defaults if provided
     if (oldMesh) {
         mesh = *oldMesh;
+    }
+
+    // S98 F1 (omitted when none): another file, or none, is read again by MeshSystem
+    const std::string readAsset = mesh.meshAsset.path;
+    mesh.meshAsset = node["meshAsset"] ? decodeAssetRef(node, "meshAsset") : AssetRef();
+    if (mesh.meshAsset.empty() || mesh.meshAsset.path != readAsset) {
+        mesh.loadedMeshAsset.clear();
     }
 
     // Decode buffers using generic methods

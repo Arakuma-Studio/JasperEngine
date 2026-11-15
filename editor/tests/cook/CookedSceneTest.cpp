@@ -15,6 +15,9 @@
 #include "Catalog.h"
 #include "component/ActionComponent.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
+#include "model/MeshAsset.h"
+#include "subsystem/MeshSystem.h"
 #include "component/AudioSourceComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
@@ -32,6 +35,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <set>
@@ -693,6 +697,46 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
 // once; another major is refused, naming the fix
+// S98 F1 (format 1.6): a mesh showing a .mesh asset ships the reference, not the buffers, and the
+// game's MeshSystem reads the shipped file; a mesh of its own still ships its buffers
+TEST(CookedScene, MeshAssetShipsTheReferenceNotTheBuffers) {
+    const fs::path dir = fs::temp_directory_path() / ("je-cooked-mesh-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()));
+    fs::create_directories(dir);
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity shown = scene->createUserEntity();
+    scene->addComponent<Transform>(shown, {});
+    scene->addComponent<MeshComponent>(shown, {});
+    MeshComponent& mesh = scene->getComponent<MeshComponent>(shown);
+    scene->getSystem<MeshSystem>()->createSphere(mesh, 1.0f, 12, 8);
+    const fs::path file = dir / "ball.mesh";
+    std::string error;
+    ASSERT_TRUE(MeshAsset::save(file, mesh, &error)) << error;
+    mesh.meshAsset = file.generic_string();
+    mesh.loadedMeshAsset = file.generic_string();
+    const MeshComponent geometry = mesh;
+    const Entity own = scene->createUserEntity();
+    scene->addComponent<Transform>(own, {});
+    scene->addComponent<MeshComponent>(own, {});
+    scene->getSystem<MeshSystem>()->createBox(scene->getComponent<MeshComponent>(own), 1, 1, 1);
+
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {shown, own}, NULL_ENTITY, SceneResources{});
+    DecodedScene loaded = emptyScene();
+    ASSERT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(bytes.data(), bytes.size()), &error)) << error;
+    Scene* game = loaded.scene->scene;
+    MeshComponent& read = game->getComponent<MeshComponent>(shown);
+    EXPECT_EQ(read.meshAsset.path, file.generic_string());
+    EXPECT_EQ(read.buffer.getSize(), 0u) << "the buffers stay in the file";
+    EXPECT_GT(game->getComponent<MeshComponent>(own).buffer.getSize(), 0u) << "a mesh of its own ships them";
+
+    game->getSystem<MeshSystem>()->update(0);
+    ASSERT_EQ(read.buffer.getSize(), geometry.buffer.getSize());
+    EXPECT_EQ(std::memcmp(read.buffer.getData(), geometry.buffer.getData(), geometry.buffer.getSize()), 0);
+    EXPECT_EQ(read.indices.getSize(), geometry.indices.getSize());
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     using namespace jasperengine::cook;
     DecodedScene source = emptyScene();
@@ -727,7 +771,8 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
 // values that end the settings record, the record's length and the string table offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    // 1.6 (a Mesh Renderer's .mesh asset) is a field of the mesh's table: the settings record is 1.5's
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);

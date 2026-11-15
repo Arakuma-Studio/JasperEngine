@@ -147,3 +147,18 @@ cross-fade with a dither for `mesh_lod_cross_fade_duration` seconds (0.5) when
 
 Lua: `scene:getRenderStats()` gives the same counters (camelCase: `mainDrawCalls`,
 `shadowTriangles`, `instancedDraws`...).
+
+## Mesh assets (S98 F1)
+
+A `.mesh` holds one mesh's geometry; a Mesh Renderer shows it through `meshAsset`.
+
+| To | Call |
+|---|---|
+| save a GameObject's geometry as a reusable asset | `set_mesh_geometry {entity, save_as: "assets/meshes/rock.mesh"}` (with `shape`: the new primitive) |
+| show an existing `.mesh` | `set_properties {entity, values: {mesh: {meshAsset: "assets/meshes/rock.mesh"}}}` |
+| read a `.mesh` (vertices, submeshes, bounds, who shows it) | `get_asset_info {path}` |
+
+- A scene save moves geometry over 4 KB (spheres, cylinders, capsules, tori, custom meshes) into
+  `<scene folder>/<scene name>/<GameObject>.mesh`: the scene file then holds `meshAsset`, not
+  `buffer`. Read the geometry with `get_asset_info`, never from the YAML.
+- `set_mesh_geometry` without `save_as` makes the geometry the mesh's own again.

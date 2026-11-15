@@ -1219,8 +1219,13 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     // geometry source and keeps its inline data.
     const bool hasModel = Stream::isModelBackedMesh(entity, scene, scene->getSignature(entity));
     const bool hasGeneratedGeometry = Stream::isGeneratedMesh(scene, scene->getSignature(entity));
-    const bool hasRuntimeGeometrySource = hasModel || hasGeneratedGeometry;
+    // S98 F1: the game's MeshSystem reads a .mesh asset's geometry from the shipped file
+    const bool hasMeshAsset = !mesh.meshAsset.empty();
+    const bool hasRuntimeGeometrySource = hasModel || hasGeneratedGeometry || hasMeshAsset;
     const unsigned int numSubmeshes = Stream::savedSubmeshCount(mesh, scene, scene->getSignature(entity));
+
+    if (hasMeshAsset)
+        code << ind << "mesh.meshAsset = " << formatString(mesh.meshAsset.path) << ";\n";
 
     // receiveLights picks the lit or the unlit shader variant: the export only ships the
     // variants the editor's scene used, so a mesh generated lit that was unlit there asks

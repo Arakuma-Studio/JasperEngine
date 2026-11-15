@@ -59,6 +59,8 @@
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "command/type/AndroidSettingsCmd.h"
+#include "command/type/AssetStrippingSettingsCmd.h"
+#include "export/AssetStripping.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "titleart/localisation/TitleLanguageNames.h"
@@ -1174,6 +1176,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_buildMethodIndex = indexOfName(buildMethodNames, project->getBuildMethod());
     m_packContent = project->isPackContent();
     m_stripEngineCode = project->isStripEngineCode();
+    m_assetStripping = project->getAssetStripping();
+    m_alwaysIncludeInput[0] = '\0';
+    m_excludeInput[0] = '\0';
     m_vcs = project->getVcsProjectSettings();
 
     m_tags = project->getTags();
@@ -1892,10 +1897,62 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             ImGui::EndTable();
         }
 
+        drawAssetStrippingSettings();
+
         ImGui::Spacing();
         drawPlatformsSettings();
     }
     endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawAssetStrippingSettings() {
+    if (!settingsFoldout("Build") || !beginSettingsTable("##PlayerBuildTable")) return;
+    if (settingsui::beginRow("player.asset_stripping")) {
+        static const char* modeLabels[] = {"Ship All Assets", "Referenced Only"};
+        int mode = m_assetStripping.mode == AssetStrippingMode::ReferencedOnly ? 1 : 0;
+        if (projectBeginSettingsRow("Asset Stripping", mode != 0)) mode = 0;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::Combo("##AssetStripping", &mode, modeLabels, IM_ARRAYSIZE(modeLabels));
+        m_assetStripping.mode = mode == 1 ? AssetStrippingMode::ReferencedOnly : AssetStrippingMode::ShipAll;
+        endSettingsRow("What builds ship. Ship All Assets: everything in the assets folder. Referenced Only: what the build's scenes and "
+                       "project settings use, what Lua and C++ string literals name, and Always Include; the Build Report lists what was "
+                       "left out. Lua scripts always ship whole.");
+    }
+    // one list of globs: its entries with Remove, and a field that adds one
+    auto globList = [&](const char* key, const char* label, std::vector<std::string>& globs, char* input, size_t inputSize,
+                        const char* id, const char* tooltip) {
+        if (!settingsui::beginRow(key)) return;
+        if (projectBeginSettingsRow(label, !globs.empty())) globs.clear();
+        int remove = -1;
+        for (size_t i = 0; i < globs.size(); i++) {
+            ImGui::PushID((std::string(id) + std::to_string(i)).c_str());
+            ImGui::TextUnformatted(globs[i].c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove")) remove = (int)i;
+            ImGui::PopID();
+        }
+        if (remove >= 0) globs.erase(globs.begin() + remove);
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::InputTextWithHint((std::string("##") + id).c_str(), "assets/levels/**", input, inputSize);
+        ImGui::SameLine();
+        std::string error;
+        const bool valid = buildglob::isValid(input, error);
+        ImGui::BeginDisabled(!valid);
+        if (ImGui::Button((std::string("Add##") + id).c_str())) {
+            if (std::find(globs.begin(), globs.end(), std::string(input)) == globs.end()) globs.push_back(input);
+            input[0] = '\0';
+        }
+        ImGui::EndDisabled();
+        if (!valid && input[0]) ImGui::TextDisabled("%s", error.c_str());
+        endSettingsRow(tooltip);
+    };
+    globList("player.always_include", "Always Include", m_assetStripping.alwaysInclude, m_alwaysIncludeInput, sizeof(m_alwaysIncludeInput),
+             "AlwaysInclude", "Project-relative globs (* within a folder, ** across folders) that ship under Referenced Only: the files a "
+             "script loads by a path it builds at runtime (\"level\" .. n). Also in the Project window's context menu.");
+    globList("player.exclude_from_build", "Exclude From Build", m_assetStripping.exclude, m_excludeInput, sizeof(m_excludeInput),
+             "ExcludeFromBuild", "Project-relative globs no build ships, under either mode. Wins over Always Include. Also in the Project "
+             "window's context menu.");
+    ImGui::EndTable();
 }
 
 void ProjectSettingsWindow::drawPresentationSettings() {
@@ -6325,6 +6382,12 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setBuildMethod(buildMethodNames[std::clamp(m_buildMethodIndex, 0, 2)]);
     m_project->setPackContent(m_packContent);
     m_project->setStripEngineCode(m_stripEngineCode);
+    // S98 REQ-44: one undo step
+    if (m_assetStripping != m_project->getAssetStripping()) {
+        auto* command = new AssetStrippingSettingsCmd(m_project, m_assetStripping);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
     m_project->setVcsProjectSettings(m_vcs);
 
     // a name typed into New Tag Name but not added yet is kept rather than lost
