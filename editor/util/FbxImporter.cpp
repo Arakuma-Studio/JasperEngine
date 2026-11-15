@@ -495,24 +495,8 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
 
     GlbBuilder::Options buildOptions;
     buildOptions.smoothingGroups = importOptions.smoothingGroups;
-    if (importOptions.firstFrameRestPose) {
-        // the named take, else the first (Unity's default clip)
-        std::string takes;
-        for (size_t i = 0; i < scene->anim_stacks.count; i++) {
-            const std::string name(scene->anim_stacks.data[i]->name.data, scene->anim_stacks.data[i]->name.length);
-            takes += (takes.empty() ? "" : ", ") + name;
-            if (buildOptions.restPoseStack < 0 && (importOptions.restPoseTake.empty() || name == importOptions.restPoseTake)) {
-                buildOptions.restPoseStack = static_cast<int>(i);
-            }
-        }
-        if (scene->anim_stacks.count == 0) {
-            result.warnings.emplace_back("Rest Pose is First Frame, but the file has no animation take: the nodes keep their values");
-        } else if (buildOptions.restPoseStack < 0) {
-            result.warnings.emplace_back("Rest Pose Take '" + importOptions.restPoseTake + "' is not in the file (its takes: " + takes +
-                "): the first take's first frame is used");
-            buildOptions.restPoseStack = 0;
-        }
-    }
+    buildOptions.firstFrameRestPose = importOptions.firstFrameRestPose;
+    buildOptions.restPoseTake = importOptions.restPoseTake;
 
     // what the last import drew, by mesh and submesh
     Json previous;

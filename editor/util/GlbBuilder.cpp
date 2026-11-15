@@ -1259,6 +1259,10 @@ void GlbBuilder::applyRestPose(const ufbx_baked_anim* baked) {
 
 void GlbBuilder::buildAnimations() {
     std::set<std::string> usedNames;
+    // Rest Pose First Frame (spec S94 F40): the named clip, else the first; the first is kept until
+    // the named one is known to be missing
+    std::unique_ptr<ufbx_baked_anim, decltype(&ufbx_free_baked_anim)> firstClip(nullptr, &ufbx_free_baked_anim);
+    bool reposed = !this->options.firstFrameRestPose;
     for (size_t stackIndex = 0; stackIndex < scene->anim_stacks.count; stackIndex++) {
         const ufbx_anim_stack* stack = scene->anim_stacks.data[stackIndex];
         ufbx_bake_opts options = {};
@@ -1278,9 +1282,6 @@ void GlbBuilder::buildAnimations() {
             continue;
         }
         std::unique_ptr<ufbx_baked_anim, decltype(&ufbx_free_baked_anim)> bakedGuard(baked, &ufbx_free_baked_anim);
-        if (static_cast<int>(stackIndex) == this->options.restPoseStack) {
-            applyRestPose(baked);
-        }
 
         tinygltf::Animation animation;
         auto addChannel = [&](uint32_t node, const char* path, const std::vector<float>& times,
@@ -1395,7 +1396,27 @@ void GlbBuilder::buildAnimations() {
         usedNames.insert(unique);
         animation.name = unique;
         model.animations.push_back(animation);
+        if (!reposed && (this->options.restPoseTake.empty() || unique == this->options.restPoseTake)) {
+            applyRestPose(baked);
+            reposed = true;
+        } else if (!reposed && !firstClip) {
+            firstClip = std::move(bakedGuard);
+        }
     }
+    if (reposed) {
+        return;
+    }
+    if (!firstClip) {
+        warn("Rest Pose is First Frame, but no take of the file animates its nodes: the nodes keep their values");
+        return;
+    }
+    std::string clips;
+    for (const tinygltf::Animation& animation : model.animations) {
+        clips += (clips.empty() ? "" : ", ") + animation.name;
+    }
+    warn("Rest Pose Take '" + this->options.restPoseTake + "' is not a clip of the file (its clips: " + clips +
+         "): the first clip's first frame is used");
+    applyRestPose(firstClip.get());
 }
 
 std::shared_ptr<GlbBuilder::Pixels> GlbBuilder::resized(const std::shared_ptr<Pixels>& pixels, int width, int height) {

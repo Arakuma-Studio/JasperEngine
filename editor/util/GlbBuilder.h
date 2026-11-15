@@ -34,9 +34,10 @@ namespace jasperengine::editor {
 
         // What a model's import settings change in the conversion (spec S94 F40, F43)
         struct Options {
-            // Rest Pose First Frame: the take (an index of the scene's anim stacks) whose first frame
-            // the nodes take; -1 keeps the node values
-            int restPoseStack = -1;
+            // Rest Pose First Frame: the nodes take the first frame of the clip named restPoseTake,
+            // else of the first clip (takes that animate nothing make no clip and are skipped)
+            bool firstFrameRestPose = false;
+            std::string restPoseTake;
             // Smoothness Source From / Prefer Smoothing Groups: each vertex records the smoothing group
             // of its corner (a custom attribute the model cook reads and drops), for meshes that have them
             bool smoothingGroups = false;

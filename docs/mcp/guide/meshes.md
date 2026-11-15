@@ -37,7 +37,7 @@ Model import and cook settings, detail levels (LOD) and render budgets: the `mes
 | `normals_weighting` | area_and_angle, area (calculate) | area_and_angle |
 | `smoothness_source` | from_angle, from_smoothing_groups, prefer_smoothing_groups (an FBX's groups; per model) | from_angle |
 | `tangents` | import, calculate (MikkTSpace), none | import |
-| `rest_pose`, `rest_pose_take` | node_values, first_frame (an FBX imports a take's first frame; the take by name, default the first) | node_values |
+| `rest_pose`, `rest_pose_take` | node_values, first_frame (an FBX imports a clip's first frame; the clip by name, default the first) | node_values |
 | `generate_lods` | automatic, on, off | automatic |
 | `lod_count`, `lod_reduction` | 1-3; preserve_detail, balanced, smallest (used when `generate_lods` is on) | 3, balanced |
 | `ship_source` | true, false | false |

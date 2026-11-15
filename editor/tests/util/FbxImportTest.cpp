@@ -515,6 +515,25 @@ TEST(FbxImport, RestPoseFirstFrame) {
         [](const std::string& w) { return w.find("'Run'") != std::string::npos; }), unknown.warnings.end());
 }
 
+TEST(FbxImport, RestPoseSkipsTakesThatAnimateNothing) {
+    // CLEIVER's file: empty takes before the one that animates (no clip is made of them), so the
+    // default take is the first clip, the one the Inspector shows
+    std::string text = replaced(withRootTranslationTake(readText(fixture)), "\tAnimationStack: 800,",
+        "\tAnimationStack: 790, \"AnimStack::Empty\", \"\" {\n\t}\n\tAnimationLayer: 791, \"AnimLayer::BaseLayer\", \"\" {\n\t}\n"
+        "\tAnimationStack: 800,");
+    text = replaced(text, "\tC: \"OO\",801,800\n", "\tC: \"OO\",791,790\n\tC: \"OO\",801,800\n");
+    FbxProject project("restpose-empty-take", text);
+    writeMeta(project.fbx, "    restPose: first_frame\n");
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    tinygltf::Model model;
+    ASSERT_TRUE(project.load(model));
+    ASSERT_EQ(model.animations.size(), 1u);
+    EXPECT_EQ(model.animations[0].name, "Take 001");
+    ASSERT_EQ(translationOf(model, "Root").size(), 3u);
+    EXPECT_NEAR(translationOf(model, "Root")[1], -3.0, 1e-5) << "the first clip's first frame, not the empty first take's";
+}
+
 TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
     // three slots: 0 unused, then the faces' materials 1 and 2, the first face on slot 1 (B's
     // eyes/body case: the empty slot shifted every later submesh by one)
