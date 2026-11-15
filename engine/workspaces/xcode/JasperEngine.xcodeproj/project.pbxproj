@@ -4929,6 +4929,11 @@
 		4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */; };
 		4A534E47730A71320720C44A /* OutlineComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */; };
 		4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474C83E40B234EA9C4 /* Outline.h */; };
+		4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47736FFBD4F64D9163 /* RootMotion.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9512,6 +9517,9 @@
 		4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemOutline.cpp; sourceTree = "<group>"; };
 		4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OutlineComponent.h; sourceTree = "<group>"; };
 		4A534E474C83E40B234EA9C4 /* Outline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Outline.h; sourceTree = "<group>"; };
+		4A534E473EE5CF176C08B72B /* RootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemRootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47736FFBD4F64D9163 /* RootMotion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RootMotion.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10999,6 +11007,8 @@
 				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
 				4A534E474E197FD9213D710B /* ModelClipSettings.cpp */,
 				4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */,
+				4A534E473EE5CF176C08B72B /* RootMotion.cpp */,
+				4A534E47736FFBD4F64D9163 /* RootMotion.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -12359,6 +12369,7 @@
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
 				4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */,
+				4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -16867,6 +16878,7 @@
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E47730A71320720C44A /* OutlineComponent.h in Headers */,
 				4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */,
+				4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19539,6 +19551,8 @@
 				4A534E479B061C69221C4D62 /* Outline.cpp in Sources */,
 				4A534E47C98545D43F637C78 /* OutlineLua.cpp in Sources */,
 				4A534E476216B24F1D94D8A8 /* RenderSystemOutline.cpp in Sources */,
+				4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */,
+				4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20502,6 +20516,8 @@
 				4A534E4742E5599C8B465910 /* Outline.cpp in Sources */,
 				4A534E4730EC6BBAA28A148C /* OutlineLua.cpp in Sources */,
 				4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */,
+				4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */,
+				4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

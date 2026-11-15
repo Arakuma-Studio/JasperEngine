@@ -5242,6 +5242,35 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P6: Root Transform Based Upon (F32)
+    {
+        "id": "guard_root_motion_body_orientation",
+        "kind": "guard",
+        "what_happened": "New text (S94 F32): edit_animation's root_motion takes Unity's Based Upon; asked to make a clip that "
+                         "starts turned away face forward, an agent sets rotation_based_upon instead of rewriting the hips' keys.",
+        "text_at_issue": "animation.md clip mode arguments: root_motion '... rotation_based_upon ... a clip that starts turned away "
+                         "or off the ground: rotation_based_upon: \"body_orientation\"'",
+        "source": "docs/specs/S94-rendering-anim-gaps.md F32 (new text); no failure on record",
+        "prompt": "assets/anims/walk.anim was captured with the actor turned about 30 degrees, so the character walks along its "
+                  "forward but faces off to the side. Make the clip face the GameObject's forward when it plays.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "assets/anims/walk.anim: 1.00 s, loop, 2 tracks (Hips position, Hips rotation), root_motion {bake_position_y}.",
+                {"clip": "assets/anims/walk.anim", "length": 1.0, "wrap": "loop",
+                 "tracks": [{"index": 0, "path": "Hips", "channel": "position", "keys": 3},
+                            {"index": 1, "path": "Hips", "channel": "rotation", "keys": 3}],
+                 "root_motion": {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                                 "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                 "position_y_offset": 0, "position_xz_based_upon": "original"}})},
+            {"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "root_motion": "*"}, "result": ok(
+                "assets/anims/walk.anim: root_motion changed (one project undo step).",
+                {"clip": "assets/anims/walk.anim", "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim",
+                                                                  "root_motion": {"rotation_based_upon": "body_orientation"}}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"tracks": "*"}}]},
+        "max_turns": 8,
+    },
     # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
     {
         "id": "guard_camera_orthographic_size",
@@ -5449,5 +5478,100 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
         "max_turns": 8,
+    },
+    # ---- S94 F35, F36: Unity .anim / .controller / .mask import
+    {
+        "id": "guard_unity_anim_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation's create.unity imports a Unity YAML .anim; an agent given a Unity "
+                         "clip imports it instead of hand-converting its curves into tracks or copying the YAML.",
+        "text_at_issue": "edit_animation: 'create {from?, humanoid?, unity: Unity .anim}' (schema: create.unity, create.mirror_x)",
+        "source": "S94 F35 (new description text); the JasperArcade port converted .anim files with its own script",
+        "prompt": "Bring the Unity clip /home/me/UnityGame/Assets/Anim/Walk.anim into this project as assets/anim/walk.anim.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "assets/anim/walk.anim: created, 3 tracks, 1 s, loop; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Walk.anim (3 tracks, 1 event)",
+                {"path": "assets/anim/walk.anim", "created": True, "tracks": [], "wrap": "loop", "length": 1,
+                 "unity": {"source": "Assets/Anim/Walk.anim", "tracks": 3, "events": 1, "unmapped": [], "notes": [],
+                           "muscle_curves": {"count": 0, "names": []}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim$", "create": {"unity": "re:Walk\\.anim$"}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.anim$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_unity_anim_unmapped_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation create.unity's next sends the agent to list_properties when Unity "
+                         "bindings did not map, so it keys their engine equivalents instead of reporting the clip done.",
+        "text_at_issue": "edit_animation next: 'unity.unmapped lists the Unity bindings with no engine property: key their engine "
+                         "equivalents with tracks (get_animation {root, list_properties} lists what a GameObject can animate)'",
+        "source": "S94 F35 (new result text); no failure on record",
+        "prompt": "Import the Unity clip /home/me/UnityGame/Assets/Anim/Blink.anim as assets/anim/blink.anim for the Hero "
+                  "GameObject, and make sure everything it animated in Unity is animated here too.",
+        "mocks": [
+            {"tool": "edit_animation", "args": {"create": "*"}, "result": ok(
+                "assets/anim/blink.anim: created, 1 track, 0.5 s, once; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Blink.anim (1 track, 0 events)",
+                {"path": "assets/anim/blink.anim", "created": True, "tracks": [], "wrap": "once", "length": 0.5,
+                 "unity": {"source": "Assets/Anim/Blink.anim", "tracks": 1, "events": 0, "notes": [],
+                           "unmapped": [{"binding": "Face: MonoBehaviour.eyeOpen", "reason": "script fields of Unity MonoBehaviours "
+                                         "have no engine binding: key the Lua script's field (script:<Class>) with edit_animation"}],
+                           "muscle_curves": {"count": 0, "names": []}},
+                 "next": "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                         "(get_animation {root, list_properties} lists what a GameObject can animate)"})},
+            {"tool": "get_animation", "result": ok(
+                "\"Face\": animatable properties (track component, property, kind):\nscript:face eyeOpen float\nmesh "
+                "submeshes[0].material.baseColorFactor color4",
+                {"properties": [{"component": "script:face", "property": "eyeOpen", "kind": "float"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] transform\nHero/Face [8] mesh script",
+                                                   {"entities": [{"id": 7, "path": "Hero"}, {"id": 8, "path": "Hero/Face"}]})},
+            {"tool": "edit_animation", "args": {"tracks": "*"}, "result": ok(
+                "assets/anim/blink.anim: 2 tracks, 0.5 s, once (one project undo step: undo scope project)",
+                {"path": "assets/anim/blink.anim", "created": False, "tracks": []})},
+        ],
+        "checks": {"calls": [{"tool": "get_animation", "args": {"list_properties": "*"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_unity_controller_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F36): edit_animator_controller's create.unity imports a Unity .controller with the clips "
+                         "and masks it uses; an agent imports it in one call instead of rebuilding states with ops or importing "
+                         "each clip first, and follows next for the model clip that did not map.",
+        "text_at_issue": "edit_animator_controller create: 'true, or {unity: an absolute Unity .controller}'; next: 'unity.unmapped "
+                         "lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: set_state "
+                         "{clip: \"<model>#<clip>\"} once the model is in the project)'",
+        "source": "S94 F36 (new schema and result text); no failure on record",
+        "prompt": "Import the Unity Animator Controller /home/me/UnityGame/Assets/Anim/Hero.controller as "
+                  "assets/anim/hero.controller, with everything it needs. The Hero model is already in the project at "
+                  "assets/models/hero.fbx.",
+        "mocks": [
+            {"tool": "edit_animator_controller", "args": {"create": "*"}, "result": ok(
+                "assets/anim/hero.controller: imported Assets/Anim/Hero.controller (4 file(s), one project undo step); 1 unmapped "
+                "item(s): see unity.unmapped\nlayers[Base Layer].states[Jump].motion: a clip of the model Assets/Models/Hero.fbx "
+                "(\"Jump\"): import the model into the project, then set the state's clip to \"<model path>#Jump\" with "
+                "edit_animator_controller set_state",
+                {"path": "assets/anim/hero.controller", "created": True,
+                 "files": ["assets/anim/hero.controller", "assets/anim/Walk.anim", "assets/anim/Run.anim", "assets/anim/UpperBody.mask"],
+                 "unity": {"source": "Assets/Anim/Hero.controller", "kind": "controller", "layers": 2, "states": 5,
+                           "unmapped": [{"what": "layers[Base Layer].states[Jump].motion", "reason": "a clip of the model "
+                                         "Assets/Models/Hero.fbx (\"Jump\"): import the model into the project, then set the state's "
+                                         "clip to \"<model path>#Jump\" with edit_animator_controller set_state"}]},
+                 "next": "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's "
+                         "clip: set_state {clip: \"<model>#<clip>\"} once the model is in the project)"})},
+            {"tool": "edit_animator_controller", "args": {"ops": "*"}, "result": ok(
+                "assets/anim/hero.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/hero.controller", "changes": ["set_state Jump"], "diagnostics": [], "warnings": []})},
+            {"tool": "get_animator", "result": ok("assets/anim/hero.controller: 6 parameters, 2 layers, 5 states.",
+                                                  {"controller": {"layers": []}})},
+            {"tool": "get_model_info", "result": ok("assets/models/hero.fbx: 1 mesh, 32 bones, clips: Jump, Idle.",
+                                                    {"clips": [{"name": "Jump"}, {"name": "Idle"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animator_controller", "args": {"create": {"unity": "re:Hero\\.controller$"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"clip": "re:hero\\.fbx#Jump"}]}}],
+                   "must_not_call": ["edit_animation"]},
+        "max_turns": 12,
     },
 ]

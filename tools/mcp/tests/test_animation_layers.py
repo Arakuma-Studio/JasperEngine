@@ -83,7 +83,7 @@ async def test_mask_file_and_clips(ed: Editor):
     # write_file validates masks: refusals, then a valid one with its warnings
     await refused(ed, "write_file", {"path": "assets/anim/bad.mask", "content": '{"format": "jasperengine.mask",\n "version": 1,,}'}, "2:")
     await refused(ed, "write_file", {"path": "assets/anim/unity.mask", "content": "%YAML 1.1\n--- !u!319 &31900000\nAvatarMask:\n"},
-                  "Create a JasperEngine Avatar Mask")
+                  "Import Unity Animation")
     # upstream's version 1 mask: read converted (its arm part also weighs the hand), the IK part
     # warned about
     mask = {"format": "jasperengine.mask", "version": 1, "default": 0,

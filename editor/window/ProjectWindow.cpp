@@ -125,6 +125,7 @@
 #include "util/ProjectUtils.h"
 #include "htmlui/VideoImporter.h"
 #include "EditorHost.h"
+#include "unity/UnityControllerImport.h"
 
 #include "imgui_internal.h"
 
@@ -3707,14 +3708,45 @@ void editor::ProjectWindow::duplicateSelection() {
     }
 }
 
+void editor::ProjectWindow::importUnityAnimations(const std::vector<fs::path>& files, const fs::path& directory) {
+    for (const fs::path& file : files) {
+        unity::AssetImportOptions options;
+        options.file = file;
+        options.dest = unity::freeImportPath(directory, file);
+        const unity::AssetImportResult result = unity::importUnityAnimationIntoProject(project, options);
+        const std::string name = editor::FileUtils::pathToUtf8(file.filename());
+        if (!result.ok) {
+            Out::error("Import Unity Animation: %s: %s", name.c_str(), result.error.c_str());
+            continue;
+        }
+        Out::info("Imported Unity %s %s as %s (%d file(s))", result.report.value("kind", std::string()).c_str(), name.c_str(),
+                  result.report.value("path", std::string()).c_str(), (int)result.files.size());
+        for (const char* list : {"unmapped", "notes"}) {
+            if (!result.report.contains(list)) continue;
+            for (const nlohmann::json& item : result.report[list]) {
+                const std::string what = item.value("what", item.value("binding", item.value("code", std::string())));
+                const std::string why = item.value("reason", item.value("message", std::string()));
+                Out::warning("%s: %s: %s", name.c_str(), what.c_str(), why.c_str());
+            }
+        }
+    }
+    scanDirectory(currentPath);
+}
+
 void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& sourcePaths, const fs::path& targetDirectory) {
     std::vector<std::string> validPaths;
     std::vector<fs::path> videos;
+    std::vector<fs::path> unityAssets;
 
     for (const auto& sourcePath : sourcePaths) {
         fs::path source = fs::path(sourcePath).lexically_normal();
 
         std::error_code ec;
+        // a Unity .anim / .controller / .mask: the engine reads JSON, so the import is offered
+        if (fs::is_regular_file(source, ec) && unity::isUnityAnimationAsset(source)) {
+            unityAssets.push_back(source);
+            continue;
+        }
         // a video the engine does not play is converted (FFmpeg), not copied (phase 6)
         if (fs::is_regular_file(source, ec) && htmlui::VideoImporter::isVideoFile(source) && !htmlui::VideoImporter::isPlayable(source)) {
             videos.push_back(source);
@@ -3734,6 +3766,23 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
 
     if (!videos.empty()) {
         importVideos(videos, targetDirectory);
+    }
+
+    if (!unityAssets.empty()) {
+        std::string names;
+        for (const fs::path& file : unityAssets) names += (names.empty() ? "" : ", ") + editor::FileUtils::pathToUtf8(file.filename());
+        editor::getEditorHost().registerConfirmAlert(
+            "Import Unity Animation",
+            names + (unityAssets.size() == 1 ? " is a Unity asset" : " are Unity assets") +
+                " (YAML), which JasperEngine does not read. Import as JasperEngine assets (the clips and masks a controller uses come along)? "
+                "No copies the files as they are.",
+            [this, unityAssets, targetDirectory]() { importUnityAnimations(unityAssets, targetDirectory); },
+            [this, unityAssets, targetDirectory]() {
+                std::vector<std::string> raw;
+                for (const fs::path& file : unityAssets) raw.push_back(file.string());
+                project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, raw, targetDirectory.string(), true));
+                scanDirectory(currentPath);
+            });
     }
 
     if (validPaths.empty()) {
