@@ -33,7 +33,8 @@ function Parity:start()
     -- in the scene the reload made, which lives on (one instantiated before it goes with it)
     if self.gameObject.name == "Parent" and parityReloaded and not paritySpawned then
         paritySpawned = true
-        GameObject.instantiate("prefabs/Spawnee.prefab")
+        local spawned = GameObject.instantiate("prefabs/Spawnee.prefab")
+        print("cooked spawned " .. tostring(spawned ~= nil))
     end
     if not parityReloaded and self.gameObject.name == "Parent" then
         parityReloaded = true
@@ -101,7 +102,7 @@ void CppSpawned::init() { Log::print("cooked spawn init"); }
 
 # what the cooked content adds, in Play and the player alike: the pointer property set, the
 # instantiated prefab's C++ script started
-COOKED = ["cooked buddy Parent", "cooked spawn init"]
+COOKED = ["cooked buddy Parent", "cooked spawned true", "cooked spawn init"]
 
 
 def cooked_lines(lines) -> list[str]:
@@ -144,6 +145,8 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     await ed.call("create_script", kind="cpp_script", name="CppSpawned", entity=spawnee,
                   header_content=SPAWN_HEADER, source_content=SPAWN_SOURCE)
     await ed.call("create_prefab", entity=spawnee, path="prefabs/Spawnee.prefab")
+    # no scene holds it: the build ships it as a standalone prefab (a Lua path names nothing)
+    await ed.call("set_standalone_prefab", prefab="prefabs/Spawnee.prefab", standalone=True)
     await ed.call("delete_entities", entities=[spawnee])
     await ed.call("set_script_properties", entity=child, script="CppParity", values={"buddy": parent})
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
@@ -161,7 +164,8 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
                                 timeout=1000)
     ed.check(not started.is_error, started.text[:1500])
     try:
-        await ed.call("wait", frames=4)
+        # (the prefab is instantiated in the second load's start: its script's init comes after)
+        await ed.call("wait", frames=30)
         messages = [e["message"] for e in await ed.console_since()]
         play = parity_lines(messages)
         play_cooked = cooked_lines(messages)
@@ -186,7 +190,8 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     ed.check(not raw.is_error, raw.text)
     log = raw.value["log"]
     exported = parity_lines(log if isinstance(log, list) else str(log).splitlines())
-    print("[test] exported player:", exe, exported)
+    print("[test] exported player:", exe, exported, cooked_lines(log if isinstance(log, list) else str(log).splitlines()))
+    print("[test] editor Play cooked lines:", play_cooked)
     ed.check_eq(exported[:len(EXPECTED)], EXPECTED, "exported player")
     ed.check_eq(exported[:len(EXPECTED)], play[:len(EXPECTED)], "editor Play and the export agree")
     exported_cooked = cooked_lines(log if isinstance(log, list) else str(log).splitlines())
