@@ -1052,6 +1052,7 @@ void prepare<SpriteSkinComponent>(SpriteSkinComponent& skin, Entity, CloneContex
     skin.builtSkin.reset();
     skin.inverseBindMatrices.clear();
     skin.builtSkinned = false;
+    skin.builtFlipX = false;
     skin.paletteDirty = false;
     skin.paletteBones.clear();
 }

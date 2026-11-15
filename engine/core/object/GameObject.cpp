@@ -149,6 +149,10 @@ void GameObject::setScale(const float factor){
     setScale(Vector3(factor,factor,factor));
 }
 
+void GameObject::setScale(const float x, const float y, const float z){
+    setScale(Vector3(x, y, z));
+}
+
 void GameObject::setScale(Vector3 scale){
     Transform& transform = getComponent<Transform>();
 

@@ -30,6 +30,7 @@
 #include "component/FogComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
@@ -287,6 +288,10 @@ namespace luabridge
     template<> struct Stack<SpriteBatchMode> : EnumWrapper<SpriteBatchMode>{};
     template<> struct Stack<SpriteBatchSpace> : EnumWrapper<SpriteBatchSpace>{};
     template<> struct Stack<SpriteSortPoint> : EnumWrapper<SpriteSortPoint>{};
+    // Text alignment and font size unit (S94)
+    template<> struct Stack<TextHorizontalAlignment> : EnumWrapper<TextHorizontalAlignment>{};
+    template<> struct Stack<TextVerticalAlignment> : EnumWrapper<TextVerticalAlignment>{};
+    template<> struct Stack<TextFontSizeUnit> : EnumWrapper<TextFontSizeUnit>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

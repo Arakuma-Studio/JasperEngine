@@ -250,6 +250,7 @@ STBTextOptions UISystem::getTextOptions(const TextComponent& text) const{
     if (text.loaded ? (bool)text.bitmapText : pixelart::isBitmapFontPath(text.font[0]))
         return options;
     const float fontSize = (float)std::max(text.fontSize, 1u);
+    options.emSize = text.fontSizeUnit == TextFontSizeUnit::EM;
 
     // whole raster pixels, so a resize reuses an atlas once the size settles
     const float scale = getTextRasterScale();
@@ -296,6 +297,9 @@ std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions&
     }
 
     fontId += std::string("|") + std::to_string(text.fontSize);
+    // an em size is another scale of the same faces
+    if (options.emSize)
+        fontId += "em";
     // another raster size or an SDF is another atlas (plain texts keep their old id)
     if (options.rasterScale != 1.0f)
         fontId += std::string("@") + std::to_string((int)std::lround((float)text.fontSize * options.rasterScale));
@@ -544,26 +548,52 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     ui.minIndicesCount = text.maxTextSize * 6;
 
     text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, text.charExtents, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY,
-                             &text.glyphInfo);
+                             &text.glyphInfo, textLineAlign(text));
 
     syncFontAtlas(text, ui);
     updateTextShaderParams(text, ui);
 
-    finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), 0.0f, true, indices_array);
+    finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), text.stbtext->getCapHeight(), text.stbtext->getXHeight(), 0.0f, true,
+                       indices_array);
 }
 
-void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
-                                  bool fillColors, std::vector<uint16_t>& indices_array){
-    float baselineOffsetY = ui.flipY ? (layout.height - ascent) : ascent;
-    float offsetX = text.pivotCentered ? -(layout.width / 2.0f) : 0.0f;
-    // a bitmap text's pivot stays a whole number of font pixels from its glyphs (S51 R8)
-    if (pivotStep > 0.0f){
-        baselineOffsetY = std::round(baselineOffsetY / pivotStep) * pivotStep;
-        offsetX = text.pivotCentered ? -std::floor((float)layout.width / 2.0f / pivotStep) * pivotStep : 0.0f;
+float UISystem::textLineAlign(const TextComponent& text){
+    switch (text.horizontalAlignment){
+        case TextHorizontalAlignment::CENTER: return 0.5f;
+        case TextHorizontalAlignment::RIGHT: return 1.0f;
+        default: return 0.0f;
     }
-    float offsetY = text.pivotBaseline ? 0.0f : baselineOffsetY;
+}
 
-    if (text.pivotCentered || !text.pivotBaseline){
+void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float capHeight, float xHeight,
+                                  float pivotStep, bool fillColors, std::vector<uint16_t>& indices_array){
+    // the glyphs come with the first baseline at y 0: the box spans [boxLow, boxLow + height] along
+    // the text's local y, and "up" (from the baseline to the capitals) is +y unless the y-down UI
+    // camera draws it
+    const float height = (float)layout.height;
+    float boxLow = ui.flipY ? (ascent - height) : -ascent;
+    // a bitmap text's pivot stays a whole number of font pixels from its glyphs (S51 R8)
+    if (pivotStep > 0.0f)
+        boxLow = -std::round(-boxLow / pivotStep) * pivotStep;
+    const float up = ui.flipY ? 1.0f : -1.0f;
+    float anchorY = boxLow;
+    switch (text.verticalAlignment){
+        case TextVerticalAlignment::TOP: anchorY = boxLow + height; break;
+        case TextVerticalAlignment::MIDDLE: anchorY = boxLow + height / 2.0f; break;
+        case TextVerticalAlignment::BASELINE: anchorY = 0.0f; break;
+        case TextVerticalAlignment::CAPLINE: anchorY = up * capHeight / 2.0f; break;
+        case TextVerticalAlignment::MIDLINE: anchorY = up * xHeight / 2.0f; break;
+        default: break;
+    }
+    float offsetY = -anchorY;
+    float offsetX = -(float)layout.width * textLineAlign(text);
+    if (pivotStep > 0.0f){
+        offsetY = std::round(offsetY / pivotStep) * pivotStep;
+        offsetX = -std::floor(-offsetX / pivotStep) * pivotStep;
+    }
+    text.boxMin = Vector2(offsetX, offsetY + boxLow);
+
+    if (offsetX != 0.0f || offsetY != 0.0f){
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
         for (int i = 0; i < ui.buffer.getCount(); i++){
             Vector3 vertice = ui.buffer.getVector3(atrVertice, i);
@@ -580,8 +610,8 @@ void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTran
     bool clipHeight = text.fixedHeight && layout.height > 0;
 
     if (clipWidth || clipHeight){
-        // the layout rect follows the same pivot offset applied to the glyphs
-        Rect clip(offsetX, offsetY - baselineOffsetY, layout.width, layout.height);
+        // the layout rect follows the same alignment offset applied to the glyphs
+        Rect clip(offsetX, offsetY + boxLow, layout.width, layout.height);
 
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
         Attribute* atrTexcoord = ui.buffer.getAttribute(AttributeType::TEXCOORD1);
@@ -1892,6 +1922,24 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
         text.needUpdateText = false;
     }
 
+    return true;
+}
+
+bool UISystem::updateTextLayout(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
+    checkTextAtlasOptions(text, ui);
+    // F-PF7: nothing runs for a text laid out already
+    if (text.loaded && !text.needUpdateText && !text.needReloadAtlas && !isFontAtlasStale(text))
+        return true;
+    if (createOrUpdateText(text, ui, layout))
+        return true;
+
+    // no camera to pick the flip from: the size does not depend on it
+    if (text.loaded && text.needReloadAtlas)
+        destroyText(text);
+    if (!text.loaded && !loadFontAtlas(text, ui, layout))
+        return false;
+    createText(text, ui, layout);
+    text.needUpdateText = true;
     return true;
 }
 

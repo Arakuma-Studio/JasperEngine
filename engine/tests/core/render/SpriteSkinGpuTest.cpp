@@ -4,7 +4,7 @@
 // Sprite Skin on the headless device (docs/specs/S94-rendering-anim-gaps.md F49, AC46): a tall
 // frame with a two-bone skin. At rest the skinned mesh covers what the frame's quad covers; the
 // upper bone turned 60 degrees bends the top half off its column (golden on glcore, matched on
-// Vulkan). Without a Sprite Skin a skinned frame draws its quad with no bone resources and the same
+// Vulkan); Flip X mirrors the skinned mesh as it mirrors the quad. Without a Sprite Skin a skinned frame draws its quad with no bone resources and the same
 // draws (F-PF1: disabled is free).
 
 #include "Engine.h"
@@ -221,8 +221,20 @@ TEST_F(SpriteSkinGpu, TwoBoneBend) {
     for (size_t p = 0; p < rest.size(); p++) different += rest[p] != quad[p] ? 1 : 0;
     EXPECT_EQ(different, 0u) << "the skin at rest draws what the quad draws";
 
+    // Flip X mirrors the skinned mesh about the pivot as it mirrors the quad, bones still at rest
+    sprite->setFlipX(true);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> flippedQuad = capture();
     sprite->setSheet(skinned);
     sprite->setFrame(0);
+    ASSERT_TRUE(render());
+    ASSERT_TRUE(skin.isSkinned());
+    const std::vector<uint8_t> flippedRest = capture();
+    different = 0;
+    for (size_t p = 0; p < flippedRest.size(); p++) different += flippedRest[p] != flippedQuad[p] ? 1 : 0;
+    EXPECT_EQ(different, 0u) << "a flipped skin at rest draws what the flipped quad draws";
+    sprite->setFlipX(false);
+
     upper.setRotation(0.0f, 0.0f, upperRest.rotationZ + 60.0f);
     ASSERT_TRUE(render());
     ASSERT_TRUE(skin.isSkinned());

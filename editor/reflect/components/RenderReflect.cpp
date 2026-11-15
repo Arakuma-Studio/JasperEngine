@@ -507,6 +507,10 @@ namespace {
         JE_FIELD(SpriteComponent, height, .flags = NoDefault, .updateFlags = kSprite, .unit = Unit::Pixels),
         JE_FIELD(SpriteComponent, automaticFlipY, .updateFlags = kSprite),
         JE_FIELD(SpriteComponent, flipY, .updateFlags = kSprite),
+        // S94 F29, F30: Unity's Flip X and Size (world units, an axis at 0 from width/height), written only when set
+        JE_FIELD(SpriteComponent, flipX, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .label = "Flip X"),
+        JE_FIELD(SpriteComponent, size, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The quad's size in world units (Sliced corners keep theirs). 0 on an axis: Width / Height over Pixels Per Unit."),
         JE_FIELD(SpriteComponent, textureScaleFactor, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, pivotPreset, .enumDesc = &enums::kPivotPreset, .updateFlags = kSprite, .label = "Pivot"),
         // a sheet sprite's frames come from its sheet (S44): an .aseprite file or a texture
@@ -797,8 +801,8 @@ const ComponentDesc kTerrainDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipY", "frame", "frameName", "framesRect", "height",
-                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "spriteSortPoint",
+    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipX", "flipY", "frame", "frameName", "framesRect", "height",
+                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "size", "spriteSortPoint",
                                                 "textureScaleFactor", "width"};
 
 }

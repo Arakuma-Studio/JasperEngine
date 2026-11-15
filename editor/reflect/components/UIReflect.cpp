@@ -25,6 +25,40 @@
 
 namespace jasperengine::editor::reflect {
 
+namespace enums {
+
+    namespace {
+        constexpr int textValue(TextHorizontalAlignment alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextVerticalAlignment alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextFontSizeUnit unit) { return static_cast<int>(unit); }
+
+        constexpr EnumItem kTextHorizontalAlignmentItems[] = {
+            {textValue(TextHorizontalAlignment::LEFT), "left", "Left", "TextHorizontalAlignment::LEFT"},
+            {textValue(TextHorizontalAlignment::CENTER), "center", "Center", "TextHorizontalAlignment::CENTER"},
+            {textValue(TextHorizontalAlignment::RIGHT), "right", "Right", "TextHorizontalAlignment::RIGHT"},
+        };
+
+        constexpr EnumItem kTextVerticalAlignmentItems[] = {
+            {textValue(TextVerticalAlignment::TOP), "top", "Top", "TextVerticalAlignment::TOP"},
+            {textValue(TextVerticalAlignment::MIDDLE), "middle", "Middle", "TextVerticalAlignment::MIDDLE"},
+            {textValue(TextVerticalAlignment::BOTTOM), "bottom", "Bottom", "TextVerticalAlignment::BOTTOM"},
+            {textValue(TextVerticalAlignment::BASELINE), "baseline", "Baseline", "TextVerticalAlignment::BASELINE"},
+            {textValue(TextVerticalAlignment::CAPLINE), "capline", "Capline", "TextVerticalAlignment::CAPLINE"},
+            {textValue(TextVerticalAlignment::MIDLINE), "midline", "Midline", "TextVerticalAlignment::MIDLINE"},
+        };
+
+        constexpr EnumItem kTextFontSizeUnitItems[] = {
+            {textValue(TextFontSizeUnit::PIXEL_HEIGHT), "pixel_height", "Pixel Height", "TextFontSizeUnit::PIXEL_HEIGHT"},
+            {textValue(TextFontSizeUnit::EM), "em", "Em", "TextFontSizeUnit::EM"},
+        };
+    }
+
+    const EnumDesc kTextHorizontalAlignment{"TextHorizontalAlignment", kTextHorizontalAlignmentItems, textValue(TextHorizontalAlignment::LEFT)};
+    const EnumDesc kTextVerticalAlignment{"TextVerticalAlignment", kTextVerticalAlignmentItems, textValue(TextVerticalAlignment::BOTTOM)};
+    const EnumDesc kTextFontSizeUnit{"TextFontSizeUnit", kTextFontSizeUnitItems, textValue(TextFontSizeUnit::PIXEL_HEIGHT)};
+
+}
+
 namespace {
 
     template<typename T, bool T::*flag>
@@ -277,8 +311,15 @@ namespace {
                  .uiOrder = 10),
         JE_FIELD(TextComponent, fixedWidth, .updateFlags = kText, .label = "Width", .group = "Fixed size"),
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
-        JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
-        JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // S94 F24: TextMesh Pro's Alignment, drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
+        JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = Hidden, .updateFlags = kText,
+                 .label = "Horizontal Alignment", .group = "Alignment"),
+        JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = Hidden, .updateFlags = kText,
+                 .label = "Vertical Alignment", .group = "Alignment"),
+        // S94 F26: written only when Em
+        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = UpdateFlags_Text_Atlas,
+                 .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",
+                 .visibleIf = &textIsVector, .uiOrder = 2),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
         // the widths read finite and not below 0, the visible characters not below -1 (its decode)
         JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline",

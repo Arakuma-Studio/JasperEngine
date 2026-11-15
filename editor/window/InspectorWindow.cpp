@@ -10,6 +10,7 @@
 #include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "graph/GraphEditorHooks.h"
+#include "component/CameraComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/Transform.h"
 #include "pool/ShaderPool.h"
@@ -6338,6 +6339,22 @@ void editor::InspectorWindow::submitRowCommand(SceneProject* sceneProject, Compo
         cmd = nullptr;
         return;
     }
+    // S94 F27: a camera bound set by hand turns Auto Resize and the Orthographic Size off in the same
+    // undo step (as Camera's Lua setters); always a MultiPropertyCmd, so a drag's frames merge
+    if (cpType == ComponentType::CameraComponent && cmd && (id == "left" || id == "right" || id == "bottom" || id == "top")){
+        auto* multi = new MultiPropertyCmd();
+        const EntityEdit* edit = dynamic_cast<const EntityEdit*>(cmd);
+        const std::vector<Entity> edited = edit ? edit->editedEntities() : std::vector<Entity>();
+        multi->addCommand(std::unique_ptr<Command>(cmd));
+        for (Entity entity : edited){
+            const CameraComponent* camera = sceneProject->scene->findComponent<CameraComponent>(entity);
+            if (camera && camera->autoResize)
+                multi->addPropertyCmd<bool>(project, sceneProject->id, entity, cpType, "autoResize", false);
+            if (camera && camera->orthographicSize != 0.0f)
+                multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "orthographicSize", 0.0f);
+        }
+        cmd = multi;
+    }
     CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
 }
 
@@ -9435,8 +9452,14 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     beginTable(cpType, getLabelSize("Pixels Per Unit"), "sprite_size");
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
+    // S94 F30: Unity's Size, in world units (0 on an axis: Width / Height over Pixels Per Unit)
+    RowSettings settingsSize;
+    settingsSize.help = "The quad's size in world units, in every Draw Mode (Sliced corners keep theirs). 0 on an axis: Width / Height over Pixels Per Unit.";
+    propertyRow(RowPropertyType::Vector2, cpType, "size", "Size", sceneProject, entities, settingsSize);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
+    // S94 F29: mirrored about the pivot
+    propertyRow(RowPropertyType::Bool, cpType, "flipX", "Flip X", sceneProject, entities, RowSettings());
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
@@ -9735,11 +9758,22 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
         propertyRow(RowPropertyType::Float, cpType, "aspect", "Aspect", sceneProject, entities, defaultSettings);
     }
 
+    // S94 F28: Unity's Size; while set it places the bounds, which then show what it gave them
+    if (camera.type == CameraType::CAMERA_ORTHO) {
+        RowSettings sizeSettings;
+        sizeSettings.help = "Half the view's height in world units; the width follows the aspect. 0: off, the bounds below stay as set.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "orthographicSize", "Size", sceneProject, entities, sizeSettings);
+    }
     if (camera.type == CameraType::CAMERA_ORTHO || camera.type == CameraType::CAMERA_UI) {
-        propertyRow(RowPropertyType::Float, cpType, "left", "Left", sceneProject, entities, defaultSettings);
+        const bool sized = camera.type == CameraType::CAMERA_ORTHO && camera.orthographicSize > 0.0f;
+        ImGui::BeginDisabled(sized);
+        RowSettings clipSettings;
+        clipSettings.help = sized ? "Set by Size" : "Setting a bound turns Auto Resize off";
+        propertyRow(RowPropertyType::Float, cpType, "left", "Left", sceneProject, entities, clipSettings);
         propertyRow(RowPropertyType::Float, cpType, "right", "Right", sceneProject, entities, defaultSettings);
         propertyRow(RowPropertyType::Float, cpType, "bottom", "Bottom", sceneProject, entities, defaultSettings);
         propertyRow(RowPropertyType::Float, cpType, "top", "Top", sceneProject, entities, defaultSettings);
+        ImGui::EndDisabled();
     }
 
     propertyRow(RowPropertyType::Float, cpType, "near", "Near", sceneProject, entities, defaultSettings);

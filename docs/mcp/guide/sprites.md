@@ -192,6 +192,13 @@ builds draw from atlases), `enabled_for_builds` (only builds), `disabled`. Expor
 for their platform family (`max_size` overrides) and leave out a packed texture that only sprites
 read.
 
+## Flip and Size
+
+`sprite.flipX` mirrors the quad about its pivot (with Sprite Batch, Dynamic Batching and Sliced
+too). `sprite.size` ([x, y], world units, Unity's `SpriteRenderer.size`) sets the quad's size in
+every draw mode, Sliced corners unscaled; an axis at 0 keeps `width`/`height` over Pixels Per Unit.
+Lua: `sprite.flipX`, `sprite.size = Vector2(1, 1)`, `go:setScale(x, y, z)`.
+
 ## Legacy inline frames
 
 `jasperengine-editor check --project P --sprites` lists the sprites that still carry inline

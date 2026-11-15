@@ -38,6 +38,9 @@ namespace jasperengine{
         std::vector<Matrix4> inverseBindMatrices;
         // the mesh holds the skinned layout (bone ids and weights): a change reloads it
         bool builtSkinned = false;
+        // the Sprite's Flip X the mesh was built with: the vertices mirrored about the pivot, and
+        // each palette entry conjugated by that mirror, so the bones still move the unmirrored rig
+        bool builtFlipX = false;
         // the palette is filled again on the next render update, moved or not (a rebuilt mesh)
         bool paletteDirty = false;
         // the bones the palette was last filled from (another list fills it again)

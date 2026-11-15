@@ -130,13 +130,15 @@ namespace jasperengine{
             // scale 0 makes it NaN: posing the bounds with it trips setExtents (as the model skins)
             if (!inverseSprite.isValid()) continue;
 
+            // Flip X: the mirror on the left too (the inverse binds carry the right one)
+            const Matrix4 front = skin.builtFlipX ? Matrix4::scaleMatrix(Vector3(-1.0f, 1.0f, 1.0f)) * inverseSprite : inverseSprite;
             const size_t count = skin.inverseBindMatrices.size();
             if (mesh->bonesMatrix.stored() != count) mesh->bonesMatrix.resize(count);
             for (size_t b = 0; b < count; b++){
                 const Transform* bone = b < skin.bones.size() && registry->isEntityCreated(skin.bones[b])
                                         ? registry->findComponent<Transform>(skin.bones[b]) : nullptr;
                 // a bone without its GameObject stays where it was bound
-                mesh->bonesMatrix[b] = bone ? inverseSprite * bone->modelMatrix * skin.inverseBindMatrices[b] : Matrix4();
+                mesh->bonesMatrix[b] = bone ? front * bone->modelMatrix * skin.inverseBindMatrices[b] : Matrix4();
             }
             skin.paletteDirty = false;
             skin.paletteBones = skin.bones;

@@ -16,6 +16,7 @@
 #include "pixelart/FontPixelReport.h"
 #include "subsystem/UISystem.h"
 #include "util/UIProbe.h"
+#include "Theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -48,8 +49,64 @@ namespace {
 
 }
 
+// TextMesh Pro's Alignment (S94 F24): a row of horizontal buttons and one of vertical ones; the
+// selection's shared value is lit, a click sets every selected Text in one undo step
+void editor::InspectorWindow::drawTextAlignment(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    struct AlignmentButton {
+        int value;
+        const char* label;
+        const char* tooltip;
+    };
+    static const AlignmentButton horizontal[] = {
+        {(int)TextHorizontalAlignment::LEFT, ICON_FA_ALIGN_LEFT, "Left: the box starts at the origin, lines aligned left"},
+        {(int)TextHorizontalAlignment::CENTER, ICON_FA_ALIGN_CENTER, "Center: the box centred on the origin, lines centred"},
+        {(int)TextHorizontalAlignment::RIGHT, ICON_FA_ALIGN_RIGHT, "Right: the box ends at the origin, lines aligned right"},
+    };
+    static const AlignmentButton vertical[] = {
+        {(int)TextVerticalAlignment::TOP, "Top", "Top: the box's top edge on the origin"},
+        {(int)TextVerticalAlignment::MIDDLE, "Middle", "Middle: the box's centre on the origin"},
+        {(int)TextVerticalAlignment::BOTTOM, "Bottom", "Bottom: the box's bottom edge on the origin (the default)"},
+        {(int)TextVerticalAlignment::BASELINE, "Baseline", "Baseline: the first line's baseline on the origin"},
+        {(int)TextVerticalAlignment::CAPLINE, "Capline", "Capline: the middle of the first line's capitals on the origin"},
+        {(int)TextVerticalAlignment::MIDLINE, "Midline", "Midline: the middle of the first line's lowercase letters on the origin"},
+    };
+
+    // the value every selected Text shares, -1 when they differ
+    auto shared = [&](auto member) -> int {
+        int value = -1;
+        for (size_t i = 0; i < entities.size(); i++){
+            const int current = (int)(sceneProject->scene->getComponent<TextComponent>(entities[i]).*member);
+            if (i == 0) value = current;
+            else if (value != current) return -1;
+        }
+        return value;
+    };
+    auto buttons = [&](const char* property, const AlignmentButton* items, size_t count, int current){
+        for (size_t i = 0; i < count; i++){
+            if (i > 0) ImGui::SameLine(0.0f, 2.0f);
+            const bool lit = items[i].value == current;
+            if (lit) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
+            const std::string id = std::string(items[i].label) + "##" + property;
+            if (ImGui::Button(id.c_str()) && !lit)
+                ipfCommit<int>(project, sceneProject, entities, property, items[i].value);
+            if (lit) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", items[i].tooltip);
+            UIProbe::item(std::string("text.") + property + "." + std::to_string(items[i].value));
+        }
+    };
+
+    separatorText("Alignment");
+    beginTable(cpType, getLabelSize("Vertical"), "textalignment");
+    ipfLabel("Horizontal");
+    buttons("horizontalAlignment", horizontal, 3, shared(&TextComponent::horizontalAlignment));
+    ipfLabel("Vertical");
+    buttons("verticalAlignment", vertical, 6, shared(&TextComponent::verticalAlignment));
+    endTable();
+}
+
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
+    drawTextAlignment(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;
