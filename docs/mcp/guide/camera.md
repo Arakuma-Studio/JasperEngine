@@ -1,4 +1,4 @@
-# Camera shake and camera follow
+# Camera bounds, shake and follow
 
 Served as `jasper://docs/camera`. Two components, both run by the scene's `CameraControlSystem`:
 
@@ -10,6 +10,14 @@ Served as `jasper://docs/camera`. Two components, both run by the scene's `Camer
   world bounds.
 
 User guide: `docs/camera.md`. Lua reference: `jasper://docs/lua-api`, section 4.9.1.
+
+## Orthographic bounds
+
+An orthographic camera with `autoResize` (the default) takes the canvas's pixels as its bounds.
+`set_properties` of `camera.left`, `right`, `bottom` or `top` turns `autoResize` off in the same
+undo step, so the bounds stay. For Unity's Size, set `camera.orthographicSize` (> 0): the bounds
+become +-size up and down and +-size x aspect sideways, and follow every canvas or render target
+size; a bound written later turns it off. A Pixel Perfect Camera sets the bounds itself.
 
 ## Frame order
 

@@ -35,8 +35,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.horizontalAlignment = TextHorizontalAlignment::LEFT;
+        text.verticalAlignment = TextVerticalAlignment::BOTTOM;
         text.outlineWidth = 0.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
         text.outlineNeighbors = 8;
@@ -102,8 +102,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.horizontalAlignment = TextHorizontalAlignment::LEFT;
+        text.verticalAlignment = TextVerticalAlignment::BOTTOM;
         text.outlineWidth = 1.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
         text.outlineNeighbors = 4;
@@ -169,8 +169,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.horizontalAlignment = TextHorizontalAlignment::LEFT;
+        text.verticalAlignment = TextVerticalAlignment::BOTTOM;
         text.outlineWidth = 0.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
         text.outlineNeighbors = 8;

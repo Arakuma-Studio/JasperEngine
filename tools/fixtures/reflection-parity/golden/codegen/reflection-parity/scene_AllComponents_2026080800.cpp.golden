@@ -1519,8 +1519,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = true;
         text.fixedHeight = true;
-        text.pivotBaseline = true;
-        text.pivotCentered = true;
+        text.horizontalAlignment = TextHorizontalAlignment::CENTER;
+        text.verticalAlignment = TextVerticalAlignment::BASELINE;
         text.outlineWidth = 0.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
         text.outlineNeighbors = 8;

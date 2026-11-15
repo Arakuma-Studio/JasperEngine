@@ -20,6 +20,8 @@ rectangles (**inline frames**, below); they keep working.
 | **Native Size** | Width and Height 0: each frame at its own size |
 | **Frame** | a dropdown with thumbnails and search, and the frame's index |
 | **Pivot** | the nine presets, or **From Frame** (the frame's own pivot) |
+| **Size** | the quad in world units, in every Draw Mode (Sliced corners keep theirs); 0 on an axis: Width / Height over Pixels Per Unit (Unity's `SpriteRenderer.size`) |
+| **Flip X**, **Flip Y** | Flip X mirrors the picture about the pivot |
 
 A Sliced frame without a border draws Simple, and the Inspector says so.
 

@@ -48,6 +48,7 @@
 #include "component/AnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
@@ -283,6 +284,27 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
         .addVariable("FRAME", PivotPreset::FRAME)
+        .endNamespace();
+
+    // Text.horizontalAlignment and Text.verticalAlignment (TextMesh Pro's): one table, values the
+    // other property refuses
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextAlignment")
+        .addVariable("Left", TextHorizontalAlignment::LEFT)
+        .addVariable("Center", TextHorizontalAlignment::CENTER)
+        .addVariable("Right", TextHorizontalAlignment::RIGHT)
+        .addVariable("Top", TextVerticalAlignment::TOP)
+        .addVariable("Middle", TextVerticalAlignment::MIDDLE)
+        .addVariable("Bottom", TextVerticalAlignment::BOTTOM)
+        .addVariable("Baseline", TextVerticalAlignment::BASELINE)
+        .addVariable("Capline", TextVerticalAlignment::CAPLINE)
+        .addVariable("Midline", TextVerticalAlignment::MIDLINE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextFontSizeUnit")
+        .addVariable("PixelHeight", TextFontSizeUnit::PIXEL_HEIGHT)
+        .addVariable("Em", TextFontSizeUnit::EM)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

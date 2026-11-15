@@ -1289,6 +1289,14 @@
   {
    "component": "camera",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
    "kind": "Float",
    "label": "Left",
    "path": "left",
@@ -1438,6 +1446,14 @@
    "kind": "Direction",
    "label": "Up",
    "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
    "read_only": false
   },
   {
@@ -7521,6 +7537,14 @@
   {
    "component": "sprite",
    "group": "",
+   "kind": "Vector2",
+   "label": "Size",
+   "path": "size",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
    "kind": "Enum",
    "label": "Pivot",
    "path": "pivotPreset",
@@ -7532,6 +7556,14 @@
    "kind": "Float",
    "label": "Texture Scale",
    "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip X",
+   "path": "flipX",
    "read_only": false
   },
   {
@@ -8111,6 +8143,14 @@
   {
    "component": "text",
    "group": "",
+   "kind": "Enum",
+   "label": "Font Size Unit",
+   "path": "fontSizeUnit",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
    "kind": "Bool",
    "label": "Multiline",
    "path": "multiline",
@@ -8130,22 +8170,6 @@
    "kind": "Bool",
    "label": "Height",
    "path": "fixedHeight",
-   "read_only": false
-  },
-  {
-   "component": "text",
-   "group": "Pivot",
-   "kind": "Bool",
-   "label": "Baseline",
-   "path": "pivotBaseline",
-   "read_only": false
-  },
-  {
-   "component": "text",
-   "group": "Pivot",
-   "kind": "Bool",
-   "label": "Center",
-   "path": "pivotCentered",
    "read_only": false
   },
   {

@@ -113,8 +113,9 @@ public:
     // biases in shadow texels (StreamMigrations, prefab 3 -> 4); 5: particle systems as effects;
     // 6: no derived transform values (S29 R20); 7: Animation Player controllers on Animators (S21
     // upstream absorption, StreamMigrations prefab 6 -> 7); 8: Line / Trail Renderer curves and
-    // gradients in S27's form (the S27 upstream absorption, prefab 7 -> 8)
-    static constexpr int FILE_VERSION = 9;
+    // gradients in S27's form (the S27 upstream absorption, prefab 7 -> 8); 9: sprite sheets (S44);
+    // 10: Text alignment instead of its pivots (S94, prefab 9 -> 10)
+    static constexpr int FILE_VERSION = 10;
     // the first version with the root-GameObject layout of today (`root`, members as written)
     static constexpr int ROOT_LAYOUT_VERSION = 3;
 

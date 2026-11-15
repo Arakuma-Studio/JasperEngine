@@ -377,6 +377,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // Text alignment (S94)
+        &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment, &enums::kTextFontSizeUnit,
         // the Outline (S94)
         &enums::kOutlineMode, &enums::kOutlineWidthUnits,
     };
