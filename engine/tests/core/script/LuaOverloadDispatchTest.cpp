@@ -28,6 +28,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -479,6 +480,13 @@ emit('deep args => ' .. show(pcall(function() return m:setU('a', 1.0, 2.0, 3.0, 
 
     constexpr int kLeakCalls = 2000;
 
+    // A NaN as the C runtime prints it (glibc "-nan", MSVC "-nan(ind)", Apple "nan") reduced to
+    // "nan": the fixture records what dispatch did, not the runtime's spelling of the value
+    std::string canonicalNan(const std::string& line) {
+        static const std::regex nan("-?nan(\\([a-z]*\\))?");
+        return std::regex_replace(line, nan, "nan");
+    }
+
     std::string longName() {
         return std::string(64, 'u');
     }
@@ -498,8 +506,9 @@ TEST(LuaOverloadDispatch, CallsMatchStockLuaBridge) {
     int mismatches = 0;
     for (std::size_t i = 0; i < state.lines.size() && i < expected.size(); i++) {
         bool found = false;
+        const std::string got = canonicalNan(state.lines[i]);
         for (const std::string& candidate : expected[i])
-            found = found || candidate == state.lines[i];
+            found = found || canonicalNan(candidate) == got;
         if (!found && ++mismatches <= 20)
             ADD_FAILURE() << "line " << (i + 1) << "\n  got:      " << state.lines[i] << "\n  expected: " << (expected[i].empty() ? std::string("(none)") : expected[i][0]);
     }
