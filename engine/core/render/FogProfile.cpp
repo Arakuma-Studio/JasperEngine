@@ -655,17 +655,17 @@ const std::vector<FogProfileBuiltin>& FogProfiles::builtins(){
                          Vector3(0.06f, 0.07f, 0.11f), 200.0f, 0.0f, 60.0f, 0.0f, 2000.0f, 0.95f, 0.05f, 0.3f, 4.0f)},
         // Lit looks, after Vapor's Bright, Murky, Hell and Poison
         {"bright_haze", litFogLook({"Bright Haze", "A thin sky-blue haze that takes the daylight, drifting slowly",
-                             Vector3(0.70f, 0.80f, 0.93f), Vector3(0.80f, 0.90f, 1.00f), 1.6f, Vector3(0.0f, 0.0f, 0.0f),
-                             700.0f, 0.0f, 160.0f, 6000.0f, 0.85f, 0.7f, 0.65f, 6.0f, 0.15f, 60.0f, Vector3(1.2f, 0.0f, 0.4f)})},
+                             Vector3(0.70f, 0.80f, 0.93f), Vector3(0.50f, 0.70f, 1.00f), 4.0f, Vector3(0.0f, 0.0f, 0.0f),
+                             280.0f, 0.0f, 250.0f, 6000.0f, 0.85f, 0.35f, 0.7f, 6.0f, 0.25f, 60.0f, Vector3(1.2f, 0.0f, 0.4f)})},
         {"murky", litFogLook({"Murky", "Dark, soupy fog that drinks the light",
-                       Vector3(0.20f, 0.21f, 0.18f), Vector3(0.05f, 0.05f, 0.045f), 3.0f, Vector3(0.0f, 0.0f, 0.0f),
-                       25.0f, 0.0f, 30.0f, 1500.0f, 1.0f, 0.1f, 0.2f, 3.0f, 0.4f, 15.0f, Vector3(0.5f, 0.0f, 0.2f)})},
+                       Vector3(0.33f, 0.32f, 0.27f), Vector3(0.09f, 0.085f, 0.06f), 4.0f, Vector3(0.0f, 0.0f, 0.0f),
+                       25.0f, 12.0f, 60.0f, 1500.0f, 1.0f, 0.15f, 0.2f, 12.0f, 0.5f, 12.0f, Vector3(0.5f, 0.0f, 0.2f)})},
         {"infernal", litFogLook({"Infernal", "Dense red fog glowing from within, rising like heat",
-                          Vector3(0.55f, 0.13f, 0.05f), Vector3(0.35f, 0.08f, 0.03f), 0.5f, Vector3(0.60f, 0.08f, 0.0f),
-                          35.0f, 0.0f, 40.0f, 1500.0f, 1.0f, 0.3f, 0.4f, 4.0f, 0.5f, 12.0f, Vector3(0.0f, 1.5f, 0.0f)})},
+                          Vector3(0.80f, 0.22f, 0.10f), Vector3(0.25f, 0.03f, 0.01f), 0.5f, Vector3(0.55f, 0.025f, 0.0f),
+                          25.0f, 8.0f, 60.0f, 1500.0f, 1.0f, 0.3f, 0.4f, 4.0f, 0.6f, 10.0f, Vector3(0.0f, 1.5f, 0.0f)})},
         {"toxic", litFogLook({"Toxic", "A green glowing gas pooling on the ground, thinning fast with height",
-                       Vector3(0.38f, 0.62f, 0.16f), Vector3(0.30f, 0.60f, 0.10f), 0.6f, Vector3(0.08f, 0.35f, 0.02f),
-                       30.0f, 0.0f, 8.0f, 1500.0f, 1.0f, 0.2f, 0.3f, 2.0f, 0.35f, 8.0f, Vector3(0.4f, 0.0f, 0.4f)})},
+                       Vector3(0.42f, 0.80f, 0.24f), Vector3(0.22f, 0.55f, 0.07f), 0.6f, Vector3(0.07f, 0.45f, 0.02f),
+                       8.0f, 1.0f, 7.0f, 1500.0f, 1.0f, 0.2f, 0.3f, 2.0f, 0.35f, 8.0f, Vector3(0.4f, 0.0f, 0.4f)})},
     };
     return all;
 }
