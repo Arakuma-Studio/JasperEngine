@@ -48,7 +48,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <cstdio>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -58,14 +57,6 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace jasperengine::editor {
-
-    // who uses a profile: Fogs and Fog Zones of the open scenes, and the files of the others
-    struct InspectorFogUsage {
-        std::vector<fogprofiles::FogProfileUser> users;
-        std::vector<std::string> closedFiles;   // project-relative, not open
-        bool indexReady = true;                 // false: closed files are not counted yet
-        size_t count() const { return users.size() + closedFiles.size(); }
-    };
 
     struct InspectorFogState {
         // the Fog being drawn (beginFogLookRows): its linked profile, a copy the rows edit
@@ -83,7 +74,7 @@ namespace jasperengine::editor {
         // Used by, read again every half second (it walks the open scenes and the index)
         std::string usageKey;
         int usageFrame = -1000;
-        InspectorFogUsage usage;
+        fogprofiles::FogProfileUsers usage;
 
         // the Profile menu's project profiles, read as it opens
         std::vector<fogprofiles::ProjectFogProfile> menuProfiles;
@@ -224,34 +215,23 @@ namespace {
         return FogProfileLibrary::normalizeKey(ref.path);
     }
 
-    InspectorFogUsage readUsage(Project* project, const std::string& assetPath) {
-        InspectorFogUsage usage;
-        usage.users = fogprofiles::usersInOpenScenes(*project, assetPath);
-        std::set<std::string> open;
-        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-            if (!sceneProject->filepath.empty()) open.insert(project->normalizeToProjectRelative(sceneProject->filepath).generic_string());
-            if (const PrefabStage* stage = project->getPrefabStage(sceneProject->id))
-                open.insert(project->normalizeToProjectRelative(stage->assetPath).generic_string());
-        }
-        usage.indexReady = project->getAssetIndex().isOpen() && project->getAssetIndex().isReady();
-        if (usage.indexReady) {
-            for (const std::string& file : fogprofiles::referencingFiles(*project, assetPath)) {
-                if (!open.count(file)) usage.closedFiles.push_back(file);
-            }
-        }
+    fogprofiles::FogProfileUsers readUsage(Project* project, const std::string& assetPath) {
+        fogprofiles::FogProfileUsers usage = fogprofiles::profileUsers(*project, assetPath);
+        // until the index is ready, only the open scenes count: the row says "in open scenes"
+        if (!usage.indexReady) usage.closedFiles.clear();
         return usage;
     }
 
-    std::string usageText(const InspectorFogUsage& usage) {
+    std::string usageText(const fogprofiles::FogProfileUsers& usage) {
         std::string text = "Used by " + std::to_string(usage.count());
         if (!usage.indexReady) text += " in open scenes";
         return text;
     }
 
-    void usageTooltip(Project* project, const InspectorFogUsage& usage) {
+    void usageTooltip(Project* project, const fogprofiles::FogProfileUsers& usage) {
         if (!ImGui::BeginItemTooltip()) return;
         if (usage.count() == 0) ImGui::TextUnformatted("Nothing uses this profile yet.");
-        for (const fogprofiles::FogProfileUser& user : usage.users) {
+        for (const fogprofiles::FogProfileUser& user : usage.open) {
             SceneProject* sceneProject = project->getScene(user.sceneId);
             const std::string name = sceneProject && sceneProject->scene ? sceneProject->scene->getEntityName(user.entity) : std::string("?");
             ImGui::Text("%s  %s / %s", user.zone ? "Fog Zone" : "Fog", user.sceneName.c_str(), name.c_str());
@@ -971,7 +951,7 @@ void editor::InspectorWindow::drawFogProfileAsset(const fs::path& asset) {
     ImGui::SeparatorText(inspectorfog::usageText(state.usage).c_str());
     UIProbe::item("asset.fogProfile.usedBy");
     if (state.usage.count() == 0) ImGui::TextDisabled("No Fog or Fog Zone uses it.");
-    for (const fogprofiles::FogProfileUser& user : state.usage.users) {
+    for (const fogprofiles::FogProfileUser& user : state.usage.open) {
         SceneProject* sceneProject = project->getScene(user.sceneId);
         if (!sceneProject || !sceneProject->scene) continue;
         const std::string label = std::string(user.zone ? ICON_FA_SMOG "  Fog Zone  " : ICON_FA_SMOG "  Fog  ") + user.sceneName + " / " +

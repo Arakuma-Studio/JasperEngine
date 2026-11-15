@@ -19,7 +19,7 @@
 #include "mcp/McpValues.h"
 #include "reflect/Reflect.h"
 
-#include "FogProfileEdits.h"
+#include "FogProfileAssets.h"
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"

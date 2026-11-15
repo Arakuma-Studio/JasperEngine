@@ -663,6 +663,10 @@ scene.fog.profile = p                  -- runtime only
   - `edit_fog_profile`'s `set` also takes `name` and `description` (R3's fields), and needs `from` to
     create a file: a path that does not exist is refused rather than made empty, so a typo never
     makes a new profile.
+  - `edit_fog_profile` is a step of the project history, as an edit in the `.fogprofile` Inspector
+    is; `apply_atmosphere_preset`'s link or unlink (a built-in's copy included) is a step of the
+    scene's history, as the Profile row's is. Both run the Inspector's commands
+    (`FogProfileAssetCmd`, `LinkFogProfileCmd`).
   - `set_properties` refuses a profile-set Fog field in Play too (the running scene's write would not
     show either), and lets a call through that changes `profile` itself in the same call.
   - `profile_no_effect` judges by the Fog's Type only (distance types read Color, Density and the

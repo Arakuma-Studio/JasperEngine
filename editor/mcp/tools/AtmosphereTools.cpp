@@ -15,9 +15,11 @@
 #include "mcp/McpValues.h"
 #include "mcp/tools/PlayViewCommon.h"
 
-#include "FogProfileEdits.h"
+#include "FogProfileAssets.h"
 #include "Project.h"
 #include "command/type/AtmospherePresetCmd.h"
+#include "command/type/FogProfileAssetCmd.h"
+#include "command/type/LinkFogProfileCmd.h"
 #include "component/FogComponent.h"
 #include "component/FogZoneComponent.h"
 #include "component/Transform.h"
@@ -178,7 +180,7 @@ void applyFogProfile(const CallPtr& call, Project& project, SceneProject& scene,
             call->fail("\"" + name + "\" is a Fog Zone: its look is its profile. Link another profile (preset), or delete the zone.");
             return;
         }
-        Command* cmd = fogprofiles::buildUnlink(project, scene.id, entity, error);
+        Command* cmd = LinkFogProfileCmd::unlink(&project, scene.id, {entity}, ComponentType::FogComponent, error);
         if (!cmd) {
             if (!error.empty()) call->fail(error + ".");
             else call->ok("The Fog of " + name + " has no profile: nothing changed.", {{"changed", false}});
@@ -193,30 +195,34 @@ void applyFogProfile(const CallPtr& call, Project& project, SceneProject& scene,
         return;
     }
     const std::string preset = args.value("preset", std::string());
-    fogprofiles::FogLinkPlan plan;
-    Command* cmd = fogprofiles::buildLink(project, scene.id, entity, preset, plan, error);
+    const FogComponent* fog = scene.scene->findComponent<FogComponent>(entity);
+    const fogprofiles::ResolvedFogProfile profile = fogprofiles::resolveProfileName(project, preset);
+    if (!profile.ok) {
+        call->fail("Unknown fog profile: " + profile.error + ". Project profiles: " + projectProfileList(project) + ".");
+        return;
+    }
+    const bool typeToHeight = fog && fog->type != FogType::HEIGHT && LinkFogProfileCmd::setsHeightFields(profile.data);
+    Command* cmd = LinkFogProfileCmd::link(&project, scene.id, {entity}, fog ? ComponentType::FogComponent : ComponentType::FogZoneComponent,
+                                           preset, error);
     if (!cmd) {
-        if (!error.empty()) {
-            call->fail("Unknown fog profile: " + error + ". Project profiles: " + projectProfileList(project) + ".");
-            return;
-        }
-        call->ok(name + " already uses " + plan.profile.path + ": nothing changed.", {{"changed", false}, {"profile", plan.profile.path}});
+        if (!error.empty()) call->fail(error + ".");
+        else call->ok(name + " already uses " + profile.path + ": nothing changed.", {{"changed", false}, {"profile", profile.path}});
         return;
     }
     if (!runSceneCommand(scene.id, cmd, error)) {
         call->fail(error);
         return;
     }
-    const size_t users = fogprofiles::profileUsers(project, plan.profile.assetPath).count();
-    const std::string component = plan.zone ? "fogzone" : "fog";
-    std::string text = "Linked the " + std::string(plan.zone ? "Fog Zone" : "Fog") + " of " + name + " to " + plan.profile.path;
-    if (plan.profile.needsCopy) text += " (the project's new copy of builtin:" + plan.profile.builtinId + ")";
-    if (plan.typeToHeight) text += "; its Type is now Height";
+    const size_t users = fogprofiles::profileUsers(project, profile.assetPath).count();
+    const std::string component = fog ? "fog" : "fogzone";
+    std::string text = "Linked the " + std::string(fog ? "Fog" : "Fog Zone") + " of " + name + " to " + profile.path;
+    if (profile.needsCopy) text += " (the project's new copy of builtin:" + profile.builtinId + ")";
+    if (typeToHeight) text += "; its Type is now Height";
     text += " (one undo step). Used by " + std::to_string(users) + ".";
-    Json data = {{"changed", true}, {"entity", (uint64_t)entity}, {"component", component}, {"profile", plan.profile.path},
-                 {"created", plan.profile.needsCopy}, {"typeChanged", plan.typeToHeight}, {"usedBy", users},
-                 {"overrides", fogFieldsJson(plan.profile.data.values, plan.profile.data.set)}};
-    if (users > 1) data["next"] = sharedProfileNext(plan.profile.path, users);
+    Json data = {{"changed", true}, {"entity", (uint64_t)entity}, {"component", component}, {"profile", profile.path},
+                 {"created", profile.needsCopy}, {"typeChanged", typeToHeight}, {"usedBy", users},
+                 {"overrides", fogFieldsJson(profile.data.values, profile.data.set)}};
+    if (users > 1) data["next"] = sharedProfileNext(profile.path, users);
     call->ok(text, data);
 }
 
@@ -492,7 +498,8 @@ void editFogProfileTool(const CallPtr& call) {
         }
     }
 
-    Command* cmd = fogprofiles::buildProfileEdit(project, path, creating ? nullptr : &before, data);
+    const std::string assetPath = assetsRelative(project, path);
+    Command* cmd = creating ? FogProfileAssetCmd::create(&project, assetPath, data) : FogProfileAssetCmd::edit(&project, assetPath, before, data);
     bool changed = false;
     if (cmd) {
         if (!runProjectCommand(&project, cmd, error, "Could not write " + path + ".")) {
@@ -502,7 +509,6 @@ void editFogProfileTool(const CallPtr& call) {
         changed = true;
     }
 
-    const std::string assetPath = assetsRelative(project, path);
     const fogprofiles::FogProfileUsers users = fogprofiles::profileUsers(project, assetPath);
     Json result = {{"path", path}, {"created", creating}, {"changed", changed}, {"name", data.name}, {"description", data.description},
                    {"fields", fogFieldsJson(data.values, data.set)}, {"users", usersJson(users)}, {"usedBy", users.count()}};

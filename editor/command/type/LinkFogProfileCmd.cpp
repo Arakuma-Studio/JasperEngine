@@ -68,8 +68,8 @@ namespace {
     LinkFogProfileCmd* buildLink(Project* project, uint32_t sceneId, Scene* scene, const std::vector<Entity>& entities, ComponentType component,
                                  std::unique_ptr<Command> prefix, const AssetRef& ref, const FogProfileData& data, std::string& error) {
         const std::string name = data.name.empty() ? CommandNames::file(ref.path) : data.name;
-        auto command = std::make_unique<LinkFogProfileCmd>(
-            CommandNames::verb("Link Fog Profile " + name, CommandNames::entities(project, sceneId, entities)));
+        // the GameObjects in brackets: "Link Fog Profile Night Fog" would read as one name
+        auto command = std::make_unique<LinkFogProfileCmd>("Link Fog Profile " + name + " (" + CommandNames::entities(project, sceneId, entities) + ")");
         if (prefix) command->addCommand(std::move(prefix));
         const bool height = LinkFogProfileCmd::setsHeightFields(data);
         bool changes = false;

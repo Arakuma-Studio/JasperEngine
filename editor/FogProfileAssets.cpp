@@ -3,7 +3,6 @@
 
 #include "FogProfileAssets.h"
 
-#include "DocumentFile.h"
 #include "Project.h"
 #include "Scene.h"
 #include "component/FogComponent.h"
@@ -196,14 +195,25 @@ void jasperengine::editor::fogprofiles::profileChanged(Project& project, const s
         if (sceneProject->scene) sceneProject->needUpdateRender = true;
 }
 
-bool jasperengine::editor::fogprofiles::writeProfile(Project& project, const std::string& projectRelativePath, const FogProfileData& data,
-                                                    std::string* error) {
-    const fs::path file = project.getProjectPath() / FileUtils::pathFromUtf8(projectRelativePath);
-    const io::WriteResult result = DocumentFiles::write(file, FogProfileIO::write(data));
-    if (!result.ok()) {
-        if (error) *error = DocumentFiles::saveFailureMessage(file, result);
-        return false;
+FogProfileUsers jasperengine::editor::fogprofiles::profileUsers(Project& project, const std::string& assetPath) {
+    FogProfileUsers users;
+    users.open = usersInOpenScenes(project, assetPath);
+    // an open scene's or prefab's file holds what it held when saved: its live GameObjects count instead
+    std::set<std::string> openFiles;
+    for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        if (!sceneProject->filepath.empty()) openFiles.insert(project.normalizeToProjectRelative(sceneProject->filepath).generic_string());
+        if (const PrefabStage* stage = project.getPrefabStage(sceneProject->id))
+            openFiles.insert(project.normalizeToProjectRelative(stage->assetPath).generic_string());
     }
-    profileWritten(project, relativeTo(file, project.getAssetsPath()), data);
-    return true;
+    users.indexReady = project.getAssetIndex().isOpen() && project.getAssetIndex().isReady();
+    for (const std::string& file : referencingFiles(project, assetPath)) {
+        if (!openFiles.count(file)) users.closedFiles.push_back(file);
+    }
+    return users;
+}
+
+std::string jasperengine::editor::fogprofiles::projectPathOfKey(const Project& project, const std::string& key) {
+    if (key.empty() || FogProfiles::isBuiltinKey(key) || FogProfileLibrary::isRuntimeKey(key) || !FogProfileIO::isProfilePath(key)) return key;
+    return relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(FogProfileLibrary::normalizeKey(key)), project.getProjectPath());
 }

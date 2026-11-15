@@ -77,8 +77,19 @@ namespace jasperengine::editor::fogprofiles {
     // use reads it
     void profileChanged(Project& project, const std::string& assetPath);
 
-    // writes `data` canonically through DocumentFiles::write (AtomicFile), then profileWritten;
-    // false + error (DocumentFiles::saveFailureMessage) when it cannot be written
-    bool writeProfile(Project& project, const std::string& projectRelativePath, const FogProfileData& data, std::string* error = nullptr);
+    // Everything that references a profile (`assetPath` assets-relative): its Fogs and Fog Zones
+    // in open scenes and prefabs, and the project files that are not open (the asset reference
+    // index; complete once it is ready)
+    struct FogProfileUsers {
+        std::vector<FogProfileUser> open;
+        std::vector<std::string> closedFiles;   // project-relative
+        bool indexReady = false;                // false: closedFiles may miss some
+        size_t count() const { return open.size() + closedFiles.size(); }
+    };
+    FogProfileUsers profileUsers(Project& project, const std::string& assetPath);
+
+    // a profile key as Fog.profile stores it (assets-relative) as a project-relative path; keys
+    // that are no path ("builtin:<id>", "runtime:<n>", a GUID) as they are
+    std::string projectPathOfKey(const Project& project, const std::string& key);
 
 }
