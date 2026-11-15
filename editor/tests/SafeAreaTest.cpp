@@ -688,25 +688,6 @@ TEST(SafeAreaComponent, PrefabInstanceOverride) {
     EXPECT_TRUE(loaded.getComponent<SafeAreaComponent>(loadedRoot).top);
 }
 
-namespace {
-
-    // what Factory writes for the authored component below (it compiles in an export: the same
-    // statements, written here)
-    void emittedSafeArea(Scene* scene, Entity entity) {
-        SafeAreaComponent safearea;
-        safearea.top = false;
-        safearea.includeExtraInsets = false;
-        scene->addComponent<SafeAreaComponent>(entity, safearea);
-    }
-
-    const char* const EMITTED_SAFE_AREA =
-        "SafeAreaComponent safearea;\n"
-        "safearea.top = false;\n"
-        "safearea.includeExtraInsets = false;\n"
-        "scene->addComponent<SafeAreaComponent>(entity, safearea);\n";
-
-}
-
 // ---- 7. device profiles and the overlay --------------------------------------------------------
 
 TEST(SafeAreaDevices, ProfileInsetsForEveryOrientation) {

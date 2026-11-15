@@ -374,48 +374,6 @@ TEST(AnimationPlayerComponent, ClipReferencesNeedAProjectToResolve) {
     EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(entity).clips, authoredPlayer().clips);
 }
 
-// ---- C++ export ----------------------------------------------------------------------------
-
-namespace {
-
-    // the code below is Factory's output for authoredPlayer(), pasted: it must keep compiling
-    // against the engine headers and build the same component. It and EMITTED_ANIMATION_PLAYER
-    // are one text: change them together (FactoryEmitsTheAuthoredFields compares the emitted code
-    // with the string; a real export compile runs in the MCP build_project checks)
-    void emittedAnimationPlayer(Scene* scene, Entity entity) {
-        AnimationPlayerComponent animationplayer;
-        animationplayer.enabled = false;
-        animationplayer.clips.resize(3);
-        animationplayer.clips[0].clip = "anim/walk.anim";
-        animationplayer.clips[0].name = "Walk";
-        animationplayer.clips[0].wrap = ClipWrapMode::Loop;
-        animationplayer.clips[1].clip = "models/hero.gltf#Idle";
-        animationplayer.clips[2].clip = "anim/jump.anim";
-        animationplayer.clips[2].wrap = ClipWrapMode::ClampForever;
-        animationplayer.defaultClip = "Walk";
-        animationplayer.playAutomatically = false;
-        animationplayer.speed = 1.500000f;
-        animationplayer.defaultFadeTime = 0.400000f;
-        scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);
-    }
-
-    const char* const EMITTED_ANIMATION_PLAYER =
-        "AnimationPlayerComponent animationplayer;\n"
-        "animationplayer.enabled = false;\n"
-        "animationplayer.clips.resize(3);\n"
-        "animationplayer.clips[0].clip = \"anim/walk.anim\";\n"
-        "animationplayer.clips[0].name = \"Walk\";\n"
-        "animationplayer.clips[0].wrap = ClipWrapMode::Loop;\n"
-        "animationplayer.clips[1].clip = \"models/hero.gltf#Idle\";\n"
-        "animationplayer.clips[2].clip = \"anim/jump.anim\";\n"
-        "animationplayer.clips[2].wrap = ClipWrapMode::ClampForever;\n"
-        "animationplayer.defaultClip = \"Walk\";\n"
-        "animationplayer.playAutomatically = false;\n"
-        "animationplayer.speed = 1.500000f;\n"
-        "animationplayer.defaultFadeTime = 0.400000f;\n"
-        "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n";
-}
-
 // ---- ModelComponent.animationEntities (spec 9.R15) -----------------------------------------
 
 namespace {

@@ -495,44 +495,6 @@ TEST(VertexAnimatorComponent, PrefabOverridesOfScalarsAndAttachments) {
     EXPECT_FLOAT_EQ(loaded.getComponent<VertexAnimatorComponent>(loadedRoot).speed, 3.0f);
 }
 
-// ---- C++ export ------------------------------------------------------------------------------
-
-namespace {
-
-    // Factory's output for authoredAnimator(), pasted: it must keep compiling against the engine
-    // headers and build the same component (one text with EMITTED_VERTEX_ANIMATOR)
-    void emittedVertexAnimator(Scene* scene, Entity entity) {
-        VertexAnimatorComponent vertexanimator;
-        vertexanimator.enabled = false;
-        vertexanimator.animation = "vat/hero.vat";
-        vertexanimator.defaultClip = "Walk";
-        vertexanimator.playAutomatically = false;
-        vertexanimator.speed = 1.500000f;
-        vertexanimator.randomStart = false;
-        vertexanimator.defaultFadeTime = 0.400000f;
-        vertexanimator.instanceEvents = true;
-        vertexanimator.attachments.resize(1);
-        vertexanimator.attachments[0].socket = "RightHand";
-        vertexanimator.attachments[0].entity = 7;
-        scene->addComponent<VertexAnimatorComponent>(entity, vertexanimator);
-    }
-
-    const char* const EMITTED_VERTEX_ANIMATOR =
-        "VertexAnimatorComponent vertexanimator;\n"
-        "vertexanimator.enabled = false;\n"
-        "vertexanimator.animation = \"vat/hero.vat\";\n"
-        "vertexanimator.defaultClip = \"Walk\";\n"
-        "vertexanimator.playAutomatically = false;\n"
-        "vertexanimator.speed = 1.500000f;\n"
-        "vertexanimator.randomStart = false;\n"
-        "vertexanimator.defaultFadeTime = 0.400000f;\n"
-        "vertexanimator.instanceEvents = true;\n"
-        "vertexanimator.attachments.resize(1);\n"
-        "vertexanimator.attachments[0].socket = \"RightHand\";\n"
-        "vertexanimator.attachments[0].entity = 7;\n"
-        "scene->addComponent<VertexAnimatorComponent>(entity, vertexanimator);\n";
-}
-
 // ---- cloning ---------------------------------------------------------------------------------
 
 TEST_F(VertexAnimatorSystemTest, CloningCopiesAuthoredAndResetsTheRun) {

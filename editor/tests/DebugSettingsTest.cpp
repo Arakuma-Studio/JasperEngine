@@ -41,12 +41,6 @@ namespace {
         return debug;
     }
 
-    size_t count(const std::string& text, const std::string& part) {
-        size_t n = 0;
-        for (size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + 1)) n++;
-        return n;
-    }
-
 }
 
 TEST(DebugSettingsTest, DefaultsWriteNoNode) {

@@ -244,49 +244,6 @@ TEST(AnimationLayersEditor, PrefabOverrideOfALayerWeight) {
     EXPECT_FLOAT_EQ(loaded.getComponent<AnimationPlayerComponent>(loadedRoot).layers[2].weight, 0.25f);
 }
 
-// ---- C++ export ----------------------------------------------------------------------------
-
-namespace {
-
-    // Factory's output for the player below, pasted: it must keep compiling against the engine
-    // headers and build the same component (EMITTED_LAYERED_PLAYER is the same text)
-    void emittedLayeredPlayer(Scene* scene, Entity entity) {
-        AnimationPlayerComponent animationplayer;
-        animationplayer.clips.resize(2);
-        animationplayer.clips[0].clip = "anim/walk.anim";
-        animationplayer.clips[1].clip = "anim/hold.anim";
-        animationplayer.clips[1].layer = 1;
-        animationplayer.layers.resize(2);
-        animationplayer.layers[0].name = "Base Layer";
-        animationplayer.layers[1].name = "Holding";
-        animationplayer.layers[1].weight = 0.500000f;
-        animationplayer.layers[1].blend = AnimationLayerBlend::Additive;
-        animationplayer.layers[1].mask = "anim/arm.mask";
-        animationplayer.playAutomatically = true;
-        animationplayer.speed = 1.000000f;
-        animationplayer.defaultFadeTime = 0.250000f;
-        scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);
-    }
-
-    const char* const EMITTED_LAYERED_PLAYER =
-        "AnimationPlayerComponent animationplayer;\n"
-        "animationplayer.clips.resize(2);\n"
-        "animationplayer.clips[0].clip = \"anim/walk.anim\";\n"
-        "animationplayer.clips[1].clip = \"anim/hold.anim\";\n"
-        "animationplayer.clips[1].layer = 1;\n"
-        "animationplayer.layers.resize(2);\n"
-        "animationplayer.layers[0].name = \"Base Layer\";\n"
-        "animationplayer.layers[1].name = \"Holding\";\n"
-        "animationplayer.layers[1].weight = 0.500000f;\n"
-        "animationplayer.layers[1].blend = AnimationLayerBlend::Additive;\n"
-        "animationplayer.layers[1].mask = \"anim/arm.mask\";\n"
-        "animationplayer.playAutomatically = true;\n"
-        "animationplayer.speed = 1.000000f;\n"
-        "animationplayer.defaultFadeTime = 0.250000f;\n"
-        "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n";
-
-}
-
 // ---- layer edits ---------------------------------------------------------------------------
 
 TEST(AnimationLayersEditor, LayerEditsMoveTheirEntries) {

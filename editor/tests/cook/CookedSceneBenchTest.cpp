@@ -111,5 +111,7 @@ TEST(CookedSceneBench, LoadsTwoThousandGameObjects) {
     std::printf("[ bench ] cooked load of 2,000 GameObjects (%zu bytes): best %.2f ms, median %.2f ms (budget %.1f)\n", bytes.size(), best,
                 samples[samples.size() / 2], budgetMs);
     const double slack = editor::test::perfSlack();
-    if (slack > 0.0) EXPECT_LE(best, budgetMs * slack);
+    if (slack > 0.0) {
+        EXPECT_LE(best, budgetMs * slack);
+    }
 }
