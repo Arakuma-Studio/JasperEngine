@@ -73,6 +73,7 @@ RECORD = {
     # each (last, so the Fog is in no other recording; build_world discards this scene)
     "create_entity_fog": ("create_entity", {"type": "fog", "name": "Fog"}),
     "set_properties_fog_height": ("set_properties", {"entity": "Fog", "values": {"fog": {"type": "height"}}}),
+    "get_scene_settings_fog": ("get_scene_settings", {}),
     "scene_view_disable_fog": ("set_scene_camera", {"display": {"disable_fog": True}}),
     "get_atmosphere_info_fog_hidden": ("get_atmosphere_info", {"view": "scene"}),
     "scene_view_enable_fog": ("set_scene_camera", {"display": {"disable_fog": False}}),

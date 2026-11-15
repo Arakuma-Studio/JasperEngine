@@ -29,6 +29,7 @@
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "pool/ShaderPool.h"
+#include "render/FogResolve.h"
 #include "subsystem/RenderSystem.h"
 #include "util/FileUtils.h"
 #include "util/CubeLut.h"
@@ -1599,6 +1600,10 @@ void getSceneSettingsTool(const CallPtr& call) {
         data["planar_reflections_in_use"] = Json{{"planes", planar.planes}, {"passes", planar.passes}, {"fallbacks", planar.fallbacks},
                                                  {"width", planar.width}, {"height", planar.height}};
     }
+    // Unity keeps fog in the Lighting settings, so an agent asked for haze looks for it here
+    if (scene->sceneType == SceneType::SCENE_3D && FogScene::findFog(scene->scene) == NULL_ENTITY)
+        data["next"] = "No Fog in this scene: fog, haze or mist is a Fog GameObject, not a scene setting. create_entity {type: \"fog\"}, "
+                       "then apply_atmosphere_preset (looks: list_atmosphere_presets).";
     call->ok(text, data);
 }
 

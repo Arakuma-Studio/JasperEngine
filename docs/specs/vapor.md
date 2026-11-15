@@ -675,6 +675,12 @@ scene.fog.profile = p                  -- runtime only
     sentence on Fog Zones cut from `apply_atmosphere_preset`'s description, agents still created a
     Fog Zone in 3/3 samples (through `create_entity`'s types and `list_component_types`), so no new
     text needs it and the sentence was cut.
+  - R37's fixed `guard_atmosphere_preset` needed new text: asked for haze, agents opened
+    `get_scene_settings` first (Unity keeps fog in Lighting), found none and tinted the background
+    (1/4 twice; main's case scored 2/3 on main's atmosphere text and 1/3 on this one). In a 3D
+    scene without a Fog, `get_scene_settings` now says in `next` that fog is a Fog GameObject and
+    names `create_entity` and `apply_atmosphere_preset` (4/4 twice; 0/4 twice without the
+    `apply_atmosphere_preset` part).
 - **R22, AC15: the fog-light budgets are not measured on the reference hardware.** The bench has
   the scenes (`tools/performance/atmosphere_bench.py`: 1, 2 and 4 shadowed spot lights on Low,
   Medium and High and 1 shadowed point light on Low, each against the same lights with Volumetric

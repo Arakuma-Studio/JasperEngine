@@ -122,6 +122,30 @@ TERRAIN_IMPORT_DRY = {
 }
 
 
+# PostProcessingSettings::getFields' snake names, as set_scene_settings lists them in its unknown-field error
+POST_PROCESSING_FIELDS = (
+    "exposure, tonemap, color_grading_enabled, temperature, tint, contrast, saturation, lift, gamma, "
+    "gain, lut_texture, lut_contribution, lut_input_encoding, lut_size, monochrome_enabled, "
+    "monochrome_mode, monochrome_intensity, vignette_enabled, vignette_intensity, vignette_smoothness, "
+    "vignette_roundness, vignette_color, dither_enabled, fxaa_enabled, chromatic_aberration_enabled, "
+    "chromatic_aberration_intensity, pixelate_enabled, pixelate_size, crt_enabled, crt_scanlines, "
+    "crt_mask, crt_curvature, crt_vignette, edge_detect_enabled, edge_detect_threshold, "
+    "edge_detect_intensity, edge_detect_color, film_grain_enabled, film_grain_intensity, "
+    "film_grain_response, film_grain_type, film_grain_size, film_grain_colored, film_frame_rate, "
+    "vhs_enabled, vhs_intensity, vhs_wobble, vhs_tracking, vhs_color_bleed, vhs_tape_noise, "
+    "vhs_chroma_streaks, vhs_dropouts, vhs_scanlines, vhs_interference, vhs_glitches, vhs_speed, "
+    "film_damage_enabled, film_damage_intensity, film_hair_amount, film_scratch_amount, "
+    "film_dust_amount, film_dust_size, film_gate_weave, film_gate_mask, film_gate_mask_feather, "
+    "sharpen_enabled, sharpen_intensity, bloom_enabled, bloom_threshold, bloom_knee, bloom_intensity, "
+    "bloom_tint, bloom_scatter, blur_enabled, blur_radius, blur_intensity, halation_enabled, "
+    "halation_intensity, halation_threshold, halation_radius, halation_tint, render_scale, msaa_samples, "
+    "dynamic_resolution_enabled, dynamic_resolution_min_scale, dynamic_resolution_target_fps, "
+    "palette_enabled, palette, palette_dither, palette_dither_strength, palette_distance, "
+    "palette_precision, glitch_enabled, glitch_intensity, glitch_rgb_split, glitch_tears, "
+    "glitch_tear_shift, glitch_interlace, glitch_burst_rate, glitch_burst_length, glitch_fps, "
+    "glitch_seed"
+)
+
 CASES = [
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
@@ -1338,15 +1362,20 @@ CASES = [
     {
         "id": "guard_atmosphere_preset",
         "kind": "guard",
-        "what_happened": "The guide's Atmosphere digest names apply_atmosphere_preset; with Fog Profiles it links the Fog to a "
-                         "built-in profile (copied into the project) instead of writing fields. Guards the digest, the route "
-                         "and the real built-in ids when the guide is cut.",
-        "text_at_issue": "Guide 'Other areas': 'atmosphere (apply_atmosphere_preset)'; list_atmosphere_presets' fog result (the "
-                         "built-in ids); apply_atmosphere_preset description ('Link a Fog or Fog Zone to a fog profile (a "
-                         "built-in id, copied into the project on first use ...')",
-        "source": "guide digest (atmosphere); docs/specs/vapor.md R37 (the fix: real ids, the link checked)",
+        "what_happened": "Asked for haze, agents looked for fog in the scene settings (Unity keeps it in Lighting), found none "
+                         "and tinted the background or the ambient instead (1/4; main's case 2/3 on main's atmosphere text, 1/3 "
+                         "on R37's): fog is a Fog GameObject here, whose look is a profile apply_atmosphere_preset links. "
+                         "4/4 with the next; 0/4 when it names create_entity only.",
+        "text_at_issue": "get_scene_settings' next in a 3D scene without a Fog ('No Fog in this scene: fog, haze or mist is a "
+                         "Fog GameObject, not a scene setting ...'); list_atmosphere_presets' fog result (the built-in ids)",
+        "source": "eval runs of this case on docs/specs/vapor.md R37's surface (every sample opened get_scene_settings first)",
         "prompt": "Add a soft morning haze over the level.",
         "mocks": [
+            {"tool": "get_scene_settings", "after": "create_entity", "result": {"recorded": "get_scene_settings_fog"}},
+            # as the editor answers: post_processing has no fog field, real settings apply
+            {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"fog": "*"}}}, "result": err(
+                "post_processing: unknown field \"fog\". Fields: " + POST_PROCESSING_FIELDS + ".")},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {}})},
             {"tool": "create_entity", "args": {"type": "re:(?i)fog"}, "result": ok(
                 "Created Fog \"Fog\" [30] at Fog (one undo step).", {"entity": {"id": 30, "name": "Fog", "path": "Fog"}})},
             {"tool": "add_component", "args": {"component": "re:(?i)fog"}, "result": ok(
@@ -1360,6 +1389,16 @@ CASES = [
                 {"changed": True, "entity": 30, "component": "fog", "profile": "FogProfiles/morning_haze.fogprofile",
                  "created": True, "typeChanged": True, "usedBy": 1})},
             {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 30}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "after": "apply_atmosphere_preset", "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "profile": "FogProfiles/morning_haze.fogprofile"}}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "linear"}}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "re:(?i)fog"}}]},
                               {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog"}}]}],
@@ -1379,6 +1418,7 @@ CASES = [
         "prompt": "Inside the cave (the Cave GameObject, a hollow rock box around x=40) the fog should be thick and dark green "
                   "whenever the camera is in there. Outside it the level keeps its light haze. Set that up.",
         "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
             {"tool": "get_scene_tree", "result": ok(
                 "Scene 1 \"Main\" (3D, 10 GameObjects). Each line: Name [id] components (flags); children indented.\n"
                 "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
@@ -1432,6 +1472,7 @@ CASES = [
         # the shared profile, as the editor copied builtin night on first use
         "files": {"FogProfiles/night.fogprofile": "{\n  \"version\": 1,\n  \"name\": \"Night\",\n  \"description\": \"A dark blue fog close to the ground, little sun scattering\",\n  \"fields\": {\n    \"color\": [0.0020508443, 0.0028788275, 0.00778151],\n    \"attenuationDistance\": 200.0,\n    \"baseHeight\": 0.0,\n    \"maximumHeight\": 60.0,\n    \"startDistance\": 0.0,\n    \"maxFogDistance\": 2000.0,\n    \"maxOpacity\": 0.95,\n    \"directionalInscattering\": 0.05,\n    \"anisotropy\": 0.3,\n    \"skyFill\": true,\n    \"skyFillAngle\": 4.0\n  }\n}\n"},
         "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
             {"tool": "get_scene_tree", "result": ok(
                 "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
                 "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
@@ -1459,7 +1500,15 @@ CASES = [
                                               "usedBy": 2}]})},
             {"tool": "set_properties", "result": {"recorded": "set_properties_fog_profile_field"}},
             {"tool": "edit_fog_profile", "args": {"from": {"profile": "*"}}, "result": {"recorded": "edit_fog_profile_copy"}},
-            {"tool": "edit_fog_profile", "result": {"recorded": "edit_fog_profile_shared"}},
+            # as the editor answers: from given as text (not an object), a new path without from
+            {"tool": "edit_fog_profile", "args": {"from": "re:."}, "result": err(
+                "from takes one of builtin (an id), entity (a GameObject with a Fog or Fog Zone) or profile (a .fogprofile path).")},
+            {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}, "result": {"recorded": "edit_fog_profile_shared"}},
+            {"tool": "undo", "after": {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}},
+             "result": {"recorded": "undo_fog_profile_shared"}},
+            {"tool": "edit_fog_profile", "result": err(
+                "No fog profile at that path: pass from ({builtin}, {entity} or {profile}) to create it. Project profiles: "
+                "FogProfiles/night.fogprofile.")},
             {"tool": "apply_atmosphere_preset", "after": "edit_fog_profile", "result": {"recorded": "apply_fog_profile_copy"}},
             {"tool": "apply_atmosphere_preset", "result": err(
                 "Unknown fog profile: no fog profile at that path: give a project .fogprofile path or builtin:<id> (morning_haze, "
@@ -1485,6 +1534,7 @@ CASES = [
         "source": "docs/specs/vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
         "prompt": "I added a height fog to Main (the Fog GameObject), but I can't see any fog in the editor. Fix it.",
         "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
             {"tool": "get_scene_tree", "result": ok(
                 "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
                 "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
