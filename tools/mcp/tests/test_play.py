@@ -257,6 +257,10 @@ async def test_cpp_build_failure_reported(ed: Editor):
     st = await ed.call("get_play_state")
     ed.check_eq(st["state"], "stopped", "stopped after the failed build")
     ed.check_eq(st["last_session"]["ended"], "failed_to_start", f"last session: {st['last_session']}")
+    # the file's later tests play this project: the broken probe goes
+    await ed.call("delete_entities", entities=["CompileProbe"])
+    await ed.call("delete_asset", paths=[p.relative_to(ed.project).as_posix() for p in (ed.project / "scripts").glob("Broken.*")
+                                         if p.suffix != ".meta"])
 
 
 
