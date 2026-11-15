@@ -10672,16 +10672,65 @@
   },
   {
    "display_name": "Text",
-   "enum_options": {},
+   "enum_options": {
+    "horizontalAlignment": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ],
+     [
+      3,
+      "justified",
+      "Justified"
+     ]
+    ],
+    "verticalAlignment": [
+     [
+      0,
+      "top",
+      "Top"
+     ],
+     [
+      1,
+      "middle",
+      "Middle"
+     ],
+     [
+      2,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      3,
+      "baseline",
+      "Baseline"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef80b1",
    "key": "text",
    "known_keys": [
+    "autoSize",
     "fixedHeight",
     "fixedWidth",
     "font",
     "fontGuid",
     "fontSize",
+    "fontSizeMax",
+    "fontSizeMin",
+    "horizontalAlignment",
     "maxTextSize",
     "multiline",
     "outlineColor",
@@ -10695,10 +10744,16 @@
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "verticalAlignment",
     "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10717,6 +10772,21 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10781,6 +10851,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -10791,6 +10866,11 @@
     ]
    },
    "properties_without_component": {
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10809,6 +10889,21 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10873,6 +10968,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -12711,6 +12811,23 @@
       1,
       "texture",
       "Texture"
+     ],
+     [
+      2,
+      "world",
+      "World Space"
+     ]
+    ],
+    "updateMode": [
+     [
+      0,
+      "unscaled",
+      "Unscaled Time"
+     ],
+     [
+      1,
+      "game",
+      "Game Time"
      ]
     ]
    },
@@ -12718,18 +12835,26 @@
    "icon": "ef8789",
    "key": "uidocument",
    "known_keys": [
+    "billboard",
     "enabled",
     "filename",
     "inputSurface",
     "interactive",
     "pixelRatio",
+    "pixelsPerUnit",
     "renderMode",
     "sortOrder",
     "textureHeight",
-    "textureWidth"
+    "textureWidth",
+    "updateMode"
    ],
    "name": "UIDocumentComponent",
    "properties_of_default": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -12755,6 +12880,11 @@
      274877906944,
      true
     ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
     "renderMode": [
      13,
      274877906944,
@@ -12773,10 +12903,20 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
    "properties_without_component": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -12802,6 +12942,11 @@
      274877906944,
      true
     ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
     "renderMode": [
      13,
      274877906944,
@@ -12820,6 +12965,11 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
@@ -31500,6 +31650,11 @@
    ]
   },
   "TextComponent": {
+   "autoSize": [
+    0,
+    65536,
+    true
+   ],
    "fixedHeight": [
     0,
     32768,
@@ -31518,6 +31673,21 @@
    "fontSize": [
     9,
     65536,
+    true
+   ],
+   "fontSizeMax": [
+    9,
+    65536,
+    true
+   ],
+   "fontSizeMin": [
+    9,
+    65536,
+    true
+   ],
+   "horizontalAlignment": [
+    13,
+    32768,
     true
    ],
    "maxTextSize": [
@@ -31582,6 +31752,11 @@
    ],
    "text": [
     1,
+    32768,
+    true
+   ],
+   "verticalAlignment": [
+    13,
     32768,
     true
    ],
@@ -32529,6 +32704,11 @@
    ]
   },
   "UIDocumentComponent": {
+   "billboard": [
+    0,
+    0,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -32554,6 +32734,11 @@
     274877906944,
     true
    ],
+   "pixelsPerUnit": [
+    2,
+    0,
+    true
+   ],
    "renderMode": [
     13,
     274877906944,
@@ -32572,6 +32757,11 @@
    "textureWidth": [
     8,
     274877906944,
+    true
+   ],
+   "updateMode": [
+    13,
+    0,
     true
    ]
   },
@@ -33494,7 +33684,8 @@
    "fallback": "screen",
    "names": [
     "texture",
-    "screen"
+    "screen",
+    "world"
    ]
   },
   "UIEventState": {

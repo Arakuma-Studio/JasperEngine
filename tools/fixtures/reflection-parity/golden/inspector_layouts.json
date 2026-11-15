@@ -8150,6 +8150,14 @@
   },
   {
    "component": "text",
+   "group": "Auto Size",
+   "kind": "Bool",
+   "label": "Auto Size",
+   "path": "autoSize",
+   "read_only": false
+  },
+  {
+   "component": "text",
    "group": "Outline",
    "kind": "FloatPositive",
    "label": "Outline Width",
@@ -8606,6 +8614,14 @@
    "component": "uidocument",
    "group": "",
    "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
    "label": "Render Mode",
    "path": "renderMode",
    "read_only": false
@@ -8674,6 +8690,14 @@
    "kind": "Bool",
    "label": "Interactive",
    "path": "interactive",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
    "read_only": false
   },
   {
