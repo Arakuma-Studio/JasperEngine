@@ -166,10 +166,16 @@ namespace jasperengine::pixelart {
         extents.assign(cp.size(), CharExtent());
         shown.assign(cp.size(), 0);
         int inkRight = 0;
+        // the box the lines align in (Text horizontal alignment): the fixed width, else the widest line
+        int boxPx = widthPx;
+        if (options.lineAlign > 0.0f && !options.fixedWidth){
+            boxPx = 0;
+            for (const BitmapLine& line : lines) boxPx = std::max(boxPx, line.width);
+        }
         for (size_t l = 0; l < lines.size(); l++){
             const BitmapLine& line = lines[l];
             const int lineTop = (int)l * f.getLineHeight();
-            int pen = 0;
+            int pen = options.lineAlign > 0.0f ? (int)std::floor((float)(boxPx - line.width) * options.lineAlign) : 0;
             for (size_t i = line.first; i < line.first + line.count; i++){
                 if (i > line.first) pen += f.getSpacing() + f.kerning(cp[i - 1], cp[i]);
                 const bool has = f.hasGlyph(cp[i]);

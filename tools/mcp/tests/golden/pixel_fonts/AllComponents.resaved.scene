@@ -1,5 +1,5 @@
-formatVersion: 8
-guid: 6ae1376c14107d910f5730d8479f6f78
+formatVersion: 9
+guid: a121d47716aa85a089b695f0ac135fef
 id: 2026080800
 name: AllComponents
 scene:
@@ -1382,8 +1382,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        pivotBaseline: true
-        pivotCentered: true
+        horizontalAlignment: center
+        verticalAlignment: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent
@@ -2946,3 +2946,23 @@ entities:
         cylindricalBillboard: false
       titleart:
         enabled: true
+  - type: Entity
+    entity: 1105
+    name: OutlineComponent
+    components:
+      transform:
+        position: [104, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      outline:
+        enabled: false
+        mode: outline_hidden
+        color: [0.25, 0.5, 0.75, 0.5]
+        width: 3.5
+        widthUnits: world
+        includeChildren: false

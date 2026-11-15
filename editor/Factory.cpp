@@ -1698,6 +1698,11 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.height = " << formatUInt(sprite.height) << ";\n";
     code << ind << "sprite.automaticFlipY = " << formatBool(sprite.automaticFlipY) << ";\n";
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
+    // S94: exported only when set
+    if (sprite.flipX)
+        code << ind << "sprite.flipX = true;\n";
+    if (sprite.size.x != 0.0f || sprite.size.y != 0.0f)
+        code << ind << "sprite.size = " << formatVector2(sprite.size) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
     if (sprite.drawMode != SpriteDrawMode::SIMPLE) {

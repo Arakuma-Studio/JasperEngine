@@ -16588,7 +16588,16 @@ void RenderSystem::updateCameraSizeForCanvas(Entity entity, float canvasWidth, f
         }
 
         // a Pixel Perfect Camera sets its camera's span itself (S41 R3)
-        if (camera.autoResize && !findPixelPerfectDrive(entity)){
+        if (usesOrthographicSize(camera) && !findPixelPerfectDrive(entity)){
+            if (rect.getWidth() <= 0.0f || rect.getHeight() <= 0.0f) return;
+            const float newAspect = rect.getWidth() / rect.getHeight();
+            if (camera.aspect != newAspect){
+                camera.aspect = newAspect;
+                camera.needUpdate = true;
+            }
+            if (applyOrthographicSize(camera))
+                camera.needUpdate = true;
+        }else if (camera.autoResize && !findPixelPerfectDrive(entity)){
             float newLeft = rect.getX();
             float newBottom = rect.getY();
             float newRight = rect.getWidth();
@@ -16607,6 +16616,23 @@ void RenderSystem::updateCameraSizeForCanvas(Entity entity, float canvasWidth, f
             }
         }
     }
+}
+
+bool RenderSystem::usesOrthographicSize(const CameraComponent& camera){
+    return camera.type == CameraType::CAMERA_ORTHO && std::isfinite(camera.orthographicSize) && camera.orthographicSize > 0.0f;
+}
+
+bool RenderSystem::applyOrthographicSize(CameraComponent& camera){
+    const float aspect = (std::isfinite(camera.aspect) && camera.aspect > 0.0f) ? camera.aspect : 1.0f;
+    const float halfHeight = camera.orthographicSize;
+    const float halfWidth = halfHeight * aspect;
+    if (camera.leftClip == -halfWidth && camera.rightClip == halfWidth && camera.bottomClip == -halfHeight && camera.topClip == halfHeight)
+        return false;
+    camera.leftClip = -halfWidth;
+    camera.rightClip = halfWidth;
+    camera.bottomClip = -halfHeight;
+    camera.topClip = halfHeight;
+    return true;
 }
 
 bool RenderSystem::isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box){
@@ -18249,6 +18275,11 @@ void RenderSystem::update(double dt){
             camera.needUpdate = true;
         }
         
+        // an Orthographic Size set since the last canvas change (MCP, the Inspector, a script)
+        if (camera.needUpdate && usesOrthographicSize(camera) && (pixelPerfectDrives.empty() || !findPixelPerfectDrive(cameraEntity))){
+            applyOrthographicSize(camera);
+        }
+
         if (camera.needUpdate){
             updateCamera(camera, cameraTransform);
             // R8: a Pixel Perfect Camera draws from its snapped position

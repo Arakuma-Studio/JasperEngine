@@ -6775,6 +6775,7 @@
     "leftClip",
     "nearClip",
     "oitWeightScale",
+    "orthographicSize",
     "renderToTexture",
     "rightClip",
     "target",
@@ -6851,6 +6852,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -6968,6 +6974,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -10598,6 +10609,7 @@
     "automaticFlipY",
     "drawMode",
     "enabled",
+    "flipX",
     "flipY",
     "frame",
     "frameName",
@@ -10608,6 +10620,7 @@
     "pixelsPerUnit",
     "sheet",
     "sheetGuid",
+    "size",
     "spriteSortPoint",
     "textureScaleFactor",
     "width"
@@ -10627,6 +10640,11 @@
     "enabled": [
      0,
      0,
+     true
+    ],
+    "flipX": [
+     0,
+     1024,
      true
     ],
     "flipY": [
@@ -10671,6 +10689,11 @@
     ],
     "sheet": [
      18,
+     1024,
+     true
+    ],
+    "size": [
+     4,
      1024,
      true
     ],
@@ -10706,6 +10729,11 @@
      0,
      true
     ],
+    "flipX": [
+     0,
+     1024,
+     true
+    ],
     "flipY": [
      0,
      1024,
@@ -10751,6 +10779,11 @@
      1024,
      true
     ],
+    "size": [
+     4,
+     1024,
+     true
+    ],
     "spriteSortPoint": [
      13,
      0,
@@ -10774,7 +10807,69 @@
   },
   {
    "display_name": "Text",
-   "enum_options": {},
+   "enum_options": {
+    "fontSizeUnit": [
+     [
+      0,
+      "pixel_height",
+      "Pixel Height"
+     ],
+     [
+      1,
+      "em",
+      "Em"
+     ]
+    ],
+    "horizontalAlignment": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ]
+    ],
+    "verticalAlignment": [
+     [
+      3,
+      "top",
+      "Top"
+     ],
+     [
+      4,
+      "middle",
+      "Middle"
+     ],
+     [
+      5,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      6,
+      "baseline",
+      "Baseline"
+     ],
+     [
+      7,
+      "capline",
+      "Capline"
+     ],
+     [
+      8,
+      "midline",
+      "Midline"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef80b1",
    "key": "text",
@@ -10784,19 +10879,20 @@
     "font",
     "fontGuid",
     "fontSize",
+    "fontSizeUnit",
+    "horizontalAlignment",
     "maxTextSize",
     "multiline",
     "outlineColor",
     "outlineNeighbors",
     "outlineWidth",
-    "pivotBaseline",
-    "pivotCentered",
     "shadowColor",
     "shadowDilate",
     "shadowEnabled",
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "verticalAlignment",
     "visibleCharacters"
    ],
    "name": "TextComponent",
@@ -10821,6 +10917,16 @@
      65536,
      true
     ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
+     true
+    ],
     "maxTextSize": [
      9,
      32768,
@@ -10843,16 +10949,6 @@
     ],
     "outlineWidth": [
      2,
-     32768,
-     true
-    ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
      32768,
      true
     ],
@@ -10883,6 +10979,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -10913,6 +11014,16 @@
      65536,
      true
     ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
+     true
+    ],
     "maxTextSize": [
      9,
      32768,
@@ -10935,16 +11046,6 @@
     ],
     "outlineWidth": [
      2,
-     32768,
-     true
-    ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
      32768,
      true
     ],
@@ -10975,6 +11076,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -25428,6 +25534,11 @@
     0,
     true
    ],
+   "orthographicSize": [
+    2,
+    2,
+    true
+   ],
    "renderToTexture": [
     0,
     2,
@@ -31382,6 +31493,11 @@
     0,
     true
    ],
+   "flipX": [
+    0,
+    1024,
+    true
+   ],
    "flipY": [
     0,
     1024,
@@ -31424,6 +31540,11 @@
    ],
    "sheet": [
     18,
+    1024,
+    true
+   ],
+   "size": [
+    4,
     1024,
     true
    ],
@@ -31863,6 +31984,16 @@
     65536,
     true
    ],
+   "fontSizeUnit": [
+    13,
+    65536,
+    true
+   ],
+   "horizontalAlignment": [
+    13,
+    32768,
+    true
+   ],
    "maxTextSize": [
     9,
     32768,
@@ -31885,16 +32016,6 @@
    ],
    "outlineWidth": [
     2,
-    32768,
-    true
-   ],
-   "pivotBaseline": [
-    0,
-    32768,
-    true
-   ],
-   "pivotCentered": [
-    0,
     32768,
     true
    ],
@@ -31925,6 +32046,11 @@
    ],
    "text": [
     1,
+    32768,
+    true
+   ],
+   "verticalAlignment": [
+    13,
     32768,
     true
    ],

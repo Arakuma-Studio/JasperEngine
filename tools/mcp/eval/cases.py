@@ -5242,6 +5242,76 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
+    {
+        "id": "guard_camera_orthographic_size",
+        "kind": "guard",
+        "what_happened": "New text (S94 F28, R46): the camera guide names camera.orthographicSize (Unity's Size, following the "
+                         "aspect); without it an agent writes fixed left/right/top/bottom bounds for one aspect (the port's "
+                         "workaround) or leaves Auto Resize showing the canvas in pixels.",
+        "text_at_issue": "jasper://docs/camera 'Orthographic bounds': 'For Unity's Size, set camera.orthographicSize (> 0) ...'",
+        "source": "S94 F28 (new guide text); ARCADE ENGINE_LIMITATIONS R46",
+        "prompt": "The 2D level was made in Unity with an orthographic camera Size of 11. Make the Main Camera show the same "
+                  "vertical extent on every screen shape.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [10] camera transform",
+                                                   {"entities": [{"id": 10, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(10|Main Camera)$"}, "result": ok(
+                "Main Camera [10] components: camera transform; camera: type orthographic, autoResize true, left 0, right 1280, "
+                "bottom 0, top 720, orthographicSize 0", {"id": 10, "name": "Main Camera"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 10}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"camera": {"orthographicSize": 11}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "orthographicSize", "value": 11}]}}]}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_capline_alignment",
+        "kind": "guard",
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text alignment names center + capline for a number centred on a "
+                         "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
+                         "sat too high).",
+        "text_at_issue": "jasper://docs/ui 'Text alignment and size': 'To centre a number on a plaque, use center + capline.'",
+        "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
+        "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
+                  "(it sits at the plaque's centre). Fix how the text is anchored.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
+                                                   {"entities": [{"id": 21, "path": "Door12"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, horizontalAlignment "
+                "left, verticalAlignment bottom", {"id": 21, "name": "Door12"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"horizontalAlignment": "center",
+                                                                                                  "verticalAlignment": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "verticalAlignment", "value": "re:capline|middle"}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_flip_x",
+        "kind": "guard",
+        "what_happened": "New text (S94 F29, R9): the sprites guide names sprite.flipX; without it an agent mirrors a sprite with a "
+                         "negative scale, which also flips its colliders and children.",
+        "text_at_issue": "jasper://docs/sprites 'Flip and Size': 'sprite.flipX mirrors the quad about its pivot'",
+        "source": "S94 F29 (new guide text); ARCADE ENGINE_LIMITATIONS R9",
+        "prompt": "Make the Hero sprite face left: mirror its picture horizontally, but leave its transform and collider alone.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] sprite mesh transform rigidbody2d",
+                                                   {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(7|Hero)$"}, "result": ok(
+                "Hero [7] components: mesh rigidbody2d sprite transform; sprite: width 32, height 32, flipX false, flipY true",
+                {"id": 7, "name": "Hero"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 7}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"sprite": {"flipX": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "flipX", "value": True}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+
     {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
         "id": "guard_points_frames_in_uv",
         "kind": "guard",

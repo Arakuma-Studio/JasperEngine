@@ -3,6 +3,7 @@
 
 #include "STBText.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include "Log.h"
@@ -24,6 +25,8 @@ STBText::STBText() {
     descent = 0;
     lineGap = 0;
     lineHeight = 0;
+    capHeight = 0;
+    xHeight = 0;
 
     textureData = NULL;
 }
@@ -58,7 +61,8 @@ void STBText::addFace(const std::shared_ptr<FontFace>& face, unsigned int fontSi
 
     faces.push_back(face);
     facePointers.push_back(face.get());
-    faceScales.push_back(face->scaleForPixelHeight((float)fontSize * options.rasterScale));
+    const float pixels = (float)fontSize * options.rasterScale;
+    faceScales.push_back(options.emSize ? face->scaleForEmSize(pixels) : face->scaleForPixelHeight(pixels));
 }
 
 void STBText::addBuiltInFaces(unsigned int fontSize){
@@ -361,6 +365,14 @@ int STBText::getLineHeight(){
     return (options.rasterScale == 1.0f) ? lineHeight : (int)std::lround((float)lineHeight / options.rasterScale);
 }
 
+float STBText::getCapHeight(){
+    return (options.rasterScale == 1.0f) ? capHeight : capHeight / options.rasterScale;
+}
+
+float STBText::getXHeight(){
+    return (options.rasterScale == 1.0f) ? xHeight : xHeight / options.rasterScale;
+}
+
 float STBText::getCharWidth(uint32_t codepoint){
     const FontGlyph* glyph = getGlyphForCodepoint(codepoint);
     if (!glyph)
@@ -428,6 +440,8 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
     this->descent = descent * scale;
     this->lineGap = lineGap * scale;
     this->lineHeight = (ascent - descent + lineGap) * scale;
+    this->capHeight = faces[0]->getCapHeight() * scale;
+    this->xHeight = faces[0]->getXHeight() * scale;
 
     glyphMap.clear();
     codepointMap.clear();
@@ -444,7 +458,7 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
 void STBText::createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,
                          std::vector<CharExtent>& charExtents,
                          unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
-                         std::vector<TextGlyphInfo>* glyphInfo){
+                         std::vector<TextGlyphInfo>* glyphInfo, float lineAlign){
 
     bool hadInvalid = false;
     std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text, hadInvalid);
@@ -489,6 +503,16 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
 
     //visual span of each cluster, which is what a caret and a selection need
     std::vector<CharExtent> clusterExtent(codepoints.size());
+
+    //horizontal alignment: each line's span and the line of each quad
+    const bool aligned = lineAlign > 0.0f && lineCount > 0;
+    std::vector<float> lineLeft, lineRight;
+    std::vector<unsigned int> quadLines;
+    if (aligned){
+        lineLeft.assign((size_t)lineCount, 0.0f);
+        lineRight.assign((size_t)lineCount, 0.0f);
+        quadLines.reserve(shaped.size());
+    }
 
     for (size_t s = 0; s < shaped.size(); s++){
 
@@ -562,6 +586,11 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
             maxY1 = quad.y1 - inkPadding;
         if (offsetX > maxX1)
             maxX1 = offsetX;
+        if (aligned && shapedGlyph.line < (unsigned int)lineCount){
+            lineLeft[shapedGlyph.line] = std::min(lineLeft[shapedGlyph.line], quad.x0 + inkPadding);
+            lineRight[shapedGlyph.line] = std::max(lineRight[shapedGlyph.line], std::max(quad.x1 - inkPadding, offsetX));
+            quadLines.push_back(shapedGlyph.line);
+        }
             
         //every glyph is added, UISystem clips the quads to the layout rect
         buffer->addVector3(atrVertice, Vector3(quad.x0, quad.y0, 0));
@@ -636,6 +665,35 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
 
         charPositions.push_back(clusterEnd[i]);
         charExtents.push_back(clusterExtent[i]);
+    }
+
+    //each line shifted inside the box, whole raster pixels so the glyphs stay crisp
+    if (aligned){
+        const float box = fixedWidth ? (float)layoutWidth : (float)(maxX1 - minX0);
+        std::vector<float> shift((size_t)lineCount, 0.0f);
+        for (int line = 0; line < lineCount; line++){
+            shift[(size_t)line] = std::floor((box - (lineRight[(size_t)line] - lineLeft[(size_t)line])) * lineAlign + 0.5f);
+        }
+        Attribute* positions = buffer->getAttribute(AttributeType::POSITION);
+        for (size_t q = 0; q < quadLines.size(); q++){
+            const float dx = shift[quadLines[q]];
+            for (int corner = 0; corner < 4; corner++){
+                const int v = firstVertex + (int)(q * 4) + corner;
+                Vector3 vertex = buffer->getVector3(positions, v);
+                buffer->setVector3(v, positions, Vector3(vertex.x + dx, vertex.y, vertex.z));
+            }
+        }
+        //positions and extents keep their line's y (line x lineHeight)
+        auto lineOf = [&](float y){
+            const int line = lineHeight > 0 ? (int)std::lround(y / (float)lineHeight) : 0;
+            return (size_t)std::clamp(line, 0, lineCount - 1);
+        };
+        for (size_t i = 0; i < charPositions.size(); i++){
+            const float dx = shift[lineOf(charExtents[i].y)];
+            charPositions[i].x += dx;
+            charExtents[i].left += dx;
+            charExtents[i].right += dx;
+        }
     }
 
     //Empty text

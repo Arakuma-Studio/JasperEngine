@@ -4157,6 +4157,10 @@ namespace jasperengine{
 		// sizes an auto-resize camera for a canvas of canvasWidth x canvasHeight, the
 		// Engine canvas in updateCameraSize(entity); a render-to-texture camera keeps its framebuffer's
 		void updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight);
+		// an orthographic camera with an Orthographic Size (S94 F28), and its clips from that size
+		// and its aspect (true when they changed)
+		static bool usesOrthographicSize(const CameraComponent& camera);
+		static bool applyOrthographicSize(CameraComponent& camera);
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);

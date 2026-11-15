@@ -1893,7 +1893,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
 | `getWorldRotation()` | method | Quaternion |
 | `scale` | rw `Vector3` | |
-| `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
+| `setScale(s)`, `setScale(x, y, z)` | method | uniform, or per axis |
 | `getWorldScale()` | method | |
 | `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
@@ -2051,7 +2051,8 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 |---|---|
 | `width`, `height` | rw (points) |
 | `setSize(w, h)` | method |
-| `flipY` | rw (there is no `flipX` binding) |
+| `flipX`, `flipY` | rw: Flip X mirrors the quad about the pivot |
+| `size` | rw `Vector2`: the quad in world units (Unity's `SpriteRenderer.size`, Sliced corners keep theirs); an axis at 0 is `width`/`height` over `pixelsPerUnit` |
 | `textureRect` | rw `Rect`; `setTextureRect(x, y, w, h)` |
 | `textureScaleFactor` | rw |
 | `pivotPreset` | rw `PivotPreset.*` |
@@ -2443,7 +2444,9 @@ end
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
-`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
+`bottomClip`, `topClip` (setting one turns `autoResize` and `orthographicSize` off), `aspect`, `yfov`,
+`target` (Vector3), `up` (Vector3), `autoResize`, `orthographicSize` (Unity's Size: half the view's
+height, the width follows the aspect; 0 off),
 `renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
 (`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
 `oitWeightScale` (`jasper://docs/lighting`).
@@ -2687,7 +2690,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `horizontalAlignment` / `verticalAlignment` (`TextAlignment.Left`, `Center`, `Right` / `Top`, `Middle`, `Bottom`, `Baseline`, `Capline`, `Midline`; `pivotBaseline`, `pivotCentered` deprecated aliases), `fontSizeUnit` (`TextFontSizeUnit.PixelHeight` or `Em`), `width`/`height` (laid out on read after `setText`); outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()`, `updateLayout()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
