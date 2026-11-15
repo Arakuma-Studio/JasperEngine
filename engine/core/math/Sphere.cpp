@@ -3,7 +3,6 @@
 
 #include "Sphere.h"
 
-#define _USE_MATH_DEFINES
 #include <cmath>
 
 #include "Plane.h"

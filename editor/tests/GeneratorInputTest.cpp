@@ -15,7 +15,7 @@
 #include "input/InputActions.h"
 #include "input/InputManagerFormat.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <filesystem>

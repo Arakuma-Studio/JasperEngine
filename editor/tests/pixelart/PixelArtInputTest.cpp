@@ -26,7 +26,7 @@
 #include "pixelart/PixelArtMode.h"
 #include "ScriptDataTestSupport.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <chrono>

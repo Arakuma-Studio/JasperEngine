@@ -807,15 +807,22 @@ class CppModel:
 
     # ── lookups ──────────────────────────────────────────────────────────────
 
-    def find_class(self, name):
-        name = strip_ns(name)
-        base = re.sub(r'<.*$', '', name)
-        lst = self.classes.get(base)
-        if not lst:
-            return None
-        # prefer a definition with members
-        best = max(lst, key=lambda c: len(c.methods) + len(c.fields))
-        return best
+    def find_classes(self, name):
+        """Every class of that name, the one with the most members first: classes of other
+        namespaces and nested ones share a simple name (the tilemap Grid, Title Art's analysis Grid)"""
+        lst = self.classes.get(re.sub(r'<.*$', '', strip_ns(name)))
+        return sorted(lst, key=lambda c: len(c.methods) + len(c.fields), reverse=True) if lst else []
+
+    def find_class(self, name, base=None):
+        """The class of that name; of several, the one deriving from `base` when given, else the one
+        with the most members"""
+        lst = self.find_classes(name)
+        if base:
+            wanted = re.sub(r'<.*$', '', strip_ns(base))
+            for c in lst:
+                if any(re.sub(r'<.*$', '', strip_ns(b)) == wanted for b in c.bases):
+                    return c
+        return lst[0] if lst else None
 
     def mro(self, cls, seen=None):
         if cls is None:
@@ -830,18 +837,19 @@ class CppModel:
         return out
 
     def find_methods(self, cls_name, name):
-        """Overloads of name visible in cls_name: from the first class in its hierarchy declaring it."""
-        cls = self.find_class(cls_name)
-        for c in self.mro(cls):
-            if name in c.methods:
-                return c.methods[name]
+        """Overloads of name visible in cls_name: from the first class in its hierarchy declaring it
+        (of the classes sharing that name, the first whose hierarchy declares it)."""
+        for cls in self.find_classes(cls_name):
+            for c in self.mro(cls):
+                if name in c.methods:
+                    return c.methods[name]
         return []
 
     def find_field(self, cls_name, name):
-        cls = self.find_class(cls_name)
-        for c in self.mro(cls):
-            if name in c.fields:
-                return c.fields[name]
+        for cls in self.find_classes(cls_name):
+            for c in self.mro(cls):
+                if name in c.fields:
+                    return c.fields[name]
         return None
 
     def find_enum(self, name):
@@ -2797,6 +2805,14 @@ OVERRIDES.update({
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+    ('TitleArt', 'playOverlay'): {
+        'doc': ['Plays the animation `name` on top of the base one (S85 R25: any number at once; in Baked mode only its',
+                'title-live tracks). False (warned once) for an unknown name.'],
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}')],
+                       'boolean')]},
+    ('TitleArt', 'stop'): {
+        'doc': ['Stops every animation (the pose stays), or only the animation `name`: false when it was not playing.'],
+        'overloads': [([], ''), ([('name', 'string')], 'boolean')]},
 })
 
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
@@ -3624,7 +3640,7 @@ class Builder:
                 bc = by_cpp.get(type_key(c.base_cpp))
                 c.base = bc.name if bc else None
         for c in self.b.classes:
-            c.cpp_class = self.model.find_class(c.cpp)
+            c.cpp_class = self.model.find_class(c.cpp, c.base_cpp)
             c.lua_ctors = []
             for call in c.ctors:
                 for targ in call.targs:

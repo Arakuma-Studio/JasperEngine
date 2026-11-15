@@ -94,7 +94,7 @@ namespace jasperengine::htmlui {
         int line = 0;
     };
 
-    struct EffectManifest {
+    struct JASPERENGINE_API EffectManifest {
         std::string name, summary, source, category;
         EffectKind kind = EffectKind::Paint;
         EffectCost cost = EffectCost::Low;

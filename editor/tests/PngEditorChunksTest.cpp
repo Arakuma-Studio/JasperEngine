@@ -13,7 +13,7 @@
 #include "texsynth/SynthImage.h"
 #include "util/PngEditorChunks.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstring>

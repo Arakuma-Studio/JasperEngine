@@ -177,7 +177,8 @@ async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
                                         "values": {"mesh": {"submeshes[0].material.baseColorTexture": path}}})
                     for eid, path in zip(ids, paths)])
     storm, running = [], []
-    deadline = time.monotonic() + 300
+    # (CI's 4 vCPUs leave the gate a Heavy max of 1: the 200 decodes then take about six minutes)
+    deadline = time.monotonic() + 720
     while time.monotonic() < deadline:
         rate, background, queued = (await ed.call("eval_lua", code=probe, allow_edit_mode=True))["values"][0]
         running.append(background)

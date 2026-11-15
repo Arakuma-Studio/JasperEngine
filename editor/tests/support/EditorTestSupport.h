@@ -75,4 +75,11 @@ namespace jasperengine::editor::test {
     // A copy of a map without one key
     YAML::Node withoutKey(const YAML::Node& map, const std::string& key);
 
+    // `compiler` checks `source`'s syntax against the include directories and definitions listed in
+    // `flagsFile` (EditorTests.cmake writes it: a game's generated code sees the engine so), with its
+    // arguments in a response file beside `source` (cmd.exe takes 8191 characters at most). The
+    // compiler's exit status; `output` what it printed.
+    int compileSyntaxAgainstEngine(const std::filesystem::path& compiler, const std::filesystem::path& flagsFile,
+                                   const std::filesystem::path& source, std::string& output);
+
 }

@@ -1,0 +1,56 @@
+[2576/2577] Building CXX object tests/core/CMakeFiles/jasperengine-core-tests.dir/src/editor/procmat/SpirvInterpreter.cpp.o
+[2577/2577] Linking CXX executable tests/core/jasperengine-core-tests
+[==========] Running 5766 tests from 858 test suites.
+[----------] Global test environment set-up.
+[----------] 12 tests from AnimContract
+[       OK ] CrashHang.WatchdogWritesAHangReportIntoTheSession (2109 ms)
+[----------] 1 test from CrashHang (2109 ms total)
+
+[----------] 2 tests from CrashGuard
+[ RUN      ] CrashGuard.WorkerCrashReachesHandler
+JASPERENGINE CRASH: SIGSEGV (invalid memory access) report=/src/build/linux/core-tests-address-undefined/tests/core/test-tmp/CrashGuard.WorkerCrashReachesHandler-17881-10/reports/20261113T041344Z-18063
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==18063==ERROR: AddressSanitizer: SEGV on unknown address 0x03e90000468f (pc 0x7bec9af4891c bp 0x000000004690 sp 0x7bec91234280 T1)
+==18063==The signal is caused by a READ memory access.
+    #0 0x7bec9af4891c in pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x9691c)
+    #1 0x7bec9aef4405 in raise (/lib/x86_64-linux-gnu/libc.so.6+0x42405)
+    #2 0x5c0f14924b24 in je_crash_common::debugSegv() /src/engine/core/diag/CrashHandler.cpp:546
+    #3 0x5c0f14934ffa in jasperengine::diag::crash::debugCrash(std::basic_string_view<char, std::char_traits<char> >, unsigned int) /src/engine/core/diag/CrashHandler.cpp:938
+    #4 0x5c0f148fff09 in operator() /src/engine/tests/crash/CrashTestMain.cpp:241
+    #5 0x5c0f14909631 in __invoke_impl<void, main(int, char**)::<lambda()>::<lambda()>&> /usr/include/c++/11/bits/invoke.h:61
+    #6 0x5c0f1490884c in __invoke_r<void, main(int, char**)::<lambda()>::<lambda()>&> /usr/include/c++/11/bits/invoke.h:111
+    #7 0x5c0f149079e4 in _M_invoke /usr/include/c++/11/bits/std_function.h:290
+    #8 0x5c0f14a5af83 in std::function<void ()>::operator()() const /usr/include/c++/11/bits/std_function.h:590
+    #9 0x5c0f1dd1762a in operator() /src/engine/core/thread/ThreadUtil.cpp:208
+    #10 0x5c0f1dd18c52 in __invoke_impl<void, jasperengine::thread::spawnNamed(char const*, std::function<void()>, jasperengine::thread::Priority)::<lambda()> > /usr/include/c++/11/bits/invoke.h:61
+    #11 0x5c0f1dd18bc8 in __invoke<jasperengine::thread::spawnNamed(char const*, std::function<void()>, jasperengine::thread::Priority)::<lambda()> > /usr/include/c++/11/bits/invoke.h:96
+    #12 0x5c0f1dd18a8a in _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259
+    #13 0x5c0f1dd189c7 in operator() /usr/include/c++/11/bits/std_thread.h:266
+    #14 0x5c0f1dd18984 in _M_run /usr/include/c++/11/bits/std_thread.h:211
+    #15 0x7bec9b8f3252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+    #16 0x7bec9af469e2  (/lib/x86_64-linux-gnu/libc.so.6+0x949e2)
+    #17 0x7bec9afd7a13 in __clone (/lib/x86_64-linux-gnu/libc.so.6+0x125a13)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x9691c) in pthread_kill
+Thread T1 created by T0 here:
+    #0 0x7bec9bc84685 in __interceptor_pthread_create ../../../../src/libsanitizer/asan/asan_interceptors.cpp:216
+    #1 0x7bec9b8f3328 in std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc328)
+    #2 0x5c0f1dd179b1 in jasperengine::thread::spawnNamed(char const*, std::function<void ()>, jasperengine::thread::Priority) /src/engine/core/thread/ThreadUtil.cpp:209
+    #3 0x5c0f1490005e in operator() /src/engine/tests/crash/CrashTestMain.cpp:241
+    #4 0x5c0f149069e7 in callWithCrashGuard<main(int, char**)::<lambda()> > /src/engine/core/util/CrashGuard.h:225
+    #5 0x5c0f14902a28 in main /src/engine/tests/crash/CrashTestMain.cpp:240
+    #6 0x7bec9aedbd8f  (/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+
+==18063==ABORTING
+[       OK ] CrashGuard.WorkerCrashReachesHandler (2090 ms)
+[ RUN      ] CrashGuard.RecoveredCrashOnlyAddsBreadcrumb
+[       OK ] CrashGuard.RecoveredCrashOnlyAddsBreadcrumb (1205 ms)
+[----------] 2 tests from CrashGuard (3296 ms total)
+[bench] ProcMat bake 1024² (30 nodes, 4 passes, 4 outputs): llvmpipe (LLVM 15.0.7, 256 bits) 7093 ms (1247 ms compiled), cpu 2084.4 s on 3 workers
+[       OK ] ProcMatBudgetsGpuSlow.ABakeOf1024OnTheDeviceAndOnTheCpu (2093542 ms)
+[----------] 4 tests from ProcMatBudgetsGpuSlow (2182230 ms total)
+
+[----------] 3 tests from ProcMatNodeImageGpuSlow
+[ RUN      ] ProcMatNodeImageGpuSlow.EveryShippedNodeDrawsWhatTheInterpreterDraws

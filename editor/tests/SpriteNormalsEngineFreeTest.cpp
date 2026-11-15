@@ -18,8 +18,12 @@
 #include "spritenormals/SpriteNormalsSession.h"
 #include "texsynth/SynthImage.h"
 
+#ifdef _WIN32
+#include <process.h>    // getpid
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <filesystem>
@@ -70,7 +74,8 @@ std::vector<uint8_t> ballPng() {
     return png;
 }
 
-// The engine-free run, in the child: "" when every check holds, else what failed
+#ifndef _WIN32
+// The engine-free run, in the child (fork(): POSIX only): "" when every check holds, else what failed
 std::string engineFreeRun(const fs::path& root) {
     jasperengine::SystemTestAccess::swap(nullptr);
     if (jasperengine::System::hasInstance()) return "the System is still set";
@@ -95,9 +100,11 @@ std::string engineFreeRun(const fs::path& root) {
     if (sn::checkStaleness(root, root / "assets" / "art" / "ball.png").state != sn::Staleness::State::NoRecipe) return "a plain PNG has no recipe";
     return std::string();
 }
+#endif
 
 }
 
+#ifndef _WIN32
 TEST(SpriteNormalsEngineFree, CheckSpecAndPrepareWithAProjectAndNoSystem) {
     const fs::path root = testRoot("noengine");
     fs::create_directories(root / "assets" / "art");
@@ -118,6 +125,7 @@ TEST(SpriteNormalsEngineFree, CheckSpecAndPrepareWithAProjectAndNoSystem) {
     EXPECT_EQ(WIFEXITED(status) ? WEXITSTATUS(status) : -1, 0) << "see the child's message above";
     fs::remove_all(root);
 }
+#endif
 
 TEST(SpriteNormalsEngineFree, GarbledIsDecidedByTheErrorsOriginNotItsText) {
     const fs::path root = testRoot("origin");

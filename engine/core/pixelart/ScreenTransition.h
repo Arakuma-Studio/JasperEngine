@@ -31,7 +31,7 @@ namespace jasperengine::pixelart {
 
     enum class TransitionKind { IRIS, BLINDS, SLASH, PIXEL_DISSOLVE, CRT_OFF, BURN_AWAY, FADE };
     enum class IrisShape { CIRCLE, DIAMOND, SQUARE };
-    enum class TransitionEase { LINEAR, IN, OUT, IN_OUT };
+    enum class TransitionEase { LINEAR, CUBIC_IN, CUBIC_OUT, CUBIC_IN_OUT };
     enum class TransitionPhase { NONE, COVER, HOLD, REVEAL };
 
     constexpr int kTransitionKindCount = 7;
@@ -74,7 +74,7 @@ namespace jasperengine::pixelart {
         float glow = 0.4f;              // 0..1: light just outside the edge, in ramp steps
         int pixelSize = 0;              // 0: the S41 grid's scale (else 1); else screen pixels per art pixel
         uint32_t seed = 1;
-        TransitionEase ease = TransitionEase::IN_OUT;
+        TransitionEase ease = TransitionEase::CUBIC_IN_OUT;
         float hold = -1.0f;             // play(): seconds covered (< 0: 10 % of the duration)
         // iris
         IrisShape shape = IrisShape::CIRCLE;

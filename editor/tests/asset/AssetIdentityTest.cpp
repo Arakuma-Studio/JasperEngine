@@ -1182,8 +1182,14 @@ TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
     const fs::path shared = p.outside / "shared";
     write(shared / "tile.png", "png");
     if (!makeDirLink(shared, p.project / "assets" / "shared")) GTEST_SKIP() << "no symbolic links here";
-    const bool root = runningAsRoot();
-    if (root) {
+    // root ignores the folder's permissions, and on Windows fs::permissions only sets the read-only
+    // attribute, which doesn't refuse a new file in a folder: a folder at the .meta's name blocks it
+#ifdef _WIN32
+    const bool blockByFolder = true;
+#else
+    const bool blockByFolder = runningAsRoot();
+#endif
+    if (blockByFolder) {
         fs::create_directories(shared / "tile.png.meta" / "blocker");
     } else {
         fs::permissions(shared, fs::perms::owner_read | fs::perms::owner_exec);
@@ -1208,7 +1214,7 @@ TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
     EXPECT_EQ(p.database.getReadOnlyLinkedAssets().size(), 1u);
 
     // writable again: the identity lands beside the file and the report goes
-    if (root) {
+    if (blockByFolder) {
         fs::remove_all(shared / "tile.png.meta");
     } else {
         fs::permissions(shared, fs::perms::owner_all);

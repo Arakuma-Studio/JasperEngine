@@ -4,6 +4,7 @@
 #include "SafeWrite.h"
 #include "buffer/Buffer.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
+#include "io/AtomicFile.h"
 #include "io/File.h"
 #include "net/CurlApi.h"
 
@@ -199,6 +200,7 @@ namespace jasperengine::editor::safewrite {
         };
         using NtCreateFileFn = LONG(WINAPI*)(PHANDLE, ACCESS_MASK, NtObjectAttributes*, NtIoStatusBlock*, PLARGE_INTEGER, ULONG, ULONG,
                                              ULONG, ULONG, PVOID, ULONG);
+        using NtSetInformationFileFn = LONG(WINAPI*)(HANDLE, NtIoStatusBlock*, PVOID, ULONG, int);
         using RtlNtStatusToDosErrorFn = ULONG(WINAPI*)(LONG);
         using GetInfoByHandleExFn = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
         using SetInfoByHandleFn = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
@@ -209,8 +211,10 @@ namespace jasperengine::editor::safewrite {
         constexpr ULONG kNtDirectoryFile = 0x1, kNtSynchronousIo = 0x20, kNtNonDirectoryFile = 0x40, kNtBackupIntent = 0x4000,
                         kNtOpenReparsePoint = 0x200000;
         constexpr ULONG kObjCaseInsensitive = 0x40;
-        constexpr int kFileRenameInfo = 3, kFileDispositionInfo = 4, kFileAttributeTagInfo = 9, kFileFullDirectoryInfo = 14,
-                      kFileFullDirectoryRestartInfo = 15, kFileDispositionInfoEx = 21, kFileRenameInfoEx = 22;
+        constexpr int kFileDispositionInfo = 4, kFileAttributeTagInfo = 9, kFileFullDirectoryInfo = 14, kFileFullDirectoryRestartInfo = 15,
+                      kFileDispositionInfoEx = 21;
+        // FILE_INFORMATION_CLASS values (NtSetInformationFile)
+        constexpr int kNtFileRenameInformation = 10, kNtFileRenameInformationEx = 65;
         // a name surrogate: the reparse point names another entry (symbolic link, junction)
         constexpr DWORD kNameSurrogateBit = 0x20000000;
 
@@ -222,6 +226,7 @@ namespace jasperengine::editor::safewrite {
 
         struct Api {
             NtCreateFileFn ntCreateFile = nullptr;
+            NtSetInformationFileFn ntSetInformationFile = nullptr;
             RtlNtStatusToDosErrorFn toDosError = nullptr;
             GetInfoByHandleExFn getInfo = nullptr;
             SetInfoByHandleFn setInfo = nullptr;
@@ -234,6 +239,7 @@ namespace jasperengine::editor::safewrite {
                 const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
                 const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
                 a.ntCreateFile = procAddress<NtCreateFileFn>(ntdll, "NtCreateFile");
+                a.ntSetInformationFile = procAddress<NtSetInformationFileFn>(ntdll, "NtSetInformationFile");
                 a.toDosError = procAddress<RtlNtStatusToDosErrorFn>(ntdll, "RtlNtStatusToDosError");
                 a.getInfo = procAddress<GetInfoByHandleExFn>(kernel, "GetFileInformationByHandleEx");
                 a.setInfo = procAddress<SetInfoByHandleFn>(kernel, "SetFileInformationByHandle");
@@ -295,18 +301,18 @@ namespace jasperengine::editor::safewrite {
             return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? Kind::Dir : Kind::File;
         }
 
-        bool readOnly(HANDLE handle) {
+        DWORD attributesOf(HANDLE handle) {
             BY_HANDLE_FILE_INFORMATION info;
-            return GetFileInformationByHandle(handle, &info) && (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+            return GetFileInformationByHandle(handle, &info) ? info.dwFileAttributes : 0;
         }
 
-        // The entry `name` in `dir`: what it is (Missing when nothing is there)
-        Kind childKind(HANDLE dir, const std::wstring& name, DWORD& code, bool* isReadOnly = nullptr) {
+        // The entry `name` in `dir`: what it is (Missing when nothing is there), and its attributes
+        Kind childKind(HANDLE dir, const std::wstring& name, DWORD& code, DWORD* attributes = nullptr) {
             HANDLE h = INVALID_HANDLE_VALUE;
             code = ntOpen(dir, name, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, kNtOpen, 0, h);
             if (code) return isMissing(code) ? Kind::Missing : Kind::Other;
             HandleCloser closer(h);
-            if (isReadOnly) *isReadOnly = readOnly(h);
+            if (attributes) *attributes = attributesOf(h);
             return kindOf(h);
         }
 
@@ -331,13 +337,24 @@ namespace jasperengine::editor::safewrite {
             return false;
         }
 
-        // Renames the open handle's entry to `name` in the folder handle `targetDir`
+        bool canRenameByHandle() { return api().ntSetInformationFile && api().toDosError; }
+
+        // Renames the open handle's entry to `name` in the folder handle `targetDir`. Through
+        // NtSetInformationFile: SetFileInformationByHandle refuses a RootDirectory with
+        // ERROR_INVALID_PARAMETER (both rename classes, on NTFS too)
         bool renameByHandle(HANDLE handle, HANDLE targetDir, const std::wstring& name, bool replace, DWORD& code) {
             const Api& a = api();
-            if (!a.setInfo) {
+            if (!canRenameByHandle()) {
                 code = ERROR_CALL_NOT_IMPLEMENTED;
                 return false;
             }
+            auto setRename = [&](int infoClass, void* info, size_t size) {
+                NtIoStatusBlock io{};
+                const LONG status = a.ntSetInformationFile(handle, &io, info, static_cast<ULONG>(size), infoClass);
+                if (status >= 0) return true;
+                code = a.toDosError(status);
+                return false;
+            };
             struct RenameInfo {
                 union {
                     BOOLEAN ReplaceIfExists;
@@ -352,18 +369,18 @@ namespace jasperengine::editor::safewrite {
             info->RootDirectory = targetDir;
             info->FileNameLength = static_cast<DWORD>(name.size() * sizeof(WCHAR));
             std::memcpy(info->FileName, name.data(), name.size() * sizeof(WCHAR));
-            // FileRenameInfoEx: FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS
+            // FileRenameInformationEx: FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS
             info->Flags = replace ? (0x1 | 0x2) : 0;
-            for (int attempt = 0; attempt < FileUtils::renameAttempts; attempt++) {
-                if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs));
-                if (a.setInfo(handle, kFileRenameInfoEx, info, static_cast<DWORD>(buffer.size()))) return true;
-                code = GetLastError();
+            // the publish retry policy of io::renameWithRetry (FileUtils::renameWithRetry)
+            const io::AtomicWriteOptions retry;
+            for (int attempt = 0; attempt < retry.attempts; attempt++) {
+                if (attempt > 0) std::this_thread::sleep_for(retry.retryDelay);
+                if (setRename(kNtFileRenameInformationEx, info, buffer.size())) return true;
                 if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {
-                    // older Windows: FileRenameInfo
+                    // older Windows, or a file system without the Ex class: FileRenameInformation
                     info->Flags = 0;
                     info->ReplaceIfExists = replace ? TRUE : FALSE;
-                    if (a.setInfo(handle, kFileRenameInfo, info, static_cast<DWORD>(buffer.size()))) return true;
-                    code = GetLastError();
+                    if (setRename(kNtFileRenameInformation, info, buffer.size())) return true;
                     info->Flags = replace ? (0x1 | 0x2) : 0;
                 }
                 // a file a reader, the indexer or a virus scan briefly holds can't be replaced: tried again
@@ -989,8 +1006,9 @@ namespace jasperengine::editor::safewrite {
             if (walkTo(realRoot, rel.parent_path(), true, walk, error, &made)) {
                 const std::wstring finalName = name.wstring();
                 DWORD code = 0;
-                bool isReadOnly = false;
-                const Kind existing = childKind(walk.last(), finalName, code, &isReadOnly);
+                DWORD attributes = 0;
+                const Kind existing = childKind(walk.last(), finalName, code, &attributes);
+                const bool isReadOnly = (attributes & FILE_ATTRIBUTE_READONLY) != 0;
                 if (existing == Kind::Dir) {
                     error = shown(full) + " is a folder: name a file.";
                 } else if (existing == Kind::LinkToDir) {
@@ -1010,6 +1028,13 @@ namespace jasperengine::editor::safewrite {
                     if (file == INVALID_HANDLE_VALUE) {
                         error = "can't write " + shown(full) + ": " + systemMessage(code);
                     } else {
+                        // a replaced file keeps its attributes (hidden, system...), as AtomicFile's replace does
+                        constexpr DWORD kKept = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
+                        if (existing == Kind::File && (attributes & kKept) && api().setInfo) {
+                            FILE_BASIC_INFO basic{};
+                            basic.FileAttributes = attributes & kKept;
+                            api().setInfo(file, FileBasicInfo, &basic, sizeof(basic));
+                        }
                         bool wrote = true;
                         const char* data = nullptr;
                         size_t size = 0;
@@ -1029,7 +1054,7 @@ namespace jasperengine::editor::safewrite {
                             code = ERROR_READ_FAULT;
                         }
                         if (wrote) {
-                            if (api().setInfo) {
+                            if (canRenameByHandle()) {
                                 // renamed by its handle into the held folder: nothing re-parsed by name
                                 wrote = renameByHandle(file, walk.last(), finalName, true, code);
                             } else if (finalPathBelow(file, realRoot)) {
@@ -1389,8 +1414,9 @@ namespace jasperengine::editor::safewrite {
             return nullptr;
         }
         HANDLE h = INVALID_HANDLE_VALUE;
-        code = ntOpen(walk.last(), rel.filename().wstring(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                      append ? kNtOpenIf : kNtOverwriteIf, kNtNonDirectoryFile, h);
+        // (FILE_READ_ATTRIBUTES: kindOf below reads them; GENERIC_WRITE does not grant it)
+        code = ntOpen(walk.last(), rel.filename().wstring(), GENERIC_WRITE | FILE_READ_ATTRIBUTES,
+                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, append ? kNtOpenIf : kNtOverwriteIf, kNtNonDirectoryFile, h);
         if (code) {
             error = "can't open " + shown(full) + ": " + systemMessage(code);
             return nullptr;

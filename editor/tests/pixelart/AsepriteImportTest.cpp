@@ -477,8 +477,13 @@ TEST(AsepriteImportTest, ProviderAndExportAgree) {
     fs::path none;
     EXPECT_FALSE(record->resolveKey("image#99999999999999999999999", none));
     EXPECT_FALSE(record->resolveKey("animation:nope", none));
-    std::ifstream in(record->sheetFile(), std::ios::binary);
-    const SpriteSheetParseResult sheet = parseSheet(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()));
+    std::string sheetText;
+    {
+        // (closed before the remove_all below: Windows refuses to remove a file a stream holds open)
+        std::ifstream in(record->sheetFile(), std::ios::binary);
+        sheetText.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+    const SpriteSheetParseResult sheet = parseSheet(sheetText);
     ASSERT_TRUE(sheet.ok());
     for (size_t p = 0; p < sheet.sheet->pages.size(); p++) EXPECT_EQ(sheet.sheet->pages[p].texture, base + "page" + std::to_string(p) + ".png");
     fs::remove_all(root);

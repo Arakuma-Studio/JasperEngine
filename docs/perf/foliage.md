@@ -31,7 +31,7 @@ budget here have not been shown to be over it on an idle host.
 | A stored tree | 40 bytes | 40 bytes |
 | Memory, CPU and GPU, without meshes and impostors | 128 MB | 14 MB |
 
-`FoliageBudget.BenchSceneWithinCounts*` walks the same path through whole frames. Most visible at once: High 60,297
+`FoliageBudgetGpu.BenchSceneWithinCounts*` walks the same path through whole frames. Most visible at once: High 60,297
 details and 12,295 trees; Low 29,995 details and 8,000 trees, each under R40's caps.
 
 The before-picture of R44 (the same detail-only scene on the commit before T5) was not measured: it needs a

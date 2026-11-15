@@ -62,12 +62,12 @@ namespace {
 
 }
 
-TEST(FoliageBudget, BenchSceneWithinCountsHigh) {
+TEST(FoliageBudgetGpu, BenchSceneWithinCountsHigh) {
     JASPER_REQUIRE_GPU();
     walk(FoliageQuality::HIGH, {400000, 30000, 500, 1200});
 }
 
-TEST(FoliageBudget, BenchSceneWithinCountsLow) {
+TEST(FoliageBudgetGpu, BenchSceneWithinCountsLow) {
     JASPER_REQUIRE_GPU();
     walk(FoliageQuality::LOW, {30000, 8000, 60, 150});
 }

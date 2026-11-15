@@ -34,7 +34,7 @@
 #include "command/type/PropertyCmd.h"
 #include "window/InspectorAnimLayers.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cstdlib>
 #include <filesystem>

@@ -577,7 +577,7 @@ std::vector<TitleLuaLiteral> editor::collectTitleLuaLiterals(const fs::path& pro
         if (path.extension() != ".lua" || !it->is_regular_file(ec)) continue;
         const std::string key = path.string();
         const auto time = fs::last_write_time(path, ec);
-        const std::string stamp = std::to_string(fs::file_size(path, ec)) + ":" + std::to_string(time.time_since_epoch().count());
+        const std::string stamp = std::to_string(fs::file_size(path, ec)) + ":" + std::to_string(static_cast<long long>(time.time_since_epoch().count()));
         seen.insert(key);
         auto cached = cache.files.find(key);
         if (cached == cache.files.end() || cached->second.first != stamp) {

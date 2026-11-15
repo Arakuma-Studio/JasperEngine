@@ -12,7 +12,7 @@
 #include "htmlui/HttpClient.h"
 #include "util/CommandRunner.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -24,6 +24,18 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // what the SDK's programs and lists look like on this system
+#ifdef _WIN32
+    const std::string exe = ".exe";
+    const std::string pathSeparator = ";";
+#else
+    const std::string exe;
+    const std::string pathSeparator = ":";
+#endif
+
+    // a path as a CMake argument holds it (forward slashes)
+    std::string cmakePath(const fs::path& path) { return path.generic_string(); }
 
     void writeFile(const fs::path& path, const std::string& text, bool executable = false) {
         fs::create_directories(path.parent_path());
@@ -41,9 +53,9 @@ namespace {
             writeFile(emscripten / "emcmake", "#!/bin/sh\n", true);
             writeFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
             writeFile(root / "emsdk.py", "# emsdk\n");
-            node = root / "node" / "20.18.0_64bit" / "bin" / "node";
+            node = root / "node" / "20.18.0_64bit" / "bin" / ("node" + exe);
             writeFile(node, "#!/bin/sh\n", true);
-            writeFile(root / "node" / "18.0.0_64bit" / "bin" / "node", "#!/bin/sh\n", true);
+            writeFile(root / "node" / "18.0.0_64bit" / "bin" / ("node" + exe), "#!/bin/sh\n", true);
         }
         ~FakeEmsdk() {
             std::error_code ec;
@@ -61,7 +73,7 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
     FakeEmsdk sdk("layout");
     // the config emsdk writes: NODE_JS relative to emsdk_path (the config's folder)
     writeFile(sdk.root / ".emscripten", "import os\nemsdk_path = os.path.dirname(os.getenv('EM_CONFIG')).replace('\\\\', '/')\n"
-                                       "NODE_JS = emsdk_path + '/node/20.18.0_64bit/bin/node'\nLLVM_ROOT = emsdk_path + '/upstream/bin'\n");
+                                       "NODE_JS = emsdk_path + '/node/20.18.0_64bit/bin/node" + exe + "'\nLLVM_ROOT = emsdk_path + '/upstream/bin'\n");
     ::unsetenv("EM_CONFIG");
     const EmsdkInfo info = Exporter::detectEmsdk(sdk.root.string());
     ASSERT_TRUE(info.found);
@@ -84,18 +96,18 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
     std::string error;
     const auto args = Exporter::emscriptenCMakeArgs(info, false, Exporter::emscriptenEnvironment(info), error);
     EXPECT_TRUE(error.empty()) << error;
-    EXPECT_TRUE(contains(args, "-DCMAKE_TOOLCHAIN_FILE=" + info.toolchainFile)) << ::testing::PrintToString(args);
-    EXPECT_TRUE(contains(args, "-DCMAKE_CROSSCOMPILING_EMULATOR=" + sdk.node.string())) << ::testing::PrintToString(args);
+    EXPECT_TRUE(contains(args, "-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(info.toolchainFile))) << ::testing::PrintToString(args);
+    EXPECT_TRUE(contains(args, "-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node))) << ::testing::PrintToString(args);
 
     // the SDK environment: its folders first on PATH, EMSDK / EM_CONFIG / EMSDK_NODE
     const auto env = Exporter::emscriptenEnvironment(info);
     const std::string path = CommandRunner::variable(env, "PATH");
-    EXPECT_EQ(path.rfind(sdk.root.string() + ":" + sdk.emscripten.string() + ":", 0), 0u) << path;
+    EXPECT_EQ(path.rfind(sdk.root.string() + pathSeparator + sdk.emscripten.string() + pathSeparator, 0), 0u) << path;
     const char* ownPath = std::getenv("PATH");
     if (ownPath && *ownPath) { EXPECT_NE(path.find(ownPath), std::string::npos); }
     EXPECT_EQ(CommandRunner::variable(env, "EMSDK"), sdk.root.string());
     EXPECT_EQ(CommandRunner::variable(env, "EM_CONFIG"), (sdk.root / ".emscripten").string());
-    EXPECT_EQ(CommandRunner::variable(env, "EMSDK_NODE"), sdk.node.string());
+    EXPECT_EQ(fs::path(CommandRunner::variable(env, "EMSDK_NODE")), sdk.node);   // (the config's '/' joins on Windows)
     EXPECT_EQ(CommandRunner::variable(env, "HOME"), std::string(std::getenv("HOME") ? std::getenv("HOME") : ""));
 }
 

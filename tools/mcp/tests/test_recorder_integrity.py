@@ -424,8 +424,9 @@ def write_image(ed: Editor, name: str, rgb: tuple) -> str:
     return path
 
 
-async def flip_scene(ed: Editor, change: str) -> None:
-    """A box filling a still view; the script changes its look at game frame AT."""
+async def flip_scene(ed: Editor, change: str, start_texture: bool = True) -> None:
+    """A box filling a still view; the script changes its look at game frame AT. start_texture False:
+    the box starts red by its colour, not by red.png"""
     await ed.call("tool_groups", enable=["editor_tools"])
     await ed.call("set_project_settings", values={"graphics.canvas_width": WIDTH, "graphics.canvas_height": HEIGHT})
     scene = (await ed.call("create_scene", name="Flip", type="3D", path="scenes/Flip"))["scene"]["id"]
@@ -433,7 +434,8 @@ async def flip_scene(ed: Editor, change: str) -> None:
     write_image(ed, "green", (30, 200, 30))
     await ed.call("sync_files")
     box = (await ed.call("create_entity", scene=scene, type="box", name="Box"))["entity_id"]
-    await ed.call("set_properties", scene=scene, entity=box, values={"mesh": {"submeshes[0].material.baseColorTexture": red}})
+    start = {"submeshes[0].material.baseColorTexture": red} if start_texture else {"submeshes[0].material.baseColorFactor": [0.9, 0.12, 0.12, 1]}
+    await ed.call("set_properties", scene=scene, entity=box, values={"mesh": start})
     camera = (await ed.call("create_entity", scene=scene, type="camera", name="Camera"))["entity_id"]
     await ed.call("set_main_camera", scene=scene, entity=camera)
     await ed.call("set_transform", scene=scene, entity=camera, position=[0.4, 0.5, 1.6])
@@ -497,10 +499,12 @@ async def test_variant_synchronous_creation():
 
 
 async def test_loading_past_the_limit_fails():
-    """A load past the wait's limit fails the recording, naming it: it never records the stand-in."""
+    """A load past the wait's limit fails the recording, naming it: it never records the stand-in. The
+    delay holds every texture decode: the box starts without a texture, or frame 0 waits for red.png
+    whenever Play is the first to load it (no edit frame drew it in time), and fails naming that"""
     env = {"JASPER_TEXTURE_LOAD_DELAY_MS": "20000", "JASPER_TEST_RECORDER_FAIL": "hold-limit=1500"}
     async with Editor(create=True, name="Past The Limit", env=env) as ed:
-        await flip_scene(ed, TEXTURE_CHANGE)
+        await flip_scene(ed, TEXTURE_CHANGE, start_texture=False)
         out = ed.scratch.root / "seq"
         text, data = await record_failed(ed, frames=FRAMES, fps=30, format="png", width=WIDTH, height=HEIGHT, output=str(out))
         ed.check_eq(data.get("failed_step"), "loading", f"{text}")

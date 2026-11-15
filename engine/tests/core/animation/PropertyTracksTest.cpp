@@ -1166,8 +1166,13 @@ TEST_F(Properties, PerformanceBudget){
     // 200 animated properties: UI fades and flickering lights (spec 14: <= 0.08 ms per frame on
     // the host in Release). A shared box under load cannot time it: skipped above its core count
     const double cores = (double)std::max(1u, std::thread::hardware_concurrency());
+#if defined(__unix__) || defined(__APPLE__)
     double load[1] = {0.0};
     const bool timed = !(getloadavg(load, 1) == 1 && load[0] > cores);
+#else
+    (void)cores;
+    const bool timed = true;   // no load average on Windows
+#endif
     ClipData data;
     data.wrap = ClipWrapMode::Loop;
     for (int i = 0; i < 100; i++){
