@@ -776,6 +776,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::VOLUMETRIC_FOG){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "volumetric_fog.frag";
+        if (properties & (1 << 0)) args.defines.push_back({"SHADOW_DATA_POINT", "1"});   // 'Pnt'
     }else if (shaderType == ShaderType::ATMOSPHERE_DENOISE){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_denoise.frag";

@@ -11173,8 +11173,9 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     }
     if (light.type != LightType::DIRECTIONAL){
         RowSettings settingsVolumetric = settingsFloat;
-        settingsVolumetric.help = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, "
-                                  "no shadows). 0: none.";
+        settingsVolumetric.help = "How much of this light the volumetric fog scatters (the nearest 1, 2 or 4 point and spot lights in view, "
+                                  "at Low, Medium and High atmosphere quality). With its Shadows on, they reach the fog while the Fog's "
+                                  "Light Shafts is on. 0: none.";
         propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricIntensity", "Volumetric Intensity", sceneProject, entities, settingsVolumetric);
         // why the volumetric fog does not scatter this light, under its Volumetric Intensity
         drawAtmosphereDiagnostics(sceneProject, entities[0], false, true);
@@ -11819,7 +11820,8 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         RowSettings settingsDistance = settingsFloat;
         settingsDistance.help = "How far from the camera (m) the fog is raymarched; the analytic fog continues beyond.";
         RowSettings settingsShafts;
-        settingsShafts.help = "The main directional light's shadows darken the fog behind objects (light shafts). Needs its shadows on.";
+        settingsShafts.help = "Shadows darken the fog behind objects (light shafts): the main directional light's and those of the point and "
+                              "spot lights the fog scatters. Each light needs its shadows on.";
         RowSettings settingsNoise = settingsFloat;
         settingsNoise.help = "How much a 3D noise varies the fog's density (0..1), fading out towards the Distance.";
         RowSettings settingsNoiseScale = settingsFloat;

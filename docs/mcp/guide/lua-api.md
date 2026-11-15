@@ -3255,7 +3255,7 @@ fog.profile = mine                 -- runtime only
   `altitudeRange`, `earthCurvature`, `windDirection`, `windSpeed`, `weatherMap` (image path, ""
   for the built-in map), `weatherMapScale`, `sunLightDimmer`, `ambientLightDimmer`,
   `maxDistance`, `qualityOverride`.
-- `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
+- `Light`: also rw `volumetricIntensity` (point and spot lights in the volumetric fog: 1, 2 or 4 by quality).
 - `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
   images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
   `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.

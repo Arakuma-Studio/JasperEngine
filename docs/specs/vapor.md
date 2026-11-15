@@ -671,3 +671,22 @@ scene.fog.profile = p                  -- runtime only
     sentence on Fog Zones cut from `apply_atmosphere_preset`'s description, agents still created a
     Fog Zone in 3/3 samples (through `create_entity`'s types and `list_component_types`), so no new
     text needs it and the sentence was cut.
+- **R22, AC15: the fog-light budgets are not measured on the reference hardware.** The bench has
+  the scenes (`tools/performance/atmosphere_bench.py`: 1, 2 and 4 shadowed spot lights on Low,
+  Medium and High and 1 shadowed point light on Low, each against the same lights with Volumetric
+  Intensity 0). They ran once, `--relative --frames 60`, on the shared build host (12-core AMD EPYC
+  Genoa, no GPU: Mesa llvmpipe in the Linux image, an 867×488 Game view, other builds running).
+  It scattered 1, 2, 4 and 1 lights as configured. The software timings are noise at this scale
+  (fog-light cost +3.3, -1.1, +74 and -43 ms on 250-690 ms frames) and say nothing about a GPU, so
+  no budget is claimed met or missed. The two sun taps' Medium cost (R22's 0.1 ms) has no bench
+  configuration of its own: the bench cannot switch them off, so it needs the S15 pass timers
+  (`--gpu`) before and after on a reference GPU. Still to run: `--gpu --runs 5` on the desktop
+  reference and `--mobile` on an Adreno 650 / Mali-G78 phone.
+- **R19: GLES3 limits are counted, not measured on a device.** The fog pass with the point shadows
+  ('Pnt' variant) takes 5 fragment texture units and 215 fragment uniform vectors on GLES3, under
+  the 16 and 224 every GLES3 device has (`AtmosphereShaderBuild.FogPointShadowsFitGles3Limits`);
+  the plain variant 4 and 175. 215 of 224 leaves little room: a later field in the fog's block
+  must replace an unused component, as the shadow slot does (`lightCone.z`).
+- **Lit test names (AC5, AC17)** follow the existing suites: `AtmosphereMath.LitColourFromAmbientAndSun`,
+  `AtmosphereGpu.LitFogDay`, `AtmosphereGpu.LitFogNight` (goldens `atmosphere_lit_day`,
+  `atmosphere_lit_night`) and `AtmosphereGpu.LitVolumeNotDoubleTinted`.

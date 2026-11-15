@@ -135,6 +135,15 @@ namespace jasperengine{
         std::string reason;
     };
 
+    // A point or spot light as the volumetric fog's selection sees it (AtmosphereRenderer::selectFogLights)
+    struct FogLightCandidate{
+        Entity entity = NULL_ENTITY;
+        Vector3 position = Vector3(0.0f, 0.0f, 0.0f);
+        float range = 0.0f;                 // 0: unlimited
+        float intensity = 0.0f;
+        float volumetricIntensity = 0.0f;
+    };
+
     struct AtmosphereInfo{
         AtmosphereQuality quality = AtmosphereQuality::OFF;
         AtmosphereQuality platformDefault = AtmosphereQuality::OFF;
@@ -286,6 +295,15 @@ namespace jasperengine{
         // scene is still loading: RenderSystem::isAllLoaded)
         bool isLoading() const { return loading; }
 
+        // The fog lights of a view (docs/specs/vapor.md R13): lit (intensity and volumetric
+        // intensity above 0), their bounding sphere (range; unlimited: everywhere) in the frustum
+        // and within maxDistance, the nearest first, at most cap. considered gets one record per
+        // light, in the given order, with the reason of those not selected (shadowed is left
+        // false); selected the indices of the chosen ones, nearest first.
+        static void selectFogLights(const std::vector<FogLightCandidate>& lights, const Plane frustumPlanes[6], float cameraFar,
+                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                    std::vector<AtmosphereFogLight>& considered);
+
         // the RGBA8 path even where float targets exist (tests; JASPERENGINE_ATMOSPHERE_RGBA8=1)
         static void setForceLowPrecisionTargets(bool force);
         static bool isForceLowPrecisionTargets();
@@ -304,6 +322,7 @@ namespace jasperengine{
             PROGRAM_CLOUDS,
             PROGRAM_SKY_COMPOSITE,
             PROGRAM_VOLUMETRIC_COMPOSITE,
+            PROGRAM_FOG_POINT_SHADOWS,    // the volumetric fog's 'Pnt' variant
             PROGRAM_COUNT
         };
 
@@ -369,7 +388,7 @@ namespace jasperengine{
         void renderFog(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
         void renderScreenClouds(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
         void renderSkyMap(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
-        void renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label);
+        void renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label, int radius);
         void bindPostColor(ObjectRender& render, ShaderData& shaderData);
         float cloudsFade() const;
         float cameraAltitudeFade(const Transform& cameraTransform) const;
