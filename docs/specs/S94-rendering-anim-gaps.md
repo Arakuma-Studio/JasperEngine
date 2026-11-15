@@ -1,6 +1,9 @@
 # S94 — Rendering, materials, animation gaps from the JasperArcade port
 
-Arcade engine-gaps program (S92-S98). Status: spec. Branch `feature/s94-rendering-anim-gaps`.
+**Status: implemented** on `feature/s94-rendering-anim-gaps` (P1-P8 and the integration). What the
+code does where it differs from this text is in "Deviations" at the end.
+
+Arcade engine-gaps program (S92-S98). Branch `feature/s94-rendering-anim-gaps`.
 
 The JasperArcade port (`JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md`, section "Rendering,
 materials, animation") listed 68 gaps against engine `7f48d7e8d` (2026-10-30). This spec triages
@@ -816,6 +819,51 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 
 ## Deviations
 
+- **Coordinator decisions.**
+  - R57 (HTML UI under an orthographic camera) moved to S92 with U27 and U34: it lives in the HTML UI
+    composite code S92 rewrites. AC28's HTML UI screenshot under an Orthographic Size camera therefore
+    waits for S92 (PR #10); the rest of AC28 is verified here.
+  - R13 is split: S96 (WP-D) owns the runtime ragdoll builder, its Lua build (F38) and the ragdoll
+    physics; S94 P6 only the Animator pause (F37).
+  - S98's E35 (`.psb` and Unity PSD sprites) is closed here by F48 (P8); E41 is R48 (FIXED).
+  - Version numbers: scene 9 / prefab 10 (P5), project format 2 (P2), cooked scene format minor 7
+    (P3; 6 was S92's) and built-in shader cache v69 (P3) are all above `main`'s. S98 also takes
+    scene 9 / prefab 10, S92/S95/S96 cooked minor 6 (S95 also 7) and S92 the shader cache v69: the
+    PR the owner merges second renumbers and chains its migration after the first one's.
+- **Integration.**
+  - `transparencySortMode`, `transparencySortAxis`, `sortingLayers` and `sortingLayerNextId` are now
+    known project.yaml root keys. S52 wrote them without listing them, so a project using them logged
+    "unknown key" on every load; P2's project migration writes `transparencySortMode` into every older
+    project, which would have made that warning universal (AC51).
+  - `set_texture_import_settings`'s `import_mode` text says "a frame per layer" instead of "layers
+    sprites": the word made an unrelated API search ("Sprite setTexture") offer that tool
+    (`test_docs.py::test_search_names_unlisted_tools`).
+  - The Mesh Inspector's "Edit the parts" tooltip asked `IsWindowHovered` for an item-only flag, an ImGui
+    assert shown over the editor whenever a Model drawn by its parts is selected (a main bug that
+    Preserve Hierarchy, F44, makes common): fixed.
+  - Android x86_64 did not build on `origin/main` (`97d450661`, red control on the same image): CMake
+    3.22's FindThreads falls back to `-pthread` on NDK 28 (its libc test calls `pthread_cancel`), and since
+    main stopped passing `-w` to NASM (`31a5646d1`) that interface option reaches dav1d's NASM sources as
+    `-p thread`. dav1d's CMake no longer links Threads on Android (bionic's libc holds the pthreads).
+  - AC48: no web gate scene for Blend Mode Custom was added (P2); the custom blend is covered by
+    `RenderBlendGpu.CustomDstColorSrcColor` on glcore and Vulkan, and the Outline gate runs on WebGL2.
+  - AC28's HTML UI check under an Orthographic Size camera: on this tree (without S92) a Screen Space UI
+    Document draws under the camera at Size 0 and disappears at Size 5 (R57: the UI goes through the
+    camera's projection). S92's composite stage owns the fix; the world part of AC28 is verified here.
+- **P1, F3 (R29).** `ParticleRenderGpu.AdditiveRgbAndGreyTexturesDraw` was green before any change:
+  RGB and grey PNGs on additive particles draw white with the Texture Importer's defaults, so F3 is
+  closed as a pinning test (as AC3 allows). A grey source with no import settings at all (R8's case)
+  still draws red; the editor and exports always import with settings, so it is left as is.
+- **P1, AC2 fixture.** The K layout is the fixture project `tools/fixtures/particles-legacy`
+  (`Legacy K.scene`), not a migration fixture `scene-v7-legacy-particles-k.scene`: the test plays it
+  in an editor, which needs a project.
+- **P2, F7 storage.** Property Overrides are stored out of line on the Mesh and on each Submesh, so
+  meshes without overrides keep their size (the MeshMemory ceilings). Blend Mode Custom also has
+  ShaderLab's separate alpha `BlendOp` (`blendOpAlpha`).
+- **P2, test files.** AC7's MCP checks and AC11 (`Mesh:setShaderTexture`) are in
+  `tools/mcp/tests/test_draw_materials.py` (`test_property_overrides`,
+  `test_lua_property_block_and_textures`), not in `test_materials.py` / `test_lua_mesh.py`. AC23's
+  preset check is `test_outline.py::test_preset_on_model_root_descends`.
 - **P5, F24 vertical alignment on a UI camera.** The modes are measured along the Text's local +y.
   In a y-up world view that is the screen's up, as specified. A UI camera draws y down, so there
   Top and Bottom swap on screen; Baseline, Capline, Midline and Middle do not. The other choice
