@@ -365,5 +365,24 @@ async def test_batch(ed: Editor):
              f"201 lines: {p.returncode} {p.stdout} {p.stderr}")
 
 
+async def test_export_platform_android(ed: Editor):
+    """`export --platform android` compiles the GLES3 shaders alone, as the Build Settings preset
+    does (S98 REQ-18, AC16); an unknown platform exits 2 and lists the names."""
+    cli: Cli = S["cli"]
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    out = cli.root / "export-android"
+    p = await cli.arun("export", "--project", str(ed.project), "--out", str(out), "--platform", "android", timeout=900)
+    ed.check(p.returncode == 0, f"export --platform android: {p.returncode} {p.stdout[-800:]} {p.stderr[-800:]}")
+    shaders = out / "shaders"
+    ed.check((shaders / "glsl300es.h").stat().st_size > 4096, "the GLES3 shaders are compiled")
+    # the other backends' headers stay the SDK's empty stubs
+    for name in ("spirv10.h", "glsl410.h", "hlsl5.h", "msl21macos.h"):
+        size = (shaders / name).stat().st_size if (shaders / name).exists() else 0
+        ed.check(size < 1024, f"no {name} shaders for Android: {size} bytes")
+    bogus = await cli.arun("export", "--project", str(ed.project), "--out", str(cli.root / "export-bogus"), "--platform", "bogus")
+    ed.check(bogus.returncode == 2 and "windows, linux, macos, android, ios, web" in bogus.stderr,
+             f"--platform bogus: {bogus.returncode} {bogus.stderr[-400:]}")
+
+
 async def test_teardown(ed: Editor):
     S["cli"].remove()

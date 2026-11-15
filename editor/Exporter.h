@@ -626,6 +626,10 @@ namespace jasperengine::editor {
         // Native Plugins Info.plist entries (replacing keys), then raw <key>..</key> pairs
         static void applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
                                             const std::string& rawXml);
+        // Player > Resolution and Presentation in an iOS Info.plist, the source export's and a prebuilt
+        // player's alike: UISupportedInterfaceOrientations and its ~ipad key (the allowed set, the
+        // default first) and UIRequiresFullScreen; true when that is on
+        static bool applyIosOrientations(std::string& plist, const PresentationSettings& presentation);
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);

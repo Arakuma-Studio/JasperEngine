@@ -1255,6 +1255,7 @@ bool editor::Exporter::finalizeIOS() {
     settings.teamId = ios.teamId;
     settings.exportMethod = ios.exportMethod;
     settings.hideStatusBar = ios.hideStatusBar;
+    settings.presentation = project->getPresentationSettings();
     fs::path icon = ios.icon.empty() ? project->getWindowIcon() : ios.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     settings.iconPng = icon;
