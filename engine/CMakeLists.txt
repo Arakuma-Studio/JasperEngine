@@ -2116,6 +2116,9 @@ if(JASPERENGINE_VOXEL)
         core/object/voxel/VoxelVolume.cpp
         core/script/binding/VoxelClassesLua.cpp)
 endif()
+# Vertex colors (V1): the pure module, always there (an absent component costs nothing, R95)
+include(core/vertexcolor/VertexColorSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VERTEXCOLOR_SRCS})
 # always there: with the module off it is the plain terrain query (T6 R45)
 list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
