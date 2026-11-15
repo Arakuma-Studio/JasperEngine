@@ -894,3 +894,38 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P6, F35.** An imported clip gets a `root_motion` block only when one of Unity's Bake Into Pose
   flags is set, so a prop clip does not start playing in place under F33. The block then carries
   Unity's Based Upon and offsets.
+- **P7, F41 (R22).** `FbxImportTest.SkinnedGeometricTransform` (a GeometricTranslation on the
+  skinned mesh, a PreRotation of -90° and a scale of 0.5 on its parent) matched ufbx's evaluated
+  skin within 1e-4 before any change: it was green in the red run. The import already converts
+  geometric transforms with ufbx (`MODIFY_GEOMETRY`), so `FbxImporter`/`GlbBuilder` needed no fix
+  and F40 alone covers R22. CLEIVER's `cleiver@T-Pose.fbx`, reimported on a scratch editor, shows
+  the cause: its only clip (`mixamo.com`) starts with the hips at y = 2.82 where the node has -2.80
+  (`first_frame_differs`, distance 5.6); with Rest Pose: First Frame the difference is gone.
+- **P7, F40 default take.** "The first take" is the first clip the import makes: takes that animate
+  nothing make no clip and are skipped (CLEIVER has 13 empty takes before `mixamo.com`), so the
+  default matches the Take the Inspector shows. `restPoseTake` names a clip; one that is not a clip
+  of the file falls back to the first clip, with a warning.
+- **P7, F42.** An empty slot before the last drawn one is kept as a primitive of one degenerate
+  triangle (`extras.fbxEmptySlot`; glTF has no empty primitive); empty slots after the last drawn
+  one write nothing. The FBX importer version is 2: a reimport whose submesh order moved logs a
+  Console note naming the mesh. ARCADE's B `Walk.fbx` reimported on a scratch editor gives slot 0
+  `Material.003` (Unity's `EntityBody`, by the Unity `.meta`'s external objects) then slot 1
+  `Material.004` (`Eyes`): Unity's renderer order (body, eyes).
+- **P7, F43.** Tangents: Calculate is meshoptimizer's `meshopt_generateTangents` in its
+  MikkTSpace-compatible mode (the vendored library, unpatched). Normals: None also drops the
+  tangents. Smoothing groups go from the FBX conversion to the cook as a `_SMOOTHING_GROUP` vertex
+  attribute that the cook always drops. `smoothnessSource`, `restPose` and `restPoseTake` are
+  per-model keys read by the FBX conversion, never per platform.
+- **P7, F44 behaviour changes.** The GameObjects the editor makes to draw the Model's own Mesh
+  (Vertex Animator placements, the terrain's Instanced Mesh hosts) keep Preserve Hierarchy off.
+  `edit_lattice` treats an empty Mesh (a Model drawn by its parts) as no mesh of its own and binds
+  the children. MCP tests that inspect the Model GameObject's own Mesh (`test_render_stats`,
+  `test_render_correctness`) place their models with `preserveHierarchy` false.
+- **P7, F45.** The error names the root for `set_properties` Mesh values and for `link_material`
+  (the two routes that set a mesh's material or mesh values on a GameObject).
+- **P7, F47 red control.** With the create order reverted, AC44's first check (no per-clip
+  GameObject after `create_entity` with `animationEntities` false) still passed: the MCP load
+  finishes on a later frame and reads the value then. F47 makes the order explicit. The reload in
+  one undo step and the Auto suppression by an Animator were red (each with its code reverted).
+- **P7, MCP budget.** `set_model_import_settings` has a budget exception (1765 bytes) for the five
+  new keys.
