@@ -332,6 +332,8 @@ namespace {
         // read by the loader on the next load or reload; the scene step that turns it off ("Use
         // Animation Player", 9.R15) removes the animation entities itself
         JE_FIELD(ModelComponent, animationEntities),
+        // read by the next load or reload, like animationEntities (an edit reloads in the same step)
+        JE_FIELD(ModelComponent, preserveHierarchy, .label = "Preserve Hierarchy"),
         JE_FIELD(ModelComponent, skeleton, .ops = &ops::Entity, .updateFlags = kMeshReload),
         JE_FIELD(ModelComponent, animations, .flags = ListWhole | ListElements, .elementOps = &ops::Entity),
     };
@@ -690,7 +692,7 @@ const ComponentDesc kMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kModelKnownKeys[] = {"animationEntities", "animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"};
+    constexpr const char* kModelKnownKeys[] = {"animationEntities", "animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "preserveHierarchy", "skeleton"};
 
 }
 

@@ -2531,9 +2531,24 @@ void ProjectSettingsWindow::drawMeshSettings() {
                 d.weldVertices = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
             {
-                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate"};
-                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1, "Calculate makes area-weighted normals, creased at the Smoothing Angle.");
+                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate", "None"};
+                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1,
+                                              "Calculate makes normals that crease at the Smoothing Angle; None writes none (faces shade flat).");
                 d.normals = value < 0 ? std::optional<ModelNormals>() : std::optional<ModelNormals>((ModelNormals)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Area And Angle)"};
+                for (NormalsWeighting w : {NormalsWeighting::AreaAndAngle, NormalsWeighting::Area}) names.push_back(normalsWeightingLabel(w));
+                const int value = optionCombo("Normals Weighting", "normals_weighting", names, d.normalsWeighting ? (int)*d.normalsWeighting : -1,
+                                              "How Calculate weighs the faces at a corner: by their area and their angle there, or by area.");
+                d.normalsWeighting = value < 0 ? std::optional<NormalsWeighting>() : std::optional<NormalsWeighting>((NormalsWeighting)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Import)"};
+                for (ModelTangents t : {ModelTangents::Import, ModelTangents::Calculate, ModelTangents::None}) names.push_back(modelTangentsLabel(t));
+                const int value = optionCombo("Tangents", "tangents", names, d.tangents ? (int)*d.tangents : -1,
+                                              "Calculate Mikktspace makes tangents from the normals and the first UV set; None writes none.");
+                d.tangents = value < 0 ? std::optional<ModelTangents>() : std::optional<ModelTangents>((ModelTangents)value);
             }
             {
                 const std::vector<std::string> names = {"Built-in (Off)", "Off", "On"};
@@ -2541,6 +2556,15 @@ void ProjectSettingsWindow::drawMeshSettings() {
                                               "Exports keep the source model next to its cook (code that reads the file itself).");
                 d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
+        }
+        if (settingsui::beginRow("mesh.preserve_hierarchy_for_new_models")) {
+            const ModelProjectSettings defaults;
+            if (projectBeginSettingsRow("Preserve Hierarchy for New Models", m.preserveHierarchyForNewModels != defaults.preserveHierarchyForNewModels))
+                m.preserveHierarchyForNewModels = defaults.preserveHierarchyForNewModels;
+            ImGui::Checkbox("##MeshPreserveHierarchy", &m.preserveHierarchyForNewModels);
+            endSettingsRow("A Model made in the editor starts with Preserve Hierarchy on: every node of its file gets a GameObject, "
+                           "and a lone mesh is never merged into the Model's own. New projects start with it on; models already "
+                           "placed keep theirs.");
         }
         if (settingsui::beginRow("mesh.keep_cpu_data_for_scripts")) {
             static const char* const scriptLabels[] = {"Automatic", "Keep", "Release"};

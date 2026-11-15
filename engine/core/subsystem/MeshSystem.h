@@ -366,7 +366,8 @@ namespace jasperengine{
         static bool parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err);
 
         // Animation clips spec 9.R3: a model on or under an entity with an Animation Player loads in
-        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address)
+        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address), and so
+        // does a model with Preserve Hierarchy (S94 F44)
         bool isNodeHierarchyForced(Entity entity) const;
         // The model is forced into the node-hierarchy layout but loaded in another one: reloading
         // its file (the editor's ModelLoadCmd) rebuilds it

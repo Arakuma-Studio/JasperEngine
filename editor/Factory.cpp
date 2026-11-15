@@ -2340,6 +2340,7 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     code << ind << "modelcomp.mergeStaticMeshes = " << formatBool(model.mergeStaticMeshes) << ";\n";
     // an Animation Player plays the model's clips: no entity animations (9.R15)
     if (!model.animationEntities) code << ind << "modelcomp.animationEntities = false;\n";
+    if (model.preserveHierarchy) code << ind << "modelcomp.preserveHierarchy = true;\n";
     code << ind << "modelcomp.skeleton = " << formatEntity(model.skeleton, entityVarNames) << ";\n";
     if (!model.animations.empty()) {
         code << ind << "modelcomp.animations.clear();\n";

@@ -6665,6 +6665,31 @@ static Vector3 objFaceNormal(const tinyobj::attrib_t& attrib, const std::vector<
     return (corner[1] - corner[0]).crossProduct(corner[2] - corner[0]).normalized();
 }
 
+// A texture an OBJ's .mtl names, as a file (spec S94 F46): .mtl files written on Windows name
+// them with backslashes, drive letters or absolute paths. Backslashes become slashes and the drive
+// and absolute prefix go; the path is tried relative to the .mtl (tinyobj reads it from the OBJ's
+// folder), then its file name in that folder. A changed path is logged once with what it became;
+// one found nowhere stays where it was named (a missing texture, as before).
+static std::string resolveObjTexture(const std::string& baseDir, const std::string& name, const std::string& objFile){
+    std::string path = name;
+    std::replace(path.begin(), path.end(), '\\', '/');
+    while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\r')) path.pop_back();
+    if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') path = path.substr(2);
+    const size_t start = path.find_first_not_of('/');
+    path = start == std::string::npos ? std::string() : path.substr(start);
+    const size_t slash = path.find_last_of('/');
+    const std::string fileName = slash == std::string::npos ? path : path.substr(slash + 1);
+    for (const std::string& candidate : {path, fileName}){
+        File file;
+        if (candidate.empty() || (!ResourcePack::contains(baseDir + candidate) && file.open((baseDir + candidate).c_str()) != FileErrors::FILEDATA_OK)) continue;
+        if (candidate != name){
+            Log::warn("OBJ model %s: its material texture '%s' is read from %s", objFile.c_str(), name.c_str(), (baseDir + candidate).c_str());
+        }
+        return baseDir + candidate;
+    }
+    return baseDir + name;
+}
+
 bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLoad){
     if (isLoadOnMainThread()) {
         return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad]() {
@@ -6799,13 +6824,13 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
         mesh.submeshes[i].material.roughnessFactor = roughnessFactor;
 
         if (!objMaterial.diffuse_texname.empty())
-            mesh.submeshes[i].material.baseColorTexture.setPath(baseDir+objMaterial.diffuse_texname);
+            mesh.submeshes[i].material.baseColorTexture.setPath(resolveObjTexture(baseDir, objMaterial.diffuse_texname, filename));
         if (!objMaterial.normal_texname.empty())
-            mesh.submeshes[i].material.normalTexture.setPath(baseDir+objMaterial.normal_texname);
+            mesh.submeshes[i].material.normalTexture.setPath(resolveObjTexture(baseDir, objMaterial.normal_texname, filename));
         if (!objMaterial.emissive_texname.empty())
-            mesh.submeshes[i].material.emissiveTexture.setPath(baseDir+objMaterial.emissive_texname);
+            mesh.submeshes[i].material.emissiveTexture.setPath(resolveObjTexture(baseDir, objMaterial.emissive_texname, filename));
         if (!objMaterial.ambient_texname.empty())
-            mesh.submeshes[i].material.occlusionTexture.setPath(baseDir+objMaterial.ambient_texname);
+            mesh.submeshes[i].material.occlusionTexture.setPath(resolveObjTexture(baseDir, objMaterial.ambient_texname, filename));
 
         //TODO: occlusionFactor (Ka)
         //TODO: metallicroughnessTexture (map_Ks + map_Ns)
@@ -7024,6 +7049,10 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
 }
 
 bool MeshSystem::isNodeHierarchyForced(Entity entity) const{
+    // Preserve Hierarchy (spec S94 F44): the one rule a model can choose, whatever its file holds
+    if (const ModelComponent* model = scene->findComponent<ModelComponent>(entity); model && model->preserveHierarchy){
+        return true;
+    }
     // the entity and its Transform ancestors (bounded: a broken parent loop ends the walk)
     Entity current = entity;
     for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){

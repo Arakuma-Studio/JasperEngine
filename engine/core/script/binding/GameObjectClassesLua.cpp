@@ -2539,6 +2539,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
         .addProperty("filename", &Model::getFilename)
+        .addProperty("preserveHierarchy", &Model::isPreserveHierarchy, &Model::setPreserveHierarchy)
         .addFunction("getAnimationCount", &Model::getAnimationCount)
         .addFunction("getAnimation", &Model::getAnimation)
         .addFunction("findAnimation", &Model::findAnimation)

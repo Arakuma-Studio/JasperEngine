@@ -32,7 +32,22 @@ namespace jasperengine::editor {
             std::filesystem::path found;
         };
 
-        GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot);
+        // What a model's import settings change in the conversion (spec S94 F40, F43)
+        struct Options {
+            // Rest Pose First Frame: the nodes take the first frame of the clip named restPoseTake,
+            // else of the first clip (takes that animate nothing make no clip and are skipped)
+            bool firstFrameRestPose = false;
+            std::string restPoseTake;
+            // Smoothness Source From / Prefer Smoothing Groups: each vertex records the smoothing group
+            // of its corner (a custom attribute the model cook reads and drops), for meshes that have them
+            bool smoothingGroups = false;
+        };
+
+        // The custom vertex attribute that numbers the corners that share a smoothed normal
+        static constexpr const char* SMOOTHING_GROUP_ATTRIBUTE = "_SMOOTHING_GROUP";
+
+        GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot,
+                   const Options& options);
 
         bool build(std::string& error);
         // The .glb contents, with extras in its asset info; empty on failure
@@ -57,11 +72,13 @@ namespace jasperengine::editor {
             std::string name;
             std::vector<tinygltf::Primitive> primitives;
             std::vector<uint32_t> slots; // material slot of each primitive
+            std::vector<bool> reserved;  // a placeholder drawing nothing: its slot is empty (spec S94 F42)
             std::vector<const ufbx_blend_channel*> channels;
             int skin = -1;
         };
 
         const ufbx_scene* scene;
+        Options options;
         std::filesystem::path fbxPath;
         std::filesystem::path assetsRoot;
         std::vector<std::string> warnings;
@@ -100,6 +117,11 @@ namespace jasperengine::editor {
         int materialFor(const ufbx_material* material, const ufbx_mesh* mesh);
 
         void buildGeometry(const ufbx_mesh* mesh);
+        // The smoothing group of each corner (ufbx index) of a mesh, numbered from 0; empty when the
+        // mesh has no smoothing data
+        std::vector<uint32_t> smoothingGroupsOf(const ufbx_mesh* mesh) const;
+        // The baked take's first key of every animated node, written over its node values
+        void applyRestPose(const ufbx_baked_anim* baked);
         int meshFor(const ufbx_node* node);
         void buildNodes();
         void buildAnimations();

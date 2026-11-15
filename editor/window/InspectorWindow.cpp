@@ -8620,6 +8620,33 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
         ImGui::TextDisabled("Select a single GameObject");
     }
 
+    // Unity's Preserve Hierarchy (S94 F44): the reload that applies it is part of the step
+    prefabRowProperty = "preserveHierarchy";
+    propertyHeader("Preserve Hierarchy");
+    {
+        const ModelComponent& first = sceneProject->scene->getComponent<ModelComponent>(entities[0]);
+        bool preserve = first.preserveHierarchy;
+        bool mixed = false;
+        for (Entity entity : entities) {
+            const ModelComponent* other = sceneProject->scene->findComponent<ModelComponent>(entity);
+            mixed = mixed || (other && other->preserveHierarchy != preserve);
+        }
+        ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+        if (ImGui::Checkbox("##model_preserve_hierarchy", &preserve)) {
+            auto* multi = new MultiPropertyCmd();
+            for (Entity entity : entities) {
+                multi->addCommand(std::unique_ptr<Command>(ModelLoadCmd::setLoadOption(project, sceneProject->id, entity, "preserveHierarchy", preserve)));
+            }
+            multi->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multi);
+        }
+        ImGui::PopItemFlag();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Every node of the file gets a GameObject of its own, and a lone mesh is never merged into the "
+                              "Model's. Changing it reloads the model.");
+    }
+
     propertyRow(RowPropertyType::LocalEntity, cpType, "skeleton", "Skeleton", sceneProject, entities);
 
     endTable();

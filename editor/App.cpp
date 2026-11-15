@@ -3889,6 +3889,8 @@ void editor::App::updateHubCreation() {
             // S77 R38: a new project places a model of many clips without an Animation entity per clip
             ModelProjectSettings models = project.getModelSettings();
             models.animationEntities = AnimationEntitiesMode::Auto;
+            // S94 F44: and keeps every model's node hierarchy, as Unity's Preserve Hierarchy
+            models.preserveHierarchyForNewModels = true;
             project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();

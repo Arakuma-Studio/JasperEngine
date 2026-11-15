@@ -1149,6 +1149,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     for (const std::string& warning : result.warnings) {
         editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
     }
+    for (const std::string& note : result.notes) {
+        editor::Out::info("%s: %s", fbxName.c_str(), note.c_str());
+    }
     if (!result.success) {
         editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
         // A stale import still loads
@@ -7371,6 +7374,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             vcsProjectSettings.lfs = true;
             // ... and places a model of many clips without an Animation entity per clip (S77 R38)
             modelSettings.animationEntities = AnimationEntitiesMode::Auto;
+            // ... and keeps the node hierarchy of the models placed in it (S94 F44)
+            modelSettings.preserveHierarchyForNewModels = true;
             // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
             // stage that lets its ceiling hold at the device, the ambient iOS session
             {

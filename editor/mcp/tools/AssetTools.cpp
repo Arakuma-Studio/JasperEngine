@@ -2653,7 +2653,8 @@ void linkMaterialTool(const CallPtr& call) {
     }
     MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
     if (!mesh || mesh->numSubmeshes == 0) {
-        call->fail("The GameObject has no Mesh component with submeshes (sprites and UI use their own texture properties).");
+        const std::string drawnByRoot = McpValues::modelNodeMeshError(sceneProject, entity);
+        call->fail(!drawnByRoot.empty() ? drawnByRoot : "The GameObject has no Mesh component with submeshes (sprites and UI use their own texture properties).");
         return;
     }
     int submeshIndex = 0;

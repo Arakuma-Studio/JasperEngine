@@ -1185,6 +1185,7 @@ const FieldEntry kBody_ModelComponent_fields[] = {
     JE_RF(ModelComponent, filename, 0xd893ddd1u, AssetPath),
     JE_RF(ModelComponent, mergeStaticMeshes, 0xc4ab8017u, Bool),
     JE_RF(ModelComponent, animationEntities, 0x062d0905u, Bool),
+    JE_RF(ModelComponent, preserveHierarchy, 0xfc594a07u, Bool),
     JE_RF_ENTITY(ModelComponent, skeleton, 0x423c5073u, Entity),
     JE_RF_ENTITIES(ModelComponent, animations, 0x44efadebu, Array),
 };

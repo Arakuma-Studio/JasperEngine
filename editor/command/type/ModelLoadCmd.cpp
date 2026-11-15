@@ -18,6 +18,9 @@
 #include "util/ProjectUtils.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "Engine.h"
 #include "subsystem/MeshSystem.h"
 #include "io/FileData.h"
@@ -600,6 +603,26 @@ bool editor::ModelLoadCmd::isLoadPending(uint32_t sceneId, Entity entity){
     return getPendingLoads().count({sceneId, entity}) > 0;
 }
 
+bool editor::ModelLoadCmd::isLoadOption(const std::string& property){
+    return property == "animationEntities" || property == "preserveHierarchy";
+}
+
+editor::Command* editor::ModelLoadCmd::setLoadOption(Project* project, uint32_t sceneId, Entity entity, const std::string& property, bool value){
+    if (!isLoadOption(property)) {
+        return nullptr;
+    }
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const ModelComponent* model = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<ModelComponent>(entity) : nullptr;
+    auto* multi = new MultiPropertyCmd();
+    multi->addPropertyCmd<bool>(project, sceneId, entity, ComponentType::ModelComponent, property, value);
+    // the value, then the reload that reads it (its undo puts the old entities back, the value's the old value)
+    if (model && !model->filename.empty()) {
+        multi->addCommand(std::make_unique<ModelLoadCmd>(project, sceneId, entity, model->filename.str(), model->mergeStaticMeshes));
+    }
+    multi->setNoMerge();
+    return multi;
+}
+
 void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
     auto& pendingLoads = getPendingLoads();
     auto it = pendingLoads.find({sceneId, entity});
@@ -764,8 +787,17 @@ bool editor::ModelLoadCmd::execute(){
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
 
     // Project Settings > Animation > Animation Entities: Auto (S77 R38): a model placed with many
-    // clips makes no Animation entity per clip. Only a first load: a reload keeps the user's choice.
+    // clips, or one an Animator or Animation Player plays (on it or an ancestor, S94 F47), makes no
+    // Animation entity per clip. Only a first load: a reload keeps the user's choice.
     if (isNewModel && model.animationEntities && project->getModelSettings().animationEntities == AnimationEntitiesMode::Auto) {
+        for (Entity current = entity; current != NULL_ENTITY && scene->isEntityCreated(current);) {
+            if (scene->findComponent<AnimatorComponent>(current) || scene->findComponent<AnimationPlayerComponent>(current)) {
+                autoClipCount = kAutoAnimationEntitiesClips;
+                break;
+            }
+            const Transform* parent = scene->findComponent<Transform>(current);
+            current = parent ? parent->parent : NULL_ENTITY;
+        }
         if (autoClipCount < 0) {
             const fs::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath));
             const fs::path read = FbxImporter::isFbxFile(absolute) ? project->getImportedModelPath(absolute) : absolute;
