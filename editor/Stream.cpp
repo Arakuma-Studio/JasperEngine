@@ -2806,7 +2806,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
-        root["htmlUiImageCacheMiB"] = htmlUiRender.imageCacheMiB;
+        // only away from the platform's default: a project saved before S93 re-saves byte-identically
+        if (htmlUiRender.imageCacheMiB != HtmlUiRenderSettings().imageCacheMiB)
+            root["htmlUiImageCacheMiB"] = htmlUiRender.imageCacheMiB;
     }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier,
     // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off

@@ -100,6 +100,8 @@ TEST(StreamProjectHtmlUiRender, ImageCacheMiB) {
     Project project;
     Stream::decodeProject(&project, YAML::Load("vsync: true\nhtmlUiGlyphAtlasMiB: 0\n"), Workspace());
     EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, -1);
+    // and re-saved without the key, as before it (byte-identical project.yaml after a settings undo)
+    EXPECT_FALSE(YAML::Load(YAML::Dump(Stream::encodeProject(&project)))["htmlUiImageCacheMiB"].IsDefined());
 
     HtmlUiRenderSettings settings;
     settings.imageCacheMiB = 0;
