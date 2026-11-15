@@ -120,12 +120,14 @@ async def test_editor_frame_budget(ed: Editor):
 
 async def test_hierarchy_rebuild_budget(ed: Editor):
     """The Hierarchy's timed tree rebuild (at most every 0.5 s and 15 frames; it refreshes the rows
-    in place while the structure stays) with the fixture: the median of those in 120 frames, at most
+    in place while the structure stays) with the fixture: the median of those in 60 frames, at most
     1 ms (a budget). No full rebuild runs while nothing changes the structure."""
     await cost_scene(ed)
     await ed.call("focus_window", window="hierarchy")
     await ed.call("wait", frames=5)
-    capture = await ed.call("capture_profile", frames=120, gpu=False)
+    # 60 frames: capture_profile allows 250 ms a frame (30 s at least), and this scene draws at about
+    # 4 fps on a software renderer, where 120 frames ran out of time; 60 hold four timed rebuilds or more
+    capture = await ed.call("capture_profile", frames=60, gpu=False)
     rebuilds: list[float] = []
     full = 0
     first = capture["first_frame"]
@@ -138,7 +140,7 @@ async def test_hierarchy_rebuild_budget(ed: Editor):
             deep = await ed.call("get_cpu_profile", capture_id=capture["capture_id"], view="flat", frame=index,
                                  filter="Hierarchy Tree Full Rebuild")
             full += sum(1 for row in deep.get("rows", []) if row["name"] == "Hierarchy Tree Full Rebuild")
-    ed.check(rebuilds, "the Hierarchy rebuilt its tree within 120 frames (the timed rebuild)")
+    ed.check(rebuilds, "the Hierarchy rebuilt its tree within 60 frames (the timed rebuild)")
     ed.check_eq(full, 0, "the timed rebuilds refreshed the rows in place (no full rebuild without a structural change)")
     rebuilds.sort()
     median = rebuilds[len(rebuilds) // 2]
