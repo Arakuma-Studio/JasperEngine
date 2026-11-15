@@ -4087,6 +4087,25 @@ bool editor::Exporter::copyCustomShaderSources() {
         return false;
     }
 
+    // A fork named relative to the assets directory (the editor's fallback, Project::findShaderFile)
+    // is read at that name from the asset root: its entry points ship there too. copyAssets put
+    // them there before REQ-11; without them the game reads no manifest for it.
+    const fs::path assetsRoot = project->getAssetsPath();
+    if (fs::equivalent(assetsRoot, projectRoot, ec)) return true;
+    std::set<std::string> shipped;
+    for (ShaderKey key : config.selectedShaderKeys) {
+        const std::string name = ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key));
+        if (name.empty() || ShaderReference::isLibrary(name) || ShaderReference::isBuiltin(name)) continue;
+        std::string vertFile, fragFile;
+        ShaderVariantCompiler::getCustomShaderPaths(ShaderReference::getBase(name), vertFile, fragFile);
+        for (const std::string& file : {vertFile, fragFile}) {
+            if (file.empty() || !ShaderVariantCompiler::isSafeRelativePath(file) || !shipped.insert(file).second) continue;
+            const fs::path source = assetsRoot / file;
+            if (fs::is_regular_file(projectRoot / file, ec) || !fs::is_regular_file(source, ec)) continue;
+            if (leftOutOfBuild(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(source)), source)) continue;
+            if (!copyOrFail(source, assetsDst / file)) return false;
+        }
+    }
     return true;
 }
 
