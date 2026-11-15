@@ -4,7 +4,7 @@
 // util/BuiltPlayers: the record a Desktop build leaves in .jasperengine/user/runbuild.yaml and the
 // verify() run_build calls before launching a player. A recorded, unchanged file passes; a symbolic
 // link, an unrecorded file, a replaced file and a change of size, bytes or mtime are refused, each
-// with its own reason. POSIX here (dev/ino and st_mtim).
+// with its own reason. The record's fields: dev/ino and st_mtim on POSIX, last_write_time on Windows.
 
 #include <gtest/gtest.h>
 
@@ -12,8 +12,14 @@
 #include "SymlinkSupport.h"
 #include "yaml-cpp/yaml.h"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <sys/stat.h>
-#include <unistd.h>
+#endif
 
 #include <chrono>
 #include <filesystem>
@@ -29,7 +35,7 @@ namespace {
     struct BuiltDirs {
         fs::path base, internal, exe;
         explicit BuiltDirs(const std::string& name) {
-            base = fs::temp_directory_path() / ("jasper-builtplayers-" + name + "-" + std::to_string(::getpid()));
+            base = fs::temp_directory_path() / ("jasper-builtplayers-" + name + "-" + std::to_string(JASPER_TEST_GETPID()));
             fs::remove_all(base);
             internal = base / "project" / ".jasperengine";
             fs::create_directories(internal);
@@ -64,9 +70,23 @@ TEST(BuiltPlayers, RecordedPlayerVerifies) {
     const YAML::Node root = YAML::LoadFile(bp::recordFile(d.internal).string());
     ASSERT_TRUE(root["desktop"].IsMap());
     const YAML::Node e = root["desktop"];
+    EXPECT_EQ(e["resolved"].as<std::string>(), fs::canonical(d.exe).string());
+#ifdef _WIN32
+    // the file's identity: its volume serial number and its file index
+    const HANDLE file = CreateFileW(fs::canonical(d.exe).c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    ASSERT_NE(file, INVALID_HANDLE_VALUE);
+    BY_HANDLE_FILE_INFORMATION info{};
+    const bool identified = GetFileInformationByHandle(file, &info) != FALSE;
+    CloseHandle(file);
+    ASSERT_TRUE(identified);
+    EXPECT_EQ(e["dev"].as<std::uint64_t>(), static_cast<std::uint64_t>(info.dwVolumeSerialNumber));
+    EXPECT_EQ(e["ino"].as<std::uint64_t>(), (static_cast<std::uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow);
+    EXPECT_EQ(e["size"].as<std::uint64_t>(), static_cast<std::uint64_t>(fs::file_size(d.exe)));
+    EXPECT_EQ(e["mtime"].as<std::int64_t>(), static_cast<std::int64_t>(fs::last_write_time(d.exe).time_since_epoch().count()));
+#else
     struct stat st{};
     ASSERT_EQ(::stat(d.exe.c_str(), &st), 0);
-    EXPECT_EQ(e["resolved"].as<std::string>(), fs::canonical(d.exe).string());
     EXPECT_EQ(e["dev"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_dev));
     EXPECT_EQ(e["ino"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_ino));
     EXPECT_EQ(e["size"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_size));
@@ -74,6 +94,7 @@ TEST(BuiltPlayers, RecordedPlayerVerifies) {
     EXPECT_EQ(e["mtime"].as<std::int64_t>(), static_cast<std::int64_t>(st.st_mtimespec.tv_sec) * 1000000000LL + st.st_mtimespec.tv_nsec);
 #else
     EXPECT_EQ(e["mtime"].as<std::int64_t>(), static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec);
+#endif
 #endif
     const std::string sha = e["sha256"].as<std::string>();
     EXPECT_EQ(sha.size(), 64u);

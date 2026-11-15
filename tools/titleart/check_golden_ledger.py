@@ -6,7 +6,8 @@
 #
 #   python3 tools/titleart/check_golden_ledger.py [--base <git ref>]
 #
-# --base: what the branch is compared with (default: the merge base with main). A new golden needs
+# --base: what the branch is compared with (default: the merge base with main; in a shallow checkout
+# without main, HEAD's first parent, as CI's lanes check out a merge commit). A new golden needs
 # a row in the ledger's "New goldens" table (golden, reason); an updated one in "Updated goldens"
 # (golden, metric before, metric after, reason). A deleted golden needs an "Updated goldens" row
 # whose after column says "deleted". Exit 0 when the ledger covers every change, 1 otherwise.
@@ -24,8 +25,28 @@ LIBRARY_GOLDEN = "tools/mcp/tests/golden/title-library/"
 LEDGER = os.path.join(ROOT, "docs", "titleart", "goldens.md")
 
 
-def git(*args):
-    return subprocess.run(["git", "-C", ROOT] + list(args), check=True, capture_output=True, text=True).stdout
+def git(*args, root=None):
+    proc = subprocess.run(["git", "-C", root or ROOT] + list(args), capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit("error: git %s failed (%d): %s" % (" ".join(args), proc.returncode, proc.stderr.strip()))
+    return proc.stdout
+
+
+def has_commit(ref, root=None):
+    return subprocess.run(["git", "-C", root or ROOT, "rev-parse", "--verify", "-q", ref + "^{commit}"],
+                          capture_output=True, text=True).returncode == 0
+
+
+def default_base(root=None):
+    """The merge base with main (or origin/main). CI's lanes check out the commit they test with its
+    parents only (fetch-depth 2, no main): a shallow checkout compares with HEAD's first parent, the
+    base a pull request's merge commit or a merge-queue commit is made on."""
+    for ref in ("main", "origin/main"):
+        if has_commit(ref, root):
+            return git("merge-base", "HEAD", ref, root=root).strip()
+    if git("rev-parse", "--is-shallow-repository", root=root).strip() == "true" and has_commit("HEAD^1", root):
+        return git("rev-parse", "HEAD^1", root=root).strip()
+    raise SystemExit("error: no main branch to compare with (a shallow checkout needs HEAD's parent): pass --base <git ref>")
 
 
 def changed_goldens(base):
@@ -90,7 +111,7 @@ def check(changes, ledger_text):
 
 
 def main():
-    base = sys.argv[sys.argv.index("--base") + 1] if "--base" in sys.argv else git("merge-base", "HEAD", "main").strip()
+    base = sys.argv[sys.argv.index("--base") + 1] if "--base" in sys.argv else default_base()
     ledger_text = open(LEDGER, encoding="utf-8").read() if os.path.exists(LEDGER) else ""
     changes = changed_goldens(base)
     problems = check(changes, ledger_text)

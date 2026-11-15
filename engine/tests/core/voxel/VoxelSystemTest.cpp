@@ -12,12 +12,17 @@
 #include "component/VoxelVolumeComponent.h"
 #include "object/voxel/GroundQuery.h"
 #include "subsystem/VoxelSystem.h"
+#include "io/AssetIOService.h"
+#include "jobs/JobSystem.h"
+#include "voxel/VoxelWorkQueue.h"
 #include "support/AllocationCounter.h"
 #include "../ecs/EcsTestUtil.h"
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <functional>
 #include <thread>
 
 using namespace jasperengine;
@@ -59,17 +64,54 @@ namespace {
         }
     };
 
+    // The process job system with `workers` workers and no reserve, restored at the end (with the
+    // asset readers, which take it at start()). `before` runs first, while the pool its jobs ran
+    // on is still up
+    class UploadTestPool {
+    public:
+        UploadTestPool(int workers, std::function<void()> before): before(std::move(before)) {
+            jobs::Config config;
+            config.workers = workers;
+            config.reserveForFrame = 0;
+            restart(config);
+        }
+        ~UploadTestPool() {
+            before();
+            restart(jobs::Config{});
+        }
+
+    private:
+        static void restart(const jobs::Config& config) {
+            AssetIOService::instance().stop();
+            jobs::shutdown();
+            jobs::initialize(config);
+            AssetIOService::instance().start();
+        }
+        std::function<void()> before;
+    };
+
 }
 
 TEST_F(VoxelSystemFixture, UploadBudgetPerFrame) {
+    // A frame meshes at most a job per worker but one, so the cap of 6 meshes is only reached
+    // with enough workers: a 4-core runner (3 workers) never reaches it. Eight, whatever the host;
+    // the scene is made again on them
+    constexpr int WORKERS = 8;
+    system.reset();
+    scene.reset();
+    const UploadTestPool pool(WORKERS, [this]() {
+        system.reset();
+        scene.reset();
+    });
+    SetUp();
+    std::atomic<int> finished{0};
+    voxel::WorkQueue::setFinishedNotifier([&finished]() { finished++; });
     const Entity owner = volume(desc(256, 128, 256, 3), "mem://upload", VoxelQuality::Low);
     const VoxelTierSettings low = voxelTierSettings(VoxelTier::Low);
     bool hitMeshCap = false;
     for (int frame = 0; frame < 2000 && !system->isVolumeReady(owner); frame++) {
+        const int before = finished.load();
         scene->update(1.0 / 60.0);
-        // Frames here take no time: the jobs need some to finish, as they would have in a real one,
-        // and enough finish between two frames to reach the cap
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
         const VoxelStats stats = system->getStats(owner);
         EXPECT_LE(stats.uploadMeshesThisFrame, low.uploadMeshesPerFrame);
         // One mesh always goes, however big; beyond it the bytes hold
@@ -77,7 +119,16 @@ TEST_F(VoxelSystemFixture, UploadBudgetPerFrame) {
             EXPECT_LE(stats.uploadBytesThisFrame, low.uploadBytesPerFrame);
         }
         hitMeshCap = hitMeshCap || stats.uploadMeshesThisFrame == low.uploadMeshesPerFrame;
+        // Frames here take no time: before the next one, wait for a cap's worth of this frame's
+        // jobs to finish, or for all of them when fewer are left (a real frame lasts long enough)
+        const int wanted = std::min({low.uploadMeshesPerFrame, stats.jobsPending, WORKERS - 1});
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (finished.load() - before < wanted &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
     }
+    voxel::WorkQueue::setFinishedNotifier(nullptr);
     EXPECT_TRUE(system->isVolumeReady(owner));
     EXPECT_TRUE(hitMeshCap);
 }

@@ -30,6 +30,8 @@ namespace jasperengine::terraincore {
         };
 
         explicit OverlayMapStore(TerrainMapStore& base);
+        OverlayMapStore(const OverlayMapStore&) = delete;
+        OverlayMapStore& operator=(const OverlayMapStore&) = delete;
 
         TerrainMapStore& base() { return *baseStore; }
 

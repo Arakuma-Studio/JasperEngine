@@ -36,7 +36,7 @@
 #include "render/GpuWorkerContext.h"
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 #include "device/Device.h"
 
 #include <sys/system_properties.h>

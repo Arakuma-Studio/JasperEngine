@@ -86,6 +86,9 @@
 
 #if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
     #if defined(_WIN32)
+        #ifndef NOMINMAX
+        #define NOMINMAX
+        #endif
         #include <windows.h>
         #include <GL/gl.h>
     #elif defined(__APPLE__)

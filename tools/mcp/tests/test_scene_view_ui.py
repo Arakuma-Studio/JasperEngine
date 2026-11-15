@@ -147,8 +147,10 @@ async def cube(ed: Editor, sid: int, name: str, position, scale=(1, 1, 1), paren
 
 
 async def view(ed: Editor, sid: int) -> tuple[dict, dict]:
-    """(view_rect_in_window, the screenshot's info) of the scene's (active pane) view"""
-    shot = await ed.call_raw("screenshot", {"view": "scene", "scene": sid, "max_width": 0})
+    """(view_rect_in_window, the screenshot's info) of the scene's (active pane) view, once its loads
+    are done (a model of 300 x 300 quads loads in more than the default 30 s on a 4-CPU software renderer)"""
+    shot = await ed.call_raw("screenshot", {"view": "scene", "scene": sid, "max_width": 0, "timeout_seconds": 300}, timeout=360)
+    ed.check(not shot.is_error and shot.structured, f"the Scene view is shot: {shot.text[:600]}")
     return shot.structured["view_rect_in_window"], shot.structured
 
 

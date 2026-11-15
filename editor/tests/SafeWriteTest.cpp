@@ -4,7 +4,7 @@
 // util/SafeWrite: writes, removals and renames that stay beneath a root when they happen (no
 // symbolic link on the way followed: refused, naming the folder; a link at the final name replaced,
 // never followed), the resolve-first variants (links inside the root fine, out of it refused), and
-// WriteFilesCmd::writeBeneath built on them. POSIX here (the Windows half is compiled there).
+// WriteFilesCmd::writeBeneath built on them. Both halves: openat on POSIX, NT handles on Windows.
 
 #include <gtest/gtest.h>
 
@@ -28,7 +28,13 @@
 #include "SymlinkSupport.h"
 
 #include <sys/stat.h>
-#include <unistd.h>
+#include "support/PosixCompat.h"
+#ifdef _WIN32
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#endif
 
 #include <filesystem>
 #include <fstream>
@@ -95,13 +101,22 @@ TEST(SafeWrite, WritesNewAndReplacesKeepingPermissions) {
     ASSERT_EQ(created.size(), 2u) << "the folders it made, outermost first";
     EXPECT_EQ(created[0], fs::canonical(d.root) / "a");
     EXPECT_EQ(created[1], fs::canonical(d.root) / "a" / "b");
-    // relative to the root works too; an existing file keeps its permissions
+    // relative to the root works too; an existing file keeps its permissions (Windows: its
+    // attributes, fs::permissions there only setting or clearing read-only)
+#ifdef _WIN32
+    const fs::path existing = d.root / "a" / "b" / "new.txt";
+    ASSERT_TRUE(SetFileAttributesW(existing.c_str(), FILE_ATTRIBUTE_HIDDEN));
+    ASSERT_TRUE(sw::writeFileBeneath(d.root, fs::path("a") / "b" / "new.txt", "two", error)) << error;
+    EXPECT_EQ(readAll(existing), "two");
+    EXPECT_NE(GetFileAttributesW(existing.c_str()) & FILE_ATTRIBUTE_HIDDEN, 0u);
+#else
     fs::permissions(d.root / "a" / "b" / "new.txt", fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
                     fs::perm_options::replace);
     ASSERT_TRUE(sw::writeFileBeneath(d.root, fs::path("a") / "b" / "new.txt", "two", error)) << error;
     EXPECT_EQ(readAll(d.root / "a" / "b" / "new.txt"), "two");
     EXPECT_EQ(fs::status(d.root / "a" / "b" / "new.txt").permissions() & fs::perms::all,
               fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+#endif
     EXPECT_EQ(entries(d.root / "a" / "b"), 1u) << "no temporary file left";
     // a folder at the name, a file on the way, a path outside the root: refused, nothing made
     fs::create_directories(d.root / "dir.txt");
@@ -127,7 +142,11 @@ TEST(SafeWrite, ReadOnlyFilesAreRefused) {
     writeText(d.root / "ro.txt", "keep");
     fs::permissions(d.root / "ro.txt", fs::perms::owner_read, fs::perm_options::replace);
     std::string error;
+#ifdef _WIN32
+    const bool root = false;   // the read-only attribute holds for administrators too
+#else
     const bool root = ::geteuid() == 0;
+#endif
 #if defined(__linux__)
     {
         // root ignores file permissions (the build containers run the tests as root): the write is

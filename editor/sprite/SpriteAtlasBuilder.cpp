@@ -51,7 +51,7 @@ namespace jasperengine::editor::sprite {
             const auto time = fs::last_write_time(path, ec);
             if (ec) return "-";
             const uintmax_t size = fs::file_size(path, ec);
-            return std::to_string(size) + "@" + std::to_string(time.time_since_epoch().count());
+            return std::to_string(size) + "@" + std::to_string(static_cast<long long>(time.time_since_epoch().count()));
         }
 
         bool writeCacheText(const fs::path& path, const std::string& text) {

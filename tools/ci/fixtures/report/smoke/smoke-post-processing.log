@@ -1,0 +1,11 @@
+$ SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing
+== export
+== build exported project
+FAIL: build of the exported project
+[1/96] Building CXX object CMakeFiles/game.dir/generated/SceneFactories.cpp.o
+FAILED: CMakeFiles/game.dir/generated/SceneFactories.cpp.o
+/usr/bin/c++ -O2 -c /src/build/smoke/export/generated/SceneFactories.cpp -o CMakeFiles/game.dir/generated/SceneFactories.cpp.o
+/src/build/smoke/export/generated/SceneFactories.cpp:120:18: error: 'PostProcessVolume' is not a member of 'jasperengine'
+  120 |     jasperengine::PostProcessVolume volume;
+      |                  ^~~~~~~~~~~~~~~~~
+ninja: build stopped: subcommand failed.

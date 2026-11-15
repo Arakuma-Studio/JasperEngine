@@ -38,7 +38,7 @@ namespace jasperengine {
             AUDIO,      // audio: `pcm` holds 48 kHz interleaved stereo float from `pcmStart` seconds
             AGAIN,      // input was consumed, nothing came out yet
             END,        // no more (until a seek)
-            ERROR       // `error` says why
+            FAILURE     // `error` says why
         };
 
         virtual ~PlatformDecoderBackend() = default;

@@ -1,0 +1,8 @@
+browser_gate: chrome-headless-shell opens http://127.0.0.1:37365/jasperengine-project.html?jasperengine_ready_signal=1
+[   0.000] JasperEngine web: starting
+[   0.001] error: (ERROR): Missing precompiled shader 'lit_skinned' for backend gles3
+[   0.001] Engine ready: 1 scene(s) loaded
+
+browser_gate: 3 console lines, 0 exceptions, 1 errors, ready yes, crossOriginIsolated True, centre pixel (255, 255, 255) at (40, 40) of 1280x720
+browser_gate: screenshot /w/sample-project.png
+browser_gate: FAIL: 1 console errors

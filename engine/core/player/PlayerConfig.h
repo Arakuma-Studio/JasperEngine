@@ -47,7 +47,7 @@ namespace jasperengine::player {
         std::string file;                  // "prefabs/<id>.jpfb"
     };
 
-    struct PlayerConfig {
+    struct JASPERENGINE_API PlayerConfig {
         static constexpr int SCHEMA_VERSION = 1;
 
         std::string name;

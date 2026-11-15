@@ -24,7 +24,7 @@
 #include "component/AnimationPlayerComponent.h"
 #include "window/AnimatorWindow.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

@@ -1,0 +1,10 @@
+$ SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/particles
+== export
+== build exported project
+== run game
+ready after 4s
+ok: game ran (screenshot build/smoke/game.png)
+== run editor
+ok: editor ran (screenshot build/smoke/editor.png)
+== navigation
+PASS
