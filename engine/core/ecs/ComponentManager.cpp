@@ -27,14 +27,14 @@ size_t ComponentTypeRegistry::indexOf(const char* mangledName){
     return next++;
 }
 
-#if defined(__GNUG__) || defined(__clang__)
+#if (defined(__GNUG__) || defined(__clang__)) && !defined(_MSC_VER)
 #include <cxxabi.h>
 #include <cstdlib>
 #endif
 
 std::string jasperengine::ecs::readableTypeName(const char* typeName){
     std::string name = typeName ? typeName : "";
-#if defined(__GNUG__) || defined(__clang__)
+#if (defined(__GNUG__) || defined(__clang__)) && !defined(_MSC_VER)
     int status = 0;
     char* demangled = abi::__cxa_demangle(name.c_str(), nullptr, nullptr, &status);
     if (status == 0 && demangled){
@@ -42,7 +42,7 @@ std::string jasperengine::ecs::readableTypeName(const char* typeName){
     }
     std::free(demangled);
 #endif
-    // MSVC names are already readable: "class jasperengine::RenderSystem"
+    // MSVC's and clang-cl's names are already readable: "class jasperengine::RenderSystem"
     for (const char* prefix : {"class ", "struct "}){
         const std::string text(prefix);
         if (name.compare(0, text.size(), text) == 0){

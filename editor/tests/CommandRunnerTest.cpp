@@ -3,16 +3,21 @@
 
 // CommandRunner::capture, the argv probe the kit detection uses: the program runs directly (no
 // shell), so a tool path holding spaces and shell metacharacters is one literal argument and
-// nothing in it is executed. POSIX here.
+// nothing in it is executed. The tests that run programs are POSIX (sh scripts, /usr/bin tools,
+// descriptors); the environment parsing and the Windows program resolution run everywhere.
 
 #include <gtest/gtest.h>
 
 #include "Generator.h"
 #include "util/CommandRunner.h"
 
+#ifdef _WIN32
+#include <process.h>    // getpid
+#else
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -26,6 +31,7 @@
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
+#ifndef _WIN32
 TEST(CommandRunner, CaptureRunsAToolWhosePathHoldsSpacesAndMetacharacters) {
     const fs::path base = fs::temp_directory_path() / ("jasper-capture-" + std::to_string(::getpid()));
     fs::remove_all(base);
@@ -93,6 +99,7 @@ TEST(CommandRunner, CaptureTimesOutAndTheCMakeVersionProbeTakesAnArgv) {
     std::error_code ec;
     fs::remove_all(base, ec);
 }
+#endif
 
 namespace {
 
@@ -190,6 +197,7 @@ TEST(CommandRunner, ParsesOddEnvironmentOutput) {
     EXPECT_TRUE(error.empty());
 }
 
+#ifndef _WIN32
 TEST(CommandRunner, RunPassesTheGivenEnvironmentOnly) {
     // the child sees exactly the given environment (what the MSVC one is on Windows)
     CommandRunner runner;
@@ -203,6 +211,7 @@ TEST(CommandRunner, RunPassesTheGivenEnvironmentOnly) {
     ASSERT_TRUE(runner.run({"/usr/bin/env"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
     EXPECT_GT(lines.size(), 2u);
 }
+#endif
 
 TEST(CommandRunner, WindowsProgramResolutionNeverUsesTheCurrentFolderOrBatchFiles) {
     const fs::path base = fs::temp_directory_path() / ("jasper-resolve-" + std::to_string(::getpid()));
@@ -257,6 +266,7 @@ TEST(CommandRunner, WindowsProgramResolutionNeverUsesTheCurrentFolderOrBatchFile
     fs::remove_all(base, ec);
 }
 
+#ifndef _WIN32
 TEST(CommandRunner, LaunchDetachedReportsExecFailureLeavesNoChildAndInheritsNoDescriptor) {
     const fs::path base = fs::temp_directory_path() / ("jasper-detached-" + std::to_string(::getpid()));
     fs::remove_all(base);
@@ -350,3 +360,4 @@ TEST(CommandRunner, InvalidUtf8OutputIsRepaired) {
     }));
     EXPECT_EQ(lines, (std::vector<std::string>{"ok", "\xEF\xBF\xBDt\xEF\xBF\xBD"}));
 }
+#endif

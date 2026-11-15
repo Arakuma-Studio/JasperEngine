@@ -20,6 +20,7 @@
 
 #include "Export.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -162,6 +163,9 @@ namespace jasperengine::diag {
         JASPERENGINE_INTERNAL void initializeMainThreadCapture();
         // Windows deadline regression: delay the helper beyond the capture budget.
         JASPERENGINE_API void forceWalkerStallForTest(bool enabled);
+        // Windows: the symbols the capture names frames with load beside the watchdog after its
+        // first start (a report before that names modules and offsets); true once they have.
+        JASPERENGINE_API bool waitForSymbolsForTest(std::chrono::milliseconds timeout);
         // Writes #N module+offset [symbol] lines; returns 0 with a reason on timeout/failure.
         JASPERENGINE_API size_t captureMainThreadStack(char* out, size_t capacity, const char** why);
 

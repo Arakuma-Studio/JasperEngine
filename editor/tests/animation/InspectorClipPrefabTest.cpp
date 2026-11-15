@@ -22,7 +22,7 @@
 #include "component/MeshComponent.h"
 #include "window/InspectorWindow.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdlib>

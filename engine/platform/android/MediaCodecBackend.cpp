@@ -233,7 +233,7 @@ namespace {
                             if (readFailed){
                                 error.code = MediaErrorCode::NETWORK;
                                 error.message = source->isGrowing() ? "the download stopped" : "the file could not be read any more";
-                                return Step::ERROR;
+                                return Step::FAILURE;
                             }
                             AMediaCodec_queueInputBuffer(codec, (size_t)in, 0, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
                             inputEnded = true;
@@ -246,7 +246,7 @@ namespace {
                     }else if (in != AMEDIACODEC_INFO_TRY_AGAIN_LATER){
                         // the codec died (reclaimed by the system, a media server restart): a new one
                         if (!recreateCodec(error, (int)in))
-                            return Step::ERROR;
+                            return Step::FAILURE;
                         continue;
                     }
                 }
@@ -260,7 +260,7 @@ namespace {
                         // a vendor-tiled layout the engine cannot read: Android's software decoder instead
                         retriedSoftware = true;
                         if (!restartWithSoftware(error))
-                            return Step::ERROR;
+                            return Step::FAILURE;
                     }
                     continue;
                 }
@@ -277,7 +277,7 @@ namespace {
                 }
                 if (out < 0){
                     if (!recreateCodec(error, (int)out))
-                        return Step::ERROR;
+                        return Step::FAILURE;
                     continue;
                 }
                 drainWaits = 0;

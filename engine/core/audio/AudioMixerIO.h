@@ -51,7 +51,7 @@ namespace jasperengine {
         std::map<std::string, float> values;  // target -> value; a missing target keeps the group / effect value
     };
 
-    struct AudioMixerDef {
+    struct JASPERENGINE_API AudioMixerDef {
         int version = 1;
         bool unscaled = false;                // updateMode "unscaled": transitions and timed setFloat ignore Engine.timeScale
         std::vector<AudioMixerGroupDef> groups;

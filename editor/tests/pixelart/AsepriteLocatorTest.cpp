@@ -52,6 +52,16 @@ namespace {
             return path;
         }
 
+        // A path as Steam writes it in libraryfolders.vdf: backslashes escaped (a Windows path has them)
+        static std::string vdfPath(const fs::path& path){
+            std::string text;
+            for (char c : path.string()) {
+                if (c == '\\' || c == '"') text += '\\';
+                text += c;
+            }
+            return text;
+        }
+
         // Files under the temp root count when they exist; `fixed` adds absolute locations outside
         // it (/Applications, /opt) that a test cannot create
         LocatorEnvironment environment(const std::string& os){
@@ -100,15 +110,11 @@ namespace {
 }
 
 // The Linux and macOS layouts name POSIX absolute paths (/opt, /Applications) and split PATH on
-// ':', which a Windows host's drive letters break; the OS-independent rules run on every host.
-#ifdef _WIN32
-#define SKIP_ON_WINDOWS_HOST() GTEST_SKIP() << "POSIX install locations do not exist on a Windows host"
-#else
-#define SKIP_ON_WINDOWS_HOST() (void)0
-#endif
+// ':', which a Windows host's drive letters break: compiled for POSIX hosts only (an editor test
+// never skips); the OS-independent rules run on every host.
 
+#ifndef _WIN32
 TEST_F(AsepriteLocatorTest, LinuxLocationsInOrder) {
-    SKIP_ON_WINDOWS_HOST();
     const fs::path onPath = touch("bin/aseprite");
     const fs::path steam = touch("home/.steam/steam/steamapps/common/Aseprite/aseprite");
     const fs::path localSteam = touch("home/.local/share/Steam/steamapps/common/Aseprite/aseprite");
@@ -124,6 +130,7 @@ TEST_F(AsepriteLocatorTest, LinuxLocationsInOrder) {
     EXPECT_EQ(found[3].executable, fs::path("/opt/aseprite/aseprite"));
     for (const AsepriteInstall& install : found) EXPECT_TRUE(install.version.empty());   // no --version in the pure search
 }
+#endif
 
 TEST_F(AsepriteLocatorTest, PreferenceBeatsEnvironmentBeatsOsLocations) {
     const fs::path preference = touch("pref/aseprite");
@@ -174,8 +181,8 @@ TEST_F(AsepriteLocatorTest, WindowsLocationsInOrderWithSteamLibraries) {
     const fs::path onPath = touch("tools/aseprite.exe");
     // library 0 (the root) is listed too: found once
     touch("pf86/Steam/steamapps/libraryfolders.vdf",
-          "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"" + (root / "pf86/Steam").string() + "\"\n\t}\n"
-          "\t\"1\"\n\t{\n\t\t\"path\"\t\t\"" + (root / "library").string() + "\"\n\t\t\"label\"\t\t\"\"\n\t}\n}\n");
+          "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"" + vdfPath(root / "pf86/Steam") + "\"\n\t}\n"
+          "\t\"1\"\n\t{\n\t\t\"path\"\t\t\"" + vdfPath(root / "library") + "\"\n\t\t\"label\"\t\t\"\"\n\t}\n}\n");
     vars["ProgramFiles"] = (root / "pf").string();
     vars["ProgramFiles(x86)"] = (root / "pf86").string();
     vars["LOCALAPPDATA"] = (root / "local").string();
@@ -189,13 +196,14 @@ TEST_F(AsepriteLocatorTest, WindowsLocationsInOrderWithSteamLibraries) {
     EXPECT_EQ(found[2].executable, localAppData);
     EXPECT_EQ(found[3].executable, steamRoot);
     EXPECT_EQ(found[4].executable, library);
-    EXPECT_EQ(found[5].executable, onPath);
+    // (the name tried first, Aseprite.exe, is that file on a case-insensitive file system)
+    EXPECT_TRUE(fs::equivalent(found[5].executable, onPath)) << found[5].executable;
 }
 
 TEST_F(AsepriteLocatorTest, SteamLibraryOnlyFromVdf) {
     const fs::path library = touch("games/steamapps/common/Aseprite/Aseprite.exe");
     touch("pf86/Steam/steamapps/libraryfolders.vdf",
-          "\"libraryfolders\" { \"1\" { \"path\" \"" + (root / "games").string() + "\" } }");
+          "\"libraryfolders\" { \"1\" { \"path\" \"" + vdfPath(root / "games") + "\" } }");
     vars["ProgramFiles(x86)"] = (root / "pf86").string();
 
     const std::optional<AsepriteInstall> found = findAseprite(environment("windows"), nullptr);
@@ -219,8 +227,8 @@ TEST_F(AsepriteLocatorTest, VdfPathsAreUnescapedInBothLayouts) {
     EXPECT_TRUE(steamLibraryFolders("\"path\" { unterminated").empty());
 }
 
+#ifndef _WIN32
 TEST_F(AsepriteLocatorTest, MacosLocationsInOrder) {
-    SKIP_ON_WINDOWS_HOST();
     fixed.insert("/Applications/Aseprite.app/Contents/MacOS/aseprite");
     const fs::path user = touch("home/Applications/Aseprite.app/Contents/MacOS/aseprite");
     const fs::path steam = touch("home/Library/Application Support/Steam/steamapps/common/Aseprite/Aseprite.app/Contents/MacOS/aseprite");
@@ -234,6 +242,7 @@ TEST_F(AsepriteLocatorTest, MacosLocationsInOrder) {
     EXPECT_EQ(found[1].executable, user);
     EXPECT_EQ(found[2].executable, steam);
 }
+#endif
 
 TEST_F(AsepriteLocatorTest, MacosPreferenceMayNameTheBundle) {
     const fs::path program = touch("Tools/Aseprite.app/Contents/MacOS/aseprite");

@@ -39,7 +39,7 @@
 #include "util/AssetDatabase.h"
 #include "util/Util.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <chrono>
 #include <cstdlib>

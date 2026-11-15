@@ -26,7 +26,7 @@
 #include "texsynth/SynthImage.h"
 #include "ScriptDataTestSupport.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cmath>
 #include <cstdlib>

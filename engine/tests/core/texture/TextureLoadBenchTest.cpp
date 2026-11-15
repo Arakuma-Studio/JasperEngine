@@ -59,7 +59,7 @@ namespace {
 
 }
 
-TEST(TextureLoadBench, Bc7Ktx2AgainstPng){
+TEST(TextureLoadBenchGpu, Bc7Ktx2AgainstPng){
     JASPER_REQUIRE_GPU();
     TempDir dir;
     std::mt19937 random(14);

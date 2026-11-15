@@ -17,7 +17,7 @@
 #include "io/ResourcePack.h"
 #include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 #include "player/PlayerConfig.h"
 #include "player/RunControl.h"
 #include "serialization/CookedScene.h"
@@ -40,6 +40,9 @@
 #elif defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
 #endif
 #include <windows.h>
 #elif defined(__linux__) && !defined(__ANDROID__)
@@ -92,7 +95,9 @@ namespace {
         wchar_t path[32768];
         const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
         if (length == 0 || length >= std::size(path)) return ".";
-        return std::filesystem::path(std::wstring(path, length)).parent_path().u8string();
+        // (UTF-8 bytes: C++20's u8string is std::u8string)
+        const std::u8string utf8 = std::filesystem::path(std::wstring(path, length)).parent_path().u8string();
+        return std::string(utf8.begin(), utf8.end());
 #else
         char path[4096];
         const ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
@@ -153,7 +158,7 @@ namespace {
         return EXIT_CONTENT_MISMATCH;
     }
 
-    // the player's step before the window (Launch.h)
+    // the player's step before the window (PlayerLaunch.h)
     int configure(const LaunchOptions& options) {
         PlatformConfig& platform = platformConfig();
         if (platform.contentRoot.empty()) platform.contentRoot = defaultContentRoot();

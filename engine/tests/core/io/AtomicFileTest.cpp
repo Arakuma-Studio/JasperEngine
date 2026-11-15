@@ -374,6 +374,34 @@ TEST(AtomicFile, ConcurrentWriters){
     EXPECT_TRUE(temporarySiblings(dir.path()).empty());
 }
 
+#if defined(_WIN32)
+// A reader holding the file with FILE_SHARE_DELETE does not hold up a save (MoveFileExW's replace
+// is refused while the file is open at all): the replace needs no retry, and the reader keeps
+// reading what it opened
+TEST(AtomicFile, AReaderSharingDeleteDoesNotHoldUpTheReplace){
+    TestTempDir dir("atomic");
+    const fs::path target = dir / "held.yaml";
+    ASSERT_TRUE(io::writeFileAtomic(target, "before", {io::Durability::Cache}).ok());
+    HANDLE reader = ::CreateFileW(target.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(reader, INVALID_HANDLE_VALUE);
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    options.attempts = 1;
+    const io::WriteResult written = io::writeFileAtomic(target, "after", options);
+    char bytes[16] = {};
+    DWORD read = 0;
+    const BOOL readOk = ::ReadFile(reader, bytes, sizeof(bytes), &read, nullptr);
+    ::CloseHandle(reader);
+    EXPECT_TRUE(written.ok()) << written.message;
+    EXPECT_EQ(written.attempts, 1);
+    EXPECT_TRUE(readOk);
+    EXPECT_EQ(std::string(bytes, read), "before");
+    EXPECT_EQ(TestTempDir::read(target), "after");
+    EXPECT_TRUE(temporarySiblings(dir.path()).empty());
+}
+#endif
+
 TEST(AtomicFile, TemporarySiblingNames){
     const fs::path target = fs::path("scenes") / "Level 1.scene";
     const fs::path temp = io::makeTemporarySiblingPath(target);

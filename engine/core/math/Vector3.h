@@ -9,7 +9,7 @@
 #include <string>
 
 namespace jasperengine { class Vector3; }
-jasperengine::Vector3 operator * ( float f, const jasperengine::Vector3& v );
+JASPERENGINE_API jasperengine::Vector3 operator * ( float f, const jasperengine::Vector3& v );
 
 
 namespace jasperengine {

@@ -210,7 +210,7 @@ namespace jasperengine::cook {
     // (one, or a cube's six) with their GUIDs, or only the id of one made in memory, then the
     // sampler state, in the setters' order (setPath resets the SVG scale)
     template<>
-    struct Codec<Texture> {
+    struct JASPERENGINE_API Codec<Texture> {
         static void write(Writer& w, const Texture& texture);
         static void read(Reader& r, Texture& texture);
     };

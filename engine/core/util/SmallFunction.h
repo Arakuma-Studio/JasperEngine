@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -88,6 +89,7 @@ namespace jasperengine {
             void (*destroy)(void* storage) noexcept;
         };
 
+        // (std::destroy_at, not ->~F(): MSVC looks ~F up in the class F names, C2300)
         template<typename F>
         static constexpr Ops inlineOps = {
             [](void* storage, Args&&... args) -> R {
@@ -95,10 +97,10 @@ namespace jasperengine {
             },
             [](void* from, void* to) noexcept {
                 ::new (to) F(std::move(*static_cast<F*>(from)));
-                static_cast<F*>(from)->~F();
+                std::destroy_at(static_cast<F*>(from));
             },
             [](void* storage) noexcept {
-                static_cast<F*>(storage)->~F();
+                std::destroy_at(static_cast<F*>(storage));
             },
         };
 

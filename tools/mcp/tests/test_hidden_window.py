@@ -91,6 +91,18 @@ async def counts_over(ed: Editor, seconds: float) -> tuple[int, int]:
     return after["updates"] - before["updates"], after["draws"] - before["draws"]
 
 
+async def updates_until(ed: Editor, updates: int, timeout: float = 60.0) -> tuple[int, int]:
+    """(updates, draws) from now until the game has updated `updates` times: the state, not a rate
+    (the editor's own frames pace them while it stays visible, slow under a software renderer)"""
+    before = await probe(ed)
+    after = before
+    deadline = asyncio.get_running_loop().time() + timeout
+    while after["updates"] - before["updates"] < updates and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.1)
+        after = await probe(ed)
+    return after["updates"] - before["updates"], after["draws"] - before["draws"]
+
+
 async def wait_visible(ed: Editor, visible: bool) -> dict:
     state = {}
     for _ in range(50):
@@ -152,7 +164,7 @@ async def test_send_input_hide_show(ed: Editor):
         state = await wait_visible(ed, False)
         ed.check(state["hidden_update_fps"] > 0, f"{state}")
         await asyncio.sleep(0.2)
-        updates, draws = await counts_over(ed, 1.0)
+        updates, draws = await updates_until(ed, 30)
         ed.check(updates >= 30, f"hidden by send_input: the game keeps updating ({updates})")
         ed.check_eq(draws, 0, "hidden by send_input: nothing is drawn")
         ed.check_eq((await ed.call("editor_status"))["window"]["visible"], True, "the editor window itself stays visible")

@@ -10,7 +10,7 @@
 #include "shader/ShaderListCache.h"
 #include "util/FileUtils.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

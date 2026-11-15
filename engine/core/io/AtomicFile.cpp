@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN
@@ -238,10 +239,58 @@ namespace {
 #endif
     }
 
+#if defined(_WIN32)
+    // A rename with POSIX semantics (FileRenameInfoEx, Windows 10 1709+ on NTFS): it replaces a
+    // target that readers hold open with FILE_SHARE_DELETE, and one another writer has just
+    // replaced, where MoveFileExW's replace is refused (ERROR_ACCESS_DENIED) until the target is
+    // closed. `unsupported`: the system or the volume has no such rename (FAT, exFAT, older
+    // Windows, another volume), so MoveFileExW is to be used.
+    std::error_code renamePosix(const fs::path& from, const fs::path& to, bool& unsupported){
+        unsupported = false;
+        // the entry itself: a link is renamed as a link, a folder as a folder, as MoveFileExW does
+        HANDLE handle = ::CreateFileW(from.c_str(), DELETE | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return lastError();
+        // FILE_RENAME_INFO with its Win10 Flags member (not in every SDK's headers)
+        struct RenameInfo {
+            union {
+                BOOLEAN ReplaceIfExists;
+                DWORD Flags;
+            };
+            HANDLE RootDirectory;
+            DWORD FileNameLength;
+            WCHAR FileName[1];
+        };
+        const std::wstring name = to.wstring();
+        std::vector<unsigned char> buffer(sizeof(RenameInfo) + name.size() * sizeof(WCHAR));
+        RenameInfo* info = reinterpret_cast<RenameInfo*>(buffer.data());
+        info->Flags = 0x1 | 0x2;   // FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS
+        info->RootDirectory = nullptr;
+        info->FileNameLength = static_cast<DWORD>(name.size() * sizeof(WCHAR));
+        std::copy(name.begin(), name.end(), info->FileName);
+        constexpr int kFileRenameInfoEx = 22;
+        std::error_code ec;
+        if (!::SetFileInformationByHandle(handle, static_cast<FILE_INFO_BY_HANDLE_CLASS>(kFileRenameInfoEx), info, static_cast<DWORD>(buffer.size()))){
+            const DWORD code = ::GetLastError();
+            unsupported = code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION ||
+                          code == ERROR_NOT_SAME_DEVICE;
+            ec = std::error_code(static_cast<int>(code), std::system_category());
+        }
+        ::CloseHandle(handle);
+        return ec;
+    }
+#endif
+
     // One rename attempt. A publish replaces through RENAME_SWAP on Apple (the swapped-out old
-    // file is then unlinked), MoveFileExW write-through on Windows, rename(2) elsewhere.
+    // file is then unlinked); on Windows a POSIX-semantics rename, else MoveFileExW (write-through
+    // for a publish); rename(2) elsewhere.
     std::error_code renameOnce(const fs::path& from, const fs::path& to, bool publish){
 #if defined(_WIN32)
+        bool unsupported = false;
+        const std::error_code posix = renamePosix(from, to, unsupported);
+        if (!unsupported)
+            return posix;
         DWORD flags = MOVEFILE_REPLACE_EXISTING;
         if (publish)
             flags |= MOVEFILE_WRITE_THROUGH;
@@ -460,7 +509,7 @@ namespace {
         }
         fs::create_directories(directory, ec);
         if (ec)
-            return failure(WriteError::CreateDirectory, ec, "create directory", directory);
+            return failure(WriteError::CreateDirectories, ec, "create directory", directory);
         return {};
     }
 
@@ -720,7 +769,7 @@ const char* writeErrorName(WriteError error){
     switch (error){
         case WriteError::None: return "none";
         case WriteError::Unchanged: return "unchanged";
-        case WriteError::CreateDirectory: return "create_directory";
+        case WriteError::CreateDirectories: return "create_directory";
         case WriteError::MissingDirectory: return "missing_directory";
         case WriteError::OpenTemp: return "open_temp";
         case WriteError::WriteTemp: return "write_temp";
@@ -744,7 +793,7 @@ std::string describeWriteError(const WriteResult& result){
     if (result.code == std::errc::no_space_on_device)
         return "the disk is full";
     switch (result.error){
-        case WriteError::CreateDirectory: return "could not create its folder (" + result.code.message() + ")";
+        case WriteError::CreateDirectories: return "could not create its folder (" + result.code.message() + ")";
         case WriteError::OpenTemp: return "could not create a file next to it (" + result.code.message() + ")";
         case WriteError::WriteTemp: return "could not write the data (" + result.code.message() + ")";
         case WriteError::SyncTemp: return "could not flush the data to the disk (" + result.code.message() + ")";

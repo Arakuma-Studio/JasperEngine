@@ -9,6 +9,7 @@
 
 #include "../render/TitleRenderTestSupport.h"
 
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "pool/ShaderPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -34,7 +35,7 @@ namespace {
 
 }
 
-TEST(RuntimeShaderCompilerRelaunch, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
+TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
     JASPER_REQUIRE_GPU();
     if (!RuntimeShaderCompiler::isSupported()) GTEST_SKIP() << "this build has no runtime compiler";
     const bool enabled = RuntimeShaderCompiler::isEnabled(), async = RuntimeShaderCompiler::isAsync();
@@ -45,11 +46,16 @@ TEST(RuntimeShaderCompilerRelaunch, AVariantFirstAskedAfterAnEngineRelaunchCompi
     std::filesystem::remove_all(RuntimeShaderCompiler::getCacheDirectory(), ec);
     EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the first engine run compiles it";
     // what a recreated Android activity does: the runtime compiler and the job system shut down,
-    // a new job system starts; the variant is not on disk, so it must compile
+    // a new job system starts; the variant is not on disk, so it must compile. The asset readers
+    // stop and start with the jobs, as the engine's shutdown and init do: they take the process
+    // job system only at start(), so a later test's reads would go to the shut-down pool and end
+    // cancelled (NoiseTestSupport's WorkerScope)
     RuntimeShaderCompiler::shutdown();
     std::filesystem::remove_all(RuntimeShaderCompiler::getCacheDirectory(), ec);
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
+    AssetIOService::instance().start();
     EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the relaunched engine compiles it too";
     RuntimeShaderCompiler::shutdown();
     RuntimeShaderCompiler::setEnabled(enabled);

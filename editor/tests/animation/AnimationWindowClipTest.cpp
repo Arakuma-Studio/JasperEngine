@@ -54,7 +54,7 @@
 #include "audio/WavWriter.h"
 #include "audio/TimelineAudioPreview.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <chrono>

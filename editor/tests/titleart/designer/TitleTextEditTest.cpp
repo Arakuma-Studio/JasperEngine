@@ -128,13 +128,16 @@ namespace {
             for (int i = 0; i < 5 && !edit.hasKeyboard(); i++) frame(edit);
         }
 
+        // ctrl: the shortcut modifier, io.KeyCtrl (Cmd on macOS, where ConfigMacOSXBehaviors swaps
+        // the two: a Ctrl event there is the Control key, io.KeySuper)
         TitleTextEdit::Result press(TitleTextEdit& edit, ImGuiKey key, bool ctrl = false) {
             ImGuiIO& io = ImGui::GetIO();
-            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
+            const ImGuiKey shortcut = io.ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl;
+            if (ctrl) io.AddKeyEvent(shortcut, true);
             io.AddKeyEvent(key, true);
             const TitleTextEdit::Result result = frame(edit);
             io.AddKeyEvent(key, false);
-            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
+            if (ctrl) io.AddKeyEvent(shortcut, false);
             frame(edit);
             return result;
         }

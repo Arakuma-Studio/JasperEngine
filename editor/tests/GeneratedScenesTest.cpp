@@ -26,10 +26,11 @@
 #include "object/Terrain.h"
 #include "texture/Texture.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include "Scene.h"
 #include "component/CanvasGroupComponent.h"
+#include "support/EditorTestSupport.h"
 #include <cstdlib>
 #include <sstream>
 
@@ -336,16 +337,8 @@ TEST(GeneratedScenes, StringScriptPropertyIsAStdString) {
 // an unscaled Tween compiles against the engine headers (what an exported build compiles)
 TEST(GeneratedScenes, CanvasGroupFactoryCodeCompiles){
 #if defined(JASPER_EDITOR_TEST_ENGINE_FLAGS) && defined(JASPER_EDITOR_TEST_CXX)
-    std::ifstream flagsFile(JASPER_EDITOR_TEST_ENGINE_FLAGS);
-    if (!flagsFile){
+    if (!std::ifstream(JASPER_EDITOR_TEST_ENGINE_FLAGS)){
         GTEST_SKIP() << "no engine flags file " << JASPER_EDITOR_TEST_ENGINE_FLAGS;
-    }
-    std::string flags, line;
-    bool defines = false;
-    while (std::getline(flagsFile, line)){
-        if (line.empty()) continue;
-        if (line == "#defines"){ defines = true; continue; }
-        flags += (defines ? " -D'" : " -isystem '") + line + "'";
     }
 
     Scene scene;
@@ -378,11 +371,8 @@ TEST(GeneratedScenes, CanvasGroupFactoryCodeCompiles){
     fs::create_directories(dir);
     const fs::path file = dir / "generated.cpp";
     std::ofstream(file) << source.str();
-    const std::string command = std::string("'") + JASPER_EDITOR_TEST_CXX + "' -std=gnu++20 -fsyntax-only" + flags +
-                                " '" + file.string() + "' > '" + (dir / "log.txt").string() + "' 2>&1";
-    const int status = std::system(command.c_str());
-    std::ifstream log(dir / "log.txt");
-    const std::string output((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    std::string output;
+    const int status = editor::test::compileSyntaxAgainstEngine(JASPER_EDITOR_TEST_CXX, JASPER_EDITOR_TEST_ENGINE_FLAGS, file, output);
     EXPECT_EQ(status, 0) << output << "\n" << source.str();
     fs::remove_all(dir);
 #else

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 # The per-commit gate of a stream: builds what the change touches and runs the unit and MCP tests
 # that can see it (tools/check_changed.py).
-# The full suite is for pushes to origin main that need it (docs/testing.md).
+# The full gate is CI's: the merge queue and the nightly (docs/testing.md).
 exec python3 -I "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_changed.py" "$@"
