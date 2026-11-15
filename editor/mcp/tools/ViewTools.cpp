@@ -2305,7 +2305,8 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
         // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
-        // its words were cut again when the wave-2 merges took core 16 characters over its limit.
+        // its words were cut again when the wave-2 merges took core 16 characters over its limit, and the
+        // parameter notes once more to pay for skinning_editor (S94 F49).
         tool.description =
             "Fronts a panel (screenshot needs none). console: "
             "its rows, categories, selection; systems: each row's Enabled rect; "
@@ -2315,16 +2316,16 @@ void registerViewTools(McpRegistry& registry) {
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
                                        "pixel_art_cleanup", "skinning_editor", "title_designer", "graph_editor"})},
-            {"scene", sceneRef("window scene: whose tab.")},
+            {"scene", sceneRef("window scene's tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Click this message id's row.")}
+                {"select", integer("Clicks message id's row.")}
             })},
             {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load.")}})},
-            {"path", string("graph_editor: file to open")},
+            {"profiler", object({{"load", string(".jetrace.json path.")}})},
+            {"path", string("graph_editor: its file")},
             {"pose", anyObject("")},
             {"title_designer", anyObject("")}
         }, {"window"});
