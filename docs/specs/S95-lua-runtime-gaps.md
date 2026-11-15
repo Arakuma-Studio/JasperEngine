@@ -616,6 +616,15 @@ Per package, before merging:
   `set_scene_settings fixed_timestep`.
 - **The scene's Fixed Timestep row** has no step buttons and names its fallback (0 = the project's)
   to fit the Inspector.
+- **Window states.** A maximized or fullscreen window's start size is not known before the window
+  exists: `init` reads the preferred size there and `onCanvasChanged` follows. On macOS the start
+  size is in points, so the aspect ratio is right and the retina pixel size arrives through
+  `onCanvasChanged`.
+- **Not compiled here:** the Windows, macOS and iOS edits of the start size (no build target for them
+  on the build hosts); they were reviewed by reading only.
+- **No undo for the new project settings:** Project Settings > Time and Input apply on OK/Apply and
+  `set_project_settings` stays not undoable, as for the existing project settings; the per-scene
+  Fixed Timestep is undoable.
 
 ### WP-5 Data Assets
 
@@ -627,6 +636,11 @@ Per package, before merging:
   `DataAsset.loadAll`; editor Play builds the index from the project.
 - **Data classes leave Add Script**: a `---@dataasset` module is not offered as a component.
 - **`AssetType::DataAsset = 35`** (36 is WP-6's String Table).
+- **References load with the asset.** References to other Data Assets load together with the asset
+  that holds them (cycles handled), not lazily per field: a lazy proxy would break `pairs` and `#list`.
+- **Stored type name** is `data_asset`; `assetType = "dataasset"` is accepted as an alias.
+- **Lists are for Lua scripts and data classes only**, not C++ `DPROPERTY` fields.
+- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 still reads.
 
 ### WP-6 String Tables
 
