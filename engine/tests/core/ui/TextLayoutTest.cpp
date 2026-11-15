@@ -135,8 +135,9 @@ TEST(TextLayout, AutoSizeFitsFixedBox){
         EXPECT_EQ(TextAlignment::fitSize(10, 72, fits), expected) << c.text;
         // the result does fit (unless nothing does), the next size does not
         const unsigned int fitted = TextAlignment::fitSize(10, 72, fits);
-        if (fitted < 72)
+        if (fitted < 72){
             EXPECT_FALSE(fits(fitted + 1)) << c.text;
+        }
     }
 
     // the measure follows the size: twice the size, about twice the width
