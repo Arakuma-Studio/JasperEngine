@@ -11,7 +11,6 @@
 #include "jobs/JobSystem.h"
 #include "LoadReport.h"
 #include "Out.h"
-#include "Factory.h"
 #include "System.h"
 #include "players/PlayerRuntimes.h"
 #include "pool/ShaderPool.h"
@@ -201,7 +200,6 @@ void editor::Project::setClosedScenePrefabs(SceneProject& sceneProject, const st
     for (const std::string& path : prefabs) {
         PrefabSceneInfo info;
         info.prefabPath = FileUtils::pathFromUtf8(path);
-        info.functionName = Factory::prefabToFunctionName(info.prefabPath);
         info.guid = getPrefabGuid(info.prefabPath);
         sceneProject.prefabs.push_back(std::move(info));
     }

@@ -5,6 +5,8 @@
 
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetIndex.h"
+#include "Scene.h"
+#include "asset/AssetRefSchema.h"
 #include "asset/AssetTypes.h"
 #include "asset/TextReferences.h"
 #include "media/VideoFormats.h"
@@ -207,6 +209,17 @@ editor::AssetStrippingPlan editor::AssetStrippingPlan::make(Project& project) {
     for (const SceneProject& scene : project.getScenes()) {
         // a scene opened without being listed is in no build (S98 REQ-28)
         if (!scene.filepath.empty() && scene.inBuild) add(FileUtils::pathToGenericUtf8(project.normalizeToProjectRelative(projectPath / scene.filepath)));
+    }
+    // a scene never saved ships as the editor holds it (S98 REQ-4), and the index has no file of it
+    for (SceneProject& scene : project.getScenes()) {
+        if (!scene.filepath.empty() || !scene.scene || !scene.inBuild) continue;
+        AssetRefSchema::forEachAssetRef(*scene.scene, [&](AssetRef& ref, const AssetRefSite& site) {
+            DepEdge edge;
+            edge.target = ref.guid;
+            edge.targetPath = AssetIndex::toProjectRelative(roots, site.base, ref.path);
+            edge.expected = site.expected;
+            follow(edge);
+        });
     }
     for (const DepEdge& edge : index.dependenciesOf(AssetIndex::projectReferrer(), 1)) follow(edge);
     try {

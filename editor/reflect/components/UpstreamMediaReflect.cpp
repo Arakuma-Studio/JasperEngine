@@ -12,7 +12,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
@@ -96,9 +95,9 @@ namespace {
         JE_FIELD(CameraShakerComponent, traumaMaxOffset),
         JE_FIELD(CameraShakerComponent, traumaMaxAngle),
         JE_FIELD(CameraShakerComponent, traumaFrequency, .min = 0.0f),
-        JE_FIELD(CameraShakerComponent, pixelSnap, .flags = OmitIfDefault | CodegenIfChanged, .label = "Pixel Snap",
+        JE_FIELD(CameraShakerComponent, pixelSnap, .flags = OmitIfDefault, .label = "Pixel Snap",
                  .tooltip = "Rounds the shake to whole art pixels (the Pixel Perfect Camera's grid, else screen pixels) and drops the roll. 2D only."),
-        JE_FIELD(CameraShakerComponent, tickRate, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Hertz, .min = 0.0f, .max = 240.0f, .label = "Tick Rate",
+        JE_FIELD(CameraShakerComponent, tickRate, .flags = OmitIfDefault, .unit = Unit::Hertz, .min = 0.0f, .max = 240.0f, .label = "Tick Rate",
                  .tooltip = "The shake moves only on ticks of 1 / Tick Rate seconds (0: every frame). 2D only."),
     };
     const ComponentCodec kCameraShakerCodec = JE_STREAM_CODEC(CameraShakerComponent, encodeCameraShakerComponent, decodeCameraShakerComponent);
@@ -250,7 +249,6 @@ const ComponentDesc kCameraShakerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CameraShakerComponent),
     .codec = &kCameraShakerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createCameraShakerComponent),
     .extraKeys = kCameraShakerKnownKeys,
 };
 
@@ -261,7 +259,6 @@ const ComponentDesc kCameraFollowDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CameraFollowComponent),
     .codec = &kCameraFollowCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createCameraFollowComponent),
     .extraKeys = kCameraFollowKnownKeys,
 };
 
@@ -272,7 +269,6 @@ const ComponentDesc kTextEffectDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TextEffectComponent),
     .codec = &kTextEffectCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createTextEffectComponent),
     .extraKeys = kTextEffectKnownKeys,
     .extraProperty = &textEffectExtraProperty,
     .extraProperties = &textEffectExtraProperties,
@@ -285,7 +281,6 @@ const ComponentDesc kVideoPlayerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VideoPlayerComponent),
     .codec = &kVideoPlayerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createVideoPlayerComponent),
     .extraKeys = kVideoPlayerKnownKeys,
 };
 
@@ -296,7 +291,6 @@ const ComponentDesc kSafeAreaDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SafeAreaComponent),
     .codec = &kSafeAreaCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createSafeAreaComponent),
     .extraKeys = kSafeAreaKnownKeys,
 };
 

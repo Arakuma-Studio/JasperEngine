@@ -90,23 +90,7 @@ TEST(StreamProjectTransition, CommandIsUndoable) {
 }
 
 TEST(StreamProjectTransition, ExportsCarryThem) {
-    for (bool changed : {false, true}){
-        jasperengine::test::TempDir dir;
-        Generator generator;
-        generator.setTransitionDefaults(changed ? changedDefaults() : TransitionDefaults());
-        generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                            ThreadingProjectSettings(), HtmlUiRenderSettings());
-        std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-        ASSERT_TRUE(in.good());
-        std::stringstream text;
-        text << in.rdbuf();
-        EXPECT_EQ(text.str().find("ScreenTransition::setDefaults(transitionDefaults);") != std::string::npos, changed);
-        if (changed) {
-            EXPECT_NE(text.str().find("transitionDefaults.ramp = \"palettes/ui.palette#ramp:gold\";"), std::string::npos);
-        }
-    }
-    // the prebuilt player's game.json
+    // game.json, which every build reads
     PlayerConfig config;
     EXPECT_FALSE(config.toJson().contains("transitions"));
     config.transitions = changedDefaults();

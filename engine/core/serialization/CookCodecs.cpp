@@ -80,13 +80,20 @@ void cook::visitStructTextures(const StructTable& table, void* owner, const Text
 }
 
 void Codec<Texture>::write(Writer& w, const Texture& texture) {
-    if (texture.empty()) {
-        w.u8(0);
-        return;
-    }
     const bool cube = texture.isCubeMap() || texture.getNumFaces() == 6;
     const std::string p0 = texture.getPath(0);
-    if (cube) {
+    if (texture.empty()) {
+        const Texture none;
+        if (texture.getMinFilter() == none.getMinFilter() && texture.getMagFilter() == none.getMagFilter() &&
+            texture.getWrapU() == none.getWrapU() && texture.getWrapV() == none.getWrapV()) {
+            w.u8(0);
+            return;
+        }
+        // no image but a sampler (a Text's font atlas, which the game rasterizes): an empty id,
+        // which every reader takes
+        w.u8(4);
+        w.string("");
+    } else if (cube) {
         bool otherFaces = false;
         for (size_t f = 1; f < 6; f++) otherFaces = otherFaces || !texture.getPath(f).empty();
         if (!p0.empty() && !otherFaces) {

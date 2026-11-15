@@ -77,19 +77,3 @@ TEST(StreamProjectHtmlUiRender, CommandIsUndoable) {
     EXPECT_TRUE(project.getHtmlUiRenderSettings() == before);
 }
 
-TEST(StreamProjectHtmlUiRender, ExportCarriesThem) {
-    jasperengine::test::TempDir dir;
-    Generator generator;
-    HtmlUiRenderSettings settings;
-    settings.glyphAtlasMiB = 24;
-    settings.sdfPrimitives = false;
-    settings.transformAwareText = true;
-    generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                        ThreadingProjectSettings(), settings);
-    std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-    ASSERT_TRUE(in.good());
-    std::stringstream text;
-    text << in.rdbuf();
-    EXPECT_NE(text.str().find("UIDocumentSystem::setHtmlUiRenderOptions(24, false, true);"), std::string::npos);
-}

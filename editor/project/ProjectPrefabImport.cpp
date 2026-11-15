@@ -5,11 +5,11 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "cook/SceneCooker.h"
 #include "component/PrefabComponent.h"
 #include "util/FileUtils.h"
 #include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
-#include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
 #include "PrefabManager.h"
@@ -44,7 +44,6 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
         if (prefab.instances.find(sceneProject->id) != prefab.instances.end()) {
             PrefabSceneInfo info;
             info.prefabPath = prefabPath;
-            info.functionName = Factory::prefabToFunctionName(prefabPath);
             info.guid = getPrefabGuid(prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -63,7 +62,6 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
         if (!listed) {
             PrefabSceneInfo info;
             info.prefabPath = missing.path;
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             info.guid = missing.guid;
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -2068,7 +2066,7 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
             Out::error("Export of prefab %s: %s", path.string().c_str(), e.what());
         }
 
-        // The slots, as Generator's subtree sizes count them
+        // The slots: each prefab's members in registry order, then each nested prefab's
         std::unordered_set<std::string> visiting;
         std::function<void(const std::filesystem::path&, Entity)> walk = [&](const std::filesystem::path& prefabPath, Entity localRoot) {
             auto it = prefabAssets.find(prefabPath);
@@ -2077,12 +2075,14 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
             }
             Prefab& prefab = it->second;
             const Prefab::Instance* instance = localRoot != NULL_ENTITY ? findInstanceAt(&scratch, localRoot, prefabPath) : nullptr;
-            const std::vector<Entity> members = Factory::getPrefabMemberEntities(prefab.registry.get(), prefab.registryEntities, prefab.root);
+            std::vector<Entity> members;
+            for (Entity entity : prefab.registryEntities) {
+                if (entity != prefab.root) members.push_back(entity);
+            }
             for (Entity registryEntity : members) {
                 result->slots.push_back(instance ? instance->getLocalEntity(registryEntity) : NULL_ENTITY);
             }
             // a variant: its base's GameObjects (the instance at the same root) come next
-            // (Generator counts them the same way, Factory::getPrefabBasePath)
             if (const PrefabComponent* base = prefab.getBaseComponent(); base && !base->path.empty()) {
                 walk(base->path, instance ? localRoot : NULL_ENTITY);
             }

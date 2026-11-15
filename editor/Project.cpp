@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "window/TerrainQualityPanel.h"
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
@@ -57,7 +58,6 @@
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSheetRenderer.h"
-#include "Factory.h"
 #include "picking/ScenePicker.h"
 #include "sceneview/SceneViewController.h"
 #include "sceneview/SceneViewVisibility.h"
@@ -75,6 +75,9 @@
 #include <cstdlib>
 #include <cstring>
 #include "util/SafeWrite.h"
+#include "cook/GameConfig.h"
+#include "cook/SceneCooker.h"
+#include "serialization/CookedScene.h"
 #include "util/VersionControlFiles.h"
 #include "util/FbxImporter.h"
 #include "export/AssetStripping.h"
@@ -1761,7 +1764,7 @@ std::string editor::Project::getName() const {
 
 void editor::Project::setName(std::string name){
     this->name = name;
-    this->libName = Factory::toIdentifier(name);
+    this->libName = toIdentifier(name);
     editor::getEditorHost().updateWindowTitle(name);
 }
 
@@ -5636,8 +5639,8 @@ void editor::Project::removeScene(uint32_t sceneId) {
     // Cleanup resources
     deleteSceneProject(&(*it));
 
-    // Remove C++ source file
-    generator.clearSceneSource(it->id, it->name, getProjectInternalPath());
+    // its cooked copy in the editor's cache
+    clearCookedScene(it->id);
 
     // Cleanup Prefabs
     cleanupPrefabsForScene(sceneId);
@@ -8033,6 +8036,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         if (editor::getEditorHost().shouldSyncEngineApi()) {
             copyEngineApiToProject();
         }
+        // the generated C++ of scenes and prefabs an older editor kept: the build reads cooked scenes now
+        removeGeneratedSceneSources();
 
         editor::getEditorHost().updateResourcesPath();
 
@@ -8463,11 +8468,11 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
         addTab(TabType::SCENE, sceneProject->filepath.string());
     }
 
-    writeSceneSource(sceneProject);
+    writeCookedScene(sceneProject);
     configureGenerator();
 
-    // Written on the main thread, where closed scenes can be read
-    if (hasMissingSceneSources()) {
+    // Cooked on the main thread, where closed scenes can be read
+    if (hasMissingCookedScenes()) {
         generatedSourcesDirty.store(true);
     }
 
@@ -8493,61 +8498,126 @@ void editor::Project::applyFirstDrawSettings(SceneProject* sceneProject) const {
     }
 }
 
-void editor::Project::writeSceneSource(SceneProject* sceneProject) {
-    applyFirstDrawSettings(sceneProject);
-    // prefabs only scripts reference or other prefabs nest get their sources too
-    loadBuildPrefabs();
-    const auto baked = bakePrefabsForExport();
-    std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
-        [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-    generator.writeSceneSource(sceneProject->scene, sceneProject->id, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
+fs::path editor::Project::getCookedCacheDir() const {
+    return getProjectInternalPath() / "cooked";
 }
 
-void editor::Project::writeUnsavedSceneSources(std::vector<std::string>& written, std::vector<std::string>& notOpen) {
-    for (SceneProject& sceneProject : scenes) {
-        if (!sceneProject.filepath.empty()) continue;
-        if (!sceneProject.scene) {
-            notOpen.push_back(sceneProject.name);
-            continue;
+// The project's own CMake build reads what a game reads (REQ-2): each scene and the build's
+// prefabs cooked into the editor's cache, as a build cooks them from what the editor holds
+void editor::Project::writeCookedScene(SceneProject* sceneProject, uint32_t sceneId) {
+    if (!sceneProject || !sceneProject->scene) return;
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
+    const uint32_t id = sceneId != 0 ? sceneId : sceneProject->id;
+    std::vector<uint8_t> bytes;
+    std::string error;
+    const bool cooked = withAuthoredScene(sceneProject, [&](SceneProject& authored) {
+        bytes = cook::SceneCooker::cookScene(authored.scene, id, authored.entities, getSceneCamera(&authored),
+                                             collectResourcesInRegistry(authored.scene));
+    }, error);
+    if (!cooked) {
+        Out::warning("Scene '%s' not cooked for the project's CMake build: %s", sceneProject->name.c_str(), error.c_str());
+        return;
+    }
+    const fs::path file = getCookedCacheDir() / "scenes" / (std::to_string(id) + ".jscn");
+    FileUtils::writeIfChanged(file, std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    // prefabs only scripts reference or other prefabs nest are cooked too
+    writeCookedPrefabs();
+}
+
+bool editor::Project::withAuthoredScene(SceneProject* source, const std::function<void(SceneProject& authored)>& body, std::string& error) {
+    // a scene id no project scene has: the copy's prefab instances are dropped right after
+    static constexpr uint32_t authoredSceneId = 0xFFFFFF02u;
+    if (!source || !source->scene) {
+        error = "scene " + (source ? source->name : std::string()) + " is not loaded";
+        return false;
+    }
+    applyFirstDrawSettings(source);
+    std::unique_ptr<SceneProject> copy;
+    try {
+        const YAML::Node node = YAML::Load(YAML::Dump(Stream::encodeSceneProject(this, source)));
+        SceneProject identity;
+        identity.id = authoredSceneId;
+        identity.filepath = source->filepath;
+        identity.name = source->name;
+        copy.reset(createRuntimeCloneFromNode(&identity, node));
+    } catch (const std::exception& e) {
+        error = "scene " + source->name + ": " + e.what();
+    }
+    if (copy) body(*copy);
+    if (copy) deleteSceneProject(copy.get());
+    cleanupPrefabsForScene(authoredSceneId);
+    return copy != nullptr;
+}
+
+void editor::Project::writeCookedPrefabs() {
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
+    std::vector<cook::CookedFileBytes> files;
+    std::vector<cook::CookedPrefabInfo> prefabs;
+    cook::SceneCooker::cookPrefabs(this, files, prefabs);
+    const fs::path dir = getCookedCacheDir();
+    std::set<fs::path> written;
+    for (const cook::CookedFileBytes& file : files) {
+        if (file.relativePath.rfind("prefabs/", 0) != 0) continue;
+        const fs::path target = dir / FileUtils::pathFromUtf8(file.relativePath);
+        FileUtils::writeIfChanged(target, std::string(reinterpret_cast<const char*>(file.bytes.data()), file.bytes.size()));
+        written.insert(target.filename());
+    }
+    // a prefab removed since: its id is another prefab's or nobody's now
+    std::error_code ec;
+    for (auto it = fs::directory_iterator(dir / "prefabs", ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        if (it->path().extension() == ".jpfb" && !written.count(it->path().filename())) {
+            std::error_code removeError;
+            FileUtils::removePath(it->path(), removeError);
         }
-        writeSceneSource(&sceneProject);
-        written.push_back(sceneProject.name);
     }
-    if (!written.empty()) configureGenerator();
+    cookedCachePrefabs = std::move(prefabs);
 }
 
-std::vector<std::string> editor::Project::scenesWithoutSource() const {
-    std::vector<std::string> missing;
-    for (const SceneProject& sceneProject : scenes) {
-        if (!generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) missing.push_back(sceneProject.name);
+void editor::Project::clearCookedScene(uint32_t sceneId) {
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
+    const fs::path file = getCookedCacheDir() / "scenes" / (std::to_string(sceneId) + ".jscn");
+    std::error_code ec;
+    if (fs::exists(file, ec)) {
+        FileUtils::removePath(file, ec);
+        if (ec) Out::error("Failed to remove the cooked scene '%s': %s", file.string().c_str(), ec.message().c_str());
     }
-    return missing;
 }
 
-bool editor::Project::hasMissingSceneSources() const {
+bool editor::Project::hasCookedScene(uint32_t sceneId) const {
+    // one cooked by another format version is cooked again
+    std::ifstream file(getCookedCacheDir() / "scenes" / (std::to_string(sceneId) + ".jscn"), std::ios::binary);
+    char header[8] = {};
+    if (!file.read(header, sizeof(header))) return false;
+    const uint16_t major = static_cast<uint16_t>(static_cast<uint8_t>(header[4]) | (static_cast<uint8_t>(header[5]) << 8));
+    const uint16_t minor = static_cast<uint16_t>(static_cast<uint8_t>(header[6]) | (static_cast<uint8_t>(header[7]) << 8));
+    return std::memcmp(header, ::jasperengine::cook::SCENE_MAGIC, 4) == 0 && major == ::jasperengine::cook::FORMAT_MAJOR &&
+           minor == ::jasperengine::cook::FORMAT_MINOR;
+}
+
+bool editor::Project::hasMissingCookedScenes() const {
     return std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& sceneProject){
-        return !generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
+        return !hasCookedScene(sceneProject.id);
     });
 }
 
 // Scenes the editor never saved or played, like one created outside it
-void editor::Project::writeMissingSceneSources() {
+void editor::Project::writeMissingCookedScenes() {
     for (SceneProject& sceneProject : scenes) {
-        if (generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) {
+        if (hasCookedScene(sceneProject.id)) {
             continue;
         }
 
         if (sceneProject.scene) {
-            writeSceneSource(&sceneProject);
+            writeCookedScene(&sceneProject);
             continue;
         }
 
         std::unique_ptr<SceneProject> probe;
         try {
             probe.reset(createRuntimeCloneFromSource(&sceneProject));
-            writeSceneSource(probe.get());
+            writeCookedScene(probe.get(), sceneProject.id);
         } catch (const std::exception& e) {
-            Out::warning("Source of scene '%s' not generated: %s", sceneProject.name.c_str(), e.what());
+            Out::warning("Scene '%s' not cooked for the project's CMake build: %s", sceneProject.name.c_str(), e.what());
         }
         if (probe) {
             deleteSceneProject(probe.get());
@@ -8557,55 +8627,54 @@ void editor::Project::writeMissingSceneSources() {
     }
 }
 
+// The editor's cache held one generated C++ file per scene and prefab before S98: a build
+// compiles every source under the project, so they go
+void editor::Project::removeGeneratedSceneSources() {
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
+    const fs::path generated = getProjectInternalPath() / "generated";
+    std::error_code ec;
+    std::vector<fs::path> stale;
+    for (auto it = fs::directory_iterator(generated, ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        const std::string name = FileUtils::pathToUtf8(it->path().filename());
+        const std::string ext = FileUtils::pathToUtf8(it->path().extension());
+        if ((name.rfind("scene_", 0) == 0 || name.rfind("prefab_", 0) == 0) && (ext == ".cpp" || ext == ".h")) stale.push_back(it->path());
+    }
+    for (const fs::path& file : stale) {
+        std::error_code removeError;
+        FileUtils::removePath(file, removeError);
+    }
+    // the default sky's embedded faces the scene sources included
+    std::error_code removeError;
+    FileUtils::removePath(generated / "sky", removeError);
+}
+
 void editor::Project::configureGenerator() {
-    // the standalone build starts the selected scene (in Prefab Mode, the scene behind it)
+    // the project's own CMake build starts the selected scene (in Prefab Mode, the scene behind it)
     const uint32_t selectedRegular = getSceneBehindPrefabStage(selectedScene);
+    cook::GameConfigTarget target;
     const SceneProject* selectedProject = getScene(selectedRegular);
-    const uint32_t startId = selectedProject && selectedProject->inBuild ? selectedRegular : startSceneId;
-
-    std::vector<editor::SceneBuildInfo> scenesToConfig;
-    for (SceneProject& sceneConf : scenes) {
-        // a scene opened without being listed is in no build (S98 REQ-28)
-        if (!sceneConf.inBuild) {
-            continue;
-        }
-        bool isMain = (startId == sceneConf.id);
-        std::vector<uint32_t> involvedSceneIds;
-        std::vector<uint32_t> activeSceneIds;
-        collectInvolvedScenes(sceneConf.id, involvedSceneIds);
-        collectStartActiveScenes(sceneConf.id, activeSceneIds);
-
-        scenesToConfig.push_back({sceneConf.id, sceneConf.name, involvedSceneIds, activeSceneIds, isMain});
+    // (a scene opened without being listed is in no build, S98 REQ-28)
+    target.startScene = selectedProject && selectedProject->inBuild ? selectedRegular : startSceneId;
+    target.fallbackName = libName;
+    target.prefabs = cookedCachePrefabs;
+    const player::PlayerConfig game = cook::makeGameConfig(*this, target);
+    {
+        safewrite::EditorInternal ownInternal(getProjectInternalPath());
+        FileUtils::writeIfChanged(getCookedCacheDir() / "game.json", game.toJson().dump(2) + "\n");
     }
 
-    std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
-    std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.setAtmosphereQuality(atmosphereQuality);
-    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
-    generator.setFoliageDistanceScale(foliageDistanceScale);
-    generator.setDrawSubmission(drawSubmission);
-    generator.setTransitionDefaults(transitionDefaults);
-    generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
-    generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
-    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
-    generator.setDeviceSettingsJson(deviceSettings.toJson());
-    generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
-    generator.setUIScale(uiScale);
-    generator.setPixelsPerUnit(pixelsPerUnit);
-    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
-    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
-    generator.setShippedTerrainTiers(getGeneratedTerrainTiers());
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
+    generator.configure(libName, collectAllSceneCppScripts(), getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(),
+                        getBuildScriptDirs(), getCxxStandard(), vsyncEnabled, getWindowSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
     for (SceneProject& sceneProject : scenes) {
         if (!sceneProject.scene) continue;
         updateSceneCppScripts(&sceneProject);
-        writeSceneSource(&sceneProject);
+        writeCookedScene(&sceneProject);
     }
-    writeMissingSceneSources();
+    writeMissingCookedScenes();
     configureGenerator();
     generatedSourcesDirty.store(false);
     return collectAllSceneCppScripts();
@@ -8630,7 +8699,7 @@ void editor::Project::updateGeneratedSources() {
     }
 
     try {
-        writeMissingSceneSources();
+        writeMissingCookedScenes();
         configureGenerator();
     } catch (const std::exception& e) {
         Out::error("Failed to update generated sources: %s", e.what());
@@ -10720,10 +10789,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
                     result.message = "Failed to save modified scene before play startup";
                     return result;
                 }
-                // involved scenes are written below
-                if (!isInvolvedScene) {
-                    writeSceneSource(&currentSceneProject);
-                }
+                writeCookedScene(&currentSceneProject);
             } else {
                 updateSceneCppScripts(&currentSceneProject);
                 updateScenePrefabs(&currentSceneProject);
@@ -10737,12 +10803,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
         }
     }
 
-    // prefabs only scripts reference or other prefabs nest get their sources too (one bake for
-    // every involved scene)
-    loadBuildPrefabs();
-    const auto baked = bakePrefabsForExport();
 
-    std::vector<editor::SceneBuildInfo> scenesToGenerate;
     for (SceneProject& currentSceneProject : scenes) {
         bool isInvolvedScene = std::find(involvedMainSceneIds.begin(), involvedMainSceneIds.end(), currentSceneProject.id) != involvedMainSceneIds.end();
 
@@ -10765,22 +10826,12 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
                 return result;
             }
 
-            std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
-                [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-            generator.writeSceneSource(runtime->scene, runtime->id, runtime->name, runtime->entities, getSceneCamera(runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(runtime->scene));
-
             {
                 std::scoped_lock lock(playSessionMutex);
                 session->runtimeScenes.push_back(entry);
             }
         }
 
-        bool isMain = (sceneId == currentSceneProject.id);
-        std::vector<uint32_t> involvedSceneIds;
-        std::vector<uint32_t> activeSceneIds;
-        collectInvolvedScenes(currentSceneProject.id, involvedSceneIds);
-        collectStartActiveScenes(currentSceneProject.id, activeSceneIds);
-        scenesToGenerate.push_back({currentSceneProject.id, currentSceneProject.name, involvedSceneIds, activeSceneIds, isMain});
     }
 
     registerSceneManager();
@@ -10795,26 +10846,10 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     const std::vector<Entity> aliveBeforePlay = mainSceneProject->scene->getEntityList();
     result.entities = std::set<Entity>(aliveBeforePlay.begin(), aliveBeforePlay.end());
 
+    // scene_scripts.cpp and CMakeLists.txt of the Play library
+    configureGenerator();
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
-    std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.setAtmosphereQuality(atmosphereQuality);
-    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
-    generator.setFoliageDistanceScale(foliageDistanceScale);
-    generator.setDrawSubmission(drawSubmission);
-    generator.setTransitionDefaults(transitionDefaults);
-    generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
-    generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
-    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
-    generator.setDeviceSettingsJson(deviceSettings.toJson());
-    generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
-    generator.setUIScale(uiScale);
-    generator.setPixelsPerUnit(pixelsPerUnit);
-    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
-    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
-    generator.setShippedTerrainTiers(terraincore::TERRAIN_ALL_TIERS);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
-    if (hasMissingSceneSources()) {
+    if (hasMissingCookedScenes()) {
         generatedSourcesDirty.store(true);
     }
 

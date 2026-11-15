@@ -16,7 +16,6 @@
 #include "engine/physics/PhysicsTestScene.h"
 
 #include "Catalog.h"
-#include "Factory.h"
 #include "Scene.h"
 #include "Stream.h"
 #include "animation/AnimationEvent.h"
@@ -235,7 +234,6 @@ namespace {
             return instance.vat0 == v0 && instance.vat1 == v1;
         }
     };
-
 }
 
 // ---- registration, Catalog ------------------------------------------------------------------
@@ -399,10 +397,6 @@ TEST(VertexAnimatorComponent, InstanceClipsAndSpeedsRoundTrip) {
     Catalog::copyPropertyValue(&scene, entity, &scene, other, type, "instanceSpeeds");
     EXPECT_EQ(scene.getComponent<VertexAnimatorComponent>(other).instanceClips, crowd.instanceClips);
     EXPECT_EQ(scene.getComponent<VertexAnimatorComponent>(other).instanceSpeeds, crowd.instanceSpeeds);
-
-    const std::string code = Factory::createComponent(0, &scene, entity, type, "", "scene", "entity");
-    EXPECT_NE(code.find("vertexanimator.instanceClips = {\"Walk\", \"\", \"Run\"};"), std::string::npos) << code;
-    EXPECT_NE(code.find("vertexanimator.instanceSpeeds = {1.250000f, 0.500000f};"), std::string::npos) << code;
 }
 
 TEST(VertexAnimatorComponent, DecodingOverAnAnimatorResetsItsRunAndClearsCallbacks) {
@@ -537,29 +531,6 @@ namespace {
         "vertexanimator.attachments[0].socket = \"RightHand\";\n"
         "vertexanimator.attachments[0].entity = 7;\n"
         "scene->addComponent<VertexAnimatorComponent>(entity, vertexanimator);\n";
-
-}
-
-TEST(VertexAnimatorComponent, FactoryEmitsTheAuthoredFields) {
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<VertexAnimatorComponent>(entity, authoredAnimator());
-    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::VertexAnimatorComponent, "", "scene", "entity");
-    EXPECT_EQ(code, EMITTED_VERTEX_ANIMATOR);
-    EXPECT_EQ(code.find(HERO_GUID), std::string::npos) << "the editor's GUID stays out of the build";
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedVertexAnimator(&built, builtEntity);
-    VertexAnimatorComponent expected = authoredAnimator();
-    expected.guid.clear();
-    expectSameAuthored(built.getComponent<VertexAnimatorComponent>(builtEntity), expected);
-
-    // the scene's preload list names the .vat (Factory writes resources.vats)
-    SceneResources resources;
-    resources.vats.push_back(HERO);
-    EXPECT_EQ(resources.vats.size(), 1u);
 }
 
 // ---- cloning ---------------------------------------------------------------------------------

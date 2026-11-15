@@ -69,6 +69,8 @@ def jasperIgnored = { String name ->
             exclude 'je-cooked/desktop/**', 'je-cooked/web/**'
         }
         from(projectSourceRootAbs + '/lua')
+        // game.json and the cooked scenes and prefabs, at the root beside them (S98 D1)
+        from(projectSourceRootAbs + '/content')
         into destination
         exclude { element ->
             if (jasperContent.inPack != pack) return true

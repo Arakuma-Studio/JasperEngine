@@ -10,6 +10,10 @@
 // and the scene resources.
 
 #include <gtest/gtest.h>
+
+#include <algorithm>
+
+#include "serialization/CookedScene.h"
 #include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
@@ -17,7 +21,6 @@
 #include "AppSettings.h"
 #include "Catalog.h"
 #include "Engine.h"
-#include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
 #include "Scene.h"
@@ -282,26 +285,6 @@ namespace {
         "animationplayer.defaultFadeTime = 0.250000f;\n"
         "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n";
 
-}
-
-TEST(AnimationLayersEditor, FactoryEmitsLayers) {
-    AnimationPlayerComponent player;
-    player.clips = {clipEntry("anim/walk.anim"), clipEntry("anim/hold.anim", 1)};
-    player.layers = {layerOf("Base Layer"), layerOf("Holding", 0.5f, AnimationLayerBlend::Additive, "anim/arm.mask", MASK_GUID)};
-    Scene scene;
-    const Entity entity = playerEntity(scene, player);
-    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::AnimationPlayerComponent, "", "scene", "entity");
-    EXPECT_EQ(code, EMITTED_LAYERED_PLAYER);
-    EXPECT_EQ(code.find(MASK_GUID), std::string::npos) << "the editor's GUIDs stay out of the build";
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedLayeredPlayer(&built, builtEntity);
-    const AnimationPlayerComponent& result = built.getComponent<AnimationPlayerComponent>(builtEntity);
-    EXPECT_EQ(result.clips, player.clips);
-    AnimationPlayerComponent expected = player;
-    for (AnimationPlayerLayer& layer : expected.layers) layer.maskGuid.clear();
-    EXPECT_EQ(result.layers, expected.layers);
 }
 
 // ---- layer edits ---------------------------------------------------------------------------
@@ -638,19 +621,16 @@ TEST(AnimationLayersEditor, ReferencesFollowRenamesAndScenesPreloadThem) {
 
     // the scene's resources: the masks, the controller and the clips (and models) it names
     ASSERT_TRUE(project()->saveSceneToPath(s.sceneProject->id, "Layers.scene"));
-    const fs::path source = project()->getProjectInternalPath() / "generated" /
-                            (Factory::sceneToFileName(s.sceneProject->id, s.sceneProject->name) + ".cpp");
-    const std::string code = readAll(source);
-    const size_t at = code.find("SceneResources resources_");
-    ASSERT_NE(at, std::string::npos) << source;
-    const std::string resources = code.substr(at, code.find("return resources;", at) - at);
-    for (const char* line : {"resources.models.push_back(\"models/hero.gltf\");", "resources.clips.push_back(\"anim/walk.anim\");",
-                             "resources.clips.push_back(\"models/hero.gltf#Hit\");", "resources.masks.push_back(\"anim/arm.mask\");",
-                             "resources.controllers.push_back(\"anim/granjero.controller\");"}) {
-        EXPECT_NE(resources.find(line), std::string::npos) << line << "\n" << resources.substr(0, 800);
-    }
-    EXPECT_NE(code.find("animationplayer.layers[1].mask = \"anim/arm.mask\";"), std::string::npos);
-    EXPECT_EQ(code.find(MASK_GUID), std::string::npos) << "GUIDs stay in the scene file";
+    const fs::path cooked = project()->getCookedCacheDir() / "scenes" / (std::to_string(s.sceneProject->id) + ".jscn");
+    const std::string bytes = readAll(cooked);
+    ASSERT_FALSE(bytes.empty()) << cooked;
+    const SceneResources resources = CookedSceneLoader::sceneResources(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()));
+    auto has = [](const std::vector<std::string>& list, const char* path) { return std::find(list.begin(), list.end(), path) != list.end(); };
+    EXPECT_TRUE(has(resources.models, "models/hero.gltf"));
+    EXPECT_TRUE(has(resources.clips, "anim/walk.anim"));
+    EXPECT_TRUE(has(resources.clips, "models/hero.gltf#Hit"));
+    EXPECT_TRUE(has(resources.masks, "anim/arm.mask"));
+    EXPECT_TRUE(has(resources.controllers, "anim/granjero.controller"));
 
     // the mask renamed in the editor: the player's path and the controller's layer follow
     RenameFileCmd rename(project(), "arm.mask", "arm2.mask", (assets() / "anim").string());

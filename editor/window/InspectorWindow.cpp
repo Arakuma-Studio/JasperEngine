@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "TerrainQualityPanel.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
@@ -118,7 +119,6 @@
 #include "Screen.h"
 #include "window/DeviceProfiles.h"
 #include "Widgets.h"
-#include "Factory.h"
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
@@ -13049,7 +13049,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     // Script dialog uses - since className is emitted verbatim as a
                     // class token by the code generator. Reflect it back in the field.
                     if (!newName.empty() && script.type != ScriptType::LUA) {
-                        newName = Factory::toIdentifier(newName);
+                        newName = toIdentifier(newName);
                         strncpy(nameBuffer, newName.c_str(), sizeof(nameBuffer) - 1);
                         nameBuffer[sizeof(nameBuffer) - 1] = '\0';
                     }

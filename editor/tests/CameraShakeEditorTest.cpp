@@ -10,7 +10,6 @@
 
 #include "AppSettings.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
 #include "ScriptDataTestSupport.h"
@@ -302,31 +301,6 @@ TEST(CameraShakeComponents, SceneYamlRoundTripAndOldScenes){
     ProjectUtils::addEntityComponent(&scene, entity, ComponentType::CameraShakerComponent, entities, removed);
     ASSERT_TRUE(scene.findComponent<CameraShakerComponent>(entity));
     expectSameShaker(scene.getComponent<CameraShakerComponent>(entity), authoredShaker());
-}
-
-TEST(CameraShakeComponents, FactoryEmitsCodeThatBuildsTheSameComponents){
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<CameraShakerComponent>(entity, authoredShaker());
-    scene.addComponent<CameraFollowComponent>(entity, authoredFollow(7));
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::CameraShakerComponent, "", "scene", "entity"), EMITTED_SHAKER);
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::CameraFollowComponent, "", "scene", "entity"), EMITTED_FOLLOW);
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedShaker(&built, builtEntity);
-    emittedFollow(&built, builtEntity);
-    expectSameShaker(built.getComponent<CameraShakerComponent>(builtEntity), authoredShaker());
-    expectSameFollow(built.getComponent<CameraFollowComponent>(builtEntity), authoredFollow(7));
-
-    // defaults emit no mode / space / start preset line
-    Scene plain;
-    const Entity plainEntity = plain.createUserEntity();
-    plain.addComponent<CameraShakerComponent>(plainEntity, {});
-    const std::string code = Factory::createComponent(0, &plain, plainEntity, ComponentType::CameraShakerComponent, "", "scene", "entity");
-    EXPECT_EQ(code.find(".mode"), std::string::npos) << code;
-    EXPECT_EQ(code.find(".startPreset"), std::string::npos) << code;
 }
 
 TEST(CameraShakeComponents, CloningResetsTheRuntimeAndRemapsTheTarget){

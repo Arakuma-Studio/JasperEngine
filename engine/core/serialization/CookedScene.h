@@ -8,7 +8,8 @@
 //
 //   header   magic "JSCN" / "JPFB", u16 major, u16 minor, u32 scene (prefab) id, u32 entity
 //            count, u32 flags, u64 string table offset                                  (28 bytes)
-//   body     a scene: the settings record, the entity records, the camera, the resources;
+//   body     a scene: the settings record, the entity records, the camera, the resources, the
+//            hierarchy (1.7);
 //            a prefab: its link, the root and slot records, the components, the hierarchy
 //   strings  varint count, then each string as varint length and UTF-8 bytes
 //
@@ -39,8 +40,9 @@ namespace jasperengine {
         constexpr uint16_t FORMAT_MAJOR = 1;
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
         // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
-        // 6: a Mesh Renderer's .mesh asset (S98 F1: its geometry is not in the scene)
-        constexpr uint16_t FORMAT_MINOR = 6;
+        // 6: a Mesh Renderer's .mesh asset (S98 F1: its geometry is not in the scene); 7: the scene
+        // resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's hierarchy
+        constexpr uint16_t FORMAT_MINOR = 7;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

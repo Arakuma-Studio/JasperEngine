@@ -827,6 +827,53 @@ Avoiding conflicts:
   Android row, Debug Package Suffix included; `set_project_settings` stays not undoable, as for
   every row.
 
+- **WP-1, REQ-1 (D1 sketch):** `player::runGame(const PlayerConfig&, const ProjectHooks&, contentUrl)`
+  (`engine/core/player/GameRunner.h`). The hooks are the C++ scripts' entry points scene_scripts.cpp
+  already had: `initScripts`/`cleanupScripts` per scene and the three ObjectManager hooks (instantiated,
+  destroyed, moved GameObjects); no Lua-bindings hook is needed (a C++ script registers nothing in Lua).
+  A Compile build reads `game.json` as the prebuilt player does, so every setting its generated
+  `init()` used to set moved into game.json and `player::applySettings`: Shader Creation, the Canvas
+  Scaler default, GPU Instancing, Shader Globals, the 3D world capacity, Player > Resolution and
+  Presentation, Allow Insecure HTTP, the application info, Project Settings > Debug, the terrain
+  tiers, native plugins per target. The prebuilt player applied none of those before: it now does.
+- **WP-1, REQ-1 (layout):** an exported project holds the cooked content under `project/content/`
+  (`game.json`, `scenes/`, `prefabs/`), which each platform's build puts at the game's content root
+  beside `assets/` and `lua/`: the exported CMake (desktop copy and install, the Apple bundle, the
+  web's `--preload-file content@/`), the Android template's content sync (WP-2's `jasperengineSync*`), and the exported Xcode
+  project's resources (`Exporter::addXcodeProjectContent`). A built game's folder has the prebuilt
+  layout (`game.json`, `scenes/`, `prefabs/` next to `assets/`).
+- **WP-1, REQ-1 (deletions):** with Factory's emitters went the reflection tables' exported-code
+  hooks (`codegen*`, `cppLiteral`, `cppStatements`, the NoCodegen/CodegenIfChanged/CodegenRuntime
+  flags, `reflect/Codegen.cpp`), the navigation and voxel settings' code, the curve literals and the
+  scene-dump `bake` op; `toIdentifier` moved to `editor/util/CppIdentifier.h`, `BakedPrefab` to
+  `cook/SceneCooker.h`. The tests that pinned generated code were removed or turned into cooked
+  round trips. WP-7's `mesh.meshAsset` line in `Factory::createMeshComponent` went with it: a
+  Compile build reads the reference from the cooked mesh table, as the prebuilt player does.
+- **WP-1, REQ-52:** the cooker dropped four of a scene's preload lists (VATs, masks, controllers,
+  bitmap fonts) that the generated `resources_<scene>()` had: cooked format 1.7 carries them (an older
+  file still reads; 1.6 is WP-7's .mesh asset).
+- **WP-1, REQ-2:** the project's own CMake build reads `<internal>/cooked/` through
+  `JASPERENGINE_COOKED_PATH`; its asset path stays the project's assets folder, so a scene drawing
+  the editor's built-in default sky (faces held in memory by the editor) has no sky there. Exports
+  ship the faces as before.
+- **WP-1, REQ-4:** `W-SCENE-UNSAVED` replaces `W-SCENE-NOT-SAVED` (one code for a never-saved scene,
+  a modified one and a modified Prefab Mode stage). A build cooks each scene as its file would hold
+  it now (encoded and decoded into a scratch scene, `Project::withAuthoredScene`), so what drawing or
+  loading made of it in the editor (a camera sized to the view, a Text's atlas, loaded geometry) is
+  no part of the build (REQ-5); a scene whose save would lose a GameObject stops the build as it
+  stopped the save-first export. Terrain maps still reach their files on an export's flush: they
+  persist on their own a second after an edit (T1 R29), which is no unsaved change of the user's.
+- **WP-1, REQ-52 (hierarchy):** a cooked scene carried no hierarchy (a Transform's parent is no
+  field of its record; only prefabs had a hierarchy record), so a prebuilt player made every child
+  a root. Format 1.7 adds the scene's hierarchy record after the resources (an older player skips
+  it). A texture with no image but a sampler (a Text's font atlas, a sprite sheet's page) is
+  written as an empty id, which every 1.x reader takes, instead of nothing.
+- **WP-1, REQ-5 / E27:** the determinism guard is `CookDeterminism.EveryComponentDefaultInitialisedCooksTheSameBytes`
+  (every component default-initialised over two fillings cooks the same bytes; `ComponentDesc::defaultInitialise`
+  added for it) plus AC6.
+- **WP-1, REQ-10 in Compile builds:** `player::readGameConfig` (the generated main's) applies the
+  `stripped` list of a `content-manifest.json` beside `game.json`, as the prebuilt player does.
+
 - **WP-5, AC24 (a):** the AC24 fixture logs no "No free system entity slot" on the code before
   WP-5 (its gizmos took about 450 of the 1,000 system slots), so `test_editor_cost.py` guards it
   and the red run is `SceneRenderGizmos.SystemEntitiesPerKind` (500 lights and 500 bodies: the
@@ -878,6 +925,21 @@ Avoiding conflicts:
   with 2,000; the editor's median frame 18, 431 and 618 ms; `editor_status` 207, 354 and 634 ms.
   Trace of 45 calls: queue wait 105-1237 ms, handler 0-2 ms. REQ-42's fixture (300 calls into
   1,000 GameObjects): first 50 mean 202 ms, last 50 mean 130 ms, ratio 0.64.
+- **WP-1, REQ-39 measurement** (before the switch, one run of one Release binary, dev host, Linux
+  x86_64 GCC 13 -O3): the REQ-39 fixture (2,000 GameObjects made through MCP: 700 cubes, 400
+  sprites, 200 point lights, 300 bodies, 250 Lua and 149 C++ scripts) exported as source by the
+  editor before WP-1 (generated `scene_New_Scene_*.cpp`: 172,675 lines, 6.8 MB), with a timing harness
+  in its `main.cpp` building the scene 11 times each way, alternated, from the generated
+  `create_<scene>()` and from the same scene cooked by this editor (5.2 MB `.jscn`): median 51.9 ms
+  generated, 44.0 ms cooked, ratio 0.85 (REQ-39 allows 1.25). Compiling that one generated file
+  took 607 s (`.ninja_log`) of the export's build, per ABI; it is gone. After the switch,
+  `CookedSceneBench.LoadsTwoThousandGameObjects` holds the 60 ms budget (perfSlack).
+- **WP-1, Android** (local KVM host, `jasperengine/android-build`, Gradle `assembleDebug`, one ABI
+  arm64-v8a, the worktree's Android Studio template on a scratch project): the same generated
+  REQ-39 scene file took 52.2 s of compile (`.ninja_log`) in a Debug build; a cooked build compiles
+  no scene source. AC7 manual: after that build, the scene file was removed and a new
+  `probe_configure_depends.cpp` added; the next `assembleDebug` printed `GLOB mismatch!`, compiled
+  the probe, dropped the scene from `build.ninja`, and linked `app-debug.apk`.
 - **WP-7 (F1, `.mesh` assets)** implemented on `feature/s98-editor-tooling-gaps--7` (Deviations).
   Red controls: `test_mesh_assets.py` on the editor of `3ef9338fa` (3 of 3 fail: `save_as` unknown,
   no `.mesh` written); the editor unit tests with `MeshSystem`'s read and the save's extraction
@@ -939,6 +1001,23 @@ Avoiding conflicts:
   and do not build on the old one. AC36: screenshots of Project Settings > Player > Build, the
   Project window's two items and an Exclude From Build undone with Edit > Undo (outside the
   repository, the package's evidence folder).
+- **WP-1, verification** (targeted runs; full suites not run). Red controls on a scratch copy with
+  each fix set aside: `CookDeterminism.EveryComponentDefaultInitialisedCooksTheSameBytes` fails naming
+  `RigidbodyComponent` with `solidBoxDensity`'s initialiser removed (E27/AC6 guard);
+  `ProjectCookCacheTest.WritesCookedSceneOnSave` fails with the stale-source removal off (AC4);
+  `ExportTemplate.ProjectGlobConfigureDepends` fails without the keyword (AC7);
+  `StrippedAssets.ACompileBuildReadsTheListBesideItsGameJson` fails without the manifest read.
+  `CookedScenes.ParentsAreBuiltBeforeChildren`, `CookDeterminism.ATextShipsNoFontAtlas` and
+  `Stream.SubmeshVertexCountNotTheLastDraws` failed on the first cooked build (the scene hierarchy,
+  the sampler and the vertex counts were lost) and pass with the fixes. `test_export_sources.py`
+  run on the editor before WP-1: both tests fail (no `W-SCENE-UNSAVED`, the export saved the scenes;
+  no cooked scene in a source export). The MCP-level red of AC3 (hooks set aside) and AC6
+  (`solidBoxDensity` in an export) were not run. On the tree merged with WP-3 to WP-7:
+  `WERROR=1 tools/build.sh linux` and the glcore release player build clean; the targeted CI MCP
+  files (export sources/pipeline, build, build scenes, save determinism/completeness, shader lists,
+  asset stripping, mesh assets, CLI paths) 73 passed, 4 skipped (the slow ones), 0 failed;
+  `test_build_parity` (AC2), `test_desktop_build_and_run` (AC1), `test_compile_build_removes_stale_files`
+  (AC8) and `test_lifecycle_export` (AC3) pass with `JASPER_SLOW_BUILD=1`.
 - **WP-2, Android end to end** (`ANDROID_PACKAGING_SOURCE=1 tools/ci/android_packaging.sh development`,
   local KVM host, x86_64 development runtime from `tools/build.sh players`): every prebuilt check
   passed, step 3b included: `_Onboarding/level.json` in the APK and in `game_content` of the bundle,

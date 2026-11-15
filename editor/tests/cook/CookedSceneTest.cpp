@@ -767,21 +767,51 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
 }
 
+namespace {
+
+    uint32_t readLe32(const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; }
+
+    void writeLe32(uint8_t* at, uint32_t value) {
+        for (int i = 0; i < 4; i++) at[i] = static_cast<uint8_t>(value >> (8 * i));
+    }
+
+    // A 1.7 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
+    // out: the resources record (the fourth) without those four empty lists that end it (the
+    // hierarchy record after it, which a 1.6 reader skips, stays)
+    std::vector<uint8_t> asMinor6(std::vector<uint8_t> bytes) {
+        using namespace jasperengine::cook;
+        size_t at = HEADER_BYTES;
+        for (int record = 0; record < 3; record++) at += 4 + readLe32(bytes.data() + at);
+        const uint32_t length = readLe32(bytes.data() + at);
+        constexpr uint32_t tail = 4;   // four empty lists, a varint 0 each
+        for (size_t i = at + 4 + length - tail; i < at + 4 + length; i++) EXPECT_EQ(bytes[i], 0u) << "the new lists are empty";
+        bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length - tail), bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length));
+        writeLe32(bytes.data() + at, length - tail);
+        uint64_t stringsOffset = 0;
+        for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
+        stringsOffset -= tail;
+        for (int i = 0; i < 8; i++) bytes[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
+        bytes[6] = 6;
+        bytes[7] = 0;
+        return bytes;
+    }
+
+}
+
 // What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
 // values that end the settings record, the record's length and the string table offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
     // 1.6 (a Mesh Renderer's .mesh asset) is a field of the mesh's table: the settings record is 1.5's
-    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes values and new resource lists: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
-    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
-    auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
+    const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}));
     const size_t cut = waterWakeTailBytes(*scene);
-    const uint32_t settingsLength = le32(bytes.data() + HEADER_BYTES);
+    const uint32_t settingsLength = readLe32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
 
     std::vector<uint8_t> v14(bytes.begin(), bytes.begin() + HEADER_BYTES);
@@ -806,6 +836,39 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
+}
+
+// Every list a scene preloads ships (S98 REQ-52: the cooked scene is every build's), and a 1.6
+// file, which had the first four only, still gives them
+TEST(CookedScene, SceneResourcesKeepEveryList) {
+    DecodedScene source = emptyScene();
+    SceneResources resources;
+    resources.models = {"models/hero.gltf"};
+    resources.clips = {"anim/walk.anim", "models/hero.gltf#Hit"};
+    resources.vats = {"crowd/walk.vat"};
+    resources.masks = {"anim/arm.mask"};
+    resources.controllers = {"anim/granjero.controller"};
+    resources.bitmapFonts = {"fonts/pixel.fnt"};
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, resources);
+    const SceneResources read = CookedSceneLoader::sceneResources(std::span<const uint8_t>(bytes.data(), bytes.size()));
+    EXPECT_EQ(read.models, resources.models);
+    EXPECT_EQ(read.clips, resources.clips);
+    EXPECT_EQ(read.vats, resources.vats);
+    EXPECT_EQ(read.masks, resources.masks);
+    EXPECT_EQ(read.controllers, resources.controllers);
+    EXPECT_EQ(read.bitmapFonts, resources.bitmapFonts);
+
+    SceneResources older = resources;
+    older.vats.clear();
+    older.masks.clear();
+    older.controllers.clear();
+    older.bitmapFonts.clear();
+    const std::vector<uint8_t> v16 = asMinor6(editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, older));
+    const SceneResources readOlder = CookedSceneLoader::sceneResources(std::span<const uint8_t>(v16.data(), v16.size()));
+    EXPECT_EQ(readOlder.models, resources.models);
+    EXPECT_EQ(readOlder.clips, resources.clips);
+    EXPECT_TRUE(readOlder.masks.empty());
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 TEST(RuntimeFields, Generated) {

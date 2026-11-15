@@ -25,7 +25,6 @@
 #include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Catalog.h"
 #include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
@@ -1077,7 +1076,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   addObject {entity (the parent, may be empty), name} (a plain child GameObject with a Transform) |
 //   setRef {entity, component, property, target (a dump path or empty)} (an override on an
 //       instance's GameObject) | addLocalComponent / removeLocalComponent {entity, component} (the
-//       GameObject only, for record*Component) | bake {out} (each prefab's generated source) |
+//       GameObject only, for record*Component) |
 //   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
 //   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
 //   move {entity, target, insertion: before|after|into} (MoveEntityOrderCmd, a Hierarchy drag) |
@@ -1241,16 +1240,6 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             for (size_t i = 0; i < entries.size(); i++) {
                 std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
                           << (i < history.appliedCount() ? "" : " (redo)") << "\n";
-            }
-            continue;
-        }
-        if (name == "bake") {
-            // what the export generates for each prefab (build_prefab_*), from its baked instance
-            const fs::path out = resolveOpsPath(op["out"].as<std::string>());
-            fs::create_directories(out);
-            for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }

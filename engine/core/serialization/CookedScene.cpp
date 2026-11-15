@@ -321,6 +321,22 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         if (!readComponents(record.body, scene, entity, false, error)) return false;
     }
 
+    if (file.header.minor >= 7) {
+        // the hierarchy, each child appended to its parent in Transform order
+        r.record();   // resources
+        Reader hierarchy = r.record();
+        const uint64_t links = hierarchy.varint();
+        for (uint64_t i = 0; i < links && !hierarchy.failed(); i++) {
+            const Entity child = hierarchy.entity();
+            const Entity parent = hierarchy.entity();
+            if (scene->isEntityCreated(child) && scene->isEntityCreated(parent)) scene->addEntityChild(parent, child, false);
+        }
+        if (r.failed() || hierarchy.failed()) {
+            setError(error, "corrupt scene hierarchy: " + (r.failed() ? r.error() : hierarchy.error()));
+            return false;
+        }
+    }
+
     bindTextureLinks(scene, made, nullptr);
 
     const Entity cameraEntity = camera.entity();
@@ -361,6 +377,12 @@ SceneResources CookedSceneLoader::sceneResources(std::span<const uint8_t> bytes)
     read(list, resources.sounds);
     read(list, resources.models);
     read(list, resources.clips);
+    if (file.header.minor >= 7) {
+        read(list, resources.vats);
+        read(list, resources.masks);
+        read(list, resources.controllers);
+        read(list, resources.bitmapFonts);
+    }
     if (list.failed()) Log::error("Scene resources: %s", list.error().c_str());
     return resources;
 }

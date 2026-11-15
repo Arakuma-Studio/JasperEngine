@@ -7,6 +7,9 @@
 // undo step of the window and the Project window.
 
 #include "asset/FileOpsTestProject.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "asset/TextReferences.h"
 #include "command/type/AssetStrippingSettingsCmd.h"
 #include "export/AssetStripping.h"
@@ -126,6 +129,30 @@ TEST_F(AssetStrippingProjectTest, ReferencedOnlyKeepsWhatTheBuildNames) {
     // Lua sources and data files always ship
     EXPECT_EQ(plan.leftOutReason("scripts/Loader.lua"), "");
     EXPECT_EQ(plan.leftOutReason("assets/data/levels.json"), "");
+}
+
+// A scene never saved ships as the editor holds it (S98 REQ-4) and has no file the index read:
+// what it names ships
+TEST_F(AssetStrippingProjectTest, ReferencedOnlyKeepsWhatANeverSavedSceneNames) {
+    project->getAssetIndex().waitUntilReady();
+    AssetStrippingSettings settings;
+    settings.mode = AssetStrippingMode::ReferencedOnly;
+    project->setAssetStripping(settings);
+    if (SceneProject* current = project->getSelectedScene()) current->isModified = false;
+    project->createNewScene("Unsaved", SceneType::SCENE_3D);
+    SceneProject* unsaved = project->getScene(project->getSelectedSceneId());
+    ASSERT_NE(unsaved, nullptr);
+    ASSERT_TRUE(unsaved->filepath.empty());
+    Scene* scene = unsaved->scene;
+    const Entity entity = scene->createUserEntity();
+    scene->addComponent<Transform>(entity, {});
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.baseColorTexture.setPath("textures/unused.png");
+    scene->addComponent<MeshComponent>(entity, mesh);
+    unsaved->entities.push_back(entity);
+    EXPECT_EQ(AssetStrippingPlan::make(*project).leftOutReason("assets/textures/unused.png"), "");
+    EXPECT_EQ(AssetStrippingPlan::make(*project).leftOutReason("assets/textures/computed_1.png"), "unreferenced");
 }
 
 TEST_F(AssetStrippingProjectTest, SettingsAreOneUndoStep) {
