@@ -147,8 +147,9 @@ TEST(BitmapText, AutoSizeFitsWholeScales){
         // still whole font pixels, and inside the box when it fits
         for (const Vector3& p : t.positions()){
             EXPECT_NEAR(std::fmod(std::fabs(p.x), (float)expected), 0.0f, 1e-4f) << c.text;
-            if (expected > minScale)
+            if (expected > minScale){
                 EXPECT_LE(p.x, (float)c.width + 1e-4f) << c.text;
+            }
         }
         EXPECT_EQ(layout.width, c.width) << "the fixed box stays";
 
