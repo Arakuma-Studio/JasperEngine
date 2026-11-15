@@ -78,7 +78,9 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             // S87: Project Settings > Localization
             "localization",
             // Project Settings > Voxels (T6 R7)
-            "voxel"}},
+            "voxel",
+            // Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode (S52, S94 F5)
+            "sortingLayers", "sortingLayerNextId", "transparencySortMode", "transparencySortAxis"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
     };
