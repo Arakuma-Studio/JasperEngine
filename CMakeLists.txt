@@ -836,6 +836,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
+    ${EDITOR_DIR}/platform/AndroidIcons.cpp
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
@@ -1554,6 +1555,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
     ${EDITOR_DIR}/command/type/AssetStrippingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/AndroidSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp

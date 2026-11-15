@@ -834,6 +834,10 @@ namespace jasperengine::editor{
         std::string packageFormat = "aab";
         std::filesystem::path keystorePath;
         std::string keystoreAlias;
+        // Debug Package Suffix (android.debugPackageSuffix): the debug package's applicationIdSuffix
+        // (".debug"), so it installs beside the release one; a prebuilt build signed with the
+        // debug key takes it too
+        std::string debugPackageSuffix;
         // native plugins (android.*): what SDKs need from the Gradle project
         std::vector<std::string> gradleDependencies;   // "group:name:version" -> implementation; other text verbatim
         std::vector<std::string> gradleRepositories;   // Maven repository URLs
@@ -841,6 +845,8 @@ namespace jasperengine::editor{
         std::vector<std::string> extraPermissions;     // full names: "com.google.android.gms.permission.AD_ID"
         std::string manifestXml;               // raw XML inside <manifest>, before <application>
         std::string manifestApplicationXml;    // raw XML inside <application>
+
+        bool operator==(const AndroidProjectSettings&) const = default;
     };
 
     struct ComponentRecoveryEntry {

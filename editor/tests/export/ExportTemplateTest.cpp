@@ -50,5 +50,5 @@ TEST(ExportTemplate, CookedContentReachesEveryContentRoot) {
     EXPECT_NE(block.find("COMMAND \"${CMAKE_COMMAND}\" -E copy_directory ${PROJECT_ROOT}/content ${BUNDLE_RESOURCES_DIR}"), std::string::npos);
     // Android merges it into the APK's assets root
     const std::string gradle = repoText("engine/workspaces/androidstudio/app/build.gradle");
-    EXPECT_NE(gradle.find("projectSourceRootAbs+'/content'"), std::string::npos);
+    EXPECT_NE(gradle.find("from(projectSourceRootAbs + '/content')"), std::string::npos);
 }

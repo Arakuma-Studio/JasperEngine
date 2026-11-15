@@ -91,7 +91,10 @@ used (the result's note says so).
 ## Building an exported source project
 
 Export source (Build Settings, `jasperengine-editor export --project <dir> --out <dir>`, MCP
-`build_project mode: source`) writes a CMake project with the engine, the game and two ways in:
+`build_project mode: source`) writes a CMake project with the engine, the game and two ways in.
+`export --platform <windows|linux|macos|android|ios|web>` compiles the shaders of that platform's
+backends only (Android and web: OpenGL ES 3), as the Build Settings preset does; `--backend` wins
+over it, and without either every backend is compiled.
 
 - `cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build` for this
   computer's platform.
@@ -102,8 +105,8 @@ Export source (Build Settings, `jasperengine-editor export --project <dir> --out
   `PATH`, else the one Visual Studio's C++ CMake tools install (found through vswhere), else
   mingw32-make; `--generator` picks one yourself.
 - Android: `cd workspaces/androidstudio && ./gradlew assembleRelease` (or open the folder in
-  Android Studio). Android builds have OpenGL ES 3 only, so its Build Settings preset compiles
-  the GLES3 shaders alone.
+  Android Studio). Android builds have OpenGL ES 3 only, so its Build Settings preset and
+  `export --platform android` compile the GLES3 shaders alone.
 
 The export keeps `jasperengine.py` and `gradlew` executable. A folder copied through Windows
 (NTFS has no execute bit) or an archive that drops modes needs `chmod +x jasperengine.py
@@ -255,8 +258,38 @@ again when a game loads it.
   logged. The key is checked before any packaging: a wrong store password, a wrong key password
   and an unknown alias each fail at once and say which.
 
-  A source export is an Android Studio project (`workspaces/androidstudio`, `./gradlew assembleDebug
-  bundleDebug`). Gradle signs it with the debug key; set up a release key in Android Studio.
+  A source export is an Android Studio project (`workspaces/androidstudio`, `./gradlew assembleDebug`,
+  `./gradlew bundleRelease`):
+  - Its `debug` build type compiles the native code optimised with symbols (`RelWithDebInfo`) as a
+    Development Build, so a debug APK plays at full speed. Project Settings > Android > Debug
+    Package Suffix (`android.debugPackageSuffix`, for example `.debug`) is its
+    `applicationIdSuffix`: the debug package installs beside the release one. A prebuilt build
+    signed with the debug key takes the suffix too.
+  - With a Keystore and Key Alias set, the `release` build type is signed with them; Gradle reads
+    the passwords from `JASPER_ANDROID_KS_PASS` and `JASPER_ANDROID_KEY_PASS`, and the export
+    writes no password. Without a keystore the release build is unsigned (the export says so) and
+    Android Studio's Generate Signed Bundle / APK signs it; debug builds use the debug key.
+  - The template pins the NDK (`ndkVersion`) and CMake (`externalNativeBuild.cmake.version`);
+    `docker/android.Dockerfile` installs both, which `tools/ci/check_android_image.sh` checks.
+
+  Both routes ship every asset folder, those starting with `_` too: the asset filter is Android's
+  default without `<dir>_*`, so only hidden and version control files (`.gitkeep`, `Thumbs.db`,
+  `CVS`, `*~`) stay out; a prebuilt build warns `W-ANDROID-ASSET-IGNORED` naming them. After
+  packaging, every content file is looked up in the APK or bundle, and a missing one fails the
+  build with its name.
+
+  An App Bundle carries the game's content in the install-time asset pack `game_content` (Play
+  Asset Delivery): it installs with the app and the game reads it at the same paths, while the base
+  module stays under Google Play's 200 MB. A prebuilt bundle always does. In a source export,
+  Gradle puts asset packs in bundles only, so the pack holds the content when a Gradle run builds
+  bundles and no APK (`./gradlew bundleRelease`, Android Studio's APK from app bundle); a run that
+  builds an APK too keeps it in the base module and says so. APKs are one module.
+
+  The Launcher Icon becomes `mipmap-mdpi` to `mipmap-xxxhdpi` icons (48 to 192 px) and a round
+  `ic_launcher_round` (`android:roundIcon`); an Adaptive Foreground and Background become their
+  108 dp layers at every density with the `mipmap-anydpi-v26` icon, and the legacy and round icons
+  are composed from them when no Launcher Icon is set. The template's default icons then do not
+  ship.
 
   Project Settings > Android > Package Format picks what Build makes:
   - **App Bundle** (`aab`, the default) is what Google Play takes. Play gives each device only its
