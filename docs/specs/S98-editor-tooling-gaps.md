@@ -1,5 +1,8 @@
 # S98 — Editor, MCP and tooling gaps from the JasperArcade port: scenes as data in every build, what ships, Android and iOS packaging, source files the editor leaves alone, editor cost, tool fixes
 
+**Status: implemented** on `feature/s98-editor-tooling-gaps` (WP-1..WP-7 and the integration). What
+the code does where it differs from this text is in "Deviations" at the end.
+
 Arcade engine-gaps program (S92-S98). Source: the "Editor, MCP and tooling" section of the port's
 ledger, `JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md` (E1-E47), written against engine
 commit `7f48d7e8d` (2026-10-30). Every item was checked against this tree (`82ccd7c6a`); paths are
@@ -886,6 +889,83 @@ Avoiding conflicts:
   show (no stale instance list).
 - **WP-5, REQ-31:** Maximize On Play covers the editor's panels: the covered Hierarchy is not
   built and the covered Scene view updates and draws nothing (Unity hides them too).
+- **WP-5, REQ-31 (Hierarchy):** the recurring timed rebuild meets the 1 ms budget (0.62-0.69 ms with
+  the 1,500-GameObject fixture, enforced), but a structural change (a command that changes the tree)
+  still rebuilds the whole Hierarchy tree once per edit: 1.6-1.9 ms with that
+  fixture, measured with phase scopes. A per-edit incremental patch of the tree was not done: the
+  cost is one rebuild per user edit, not per frame.
+- **WP-4, REQ-45:** Add Open Scenes in Build Settings is not undoable, like the rest of the Scenes
+  In Build list it edits (`edit_build_scenes` is not either). Closing a scene opened out of the build
+  takes it out of the editor (it is in no list to reopen from but the workspace).
+- **WP-4, REQ-27:** builds read `ShaderWarmup.json`'s variants whatever Include in Builds says (the
+  variants a Play session found used to live in the scene files, which builds always read).
+- **WP-2, REQ-13/AC12:** a source-exported Android package draws the golden on the emulator but
+  still fails the GLES log check on S67's open `GL_FRAMEBUFFER_STATUS_INCOMPLETE_MULTISAMPLE`; not an
+  S98 change.
+- **Integration, REQ-44 (Material Creation Mode in settings search):** settings search lists
+  Project Settings and Preferences rows, and Material Creation Mode was a per-model importer setting
+  only. It became also a project default, as the Mesh page already holds one for every other model
+  setting: Project Settings > Mesh > Material Creation Mode (`mesh.material_creation_mode`, stored as
+  `mesh.materialCreationMode`, written only when None; undoable with the page's Apply) is the mode of
+  the FBX models whose sidecar sets none; a model's own value wins. A change makes those imports
+  stale and their cooks import again. The Model Importer and `inspect_models` show the resolved
+  mode. Tests: `SettingsSearch.FindsTheS98Settings`,
+  `FbxImporterWarnings.ProjectMaterialCreationModeIsTheDefault`,
+  `test_meshes.py::test_project_material_creation_mode`.
+- **Coordinator decisions carried here:** F1 (`.mesh` assets, WP-7) and F2 (install-time asset packs
+  for source exports, WP-2) moved into scope; E35 went to S94 (R45), E36 to S96 (WP-C), E41's
+  `mesh.sortPriority` to S94 (R48).
+- **Integration, fixes of `main`'s failures:** WP-3 fixed the CMake 4.5 configure error
+  (`install(CODE ... CONFIGURATIONS)`), the Lua API extractor's unresolved Grid/TitleArt bindings and
+  `ShaderNeutralApi`'s TitleArt check, which the other program PRs list as fixed by S98. `main` has
+  since fixed all three itself (`f1d3e14dc`, `6f377bf5f`), and also
+  `ContentManifest.RefusesContentNeedingAModuleThePlayerLacks`' module list, the
+  `test_scene_view_icons.py` camera-gauge flake (`f88fbdadb`) and `test_bake_vertex_animation.py`'s
+  two failures (`18181a541`). The merge of `main` took `main`'s versions; S98 carries none of them now.
+- **Across PRs (integration):**
+  - The cooked scene hierarchy record (WP-1, REQ-52) fixes the bug S96's PR #8 fixes in
+    `c633f787f`, with the same record (a (child, parent) list after the resources). Whichever PR
+    merges second keeps the one already on `main` and drops its own writer and reader.
+  - Format numbers: S98 takes scene 9 / prefab 10 (WP-7) and cooked 1.6 (WP-7) / 1.7 (WP-1), the
+    next above `main`'s 8 / 9 / 1.5. S94 also bumps scene 9 / prefab 10, and S92, S95 and S96 bump
+    the cooked minor to 1.6: the PR merged second renumbers and chains its migration.
+- **Integration, MCP harness:** `harness.compile_env` emptied its compile home as a test file loaded;
+  the runner's `--list` (every run's `-k`) loads every file, so a second run started next to one
+  compiling wiped its compile tree mid-build (AC8's one failure). The home is now emptied when the
+  process starts its first editor with it.
+- **Integration, AC6 red control:** with `solidBoxDensity`'s initialiser removed (editor and
+  runtime built that way), `test_export_sources.py::test_export_is_deterministic` still passes: two
+  exports read the same bytes for the uninitialised float on this allocator, so an export-level
+  comparison cannot show the bug. The guard of E27 is the unit test
+  `CookDeterminism.EveryComponentDefaultInitialisedCooksTheSameBytes`, which fails naming
+  `RigidbodyComponent` with the same initialiser removed (WP-1's red run); the MCP test stays as the
+  end-to-end check of REQ-5's other sources of drift (stamps, ordering). AC3's red control holds: with
+  the C++ script hooks set aside, the exported player logs none of the `parity cpp` lines.
+- **Integration, Android x86_64 (a failure of `main`):** a fresh Android x86_64 build failed in
+  dav1d's NASM sources (`unable to open include file 'thread'`) on `main` as on this branch: CMake
+  3.22's FindThreads test fails on bionic (no `pthread_cancel`), falls back to `-pthread`, and
+  `Threads::Threads` hands it to every language; NASM reads it as `-p thread`. dav1d now links the
+  thread libraries and adds `-pthread` for C only (`engine/libs/dav1d/CMakeLists.txt`, its
+  README.jasper.md). Needed to build REQ-1's Android source export for the integration check.
+- **Integration, REQ-11 (a fork named relative to the assets directory):** the editor finds a
+  `customShader` relative to the project root, else to the assets directory (`Project::findShaderFile`).
+  REQ-11 shipped each source once, at its project-relative path, so a fork named the second way
+  (`shaders/globals_color` for `assets/shaders/globals_color.frag`) had no manifest in a build and
+  drew with zero-initialised parameters (`test_shader_globals.py::test_desktop_export_declares_the_globals`,
+  red on the merged tree). `copyCustomShaderSources` now also ships the entry points of every
+  referenced fork that resolves only that way at the name it is referenced by: such a fork has two
+  copies, an unreferenced or project-relative one still one.
+- **Integration, Android emulator (open):** `tools/ci/android_packaging.sh` on the merged tree passes
+  every packaging, signing, bundletool and content check, and the source export (cooked content under
+  `project/content`, no scene sources) builds with Gradle into a signed APK and bundle. On the
+  emulator every package draws the golden (0.07 %), but the prebuilt development APK now fails the
+  GLES log check with S67's open `GL_FRAMEBUFFER_STATUS_INCOMPLETE_MULTISAMPLE` (after the emulator's
+  `depth attachment not complete`), as source exports always did. The tree before the merge of `main`
+  fails the same way, and WP-2's run before WP-1 did not: since REQ-10 the prebuilt player applies
+  every setting a compiled game applied (the Debug Overlay among them), so both routes now meet that
+  error (inferred from the list of settings the player applies; not bisected further). Whether a
+  device reports it is still unknown (S67).
+
 ### WP-6 (what ships)
 
 - **Keys under `export:`.** The settings are stored as `export.assetStripping` (`referencedOnly`;
