@@ -241,7 +241,8 @@ The cache cannot hide a bug:
   run tries again.
 - The compiled games (`method="compile"`) build through ccache too: their editors get
   `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
-  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  `build/mcp-compile-home/<file>/`, emptied as the file's first editor starts (not as the file loads:
+  any run's `-k` listing loads every file), and ccache as CMake's compiler
   launcher. Each run still configures and compiles a fresh tree and links; an object comes from
   ccache only when its preprocessed source, flags and directory are those it was made from. They
   link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
