@@ -982,4 +982,9 @@ Avoiding conflicts:
   the sampler and the vertex counts were lost) and pass with the fixes. `test_export_sources.py`
   run on the editor before WP-1: both tests fail (no `W-SCENE-UNSAVED`, the export saved the scenes;
   no cooked scene in a source export). The MCP-level red of AC3 (hooks set aside) and AC6
-  (`solidBoxDensity` in an export) were not run.
+  (`solidBoxDensity` in an export) were not run. On the tree merged with WP-3 to WP-7:
+  `WERROR=1 tools/build.sh linux` and the glcore release player build clean; the targeted CI MCP
+  files (export sources/pipeline, build, build scenes, save determinism/completeness, shader lists,
+  asset stripping, mesh assets, CLI paths) 73 passed, 4 skipped (the slow ones), 0 failed;
+  `test_build_parity` (AC2), `test_desktop_build_and_run` (AC1), `test_compile_build_removes_stale_files`
+  (AC8) and `test_lifecycle_export` (AC3) pass with `JASPER_SLOW_BUILD=1`.
