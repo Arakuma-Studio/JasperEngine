@@ -62,6 +62,7 @@
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "render/FogProfile.h"
 #include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
@@ -1395,6 +1396,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateFogProfile:
+            projectWindow->createAsset(AssetCreateKind::FogProfile, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateTileset:
             projectWindow->createAsset(AssetCreateKind::Tileset, projectWindow->createTargetDirectory());
@@ -5600,6 +5604,8 @@ void editor::App::prepareForProjectSwitch() {
     // and its palettes (S43): the swap textures first, they were made from them
     jasperengine::pixelart::PaletteSwapCache::clear();
     jasperengine::pixelart::PaletteLibrary::clear();
+    // and its fog profiles (docs/specs/vapor.md R5)
+    FogProfileLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
@@ -6127,7 +6133,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
+    // v66: Vapor's particle height fog (docs/specs/vapor.md R16): the fogged particle variants
+    //      (PARTICLES 'Fog') carry the height fog (HAS_HEIGHT_FOG, u_fs_heightFog) as the mesh's do.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v66";
 }
 
 void editor::App::pushTabNotificationStyle(){

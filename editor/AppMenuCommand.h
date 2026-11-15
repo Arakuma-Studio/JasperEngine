@@ -176,7 +176,8 @@ namespace jasperengine::editor {
         ToggleTilesetEditor,
         AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
-        TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
+        TitleArtBakeAll,              // the command palette's "Title Art: Bake All" (S80 §6.13)
+        AssetsCreateFogProfile        // Assets > Create > Fog Profile (docs/specs/vapor.md R26)
     };
 
 }

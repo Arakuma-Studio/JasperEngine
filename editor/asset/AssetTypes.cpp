@@ -71,6 +71,8 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
+            // Fog Profiles (docs/specs/vapor.md R1): the file holds no GUID, its .meta does
+            {{AssetType::FogProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".fogprofile"}},
         };
         return table;
     }

@@ -19,6 +19,7 @@
 #include "mcp/McpValues.h"
 #include "reflect/Reflect.h"
 
+#include "FogProfileAssets.h"
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
@@ -32,7 +33,9 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
+#include "component/FogComponent.h"
 #include "component/MeshComponent.h"
+#include "render/FogResolve.h"
 #include "pixelart/PaletteMaterial.h"
 #include "pixelart/PaletteSwapChecks.h"
 #include "registry/TagManager.h"
@@ -489,6 +492,41 @@ Json readBack(Project* project, SceneProject* scene, Entity entity, const std::v
     return out;
 }
 
+// A Fog look field its profile sets: a write would not show beneath the profile, so it is refused
+// with both ways to change it (docs/specs/vapor.md R43); "" when every change writes normally.
+// A call that links or unlinks the profile itself writes against what it links.
+std::string profileSetFogFieldError(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
+                                    const std::vector<McpValues::Change>& changes) {
+    const auto rootName = [](const std::string& property) { return property.substr(0, property.find_first_of(".[")); };
+    for (const McpValues::Change& change : changes) {
+        if (change.component == ComponentType::FogComponent && rootName(change.property) == "profile") return {};
+    }
+    for (Entity entity : entities) {
+        const FogComponent* fog = scene->scene->findComponent<FogComponent>(entity);
+        if (!fog) continue;
+        std::string fields;
+        Json example = Json::object();
+        for (const McpValues::Change& change : changes) {
+            FogField field;
+            if (change.component != ComponentType::FogComponent || !FogFields::find(rootName(change.property), field) ||
+                !FogScene::isFieldSetByProfile(*fog, field))
+                continue;
+            fields += (fields.empty() ? "" : ", ") + rootName(change.property);
+            example[rootName(change.property)] = change.op == "set" ? change.value : Json(nullptr);
+        }
+        if (fields.empty()) continue;
+        const std::string key = FogScene::profileKey(*fog);
+        const std::string path = fogprofiles::projectPathOfKey(*project, key);
+        const size_t users = fogprofiles::profileUsers(*project, key).count();
+        return "The Fog of \"" + McpRefs::entityPath(scene, entity) + "\" takes " + fields + " from its profile " + path + " (used by " +
+               std::to_string(users) + " Fog(s) or Fog Zone(s)), so set_properties would not show. For every user: edit_fog_profile "
+               "{path: \"" + path + "\", set: " + example.dump() + "}. For this scene only: edit_fog_profile {path: <a new .fogprofile>, "
+               "from: {profile: \"" + path + "\"}, set: " + example.dump() + "}, then apply_atmosphere_preset {entity: " +
+               std::to_string(entity) + ", preset: <that path>}. Nothing changed.";
+    }
+    return {};
+}
+
 void setPropertiesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -522,6 +560,11 @@ void setPropertiesTool(const CallPtr& call) {
     // aliases renamed (with a warning), read-only fields and values outside a hard range refused (S08 R26)
     std::vector<std::string> warnings;
     if (!McpValues::checkReflectedChanges(changes, warnings, error)) {
+        call->fail(error);
+        return;
+    }
+    error = profileSetFogFieldError(project, scene, entities, changes);
+    if (!error.empty()) {
         call->fail(error);
         return;
     }

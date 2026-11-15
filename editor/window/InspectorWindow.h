@@ -50,6 +50,7 @@ namespace jasperengine{
     struct ImageComponent;
     struct MeshComponent;
     class MeshSystem;
+    enum class FogField : uint8_t;
 }
 
 namespace jasperengine::particles {
@@ -88,6 +89,9 @@ namespace jasperengine::editor{
     struct InspectorLayerStateDeleter{
         void operator()(InspectorLayerState* state) const;
     };
+
+    // the Fog and Fog Zone inspectors' profile state (InspectorFogProfiles.cpp)
+    struct InspectorFogState;
 
     struct InspectorVatState;
     struct InspectorVatStateDeleter{
@@ -1022,6 +1026,37 @@ namespace jasperengine::editor{
         // Cast Shadows, the capsule list (up to 8) and Fit To Skeleton, each an undo step
         void drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // ---- Fog Profiles (InspectorFogProfiles.cpp, docs/specs/vapor.md R23-R27)
+        // (shared: the state's type stays out of this header)
+        std::shared_ptr<InspectorFogState> fogState;
+        InspectorFogState& fogProfileState();
+        // the Profile row of a Fog or Fog Zone: the asset field and its menu (built-ins, the
+        // project's profiles, None), Used by N, New, Duplicate and Unlink; then, on a Fog, the
+        // Effective look line (R25)
+        void drawFogProfileRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // which profile the Fog rows that follow route to (ticked rows edit it, R24), read
+        // once per Fog drawn
+        void beginFogLookRows(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // a look row of a Fog: the Fog's own value (propertyRow), or while linked a leading
+        // "Set by profile" checkbox and, ticked, the profile's value; the effective value in its
+        // tooltip when another layer changes it (R25)
+        void fogLookRow(FogField field, RowPropertyType type, const std::string& label, SceneProject* sceneProject,
+                        const std::vector<Entity>& entities, RowSettings settings = RowSettings());
+        // the All / None buttons for the look rows drawn since the last call, while linked
+        void drawFogLookSectionButtons(SceneProject* sceneProject, const char* id);
+        // a Fog Zone: its shape rows, the Profile row, its profile's set fields and Add Field (R27)
+        void drawFogZoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a .fogprofile picked in the Project window (R26)
+        void drawFogProfileAsset(const std::filesystem::path& asset);
+        // a profile edit's undo step, merging until the edit ends
+        void pushFogProfileCommand(CommandHistory* history, Command* command, bool commit);
+        Command* fogProfileEditCmd = nullptr;
+        // drawn by the next propertyHeader before the row's label (the Fog's Set by profile box)
+        std::function<void()> propertyLabelPrefix;
+        // the atmosphere's diagnostics about entity (docs/specs/vapor.md R28), as help boxes;
+        // volumeSetup adds the scene's and the Fog's reasons a Local Volumetric Fog does not show;
+        // tableRow puts them in a row of their own under the open table's values
+        void drawAtmosphereDiagnostics(SceneProject* sceneProject, Entity entity, bool volumeSetup, bool tableRow = false);
         void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
         void drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,

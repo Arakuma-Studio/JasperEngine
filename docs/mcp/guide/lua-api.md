@@ -187,7 +187,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
+`InputField`, `Bone`, `Fog`, `FogZone`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
 `Rigidbody`, `Joint3D`, `CharacterController`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `Spline`, `SplineExtrude`,
@@ -1836,7 +1836,7 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, Bone, Points, LineRenderer, Lattice,
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, FogZone, Bone, Points, LineRenderer, Lattice,
  |   |  FluidSimulation, ParticleSystem, TrailRenderer
  |   |- Mesh
  |   |   |- Primitive -> Mirror
@@ -3211,11 +3211,39 @@ makes a GameObject with one.
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
-  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; volumetric
+  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; colour mode
+  `FogColorMode.LIT`: rw `albedo`, `ambientMultiplier`, `emissive`; volumetric
   fog: rw `volumetric`, `volumetricDistance`, `lightShafts`, `noiseIntensity`, `noiseScale`,
   `wind` (Vector3, also `setWind(x, y, z)`), `qualityOverride` (`AtmosphereQualityOverride.*`);
   `applyPreset(id)` ("morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night";
-  false for an unknown id). Colours are sRGB here, linear in the component.
+  false for an unknown id: it writes the Fog's own fields; Fog Profiles are the shared looks).
+  Colours are sRGB here, linear in the component.
+  Fog Profile: rw `profile` (a `FogProfile`, a `.fogprofile` path or `builtin:<id>`, nil for none;
+  set in Play it applies at once, is never saved and cancels a blend), `blendTo(profile|nil,
+  seconds)` (cross-fades over game time from the current mix; nil returns to the Fog's own fields;
+  at the end the profile is the runtime one), ro `blending`, `getResolved(field)` (the value the
+  main camera sees: own field, profile, blend, Fog Zones and script writes). In Play a write to a
+  look field goes above the profile and the zones, so it always shows; `clearOverride(field)`,
+  `clearOverrides()` remove those writes, and Stop drops them.
+- `FogProfile` (a shared fog look, `jasper://docs/atmosphere`): `FogProfile.load(path)` (nil when
+  the file does not read), `FogProfile.builtin(id)` ("morning_haze", "ground_mist",
+  "mountain_valley", "horizon_haze", "night", "bright_haze", "murky", "infernal", "toxic"); ro
+  `key`, `name`, `description`, `readOnly`; `get(field)` (nil when not set), `isSet(field)`,
+  `clone()` (a mutable copy for this run, never written to a file); a clone's `set(field, value)`,
+  `clear(field)`. Loaded and built-in profiles are read-only (every Fog using one shares it).
+- `FogZone` (GameObject, `FogZone(scene)`): rw `shape` (`FogZoneShape.*`), `size` (Vector3, before
+  the Transform's scale; also `setSize(x, y, z)`), `blendDistance` (0: a hard switch), `priority`,
+  `weight`, `profile` (as Fog's); ro `currentWeight` (at the main camera). Its profile's fields
+  blend over the scene's fog as the camera comes in.
+
+```lua
+local night = FogProfile.builtin("night")
+local fog = GameObject.findObjectOfType("Fog")
+fog:blendTo(night, 8.0)            -- eight seconds of game time
+local mine = night:clone()
+mine:set("emissive", Vector3(0.6, 1.4, 0.0))
+fog.profile = mine                 -- runtime only
+```
 - `LocalVolumetricFog` (GameObject, `LocalVolumetricFog(scene)`): rw `shape`
   (`FogVolumeShape.*`), `size` (Vector3, before the Transform's scale; also `setSize(x, y, z)`),
   `attenuationDistance`, `albedo` (also `setAlbedo(r, g, b)`), `blendDistance`, `falloff`
@@ -3227,7 +3255,7 @@ makes a GameObject with one.
   `altitudeRange`, `earthCurvature`, `windDirection`, `windSpeed`, `weatherMap` (image path, ""
   for the built-in map), `weatherMapScale`, `sunLightDimmer`, `ambientLightDimmer`,
   `maxDistance`, `qualityOverride`.
-- `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
+- `Light`: also rw `volumetricIntensity` (point and spot lights in the volumetric fog: 1, 2 or 4 by quality).
 - `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
   images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
   `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
@@ -3514,8 +3542,9 @@ gate.area = 0 ; gate:remove()
 | `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
-| `FogColorMode` | `COLOR`, `SKY` |
+| `FogColorMode` | `COLOR`, `SKY`, `LIT` |
 | `FogVolumeShape` | `BOX`, `SPHERE` |
+| `FogZoneShape` | `BOX`, `SPHERE` |
 | `FogVolumeFalloff` | `LINEAR`, `EXPONENTIAL` |
 | `CloudsPreset` | `CUSTOM`, `SPARSE`, `CLOUDY`, `OVERCAST`, `STORMY` |
 | `CloudsRendering` | `AUTO`, `SKY_MAP`, `SCREEN` |

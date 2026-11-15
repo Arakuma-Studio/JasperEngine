@@ -66,6 +66,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/LightComponent.h"
@@ -1939,6 +1940,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
     if (signature.test(scene->getComponentId<VolumetricCloudsComponent>())) return handleClass("VolumetricClouds");
     if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>())) return objectClass("LocalVolumetricFog");
+    if (signature.test(scene->getComponentId<FogZoneComponent>()))    return objectClass("FogZone");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
     if (signature.test(scene->getComponentId<OnScreenStickComponent>()))  return objectClass("OnScreenStick");
     if (signature.test(scene->getComponentId<OnScreenButtonComponent>())) return objectClass("OnScreenButton");

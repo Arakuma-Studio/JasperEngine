@@ -97,7 +97,10 @@
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/AtmospherePresetCmd.h"
+#include "command/type/LinkFogProfileCmd.h"
+#include "render/AtmosphereDiagnostics.h"
 #include "render/AtmospherePresets.h"
+#include "render/FogProfile.h"
 #include "render/RenderUtil.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
@@ -3049,6 +3052,12 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
     const float indentWidth = ImGui::GetFontSize();
     if (indent){
         ImGui::Indent(indentWidth);
+    }
+    if (propertyLabelPrefix){
+        const std::function<void()> prefix = std::move(propertyLabelPrefix);
+        propertyLabelPrefix = nullptr;
+        prefix();
+        ImGui::SameLine();
     }
     drawPrefabPropertyLabel(label);
     ImGui::SameLine();
@@ -11172,9 +11181,12 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     }
     if (light.type != LightType::DIRECTIONAL){
         RowSettings settingsVolumetric = settingsFloat;
-        settingsVolumetric.help = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, "
-                                  "no shadows). 0: none.";
+        settingsVolumetric.help = "How much of this light the volumetric fog scatters (the nearest 1, 2 or 4 point and spot lights in view, "
+                                  "at Low, Medium and High atmosphere quality). With its Shadows on, they reach the fog while the Fog's "
+                                  "Light Shafts is on. 0: none.";
         propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricIntensity", "Volumetric Intensity", sceneProject, entities, settingsVolumetric);
+        // why the volumetric fog does not scatter this light, under its Volumetric Intensity
+        drawAtmosphereDiagnostics(sceneProject, entities[0], false, true);
     }
     if (light.type == LightType::SPOT){
         RowSettings settingsMask;
@@ -11654,9 +11666,42 @@ void editor::InspectorWindow::drawAtmospherePresetsMenu(ComponentType cpType, Sc
     }
 }
 
+void editor::InspectorWindow::drawAtmosphereDiagnostics(SceneProject* sceneProject, Entity entity, bool volumeSetup, bool tableRow){
+    // what the Game view (the frame's own view while playing) ran last: get_atmosphere_info's default
+    AtmosphereDiagnosticsInput input;
+    input.scene = sceneProject->scene;
+    input.info = &sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(sceneProject->playState == ScenePlayState::STOPPED ? GAME_VIEW_ID : 0);
+    input.sceneViewFogDisabled = sceneProject->displaySettings.disableFog;
+    input.camera = project->getGameCamera(sceneProject->id);
+    const AtmosphereReport report = AtmosphereDiagnostics::run(input);
+    for (const AtmosphereDiagnostic& diagnostic : report.diagnostics){
+        const bool setup = diagnostic.code == "fog_missing" || diagnostic.code == "volumetric_needs_height" || diagnostic.code == "volumetric_quality_off";
+        if (diagnostic.entity != entity && !(volumeSetup && setup))
+            continue;
+        if (tableRow){
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+        }
+        if (diagnostic.severity == AtmosphereSeverity::Info)
+            ImGui::TextDisabled(ICON_FA_CIRCLE_INFO);
+        else
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::TextWrapped("%s", diagnostic.message.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", diagnostic.fix.c_str());
+        ImGui::PopStyleColor();
+        ImGui::EndGroup();
+    }
+}
+
 void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     FogComponent& fog = sceneProject->scene->getComponent<FogComponent>(entities[0]);
     const bool height = fog.type == FogType::HEIGHT;
+    // what the look rows show: the Fog's own fields under its profile's (docs/specs/vapor.md R24)
+    const std::shared_ptr<const FogProfileData> linked = FogProfileLibrary::getRef(fog.profile);
+    const FogComponent shown = LinkFogProfileCmd::resolvedLook(fog, linked.get());
 
     RowSettings settingsFogType;
     settingsFogType.enumEntries = &entriesFogType;
@@ -11672,18 +11717,19 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
 
     const float labelSize = getLabelSize("Directional Inscattering");
 
-    if (height)
-        drawAtmospherePresetsMenu(cpType, sceneProject, entities, AtmospherePresets::getFogPresets(), nullptr);
+    // the Profile row, for every type (R23: it replaces the Presets menu)
+    drawFogProfileRow(cpType, sceneProject, entities);
+    beginFogLookRows(sceneProject, entities);
 
     beginTable(cpType, labelSize);
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsFogType);
     if (!height){
-        propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+        fogLookRow(FogField::Color, RowPropertyType::Color3L, "Color", sceneProject, entities);
         if (fog.type == FogType::LINEAR) {
-            propertyRow(RowPropertyType::Float, cpType, "linearStart", "Linear Start", sceneProject, entities, settingsFloat);
-            propertyRow(RowPropertyType::Float, cpType, "linearEnd", "Linear End", sceneProject, entities, settingsFloat);
+            fogLookRow(FogField::LinearStart, RowPropertyType::Float, "Linear Start", sceneProject, entities, settingsFloat);
+            fogLookRow(FogField::LinearEnd, RowPropertyType::Float, "Linear End", sceneProject, entities, settingsFloat);
         } else {
-            propertyRow(RowPropertyType::Float, cpType, "density", "Density", sceneProject, entities, settingsDensity);
+            fogLookRow(FogField::Density, RowPropertyType::Float, "Density", sceneProject, entities, settingsDensity);
         }
         // the volumetric fog is a part of the height fog
         ImGui::BeginDisabled();
@@ -11694,17 +11740,34 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("Volumetric fog needs a Fog of Type Height.");
         endTable();
+        drawFogLookSectionButtons(sceneProject, "fog_distance");
+        drawAtmosphereDiagnostics(sceneProject, entities[0], false);
         return;
     }
     endTable();
+    drawAtmosphereDiagnostics(sceneProject, entities[0], false);
 
     const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(0);
 
     if (beginFoldout("Height Fog")){
+        // the tooltips of the reflected fields (editor/reflect/components/LightingReflect.cpp)
+        const reflect::ComponentDesc* fogDesc = reflect::find(cpType);
+        auto reflectedHelp = [fogDesc](const char* id){
+            const reflect::FieldDesc* field = fogDesc ? reflect::findField(*fogDesc, id) : nullptr;
+            return field ? reflect::tooltip(*field) : std::string();
+        };
         RowSettings settingsColorMode;
         settingsColorMode.enumEntries = &entriesFogColorMode;
-        settingsColorMode.help = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
-                                 "sky shader with a horizonColor property).";
+        settingsColorMode.help = reflectedHelp("colorMode");
+        // the Lit colour mode's rows (docs/specs/vapor.md R30); its Color is unused
+        const bool lit = shown.colorMode == FogColorMode::LIT;
+        RowSettings settingsAlbedo;
+        settingsAlbedo.help = reflectedHelp("albedo");
+        RowSettings settingsAmbientMultiplier = settingsFloat;
+        settingsAmbientMultiplier.help = reflectedHelp("ambientMultiplier");
+        RowSettings settingsEmissive;
+        settingsEmissive.colorHdr = true;
+        settingsEmissive.help = reflectedHelp("emissive");
         RowSettings settingsAttenuation = settingsFloat;
         settingsAttenuation.help = "The distance (m) light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.";
         RowSettings settingsBase = settingsFloat;
@@ -11719,20 +11782,22 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         settingsOpacity.help = "The most the fog hides of what is behind it (0..1).";
 
         beginTable(cpType, labelSize, "height_fog");
-        propertyRow(RowPropertyType::Enum, cpType, "colorMode", "Color Mode", sceneProject, entities, settingsColorMode);
-        propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
-        propertyRow(RowPropertyType::FloatPositive, cpType, "attenuationDistance", "Attenuation Distance", sceneProject, entities, settingsAttenuation);
-        propertyRow(RowPropertyType::Float, cpType, "baseHeight", "Base Height", sceneProject, entities, settingsBase);
-        propertyRow(RowPropertyType::Float, cpType, "maximumHeight", "Maximum Height", sceneProject, entities, settingsMaximum);
-        propertyRow(RowPropertyType::FloatPositive, cpType, "startDistance", "Start Distance", sceneProject, entities, settingsStart);
-        propertyRow(RowPropertyType::FloatPositive, cpType, "maxFogDistance", "Max Fog Distance", sceneProject, entities, settingsMaxDistance);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "maxOpacity", "Max Opacity", sceneProject, entities, settingsOpacity);
-        endTable();
-        if (fog.colorMode == FogColorMode::SKY && info.horizonSource == "fog_color"){
-            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
-            ImGui::SameLine();
-            ImGui::TextWrapped("The sky has no horizon colour (it is not a cube map and its shader declares no horizonColor): the fog uses its Color.");
+        fogLookRow(FogField::ColorMode, RowPropertyType::Enum, "Color Mode", sceneProject, entities, settingsColorMode);
+        if (lit){
+            fogLookRow(FogField::Albedo, RowPropertyType::Color3L, "Albedo", sceneProject, entities, settingsAlbedo);
+            fogLookRow(FogField::AmbientMultiplier, RowPropertyType::FloatPositive, "Ambient Multiplier", sceneProject, entities, settingsAmbientMultiplier);
+            fogLookRow(FogField::Emissive, RowPropertyType::Color3L, "Emissive", sceneProject, entities, settingsEmissive);
+        }else{
+            fogLookRow(FogField::Color, RowPropertyType::Color3L, "Color", sceneProject, entities);
         }
+        fogLookRow(FogField::AttenuationDistance, RowPropertyType::FloatPositive, "Attenuation Distance", sceneProject, entities, settingsAttenuation);
+        fogLookRow(FogField::BaseHeight, RowPropertyType::Float, "Base Height", sceneProject, entities, settingsBase);
+        fogLookRow(FogField::MaximumHeight, RowPropertyType::Float, "Maximum Height", sceneProject, entities, settingsMaximum);
+        fogLookRow(FogField::StartDistance, RowPropertyType::FloatPositive, "Start Distance", sceneProject, entities, settingsStart);
+        fogLookRow(FogField::MaxFogDistance, RowPropertyType::FloatPositive, "Max Fog Distance", sceneProject, entities, settingsMaxDistance);
+        fogLookRow(FogField::MaxOpacity, RowPropertyType::Float_0_1, "Max Opacity", sceneProject, entities, settingsOpacity);
+        endTable();
+        drawFogLookSectionButtons(sceneProject, "height_fog");
         endFoldout();
     }
 
@@ -11742,9 +11807,10 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         RowSettings settingsAnisotropy = settingsFloat;
         settingsAnisotropy.help = "-1 scatters the light back towards the sun, 0 evenly, 1 forward (a glow around the sun).";
         beginTable(cpType, labelSize, "fog_inscattering");
-        propertyRow(RowPropertyType::FloatPositive, cpType, "directionalInscattering", "Intensity", sceneProject, entities, settingsIntensity);
-        propertyRow(RowPropertyType::Float, cpType, "anisotropy", "Anisotropy", sceneProject, entities, settingsAnisotropy);
+        fogLookRow(FogField::DirectionalInscattering, RowPropertyType::FloatPositive, "Intensity", sceneProject, entities, settingsIntensity);
+        fogLookRow(FogField::Anisotropy, RowPropertyType::Float, "Anisotropy", sceneProject, entities, settingsAnisotropy);
         endTable();
+        drawFogLookSectionButtons(sceneProject, "fog_inscattering");
         endFoldout();
     }
 
@@ -11754,11 +11820,12 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         RowSettings settingsAngle = settingsFloat;
         settingsAngle.help = "How far above the horizon (degrees) the sky fill reaches.";
         beginTable(cpType, labelSize, "fog_sky");
-        propertyRow(RowPropertyType::Bool, cpType, "skyFill", "Sky Fill", sceneProject, entities, settingsFill);
-        ImGui::BeginDisabled(!fog.skyFill);
-        propertyRow(RowPropertyType::FloatPositive, cpType, "skyFillAngle", "Sky Fill Angle", sceneProject, entities, settingsAngle);
+        fogLookRow(FogField::SkyFill, RowPropertyType::Bool, "Sky Fill", sceneProject, entities, settingsFill);
+        ImGui::BeginDisabled(!shown.skyFill);
+        fogLookRow(FogField::SkyFillAngle, RowPropertyType::FloatPositive, "Sky Fill Angle", sceneProject, entities, settingsAngle);
         ImGui::EndDisabled();
         endTable();
+        drawFogLookSectionButtons(sceneProject, "fog_sky");
         endFoldout();
     }
 
@@ -11769,7 +11836,8 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         RowSettings settingsDistance = settingsFloat;
         settingsDistance.help = "How far from the camera (m) the fog is raymarched; the analytic fog continues beyond.";
         RowSettings settingsShafts;
-        settingsShafts.help = "The main directional light's shadows darken the fog behind objects (light shafts). Needs its shadows on.";
+        settingsShafts.help = "Shadows darken the fog behind objects (light shafts): the main directional light's and those of the point and "
+                              "spot lights the fog scatters. Each light needs its shadows on.";
         RowSettings settingsNoise = settingsFloat;
         settingsNoise.help = "How much a 3D noise varies the fog's density (0..1), fading out towards the Distance.";
         RowSettings settingsNoiseScale = settingsFloat;
@@ -11785,12 +11853,15 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         ImGui::BeginDisabled(!fog.volumetric);
         propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricDistance", "Distance", sceneProject, entities, settingsDistance);
         propertyRow(RowPropertyType::Bool, cpType, "lightShafts", "Light Shafts", sceneProject, entities, settingsShafts);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "noiseIntensity", "Noise Intensity", sceneProject, entities, settingsNoise);
-        propertyRow(RowPropertyType::FloatPositive, cpType, "noiseScale", "Noise Scale", sceneProject, entities, settingsNoiseScale);
-        propertyRow(RowPropertyType::Vector3, cpType, "wind", "Wind", sceneProject, entities, settingsWind);
+        fogLookRow(FogField::NoiseIntensity, RowPropertyType::Float_0_1, "Noise Intensity", sceneProject, entities, settingsNoise);
+        fogLookRow(FogField::NoiseScale, RowPropertyType::FloatPositive, "Noise Scale", sceneProject, entities, settingsNoiseScale);
+        fogLookRow(FogField::Wind, RowPropertyType::Vector3, "Wind", sceneProject, entities, settingsWind);
         propertyRow(RowPropertyType::Enum, cpType, "qualityOverride", "Quality Override", sceneProject, entities, settingsQuality);
         ImGui::EndDisabled();
         endTable();
+        ImGui::BeginDisabled(!fog.volumetric);
+        drawFogLookSectionButtons(sceneProject, "fog_volumetric");
+        ImGui::EndDisabled();
         if (fog.volumetric){
             std::string running;
             if (info.volumetricActive){

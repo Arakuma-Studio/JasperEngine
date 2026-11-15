@@ -621,6 +621,8 @@ namespace jasperengine::editor {
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
         void assetsCreateShakePreset(const fs::path& directory);
+        // a .fogprofile setting no field (FogProfileAssetCmd, a project undo step)
+        void assetsCreateFogProfile(const fs::path& directory);
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);

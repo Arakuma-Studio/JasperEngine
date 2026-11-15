@@ -14,6 +14,7 @@
 #include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
+#include "render/FogResolve.h"
 #include "object/TerrainEdit.h"
 #include "component/TerrainComponent.h"
 #include "component/MirrorComponent.h"
@@ -7161,6 +7162,9 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
         restartFluids(sceneProject->scene);
+        // and the fog: its blends, runtime profile and script writes were the Play's (the
+        // snapshot's decode keeps what it does not hold, docs/specs/vapor.md R43)
+        FogScene::resetRuntime(sceneProject->scene);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {
@@ -11712,6 +11716,8 @@ void editor::Project::stop(uint32_t sceneId) {
             resetPlayAudio(false);
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
+            // and the fog profiles scripts cloned (FogProfile:clone)
+            FogProfileLibrary::resetRuntime();
 
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();

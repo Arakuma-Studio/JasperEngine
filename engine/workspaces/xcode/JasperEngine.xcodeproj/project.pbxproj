@@ -4919,6 +4919,21 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47C61A8C4A5E7E29F7 /* FogZone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471D2EE15EC28DB1F6 /* FogZone.cpp */; };
+		4A534E47287E52374FECA490 /* FogZone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471D2EE15EC28DB1F6 /* FogZone.cpp */; };
+		4A534E475CE1EF5E649C6D61 /* FogProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473C6F37565B60F3C5 /* FogProfile.cpp */; };
+		4A534E47A7BC5A4BFC986E2A /* FogProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473C6F37565B60F3C5 /* FogProfile.cpp */; };
+		4A534E47176988312B02A9AE /* FogResolve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7238D9D80F9A4E9 /* FogResolve.cpp */; };
+		4A534E4792186CD4B2CF5BB8 /* FogResolve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7238D9D80F9A4E9 /* FogResolve.cpp */; };
+		4A534E476493011846FA09E3 /* FogClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782E9DA5FD47037A4 /* FogClassesLua.cpp */; };
+		4A534E474D385538BA3AECAC /* FogClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782E9DA5FD47037A4 /* FogClassesLua.cpp */; };
+		4A534E470BC332A609B65BCC /* FogZoneComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4728AA92CD285C8E28 /* FogZoneComponent.h */; };
+		4A534E475ABED0901039DB39 /* FogZone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470F41072901CC7178 /* FogZone.h */; };
+		4A534E4796FECB78FCB95090 /* FogProfile.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47030CA5E224EF3132 /* FogProfile.h */; };
+		4A534E47B6BCB09A641FD115 /* FogResolve.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4731DF58B5F2623C02 /* FogResolve.h */; };
+		4A534E471BFF7FBF7B6C38FB /* AtmosphereDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C47245C1BB123B0E /* AtmosphereDiagnostics.cpp */; };
+		4A534E47484149845CA7430B /* AtmosphereDiagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C47245C1BB123B0E /* AtmosphereDiagnostics.cpp */; };
+		4A534E47ED31052A23DA080A /* AtmosphereDiagnostics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4759BFE727A4C58941 /* AtmosphereDiagnostics.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9496,6 +9511,16 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E471D2EE15EC28DB1F6 /* FogZone.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FogZone.cpp; sourceTree = "<group>"; };
+		4A534E473C6F37565B60F3C5 /* FogProfile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FogProfile.cpp; sourceTree = "<group>"; };
+		4A534E47B7238D9D80F9A4E9 /* FogResolve.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FogResolve.cpp; sourceTree = "<group>"; };
+		4A534E4782E9DA5FD47037A4 /* FogClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FogClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E4728AA92CD285C8E28 /* FogZoneComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FogZoneComponent.h; sourceTree = "<group>"; };
+		4A534E470F41072901CC7178 /* FogZone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FogZone.h; sourceTree = "<group>"; };
+		4A534E47030CA5E224EF3132 /* FogProfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FogProfile.h; sourceTree = "<group>"; };
+		4A534E4731DF58B5F2623C02 /* FogResolve.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FogResolve.h; sourceTree = "<group>"; };
+		4A534E47C47245C1BB123B0E /* AtmosphereDiagnostics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmosphereDiagnostics.cpp; sourceTree = "<group>"; };
+		4A534E4759BFE727A4C58941 /* AtmosphereDiagnostics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AtmosphereDiagnostics.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10065,6 +10090,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E4782E9DA5FD47037A4 /* FogClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11873,6 +11899,12 @@
 				4A534E47E3EE06EED87CE187 /* sprite */,
 				4A534E4740AB62A2850A6B9F /* FoliageQuality.h */,
 				4A534E47CA217A0C9E227F5F /* TerrainNodes.h */,
+				4A534E473C6F37565B60F3C5 /* FogProfile.cpp */,
+				4A534E47B7238D9D80F9A4E9 /* FogResolve.cpp */,
+				4A534E47030CA5E224EF3132 /* FogProfile.h */,
+				4A534E4731DF58B5F2623C02 /* FogResolve.h */,
+				4A534E47C47245C1BB123B0E /* AtmosphereDiagnostics.cpp */,
+				4A534E4759BFE727A4C58941 /* AtmosphereDiagnostics.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11987,6 +12019,7 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E4728AA92CD285C8E28 /* FogZoneComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12594,6 +12627,8 @@
 				4A534E47C812977268010C9B /* WaterWake.cpp */,
 				4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */,
 				4A534E47EEAEA234128B30D2 /* WaterWake.h */,
+				4A534E471D2EE15EC28DB1F6 /* FogZone.cpp */,
+				4A534E470F41072901CC7178 /* FogZone.h */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -16843,6 +16878,11 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E470BC332A609B65BCC /* FogZoneComponent.h in Headers */,
+				4A534E475ABED0901039DB39 /* FogZone.h in Headers */,
+				4A534E4796FECB78FCB95090 /* FogProfile.h in Headers */,
+				4A534E47B6BCB09A641FD115 /* FogResolve.h in Headers */,
+				4A534E47ED31052A23DA080A /* AtmosphereDiagnostics.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19511,6 +19551,11 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47C61A8C4A5E7E29F7 /* FogZone.cpp in Sources */,
+				4A534E475CE1EF5E649C6D61 /* FogProfile.cpp in Sources */,
+				4A534E47176988312B02A9AE /* FogResolve.cpp in Sources */,
+				4A534E476493011846FA09E3 /* FogClassesLua.cpp in Sources */,
+				4A534E471BFF7FBF7B6C38FB /* AtmosphereDiagnostics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20470,6 +20515,11 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47287E52374FECA490 /* FogZone.cpp in Sources */,
+				4A534E47A7BC5A4BFC986E2A /* FogProfile.cpp in Sources */,
+				4A534E4792186CD4B2CF5BB8 /* FogResolve.cpp in Sources */,
+				4A534E474D385538BA3AECAC /* FogClassesLua.cpp in Sources */,
+				4A534E47484149845CA7430B /* AtmosphereDiagnostics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

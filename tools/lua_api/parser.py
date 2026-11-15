@@ -3320,6 +3320,39 @@ OVERRIDES[('Palette', 'getRamp')] = {
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
+# Fog Profiles (docs/specs/vapor.md R36, R43; FogClassesLua.cpp): the field functions read a field
+# name and a value of that field's type from the Lua stack (colours sRGB, as Fog's properties)
+_FOG_VALUE = 'number|boolean|Vector3|FogColorMode'
+_FOG_PROFILE = 'FogProfile|string|nil'
+OVERRIDES[('FogProfile', 'get')] = {
+    'doc': ['The value the profile sets for a look field ("attenuationDistance", "color", ...), or nil when it',
+            'leaves the field to each Fog.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE + '|nil')]}
+OVERRIDES[('FogProfile', 'isSet')] = {
+    'doc': ['Whether the profile sets the look field (an override); the others are each Fog\'s own.'],
+    'overloads': [([('field', 'string')], 'boolean')]}
+OVERRIDES[('FogProfile', 'set')] = {
+    'doc': ['Sets (and overrides) a look field of a clone. A loaded or built-in profile is shared by every Fog',
+            'using it and is read-only: change `profile:clone()`, then link the clone (`fog.profile = clone`).'],
+    'overloads': [([('field', 'string'), ('value', _FOG_VALUE)], '')]}
+OVERRIDES[('FogProfile', 'clear')] = {
+    'doc': ['Removes a clone\'s override of the field: each Fog\'s own value shows again.'],
+    'overloads': [([('field', 'string')], '')]}
+OVERRIDES[('Fog', 'blendTo')] = {
+    'doc': ['Cross-fades the fog to this Fog\'s own fields under `profile` (nil: none) over `seconds` of game',
+            'time; <= 0 applies at once. Called again mid-blend it starts from the current mix. At the end',
+            'the profile is the Fog\'s runtime profile (never saved).'],
+    'overloads': [([('profile', _FOG_PROFILE), ('seconds', 'number')], '')]}
+OVERRIDES[('Fog', 'getResolved')] = {
+    'doc': ['The look field as the main camera sees it now: own field, profile, blend, Fog Zones and script',
+            'writes applied.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE)]}
+OVERRIDES[('Fog', 'clearOverride')] = {
+    'doc': ['Drops the script\'s writes to the field in Play: the profile, blend and zones show again.'],
+    'overloads': [([('field', 'string')], '')]}
+PROPERTY_OVERRIDES[('Fog', 'profile')] = ('FogProfile|nil', False)
+PROPERTY_OVERRIDES[('FogZone', 'profile')] = ('FogProfile|nil', False)
+
 # S48 PixelFX player: lua_CFunctions taking a GameObject, an effect name and an options table
 # (PixelFXOptions in engine/core/script/binding/stubs/PixelFX.lua)
 OVERRIDES[('PixelFX', 'play')] = {

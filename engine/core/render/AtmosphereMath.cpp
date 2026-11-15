@@ -86,6 +86,20 @@ Vector3 AtmosphereMath::inscatteredLight(const Vector3& fogColor, const Vector3&
     return fogColor + sunColor * sun;
 }
 
+LitFogLight AtmosphereMath::litLight(const FogComponent& fog, const Vector3& sceneAmbient, const Vector3& sunColor){
+    auto nonNegative = [](const Vector3& v){
+        return Vector3(std::max(v.x, 0.0f), std::max(v.y, 0.0f), std::max(v.z, 0.0f));
+    };
+    LitFogLight light;
+    light.albedo = nonNegative(fog.albedo);
+    light.ambient = sceneAmbient * std::max(fog.ambientMultiplier, 0.0f);
+    light.emissive = nonNegative(fog.emissive);
+    light.sun = sunColor;
+    light.color = light.albedo * light.ambient + light.emissive;
+    light.sunColor = light.albedo * light.sun;
+    return light;
+}
+
 Vector3 AtmosphereMath::horizonRingColor(const Vector3 ring[4], const Vector3& dir){
     const float flat = std::sqrt(dir.x * dir.x + dir.z * dir.z);
     if (flat < 1e-5f)
@@ -147,8 +161,11 @@ float AtmosphereMath::fogVolumeDensity(const FogVolumeData& volume, const Vector
 }
 
 int AtmosphereMath::selectFogVolumes(const std::vector<FogVolumeData>& volumes, const Plane frustumPlanes[6], float cameraFar,
-                                     const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected){
+                                     const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                     std::vector<const char*>* reasons){
     selected.clear();
+    if (reasons)
+        reasons->assign(volumes.size(), nullptr);
     struct Candidate{
         int index;
         float distance;
@@ -158,8 +175,11 @@ int AtmosphereMath::selectFogVolumes(const std::vector<FogVolumeData>& volumes, 
     for (int i = 0; i < (int)volumes.size(); i++){
         const FogVolumeData& volume = volumes[i];
         const float distance = std::max((volume.center - cameraPosition).length() - volume.boundingRadius, 0.0f);
-        if (distance > maxDistance)
+        if (distance > maxDistance){
+            if (reasons)
+                (*reasons)[i] = "distance";
             continue;
+        }
         bool visible = true;
         for (int plane = 0; plane < 6 && visible; plane++){
             // without a far clip the far plane is not tested (RenderSystem::isInsideCamera)
@@ -170,6 +190,8 @@ int AtmosphereMath::selectFogVolumes(const std::vector<FogVolumeData>& volumes, 
         }
         if (visible)
             candidates.push_back({i, distance});
+        else if (reasons)
+            (*reasons)[i] = "frustum";
     }
     std::sort(candidates.begin(), candidates.end(), [&volumes](const Candidate& a, const Candidate& b){
         if (a.distance != b.distance)
@@ -179,5 +201,36 @@ int AtmosphereMath::selectFogVolumes(const std::vector<FogVolumeData>& volumes, 
     const int count = std::min((int)candidates.size(), std::max(cap, 0));
     for (int i = 0; i < count; i++)
         selected.push_back(candidates[i].index);
+    if (reasons){
+        for (int i = count; i < (int)candidates.size(); i++)
+            (*reasons)[candidates[i].index] = "tier_cap";
+    }
     return (int)volumes.size() - count;
+}
+
+float AtmosphereMath::fogOpacity(const FogComponent& fog, const Vector3& origin, const Vector3& dir, float distance){
+    if (distance <= 0.0f)
+        return 0.0f;
+    float transmittance = 1.0f;
+    switch (fog.type){
+        case FogType::LINEAR:
+            // (end - d) / (end - start), clamped; a range of zero is all or nothing
+            if (fog.linearEnd != fog.linearStart)
+                transmittance = std::clamp((fog.linearEnd - distance) / (fog.linearEnd - fog.linearStart), 0.0f, 1.0f);
+            else
+                transmittance = distance < fog.linearEnd ? 1.0f : 0.0f;
+            break;
+        case FogType::EXPONENTIAL:
+            transmittance = std::clamp(std::exp(-fog.density * distance), 0.0f, 1.0f);
+            break;
+        case FogType::EXPONENTIALSQUARED:
+            transmittance = std::clamp(std::exp(-fog.density * fog.density * distance * distance), 0.0f, 1.0f);
+            break;
+        case FogType::HEIGHT:{
+            const HeightFogMedium medium = makeMedium(fog);
+            transmittance = segment(medium, origin, dir, 0.0f, distance, Vector3(0.0f, 0.0f, 0.0f)).transmittance;
+            break;
+        }
+    }
+    return 1.0f - transmittance;
 }

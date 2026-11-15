@@ -35,7 +35,8 @@ namespace jasperengine::editor {
         SpriteAtlas,    // S45 (the main menu's Create > 2D)
         Palette,        // a .palette (S43; the main menu's Create > 2D)
         NoiseGraph,
-        Tileset         // a .tileset (S50; the main menu's Create > 2D)
+        Tileset,        // a .tileset (S50; the main menu's Create > 2D)
+        FogProfile      // a .fogprofile (docs/specs/vapor.md R26)
     };
 
     struct AssetCreateItem {

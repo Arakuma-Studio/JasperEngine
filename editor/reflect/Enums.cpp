@@ -21,6 +21,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -235,6 +236,7 @@ namespace {
     constexpr EnumItem kFogColorModeItems[] = {
         {v(FogColorMode::COLOR), "color", "Constant Color", "FogColorMode::COLOR"},
         {v(FogColorMode::SKY), "sky", "Sky Color", "FogColorMode::SKY"},
+        {v(FogColorMode::LIT), "lit", "Lit", "FogColorMode::LIT"},
     };
 
     constexpr EnumItem kFogTypeItems[] = {
@@ -252,6 +254,10 @@ namespace {
     constexpr EnumItem kFogVolumeShapeItems[] = {
         {v(FogVolumeShape::BOX), "box", "Box", "FogVolumeShape::BOX"},
         {v(FogVolumeShape::SPHERE), "sphere", "Sphere", "FogVolumeShape::SPHERE"},
+    };
+    constexpr EnumItem kFogZoneShapeItems[] = {
+        {v(FogZoneShape::BOX), "box", "Box", "FogZoneShape::BOX"},
+        {v(FogZoneShape::SPHERE), "sphere", "Sphere", "FogZoneShape::SPHERE"},
     };
 
     constexpr EnumItem kJoint2DTypeItems[] = {
@@ -808,6 +814,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kFogType{"FogType", kFogTypeItems, v(FogType::LINEAR)};
     const EnumDesc kFogVolumeFalloff{"FogVolumeFalloff", kFogVolumeFalloffItems, v(FogVolumeFalloff::LINEAR)};
     const EnumDesc kFogVolumeShape{"FogVolumeShape", kFogVolumeShapeItems, v(FogVolumeShape::BOX)};
+    const EnumDesc kFogZoneShape{"FogZoneShape", kFogZoneShapeItems, v(FogZoneShape::BOX)};
     const EnumDesc kJoint2DType{"Joint2DType", kJoint2DTypeItems, v(Joint2DType::DISTANCE)};
     const EnumDesc kJoint3DType{"Joint3DType", kJoint3DTypeItems, v(Joint3DType::FIXED)};
     const EnumDesc kLayoutGroupType{"LayoutGroupType", kLayoutGroupTypeItems, v(LayoutGroupType::VERTICAL)};

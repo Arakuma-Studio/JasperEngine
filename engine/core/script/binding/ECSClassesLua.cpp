@@ -51,6 +51,7 @@
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/TilemapComponent.h"
@@ -385,6 +386,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogColorMode")
         .addVariable("COLOR", FogColorMode::COLOR)
         .addVariable("SKY", FogColorMode::SKY)
+        .addVariable("LIT", FogColorMode::LIT)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -397,6 +399,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogVolumeFalloff")
         .addVariable("LINEAR", FogVolumeFalloff::LINEAR)
         .addVariable("EXPONENTIAL", FogVolumeFalloff::EXPONENTIAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogZoneShape")
+        .addVariable("BOX", FogZoneShape::BOX)
+        .addVariable("SPHERE", FogZoneShape::SPHERE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

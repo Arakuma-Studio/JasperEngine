@@ -1576,6 +1576,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         bitmapFontInspector->draw(asset, !vectorFont);
         return true;
     }
+    // a .fogprofile: its fields and users (InspectorFogProfiles.cpp)
+    if (Util::isFogProfileFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawFogProfileAsset(asset);
+        return true;
+    }
     // a .shake: its own view (InspectorWindowCamera.cpp)
     if (Util::isShakePresetFile(file)){
         std::error_code ec;

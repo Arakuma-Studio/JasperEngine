@@ -1052,6 +1052,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
     ${EDITOR_DIR}/reload/handlers/Voxel.cpp
     ${EDITOR_DIR}/reload/handlers/Palettes.cpp
+    ${EDITOR_DIR}/reload/handlers/FogProfiles.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/Graphs.cpp
@@ -1269,6 +1270,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
+    ${EDITOR_DIR}/FogProfileAssets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
@@ -1284,6 +1286,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
+    ${EDITOR_DIR}/window/InspectorFogProfiles.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
@@ -1588,6 +1591,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/FogProfileAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/LinkFogProfileCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RevertToBaselineCmd.cpp
 
@@ -2119,10 +2124,18 @@ else()
 
     # install(DIRECTORY) only adds and overwrites: first the files engine/ no longer has leave
     # the installed copy (an export or a script build would compile a deleted header)
-    install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
-                      \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
-                      -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
-            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
+    # install(CODE) takes no CONFIGURATIONS (CMake 4.5 rejects it, older ones ignored it): the code
+    # checks the configuration itself
+    string(TOUPPER "${JASPERENGINE_INSTALL_CONFIGURATIONS}" JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX)
+    list(JOIN JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX "|" JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX)
+    install(CODE "
+        string(TOUPPER \"\${CMAKE_INSTALL_CONFIG_NAME}\" _jasper_install_config)
+        if(_jasper_install_config MATCHES \"^(${JASPERENGINE_INSTALL_CONFIGURATIONS_REGEX})$\")
+            execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
+                \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
+                -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)
+        endif()
+    ")
     # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin

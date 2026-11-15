@@ -1,12 +1,13 @@
-// Height fog (Fog type Height; HAS_HEIGHT_FOG in the fogged mesh variants): the medium, its lighting
+// Height fog (Fog type Height; HAS_HEIGHT_FOG in the fogged mesh and particle variants): the medium, its lighting
 // and the fog of any part of a view ray, shared by the fogged shaders (includes/fog.glsl), the
 // sky composite, the volumetric fog march and the clouds' aerial perspective, so they agree
 // where they meet. engine/core/render/AtmosphereMath.{h,cpp} mirrors it one to one.
 //
 // The medium: extinction sigma (1 / attenuation distance) up to the base height, falling as
 // exp(-(y - base) / H) above it (1/1000 of it at the maximum height), over the part of a view
-// ray from the start distance to the max fog distance. Lit by the fog colour (its Color, or
-// the sky's horizon in the Sky colour mode) plus the sun's light scattered by a
+// ray from the start distance to the max fog distance. Lit by the fog colour (its Color, the
+// sky's horizon in the Sky colour mode, or in the Lit colour mode albedo * ambient + emissive,
+// the sun colour then albedo * sun: AtmosphereMath::litLight) plus the sun's light scattered by a
 // Henyey-Greenstein lobe: L = fogColor + sunColor * inscattering * 4 pi HG(g, cos) * visibility
 // (visibility the sun's shadow in the volumetric march, 1 elsewhere). A part [t0, t1] of a ray
 // lets T = exp(-optical depth) through (capped by the max opacity) and adds S = L (1 - T).

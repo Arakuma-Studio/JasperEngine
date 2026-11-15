@@ -31,6 +31,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kFogType;
     extern const EnumDesc kFogVolumeFalloff;
     extern const EnumDesc kFogVolumeShape;
+    extern const EnumDesc kFogZoneShape;
     extern const EnumDesc kJoint2DType;
     extern const EnumDesc kJoint3DType;
     extern const EnumDesc kLayoutGroupType;
