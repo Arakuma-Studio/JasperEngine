@@ -110,7 +110,8 @@ The editor always keeps the data.
 ## Project Settings > Mesh and the render budgets
 
 Mesh holds each platform's default for every setting (a model's own value, then its platform
-override, win), the cache size, Clear Mesh Cache and Keep CPU Data for Scripts. Quality holds the
+override, win), Material Creation Mode for the FBX models that do not set their own (None imports no
+materials or textures), the cache size, Clear Mesh Cache and Keep CPU Data for Scripts. Quality holds the
 render budgets per platform: triangles, draw calls, mesh memory (MB) and download (MB); 0 is no
 limit. `check_render_budgets` compares a scene with them: its geometry at LOD 0 with every object
 drawn, and the cooked sizes of its models for that platform.

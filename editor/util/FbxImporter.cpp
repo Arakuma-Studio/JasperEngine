@@ -23,6 +23,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 
@@ -69,7 +70,7 @@ struct ImportInfo {
 struct MaterialMode {
     uintmax_t size = 0;
     fs::file_time_type time;
-    bool materials = true;
+    std::optional<bool> materials;   // absent: the project's default
 };
 
 struct CachedInfo {
@@ -83,35 +84,39 @@ std::mutex cacheMutex;
 std::unordered_map<std::string, FileStamp> fileStamps;
 std::unordered_map<std::string, CachedInfo> importInfos;
 std::unordered_map<std::string, MaterialMode> materialModes;
+std::atomic<bool> defaultMaterials{true};
 
-// Whether the FBX's import makes materials (Material Creation Mode Import, the default): a model
-// without a sidecar costs one failed stat
+// Whether the FBX's import makes materials (Material Creation Mode Import), its sidecar's mode or
+// else the project's: a model without a sidecar costs one failed stat
 bool createsMaterials(const fs::path& fbxPath) {
     const fs::path meta = SetAssetMetaCmd::metaPathOf(fbxPath);
     std::error_code ec;
     const uintmax_t size = fs::file_size(meta, ec);
     if (ec) {
-        return true;
+        return defaultMaterials.load();
     }
     const fs::file_time_type time = fs::last_write_time(meta, ec);
     if (ec) {
-        return true;
+        return defaultMaterials.load();
     }
     const std::string key = FileUtils::pathToGenericUtf8(fbxPath.lexically_normal());
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto it = materialModes.find(key);
         if (it != materialModes.end() && it->second.size == size && it->second.time == time) {
-            return it->second.materials;
+            return it->second.materials.value_or(defaultMaterials.load());
         }
     }
     // a section that does not read is the default
     ModelImportSettings settings;
     ModelImportSettings::parse(SetAssetMetaCmd::read(fbxPath, ModelImportSettings::metaKey), settings);
-    const bool materials = settings.materialCreationMode.value_or(MaterialCreationMode::Import) == MaterialCreationMode::Import;
+    std::optional<bool> materials;
+    if (settings.materialCreationMode) {
+        materials = *settings.materialCreationMode == MaterialCreationMode::Import;
+    }
     std::lock_guard<std::mutex> lock(cacheMutex);
     materialModes[key] = {size, time, materials};
-    return materials;
+    return materials.value_or(defaultMaterials.load());
 }
 
 // FNV-1a, since mtimes do not survive a git clone
@@ -341,6 +346,10 @@ tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPat
 }
 
 } // namespace
+
+void FbxImporter::setDefaultCreatesMaterials(bool materials) {
+    defaultMaterials.store(materials);
+}
 
 bool FbxImporter::isFbxFile(const fs::path& path) {
     std::string ext = path.extension().string();

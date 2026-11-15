@@ -408,6 +408,8 @@ YAML::Node editor::encodeModelProjectSettings(const ModelProjectSettings& settin
         node["keepCpuDataForScripts"] = scriptMeshDataName(settings.scriptMeshData);
     if (settings.animationEntities != defaults.animationEntities)
         node["animationEntities"] = animationEntitiesModeName(settings.animationEntities);
+    if (settings.materialCreationMode != defaults.materialCreationMode)
+        node[materialModeKey] = materialCreationModeName(settings.materialCreationMode);
     YAML::Node budgets(YAML::NodeType::Map);
     for (size_t f = 0; f < kModelFamilyCount; f++){
         const RenderBudget& b = settings.renderBudgets[f];
@@ -479,6 +481,13 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
         try { name = node["animationEntities"].Scalar(); } catch (...) { name.clear(); }
         if (valueOf(animationEntitiesNames, name, value))
             settings.animationEntities = value;
+    }
+    if (node[materialModeKey]){
+        MaterialCreationMode value;
+        std::string name;
+        try { name = node[materialModeKey].Scalar(); } catch (...) { name.clear(); }
+        if (valueOf(materialModeNames, name, value))
+            settings.materialCreationMode = value;
     }
     if (const YAML::Node budgets = node["renderBudgets"]; budgets && budgets.IsMap()){
         for (size_t f = 0; f < kModelFamilyCount; f++){

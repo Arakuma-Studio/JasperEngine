@@ -104,6 +104,7 @@ ModelAuditRow ModelAudit::row(Project& project, const std::string& assetPath, Mo
     if (!row.storedRead)
         row.headerError = "its import settings cannot be read: " + error;
     row.resolved = row.stored.resolve(family, project.getModelSettings());
+    row.materialCreationMode = row.stored.materialCreationMode.value_or(project.getModelSettings().materialCreationMode);
     ModelCookQueue& queue = ModelCookQueue::get();
     row.hasState = queue.getProject() == &project && queue.getState(assetPath, family, row.state);
     ModelUsageIndex& usage = ModelUsageIndex::get();
@@ -299,8 +300,7 @@ Json ModelAudit::toJson(const ModelAuditRow& row, bool details){
     if (!details)
         return out;
     out["settings"] = {{"resolved", resolvedJson(row.resolved)}, {"stored", storedJson(row.stored)}};
-    out["settings"]["resolved"]["material_creation_mode"] =
-        materialCreationModeName(row.stored.materialCreationMode.value_or(MaterialCreationMode::Import));
+    out["settings"]["resolved"]["material_creation_mode"] = materialCreationModeName(row.materialCreationMode);
     out["read_write"] = {{"keep", row.readWrite.keep}, {"reasons", row.readWrite.reasons}};
     Json diagnostics = Json::array();
     for (const GltfDiagnostic& diagnostic : row.diagnostics)

@@ -43,6 +43,8 @@ namespace jasperengine::editor {
         bool hasState = false;
         ModelCookState state;
         ResolvedModelSettings resolved;
+        // the model's own Material Creation Mode, else the project's (S98 REQ-35, REQ-44)
+        MaterialCreationMode materialCreationMode = MaterialCreationMode::Import;
         ModelImportSettings stored;
         bool storedRead = true;     // false: the section is malformed (its error in headerError)
         ModelUsage usage;

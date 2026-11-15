@@ -37,7 +37,7 @@ Model import and cook settings, detail levels (LOD) and render budgets: the `mes
 | `generate_lods` | automatic, on, off | automatic |
 | `lod_count`, `lod_reduction` | 1-3; preserve_detail, balanced, smallest (used when `generate_lods` is on) | 3, balanced |
 | `ship_source` | true, false | false |
-| `material_creation_mode` | import, none (FBX only, every platform: no `platform`) | import |
+| `material_creation_mode` | import, none (FBX only, every platform: no `platform`) | the project's `mesh.material_creation_mode`, import |
 
 With `platform` (desktop, mobile, web) the settings are that platform's override. `reset: [...]`
 puts settings back to their defaults. They live in the model's `.meta` under

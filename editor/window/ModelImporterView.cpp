@@ -683,7 +683,8 @@ bool ModelImporterView::draw(const std::vector<fs::path>& selection, const std::
         const bool fbx = std::all_of(assetPaths.begin(), assetPaths.end(), [](const std::string& path){ return FbxImporter::isFbxFile(path); });
         section("Materials", [&]{
             ImGui::BeginDisabled(!fbx);
-            const MaterialCreationMode mode = settings.materialCreationMode.value_or(MaterialCreationMode::Import);
+            // unset: the project's (Project Settings > Mesh)
+            const MaterialCreationMode mode = settings.materialCreationMode.value_or(project->getModelSettings().materialCreationMode);
             form.comboField("Material Creation Mode", "materialCreationMode", modelEnumValues("materialCreationMode"), {"Import", "None"},
                             materialCreationModeName(mode), fbx ? "Import makes the FBX's materials and looks for their textures. None makes no "
                             "material, so nothing is looked for or warned about: every submesh draws with the default material."

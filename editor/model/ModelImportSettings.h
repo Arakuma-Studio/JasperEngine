@@ -127,6 +127,8 @@ namespace jasperengine::editor {
         ScriptMeshData scriptMeshData = ScriptMeshData::Automatic;
         std::array<RenderBudget, kModelFamilyCount> renderBudgets;
         AnimationEntitiesMode animationEntities = AnimationEntitiesMode::Always;
+        // the Material Creation Mode of FBX models that do not set their own (S98 REQ-44)
+        MaterialCreationMode materialCreationMode = MaterialCreationMode::Import;
 
         bool operator==(const ModelProjectSettings&) const = default;
     };

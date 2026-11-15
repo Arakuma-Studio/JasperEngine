@@ -2599,6 +2599,14 @@ void ProjectSettingsWindow::drawMeshSettings() {
                 d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
         }
+        if (settingsui::beginRow("mesh.material_creation_mode")) {
+            static const char* const materialLabels[] = {"Import", "None"};
+            int value = (int)m.materialCreationMode;
+            drawComboSetting("Material Creation Mode", "##MeshMaterialCreation", materialLabels, 2, value, 0,
+                             "FBX models that do not set their own (Model Importer > Materials). Import makes the FBX's materials and looks "
+                             "for their textures. None makes no material, so nothing is looked for or warned about.");
+            m.materialCreationMode = (MaterialCreationMode)value;
+        }
         if (settingsui::beginRow("mesh.keep_cpu_data_for_scripts")) {
             static const char* const scriptLabels[] = {"Automatic", "Keep", "Release"};
             int value = (int)m.scriptMeshData;

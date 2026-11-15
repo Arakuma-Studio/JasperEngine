@@ -9,12 +9,14 @@
 
 #include <gtest/gtest.h>
 
+#include "model/ModelImportSettings.h"
 #include "util/FbxImporter.h"
 
 #include "TempDir.h"
 
 #include "stb_image_write.h"
 #include "tiny_gltf.h"
+#include "yaml-cpp/yaml.h"
 
 #include <filesystem>
 #include <fstream>
@@ -156,4 +158,39 @@ TEST(FbxImporterWarnings, MaterialCreationNoneWarnsNothing) {
     // Import again: materials come back
     writeText(fs::path(hall.fbx.string() + ".meta"), "import:\n  modelImporter:\n    version: 1\n");
     EXPECT_EQ(FbxImporter::getState(hall.fbx, hall.glb, hall.assets), FbxImporter::State::Stale);
+}
+
+// S98 REQ-44: Project Settings > Mesh > Material Creation Mode is the mode of the FBX models whose
+// sidecar sets none; a model's own mode wins over it
+TEST(FbxImporterWarnings, ProjectMaterialCreationModeIsTheDefault) {
+    Hall hall;
+    ASSERT_TRUE(FbxImporter::import(hall.fbx, hall.glb, hall.assets, true).success);
+    EXPECT_EQ(hall.load().materials.size(), 5u);
+
+    struct RestoreDefault {
+        ~RestoreDefault() { FbxImporter::setDefaultCreatesMaterials(true); }
+    } restore;
+    FbxImporter::setDefaultCreatesMaterials(false);
+    EXPECT_EQ(FbxImporter::getState(hall.fbx, hall.glb, hall.assets), FbxImporter::State::Stale) << "the project's mode changes the import";
+    const FbxImporter::Result result = FbxImporter::import(hall.fbx, hall.glb, hall.assets, false);
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_TRUE(result.warnings.empty()) << result.warnings.front();
+    EXPECT_TRUE(hall.load().materials.empty());
+
+    // the model's own Import wins
+    writeText(fs::path(hall.fbx.string() + ".meta"), "import:\n  modelImporter:\n    version: 1\n    materialCreationMode: import\n");
+    EXPECT_EQ(FbxImporter::getState(hall.fbx, hall.glb, hall.assets), FbxImporter::State::Stale);
+    ASSERT_TRUE(FbxImporter::import(hall.fbx, hall.glb, hall.assets, false).success);
+    EXPECT_EQ(hall.load().materials.size(), 5u);
+
+    // project.yaml's mesh: writes the mode only when it is None, and reads it back
+    ModelProjectSettings settings;
+    EXPECT_FALSE(encodeModelProjectSettings(settings)["materialCreationMode"]);
+    settings.materialCreationMode = MaterialCreationMode::None;
+    const YAML::Node encoded = encodeModelProjectSettings(settings);
+    ASSERT_TRUE(encoded["materialCreationMode"]);
+    EXPECT_EQ(encoded["materialCreationMode"].Scalar(), "none");
+    ModelProjectSettings decoded;
+    decodeModelProjectSettings(encoded, decoded);
+    EXPECT_EQ(decoded.materialCreationMode, MaterialCreationMode::None);
 }

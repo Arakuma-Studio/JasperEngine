@@ -4148,10 +4148,15 @@ const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
 }
 
 void editor::Project::setModelSettings(const ModelProjectSettings& settings){
+    // the importer's process-wide value is the open project's, also when it equals the last one's
+    FbxImporter::setDefaultCreatesMaterials(settings.materialCreationMode == MaterialCreationMode::Import);
     if (settings == modelSettings){
         return;
     }
-    const bool cookInputs = settings.defaults != modelSettings.defaults || settings.cacheSizeMB != modelSettings.cacheSizeMB;
+    // (a Material Creation Mode change makes the FBX imports without a mode of their own stale:
+    // their cooks import again)
+    const bool cookInputs = settings.defaults != modelSettings.defaults || settings.cacheSizeMB != modelSettings.cacheSizeMB ||
+                            settings.materialCreationMode != modelSettings.materialCreationMode;
     modelSettings = settings;
     if (cookInputs && ModelCookQueue::get().getProject() == this){
         ModelCookQueue::get().projectSettingsChanged();

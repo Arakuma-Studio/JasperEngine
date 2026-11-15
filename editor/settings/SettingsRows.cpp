@@ -2199,6 +2199,21 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            meshSetting("mesh.material_creation_mode", "enum",
+                        "Material Creation Mode of FBX models that do not set their own: import, or none (no materials or textures).",
+                        [](const ModelProjectSettings& m) { return Json(materialCreationModeName(m.materialCreationMode)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (MaterialCreationMode mode : {MaterialCreationMode::Import, MaterialCreationMode::None}) {
+                                if (name == materialCreationModeName(mode)) {
+                                    m.materialCreationMode = mode;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of import, none";
+                            return false;
+                        }, {"import", "none"});
             // Project Settings > Animation (S77 R38); stored with the model settings
             meshSetting("animation.animation_entities", "enum",
                         "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "
@@ -4683,7 +4698,7 @@ void meshRowPlacement(const std::string& key, SettingRow& row) {
         {"generate_lods", "Generate LODs"}, {"lod_count", "LOD Count"}, {"lod_reduction", "Reduction"}, {"ship_source", "Ship Source Files"},
         {"cache_size_mb", "Cache Size (MB)"}, {"keep_cpu_data_for_scripts", "Keep CPU Data for Scripts"},
         {"triangles", "Triangle Budget"}, {"draw_calls", "Draw Call Budget"}, {"mesh_memory_mb", "Mesh Memory Budget (MB)"},
-        {"download_mb", "Download Budget (MB)"}};
+        {"download_mb", "Download Budget (MB)"}, {"material_creation_mode", "Material Creation Mode"}};
     static const std::map<std::string, const char*> platforms = {{"desktop", "Desktop"}, {"mobile", "Mobile"}, {"web", "Web"}};
     const std::string leaf = key.substr(key.rfind('.') + 1);
     auto label = labels.find(leaf);
@@ -4698,8 +4713,8 @@ void meshRowPlacement(const std::string& key, SettingRow& row) {
         row.keywords = "render budget triangles draw calls memory download check_render_budgets";
     } else {
         row.page = "Mesh";
-        row.section = key.rfind("mesh.defaults.", 0) == 0 ? "Defaults" : "Cache";
-        row.keywords = "mesh model import cook";
+        row.section = key.rfind("mesh.defaults.", 0) == 0 || key == "mesh.material_creation_mode" ? "Defaults" : "Cache";
+        row.keywords = key == "mesh.material_creation_mode" ? "mesh model import fbx materials textures creation none" : "mesh model import cook";
     }
 }
 

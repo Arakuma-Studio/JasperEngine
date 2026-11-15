@@ -253,3 +253,31 @@ async def test_material_creation_mode_none(ed: Editor):
     await ed.call("undo", scope="project")
     await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
     ed.check_eq(len(glb_json(glb).get("materials", [])), 5, "undo: the materials are imported again")
+
+
+async def test_project_material_creation_mode(ed: Editor):
+    """S98 REQ-44: Project Settings > Mesh > Material Creation Mode is the mode of the FBX models that
+    set none (a model's own value wins), and settings search finds it."""
+    models = ed.project / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    (models / "Hall.fbx").write_text(hall_fbx())
+    await ed.call("sync_files", paths=["models/Hall.fbx"])
+    await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
+    glb = ed.project / ".jasperengine" / "imported" / "models" / "Hall.fbx.glb"
+    ed.check_eq(len(glb_json(glb).get("materials", [])), 5, "Import by default")
+
+    await ed.call("set_project_settings", values={"mesh.material_creation_mode": "none"})
+    project_yaml = (ed.project / "project.yaml").read_text()
+    ed.check("materialCreationMode: none" in project_yaml, f"project.yaml holds it: {project_yaml}")
+    await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
+    ed.check(not glb_json(glb).get("materials"), "the project's None: no material in the import")
+    report = (await ed.call("inspect_models", paths=["models/Hall.fbx"]))["models"][0]
+    ed.check_eq(report["settings"]["resolved"]["material_creation_mode"], "none", "the model resolves the project's mode")
+
+    await ed.call("set_model_import_settings", paths=["models/Hall.fbx"], settings={"material_creation_mode": "import"}, timeout=600)
+    await ed.call("reimport_models", paths=["models/Hall.fbx"], timeout=600)
+    ed.check_eq(len(glb_json(glb).get("materials", [])), 5, "the model's own Import wins")
+
+    found = await ed.call("search_editor", query=":Material Creation Mode")
+    keys = [r["key"] for r in found["results"]]
+    ed.check("setting:mesh.material_creation_mode" in keys, f"settings search finds it: {keys}")

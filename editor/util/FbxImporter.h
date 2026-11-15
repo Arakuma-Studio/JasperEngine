@@ -55,6 +55,10 @@ namespace jasperengine::editor {
         static std::vector<std::filesystem::path> findLinkedFiles(const std::filesystem::path& fbxPath,
             const std::filesystem::path& glbPath);
 
+        // The Material Creation Mode of the FBX models whose sidecar sets none (Project Settings >
+        // Mesh, S98 REQ-44): false is None. The open project sets it; a change makes their imports stale.
+        static void setDefaultCreatesMaterials(bool materials);
+
         // Textures inside assetsRoot are linked, others embedded. An up-to-date .glb is kept unless forced.
         // The FBX's Material Creation Mode (its sidecar's import.modelImporter) decides whether
         // materials are made; a change of it makes the .glb stale.
