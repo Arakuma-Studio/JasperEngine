@@ -6,6 +6,7 @@
 
 #include "App.h"
 #include "EditorVersion.h"
+#include "RepositoryUrl.h"
 #include "htmlui/HttpClient.h"
 #include "io/AtomicFile.h"
 #include "serialization/CookedScene.h"
@@ -197,8 +198,14 @@ std::string PlayerRuntimes::editorVersion() {
 }
 
 bool PlayerRuntimes::isReleaseEditor() {
-    static const std::regex release(R"(^v[0-9]+\.[0-9]+\.[0-9]+$)");
-    return std::regex_match(editorVersion(), release);
+    return isReleaseVersion(editorVersion());
+}
+
+bool PlayerRuntimes::isReleaseVersion(const std::string& version) {
+    // a stable v<major>.<minor>.<patch>, or a nightly (nightly-YYYYMMDD, .github/workflows/nightly.yml):
+    // each a GitHub release of that tag, with its players and their hashes
+    static const std::regex release(R"(^(v[0-9]+\.[0-9]+\.[0-9]+|nightly-[0-9]{8})$)");
+    return std::regex_match(version, release);
 }
 
 std::vector<fs::path> PlayerRuntimes::searchDirs(const fs::path& override) {
@@ -367,10 +374,13 @@ bool PlayerRuntimes::remove(const std::string& id, const fs::path& override, std
 
 std::string PlayerRuntimes::downloadUrl(const std::string& id) {
     const std::string version = editorVersion();
-    std::string base = "https://github.com/JasperRaccoon/JasperEngine/releases/download/";
-    if (const char* mirror = std::getenv("JASPER_PLAYERS_URL"); mirror && *mirror) base = std::string(mirror) + "/";
-    else base += version + "/";
-    return base + "jasperengine-player-" + id + "-" + version + ".zip";
+    if (const char* mirror = std::getenv("JASPER_PLAYERS_URL"); mirror && *mirror)
+        return std::string(mirror) + "/jasperengine-player-" + id + "-" + version + ".zip";
+    return releaseUrl(id, version);
+}
+
+std::string PlayerRuntimes::releaseUrl(const std::string& id, const std::string& version) {
+    return std::string(REPOSITORY_URL) + "/releases/download/" + version + "/jasperengine-player-" + id + "-" + version + ".zip";
 }
 
 uint64_t PlayerRuntimes::archiveSize(const std::string& id) {

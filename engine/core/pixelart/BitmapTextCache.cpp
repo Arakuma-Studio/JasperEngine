@@ -68,6 +68,9 @@ namespace jasperengine::pixelart {
         }
     }
 
+    BitmapTextCache::BitmapTextCache() = default;
+    BitmapTextCache::~BitmapTextCache() = default;
+
     BitmapTextCache& BitmapTextCache::get(){
         static BitmapTextCache cache;
         return cache;

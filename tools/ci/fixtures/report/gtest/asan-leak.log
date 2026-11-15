@@ -1,0 +1,57 @@
+Running main() from /gtest/src/gtest_main.cc
+Note: Google Test filter = Overflow.*:Leaks.*
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from Overflow
+[ RUN      ] Overflow.Adds
+engine/tests/core/SanitizerFixtureTest.cpp:4:73: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+    #0 0x5ad350911236 in Overflow_Adds_Test::TestBody() engine/tests/core/SanitizerFixtureTest.cpp:4
+    #1 0x5ad3508b2473 in void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) (/tmp/st+0x36f473)
+    #2 0x5ad350883162 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) (/tmp/st+0x340162)
+    #3 0x5ad3507bdd11 in testing::Test::Run() /gtest/src/gtest.cc:2739
+    #4 0x5ad3507c1ace in testing::TestInfo::Run() /gtest/src/gtest.cc:2885
+    #5 0x5ad3507c6314 in testing::TestSuite::Run() /gtest/src/gtest.cc:3063
+    #6 0x5ad350813d49 in testing::internal::UnitTestImpl::RunAllTests() /gtest/src/gtest.cc:6054
+    #7 0x5ad3508b83b9 in bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) (/tmp/st+0x3753b9)
+    #8 0x5ad350889d63 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) (/tmp/st+0x346d63)
+    #9 0x5ad350805672 in testing::UnitTest::Run() /gtest/src/gtest.cc:5594
+    #10 0x5ad35091114e in RUN_ALL_TESTS() /gtest/include/gtest/gtest.h:2334
+    #11 0x5ad350910f1b in main /gtest/src/gtest_main.cc:64
+    #12 0x7043eef0ed8f  (/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+    #13 0x7043eef0ee3f in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e3f)
+    #14 0x5ad35076ba84 in _start (/tmp/st+0x228a84)
+
+[       OK ] Overflow.Adds (108 ms)
+[----------] 1 test from Overflow (108 ms total)
+
+[----------] 1 test from Leaks
+[ RUN      ] Leaks.Allocates
+[       OK ] Leaks.Allocates (0 ms)
+[----------] 1 test from Leaks (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (109 ms total)
+[  PASSED  ] 2 tests.
+
+=================================================================
+==19==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 64 byte(s) in 1 object(s) allocated from:
+    #0 0x7043efb2c887 in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:145
+    #1 0x5ad350911475 in Leaks_Allocates_Test::TestBody() engine/tests/core/SanitizerFixtureTest.cpp:5
+    #2 0x5ad3508b2473 in void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) (/tmp/st+0x36f473)
+    #3 0x5ad350883162 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) (/tmp/st+0x340162)
+    #4 0x5ad3507bdd11 in testing::Test::Run() /gtest/src/gtest.cc:2739
+    #5 0x5ad3507c1ace in testing::TestInfo::Run() /gtest/src/gtest.cc:2885
+    #6 0x5ad3507c6314 in testing::TestSuite::Run() /gtest/src/gtest.cc:3063
+    #7 0x5ad350813d49 in testing::internal::UnitTestImpl::RunAllTests() /gtest/src/gtest.cc:6054
+    #8 0x5ad3508b83b9 in bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) (/tmp/st+0x3753b9)
+    #9 0x5ad350889d63 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) (/tmp/st+0x346d63)
+    #10 0x5ad350805672 in testing::UnitTest::Run() /gtest/src/gtest.cc:5594
+    #11 0x5ad35091114e in RUN_ALL_TESTS() /gtest/include/gtest/gtest.h:2334
+    #12 0x5ad350910f1b in main /gtest/src/gtest_main.cc:64
+    #13 0x7043eef0ed8f  (/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+
+SUMMARY: AddressSanitizer: 64 byte(s) leaked in 1 allocation(s).
+exit 1
+gtest-gate: /src/core-asan.xml: 2 ran, 0 failed, 0 skipped, 0 disabled

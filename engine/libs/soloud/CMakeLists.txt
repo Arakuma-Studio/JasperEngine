@@ -29,6 +29,9 @@
 # (src/filter/soloud_biquadresonantfilter.cpp: the buffer may alias the members, so the loop reloaded
 # and stored them every sample; the arithmetic and its order are unchanged): a low-pass on each of
 # many source voices (S97 REQ-36).
+# soloud.h declares OutputDebugStringA, which SOLOUD_ASSERT calls on MSVC, instead of including
+# <windows.h> (include/soloud.h): the engine's public headers include soloud.h, and windows.h's macros
+# (near, far, min, max, ERROR, TRANSPARENT...) broke the engine sources that include them.
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

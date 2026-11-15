@@ -21,7 +21,7 @@
 #include "texsynth/SynthImage.h"
 #include "mcp/tools/McpTools.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <chrono>
 #include <cmath>

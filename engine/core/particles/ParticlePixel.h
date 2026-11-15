@@ -26,7 +26,7 @@ namespace jasperengine { namespace particles {
     struct PixelParams;
 
     // a shape and its Renderer settings
-    struct PixelShapeSpec {
+    struct JASPERENGINE_API PixelShapeSpec {
         int shape = 0;                  // PixelShape, or -1 for a billboard of the Pixel Art module
         float streakLengthScale = 0.022f, streakMaxLength = 9.0f, streakHeadFraction = 0.45f;
         int streakWidth = 1, ringWidth = 1, glowBands = 3, rotationSteps = 16;

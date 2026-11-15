@@ -23,7 +23,7 @@
 #include "component/MeshComponent.h"
 #include "util/CameraTextureLink.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cstdlib>
 #include <filesystem>

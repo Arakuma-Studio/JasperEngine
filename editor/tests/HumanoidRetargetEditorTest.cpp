@@ -44,7 +44,7 @@
 
 #include "yaml-cpp/yaml.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -576,7 +576,7 @@ TEST_F(HumanoidEditorTest, TheRigInfoKeepsTheAvatarOfAnInvalidBodyMap) {
     overrides.animationType = pose::AnimationType::Humanoid;
     overrides.bones[(size_t)pose::boneIndex(pose::HumanBone::Hips)] = std::string();
     overrides.twist[(size_t)pose::boneIndex(pose::HumanBone::LeftLowerArm)] = 30.0f;
-    std::ofstream(sidecar) << pose::writeHumanoidOverrides(overrides);
+    std::ofstream(sidecar, std::ios::binary) << pose::writeHumanoidOverrides(overrides);   // (binary: the undo below restores these bytes)
     std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project(), assets() / "models/invalid/hero.gltf");
     EXPECT_FALSE(info->rig);
     EXPECT_TRUE(info->overrides.isHumanoid()) << "the Animation Type is read even when the map does not validate";

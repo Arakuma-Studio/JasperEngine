@@ -34,7 +34,7 @@ mesher each run).
 
 ## je-bench-titlebake (R47)
 
-`Title3DBakeBench.GoldBigBonusAndAColdEnvironment`: the same title in a 1920 x 1080 canvas at k = 3 with
+`Title3DBakeBenchGpu.GoldBigBonusAndAColdEnvironment`: the same title in a 1920 x 1080 canvas at k = 3 with
 the full glint, document to readback, the environment warm; and the cold procedural environment at
 1024 (the first render minus the warm one: it includes the programs' first draws).
 
@@ -49,7 +49,7 @@ deviation 22). These are not GPU figures; the budgets stay to be checked on serv
 
 ## RTX 3080 Ti (server H, `rb.sh H`, GL through the headless Xorg) against llvmpipe, 2026-11-08
 
-`ta/w3-3d-runtime`, RelWithDebInfo core tests, the same tests as above plus `Title3DBakeBench.RealtimeTiers`
+`ta/w3-3d-runtime`, RelWithDebInfo core tests, the same tests as above plus `Title3DBakeBenchGpu.RealtimeTiers`
 (one Realtime re-render of "BIG BONUS" Gold 3D at 280 px, about 30 % of a 1080p frame, a colour change so
 every pass runs with the mesh and the environment cached; median of 5, wall clock including a synchronous
 readback of the result).

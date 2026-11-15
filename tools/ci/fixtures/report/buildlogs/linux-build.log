@@ -1,0 +1,21 @@
+[1/4] Building CXX object CMakeFiles/linkme.dir/engine/core/Link.cpp.o
+[2/4] Linking CXX executable linkme
+FAILED: linkme 
+: && /usr/bin/c++ -g  CMakeFiles/linkme.dir/engine/core/Link.cpp.o -o linkme   && :
+/usr/bin/ld: CMakeFiles/linkme.dir/engine/core/Link.cpp.o: in function `main':
+/src/engine/core/Link.cpp:2: undefined reference to `missing_function(int)'
+collect2: error: ld returned 1 exit status
+[3/4] Building CXX object CMakeFiles/broken.dir/engine/core/Broken.cpp.o
+FAILED: CMakeFiles/broken.dir/engine/core/Broken.cpp.o 
+/usr/bin/c++   -g -MD -MT CMakeFiles/broken.dir/engine/core/Broken.cpp.o -MF CMakeFiles/broken.dir/engine/core/Broken.cpp.o.d -o CMakeFiles/broken.dir/engine/core/Broken.cpp.o -c /src/engine/core/Broken.cpp
+/src/engine/core/Broken.cpp: In function 'int jasperengine::use(jasperengine::Transform*)':
+/src/engine/core/Broken.cpp:6:13: error: invalid use of incomplete type 'struct jasperengine::Transform'
+    6 |     return t->position + undeclared_name;
+      |             ^~
+/src/engine/core/Broken.cpp:3:8: note: forward declaration of 'struct jasperengine::Transform'
+    3 | struct Transform;
+      |        ^~~~~~~~~
+/src/engine/core/Broken.cpp:6:26: error: 'undeclared_name' was not declared in this scope
+    6 |     return t->position + undeclared_name;
+      |                          ^~~~~~~~~~~~~~~
+ninja: build stopped: cannot make progress due to previous errors.

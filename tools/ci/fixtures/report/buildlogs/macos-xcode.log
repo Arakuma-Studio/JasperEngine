@@ -1,0 +1,21 @@
+CompileC /Users/runner/Library/Developer/Xcode/DerivedData/jasperengine-abc/Build/Intermediates.noindex/jasperengine.build/Release/jasperengine.build/Objects-normal/arm64/AppleWindow.o /Users/runner/work/JasperEngine/JasperEngine/engine/platform/apple/AppleWindow.mm normal arm64 objective-c++ com.apple.compilers.llvm.clang.1_0.compiler (in target 'jasperengine' from project 'jasperengine')
+    cd /Users/runner/work/JasperEngine/JasperEngine/engine/workspaces/xcode
+/Users/runner/work/JasperEngine/JasperEngine/engine/platform/apple/AppleWindow.mm:88:5: error: use of undeclared identifier 'NSWindowStyleMaskNoSuchMask'
+   88 |     NSWindowStyleMaskNoSuchMask;
+      |     ^
+1 error generated.
+
+Ld /Users/runner/Library/Developer/Xcode/DerivedData/jasperengine-abc/Build/Products/Release/jasperengine normal (in target 'jasperengine' from project 'jasperengine')
+Undefined symbols for architecture arm64:
+  "jasperengine::AppleWindow::missing()", referenced from:
+      _main in main.o
+ld: symbol(s) not found for architecture arm64
+clang++: error: linker command failed with exit code 1 (use -v to see invocation)
+error: Build input file cannot be found: '/Users/runner/work/JasperEngine/JasperEngine/engine/platform/apple/Gone.mm'. Did you forget to declare this file as an output of a script phase or custom build rule which produces it? (in target 'jasperengine' from project 'jasperengine')
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	CompileC /Users/runner/Library/Developer/Xcode/DerivedData/jasperengine-abc/Build/Intermediates.noindex/jasperengine.build/Release/jasperengine.build/Objects-normal/arm64/AppleWindow.o /Users/runner/work/JasperEngine/JasperEngine/engine/platform/apple/AppleWindow.mm normal arm64 objective-c++ com.apple.compilers.llvm.clang.1_0.compiler (in target 'jasperengine' from project 'jasperengine')
+(1 failure)

@@ -11,7 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

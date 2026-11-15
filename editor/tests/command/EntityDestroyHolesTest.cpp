@@ -20,7 +20,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "util/ProjectUtils.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #include <filesystem>
 #include <fstream>
 #include <memory>

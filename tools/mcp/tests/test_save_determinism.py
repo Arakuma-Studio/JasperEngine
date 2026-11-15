@@ -7,6 +7,8 @@
   capacities since mesh-memory);
 - a Mesh's (or Points') transparent under Auto Transparency is what a load starts from, not the
   value the renderer derives once it drew a blended submesh;
+- a Sprite made with a texture and saved before its first frame (which makes its one submesh)
+  saves the material a drawn one saves;
 - a save before a model of the scene finished loading writes what a save after it writes (the
   external buffers the load gives its meshes);
 - a Missing Prefab instance's data re-saves in the style the file had (an added GameObject's
@@ -27,6 +29,7 @@ from pathlib import Path
 
 import yaml
 
+import pngdiff
 from harness import Editor
 from scene_history import FIXTURES, SCENE_INPUTS, History, first_difference, two_level_prefab
 
@@ -228,6 +231,37 @@ async def test_derived_transparency_is_saved_as_a_load_starts_it(ed: Editor):
     box = components_of(yaml.safe_load(path.read_bytes()), "Box")["mesh"]
     ed.check_eq((box.get("transparent", False), box.get("autoTransparency", True)), (False, True), "saved as a load starts it (false)")
     ed.check(path.read_bytes() == blended, f"the same bytes drawn or not: {first_difference(blended, path.read_bytes())}")
+
+
+async def test_a_sprite_saved_before_its_first_frame_keeps_its_material(ed: Editor):
+    """A Sprite's one submesh is made by its first frame (MeshSystem::prepareSpriteMesh). Made with a
+    texture and saved in one batch (no frame), its material is saved as a drawn one's: the texture
+    was lost (`submeshes: ~`), which a slow machine met whenever a save came before the next frame"""
+    rel = "Unframed Sprite.scene"
+    path = ed.project / rel
+    texture = "assets/unframed.png"
+    (ed.project / texture).parent.mkdir(parents=True, exist_ok=True)
+    (ed.project / texture).write_bytes(pngdiff.encode(16, 16, bytes([200, 30, 30, 255]) * 16 * 16))
+    await ed.call("sync_files", paths=[texture])
+    sid = (await ed.call("create_scene", name="Unframed Sprite", type="2D", path=rel))["scene"]["id"]
+    textured = {"mesh": {"submeshes[0].material.baseColorTexture": texture}}
+    r = await ed.call("batch", calls=[
+        {"tool": "create_entity", "arguments": {"scene": sid, "type": "sprite", "name": "Unframed", "select": False}},
+        {"tool": "set_properties", "arguments": {"scene": sid, "entity": "Unframed", "values": textured}},
+        {"tool": "save_scene", "arguments": {"scene": sid}}])
+    ed.check_eq(r.get("failed"), 0, f"batch: {[x for x in r['results'] if not x.get('ok')]}")
+    unframed = components_of(yaml.safe_load(path.read_bytes()), "Unframed")["mesh"].get("submeshes") or []
+    await ed.call("create_entity", scene=sid, type="sprite", name="Drawn", select=False)
+    await ed.call("set_properties", scene=sid, entity="Drawn", values=textured)
+    await draw(ed, sid)
+    await ed.call("save_scene", scene=sid)
+    drawn = components_of(yaml.safe_load(path.read_bytes()), "Drawn")["mesh"]["submeshes"]
+    ed.check(len(unframed) == 1 and unframed[0]["material"].get("baseColorTexture", {}).get("path", "").endswith("unframed.png"),
+             f"the texture is saved before the first frame: {unframed}")
+    # (but the texture's guid: this undrawn save leaves it out, which is not about the submesh)
+    for material in (unframed[0]["material"], drawn[0]["material"]):
+        material["baseColorTexture"].pop("guid", None)
+    ed.check_eq(unframed[0]["material"], drawn[0]["material"], "the material as a drawn Sprite's")
 
 
 # -- model loads ------------------------------------------------------------------------------------------

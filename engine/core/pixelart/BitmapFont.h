@@ -138,6 +138,10 @@ namespace jasperengine::pixelart {
 
     class JASPERENGINE_API BitmapFont {
     public:
+        BitmapFont() = default;
+        BitmapFont(const BitmapFont&) = delete;
+        BitmapFont& operator=(const BitmapFont&) = delete;
+
         // .bitmapfont, .fnt, .jfont or builtin:pixel, read through the engine's files (Data::open).
         // A shipped game reads <name>.jfont next to a source when it exists (R34). nullptr on an
         // error, which `report` describes (typed)

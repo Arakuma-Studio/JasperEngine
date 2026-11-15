@@ -48,7 +48,11 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#ifdef _WIN32
+#include <process.h>    // getpid
+#else
 #include <unistd.h>
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;

@@ -79,9 +79,12 @@ TEST(SoundEventAsset, GetsAMetaGuidAndARenameKeepsIt) {
     EXPECT_TRUE(fs::exists(dir.path / "assets/steps.soundevent.meta"));
 
     // the file body holds no GUID: identity is the .meta's alone
-    std::ifstream in(dir.path / "assets/steps.soundevent", std::ios::binary);
-    const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_EQ(body.find(guid.str()), std::string::npos);
+    {
+        // (closed before the rename below: Windows refuses to rename a file a stream holds open)
+        std::ifstream in(dir.path / "assets/steps.soundevent", std::ios::binary);
+        const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(body.find(guid.str()), std::string::npos);
+    }
 
     fs::create_directories(dir.path / "assets/moved");
     fs::rename(dir.path / "assets/steps.soundevent", dir.path / "assets/moved/walk.soundevent");

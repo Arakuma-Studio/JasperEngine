@@ -1,9 +1,12 @@
 """Unit tests of tools/titleart/check_golden_ledger.py (python3 tools/ci/test_check_title_golden_ledger.py;
-no git, no build): a new or updated title golden needs its ledger row, a Pachislop reference never
-changes, and the committed ledger parses."""
+no build): a new or updated title golden needs its ledger row, a Pachislop reference never
+changes, the committed ledger parses, and a CI lane's shallow checkout without main (scratch git
+repositories) is compared with its merge commit's first parent."""
 
 import importlib.util
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -57,6 +60,52 @@ def test_the_committed_ledger_parses():
     assert added, "the ledger lists the goldens it added"
     for name, cells in added.items():
         assert len(cells) >= 2 and cells[1], name
+
+
+def run_git(cwd, *args):
+    return subprocess.run(["git", "-C", str(cwd), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main",
+                           "-c", "protocol.file.allow=always"] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_a_shallow_checkout_without_main_compares_with_the_first_parent():
+    """CI's mcp lane checks out a pull request's merge commit (fetch-depth 2): no main, the base is
+    HEAD^1; at depth 1 there is nothing to compare with, and the error names --base"""
+    with tempfile.TemporaryDirectory() as tmp:
+        origin = Path(tmp) / "origin"
+        origin.mkdir()
+        run_git(origin, "init", "-q")
+        (origin / "a.txt").write_text("a")
+        run_git(origin, "add", "a.txt")
+        run_git(origin, "commit", "-q", "-m", "base")
+        run_git(origin, "checkout", "-q", "-b", "pr")
+        (origin / "b.txt").write_text("b")
+        run_git(origin, "add", "b.txt")
+        run_git(origin, "commit", "-q", "-m", "pr")
+        run_git(origin, "checkout", "-q", "main")
+        (origin / "c.txt").write_text("c")
+        run_git(origin, "add", "c.txt")
+        run_git(origin, "commit", "-q", "-m", "main moved")
+        base = run_git(origin, "rev-parse", "HEAD")
+        run_git(origin, "merge", "-q", "--no-ff", "-m", "merge pr", "pr")
+        run_git(origin, "update-ref", "refs/pull/1/merge", "HEAD")
+        run_git(origin, "reset", "-q", "--hard", base)
+        assert ledger.default_base(str(origin)) == base, "with main: its merge base"
+        for depth, expected in (("2", base), ("1", None)):
+            clone = Path(tmp) / ("clone" + depth)
+            clone.mkdir()
+            run_git(clone, "init", "-q")
+            run_git(clone, "fetch", "-q", "--depth", depth, "file://" + str(origin), "refs/pull/1/merge")
+            run_git(clone, "checkout", "-q", "FETCH_HEAD")
+            assert not ledger.has_commit("main", str(clone)), "the checkout has no main"
+            if expected:
+                assert ledger.default_base(str(clone)) == expected, "depth 2: the merge commit's first parent"
+            else:
+                try:
+                    ledger.default_base(str(clone))
+                except SystemExit as e:
+                    assert "--base" in str(e), e
+                else:
+                    raise AssertionError("depth 1: no base, and the error says so")
 
 
 if __name__ == "__main__":

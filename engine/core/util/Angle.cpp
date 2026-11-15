@@ -3,7 +3,6 @@
 
 #include "Angle.h"
 
-#define _USE_MATH_DEFINES
 #include <cmath>
 
 #include "Engine.h"
