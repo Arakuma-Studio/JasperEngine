@@ -34,8 +34,10 @@
 
 #include "json.hpp"
 
+#ifndef _WIN32
 #include <sys/resource.h>
-#include <unistd.h>
+#endif
+#include "support/PosixCompat.h"
 
 #include <csignal>
 
@@ -264,9 +266,14 @@ TEST(SpriteNormalsSession, ResolveProjectFile) {
     EXPECT_NE(error.find("absolute"), std::string::npos) << error;
     EXPECT_FALSE(sn::resolveProjectFile(root(), ".jasperengine/hero.png", abs, error));
     EXPECT_NE(error.find("hidden"), std::string::npos) << error;
-    // outside a project: as given
-    EXPECT_TRUE(sn::resolveProjectFile(fs::path(), "/tmp/x/hero.png", abs, error));
-    EXPECT_EQ(abs, fs::path("/tmp/x/hero.png"));
+    // outside a project: as given (an absolute path has a drive on Windows)
+#ifdef _WIN32
+    const std::string given = "C:/tmp/x/hero.png";
+#else
+    const std::string given = "/tmp/x/hero.png";
+#endif
+    EXPECT_TRUE(sn::resolveProjectFile(fs::path(), given, abs, error));
+    EXPECT_EQ(abs, fs::path(given).lexically_normal());
 }
 
 // ---- checkSpec
@@ -1659,8 +1666,9 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         EXPECT_TRUE(warning.empty()) << warning;
         EXPECT_TRUE(fs::is_directory(dir / "folder.png"));
     }
+#ifndef _WIN32
     {
-        // the sheet's write fails half way (past a 4 KiB file-size limit): the 8 KiB file it would
+        // the sheet's write fails half way (past a 4 KiB file-size limit, POSIX's RLIMIT_FSIZE): the 8 KiB file it would
         // replace is whole, no temporary file is left, nothing to warn about
         struct rlimit saved{};
         ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &saved), 0);
@@ -1695,5 +1703,6 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         EXPECT_EQ(std::distance(fs::directory_iterator(dir / "shots"), fs::directory_iterator()), 1) << "no temporary file left";
         EXPECT_TRUE(write.rollback()) << "rolled back once only";
     }
+#endif
     fs::remove_all(dir);
 }

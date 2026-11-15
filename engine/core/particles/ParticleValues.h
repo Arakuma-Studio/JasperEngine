@@ -9,6 +9,7 @@
 // value between two curves; a MinMaxGradient the same over colours. Modes, drivers and wraps
 // follow OpenEngine's ParticleValueMode / ParticleDriver / ParticleWrap.
 
+#include "Export.h"
 #include "math/Curve.h"
 #include "math/Vector4.h"
 #include "pixelart/Rgba8.h"
@@ -60,7 +61,7 @@ namespace jasperengine { namespace particles {
         PingPong
     };
 
-    struct MinMaxCurve {
+    struct JASPERENGINE_API MinMaxCurve {
         CurveMode mode = CurveMode::Constant;
         float constant = 0.0f;      // Constant, and the first of Two Constants
         float constantMax = 0.0f;   // the second of Two Constants
@@ -112,7 +113,7 @@ namespace jasperengine { namespace particles {
         bool operator!=(const MinMaxCurve& other) const { return !(*this == other); }
     };
 
-    struct MinMaxGradient {
+    struct JASPERENGINE_API MinMaxGradient {
         GradientValueMode mode = GradientValueMode::Color;
         Vector4 color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);      // sRGB rgb, alpha
         Vector4 colorMax = Vector4(1.0f, 1.0f, 1.0f, 1.0f);

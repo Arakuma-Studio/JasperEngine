@@ -30,7 +30,7 @@
 #include <thread>
 #include <filesystem>
 #include <fstream>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #include <memory>
 #include <vector>
 

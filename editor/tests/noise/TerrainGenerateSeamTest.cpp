@@ -24,7 +24,7 @@
 #include "object/TerrainEdit.h"
 #include "window/dialog/CreateTerrainDialog.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <atomic>

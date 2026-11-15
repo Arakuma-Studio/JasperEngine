@@ -79,6 +79,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "terrain/TerrainMapPersistence.h"
+#include "util/TerrainMapFileWriter.h"
 
 #include <cctype>
 #include <cmath>
@@ -375,6 +376,11 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
     VoxelAssets::setBaseResolver(&resolveVoxelBase);
     // a mesh job's result waits for the system's next update, which an idle editor would not run
     voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
+    // ~Project flushes the terrain maps through these function-local statics: made here, they are
+    // destroyed after it. The editor's Project lives in a static App, destroyed at exit; made on
+    // first use, they would be gone by then (macOS aborts on the writer's destroyed mutex)
+    TerrainMapPersistence::get();
+    TerrainMapFileWriter::get();
 }
 
 editor::Project::~Project(){

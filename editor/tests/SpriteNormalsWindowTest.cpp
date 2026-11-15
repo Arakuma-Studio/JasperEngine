@@ -44,7 +44,7 @@
 #include "imgui.h"
 #include "SymlinkSupport.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <atomic>
 #include <cmath>

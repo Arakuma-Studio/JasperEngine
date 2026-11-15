@@ -339,6 +339,11 @@ namespace jasperengine::editor::spritenormals {
             error = "no path given";
             return false;
         }
+        // (fs::u8path throws on one where the wide conversion is checked: Windows)
+        if (!texsynth::isValidUtf8(rel)) {
+            error = notUtf8(rel);
+            return false;
+        }
         const fs::path given = fs::u8path(rel);
         if (projectDir.empty()) {
             // outside a project (the CLI without --project): as given, from the working directory
@@ -434,7 +439,7 @@ namespace jasperengine::editor::spritenormals {
         if (spec.settings.height) out.push_back({"height", spec.output.height.empty() ? defaultFor("height") : spec.output.height, std::nullopt});
         if (spec.output.framesJson) {
             std::string path = spec.output.framesJsonPath;
-            if (path.empty()) {
+            if (path.empty() && texsynth::isValidUtf8(animated ? atlas : normal)) {
                 // <atlas stem>.frames.json, else <normal stem>.frames.json
                 const fs::path base = fs::u8path(animated ? atlas : normal);
                 if (!base.empty()) path = jasperengine::editor::FileUtils::pathToGenericUtf8((base.parent_path() / fs::u8path(jasperengine::editor::FileUtils::pathToUtf8(base.stem()) + ".frames.json")));

@@ -46,7 +46,7 @@ namespace {
 
 }
 
-TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
+TEST(Title3DBakeBenchGpu, GoldBigBonusAndAColdEnvironment) {
     JASPER_REQUIRE_GPU();
     static TestAssetResolver assets;
     auto doc = makeDoc({{"canvas", canvas(1920, 1080)}, {"layers", Json::array({goldBigBonus()})}, {"scene_3d", {{"supersample", 3}}}});
@@ -86,7 +86,7 @@ TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
     }
 }
 
-TEST(Title3DBakeBench, RealtimeTiers) {
+TEST(Title3DBakeBenchGpu, RealtimeTiers) {
     // S86 R48, §6.7: one whole re-render of a Realtime title covering about 30 % of a 1080p frame
     // per tier (Gold 3D "BIG BONUS" at 280 px, a colour change: the mesh and the environment
     // cached, every pass run), the median of 5 with its readback, and the passes it took. Printed

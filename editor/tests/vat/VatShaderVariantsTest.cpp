@@ -30,7 +30,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
