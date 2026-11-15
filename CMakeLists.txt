@@ -1287,6 +1287,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
+    ${EDITOR_DIR}/window/InspectorFogProfiles.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
@@ -1591,6 +1592,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/FogProfileAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/LinkFogProfileCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RevertToBaselineCmd.cpp
 

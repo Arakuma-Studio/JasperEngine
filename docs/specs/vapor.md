@@ -690,3 +690,16 @@ scene.fog.profile = p                  -- runtime only
 - **Lit test names (AC5, AC17)** follow the existing suites: `AtmosphereMath.LitColourFromAmbientAndSun`,
   `AtmosphereGpu.LitFogDay`, `AtmosphereGpu.LitFogNight` (goldens `atmosphere_lit_day`,
   `atmosphere_lit_night`) and `AtmosphereGpu.LitVolumeNotDoubleTinted`.
+- **The editor UI (R23-R28).**
+  - A profile edit made in the Fog or Fog Zone Inspector (a ticked row, a tick, All/None, Add Field,
+    and New, Duplicate or a built-in's copy with the link) is a step of that scene's history, as a
+    `.particles` edit from the Particle System Inspector is, so the link and its file stay one
+    step; the `.fogprofile` Inspector and Create > Fog Profile use the project history.
+  - While a scene plays, the Profile row and the profile's rows are read only (R33 refuses
+    `edit_fog_profile` in Play too); the Fog's own rows edit as any Play edit does. A Fog named
+    `builtin:<id>` directly (Lua, `set_properties`) has no file: its rows are read only and
+    Duplicate makes one.
+  - "Used by N" counts the Fogs and Fog Zones of the open scenes and each closed scene or prefab
+    the reference index lists once; until the index is ready it reads "in open scenes".
+  - A row whose effective value differs (R25) shows a layer icon before its label, whose tooltip
+    gives the value and its layer.

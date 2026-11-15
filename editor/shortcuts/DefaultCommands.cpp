@@ -170,6 +170,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createFogProfile", "Create Fog Profile", AppMenuCommand::AssetsCreateFogProfile).description =
+        "A new .fogprofile that sets no field yet: a fog look shared by the Fogs and Fog Zones that link it";
     b.menu("assets.createPalette", "Create Palette", AppMenuCommand::AssetsCreatePalette).description =
         "A new palette (black and white): edit it in Window > 2D > Palette";
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
