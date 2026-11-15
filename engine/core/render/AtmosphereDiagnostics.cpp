@@ -455,7 +455,8 @@ namespace {
             return;
         const FogComponent& fog = *context.fog;
         const bool height = fog.type == FogType::HEIGHT;
-        if (context.opacity.at200 < AtmosphereDiagnostics::INVISIBLE_OPACITY){
+        if (context.opacity.at200 < AtmosphereDiagnostics::INVISIBLE_OPACITY &&
+            context.opacity.levelAt200 < AtmosphereDiagnostics::INVISIBLE_OPACITY){
             std::string fix;
             if (height)
                 fix = "Lower Attenuation Distance (denser fog), raise Maximum Height or Max Opacity, or lower Start Distance.";
@@ -531,6 +532,13 @@ namespace {
         opacity.at10 = AtmosphereMath::fogOpacity(*look, origin, forward, 10.0f);
         opacity.at50 = AtmosphereMath::fogOpacity(*look, origin, forward, 50.0f);
         opacity.at200 = AtmosphereMath::fogOpacity(*look, origin, forward, 200.0f);
+        opacity.levelAt200 = opacity.at200;
+        if (look->type == FogType::HEIGHT){
+            Vector3 level(forward.x, 0.0f, forward.z);
+            level = level.length() > 1e-4f ? level.normalized() : Vector3(0.0f, 0.0f, -1.0f);
+            const Vector3 base(origin.x, std::min(origin.y, look->baseHeight), origin.z);
+            opacity.levelAt200 = AtmosphereMath::fogOpacity(*look, base, level, 200.0f);
+        }
         return opacity;
     }
 

@@ -372,6 +372,25 @@ TEST_F(AtmosphereDiagnosticsTest, FogInvisible){
     EXPECT_FALSE(has("fog_invisible"));
 }
 
+TEST_F(AtmosphereDiagnosticsTest, FogInvisibleNotForACameraAboveAGroundLayer){
+    // a dense layer from 1 m thinning out by 7 m (the toxic built-in's shape), the camera 30 m up
+    // looking level: its own ray passes over the layer, which still fills the view below
+    addMainCamera();
+    cameras.back()->getComponent<Transform>().worldPosition = Vector3(0.0f, 30.0f, 0.0f);
+    FogComponent& fog = addFog(FogType::HEIGHT, false);
+    fog.attenuationDistance = 8.0f;
+    fog.baseHeight = 1.0f;
+    fog.maximumHeight = 7.0f;
+    const AtmosphereReport report = run();
+    ASSERT_TRUE(report.opacity.valid);
+    EXPECT_LT(report.opacity.at200, AtmosphereDiagnostics::INVISIBLE_OPACITY);
+    EXPECT_GT(report.opacity.levelAt200, 0.5f);
+    EXPECT_FALSE(has("fog_invisible"));
+    // the same layer too thin to see anywhere is reported
+    fog.attenuationDistance = 100000.0f;
+    EXPECT_TRUE(has("fog_invisible", fogEntity()));
+}
+
 TEST_F(AtmosphereDiagnosticsTest, FogOpaque){
     addMainCamera();
     FogComponent& fog = addFog(FogType::HEIGHT, false);

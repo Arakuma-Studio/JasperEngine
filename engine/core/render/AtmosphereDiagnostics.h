@@ -40,6 +40,10 @@ namespace jasperengine{
         float at10 = 0.0f;
         float at50 = 0.0f;
         float at200 = 0.0f;
+        // 200 m along a level ray at the Height fog's Base Height under the camera (its densest
+        // part; the forward value for a distance fog): fog_invisible needs both thin, so a camera
+        // above a ground layer is not told the fog cannot be seen
+        float levelAt200 = 0.0f;
     };
 
     struct AtmosphereDiagnosticsInput{
