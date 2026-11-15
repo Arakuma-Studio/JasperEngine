@@ -196,7 +196,8 @@ async def test_native_code_compiles(ed: Editor):
     ed.check_eq(info["platforms"]["linux"]["method"], "prebuilt")
 
 
-FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders"]
+# a full runtime's modules: the mixer test leaves the project a clip with a Load Type, which needs the sound layer
+FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders", "soundlayer"]
 
 
 def fake_runtime(path: Path, version: str, runtime: str, platform: str, arch: str, backend: str, files: dict[str, bytes],
