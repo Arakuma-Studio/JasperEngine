@@ -951,7 +951,9 @@ Avoiding conflicts:
   (2,005 compile commands, no `-O0`, `JASPERENGINE_DEVELOPMENT_BUILD=1`). On the emulator both source
   packages draw the golden (0.00 %) and still fail the GLES log check with S67's open
   `GL_FRAMEBUFFER_STATUS_INCOMPLETE_MULTISAMPLE`; one bundle run also met an ANR dialog on the loaded
-  host (frames of 2.4-6.6 s), and its rerun drew the golden.
+  host (frames of 2.4-6.6 s), and its rerun drew the golden. After merging WP-3 to WP-7 (a new
+  runtime, the prebuilt part only): every check passed again; the bundle's first emulator run met the
+  same ANR dialog, its rerun drew the golden (0.07 %).
 - **WP-2, Gradle template without native code** (`./gradlew ... -x configureCMake* -x buildCMake*` in
   the Android image): `bundleDebug` puts the content in `game_content`, `assembleDebug` in the APK,
   both in one run keep it in `base` and say so; a hidden file is left out and named. Red control:
@@ -961,6 +963,19 @@ Avoiding conflicts:
   no NDK or CMake download (Gradle's log has no "Installing"). `tools/ci/check_android_image.sh`
   passes in it (`ndk;28.2.13676358`, `cmake;3.22.1`) and fails in the image before (red: neither is
   installed).
+- **WP-2, unit tests** (`UNIT_SUITE=editor`, filter `IosTemplate.*:AndroidTemplate.*:AndroidIcons.*:
+  AndroidPackage.*:AndroidSigning.*:BuildMethod.*:IosBuild.*:PayloadValidator.*:SettingsRegistry.*:
+  SettingsSearch.*:PlatformBackends.*:PlatformServices.*:ExportTreeWalk.*:*Android*:*Ios*`, WERROR):
+  71 ran, 0 failed, 0 skipped, 0 disabled, before and after merging WP-3 to WP-7. Red control (the
+  templates, Dockerfile and Info.plist of `3ef9338fa`, and the packager's check, filter, suffix and
+  icons, the export's debug type, signing and icons, and the prebuilt Info.plist rewrite turned
+  off): exactly the 8 new behaviour tests fail (`AndroidIcons.WritesEveryDensityAndRound`,
+  `AndroidTemplate.IgnoreAssetsPatternKeepsUnderscoreDirs`, `.DebugTypeBuildsOptimisedNative`,
+  `.ReleaseSigningFromKeystore`, `.PinsTheImagesNdkAndCMake`, `.BundlesCarryTheInstallTimeAssetPack`,
+  `AndroidPackage.EveryContentFileIsInThePackage`, `IosTemplate.OrientationsFromPresentation`).
+- **WP-2, editor UI:** Project Settings > Player > Android > Debug Package Suffix found by the
+  settings search, `.dbg` applied with OK into `project.yaml`, and undone as one step ("Change
+  Android Settings", `undo scope: timeline`); screenshot in `/tmp/arcade-gaps/evidence/s98-2/`.
 - **WP-2, `export --platform`:** `test_call_cli.py::test_export_platform_android` passes (the file:
   13 passed, 1 skipped by design); red: an editor without the change (s98-4's build) exits with
   "Unknown argument: --platform".
