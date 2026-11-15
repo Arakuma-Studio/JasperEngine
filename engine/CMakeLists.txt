@@ -1488,6 +1488,7 @@ set(JASPERENGINE_SRCS
     core/animation/AnimatorPose.cpp
     core/animation/AnimatorRetarget.cpp
     core/animation/AnimatorRig.cpp
+    core/animation/RootMotion.cpp
     core/animation/BlendTree.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
@@ -1874,6 +1875,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemRootMotion.cpp
     core/subsystem/ActionSystemLayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp

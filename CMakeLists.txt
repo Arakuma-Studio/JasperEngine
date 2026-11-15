@@ -1402,6 +1402,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/unity/UnityYaml.cpp
     ${EDITOR_DIR}/unity/UnityProject.cpp
     ${EDITOR_DIR}/unity/UnityParticleImport.cpp
+    # the Unity .anim / .controller / .mask importer (S94 F35, F36)
+    ${EDITOR_DIR}/unity/UnityAnimImport.cpp
+    ${EDITOR_DIR}/unity/UnityControllerImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp

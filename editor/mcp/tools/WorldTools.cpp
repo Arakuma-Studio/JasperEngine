@@ -6772,14 +6772,15 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
-        "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
-        "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "audio: sound cues (no clip: audio actions).",
+        "Keyframes in seconds (jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
+        "create {from?, humanoid?, unity: Unity .anim}; one project undo step. No clip: an entity "
+        "Animation under target (tweens, actions). tracks: channel + keys {time, value|points, ease}; "
+        "audio: sound cues.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})},
+                               {"unity", string("")}, {"mirror_x", boolean("")}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},

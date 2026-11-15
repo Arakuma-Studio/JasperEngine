@@ -165,6 +165,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
     b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
         "Drop the cached measurements of the selected audio files: they are measured again";
+    b.add("assets.importUnityAnimation", "Import Unity Animation...", C::Editor).description =
+        "A Unity .anim, .controller or .mask as a JasperEngine asset in the current folder (one undo step)";
     b.add("assets.importTitleArt", "Import Title Art...", C::Editor).description =
         "Import a Pachislop project, a layered PSD or an SVG as a new Title Art";
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
