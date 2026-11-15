@@ -30,7 +30,8 @@ function Parity:init() print("parity init " .. self.gameObject.name) end
 function Parity:onEnable() print("parity enable " .. self.gameObject.name) end
 function Parity:start()
     print("parity start " .. self.gameObject.name)
-    if self.gameObject.name == "Parent" and not paritySpawned then
+    -- in the scene the reload made, which lives on (one instantiated before it goes with it)
+    if self.gameObject.name == "Parent" and parityReloaded and not paritySpawned then
         paritySpawned = true
         GameObject.instantiate("prefabs/Spawnee.prefab")
     end
