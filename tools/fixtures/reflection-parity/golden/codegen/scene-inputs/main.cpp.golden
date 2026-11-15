@@ -180,6 +180,7 @@ JASPERENGINE_INIT void init() {
 #else
     System::setApplicationInfo({"SceneInputs", "com.yourcompany.project", "1.0", 1});
 #endif
+    SortingLayers::setTransparencySortMode(TransparencySortMode::PERSPECTIVE);
 #ifdef JASPERENGINE_PHYSICS_3D
     PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
 #endif

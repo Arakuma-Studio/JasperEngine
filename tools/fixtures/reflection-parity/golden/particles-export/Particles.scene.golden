@@ -124,6 +124,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1002
   - type: Entity
     entity: 1002
     name: Fire Particles

@@ -1,5 +1,5 @@
 formatVersion: 9
-guid: a121d47716aa85a089b695f0ac135fef
+guid: 93b1fa7a589185393337314dc4120100
 id: 2026080800
 name: AllComponents
 scene:
@@ -2966,3 +2966,22 @@ entities:
         width: 3.5
         widthUnits: world
         includeChildren: false
+  - type: Entity
+    entity: 1106
+    name: SpriteSkinComponent
+    components:
+      transform:
+        position: [105, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spriteskin:
+        enabled: false
+        rootBone: 1104
+        bones:
+          - 1104
+          - 1103

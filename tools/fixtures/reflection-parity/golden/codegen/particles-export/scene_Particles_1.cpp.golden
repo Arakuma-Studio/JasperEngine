@@ -76,6 +76,7 @@ void create_scene_Particles_1(Scene* scene){
             particles::readEffectText(json, particles.inlineEffect);
         }
         particles.playOnAwake = false;
+        particles.legacyFrom = 1002;
         scene->addComponent<ParticleSystemComponent>(1001, particles);
 
         Transform transform;

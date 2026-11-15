@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Title 3D Fixed
 canvasWidth: 640
 canvasHeight: 360
@@ -16,6 +16,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 1255658311
 audio:
   mixer: audio/Main.mixer

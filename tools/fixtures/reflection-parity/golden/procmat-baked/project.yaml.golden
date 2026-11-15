@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: ProcmatBaked
 canvasWidth: 1280
 canvasHeight: 720
@@ -16,6 +16,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 4185827735
 audio:
   mixer: audio/Main.mixer

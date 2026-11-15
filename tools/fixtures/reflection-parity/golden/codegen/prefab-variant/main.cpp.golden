@@ -107,6 +107,7 @@ JASPERENGINE_INIT void init() {
     Http::setInsecureHttpAllowed(false);
     Engine::setVSyncCount(1);
     Engine::setTargetFrameRate(-1);
+    TitleArtLanguage::setProjectDefault("en");
     Screen::initialize(ScreenOrientation::AutoRotation, 0x1A, true);
 #if defined(_WIN32)
     System::setApplicationInfo({"PrefabVariants", "com.yourcompany.project", "1.0", 1});
@@ -117,6 +118,7 @@ JASPERENGINE_INIT void init() {
 #else
     System::setApplicationInfo({"PrefabVariants", "com.yourcompany.project", "1.0", 1});
 #endif
+    SortingLayers::setTransparencySortMode(TransparencySortMode::PERSPECTIVE);
 #ifdef JASPERENGINE_PHYSICS_3D
     PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
 #endif

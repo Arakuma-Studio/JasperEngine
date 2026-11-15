@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: pixel-art-bad
 canvasWidth: 320
 canvasHeight: 180
@@ -23,6 +23,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 382528969
 audio:
   mixer: audio/Main.mixer

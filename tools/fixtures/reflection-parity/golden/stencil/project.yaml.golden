@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Stencil
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,6 +15,7 @@ windowHeight: 720
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 export:
   shaderAdditions:
     - type: mesh

@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: AtmosphereBench
 canvasWidth: 1280
 canvasHeight: 720
@@ -14,6 +14,7 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+transparencySortMode: perspective
 startSceneId: 910579834
 scenes:
   - filepath: bench.scene
