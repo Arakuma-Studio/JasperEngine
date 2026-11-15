@@ -18,9 +18,14 @@
 #include "yaml-cpp/yaml.h"
 
 #include "Jolt/Core/Memory.h"
+#include "Jolt/Physics/PhysicsStepListener.h"
 
+#include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <random>
@@ -605,4 +610,204 @@ TEST(Physics3DBody, DebugDrawLines2D) {
     Physics::setDebugDraw(false);
     physics->draw();
     EXPECT_EQ(physics->getDebugLineCount(), 0u);
+}
+
+// ---- S96 WP-C: movePosition / moveRotation, the interpolated teleport, zero-height capsules -----
+
+TEST(Physics3DBody, MovePositionKinematicPushes) {
+    World3D world(Vector3(0, 0, 0));
+    const Entity mover = world.box(Vector3(0, 0, 0), Vector3(1, 1, 1), BodyType::KINEMATIC);
+    // touching (within Jolt's speculative contact distance): the move pushes it in that step
+    const Entity crate = world.box(Vector3(1.01f, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
+    world.load();
+    world.step();
+    world.rb(mover).movePosition(Vector3(1, 0, 0));
+    world.rb(mover).moveRotation(degreesAbout(30.0f, Vector3(0, 1, 0)));
+    world.step();
+    // there at the end of the step, by velocity: what it touches is pushed
+    EXPECT_NEAR(world.rb(mover).getPosition().x, 1.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(mover).getLinearVelocity().x, 60.0f, 1e-2f);
+    EXPECT_GT(std::fabs(world.rb(mover).getRotation().dot(degreesAbout(30.0f, Vector3(0, 1, 0)))), 0.99999f);
+    world.step(2);
+    EXPECT_GT(world.rb(crate).getLinearVelocity().x, 0.5f) << "pushed";
+    // the step after it stops where it was sent
+    EXPECT_NEAR(world.rb(mover).getLinearVelocity().length(), 0.0f, 1e-6f);
+    EXPECT_NEAR(world.rb(mover).getAngularVelocity().length(), 0.0f, 1e-6f);
+    EXPECT_NEAR(world.rb(mover).getPosition().x, 1.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, MovePositionDynamicTeleports) {
+    World3D world(Vector3(0, 0, 0));
+    const Entity ball = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.rb(ball).setLinearDamping(0.0f);
+    world.rb(ball).setLinearVelocity(Vector3(0, 2, 0));
+    world.step();
+    const float y = world.rb(ball).getPosition().y;
+    world.rb(ball).movePosition(Vector3(5, y, 0));
+    world.step();
+    // placed before the step, its velocity kept (Unity)
+    EXPECT_NEAR(world.rb(ball).getPosition().x, 5.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, y + 2.0f * STEP, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getLinearVelocity().y, 2.0f, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getLinearVelocity().x, 0.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, MoveIsInterpolated) {
+    World3D world(Vector3(0, 0, 0));
+    world.scene.setPhysicsInterpolation(true);
+    const Entity moved = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    const Entity mover = world.box(Vector3(0, 0, 10), Vector3(1, 1, 1), BodyType::KINEMATIC);
+    world.load();
+    world.step();
+    world.rb(moved).movePosition(Vector3(4, 0, 0));
+    world.rb(mover).movePosition(Vector3(4, 0, 10));
+    world.step();
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    // half way between the two step poses, for a dynamic and a kinematic body
+    EXPECT_NEAR(world.transform(moved).position.x, 2.0f, 1e-4f);
+    EXPECT_NEAR(world.transform(mover).position.x, 2.0f, 1e-4f);
+
+    // a teleport jumps: drawn at the target
+    world.step();
+    world.rb(moved).setPosition(Vector3(8, 0, 0));
+    world.step();
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.transform(moved).position.x, 8.0f, 1e-4f);
+}
+
+TEST(Physics3DBody, SetPositionInterpolateOption) {
+    World3D world(Vector3(0, 0, 0));
+    world.scene.setPhysicsInterpolation(true);
+    const Entity sliding = world.sphere(Vector3(0, 0, 0), 0.5f, BodyType::DYNAMIC);
+    const Entity jumping = world.sphere(Vector3(0, 0, 5), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step();
+    world.rb(sliding).setPosition(Vector3(4, 0, 0), true);
+    world.rb(jumping).setPosition(Vector3(4, 0, 5), false);
+    world.rb(sliding).setRotation(degreesAbout(90.0f, Vector3(0, 1, 0)), true);
+    world.physics()->interpolate(0.5);
+    world.resolve();
+    EXPECT_NEAR(world.transform(sliding).position.x, 2.0f, 1e-4f) << "slides from the pose before the last step";
+    EXPECT_NEAR(world.transform(jumping).position.x, 4.0f, 1e-4f) << "the default jumps";
+    EXPECT_GT(std::fabs(world.transform(sliding).rotation.dot(degreesAbout(45.0f, Vector3(0, 1, 0)))), 0.9999f);
+}
+
+TEST(Physics3DBody, ZeroHalfHeightCapsuleIsSphere) {
+    World3D world;
+    world.floor();
+    const Entity ball = world.body(Vector3(0, 2, 0), BodyType::DYNAMIC);
+    world.rb(ball).createCapsuleCollider(0.0f, 0.5f);
+    const Entity tapered = world.body(Vector3(3, 2, 0), BodyType::DYNAMIC);
+    world.rb(tapered).createTaperedCapsuleCollider(0.0f, 0.25f, 0.5f);
+    const Entity sphere = world.sphere(Vector3(-3, 2, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step(240);
+    // a sphere of its radius (the larger one for a tapered capsule): it rests as a sphere does
+    // (Jolt's penetration slop lets a resting body sink up to 0.02 m)
+    const float sphereY = world.rb(sphere).getPosition().y;
+    EXPECT_NEAR(sphereY, 0.5f, 0.02f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, sphereY, 1e-3f);
+    EXPECT_NEAR(world.rb(tapered).getPosition().y, sphereY, 1e-3f);
+    EXPECT_THROW(world.rb(ball).setColliderHalfHeight(0, -1.0f), std::runtime_error);
+}
+
+// ---- S96 REQ-35: the 3D world settings ---------------------------------------------------------
+
+namespace {
+
+    // Jolt calls a step listener once per collision step
+    class CountingStepListener : public JPH::PhysicsStepListener {
+    public:
+        std::atomic<int> steps{0};
+        void OnStep(const JPH::PhysicsStepListenerContext&) override { steps++; }
+    };
+
+    // ten boxes stacked on a floor, a little off centre each, stepped; their poses
+    std::vector<float> stackPoses(World3D& world, int steps, const std::function<void()>& afterFirstStep = nullptr) {
+        world.floor();
+        std::vector<Entity> boxes;
+        for (int i = 0; i < 10; i++) {
+            boxes.push_back(world.box(Vector3(0.03f * (float)(i % 3), 0.5f + 1.01f * (float)i, 0.02f * (float)(i % 2)), Vector3(1, 1, 1), BodyType::DYNAMIC));
+        }
+        world.load();
+        world.step(1);
+        if (afterFirstStep) afterFirstStep();
+        world.step(steps - 1);
+        std::vector<float> poses;
+        for (Entity e : boxes) {
+            const Vector3 p = world.rb(e).getPosition();
+            const Quaternion q = world.rb(e).getRotation();
+            poses.insert(poses.end(), {p.x, p.y, p.z, q.w, q.x, q.y, q.z});
+        }
+        return poses;
+    }
+
+    float horizontalDrift(const std::vector<float>& poses) {
+        float drift = 0.0f;
+        for (size_t i = 0; i < poses.size(); i += 7) drift += std::fabs(poses[i]) + std::fabs(poses[i + 2]);
+        return drift;
+    }
+
+}
+
+// The scene's 3D solver settings reach Jolt when the world is made and when they change: velocity
+// iterations change a stack's drift, collision steps run Jolt's collision passes per fixed step,
+// and settings at their defaults (or changed and set back) step the same bits as before they
+// existed. Red for the first two: the world never got Jolt settings and stepped one pass
+TEST(Physics3DBody, WorldSettingsApply) {
+    std::vector<float> reference;
+    {
+        World3D world;
+        reference = stackPoses(world, 600);
+    }
+    {
+        World3D world;
+        const std::vector<float> roundTrip = stackPoses(world, 600, [&]() {
+            ScenePhysics3DSettings changed;
+            changed.velocityIterations = 3;
+            changed.positionIterations = 5;
+            changed.bounceThreshold = 4.0f;
+            changed.sleepThreshold = 0.5f;
+            changed.speculativeDistance = 0.1f;
+            changed.collisionSteps = 3;
+            world.scene.setPhysics3DWorldSettings(changed);
+            world.scene.setPhysics3DWorldSettings(ScenePhysics3DSettings());
+        });
+        ASSERT_EQ(roundTrip.size(), reference.size());
+        EXPECT_EQ(std::memcmp(roundTrip.data(), reference.data(), reference.size() * sizeof(float)), 0) << "defaults step the same bits";
+    }
+
+    float driftOne = 0.0f;
+    {
+        World3D world;
+        world.scene.setPhysics3DVelocityIterations(1);
+        driftOne = horizontalDrift(stackPoses(world, 300));
+        EXPECT_EQ(world.physics()->getWorld3D()->GetPhysicsSettings().mNumVelocitySteps, 1u);
+    }
+    float driftTen = 0.0f;
+    {
+        World3D world;
+        driftTen = horizontalDrift(stackPoses(world, 300));
+    }
+    std::printf("[WorldSettingsApply] stack drift: 1 velocity iteration %.4f m, 10 iterations %.4f m\n", driftOne, driftTen);
+    EXPECT_NE(driftOne, driftTen);
+
+    World3D world;
+    world.sphere(Vector3(0, 5, 0), 0.5f, BodyType::DYNAMIC);
+    world.load();
+    world.step(1);
+    CountingStepListener listener;
+    world.physics()->getWorld3D()->AddStepListener(&listener);
+    world.step(1);
+    EXPECT_EQ(listener.steps.load(), 1) << "one collision step by default";
+    world.scene.setPhysics3DCollisionSteps(2);
+    world.scene.setPhysics3DSpeculativeDistance(0.05f);
+    listener.steps = 0;
+    world.step(1);
+    EXPECT_EQ(listener.steps.load(), 2);
+    EXPECT_FLOAT_EQ(world.physics()->getWorld3D()->GetPhysicsSettings().mSpeculativeContactDistance, 0.05f);
+    world.physics()->getWorld3D()->RemoveStepListener(&listener);
 }

@@ -74,6 +74,8 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 #include "component/ActionComponent.h"
@@ -219,6 +221,12 @@ STABLE(WaterExcluderComponent, WaterExcluderComponent, component.shape = WaterEx
 STABLE(WaterWakeComponent, WaterWakeComponent, component.foam = 1.5f; component.waves = 0.25f; component.width = 2.0f; component.length = 7.0f)
 STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
     component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
+// S96 vehicles: the nested spring and friction curves, the drivetrain's lists
+STABLE(WheelColliderComponent, WheelColliderComponent, component.radius = 0.35f; component.suspensionSpring.spring = 50000.0f;
+    component.sidewaysFriction.stiffness = 1.3f; component.driveTransform = false; component.center = Vector3(0.0f, 0.1f, 0.0f))
+STABLE(VehicleDrivetrainComponent, VehicleDrivetrainComponent, component.transmission = VehicleTransmissionMode::MANUAL;
+    component.gearRatios = {3.0f, 2.0f}; component.differentials.push_back(VehicleDifferential{5, 6, 4.0f, 0.5f, 1.4f, 1.0f});
+    component.antiRollBars.push_back(VehicleAntiRollBar{5, 6, 2000.0f}); component.maxTorque = 300.0f)
 #undef STABLE
 
 // The fields added after the S08 base (S11's photometric light, terrain hex tiling, the 64-bit

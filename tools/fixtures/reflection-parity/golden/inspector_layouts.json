@@ -6315,6 +6315,14 @@
   {
    "component": "rigidbody",
    "group": "",
+   "kind": "Bool",
+   "label": "Attach To Parent Body",
+   "path": "attachToParentBody",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody",
+   "group": "",
    "kind": "Enum",
    "label": "Body Type",
    "path": "type",
@@ -6368,6 +6376,14 @@
    "kind": "Bool",
    "label": "Billboard",
    "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Attach To Parent Body",
+   "path": "attachToParentBody",
    "read_only": false
   },
   {

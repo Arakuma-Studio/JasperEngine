@@ -93,6 +93,8 @@ namespace {
             if (scene) LuaBinding::cleanupLuaScripts(scene.get());
             scene.reset();
             Engine::onFixedUpdate.remove("test");
+            Engine::setMaxFixedStepsPerFrame(0);
+            Engine::resetDroppedFixedSteps();
             Engine::pauseGameEvents(true);
             Engine::setFixedDeltatime(0.0);
             Engine::setTimeScale(1.0f);
@@ -329,6 +331,61 @@ TEST_F(CoroutineTest, AFixedWaitRecordedInAStepResumesInTheNextStep) {
     start();
     frames(2);
     EXPECT_EQ(log(), "step1 step2 co2");
+}
+
+// S96 REQ-36, REQ-37 (AC-30): the steps a frame may run follow Time.maximumDeltaTime, so a 0.25 s
+// frame at 400 Hz runs its 100 steps and drops none; Time.maximumFixedStepsPerFrame caps them, the
+// drops are counted (Time.droppedFixedSteps) and logged once. Red: the old fixed cap of 100 warned
+// on that frame (and on every frame of the capped run)
+TEST_F(CoroutineTest, FixedStepCapFollowsMaximumDeltaTime) {
+    int steps = 0;
+    Engine::onFixedUpdate.add("test", std::function<void()>([&steps](){ steps++; }));
+    Engine::setUpdateTime(1.0f / 400.0f);
+    Engine::setFixedDeltatime(0.25);
+    Engine::resetDroppedFixedSteps();
+    EXPECT_GE(Engine::getFixedStepCap(), 101);
+    EXPECT_EQ(eval("return Time.maximumFixedStepsPerFrame"), "0");
+
+    // the first frame takes what earlier frames left over; from the second, 0.25 s a frame
+    frames(1);
+    for (int frame = 0; frame < 3; frame++) {
+        steps = 0;
+        frames(1);
+        EXPECT_GE(steps, 100);
+        EXPECT_LE(steps, 101);
+    }
+    EXPECT_EQ(Engine::getDroppedFixedSteps(), 0u);
+    EXPECT_EQ(countOf(logged(), "fixed step(s):"), 0u) << logged();
+
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 10"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), 10);
+    steps = 0;
+    frames(5);
+    EXPECT_EQ(steps, 50);
+    // about 90 a frame (0.25 s is 100 steps)
+    EXPECT_GE(Engine::getDroppedFixedSteps(), 449u);
+    EXPECT_LE(Engine::getDroppedFixedSteps(), 451u);
+    EXPECT_EQ(eval("return Time.droppedFixedSteps"), std::to_string(Engine::getDroppedFixedSteps()));
+    const std::string log = logged();
+    EXPECT_EQ(countOf(log, "fixed step(s):"), 1u) << log;
+    EXPECT_NE(log.find("Time.maximumFixedStepsPerFrame"), std::string::npos);
+    EXPECT_NE(log.find("Time.maximumDeltaTime"), std::string::npos);
+
+    // negative is automatic; a Play start (Engine::resetApplicationState) resets the cap and the count
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = -3"), "");
+    EXPECT_EQ(eval("return Time.maximumFixedStepsPerFrame"), "0");
+    Engine::setMaxFixedStepsPerFrame(10);
+    Engine::resetApplicationState();
+    EXPECT_EQ(Engine::getMaxFixedStepsPerFrame(), 0);
+    EXPECT_EQ(Engine::getDroppedFixedSteps(), 0u);
+
+    // the drops emptied the accumulator: one 60 Hz frame leaves the part of a step every other test
+    // starts from (a 1/60 s double frame is a hair short of the 1/60 s float step)
+    Engine::setUpdateTime(1.0f / 60.0f);
+    Engine::setFixedDeltatime(1.0 / 60.0);
+    steps = 0;
+    frames(1);
+    EXPECT_EQ(steps, 0);
 }
 
 TEST_F(CoroutineTest, NoFixedStepAtTimeScaleZero) {

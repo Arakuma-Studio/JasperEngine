@@ -101,6 +101,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
+            {ComponentType::WheelColliderComponent, "A car wheel with suspension and tire friction, below a dynamic Rigidbody"},
+            {ComponentType::VehicleDrivetrainComponent, "An engine, gear box and differentials driving the body's Wheel Colliders"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
             {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
             {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},

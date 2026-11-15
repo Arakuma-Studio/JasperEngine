@@ -49,7 +49,7 @@ By default mass comes from the collider's size and density; either body can take
 |---|---|---|
 | formula | volume x density | area (in m^2) x density |
 | default density | 1000 (kg/m^3, water) | 1 |
-| units | meters | collider sizes in points, scaled by `pointsToMeterScale2D` (64 points per meter by default) |
+| units | meters | collider sizes in points, in metres after the scene's Points Per Meter (`physics_2d_points_per_meter`, 64 by default; "World settings") |
 | example | radius-1 sphere ~ 4189 kg, radius-0.5 ~ 524 kg | 100x100 point box ~ 2.4 kg |
 | read it (C++) | `getMass()` | `getMass()` |
 | read it (Lua) | `body.mass` (property) | `body.mass` (property) or `body:getMass()` |
@@ -78,6 +78,8 @@ any field.
 | impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse [, wake])` |
 | velocity | `linearVelocity` (Lua property) / `setLinearVelocity` (C++) | `linearVelocity` (Lua, points/s) |
 | teleport | `body.position`, `body.rotation` (Lua) / `setPosition`, `setRotation` (C++) | `body.position`, `body.angle` (Lua) / `setPosition`, `setAngle` (C++) |
+| teleport, drawn sliding | `body:setPosition(p, true)`, `body:setRotation(q, true)` | `body:setPosition(v2, true)`, `body:setAngle(a, true)` |
+| move to a pose (Unity `MovePosition`, `MoveRotation`, `Move`) | `body:movePosition(p)`, `moveRotation(q)`, `movePositionAndRotation(p, q)` | `body:movePosition(v2)`, `moveRotation(angle)`, `movePositionAndRotation(v2, angle)` |
 
 There is NO `applyForceToCenter` on the 3D `Rigidbody`. `wake` defaults to true (a sleeping body
 wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
@@ -97,6 +99,12 @@ wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
   moved with a velocity. Setting the body's position, rotation, velocity or type from a
   script takes that part over from the transform.
 - Never describe transform-only movement as physics.
+- `movePosition` / `moveRotation` put the body at the pose by the end of the next fixed step,
+  drawn interpolated (a teleport is a jump unless its `interpolate` argument is true). A
+  **kinematic** body gets there by velocity, pushing and carrying what it touches (called from
+  `onUpdate`: over the frame's fixed steps), and stops there; a dynamic or static one is placed
+  before the step and keeps its velocity. The last call before a step wins. A kinematic platform
+  or door moved by script uses these, not `body.position` (which passes through what it meets).
 
 ## 3D bodies, colliders and materials
 
@@ -119,7 +127,26 @@ what bodies did before these fields, so old scenes move as they did):
 **Type** switches live, in Play too (Inspector, `set_runtime_property`, Lua `body.type`,
 `body.isKinematic`): the same body, joints and contacts. A dynamic body made kinematic stops; a
 kinematic one made dynamic keeps the velocity it was moving with. A body with a `mesh` or
-`heightfield` collider can only be static (an error names the collider).
+`heightfield` collider can only be static (an error names the collider). For a body that moves,
+`edit_colliders` `decompose: {index, quality: low|medium|high, max_hulls}` (Inspector "Decompose
+Into Convex Hulls") replaces a `mesh` collider with up to `max_hulls` (default 16) `convex_hull`
+colliders of its shape, its pose, material, trigger flag and density kept, in one undo step (a job;
+re-importing the mesh does not redo it).
+
+A capsule (or tapered capsule) with `half_height` 0 is a sphere of its (larger) radius.
+
+### Compound bodies
+
+A Rigidbody (or Rigidbody 2D) with `attachToParentBody` (Inspector "Attach To Parent Body",
+`edit_colliders` `body: {"attach_to_parent_body": true}`) has no body of its own: its colliders join
+the body of its nearest parent with an enabled Rigidbody of the same dimension, posed by its
+Transform, adding their mass (Unity's colliders below a Rigidbody). Without such a parent it is its
+own body. Its contacts and triggers reach its GameObject's scripts and the parent's; a
+`Collider` / `ColliderRef` names the child's collider and its `rigidbody` is the parent's
+(`attachedRigidbody`, Lua `body.attachedRigidbody` on the child). Its own body fields (type, mass,
+damping...) are ignored. The parent's shape is composed again at the next step when such a child is
+added, removed, enabled, disabled, re-parented or moved: a child an animation moves every step costs
+a compose each step (warned once after 30); give it its own kinematic Rigidbody instead.
 
 **Triggers per collider** (Unity Is Trigger): a collider with `isTrigger` passes through and
 reports a sensor contact, the body's other colliders still collide; triggers add no mass and do not
@@ -175,6 +202,12 @@ action}`, any field through `properties`. In Play, `get_runtime_entity` adds `jo
 torque, angle, velocity, position, speed, length, broken) and `rigidbody` (mass, velocities,
 sleeping).
 
+**From a script.** `go:addJoint3D(Joint3DType.HINGE)` adds a child "Joint 3D" with bodyA = `go`
+and Unity's defaults (an error when `go` has no Rigidbody); `go:getJoints3D()` lists the joints
+whose bodyA is `go`; `joint.gameObject`, `joint:destroy([delay])`. A `Joint3D(scene)` goes under
+its bodyA once that is set and then lives as long as that GameObject, not as long as the Lua
+handle; one never given a bodyA goes with its handle.
+
 ## Ragdolls
 
 `create_ragdoll {entity}` (the `physics` tool group; GameObject > 3D Object > Ragdoll..., or the Model's component menu) is
@@ -190,6 +223,14 @@ the now dynamic parts), `r:getParts()`. Simulated pauses everything that moves t
 Animation Player, Model animations, Pose and Vertex Animators) and resumes it after;
 `ragdoll.onBeforeAnimatedRestore` is told just before the parts go back to the animation.
 `selfCollision` off keeps the parts from touching each other.
+
+**At run time** (a character spawned in Play): `Ragdoll.create(root [, options])` is the same
+wizard, all parts made before the next step; `options`: `bones` (`{pelvis = go or name, leftHips,
+leftKnee, leftFoot, rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow,
+middleSpine, head}`, names searched below root; unnamed slots are guessed), `totalMass` (20),
+`start` (`"simulated"`, the default here, or `"animated"`), `selfCollision`, `flipForward`. It
+returns the `Ragdoll`, or raises an error naming the bones it could not find. Call it from
+`onUpdate` or `onStart`, not a UI event handler, to rebuild a ragdoll a character already has.
 
 ## Debug draw and world capacity
 
@@ -207,6 +248,29 @@ The project settings `physics.enabled` (3D, Jolt) and `physics2d.enabled` (2D, B
 backend off for exports: its bodies and joints are left out of the build. C++ code that must
 build either way guards on `JASPERENGINE_PHYSICS_3D` / `JASPERENGINE_PHYSICS_2D`.
 
+## World settings
+
+Scene settings (Inspector > Scene > Physics; `set_scene_settings`; Lua `scene.<name>`), saved only
+away from their defaults, which are what the worlds did before they were settings. A change in Play
+applies before the next step.
+
+| Inspector | MCP / Lua | default | |
+|---|---|---|---|
+| Points Per Meter (2D) | `physics_2d_points_per_meter` / `physics2DPointsPerMeter` | 64 | canvas points in a metre: sizes and speeds of 2D bodies are points, masses, forces and the settings below metres. Changed with bodies made, each is made again where it is, as fast in points, its mass from its colliders in the new metres (an explicit mass kept); contacts start again (`OnCollisionExit2D` / `Enter2D`). Set it in the scene, not every frame |
+| Max Rotation Per Step (2D) | `physics_2d_max_rotation` / `physics2DMaxRotation` | 45 (degrees) | a 2D body turns at most this much a fixed step (45 at 50 Hz is 39 rad/s); Unity's Max Rotation Speed is 360. A Rigidbody 2D with `allowFastRotation` is not capped |
+| World > Contact Hertz, Contact Damping Ratio, Contact Push Speed (2D) | `physics_2d_contact_hertz` (30), `..._contact_damping_ratio` (10), `..._contact_push_speed` (3 m/s) | | contact stiffness, bounciness, how fast overlaps separate |
+| World > Joint Hertz, Joint Damping Ratio (2D) | `physics_2d_joint_hertz` (60), `physics_2d_joint_damping_ratio` (2) | | joint stiffness |
+| World > Bounce Threshold (2D) | `physics_2d_bounce_threshold` / `physics2DBounceThreshold` | 1 m/s | slower collisions do not bounce (Unity Velocity Threshold) |
+| World > Max Linear Speed, Warm Starting, Continuous, Sleeping (2D) | `physics_2d_max_linear_speed` (400 m/s), `physics_2d_warm_starting`, `physics_2d_continuous`, `physics_2d_sleep` (true) | | |
+| World > Velocity Iterations, Position Iterations (3D) | `physics_3d_velocity_iterations` (10, 1-64), `physics_3d_position_iterations` (2) | | Jolt's solver iterations (Unity Default Solver Velocity Iterations / Solver Iterations) |
+| World > Bounce Threshold, Sleep Threshold, Speculative Distance (3D) | `physics_3d_bounce_threshold` (1 m/s), `physics_3d_sleep_threshold` (0.03 m/s), `physics_3d_speculative_distance` (0.02 m) | | |
+| World > Collision Steps (3D) | `physics_3d_collision_steps` / `physics3DCollisionSteps` | 1 | collision passes per fixed step, 1-4: more for very fast bodies |
+
+A frame runs at most `Time.maximumFixedStepsPerFrame` fixed steps: 0 (default) is automatic, as many
+as `Time.maximumDeltaTime` lets a frame last (400 Hz with 0.25 s: 101), so none are dropped. A cap
+set lower drops the rest of a long frame: the Console warns once per Play and
+`Time.droppedFixedSteps` and `editor_status` `physics.dropped_fixed_steps` count them.
+
 ## 2D bodies, colliders and materials
 
 `Rigidbody2DComponent` fields (Unity's Rigidbody2D; Catalog names for `set_properties`, `edit_colliders`
@@ -217,6 +281,7 @@ build either way guards on `JASPERENGINE_PHYSICS_3D` / `JASPERENGINE_PHYSICS_2D`
 | `gravityScale` | 1 | share of the scene's 2D gravity (0 floats, -1 falls up) |
 | `linearDamping`, `angularDamping` | 0, 0 | Unity Linear / Angular Drag |
 | `fixedRotation` | false | never turns (Unity Freeze Rotation) |
+| `allowFastRotation` | false | not capped by the scene's Max Rotation Per Step (wheels; "World settings") |
 | `collisionDetection` | `discrete` | `continuous`: a Box2D bullet, never tunnels through thin or fast bodies |
 | `sleepingMode` | `start_awake` | `never_sleep`, `start_asleep` |
 | `useAutoMass`, `mass` | true, 1 | false: `mass` kg instead of area x density (setting Lua `body.mass` turns it off) |
@@ -327,6 +392,13 @@ result has every resolved field. In Play, `get_runtime_entity` adds
 `joint2d` read-outs: `reaction_force`, `reaction_torque`, `joint_angle`, `joint_speed`,
 `joint_translation`, `joint_linear_speed`, `motor_torque`, `motor_force`, `current_length`,
 `limit_state`; and `rigidbody2d`: mass, velocities, Box2D shapes per collider.
+
+**From a script.** `go:addJoint2D(Joint2DType.WHEEL)` adds a child "Joint 2D" with bodyA = `go`
+and Unity's defaults (an error when `go` has no Rigidbody 2D); `go:getJoints2D()` lists the joints
+whose bodyA is `go`; `joint.gameObject`, `joint:destroy([delay])`. A `Joint2D(scene)` goes under
+its bodyA once that is set (`bodyA` or a `set*Joint` helper) and then lives as long as that
+GameObject, not as long as the Lua handle; one never given a bodyA goes with its handle. A joint
+whose connected body is destroyed leaves the simulation with one "Cannot create joint" error.
 
 **A hill-climb car** (body box, two wheels on suspension, Unity values):
 
@@ -497,11 +569,13 @@ Inspector shows the same under each body in Play.
   bodies of one scene): those two bodies never collide, at run time (Unity
   `Physics.IgnoreCollision`); `getIgnoreCollision(a, b)`. Resting pairs are woken. The replacement
   for a Lua `shouldCollide3D` filter.
-- Ray casts: `Physics.raycast(scene, ray [, layerMask])`,
-  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask])`, `raycastAll`, and the
-  `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
+- Ray casts: `Physics.raycast(scene, ray [, layerMask [, options]])`,
+  `Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])`, `raycastAll`,
+  and the `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
-  `ray.direction`; with origin/direction/distance it is in world units.
+  `ray.direction`; with origin/direction/distance it is in world units. A 3D ray that starts inside
+  a collider does not hit it (Unity); `{hitFromInside = true}` reports it at distance 0.
+  `Ray:intersects(scene, ...)` keeps its old rule (the start's collider at 0).
 - What the player sees, not its colliders: `MeshRaycast.raycast` / `raycastAll` take the same
   arguments (plus an options table) and hit the triangles of meshes, instances, terrains and UI
   rects, no body needed, also in the editor (`raycast_meshes`). Use Physics for gameplay against
@@ -521,6 +595,43 @@ Inspector shows the same under each body in Play.
   (conveyor-belt friction): `PhysicsSystem::onContactModify3D`, on Jolt's job threads.
 - 2D limitation (Box2D): a kinematic sensor never pairs with static or kinematic bodies, and two
   sensors never pair; make the other body dynamic (gravity scale 0) to detect it.
+
+### Shape casts and overlaps
+
+Unity's queries, on the playing scene's colliders (bodies exist only in Play), all with
+`[, layerMask [, options]]` last:
+
+| 3D (`Physics`) | 2D (`Physics2D`, points, angles in the engine's unit) | Returns |
+|---|---|---|
+| `sphereCast(scene, origin, radius, direction, maxDistance)` | `circleCast(scene, origin, radius, direction, distance)` | the nearest `RaycastHit` or nil |
+| `boxCast(scene, center, halfExtents, direction, orientation, maxDistance)` | `boxCast(scene, origin, size, angle, direction, distance)` | " |
+| `capsuleCast(scene, point1, point2, radius, direction, maxDistance)` | `capsuleCast(scene, origin, size, CapsuleDirection2D.VERTICAL, angle, direction, distance)` | " |
+| `...CastAll` | `...CastAll` | every collider hit once, nearest first |
+| `overlapSphere(scene, center, radius)`, `overlapBox(scene, center, halfExtents [, orientation])`, `overlapCapsule(scene, point1, point2, radius)` | `overlapCircle`, `overlapBox(scene, point, size, angle)`, `overlapCapsule`, `overlapPoint(scene, point)`, `overlapArea(scene, pointA, pointB)` | 3D: every `Collider`; 2D: the first `Collider2D` (nil), `...All` every one |
+| `checkSphere`, `checkBox`, `checkCapsule` (the overlap's arguments) | | boolean |
+| `closestPoint(scene, point, collider)` (convex colliders) | | Vector3 |
+| `rigidbody:sweepTest(direction, maxDistance [, options])`, `sweepTestAll` | `rigidbody2d:cast(direction, distance [, options])`, `castAll` | the body's own colliders moved, never hitting itself |
+
+- options: `ignore` (GameObjects, bodies or entities: a caster's own body), `triggers`
+  (`QueryTriggerInteraction.USE_GLOBAL` = `Physics.queriesHitTriggers` / `Physics2D.queriesHitTriggers`,
+  true; `IGNORE`; `COLLIDE`), 3D `hitFromInside` and `hitBackfaces` (`Physics.queriesHitBackfaces`,
+  false), 2D `startInColliders` (`Physics2D.queriesStartInColliders`, false: unlike Unity's default
+  true, a ground check from inside the player's own collider does not hit the player), `maxHits` (256).
+- A cast that starts in a collider skips it, or with `hitFromInside` / `startInColliders` reports it
+  at distance 0 with `point` = the start and `normal` = -direction.
+- A hit (`RayReturn`, Unity's `RaycastHit`) has `hit`, `distance`, `point`, `normal`, `body`,
+  `colliderIndex`, and `collider` (`Collider` / `Collider2D`), `gameObject`, `rigidbody`, `transform`
+  (the GameObject); a CharacterController is hit as its GameObject with `rigidbody` nil (2D
+  controllers have no body and are never hit).
+- Zero, negative or non-finite sizes, distances and directions raise an error naming the argument.
+- An agent asks the same of a running game with `query_physics` (`physics` group; `draw: true` shows
+  the shape and hits for 3 s in the Game view's physics lines): "is anything within 2 m of the
+  player" is `query_physics {shape: "sphere", mode: "overlap", origin, radius: 2}`, not a fan of rays.
+  Its arguments per shape: `origin` (`[x, y]` in 2D), casts `direction` + `max_distance`; sphere
+  `radius`; 3D box `half_extents` + `rotation`, 2D box `size` + `angle` or the corners `point_a` +
+  `point_b` (overlap, check); 3D capsule `point_a` + `point_b` + `radius`, 2D capsule `size` +
+  `angle`. `layer_mask` takes a number or layer names; `hit_from_inside` is 2D's
+  `startInColliders` too. It hits colliders; `raycast_meshes` hits drawn triangles.
 
 ## Character controllers
 
@@ -565,6 +676,49 @@ dynamic body it stands on (`movingPlatforms`) and pushes dynamic bodies it walks
   one loaded with both does nothing and logs once.
 - Its layer, the 2D Layer Collision Matrix and `categoryBits`/`maskBits` filter what it hits.
 - `get_runtime_entity` shows `isGrounded`, `collisionFlags`, `velocity`, `groundEntity`, ...
+
+## Vehicles (Wheel Collider)
+
+A drivable car is a dynamic Rigidbody (its colliders are the chassis) with a Wheel Collider
+(`WheelColliderComponent`, Unity's) on a child GameObject at each wheel: not four bodies on hinge
+joints. GameObject > 3D Object > Vehicle... (`run_command` `gameobject.create.3DObject.vehicle`)
+makes one on the selected mesh, or a new 2 x 1 x 4 m car, in one undo step.
+- The wheels under one dynamic body (its nearest Rigidbody above them) make one vehicle on Jolt's
+  vehicle constraint, built again at the next step when a wheel, the drivetrain or the body
+  changes. A Wheel Collider on a GameObject with a Rigidbody, or with no dynamic body above it,
+  does nothing and logs once.
+- The suspension hangs from the GameObject's position + `center` down the body's down axis by
+  `suspensionDistance`; the wheel rolls along the GameObject's forward (+Z). It is not a collider:
+  a ray down the suspension (Unity's) finds the ground through the body's layer and the Layer Collision Matrix, and
+  never hits the body or the bodies below it. Wheels send no contact callbacks.
+- Unity's fields and defaults (metres, kg, N, N m): `radius` 0.5, `mass` 20, `wheelDampingRate`
+  0.25, `suspensionDistance` 0.3, `forceAppPointDistance` 0, `suspensionSpring` {`spring` 35000,
+  `damper` 4500, `targetPosition` 0.5: where it rests under the car's weight},
+  `forwardFriction` / `sidewaysFriction` (WheelFrictionCurve: extremum, asymptote, `stiffness`;
+  forward slip is the slip ratio, sideways slip the slip angle in radians). The grip is the
+  curve's on default surfaces; the body's and the ground's friction scale it as any contact
+  combines them (relative to the default 0.2). Jolt's tire model is not PhysX's: a car tuned in
+  Unity may need its friction `stiffness` changed by about 30%.
+- Without a Vehicle Drivetrain each wheel takes its own `motorTorque` (N m), `brakeTorque` (N m)
+  and `steerAngle` (positive right), set by a script every frame or with `set_runtime_property`.
+  Read-outs of the last step: `isGrounded`, `rpm`, `sprungMass`, `suspensionCompression`,
+  `wc:getGroundHit()` (a WheelHit or nil: `point`, `normal`, `forwardDir`, `sidewaysDir`, `force`,
+  `forwardSlip`, `sidewaysSlip`, `collider`) and `wc:getWorldPose()` (position, rotation).
+- `driveTransform` (on by default) puts the wheel's GameObject at `getWorldPose()` after each
+  step (suspension, steer, spin), so the wheel mesh goes on a child of it and follows,
+  interpolated with the body. Turn it off to place a mesh yourself.
+- A Vehicle Drivetrain (`VehicleDrivetrainComponent`, on the body; beyond Unity) drives the wheels
+  with an engine (`maxTorque`, `minRPM`, `maxRPM`, `torqueCurve`), a gear box (`transmission`
+  AUTO or MANUAL with `setGear(n)`, `gearRatios`, `reverseGearRatios`, shift RPMs,
+  `clutchStrength`), `differentials` (wheel pairs; none: every axle driven) and `antiRollBars`.
+  Its inputs `throttle` (-1..1; AUTO reverses below 0), `steer` (-1..1), `brake`, `handBrake`
+  (0..1) act within each wheel's `maxSteerAngle`, `maxBrakeTorque` and `maxHandBrakeTorque`; the
+  wheels' `motorTorque`, `brakeTorque` and `steerAngle` then read what it applied. Read-outs:
+  `rpm`, `gear`, `speed` (m/s along the body's forward).
+- At rest with no input the car sleeps; any changed input wakes it. A wheel in the air keeps it
+  awake. Moving the body (`body.position`, its Transform) takes the wheels with it.
+- `Physics.debugDraw` draws each wheel's circle and travel; the Scene view gizmo shows the circle,
+  the travel and, in Play, the contact and its force.
 
 ## Placing objects with physics (`place_with_physics`)
 

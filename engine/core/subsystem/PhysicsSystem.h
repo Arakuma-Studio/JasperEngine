@@ -9,6 +9,7 @@
 #include "component/PhysicsCommon.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "math/Vector4.h"
 #include "math/Quaternion.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Contact2D.h"
@@ -33,6 +34,7 @@
 
 #include "registry/TagManager.h"
 #include "physics/ContactTracker.h"
+#include "physics/WorldSettings.h"
 #include "object/physics/Collision.h"
 #include "object/physics/Collision2D.h"
 
@@ -61,6 +63,7 @@ namespace jasperengine{
 	class JoltObjectLayerPairFilter;
 	class CharacterController2DSystem;
 	class CharacterControllerSystem;
+	class VehicleSystem;
 	class WaterSystem;
 	struct WaterSample;
 	class JoltPairFilter3D;
@@ -100,6 +103,15 @@ namespace jasperengine{
 
 		bool interpolation;
 
+		// S96 WP-E: the world settings (scene settings, physics/WorldSettings.h); a change is
+		// applied to a live world at the next step (applyWorldSettings), a new pointsPerMeter at
+		// once (rescaleBodies2D) unless the 2D world is stepping
+		ScenePhysics2DSettings worldSettings2D;
+		ScenePhysics3DSettings worldSettings3D;
+		bool worldSettings2DDirty = false;
+		bool worldSettings3DDirty = false;
+		void applyWorldSettings();
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		b2WorldId world2D;
 		float pointsToMeterScale2D;
@@ -114,6 +126,11 @@ namespace jasperengine{
 
 		// the 2D CharacterControllers (S22 P5), moved on this world's queries
 		std::unique_ptr<CharacterController2DSystem> characters2D;
+
+		// S96 WP-E: every 2D body made again in metres of the new scale where it was, with its
+		// velocity in points per second and its follow state; its joints are made again before
+		// the next step (they went with the bodies)
+		void rescaleBodies2D(float pointsPerMeter);
 
 		// static body the joints without bodyB hold on to (Unity: connected to the world)
 		b2BodyId groundBody2D = b2_nullBodyId;
@@ -189,6 +206,9 @@ namespace jasperengine{
 		// the CharacterControllers (S22 P2): Jolt CharacterVirtuals in world3D, so after it
 		// (destroyed first, while the world their inner bodies are in still exists)
 		std::unique_ptr<CharacterControllerSystem> characters3D;
+		// S96 WP-A: the vehicles of the WheelColliders (a VehicleConstraint each), after world3D
+		// (destroyed first, while the world their constraints are in still exists)
+		std::unique_ptr<VehicleSystem> vehicles3D;
 
 		// ObjectLayers index this table (GameObject layer, category and mask bits)
 		JoltObjectLayerTable* objectLayerTable3D;
@@ -264,6 +284,51 @@ namespace jasperengine{
 		// the contact listener on Jolt's job threads
 		std::mutex debugContactsMutex3D;
 		std::vector<std::pair<Vector3, Vector3>> debugContacts3D;
+#endif
+
+		// S96 WP-B: lines shown with the debug lines until a time (query_physics draw), whether
+		// Physics.debugDraw is on or not
+		struct TimedDebugLine{
+			Vector3 from;
+			Vector3 to;
+			Vector4 color;
+			double until = 0.0;
+		};
+		std::vector<TimedDebugLine> timedDebugLines;
+		// drops the lines whose time is up; true when some are left
+		bool pruneTimedDebugLines();
+
+		// S96 WP-C: children whose colliders join an ancestor's body (physics/AttachedColliders.cpp)
+		struct AttachedChild{
+			Entity body;
+			Entity child;
+			// the child's colliders or scale changed: their leaves are made again
+			bool changed;
+		};
+		std::vector<AttachedChild> attachedChildren3D;
+		std::vector<AttachedChild> attachedChildren2D;
+		// the bodies holding attached colliders now
+		std::vector<Entity> attachedBodies3D;
+		std::vector<Entity> attachedBodies2D;
+		// An attachToParentBody GameObject with an ancestor body: its own body goes, its
+		// colliders are listed for the ancestor's compose after the sync loop. False: it is its
+		// own body.
+#ifdef JASPERENGINE_PHYSICS_3D
+		bool attachChild3D(Entity entity, RigidbodyComponent& body);
+		// the bodies whose attached children changed composed again, once per step
+		void composeAttached3D();
+		// a movePosition / moveRotation target, inside the step before the world steps
+		void applyMoveTarget3D(Entity entity, RigidbodyComponent& body, float stepTime);
+		// after the step that ends a kinematic move: exactly at its target
+		void finishMoveTarget3D(Entity entity, RigidbodyComponent& body);
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
+		bool attachChild2D(Entity entity, Rigidbody2DComponent& body);
+		void composeAttached2D();
+		// the attached copies' shapes made again (all: every one), true when any was
+		bool syncAttachedColliders2D(Entity entity, Rigidbody2DComponent& body, bool all);
+		void applyMoveTarget2D(Entity entity, Rigidbody2DComponent& body, float stepTime);
+		void finishMoveTarget2D(Rigidbody2DComponent& body);
 #endif
 
 		// a script that defines a contact message appeared or went: the listener masks of the
@@ -466,6 +531,14 @@ namespace jasperengine{
 		// rate (on by default; the scene setting physics_interpolation)
 		void setInterpolation(bool interpolation);
 		bool isInterpolation() const;
+
+		// S96 WP-E: the 2D world's units, rotation cap and tuning, and the 3D solver (the scene
+		// settings physics2D* / physics3D*), kept in range. Applied to a live world before its
+		// next step; a new pointsPerMeter rebuilds the 2D bodies and joints where they are
+		const ScenePhysics2DSettings& getWorldSettings2D() const;
+		void setWorldSettings2D(const ScenePhysics2DSettings& settings);
+		const ScenePhysics3DSettings& getWorldSettings3D() const;
+		void setWorldSettings3D(const ScenePhysics3DSettings& settings);
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
 
@@ -496,6 +569,7 @@ namespace jasperengine{
 		// contacts untouched) and the mass applied again. False when it must be made again.
 		bool reshapeCollider2DPolygon(Entity entity, Rigidbody2DComponent& body, size_t index);
 		std::vector<std::vector<Vector2>> getCollider2DPiecesLocal(Entity entity, Collider2D& collider);
+		// the scene setting physics2DPointsPerMeter (setWorldSettings2D)
 		void setPointsToMeterScale2D(float pointsToMeterScale2D);
 
 		bool isSteppingWorld2D() const;
@@ -709,6 +783,9 @@ namespace jasperengine{
 
 		// Physics.debugDraw: the runtime collider lines of this scene (3D and 2D), drawn while on
 		size_t getDebugLineCount() const;
+		// S96 WP-B: lines (world space, 2D in points at z 0) drawn with them for `seconds` of
+		// wall time, Physics.debugDraw on or off (query_physics draw: true)
+		void addTimedDebugLines(const std::vector<std::pair<Vector3, Vector3>>& lines, const Vector4& color, float seconds);
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
 
 		// Told by ScriptMessages: a script defining contact messages appeared or went
@@ -763,6 +840,8 @@ namespace jasperengine{
 		void setRootMotion(Entity entity, const Vector3& worldVelocity, float yawRate);
 		// the kinematic body a CharacterController with detectCollisions puts in the world
 		bool isCharacterInnerBody(const JPH::BodyID& body) const;
+		// S96 WP-A: the WheelColliders' vehicles
+		VehicleSystem& getVehicles3D() { return *vehicles3D; }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

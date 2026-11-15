@@ -136,7 +136,9 @@ namespace jasperengine::editor{
         // GameObject > UI > Title Art and 2D Object > Title Art (S81 R6): an Image or a Sprite with a
         // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
         TITLE_ART_UI,
-        TITLE_ART_SPRITE
+        TITLE_ART_SPRITE,
+        // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
+        VEHICLE_RIG
     };
 
     class CreateEntityCmd: public Command{

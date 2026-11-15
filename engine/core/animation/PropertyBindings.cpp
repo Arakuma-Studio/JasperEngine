@@ -75,7 +75,9 @@
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/WheelColliderComponent.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -704,6 +706,9 @@ namespace {
         rows.push_back(enabledRow<Joint2DComponent>("joint2d"));
         rows.push_back(enabledRow<Joint3DComponent>("joint3d"));
         rows.push_back(enabledRow<RagdollComponent>("ragdoll"));
+        // the vehicle parts (S96): VehicleSystem reads both flags on its step, so a write only sets them
+        rows.push_back(enabledRow<WheelColliderComponent>("wheelcollider"));
+        rows.push_back(enabledRow<VehicleDrivetrainComponent>("vehicledrivetrain"));
         rows.push_back(enabledRow<UIDocumentComponent>("uidocument"));
         rows.push_back(enabledRow<FluidSimulationComponent>("fluidsimulation"));
         rows.push_back(enabledRow<LatticeComponent>("lattice"));
