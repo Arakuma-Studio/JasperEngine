@@ -7,6 +7,7 @@
 
 #include "component/ShadowCaster2DComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/Transform.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
@@ -53,7 +54,7 @@ bool Sprite::createSprite(){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     MeshComponent& mesh = getComponent<MeshComponent>();
 
-    return scene->getSystem<MeshSystem>()->createOrUpdateSprite(spritecomp, mesh);
+    return scene->getSystem<MeshSystem>()->createOrUpdateSprite(spritecomp, mesh, scene->findComponent<SpriteSkinComponent>(entity));
 }
 
 ShadowCaster2D Sprite::getShadowCaster2D(){

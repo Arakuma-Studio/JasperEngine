@@ -402,9 +402,137 @@ namespace jasperengine{
                 sheet.slices.push_back(std::move(slice));
             }
         }
+        if (root.contains("skins") && root["skins"].is_array()){
+            const nlohmann::json& skins = root["skins"];
+            for (size_t i = 0; i < skins.size(); i++){
+                const std::string path = "skins[" + std::to_string(i) + "]";
+                int frame = -1;
+                if (!skins[i].is_object() || !skins[i].contains("frame") || !p.integer(skins[i]["frame"], path + ".frame", frame) ||
+                    frame < 0 || frame >= frameCount){
+                    p.warn(path, "no such frame (the skin is dropped)");
+                    continue;
+                }
+                std::string why;
+                std::shared_ptr<SpriteSkinGeometry> skin = parseSpriteSkin(skins[i], why);
+                if (!skin){
+                    p.warn(path, why + " (the skin is dropped)");
+                    continue;
+                }
+                sheet.frames[static_cast<size_t>(frame)].skin = std::move(skin);
+            }
+        }
         sheet.userData = p.userData(root, "");
         result.sheet = std::move(sheet);
         return result;
+    }
+
+    std::shared_ptr<SpriteSkinGeometry> parseSpriteSkin(const nlohmann::json& j, std::string& error){
+        auto skin = std::make_shared<SpriteSkinGeometry>();
+        auto number = [](const nlohmann::json& v, double& out){
+            if (!v.is_number()) return false;
+            out = v.get<double>();
+            return std::isfinite(out) && std::fabs(out) <= 1e9;
+        };
+        auto point = [&](const nlohmann::json& v, Vector2& out){
+            double x = 0, y = 0;
+            if (!v.is_array() || v.size() != 2 || !number(v[0], x) || !number(v[1], y)) return false;
+            out = Vector2(static_cast<float>(x), static_cast<float>(y));
+            return true;
+        };
+        if (j.contains("bones")){
+            if (!j["bones"].is_array() || j["bones"].size() > static_cast<size_t>(SPRITE_SKIN_MAX_BONES)){
+                error = "bones is not a list of at most " + std::to_string(SPRITE_SKIN_MAX_BONES);
+                return nullptr;
+            }
+            for (size_t b = 0; b < j["bones"].size(); b++){
+                const nlohmann::json& bj = j["bones"][b];
+                SpriteBone bone;
+                double parent = -1;
+                if (!bj.is_object() || !bj.contains("name") || !bj["name"].is_string() || !bj.contains("head") || !point(bj["head"], bone.head) ||
+                    !bj.contains("tail") || !point(bj["tail"], bone.tail)){
+                    error = "bones[" + std::to_string(b) + "] needs a name, a head and a tail";
+                    return nullptr;
+                }
+                bone.name = bj["name"].get<std::string>();
+                if (bj.contains("parent") && (!number(bj["parent"], parent) || parent < -1 || parent >= static_cast<double>(b))){
+                    // parents come first: a bone's world pose needs its parent's
+                    error = "bones[" + std::to_string(b) + "].parent must be -1 or an earlier bone";
+                    return nullptr;
+                }
+                bone.parent = static_cast<int>(parent);
+                skin->bones.push_back(std::move(bone));
+            }
+        }
+        if (j.contains("vertices")){
+            if (!j["vertices"].is_array() || j["vertices"].size() > SPRITE_SKIN_MAX_VERTICES){
+                error = "vertices is not a list of at most " + std::to_string(SPRITE_SKIN_MAX_VERTICES) + " points";
+                return nullptr;
+            }
+            for (size_t v = 0; v < j["vertices"].size(); v++){
+                Vector2 at;
+                if (!point(j["vertices"][v], at)){
+                    error = "vertices[" + std::to_string(v) + "] is not [x, y]";
+                    return nullptr;
+                }
+                skin->vertices.push_back(at);
+            }
+        }
+        if (j.contains("indices")){
+            if (!j["indices"].is_array() || j["indices"].size() % 3 != 0){
+                error = "indices is not a list of triangles (a multiple of 3)";
+                return nullptr;
+            }
+            for (const nlohmann::json& iv : j["indices"]){
+                double index = 0;
+                if (!number(iv, index) || index < 0 || index >= static_cast<double>(skin->vertices.size())){
+                    error = "indices names a vertex that is not there";
+                    return nullptr;
+                }
+                skin->indices.push_back(static_cast<uint16_t>(index));
+            }
+        }
+        if (j.contains("weights") && j["weights"].is_array() && !j["weights"].empty()){
+            const nlohmann::json& wj = j["weights"];
+            if (wj.size() != skin->vertices.size()){
+                error = "weights has " + std::to_string(wj.size()) + " entries for " + std::to_string(skin->vertices.size()) + " vertices";
+                return nullptr;
+            }
+            for (size_t v = 0; v < wj.size(); v++){
+                SpriteVertexWeights w;
+                if (!wj[v].is_array() || wj[v].size() > static_cast<size_t>(SPRITE_SKIN_MAX_INFLUENCES)){
+                    error = "weights[" + std::to_string(v) + "] is not a list of at most 4 [bone, weight]";
+                    return nullptr;
+                }
+                for (size_t k = 0; k < wj[v].size(); k++){
+                    double bone = 0, weight = 0;
+                    const nlohmann::json& pair = wj[v][k];
+                    if (!pair.is_array() || pair.size() != 2 || !number(pair[0], bone) || !number(pair[1], weight) || bone < 0 ||
+                        bone >= static_cast<double>(skin->bones.size()) || weight < 0){
+                        error = "weights[" + std::to_string(v) + "][" + std::to_string(k) + "] is not [bone, weight >= 0] of a bone that is there";
+                        return nullptr;
+                    }
+                    w.bones[k] = static_cast<uint8_t>(bone);
+                    w.weights[k] = static_cast<float>(weight);
+                }
+                skin->weights.push_back(w);
+            }
+            normalizeSpriteWeights(*skin);
+        }
+        return skin;
+    }
+
+    void normalizeSpriteWeights(SpriteSkinGeometry& skin){
+        for (SpriteVertexWeights& w : skin.weights){
+            float sum = 0.0f;
+            for (float x : w.weights) sum += x;
+            if (sum <= 0.0f){
+                // an unweighted vertex follows the first bone (a rigid part stays rigid)
+                w = SpriteVertexWeights();
+                w.weights[0] = skin.bones.empty() ? 0.0f : 1.0f;
+                continue;
+            }
+            for (float& x : w.weights) x /= sum;
+        }
     }
 
     // ---- write
@@ -421,6 +549,44 @@ namespace jasperengine{
 
         std::string userData(const nlohmann::json& ud){ return ud.is_object() && !ud.empty() ? ud.dump() : std::string(); }
 
+        // a weight as 6 significant digits: the text a float parsed from it prints again
+        std::string weightText(float w){
+            char buffer[32];
+            std::snprintf(buffer, sizeof(buffer), "%.6g", static_cast<double>(w));
+            return buffer;
+        }
+
+    }
+
+    std::string writeSpriteSkin(const SpriteSkinGeometry& skin){
+        std::string s = "\"bones\": [";
+        for (size_t b = 0; b < skin.bones.size(); b++){
+            const SpriteBone& bone = skin.bones[b];
+            s += (b ? ", " : "") + std::string("{\"name\": ") + quoted(bone.name) + ", \"parent\": " + std::to_string(bone.parent) +
+                 ", \"head\": " + pair(bone.head.x, bone.head.y) + ", \"tail\": " + pair(bone.tail.x, bone.tail.y) + "}";
+        }
+        s += "], \"vertices\": [";
+        for (size_t v = 0; v < skin.vertices.size(); v++){
+            s += (v ? ", " : "") + pair(skin.vertices[v].x, skin.vertices[v].y);
+        }
+        s += "], \"indices\": [";
+        for (size_t i = 0; i < skin.indices.size(); i++){
+            s += (i ? ", " : "") + std::to_string(skin.indices[i]);
+        }
+        s += "], \"weights\": [";
+        for (size_t v = 0; v < skin.weights.size(); v++){
+            const SpriteVertexWeights& w = skin.weights[v];
+            s += v ? ", [" : "[";
+            bool first = true;
+            for (int k = 0; k < SPRITE_SKIN_MAX_INFLUENCES; k++){
+                if (w.weights[k] <= 0.0f) continue;
+                s += (first ? "" : ", ") + std::string("[") + std::to_string(w.bones[k]) + ", " + weightText(w.weights[k]) + "]";
+                first = false;
+            }
+            s += "]";
+        }
+        s += "]";
+        return s;
     }
 
     std::string writeSheet(const SpriteSheetData& sheet){
@@ -488,6 +654,16 @@ namespace jasperengine{
             if (!ud.empty()) s += ", \"user_data\": " + ud;
             return s + "}";
         }, false);
+        // F49: only a sheet with skins has the list, so every text written before them stays canonical
+        std::vector<size_t> skinned;
+        for (size_t i = 0; i < sheet.frames.size(); i++){
+            if (sheet.frames[i].skin) skinned.push_back(i);
+        }
+        if (!skinned.empty()){
+            list("skins", skinned.size(), [&](size_t i){
+                return "{\"frame\": " + std::to_string(skinned[i]) + ", " + writeSpriteSkin(*sheet.frames[skinned[i]].skin) + "}";
+            }, false);
+        }
         const std::string ud = userData(sheet.userData);
         out += "  \"user_data\": " + (ud.empty() ? std::string("{}") : ud) + "\n";
         out += "}\n";

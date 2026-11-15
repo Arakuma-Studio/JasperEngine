@@ -1624,6 +1624,7 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetIO.cpp
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/SpriteSkinning.cpp
     core/render/sprite/SpriteInstanceBatch.cpp
     core/sprite/AsepriteClips.cpp
     # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
@@ -1685,6 +1686,7 @@ set(JASPERENGINE_SRCS
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
     core/object/Outline.cpp
+    core/object/SpriteSkin.cpp
     core/object/tilemap/Grid.cpp
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
@@ -1844,6 +1846,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/OutlineLua.cpp
+    core/script/binding/SpriteSkinLua.cpp
     # S94 Property Overrides (MaterialPropertyBlock)
     core/script/binding/MaterialPropertyBlockLua.cpp
     core/script/binding/HitStopClassesLua.cpp

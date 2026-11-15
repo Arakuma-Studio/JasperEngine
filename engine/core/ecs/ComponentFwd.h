@@ -93,6 +93,7 @@ namespace jasperengine{
     struct SplineInstantiateComponent;
     struct SpriteAnimationComponent;
     struct SpriteComponent;
+    struct SpriteSkinComponent;
     struct TerrainComponent;
     struct TerrainWorldComponent;
     struct TextComponent;

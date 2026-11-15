@@ -7,6 +7,7 @@
 #include "FoliageSystem.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "sprite/SpriteSkinning.h"
 #include "component/CameraComponent.h"
 #if JASPERENGINE_VOXEL
 #include "subsystem/VoxelSystem.h"
@@ -18171,6 +18172,9 @@ void RenderSystem::update(double dt){
             mesh->needUpdateAABB = true;
         }
     }
+
+    // the Sprite Skins' palettes from their bone GameObjects (S94 F49)
+    updateSpriteSkinBones(scene);
 
     // transforms and bones are current: the lattice followers move (and their subtrees with
     // them), then the bindings are packed into the meshes the loop below loads and bounds
