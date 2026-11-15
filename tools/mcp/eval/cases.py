@@ -5638,7 +5638,7 @@ CASES = [
         "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
                          "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
                          "exporting PNGs per layer by hand.",
-        "text_at_issue": "set_texture_import_settings: 'import_mode: layers makes a PSD/PSB's layers sprites and a prefab'",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers gives a PSD/PSB a frame per layer and a prefab'",
         "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
         "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
                   "in the document.",

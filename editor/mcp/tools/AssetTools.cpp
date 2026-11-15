@@ -5320,7 +5320,7 @@ void registerTextureTools(McpRegistry& registry) {
         tool.name = "set_texture_import_settings";
         tool.title = "Set Texture Import Settings";
         tool.description = "Partial update of textures' import settings (type, srgb, max_size, mipmaps, quality, effort, "
-                           "flip_green, pixel_art, import_mode: layers makes a PSD/PSB's layers sprites and a prefab...; null removes one); with platform, that platform's override (max_size, format, "
+                           "flip_green, pixel_art, import_mode: layers gives a PSD/PSB a frame per layer and a prefab...; null removes one); with platform, that platform's override (max_size, format, "
                            "quality, effort, rdo). One undo step; recooks.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Project-relative texture paths.")},
