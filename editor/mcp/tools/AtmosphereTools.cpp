@@ -692,8 +692,7 @@ void registerAtmosphereTools(McpRegistry& registry) {
         tool.title = "Apply Atmosphere Preset";
         tool.description = "Link a Fog or Fog Zone to a fog profile (a built-in id, copied into the project on first use, or a "
                            ".fogprofile path), or set a Volumetric Clouds preset; one undo step. unlink: true keeps the Fog's look "
-                           "and drops its profile. A look for one place only (a cave): a Fog Zone (create_entity fog_zone) with its "
-                           "own profile, not the scene's Fog.";
+                           "and drops its profile.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("The GameObject with the Fog, Fog Zone or Volumetric Clouds.")},

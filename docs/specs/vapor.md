@@ -667,3 +667,7 @@ scene.fog.profile = p                  -- runtime only
     show either), and lets a call through that changes `profile` itself in the same call.
   - `profile_no_effect` judges by the Fog's Type only (distance types read Color, Density and the
     Linear range; Height every other field and Color), not by its Color Mode.
+  - R37's first new case is a guard (`guard_cave_fog_through_a_zone`), not a `bad` case: with the
+    sentence on Fog Zones cut from `apply_atmosphere_preset`'s description, agents still created a
+    Fog Zone in 3/3 samples (through `create_entity`'s types and `list_component_types`), so no new
+    text needs it and the sentence was cut.

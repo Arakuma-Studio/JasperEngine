@@ -1368,13 +1368,13 @@ CASES = [
         "max_turns": 16,
     },
     {
-        "id": "bad_cave_fog_through_a_zone",
-        "kind": "bad",
-        "what_happened": "Without Fog Zones in the agent text an agent asked for fog inside one cave only thickens the scene's "
-                         "one Fog (set_properties or a preset on it), which fogs the whole level.",
-        "text_at_issue": "apply_atmosphere_preset description ('A look for one place only (a cave): a Fog Zone (create_entity "
-                         "fog_zone) with its own profile, not the scene's Fog.'); create_entity's type fog_zone; "
-                         "docs/mcp/guide/atmosphere.md Fog Zones",
+        "id": "guard_cave_fog_through_a_zone",
+        "kind": "guard",
+        "what_happened": "An agent asked for fog inside one cave only must not thicken the scene's one Fog (set_properties or a "
+                         "profile on it), which fogs the whole level; it creates a Fog Zone. Recorded red without the "
+                         "apply_atmosphere_preset sentence on Fog Zones: agents found fog_zone through create_entity's types and "
+                         "list_component_types anyway (3/3), so the sentence was cut and this case guards the route.",
+        "text_at_issue": "create_entity's type fog_zone; list_component_types' Fog Zone; docs/mcp/guide/atmosphere.md Fog Zones",
         "source": "docs/specs/vapor.md R37 (the first new case): a fog for one cave goes through a Fog Zone",
         "prompt": "Inside the cave (the Cave GameObject, a hollow rock box around x=40) the fog should be thick and dark green "
                   "whenever the camera is in there. Outside it the level keeps its light haze. Set that up.",
@@ -1460,7 +1460,11 @@ CASES = [
             {"tool": "set_properties", "result": {"recorded": "set_properties_fog_profile_field"}},
             {"tool": "edit_fog_profile", "args": {"from": {"profile": "*"}}, "result": {"recorded": "edit_fog_profile_copy"}},
             {"tool": "edit_fog_profile", "result": {"recorded": "edit_fog_profile_shared"}},
-            {"tool": "apply_atmosphere_preset", "result": {"recorded": "apply_fog_profile_copy"}},
+            {"tool": "apply_atmosphere_preset", "after": "edit_fog_profile", "result": {"recorded": "apply_fog_profile_copy"}},
+            {"tool": "apply_atmosphere_preset", "result": err(
+                "Unknown fog profile: no fog profile at that path: give a project .fogprofile path or builtin:<id> (morning_haze, "
+                "ground_mist, mountain_valley, horizon_haze, night, bright_haze, murky, infernal, toxic). Project profiles: "
+                "FogProfiles/night.fogprofile.")},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         "checks": {"calls": [{"tool": "edit_fog_profile", "args": {"from": {"profile": "re:night"}}},
