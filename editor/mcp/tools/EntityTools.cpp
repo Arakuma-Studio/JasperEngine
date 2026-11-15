@@ -192,6 +192,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"skybox", EntityCreationType::SKYBOX, "Skybox"},
         {"fog", EntityCreationType::FOG, "Fog"},
         {"local_volumetric_fog", EntityCreationType::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog"},
+        {"fog_zone", EntityCreationType::FOG_ZONE, "Fog Zone"},
         {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},

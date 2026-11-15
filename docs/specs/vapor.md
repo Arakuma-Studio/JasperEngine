@@ -656,3 +656,14 @@ scene.fog.profile = p                  -- runtime only
   - Test names: the stream test is `StreamAtmosphere.FogProfileFieldsOmitIfDefault` (the
     file's suite); AC4 is `FogResolveTest.NothingToLayerNeedsNoResolve` (CPU, no allocation)
     and `AtmosphereGpu.NoProfileNoResolve` (the same frame and passes through the Fog itself).
+- **MCP (R31-R35, R43).**
+  - `apply_atmosphere_preset` on a Fog links a built-in id (the five old presets included) instead of
+    writing its fields: the old ids are built-in profiles, and a link is R32's behaviour. Clouds keep
+    their presets. `unlink: true` on a Fog Zone is refused: a zone's look is its profile.
+  - `edit_fog_profile`'s `set` also takes `name` and `description` (R3's fields), and needs `from` to
+    create a file: a path that does not exist is refused rather than made empty, so a typo never
+    makes a new profile.
+  - `set_properties` refuses a profile-set Fog field in Play too (the running scene's write would not
+    show either), and lets a call through that changes `profile` itself in the same call.
+  - `profile_no_effect` judges by the Fog's Type only (distance types read Color, Density and the
+    Linear range; Height every other field and Color), not by its Color Mode.

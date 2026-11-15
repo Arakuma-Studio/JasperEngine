@@ -77,6 +77,22 @@ RECORD = {
     "get_atmosphere_info_fog_hidden": ("get_atmosphere_info", {"view": "scene"}),
     "scene_view_enable_fog": ("set_scene_camera", {"display": {"disable_fog": False}}),
     "get_atmosphere_info_fog_shown": ("get_atmosphere_info", {"view": "scene"}),
+    # Fog Profiles (docs/specs/vapor.md R31-R33, R43): the Fog and a Fog Zone share builtin night's copy, so
+    # set_properties refuses a field it sets; a copy for the Fog alone; the zone takes a profile of its own
+    "list_atmosphere_presets_fog": ("list_atmosphere_presets", {"kind": "fog"}),
+    "apply_fog_profile_night": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "night"}),
+    "create_entity_fog_zone": ("create_entity", {"type": "fog_zone", "name": "Cave Fog", "position": [40, 0, 0]}),
+    "apply_fog_profile_zone_shared": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "night"}),
+    "set_properties_fog_profile_field": ("set_properties", {"entity": "Fog", "values": {"fog": {"attenuationDistance": 30.0}}}),
+    "edit_fog_profile_shared": ("edit_fog_profile", {"path": "assets/FogProfiles/night.fogprofile", "set": {"attenuationDistance": 30.0}}),
+    "undo_fog_profile_shared": ("undo", {"scope": "project"}),
+    "edit_fog_profile_copy": ("edit_fog_profile", {"path": "assets/FogProfiles/night_dense.fogprofile",
+                                                   "from": {"profile": "assets/FogProfiles/night.fogprofile"},
+                                                   "set": {"attenuationDistance": 30.0}}),
+    "apply_fog_profile_copy": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "assets/FogProfiles/night_dense.fogprofile"}),
+    "edit_fog_profile_cave": ("edit_fog_profile", {"path": "assets/FogProfiles/cave.fogprofile", "from": {"builtin": "murky"},
+                                                   "set": {"albedo": [0.05, 0.3, 0.05], "attenuationDistance": 15.0}}),
+    "apply_fog_profile_zone": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "assets/FogProfiles/cave.fogprofile"}),
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}

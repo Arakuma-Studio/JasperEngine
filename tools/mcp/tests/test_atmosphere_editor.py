@@ -1,7 +1,8 @@
 """S12 atmosphere in the editor (docs/specs/S12-atmosphere.md AC12, AC13): the three GameObjects
 the menus create, every new field settable with one undo step each, the presets (list, apply as
 one named undo step), the Scene view's Fog and Clouds toggles (that view only), the Inspector's
-height fog foldouts and the project's per-platform Atmosphere Quality. The Lit colour mode
+height fog foldouts and the project's per-platform Atmosphere Quality. Fog presets are Fog Profiles
+(docs/specs/vapor.md R32): applying one links it. The Lit colour mode
 (docs/specs/vapor.md R12, R30): its fields with one undo step each, and its Inspector rows shown
 only in Lit, in place of the unused Color.
 
@@ -105,27 +106,31 @@ async def test_presets(ed: Editor):
     s = await setup(ed)
     fog_presets = await ed.call("list_atmosphere_presets", kind="fog")
     ed.check_eq([p["id"] for p in fog_presets["presets"]],
-                ["morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night"], "five fog looks")
+                ["morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night", "bright_haze", "murky", "infernal",
+                 "toxic"], "the five old looks and the four Lit ones, as built-in fog profiles")
     cloud_presets = await ed.call("list_atmosphere_presets", kind="clouds")
     ed.check_eq([p["id"] for p in cloud_presets["presets"]], ["custom", "sparse", "cloudy", "overcast", "stormy"],
                 "Custom and four cloud looks")
 
+    # a fog preset links the Fog to that built-in profile's project copy (docs/specs/vapor.md R32)
     before = await values(ed, s["fog"], "fog")
     applied = await ed.call("apply_atmosphere_preset", scene=s["scene"], entity=s["fog"], preset="ground_mist")
     ed.check(applied["changed"], "the preset changed the fog")
     after = await values(ed, s["fog"], "fog")
     ed.check_eq(after["type"], "height", "a fog preset makes a height fog")
-    ed.check(after["attenuationDistance"] != before["attenuationDistance"], "the look's fields")
+    ed.check_eq(applied["profile"], "assets/FogProfiles/ground_mist.fogprofile", "linked to the profile")
+    looks = await ed.call("get_atmosphere_info", scene=s["scene"], resolved=True)
+    ed.check_eq(looks["resolved"]["attenuationDistance"], {"value": 40, "source": "profile"}, "the look's fields")
     top = (await ed.call("get_undo_history", scene=s["scene"], limit=5))["entries"][0]
-    ed.check("Apply Atmosphere Preset" in top["name"], f"one named step: {top['name']}")
+    ed.check("Link Fog Profile" in top["name"], f"one named step: {top['name']}")
     await ed.call("undo", scope="timeline", scene=s["scene"])
     ed.check_eq(await values(ed, s["fog"], "fog"), before, "one undo restores every field")
 
     await ed.call("apply_atmosphere_preset", scene=s["scene"], entity=s["volumetric_clouds"], preset="overcast")
     clouds = await values(ed, s["volumetric_clouds"], "volumetricclouds", "preset", "coverage")
     ed.check_eq(clouds["preset"], "overcast")
-    await ed.check_error("apply_atmosphere_preset", scene=s["scene"], entity=s["fog"], preset="no_such_look", contains="presets:")
-    await ed.check_error("apply_atmosphere_preset", scene=s["scene"], entity="Box", preset="night", contains="neither")
+    await ed.check_error("apply_atmosphere_preset", scene=s["scene"], entity=s["fog"], preset="no_such_look", contains="morning_haze")
+    await ed.check_error("apply_atmosphere_preset", scene=s["scene"], entity="Box", preset="night", contains="no Fog, Fog Zone")
 
 
 async def test_scene_view_toggles(ed: Editor):

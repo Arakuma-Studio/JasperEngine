@@ -1271,6 +1271,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
     ${EDITOR_DIR}/FogProfileAssets.cpp
+    ${EDITOR_DIR}/FogProfileEdits.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
