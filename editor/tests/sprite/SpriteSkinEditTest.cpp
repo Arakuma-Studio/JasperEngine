@@ -115,7 +115,9 @@ TEST(SpriteSkinTest, RemovingABoneHandsItsWeightsToItsParent) {
     for (const SpriteVertexWeights& w : skin.weights) {
         EXPECT_NEAR(sum(w), 1.0f, 1e-5f);
         for (int k = 0; k < SPRITE_SKIN_MAX_INFLUENCES; k++) {
-            if (w.weights[k] > 0.0f) EXPECT_LT(w.bones[k], 2);
+            if (w.weights[k] > 0.0f) {
+                EXPECT_LT(w.bones[k], 2);
+            }
         }
     }
     EXPECT_FALSE(sprite::removeBone(skin, "nope", error));
