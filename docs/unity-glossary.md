@@ -293,6 +293,15 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## 2D Animation and the PSD Importer
+
+| Unity term | JasperEngine name |
+|---|---|
+| Sprite Skin (`SpriteSkin`: Root Bone, Bone Transforms) | Sprite Skin (Root Bone, Bones; Lua `SpriteSkin`), [sprites.md](sprites.md) |
+| Skinning Editor (Create Bone, Auto Geometry, Auto Weights, Weight Brush, Preview Pose) | Window > 2D > Skinning Editor; MCP `edit_sprite_skin` |
+| A sprite's bones, mesh and weights (`SpriteBone`, sprite geometry) | the frame's skin, kept in the source's meta (`import.spriteSkin`) |
+| PSD Importer (`.psd`, `.psb`): Import Mode Individual Sprites, the generated prefab, Use Layer Grouping, Character Rig | Texture importer > Import Mode: Layers (sprites + prefab, groups as parents), Character Rig |
+
 ## Debugging
 
 | Unity term | JasperEngine name |

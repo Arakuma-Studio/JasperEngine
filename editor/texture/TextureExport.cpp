@@ -6,6 +6,8 @@
 #include "Project.h"
 #include "asset/AssetFileWrite.h"
 #include "texture/CookedTextures.h"
+#include "Out.h"
+#include "TiffReader.h"
 
 #include "json.hpp"
 
@@ -23,6 +25,31 @@ bool TextureExport::gather(Project& project, std::map<std::string, TextureCookIn
             TextureImportSettings::load(in.absolute.string(), ignored, &reason);
             error = path + ": its texture import settings cannot be read: " + reason;
             return false;
+        }
+        // the export would ship the source to a reader (RmlUi, the terrain layers) that cannot decode it
+        if (in.inference.readsSource && isEditorDecodedTexture(path)){
+            std::string reader;
+            for (const TextureReferenceUse& use : in.inference.uses){
+                if (use.slot == TextureSlot::SourceFile){
+                    reader = use.where;
+                    break;
+                }
+            }
+            error = path + ": " + reader + " reads the source file, and a game cannot decode TIFF or PSB (only their cooks); "
+                    "convert it to PNG for that reference";
+            return false;
+        }
+        // a TIFF outside the baseline set (a float VAT bake beside its importer's sources) that nothing
+        // references was never a texture before TIFF support: it stays out of the export, not failing it
+        if (in.inference.uses.empty() && isEditorDecodedTexture(path) && !path.ends_with(".psb") && !path.ends_with(".PSB")){
+            std::string bytes, readError;
+            TiffImage probe;
+            if (!assetio::readFile(in.absolute, bytes) ||
+                !readTiff(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), probe, readError)){
+                Out::warning("%s is left out of the export: nothing references it, and it does not read as a baseline TIFF (%s)",
+                             path.c_str(), readError.c_str());
+                continue;
+            }
         }
         inputs.emplace(path, std::move(in));
     }

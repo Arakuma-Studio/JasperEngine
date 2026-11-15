@@ -2092,6 +2092,20 @@ if sheet then
 end
 ```
 
+#### SpriteSkin (EntityHandle)
+
+`SpriteSkin(scene, entity)` is the GameObject's Sprite Skin (added when it has none): `enabled`
+(rw), `rootBone` (rw entity), `bones` (rw table of entities, in the frame skin's bone order),
+`skinBoneCount` (ro, 0 when the shown frame has no skin) and `skinned` (ro: drawn through its
+bones now). Move or rotate the bone GameObjects to bend the Sprite.
+
+```lua
+local skin = SpriteSkin(self.scene, self.entity)
+if skin.skinned then
+    GameObject(self.scene, skin.bones[2]):setRotation(0, 0, 30)
+end
+```
+
 ### 4.6 SpriteAnimation (Action)
 
 `setAnimation(framesTable, framesTimeTable, loop)` / `setAnimation(startFrame, endFrame,

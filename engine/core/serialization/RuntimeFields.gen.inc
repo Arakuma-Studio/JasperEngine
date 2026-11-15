@@ -2770,6 +2770,13 @@ const FieldEntry kBody_OutlineComponent_fields[] = {
 };
 const StructTable kBody_OutlineComponent{"outline", kBody_OutlineComponent_fields, std::size(kBody_OutlineComponent_fields)};
 
+const FieldEntry kBody_SpriteSkinComponent_fields[] = {
+    JE_RF(SpriteSkinComponent, enabled, 0x92a8c7b2u, Bool),
+    JE_RF_ENTITY(SpriteSkinComponent, rootBone, 0xca6e03d3u, Entity),
+    JE_RF_ENTITIES(SpriteSkinComponent, bones, 0x53e25968u, Array),
+};
+const StructTable kBody_SpriteSkinComponent{"spriteskin", kBody_SpriteSkinComponent_fields, std::size(kBody_SpriteSkinComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2890,6 +2897,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENT(OutlineComponent, "outline", 0x361ad8bdu),
+    JE_RF_COMPONENT(SpriteSkinComponent, "spriteskin", 0x5e8efcadu),
     JE_RF_COMPONENTS_END
 };
 

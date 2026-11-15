@@ -857,6 +857,19 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
     camera draws outlines after its whole hierarchy, so over that camera's component UI.
   - Exports ship the outline variants of every mesh an Outline covers, and of every mesh when the
     project's scripts mention `Outline` (`ShaderVariantCollector`, `scriptsAddOutlines`).
+- **P8 (F48) prefab path.** "`<file>.prefab`" is read literally: `art/hero.psd` writes
+  `art/hero.psd.prefab`, so a `hero.png` and a `hero.psd` side by side never share one.
+- **P8 (F49) skin storage.** The skin is kept per frame name in the meta of the sheet's source
+  (`import.spriteSkin`, frame pixels) and the builders attach it to the record's frames (`skins`, an
+  optional list of the sheet record, no version bump). Textures (every Sprite Mode) and PSD/PSB in
+  Layers mode carry skins; an `.aseprite` sheet or a `.spriteatlas` refuses an edit with a message
+  (a Sprite of an atlas skins its source texture, and the atlas remap keeps the frame's skin).
+- **P8 (F49) Auto Geometry.** The mesh is a triangle grid of Cell Size pixels kept where a cell holds
+  an opaque pixel (it follows the alpha outline to within one cell), not a traced outline with a
+  constrained triangulation: deterministic, never a sliver, and dense where the skin bends.
+- **P8 (F49) what draws skinned.** A frame drawn Sliced, or instanced by a Sprite Batch, draws its
+  quad (a 9-slice and the instance buffer carry no bone weights). Preview Pose bends the mesh in the
+  Skinning Editor only; the scene's pose is the bone GameObjects'.
 - **P3, F15 (gradient ambient).** The SH ambient, `frame.ambient`, Lit's camera block and every
   variant without `'Agr'` carry the gradient's average over every direction (sky/4 + equator/2 +
   ground/4); `'Agr'` variants swap that share for the exact gradient (`includes/ambient.glsl`,

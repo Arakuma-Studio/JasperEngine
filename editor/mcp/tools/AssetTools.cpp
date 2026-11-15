@@ -94,6 +94,7 @@
 #include "command/type/SetAssetMetaCmd.h"
 #include "texture/TextureCookReport.h"
 #include "texture/TextureDecode.h"
+#include "texture/PsdLayerImport.h"
 
 #include <algorithm>
 #include <cctype>
@@ -4843,7 +4844,9 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         {"channel", "channel"}, {"quality", "quality"}, {"effort", "effort"}, {"streamable", "streamable"},
         {"ship_source", "shipSource"},
         // S42 R4, R6, R7
-        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"}};
+        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"},
+        // S94 F48: a PSD/PSB's layers as sprites
+        {"import_mode", "importMode"}, {"character_rig", "characterRig"}};
     return fields;
 }
 
@@ -5075,6 +5078,15 @@ void setTextureImportSettingsTool(const CallPtr& call) {
             }
             edits.push_back({field->second, yaml});
         }
+        // Layers import reads Photoshop documents only
+        if (!perPlatform && (settings.contains("import_mode") || settings.contains("character_rig"))) {
+            for (size_t i = 0; i < assetPaths.size(); i++) {
+                if (!isPsdPath(assetPaths[i])) {
+                    call->fail("settings.import_mode: " + projectPaths[i] + " is not a .psd or .psb (Layers import reads Photoshop documents).");
+                    return;
+                }
+            }
+        }
         // every texture's new section, checked whole before anything is written
         std::vector<std::pair<size_t, YAML::Node>> writes;
         for (size_t i = 0; i < assetPaths.size(); i++) {
@@ -5130,8 +5142,30 @@ void setTextureImportSettingsTool(const CallPtr& call) {
         }
         edit.commit();
         if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+        Json data = {{"updated", updated}, {"unchanged", writes.size() - updated.size()}};
+        // S94 F48: what the layered documents imported to (their prefabs are written by now)
+        Json layers = Json::array();
+        for (size_t i = 0; i < assetPaths.size(); i++) {
+            if (!isPsdPath(assetPaths[i]) || !PsdLayerImporter::get().isLayered(assetPaths[i])) continue;
+            PsdLayerImportResult imported;
+            Json entry = {{"path", projectPaths[i]}};
+            if (PsdLayerImporter::get().import(assetPaths[i], imported)) {
+                Json sprites = Json::array();
+                for (const SpriteFrame& frame : imported.sheet.frames) sprites.push_back({{"name", frame.name}, {"key", frame.key}});
+                entry["sprites"] = sprites;
+                entry["prefab"] = project->normalizeToProjectRelative(project->getAssetsPath() / PsdLayerImporter::prefabPathOf(assetPaths[i])).generic_string();
+                if (!imported.warnings.empty()) entry["warnings"] = imported.warnings;
+            } else {
+                entry["error"] = imported.error;
+            }
+            layers.push_back(entry);
+        }
+        if (!layers.empty()) {
+            data["layers"] = layers;
+            data["next"] = "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name.";
+        }
         call->ok("Updated the import settings of " + std::to_string(updated.size()) + " texture(s); their cooks are queued. "
-                 "Undo with scope project.", Json{{"updated", updated}, {"unchanged", writes.size() - updated.size()}});
+                 "Undo with scope project.", data);
     });
 }
 
@@ -5284,7 +5318,7 @@ void registerTextureTools(McpRegistry& registry) {
         tool.name = "set_texture_import_settings";
         tool.title = "Set Texture Import Settings";
         tool.description = "Partial update of textures' import settings (type, srgb, max_size, mipmaps, quality, effort, "
-                           "flip_green, pixel_art...; null removes one); with platform, that platform's override (max_size, format, "
+                           "flip_green, pixel_art, import_mode: layers makes a PSD/PSB's layers sprites and a prefab...; null removes one); with platform, that platform's override (max_size, format, "
                            "quality, effort, rdo). One undo step; recooks.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Project-relative texture paths.")},

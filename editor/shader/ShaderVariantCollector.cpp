@@ -44,6 +44,7 @@
 #include "component/SpriteBatchComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
 #include "voxel/TransvoxelMesher.h"
@@ -993,6 +994,14 @@ namespace {
                     collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice, vat);
                     if (s == 0 && lentBaseColor)
                         collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice, vat);
+                }
+                // S94 F49: a Sprite Skin draws its skinned frames with bone ids and weights, its
+                // others as the quad above
+                if (sprite && registry->findComponent<SpriteSkinComponent>(entity)){
+                    std::unique_ptr<MeshComponent> skinned = std::make_unique<MeshComponent>(mesh);
+                    MeshSystem::prepareSkinnedSpriteMesh(*skinned);
+                    const std::vector<const Buffer*> skinnedBuffers{&skinned->buffer};
+                    collectSubmesh(*skinned, skinned->submeshes[0], &skinnedBuffers, nullptr, instmesh, mirror, lattice, vat);
                 }
                 return;
             }

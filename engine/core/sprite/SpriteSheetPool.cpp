@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteSheetPool.h"
+#include "texture/TextureData.h"
 
 #include "Log.h"
 #include "asset/ImportedAssets.h"
@@ -145,8 +146,15 @@ std::shared_ptr<const SpriteSheetData> SpriteSheetPool::loadTexture(const std::s
         }
         int comp = 0;
         if (!stbi_info_from_memory(data.getMemPtr(), static_cast<int>(data.length()), &width, &height, &comp)){
-            if (error) *error = path + " is not an image this engine reads";
-            return nullptr;
+            // a format only a registered decoder reads (the editor's TIFF and PSB: S94 F50)
+            TextureData decoded;
+            if (!decoded.loadTextureFromFileData(path.c_str(), data.getMemPtr(), static_cast<unsigned int>(data.length())) ||
+                decoded.getWidth() <= 0 || decoded.getHeight() <= 0){
+                if (error) *error = path + " is not an image this engine reads";
+                return nullptr;
+            }
+            width = decoded.getWidth();
+            height = decoded.getHeight();
         }
     }
     SpriteSheetData sheet;

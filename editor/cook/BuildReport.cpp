@@ -52,7 +52,7 @@ std::string BuildReport::categoryOf(const std::string& path){
     if (path.rfind(cooked, 0) == 0 || path.find("/" + std::string(CookedTextures::kCookedDir) + "/") != std::string::npos)
         return "textures";
     static const std::set<std::string> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
-    static const std::set<std::string> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
+    static const std::set<std::string> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".psb", ".tif", ".tiff", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
     static const std::set<std::string> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
     static const std::set<std::string> scripts = {".lua", ".luac"};
     static const std::set<std::string> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};
