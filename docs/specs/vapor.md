@@ -693,9 +693,10 @@ scene.fog.profile = p                  -- runtime only
   (`--gpu`) before and after on a reference GPU. Still to run: `--gpu --runs 5` on the desktop
   reference and `--mobile` on an Adreno 650 / Mali-G78 phone.
 - **R19: GLES3 limits are counted, not measured on a device.** The fog pass with the point shadows
-  ('Pnt' variant) takes 5 fragment texture units and 215 fragment uniform vectors on GLES3, under
-  the 16 and 224 every GLES3 device has (`AtmosphereShaderBuild.FogPointShadowsFitGles3Limits`);
-  the plain variant 4 and 175. 215 of 224 leaves little room: a later field in the fog's block
+  ('Pnt' variant) takes 5 fragment texture units and 217 fragment uniform vectors on GLES3 (with
+  the Lit mode's two vec4), under the 16 and 224 every GLES3 device has
+  (`AtmosphereShaderBuild.FogPointShadowsFitGles3Limits`); the plain variant 4 and 177. 217 of 224
+  leaves little room: a later field in the fog's block
   must replace an unused component, as the shadow slot does (`lightCone.z`).
 - **Lit test names (AC5, AC17)** follow the existing suites: `AtmosphereMath.LitColourFromAmbientAndSun`,
   `AtmosphereGpu.LitFogDay`, `AtmosphereGpu.LitFogNight` (goldens `atmosphere_lit_day`,
