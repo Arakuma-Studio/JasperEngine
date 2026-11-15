@@ -67,6 +67,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
@@ -239,6 +240,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
+    // S94 F22: after the last one, so no ComponentType moves
+    registerComponent<OutlineComponent>(ComponentOrder::Insertion, "OutlineComponent");
     // S94 F49: after the last one, so no ComponentType moves
     registerComponent<SpriteSkinComponent>(ComponentOrder::Insertion, "SpriteSkinComponent");
     // complete: markChangedComponent may look into it

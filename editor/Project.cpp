@@ -4647,7 +4647,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
-                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers());
+                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
+                                         scriptsMention("Outline"));
     // a script switching the Environment Lighting Source (S94 F15) draws the other lit variants
     if (scriptsMention("ambientMode") || scriptsMention("AmbientMode"))
         ShaderVariantCollector::addAmbientGradientTwins(keys);

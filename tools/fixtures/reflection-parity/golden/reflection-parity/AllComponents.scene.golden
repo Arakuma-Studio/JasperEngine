@@ -2953,22 +2953,3 @@ entities:
         cylindricalBillboard: false
       titleart:
         enabled: true
-  - type: Entity
-    entity: 1105
-    name: SpriteSkinComponent
-    components:
-      transform:
-        position: [104, 0, 0]
-        rotation: [1, 0, 0, 0]
-        scale: [1, 1, 1]
-        visible: true
-        billboardRotation: [1, 0, 0, 0]
-        billboard: false
-        fakeBillboard: false
-        cylindricalBillboard: false
-      spriteskin:
-        enabled: false
-        rootBone: 1104
-        bones:
-          - 1104
-          - 1103

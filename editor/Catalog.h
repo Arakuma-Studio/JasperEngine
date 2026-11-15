@@ -250,6 +250,8 @@ namespace jasperengine::editor{
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
         TitleArtRendererComponent,
+        // QuickOutline: outlines its Mesh and the Meshes below it (S94 F22)
+        OutlineComponent,
         // deforms its Sprite with bone GameObjects (S94 F49)
         SpriteSkinComponent
     };

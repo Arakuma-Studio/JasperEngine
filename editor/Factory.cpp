@@ -3781,6 +3781,7 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
     for (Entity plane : p.collisionPlanes)
         code << ind << "particles.collisionPlanes.push_back(" << formatEntity(plane, entityVarNames) << ");\n";
+    if (p.legacyFrom != NULL_ENTITY) code << ind << "particles.legacyFrom = " << formatEntity(p.legacyFrom, entityVarNames) << ";\n";
     if (!p.enabled) code << ind << "particles.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);

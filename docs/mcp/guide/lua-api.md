@@ -2061,7 +2061,7 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `spriteSortPoint` | rw `SpriteSortPoint.CENTER` or `PIVOT`: what Custom Axis sorting measures |
 | `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
-| frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
+| frames: `addFrame(...)` (rects in texture pixels; `Points:addSpriteFrame` takes UV units), `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
@@ -2544,6 +2544,27 @@ assert(batch.count == 2)
 assert(batch:add(32, 0) == 2)
 local group = SortingGroup(scene, sprite.entity)
 group.sortingOrder = 1
+```
+
+### 4.9.4 Outline
+
+QuickOutline as a component (`jasper://docs/materials`, Outline).
+
+- `Outline(scene, entity)`: the GameObject's Outline, added when it has none. rw `enabled`, `mode`
+  (`OutlineMode.OUTLINE_ALL`, `OUTLINE_VISIBLE`, `OUTLINE_HIDDEN`, `OUTLINE_AND_SILHOUETTE`,
+  `SILHOUETTE_ONLY`), `color` (sRGB `Vector4`, alpha blends), `width` (0 or more; a bad one logs an
+  error and changes nothing), `widthUnits` (`OutlineWidthUnits.PIXELS`, `WORLD`),
+  `includeChildren` (the Meshes below it too: a model root covers its skinned children).
+
+```lua run
+local box = Primitive(scene)
+box:createBox(1, 1, 1)
+local outline = Outline(scene, box.entity)
+outline.mode = OutlineMode.OUTLINE_VISIBLE
+outline.color = Vector4(1, 0.8, 0, 1)
+outline.width = 3
+assert(outline.widthUnits == OutlineWidthUnits.PIXELS)
+outline.enabled = false
 ```
 
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
@@ -3199,6 +3220,8 @@ makes a GameObject with one.
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
+  `addSpriteFrame([id,] [name,] rect)` takes the rect in UV units (0..1), not pixels as
+  `Sprite:addFrame` does; a rect outside them logs one warning per Points.
 - `LineRenderer` (Unity's LineRenderer, jasper://docs/lines-trails): the polyline:
   rw `positionCount` (growing repeats the last point), `setPosition(index, V3)` /
   `getPosition(index)` (**0-based** like Unity; out of range is an error naming the count;

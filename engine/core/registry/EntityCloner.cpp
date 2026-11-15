@@ -55,6 +55,7 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
@@ -791,6 +792,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
         for (Entity& plane : particles.collisionPlanes) {
             plane = ctx.remap(plane);
         }
+        particles.legacyFrom = ctx.remap(particles.legacyFrom);
         return;
     }
     // the copy simulates on its own (its runtime is made at its first update)
@@ -799,6 +801,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
     for (Entity& plane : particles.collisionPlanes) {
         plane = ctx.remap(plane);
     }
+    particles.legacyFrom = ctx.remap(particles.legacyFrom);
     particles.onCollision.clear();
     particles.onParticleDeath.clear();
     particles.onSubEmit.clear();
@@ -1381,6 +1384,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OutlineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

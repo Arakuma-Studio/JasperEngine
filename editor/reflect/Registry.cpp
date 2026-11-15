@@ -122,6 +122,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
         &kSpriteSkinDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -233,6 +234,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
         &kSpriteSkinDesc,
     };
 
@@ -342,6 +344,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
         &kSpriteSkinDesc,
     };
 
@@ -377,6 +380,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // the Outline (S94)
+        &enums::kOutlineMode, &enums::kOutlineWidthUnits,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {
