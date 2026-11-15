@@ -23,7 +23,7 @@
 #include "noise/NoiseGraphRuntime.h"
 #include "noise/TerrainPresets.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <chrono>

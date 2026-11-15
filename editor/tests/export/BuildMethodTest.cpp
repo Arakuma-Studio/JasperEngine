@@ -663,25 +663,26 @@ TEST(IosBuild, ChoosesAFullXcodeAndLeavesTheMacsSettingAlone) {
     const std::string tools = "/Library/Developer/CommandLineTools";
     const std::string active = "/Applications/Xcode.app/Contents/Developer";
     const std::vector<fs::path> none;
+    // (generic_string: the macOS path the choice builds, whatever separator the host's fs::path joins with)
     const std::vector<fs::path> installed = {"/Applications/Xcode-16.app", "/Applications/Xcode.app", "/Applications/Xcode_26.app"};
 
     platform::XcodeChoice choice = platform::chooseXcode("", active, none);
     EXPECT_TRUE(choice.found());
-    EXPECT_EQ(choice.developerDir.string(), active);
+    EXPECT_EQ(choice.developerDir.generic_string(), active);
     EXPECT_FALSE(choice.throughEnvironment);
 
     choice = platform::chooseXcode("/Elsewhere/Xcode.app/Contents/Developer", tools, installed);
-    EXPECT_EQ(choice.developerDir.string(), "/Elsewhere/Xcode.app/Contents/Developer") << "DEVELOPER_DIR wins";
+    EXPECT_EQ(choice.developerDir.generic_string(), "/Elsewhere/Xcode.app/Contents/Developer") << "DEVELOPER_DIR wins";
     EXPECT_FALSE(choice.throughEnvironment) << "it is in the environment already";
 
     // xcode-select on the Command Line Tools, with an Xcode installed (the case that failed)
     choice = platform::chooseXcode("", tools, installed);
     EXPECT_TRUE(choice.found());
-    EXPECT_EQ(choice.developerDir.string(), "/Applications/Xcode.app/Contents/Developer");
+    EXPECT_EQ(choice.developerDir.generic_string(), "/Applications/Xcode.app/Contents/Developer");
     EXPECT_TRUE(choice.throughEnvironment);
 
     choice = platform::chooseXcode("", tools, {"/Applications/Xcode-16.app", "/Applications/Xcode_26.app"});
-    EXPECT_EQ(choice.developerDir.string(), "/Applications/Xcode_26.app/Contents/Developer");
+    EXPECT_EQ(choice.developerDir.generic_string(), "/Applications/Xcode_26.app/Contents/Developer");
 
     choice = platform::chooseXcode("", tools, none);
     EXPECT_FALSE(choice.found());

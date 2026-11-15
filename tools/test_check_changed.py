@@ -164,6 +164,16 @@ class Builds(unittest.TestCase):
             self.assertEqual(p.builds, ["linux", "unit-tests", "web", "android"], trigger)
             self.assertTrue(p.unit_all and p.mcp_all, trigger)
 
+    def test_ci_nothing_reads(self):
+        for f in ("docs/specs/S01-cxx20.md", "docs/superpowers/specs/x.md", "docs/engine-gaps/a.md",
+                  "docs/openengine-analysis/b.md", "docs/test-cleanup/c.md", "PIXEL-ART-LEDGER.md", "README.md"):
+            self.assertTrue(cc.ci_reads_nothing(f), f)
+        # the editor embeds the guide; tests read other docs; .claude/rules is test_agent_docs.py's
+        for f in ("docs/mcp/guide/code.md", "docs/unity-glossary.md", "docs/editor/keyboard-shortcuts.md",
+                  "docs/html-ui/goldens-S16.md", "docs/specs-index.md", "tools/README.md", "docs/FOO-LEDGER.md",
+                  ".claude/rules/mcp.md", "AGENTS.md", "engine/core/Foo.cpp", ".github/workflows/ci.yml"):
+            self.assertFalse(cc.ci_reads_nothing(f), f)
+
     def test_the_engine_with_every_module_off(self):
         for asks in ("engine/core/subsystem/PhysicsSystem.h", "engine/core/Foo.hpp", "engine/CMakeLists.txt",
                      "tools/check-physics-off.sh", "engine/cmake/JasperPlayerVariants.cmake", "tools/build.sh"):
@@ -460,6 +470,7 @@ class Coverage(unittest.TestCase):
             data = coverage_map.collect(runs_dir, tree, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
             self.assertEqual(data["tests"], ["test_nothing.py", "test_x.py", "test_y.py"])
             self.assertEqual(data["editor_tests"], 2)
+            self.assertEqual(data["editor_test_names"], ["test_x.py", "test_y.py"])
             self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"]])
             self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"], [5, 6, "0"]])
             self.assertEqual(data["sources"]["engine/core/Inl.h"]["functions"], [[5, 6, "2"]])
@@ -468,8 +479,28 @@ class Coverage(unittest.TestCase):
             coverage_map.MIN_EDITOR_FUNCTIONS = old
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_merge(self):
+        # the maps of a run split across machines (the nightly's coverage shards): one test's
+        # chunks on two shards count once; each mask is renumbered onto the joined test list
+        a = {"version": 2, "commit": "c1", "created": 5.0, "tests": ["test_a.py", "test_x.py"], "editor_tests": 2,
+             "editor_test_names": ["test_a.py", "test_x.py"], "seconds": {"test_a.py": 1.0, "test_x.py": 2.0},
+             "sources": {"engine/core/A.cpp": {"functions": [[1, 2, "1"], [3, 4, "2"], [5, 6, "0"]]}}}
+        b = {"version": 2, "commit": "c1", "created": 7.0, "tests": ["test_b.py", "test_x.py"], "editor_tests": 1,
+             "editor_test_names": ["test_x.py"], "seconds": {"test_x.py": 3.0},
+             "sources": {"engine/core/A.cpp": {"functions": [[1, 2, "2"], [5, 6, "1"]]},
+                         "engine/core/B.cpp": {"functions": [[9, 9, "3"]]}}}
+        data = coverage_map.merge([a, b])
+        self.assertEqual(data["tests"], ["test_a.py", "test_b.py", "test_x.py"])
+        self.assertEqual((data["commit"], data["created"], data["version"]), ("c1", 7.0, 2))
+        self.assertEqual(data["editor_tests"], 2)
+        self.assertEqual(data["seconds"], {"test_a.py": 1.0, "test_x.py": 5.0})
+        self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "5"], [3, 4, "4"], [5, 6, "2"]])
+        self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[9, 9, "6"]])
+        with self.assertRaises(ValueError):
+            coverage_map.merge([a, dict(b, commit="c2")])
 
-FAKE_BUILD = """#!/usr/bin/env bash
+
+FAKE_BUILD ="""#!/usr/bin/env bash
 echo "$* RUN=${RUN:-} UNIT_SUITE=${UNIT_SUITE:-} UNIT_TEST_ARGS=${UNIT_TEST_ARGS:-}" >> "$CALLS"
 [[ "$1" == "${FAIL_TARGET:-none}" ]] && exit 1
 if [[ "$1" == mcp-tests ]]; then
@@ -519,7 +550,7 @@ class Runs(unittest.TestCase):
         code, out = self.run_main()
         self.assertEqual(code, 0, out)
         self.assertIn("nothing to build or test", out)
-        self.assertIn("the full gate is still the full suite", out)
+        self.assertIn("the full gate is CI's", out)
         self.assertEqual(self.calls(), [])
 
     def test_dry_run_runs_nothing(self):
@@ -675,6 +706,77 @@ class Runs(unittest.TestCase):
         os.environ["MCP_SKIPS"] = "0"
         code, out = self.run_main("--dry-run")
         self.assertNotIn("test_old.py:", out)
+
+    def test_plan_json_writes_the_plan_and_runs_nothing(self):
+        (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 3; }\n")
+        out_file = self.tmp / "plan.json"
+        code, out = self.run_main("--plan-json", str(out_file))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.calls(), [])                                   # implies --dry-run
+        self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
+        plan = json.loads(out_file.read_text())
+        for key in ("base", "head", "files", "deleted", "builds", "build_reasons", "unit", "mcp", "mcp_selected",
+                    "self_tests", "modules_off", "navigation_off", "fallbacks", "notes"):
+            self.assertIn(key, plan)
+        self.assertEqual(plan["files"], ["engine/core/Foo.cpp"])
+        self.assertEqual(plan["head"], sh(self.root, "git", "rev-parse", "HEAD").strip())
+        self.assertEqual(plan["builds"], ["linux", "unit-tests", "web"])
+        self.assertIn("engine/core/Foo.cpp", plan["build_reasons"]["linux"])
+        # no dependency database (no tree, no --deps-from): every unit test, and why
+        self.assertEqual(plan["unit"], {"core": "all", "editor": "all", "htmlui": []})
+        self.assertTrue(any("no dependency database" in f for f in plan["fallbacks"]), plan["fallbacks"])
+        # no map: the CI suite, and why
+        self.assertEqual(plan["mcp"], "ci")
+        self.assertTrue(any("no coverage map" in f for f in plan["fallbacks"]), plan["fallbacks"])
+        self.assertFalse(plan["navigation_off"])
+        # a docs-only change: nothing at all
+        (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 1; }\n")
+        (self.root / "docs/a.md").write_text("c\n")
+        code, out = self.run_main("--plan-json", str(out_file))
+        plan = json.loads(out_file.read_text())
+        self.assertEqual((code, plan["builds"], plan["mcp"], plan["fallbacks"]), (0, [], [], []), out)
+        self.assertEqual(plan["unit"], {"core": [], "editor": [], "htmlui": []})
+
+    def test_plan_json_exits_2_when_it_cannot_plan(self):
+        code, out = self.run_main("--plan-json", str(self.tmp / "plan.json"), "--base", "no-such-ref")
+        self.assertEqual(code, 2, out)
+        self.assertFalse((self.tmp / "plan.json").exists())
+        code, out = self.run_main("--base", "no-such-ref", "--dry-run")    # (without it: 1, as before)
+        self.assertEqual(code, 1, out)
+
+    def test_deps_from_reads_the_dumps_instead_of_ninja(self):
+        test = self.root / "engine/tests/core/FooTest.cpp"
+        test.parent.mkdir(parents=True)
+        test.write_text("TEST(Foo, Adds) {}\nTEST_F(FooFixture, Works) {}\n")
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "a test")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        # a tree whose ninja the run must not ask: its build.ninja is there, and the fake build.sh logs any call
+        (self.root / "build/linux/core-tests").mkdir(parents=True)
+        (self.root / "build/linux/core-tests/build.ninja").write_text("")
+        dumps = self.tmp / "deps"
+        dumps.mkdir()
+        (dumps / "core-tests.deps").write_text(DEPS)
+        (dumps / "editor-tests.deps").write_text("x.o: #deps 1, deps mtime 1 (VALID)\n    /src/editor/tests/OtherTest.cpp\n")
+        (self.root / "engine/core/Foo.h").write_text("int foo(); // changed\n")
+        out_file = self.tmp / "plan.json"
+        code, out = self.run_main("--plan-json", str(out_file), "--deps-from", str(dumps))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.calls(), [])
+        plan = json.loads(out_file.read_text())
+        self.assertEqual(plan["unit"], {"core": ["Foo", "FooFixture"], "editor": [], "htmlui": []})
+        self.assertEqual(plan["deps_from"], str(dumps))
+        self.assertFalse([f for f in plan["fallbacks"] if "unit" in f or "dependency" in f], plan["fallbacks"])
+        # a missing dump: every unit test, naming the file
+        (dumps / "editor-tests.deps").unlink()
+        code, out = self.run_main("--plan-json", str(out_file), "--deps-from", str(dumps))
+        plan = json.loads(out_file.read_text())
+        self.assertEqual((code, plan["unit"]["core"], plan["unit"]["editor"]), (0, "all", "all"), out)
+        self.assertTrue(any("editor-tests.deps" in f for f in plan["fallbacks"]), plan["fallbacks"])
+        # --deps-from without --plan-json plans the same (a dry run here)
+        code, out = self.run_main("--dry-run", "--deps-from", str(dumps))
+        self.assertEqual(self.calls(), [])
+        self.assertIn("editor-tests.deps", out)
 
     def test_inputs_hash_follows_content_base_untracked_and_map(self):
         cc.use_root(self.root)

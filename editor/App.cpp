@@ -155,6 +155,7 @@
 #include "util/Util.h"
 
 #include "EditorVersion.h"
+#include "RepositoryUrl.h"
 #include "Out.h"
 #include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
@@ -207,6 +208,9 @@
 #include <cstdio>
 
 #if defined(_WIN32)
+  #ifndef NOMINMAX
+  #define NOMINMAX
+  #endif
   #include <windows.h>
   #include <shlobj.h>
 #endif
@@ -1567,10 +1571,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
-            const char* url = action == AppMenuCommand::Documentation
-                ? "https://github.com/JasperRaccoon/JasperEngine" : "https://github.com/JasperRaccoon/JasperEngine/issues";
+            const std::string url = std::string(REPOSITORY_URL) + (action == AppMenuCommand::Documentation ? "" : "/issues");
             auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
-            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url)) {
+            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url.c_str())) {
                 registerAlert("Open in Browser", std::string("Could not open your browser. Visit:\n") + url);
             }
             break;

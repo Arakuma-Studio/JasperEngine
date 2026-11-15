@@ -25,7 +25,7 @@
 
 #include "json.hpp"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <cstdio>

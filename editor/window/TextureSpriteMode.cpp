@@ -36,7 +36,7 @@ namespace {
     std::string stampOf(const fs::path& path) {
         std::error_code ec;
         const auto time = fs::last_write_time(path, ec);
-        return ec ? std::string("-") : std::to_string(time.time_since_epoch().count());
+        return ec ? std::string("-") : std::to_string(static_cast<long long>(time.time_since_epoch().count()));
     }
 }
 

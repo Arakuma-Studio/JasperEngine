@@ -82,7 +82,7 @@ namespace {
         return s;
     }
 
-    class TitleArtRuntimeBench : public ::testing::Test {
+    class TitleArtRuntimeBenchGpu : public ::testing::Test {
     protected:
         void SetUp() override { JASPER_REQUIRE_GPU(); }
         TestAssetResolver assets;
@@ -91,7 +91,7 @@ namespace {
 
 }
 
-TEST_F(TitleArtRuntimeBench, HostNumbers) {
+TEST_F(TitleArtRuntimeBenchGpu, HostNumbers) {
     auto doc = counterDoc();
     const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
     const uint32_t unlimited = 1000000000u;

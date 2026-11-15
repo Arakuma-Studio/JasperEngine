@@ -6,7 +6,6 @@
 #include "util/Angle.h"
 #include <algorithm>
 #include <assert.h>
-#define _USE_MATH_DEFINES
 #include <cmath>
 #include <math.h>
 #include <cstdlib>

@@ -16,7 +16,7 @@
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureExport.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <filesystem>

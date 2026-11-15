@@ -251,10 +251,10 @@ namespace {
 
 }
 
-class ManyNodeLoadingThread : public ::testing::TestWithParam<const char*> {};
+class ManyNodeLoadingThreadGpu : public ::testing::TestWithParam<const char*> {};
 
 // a Khronos sample of many nodes: the main thread's mesh a node, every primitive, and its frame
-TEST_P(ManyNodeLoadingThread, GivesTheMainThreadsHierarchyAndPixels){
+TEST_P(ManyNodeLoadingThreadGpu, GivesTheMainThreadsHierarchyAndPixels){
     JASPER_REQUIRE_GPU();
     const int unfed = ObjectRender::getUnfedVertexInputLoads();
     expectSameOnTheLoadingThread(khronosFile(GetParam()));
@@ -262,7 +262,7 @@ TEST_P(ManyNodeLoadingThread, GivesTheMainThreadsHierarchyAndPixels){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-INSTANTIATE_TEST_SUITE_P(Khronos, ManyNodeLoadingThread, ::testing::Values("SpecularTest", "AnisotropyRotationTest", "AnisotropyStrengthTest"));
+INSTANTIATE_TEST_SUITE_P(Khronos, ManyNodeLoadingThreadGpu, ::testing::Values("SpecularTest", "AnisotropyRotationTest", "AnisotropyStrengthTest"));
 
 // R1: many nodes off the main thread, more than a baked mesh ever held
 TEST(ModelLoadingThreadGpu, LoadsAModelOfManyNodesWhole){

@@ -26,6 +26,9 @@
 
 #if defined(SOKOL_D3D11)
     #define WIN32_LEAN_AND_MEAN
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <windows.h>
     #include <d3d11.h>
     #include <wrl/client.h>
@@ -36,6 +39,9 @@
     #ifdef __APPLE__
         #include <OpenGL/gl.h>
     #elif defined(_WIN32)
+        #ifndef NOMINMAX
+        #define NOMINMAX
+        #endif
         #include <windows.h>
         #include <GL/gl.h>
     #else
@@ -45,6 +51,10 @@
 #endif
 
 #if defined(SOKOL_VULKAN)
+    // (vulkan_win32.h includes <windows.h>)
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <vulkan/vulkan.h>
 #endif
 
