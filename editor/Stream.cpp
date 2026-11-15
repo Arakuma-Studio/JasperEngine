@@ -6157,7 +6157,11 @@ unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const 
         return std::max(mesh.numSubmeshes, 2u);
     }
     // a Spline Extrude's template has the one holding its chunks' material only once SplineSystem ran
-    if (signature.test(registry->getComponentId<SplineExtrudeComponent>())) {
+    // so has a Sprite or a Mesh Polygon its one (MeshSystem::prepareSpriteMesh, prepareMeshPolygonMesh),
+    // whose material (a texture set right after creating it) a save before that frame keeps
+    if (signature.test(registry->getComponentId<SplineExtrudeComponent>()) ||
+        signature.test(registry->getComponentId<SpriteComponent>()) ||
+        signature.test(registry->getComponentId<MeshPolygonComponent>())) {
         return std::max(mesh.numSubmeshes, 1u);
     }
     return mesh.numSubmeshes;

@@ -39,7 +39,7 @@
 #include "pool/AnimatorAssetPool.h"
 #include "project/ProjectPrefabInternal.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cstdlib>
 #include <filesystem>

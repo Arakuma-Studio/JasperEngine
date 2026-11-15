@@ -25,6 +25,10 @@
 // (GraphicUtils) and a game's --screenshot (FrameReadback, docs/specs/S30-shipping.md R20).
 // Wrapping the call keeps sokol itself unpatched (re-check when sokol_gfx is updated)
 #if defined(SOKOL_VULKAN)
+// (vulkan_win32.h includes <windows.h>)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <vulkan/vulkan.h>
 
 namespace {

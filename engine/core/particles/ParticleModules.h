@@ -99,7 +99,7 @@ namespace jasperengine { namespace particles {
         void (*erase)(void* vector, size_t index);
     };
 
-    struct FieldDesc {
+    struct JASPERENGINE_API FieldDesc {
         const char* key = "";
         const char* label = "";
         FieldType type = FieldType::Float;
@@ -122,7 +122,7 @@ namespace jasperengine { namespace particles {
         const EnumOption* findOption(uint8_t value) const;
     };
 
-    struct StructDesc {
+    struct JASPERENGINE_API StructDesc {
         const char* name = "";
         std::vector<FieldDesc> fields;
         // a default-constructed instance: the codec leaves out fields equal to it
@@ -130,7 +130,7 @@ namespace jasperengine { namespace particles {
         const FieldDesc* find(std::string_view key) const;
     };
 
-    struct ModuleDesc {
+    struct JASPERENGINE_API ModuleDesc {
         ModuleId id = ModuleId::Main;
         const char* key = "";          // JSON "type" and the path prefix: "limitVelocity"
         const char* label = "";        // "Limit Velocity over Lifetime"

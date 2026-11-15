@@ -3,7 +3,7 @@
 
 #include "JasperEngineMac.h"
 #include "../common/PlatformDefaults.h"
-#include "player/Launch.h"
+#include "player/PlayerLaunch.h"
 
 int main(int argc, char* argv[]) {
     // the build's window settings, then the launch options (and a player's game.json) over them

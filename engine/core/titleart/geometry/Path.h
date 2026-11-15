@@ -23,7 +23,7 @@ namespace jasperengine::titleart::geometry {
     enum class PathVerb : uint8_t { Move, Line, Quad, Cubic, Close };
 
     // 2 x 3 affine: x' = a x + c y + e, y' = b x + d y + f
-    struct Affine {
+    struct JASPERENGINE_API Affine {
         double a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
         TitleVec2 apply(const TitleVec2& p) const { return {a * p.x + c * p.y + e, b * p.x + d * p.y + f}; }
         // this after `other` (apply other first)

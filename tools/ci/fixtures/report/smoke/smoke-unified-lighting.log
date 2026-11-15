@@ -1,0 +1,8 @@
+$ SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
+== build (prebuilt player)
+== run game
+ready after 6s
+ok: game ran (screenshot build/smoke/game.png)
+FAIL: game logged errors:
+[12:01:02] (ERROR): Missing precompiled shader 'unified_lit_gi' for backend glcore
+[12:01:02] (ERROR): Lua Error: scripts/Sun.lua:14: attempt to index a nil value (field 'light')

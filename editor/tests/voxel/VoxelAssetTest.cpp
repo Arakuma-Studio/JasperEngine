@@ -152,7 +152,9 @@ TEST_F(VoxelAssetTest, AtomicWriteOnFailure) {
     const auto stamp = fs::last_write_time(assetFile());
     asset->dirty = true;
     ASSERT_TRUE(saveVoxelAsset(*asset, &error)) << error;
-    EXPECT_EQ(fs::last_write_time(assetFile()), stamp);
+    // compared as ticks: gtest would print a time_point through libc++'s chrono formatter, which
+    // Apple's libc++ ships only from macOS 13.3 (the editor targets 12.0)
+    EXPECT_EQ(fs::last_write_time(assetFile()).time_since_epoch().count(), stamp.time_since_epoch().count());
 }
 
 // R61: what did not load is not written over, with the scene's save neither

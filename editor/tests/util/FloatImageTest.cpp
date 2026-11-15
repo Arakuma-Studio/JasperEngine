@@ -28,7 +28,7 @@
 #include <iterator>
 #include <limits>
 #include <string>
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #include <vector>
 
 using namespace jasperengine;

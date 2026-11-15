@@ -389,7 +389,6 @@ class CppClass:
         self.methods = {}
         self.fields = {}
         self.typedefs = {}
-        self.namespace = ''  # the enclosing namespaces ("jasperengine::titleart")
 
     def __repr__(self):
         return f'CppClass({self.qual})'
@@ -409,7 +408,6 @@ class CppModel:
         self.enums = {}      # simple name and Outer::Inner -> CppEnum
         self.typedefs = {}   # name -> type text
         self.functions = {}  # free functions: name -> [CppFunc]
-        self._namespaces = []  # the namespaces being parsed, outermost first
 
     # ── parsing ──────────────────────────────────────────────────────────────
 
@@ -445,10 +443,7 @@ class CppModel:
                     j += 1
                 if j < end and toks[j].t == '{':
                     k = skip_balanced(toks, j)
-                    names = [x.t for x in toks[i + 1:j] if x.k == 'id']
-                    self._namespaces.extend(names)
                     self._parse_scope(src, toks, j + 1, k - 1, None, outer)
-                    del self._namespaces[len(self._namespaces) - len(names):]
                     i = k
                 else:
                     i = j + 1
@@ -572,7 +567,6 @@ class CppModel:
         qual = '::'.join(outer + [name])
         doc = src.doc_before(toks[start].line)
         cls = CppClass(name, qual, doc)
-        cls.namespace = '::'.join(self._namespaces)
         cls.bases = bases
         cls._default_public = kind != 'class'
         self._register_class(cls, outer)
@@ -813,20 +807,22 @@ class CppModel:
 
     # ── lookups ──────────────────────────────────────────────────────────────
 
-    def find_class(self, name):
-        name = strip_ns(name)
-        base = re.sub(r'<.*$', '', name)
-        lst = self.classes.get(base)
-        if not lst:
-            return None
-        # a simple name is the engine's own class before a nested one or one of another namespace
-        # of the same name (titleart's Grid, TiledLights' Grid are not the bound Grid)
-        if '::' not in base:
-            own = [c for c in lst if c.qual == c.name and (not c.namespace or strip_ns(c.namespace + '::') == '')]
-            lst = own or lst
-        # prefer a definition with members
-        best = max(lst, key=lambda c: len(c.methods) + len(c.fields))
-        return best
+    def find_classes(self, name):
+        """Every class of that name, the one with the most members first: classes of other
+        namespaces and nested ones share a simple name (the tilemap Grid, Title Art's analysis Grid)"""
+        lst = self.classes.get(re.sub(r'<.*$', '', strip_ns(name)))
+        return sorted(lst, key=lambda c: len(c.methods) + len(c.fields), reverse=True) if lst else []
+
+    def find_class(self, name, base=None):
+        """The class of that name; of several, the one deriving from `base` when given, else the one
+        with the most members"""
+        lst = self.find_classes(name)
+        if base:
+            wanted = re.sub(r'<.*$', '', strip_ns(base))
+            for c in lst:
+                if any(re.sub(r'<.*$', '', strip_ns(b)) == wanted for b in c.bases):
+                    return c
+        return lst[0] if lst else None
 
     def mro(self, cls, seen=None):
         if cls is None:
@@ -841,18 +837,19 @@ class CppModel:
         return out
 
     def find_methods(self, cls_name, name):
-        """Overloads of name visible in cls_name: from the first class in its hierarchy declaring it."""
-        cls = self.find_class(cls_name)
-        for c in self.mro(cls):
-            if name in c.methods:
-                return c.methods[name]
+        """Overloads of name visible in cls_name: from the first class in its hierarchy declaring it
+        (of the classes sharing that name, the first whose hierarchy declares it)."""
+        for cls in self.find_classes(cls_name):
+            for c in self.mro(cls):
+                if name in c.methods:
+                    return c.methods[name]
         return []
 
     def find_field(self, cls_name, name):
-        cls = self.find_class(cls_name)
-        for c in self.mro(cls):
-            if name in c.fields:
-                return c.fields[name]
+        for cls in self.find_classes(cls_name):
+            for c in self.mro(cls):
+                if name in c.fields:
+                    return c.fields[name]
         return None
 
     def find_enum(self, name):
@@ -2770,7 +2767,6 @@ OVERRIDES.update({
 # title, what failed, why and the fix) are lua_CFunctions; a parameter value is a number, a
 # boolean, a string or a colour (Vector3/Vector4, linear)
 _TITLE_VALUE = 'number|boolean|string|Vector3|Vector4'
-_TITLE_PLAY_OPTIONS = '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}'
 OVERRIDES.update({
     ('TitleArt', '__call'): {
         'doc': ['The Title Art Renderer of a GameObject: `TitleArt(scene, entity)`. Raises when the GameObject has none',
@@ -2808,14 +2804,14 @@ OVERRIDES.update({
         'overloads': [([], 'string[]')]},
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
-        'overloads': [([('name', 'string'), ('options?', _TITLE_PLAY_OPTIONS)], 'boolean')]},
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
     ('TitleArt', 'playOverlay'): {
-        'doc': ['Plays the animation `name` on top of the one playing (overlays play in any number). False (warned',
-                'once) for an unknown name.'],
-        'overloads': [([('name', 'string'), ('options?', _TITLE_PLAY_OPTIONS)], 'boolean')]},
+        'doc': ['Plays the animation `name` on top of the base one (S85 R25: any number at once; in Baked mode only its',
+                'title-live tracks). False (warned once) for an unknown name.'],
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean, fade?: number, time?: number}')],
+                       'boolean')]},
     ('TitleArt', 'stop'): {
-        'doc': ['Stops every animation, or the one named (false when it was not playing); the pose stays (`reset`',
-                'restores the still).'],
+        'doc': ['Stops every animation (the pose stays), or only the animation `name`: false when it was not playing.'],
         'overloads': [([], ''), ([('name', 'string')], 'boolean')]},
 })
 
@@ -3644,7 +3640,7 @@ class Builder:
                 bc = by_cpp.get(type_key(c.base_cpp))
                 c.base = bc.name if bc else None
         for c in self.b.classes:
-            c.cpp_class = self.model.find_class(c.cpp)
+            c.cpp_class = self.model.find_class(c.cpp, c.base_cpp)
             c.lua_ctors = []
             for call in c.ctors:
                 for targ in call.targs:

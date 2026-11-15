@@ -17,7 +17,7 @@
 #include "manager/ObjectManager.h"
 #include "component/Transform.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <chrono>
 #include <filesystem>

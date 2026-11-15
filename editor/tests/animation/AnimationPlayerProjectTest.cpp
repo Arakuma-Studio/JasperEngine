@@ -26,7 +26,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "mcp/McpValues.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cstdlib>
 #include <filesystem>

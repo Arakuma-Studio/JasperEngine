@@ -22,10 +22,12 @@
 #include "Generator.h"
 #include "Workspace.h"
 #include "window/DeviceProfiles.h"
+#include "support/EditorTestSupport.h"
 
 #include <filesystem>
 
 #include <chrono>
+#include <cstdio>
 #include <thread>
 #include <regex>
 #include <string>
@@ -407,9 +409,13 @@ TEST(FrameLimiter, PacesFramesAtTheRate) {
         limiter.wait(50.0);
     }
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    // 20 periods of 20 ms after the first frame
+    // 20 periods of 20 ms after the first frame; the upper bound is a wall-clock budget, which a
+    // loaded host's sleeps can overrun (docs/testing.md)
     EXPECT_GT(seconds, 0.4 * 0.9);
-    EXPECT_LT(seconds, 0.4 * 1.25);
+    std::printf("[ bench ] 20 frames at 50 fps in %.3f s (budget %.3f)\n", seconds, 0.4 * 1.25);
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(seconds, 0.4 * 1.25 * slack);
+    }
 }
 
 TEST(FrameLimiter, IsDueSkipsFramesBetweenDeadlines) {

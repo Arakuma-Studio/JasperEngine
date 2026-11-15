@@ -109,7 +109,7 @@ namespace {
         for (const auto& e : fs::directory_iterator(dir, ec)) {
             if (e.path().extension() != extension) continue;
             const auto size = e.file_size(ec);
-            const auto time = fs::last_write_time(e.path(), ec).time_since_epoch().count();
+            const auto time = static_cast<long long>(fs::last_write_time(e.path(), ec).time_since_epoch().count());
             entries.push_back(e.path().filename().string() + ":" + std::to_string(size) + ":" + std::to_string(time));
         }
         std::sort(entries.begin(), entries.end());
@@ -589,7 +589,7 @@ void TitleLibrary::scanScope(LibraryKind kind, LibraryScope scope, ScopeState& s
         const std::string slug = file.stem().string();
         info.ref = std::string(libraryScopeName(scope)) + "/" + slug;
         info.file = file;
-        info.stamp = std::to_string(fs::file_size(file, ec)) + ":" + std::to_string(fs::last_write_time(file, ec).time_since_epoch().count());
+        info.stamp = std::to_string(fs::file_size(file, ec)) + ":" + std::to_string(static_cast<long long>(fs::last_write_time(file, ec).time_since_epoch().count()));
         if (!isLibrarySlug(slug)) info.loadWarnings.push_back("the file name is not a slug ([a-z0-9-]{1,48})");
         if (!indexItem(kind, scope, text, info)) {
             info.available = false;

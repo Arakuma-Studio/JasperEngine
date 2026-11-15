@@ -36,12 +36,24 @@ bool available = false;
 HANDLE mainThread = nullptr;
 DWORD mainThreadId = 0;
 HANDLE requestEvent = nullptr;
+HANDLE walkedEvent = nullptr;
 HANDLE readyEvent = nullptr;
 CONTEXT capturedContext{};
+ULONG_PTR stackLow = 0, stackHigh = 0;
 std::atomic<bool> disabled{false};
 std::atomic<bool> stallWalker{false};
+// 0 idle, 1 requested, 2 walking, 3 walked (frames final), 4 abandoned: a walk the watchdog gave
+// up on never starts, and one it gave up on midway is never formatted
+std::atomic<int> walkState{0};
+// the helper is still on the last request (its symbols loading): a new one is not sent
+std::atomic<bool> helperBusy{false};
+// warmSymbols has loaded what it loads (or found nothing to load)
+std::atomic<bool> symbolsWarm{false};
 char capturedText[16384]{};
-size_t capturedTextBytes = 0;
+// How long a report waits for symbol names once the main thread runs again: the first lookup
+// in a module loads its PDB (hundreds of MB in a debug build), which the warm-up started
+// beside the watchdog usually has done already
+constexpr DWORD symbolWaitMs = 5000;
 
 DWORD machineFrame(CONTEXT& context, STACKFRAME64& frame) {
     frame.AddrPC.Mode = frame.AddrFrame.Mode = frame.AddrStack.Mode = AddrModeFlat;
@@ -62,11 +74,69 @@ DWORD machineFrame(CONTEXT& context, STACKFRAME64& frame) {
     return IMAGE_FILE_MACHINE_I386;
 #endif
 }
-// Run symbol APIs only in the helper: even after ResumeThread, DbgHelp itself can
-// block on a loader lock. The watchdog's deadline must include symbol formatting.
-void formatCapturedFrames(bool symbols) {
-    capturedTextBytes = 0;
-    capturedText[0] = '\0';
+
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
+// The suspended thread's frames from the images' unwind tables (no DbgHelp, so no symbol file
+// is read while it is suspended). An unwind only moves the stack pointer up: one that leaves
+// [the captured one, the stack's top) ends the walk, so every read stays in stack memory that
+// was committed when the thread was suspended
+size_t walkFrames(const CONTEXT& captured) {
+    CONTEXT context = captured;
+#if defined(_M_X64) || defined(__x86_64__)
+    DWORD64& pc = context.Rip;
+    DWORD64& sp = context.Rsp;
+#else
+    DWORD64& pc = context.Pc;
+    DWORD64& sp = context.Sp;
+#endif
+    size_t count = 0;
+    DWORD64 lowest = sp;
+    while (count < maxFrames && pc && sp >= lowest && sp < stackHigh) {
+        frames[count++] = reinterpret_cast<void*>(pc);
+        if (walkState.load(std::memory_order_acquire) != 2) break;
+        lowest = sp;
+        DWORD64 imageBase = 0;
+        PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(pc, &imageBase, nullptr);
+        if (!function) {
+            // a leaf function: no frame of its own
+#if defined(_M_X64) || defined(__x86_64__)
+            if (sp + sizeof(DWORD64) > stackHigh) break;
+            pc = *reinterpret_cast<const DWORD64*>(sp);
+            sp += sizeof(DWORD64);
+#else
+            if (pc == context.Lr) break;
+            pc = context.Lr;
+#endif
+            continue;
+        }
+        void* handlerData = nullptr;
+        DWORD64 establisher = 0;
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, pc, function, &context, &handlerData, &establisher, nullptr);
+    }
+    return count;
+}
+#else
+// x86 has no unwind tables: StackWalk64, under DbgHelp's lock
+size_t walkFrames(const CONTEXT& captured) {
+    CONTEXT context = captured;
+    std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
+    if (!lock.try_lock_for(std::chrono::milliseconds(200)) || !Backtrace::initializeSymbolsLocked()) return 0;
+    size_t count = 0;
+    STACKFRAME64 frame{};
+    const DWORD machine = machineFrame(context, frame);
+    if (frame.AddrPC.Offset) frames[count++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
+    while (count < maxFrames && StackWalk64(machine, static_cast<HANDLE>(Backtrace::dbgHelpProcess()), mainThread, &frame, &context,
+            nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr) && frame.AddrPC.Offset) {
+        frames[count++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
+    }
+    return count;
+}
+#endif
+
+// `symbols` only in the helper, holding DbgHelp's lock: DbgHelp itself can block on a loader lock
+size_t formatFrames(char* out, size_t capacity, bool symbols) {
+    size_t n = 0;
+    if (capacity) out[0] = '\0';
     for (size_t i = 0; i < frameCount; i++) {
         const DWORD64 pc = reinterpret_cast<uintptr_t>(frames[i]);
         MEMORY_BASIC_INFORMATION memory{};
@@ -79,17 +149,16 @@ void formatCapturedFrames(bool symbols) {
             name = module.ImageName;
             for (const char* c = name; *c; c++) if (*c == '/' || *c == '\\') name = c + 1;
         }
-        size_t n = capturedTextBytes;
-        n = appendText(capturedText, sizeof(capturedText), n, "#");
-        n = appendDecimal(capturedText, sizeof(capturedText), n, i);
-        n = appendText(capturedText, sizeof(capturedText), n, " ");
-        if (name && *name) n = appendText(capturedText, sizeof(capturedText), n, name);
+        n = appendText(out, capacity, n, "#");
+        n = appendDecimal(out, capacity, n, i);
+        n = appendText(out, capacity, n, " ");
+        if (name && *name) n = appendText(out, capacity, n, name);
         else {
-            n = appendText(capturedText, sizeof(capturedText), n, "module@");
-            n = appendHex(capturedText, sizeof(capturedText), n, base);
+            n = appendText(out, capacity, n, "module@");
+            n = appendHex(out, capacity, n, base);
         }
-        n = appendText(capturedText, sizeof(capturedText), n, "+");
-        n = appendHex(capturedText, sizeof(capturedText), n, pc - base);
+        n = appendText(out, capacity, n, "+");
+        n = appendHex(out, capacity, n, pc - base);
         if (symbols) {
             alignas(SYMBOL_INFO) char storage[sizeof(SYMBOL_INFO) + 256]{};
             auto* symbol = reinterpret_cast<SYMBOL_INFO*>(storage);
@@ -97,38 +166,69 @@ void formatCapturedFrames(bool symbols) {
             symbol->MaxNameLen = 255;
             DWORD64 displacement = 0;
             if (SymFromAddr(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &displacement, symbol)) {
-                n = appendText(capturedText, sizeof(capturedText), n, " [");
-                n = appendText(capturedText, sizeof(capturedText), n, symbol->Name);
-                n = appendText(capturedText, sizeof(capturedText), n, "+");
-                n = appendHex(capturedText, sizeof(capturedText), n, displacement);
-                n = appendText(capturedText, sizeof(capturedText), n, "]");
+                n = appendText(out, capacity, n, " [");
+                n = appendText(out, capacity, n, symbol->Name);
+                n = appendText(out, capacity, n, "+");
+                n = appendHex(out, capacity, n, displacement);
+                n = appendText(out, capacity, n, "]");
             }
         }
-        capturedTextBytes = appendText(capturedText, sizeof(capturedText), n, "\n");
+        n = appendText(out, capacity, n, "\n");
     }
+    return n;
 }
+
+// The walk while the main thread is suspended; the names after the watchdog resumed it
 DWORD WINAPI walkMain(void*) {
     while (WaitForSingleObject(requestEvent, INFINITE) == WAIT_OBJECT_0) {
         if (stallWalker.load(std::memory_order_relaxed)) Sleep(1000);
-        // DbgHelp may wait on a lock the suspended main thread owns. Only this helper can
-        // block; the watchdog that resumes the main thread never calls DbgHelp.
-        std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
-        frameCount = 0;
-        if (lock.try_lock_for(std::chrono::milliseconds(200)) && Backtrace::initializeSymbolsLocked()) {
-            CONTEXT context = capturedContext;
-            STACKFRAME64 frame{};
-            const DWORD machine = machineFrame(context, frame);
-            if (frame.AddrPC.Offset) frames[frameCount++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
-            while (frameCount < maxFrames && StackWalk64(machine, static_cast<HANDLE>(Backtrace::dbgHelpProcess()), mainThread, &frame, &context,
-                    nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr) && frame.AddrPC.Offset) {
-                frames[frameCount++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
-            }
-            formatCapturedFrames(true);
-        } else {
-            capturedTextBytes = 0;
-            capturedText[0] = '\0';
+        int expected = 1;
+        if (!walkState.compare_exchange_strong(expected, 2, std::memory_order_acq_rel)) {
+            helperBusy.store(false, std::memory_order_release);
+            continue;
         }
-        SetEvent(readyEvent);
+        frameCount = walkFrames(capturedContext);
+        expected = 2;
+        const bool walked = walkState.compare_exchange_strong(expected, 3, std::memory_order_acq_rel);
+        SetEvent(walkedEvent);
+        if (walked) {
+            std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
+            const bool symbols = lock.try_lock_for(std::chrono::milliseconds(symbolWaitMs)) && Backtrace::initializeSymbolsLocked();
+            if (symbols) SymRefreshModuleList(static_cast<HANDLE>(Backtrace::dbgHelpProcess()));
+            formatFrames(capturedText, sizeof(capturedText), symbols);
+            SetEvent(readyEvent);
+        }
+        helperBusy.store(false, std::memory_order_release);
+    }
+    return 0;
+}
+
+// Loads the symbols of the engine's and the program's modules once, beside the watchdog: the first
+// report then names its frames without waiting for a symbol file
+DWORD WINAPI warmSymbols(void*) {
+    std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
+    struct Warm {
+        ~Warm() { symbolsWarm.store(true, std::memory_order_release); }
+    } warm;
+    if (!Backtrace::initializeSymbolsLocked()) return 0;
+    HANDLE process = static_cast<HANDLE>(Backtrace::dbgHelpProcess());
+    HMODULE engine = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&walkMain), &engine);
+    for (HMODULE module : {engine, GetModuleHandleW(nullptr)}) {
+        if (!module) continue;
+        IMAGEHLP_MODULE64 info{};
+        info.SizeOfStruct = sizeof(info);
+        // a deferred module loads its symbols on the first lookup in it
+        const DWORD64 base = reinterpret_cast<uintptr_t>(module);
+        if (SymGetModuleInfo64(process, base, &info) && info.SymType == SymDeferred) {
+            alignas(SYMBOL_INFO) char storage[sizeof(SYMBOL_INFO) + 256]{};
+            auto* symbol = reinterpret_cast<SYMBOL_INFO*>(storage);
+            symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+            symbol->MaxNameLen = 255;
+            DWORD64 displacement = 0;
+            SymFromAddr(process, base + 0x1000, &displacement, symbol);
+        }
     }
     return 0;
 }
@@ -161,10 +261,12 @@ void initializeMainThreadCapture() {
     mainThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, GetCurrentThreadId());
     mainThreadId = GetCurrentThreadId();
     if (!mainThread) return;
+    GetCurrentThreadStackLimits(&stackLow, &stackHigh);
     if (!requestEvent) {
         requestEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        readyEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!requestEvent || !readyEvent) return;
+        walkedEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        readyEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!requestEvent || !walkedEvent || !readyEvent) return;
         // Every Sym* call (including startup) shares the logger's process-wide lock.
         {
             std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
@@ -173,6 +275,7 @@ void initializeMainThreadCapture() {
         HANDLE helper = CreateThread(nullptr, 0, walkMain, nullptr, 0, nullptr);
         if (!helper) return;
         CloseHandle(helper); // lifetime is the process's; no join can hold up shutdown
+        if (HANDLE warm = CreateThread(nullptr, 0, warmSymbols, nullptr, 0, nullptr)) CloseHandle(warm);
     }
     available = true;
 #elif !defined(__EMSCRIPTEN__)
@@ -209,9 +312,24 @@ void initializeMainThreadCapture() {
     available = true;
 #endif
 }
+bool waitForSymbolsForTest(std::chrono::milliseconds timeout) {
+#if defined(_WIN32)
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!je_hang_capture::symbolsWarm.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        Sleep(10);
+    }
+#else
+    (void)timeout;
+#endif
+    return true;
+}
 void forceWalkerStallForTest(bool enabled) {
 #if defined(_WIN32)
     je_hang_capture::stallWalker.store(enabled, std::memory_order_relaxed);
+    // the timeout the stall caused disables capture for the session: not for the tests after it
+    // (the stalled helper is still busy, so the next capture says so instead of racing it)
+    if (!enabled) je_hang_capture::disabled.store(false, std::memory_order_release);
 #else
     (void)enabled;
 #endif
@@ -224,26 +342,36 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
     if (disabled.load(std::memory_order_acquire)) { if (why) *why = "capture timed out (disabled for session)"; return 0; }
     if (GetCurrentThreadId() == mainThreadId) {
         frameCount = Backtrace::capture(frames, maxFrames);
-        formatCapturedFrames(false);
-    } else {
-        if (SuspendThread(mainThread) == static_cast<DWORD>(-1)) return 0;
-        // From here the watchdog owns the resume, including every error and timeout path.
-        capturedContext = {};
-        capturedContext.ContextFlags = CONTEXT_FULL;
-        const bool captured = GetThreadContext(mainThread, &capturedContext) != FALSE;
-        DWORD waited = WAIT_FAILED;
-        if (captured) {
-            ResetEvent(readyEvent);
-            SetEvent(requestEvent);
-            waited = WaitForSingleObject(readyEvent, 250);
-        }
-        ResumeThread(mainThread);
-        if (waited != WAIT_OBJECT_0) {
-            disabled.store(true, std::memory_order_release);
-            if (why) *why = "capture timed out (disabled for session)";
-            return 0;
-        }
+        return formatFrames(out, capacity, false);
     }
+    if (helperBusy.load(std::memory_order_acquire)) {
+        if (why) *why = "capture busy (the last report's symbols are still loading)";
+        return 0;
+    }
+    if (SuspendThread(mainThread) == static_cast<DWORD>(-1)) return 0;
+    // From here the watchdog owns the resume, including every error and timeout path.
+    capturedContext = {};
+    capturedContext.ContextFlags = CONTEXT_FULL;
+    const bool captured = GetThreadContext(mainThread, &capturedContext) != FALSE;
+    DWORD waited = WAIT_FAILED;
+    if (captured) {
+        ResetEvent(walkedEvent);
+        ResetEvent(readyEvent);
+        helperBusy.store(true, std::memory_order_release);
+        walkState.store(1, std::memory_order_release);
+        SetEvent(requestEvent);
+        waited = WaitForSingleObject(walkedEvent, 250);
+    }
+    ResumeThread(mainThread);
+    if (!captured) return 0;
+    if (waited != WAIT_OBJECT_0 || walkState.load(std::memory_order_acquire) != 3) {
+        walkState.store(4, std::memory_order_release);
+        disabled.store(true, std::memory_order_release);
+        if (why) *why = "capture timed out (disabled for session)";
+        return 0;
+    }
+    // the main thread runs again: the names may take their time
+    if (WaitForSingleObject(readyEvent, symbolWaitMs) != WAIT_OBJECT_0) return formatFrames(out, capacity, false);
     return appendText(out, capacity, 0, capturedText);
 #elif !defined(__EMSCRIPTEN__)
     if (disabled.load(std::memory_order_acquire)) { if (why) *why = "capture timed out (disabled for session)"; return 0; }

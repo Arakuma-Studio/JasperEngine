@@ -3,6 +3,11 @@
 #include "../transcoder/basisu.h"
 #include "../transcoder/basisu_transcoder_internal.h"
 #include "basisu_astc_ldr_common.h"
+// JasperEngine: <bit> for the std::popcount below (MSVC's library defines __cpp_lib_bitops in
+// every header, so the test passes without it)
+#if defined(__cplusplus) && (__cplusplus >= 202002L)
+#include <bit>
+#endif
 
 namespace basisu
 {

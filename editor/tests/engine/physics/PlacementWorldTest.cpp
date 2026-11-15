@@ -18,8 +18,9 @@
 #include "subsystem/MeshSystem.h"
 #include "util/FileUtils.h"
 
+#ifndef _WIN32
 #include <sys/wait.h>
-#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -1854,9 +1855,15 @@ TEST(PlacementWorldReview, WorldBeforeAnySceneInAFreshProcess) {
     const std::filesystem::path self = editor::FileUtils::getExecutablePath();
     ASSERT_FALSE(self.empty());
     const std::string program = (self.parent_path() / "jasperengine-placement-fresh-process").string();
+#ifdef _WIN32
+    // (cmd.exe: the program's exit code itself, an NTSTATUS such as 0xC0000005 when it crashed)
+    const int status = std::system((program + " > NUL 2>&1").c_str());
+    EXPECT_EQ(status, 0) << "2: Jolt was set up before main there too, nothing was checked; else it crashed";
+#else
     const int status = std::system((program + " > /dev/null 2>&1").c_str());
     ASSERT_TRUE(WIFEXITED(status)) << "it crashed";
     EXPECT_EQ(WEXITSTATUS(status), 0) << "2: Jolt was set up before main there too, nothing was checked";
+#endif
 }
 
 TEST(PlacementWorldReview, OverflowingContactBuffersAreReported) {
