@@ -1,5 +1,8 @@
 # S97 — Audio gaps from the JasperArcade port: source effects, clip lifetime, Spatial Blend, several Audio Sources per GameObject
 
+**Status: implemented** on `feature/s97-audio-gaps` (WP-A..WP-D and the integration). What the code
+does where it differs from this text is in "Deviations" at the end.
+
 Arcade engine-gaps program (S92-S98), category "Audio" of the port's ledger
 (`JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md` AU1-AU7, and the audio part of S5). The port
 was made against engine commit `7f48d7e8d` (2026-10-30). Since then the audio mixer
@@ -249,8 +252,11 @@ Counts: FIXED 3 (AU2, AU3, S5 audio), PARTIAL 3 (AU1, AU5, AU6), MISSING 1 (AU4)
 
 - **REQ-35** Disabled costs nothing (REQ-4). No new per-frame work happens for sources without
   effects, at Spatial Blend 0 or 1, or on GameObjects without slots.
-- **REQ-36** One biquad (`lowpass`) on each of 32 voices adds at most 15 % to the mix time of those
-  32 voices: null driver, 1 s at 48 kHz, median of 5, reported through `perfSlack()`.
+- **REQ-36 (revised, coordinator's decision; see Deviations)** Source effects cost what the filter
+  costs, nothing more: 32 voices each with a `lowpass` through the per-source wrapper mix within
+  1.15x SoLoud applying the same filter natively per voice; a source without effects plays the sample
+  itself (no wrapper, no filter); 32 low-passed voices mix one 1024-frame block in under 600 us. Null
+  driver, 48 kHz, median of 5, enforced through `perfSlack()`.
 - **REQ-37** The unused-clip cache costs O(unused entries) only when an entry is released or
   inserted, never per frame. With an Unused Clip Cache of 0, memory behaves as today.
 
@@ -379,7 +385,7 @@ narrowly: `UNIT_SUITE=editor UNIT_TEST_ARGS=--gtest_filter=<Suite>.*`,
 | AC3 | REQ-2 | `AudioSourceEffects.StructureChangesTakeTheNextStart`: adding a second effect during play leaves the voice's level unchanged until `play()` again; a cutoff change is heard within the same frame's mix |
 | AC4 | REQ-3 | `AudioSourceEffects.TimedCutoffMovesAlongLogFrequency`: `setParameter("cutoff", 500, 1)` from 20000; at 0.5 s of scaled time the component reads 3162 Hz ±1 %; with `{unscaled = true}` and time scale 0 it still moves |
 | AC5 | REQ-4, REQ-35 | `AudioSourceEffects.EmptyOrBypassedPlaysTheSampleDirectly`: a source with no effects, and one with a 22000 Hz low-pass at 48 kHz, start voices whose sound is the pool sample (no wrapper) and `getDebugCounters` filter builds stay 0. Red: a wrapper always made |
-| AC6 | REQ-36 | `AudioSourceEffectsBench.LowPassCostOn32Voices` (suite ends in `Bench` per its file; timings through `perfSlack()`): ratio ≤ 1.15 |
+| AC6 | REQ-36 | `AudioSourceEffectsBench.LowPassCostOn32Voices` (suite ends in `Bench` per its file; timings through `perfSlack()`): wrapper over native ratio ≤ 1.15, a block under 600 us (REQ-36 revised) |
 | AC7 | REQ-5, REQ-38 | `tools/mcp/tests/test_audio_source_effects.py::test_add_component_filter_aliases`: `add_component "Audio Low Pass Filter"` on an empty GameObject gives it an Audio Source with one `lowpass`; `undo` removes both. Manual: screenshot of the Inspector's Effects section and Spatial Blend slider from `tools/editor-shot.sh` on a scratch project |
 | AC8 | REQ-8, REQ-9 | `SoundPoolLifetime.SwitchingBackDoesNotDecodeAgain` (`editor/tests/engine/pool/SoundPoolLifetimeTest.cpp`): A → B → A on one source decodes A once (a decode counter in `SoundPool`). Red: two decodes |
 | AC9 | REQ-8, AU7 | `SoundPoolLifetime.ASharedClipStaysWhileAnotherSourceHoldsIt`: source 1 switches away from A while source 2 plays A; the entry stays and source 2's next `play()` decodes nothing (this passes today; it pins the AU7 verdict) |
@@ -548,9 +554,17 @@ REQ-18 to REQ-23, REQ-31.
 - **WP-D, AC23/AC26 suite names: `AudioSourceSlotsTest` (runtime: AC23's play-and-follow half, AC25's engine half, AC26) and
   `AudioSourceSlotsEditorTest` (AC23's commands, undo and listings, and `BrokenSlotsLoadWithAWarning`).** A fixture named
   `AudioSourceSlots` would clash with the engine class of that name; the runtime and editor halves need different fixtures.
-- **WP-D, REQ-29 runs where the editor decodes a scene (`Stream::decodeSceneProjectEntities`)**; Play, cooks and compiled
-  exports start from scenes the editor decoded (inferred), so the engine's cooked loader does not repeat it. The pass itself
-  is engine code (`AudioSourceSlots::repair`).
+- **WP-D and integration, REQ-29 runs where the editor decodes a scene (`Stream::decodeSceneProjectEntities`) and where a
+  prebuilt player loads a cooked one (`CookedSceneLoader::loadScene`).** The cook writes the editor's scene as it is, so an
+  edit after the editor's load (a slot moved to the root, a slot duplicated: inferred) can reach a cooked scene broken
+  (`CookedScene.BrokenAudioSourceSlotsLoadRepaired`, red without the loader's pass). A cooked scene on this branch carries
+  no parent links (a main bug that S96's PR fixes with a hierarchy record, `c633f787f`), so until that lands a prebuilt
+  player loads every slot as a root GameObject (its local position taken as a world one, as every child there), and the
+  pass says so in a warning; with the hierarchy record a slot stays under its GameObject. The test therefore covers a slot
+  number on a root, which does not depend on that record; the renumbering is covered by the editor test. A compiled
+  export's generated scene code does not run the pass: every runtime reader of `slot` (`AudioSourceSlots::ownerOf`,
+  `getSlots`, `nextSlot`) already treats a slot off any GameObject as no slot and orders shared numbers by entity, as the
+  pass would number them (inferred). The pass itself is engine code (`AudioSourceSlots::repair`).
 - **WP-D, REQ-26: a new slot is at Spatial Blend 1, as Add Component's Audio Source on the GameObject; Move Up/Down reorder
   the slots among themselves** (the GameObject's own source stays first). The slot sections are not recorded in
   `get_inspector_layout`, which names one component of a type.
@@ -559,4 +573,10 @@ REQ-18 to REQ-23, REQ-31.
 
 ## Progress
 
-(none yet)
+- WP-A (clip lifetime, load state, Load Type), WP-B (per-source effects), WP-C (Spatial Blend, 2D GameObjects, free
+  loops) and WP-D (several Audio Sources per GameObject) are merged into `feature/s97-audio-gaps`.
+- Integration: AC27 (web, web gate, prebuilt audio with a low-pass at blend 0), AC28 (Lua API tests but main's
+  Grid/TitleArt bindings, `gen_tool_docs.py --check`, `tool_budget.py --check`, `check_event_clears.py`) and AC29
+  (`ReflectParity`, `CatalogSnapshot`, `AbsentS97KeysAreTheirDefaults`, a compiled-export smoke with a filtered
+  slot). The cooked loader repairs slots too. The three eval cases have their static checks only: the paid eval
+  has not run.
