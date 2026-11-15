@@ -294,7 +294,7 @@ std::string lookFieldNames() {
 // the project file edit_fog_profile's `path` names: project- or assets-relative, under the assets folder
 bool profileFile(Project& project, const std::string& given, std::string& projectRelative, bool& exists, std::string& error) {
     if (!FogProfileIO::isProfilePath(given)) {
-        error = "path must be a .fogprofile file (\"assets/FogProfiles/cave.fogprofile\"); built-ins are list_atmosphere_presets ids, "
+        error = "path must be a .fogprofile file (\"FogProfiles/cave.fogprofile\"); built-ins are list_atmosphere_presets ids, "
                 "copied with from: {builtin}.";
         return false;
     }
@@ -697,7 +697,7 @@ void registerAtmosphereTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("The GameObject with the Fog, Fog Zone or Volumetric Clouds.")},
-            {"preset", string("Fog profile (night, assets/FogProfiles/cave.fogprofile) or clouds preset id.")},
+            {"preset", string("Fog profile (night, FogProfiles/cave.fogprofile) or clouds preset id.")},
             {"unlink", boolean("Fog: unlink its profile instead.")}
         }, {"entity"});
         tool.allowedWhilePlaying = false;
@@ -715,7 +715,7 @@ void registerAtmosphereTools(McpRegistry& registry) {
                            "them; clear unticks. It changes every user: for one scene only, create a copy (from: {profile}) and "
                            "link that.";
         tool.inputSchema = object({
-            {"path", string("The .fogprofile, e.g. assets/FogProfiles/cave.fogprofile.")},
+            {"path", string("The .fogprofile, e.g. FogProfiles/cave.fogprofile.")},
             {"from", object({
                 {"builtin", string("")},
                 {"entity", entityRef()},

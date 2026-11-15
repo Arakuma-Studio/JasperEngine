@@ -60,6 +60,10 @@ def ok(text, structured=None):
     return {"text": text, "structured": structured}
 
 
+# a hand-written result in the editor's real shape: sent with its structuredContent, as the editor sends it
+REAL = {"real": True}
+
+
 def err(text):
     return {"text": text, "is_error": True}
 
@@ -1350,10 +1354,10 @@ CASES = [
             {"tool": "list_atmosphere_presets", "args": {"kind": "clouds"}, "result": ok(
                 "5 Volumetric Clouds presets: custom sparse cloudy overcast stormy", {"kind": "clouds", "presets": []})},
             {"tool": "list_atmosphere_presets", "result": {"recorded": "list_atmosphere_presets_fog"}},
-            {"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}, "result": ok(
-                "Linked the Fog of Fog to assets/FogProfiles/morning_haze.fogprofile (the project's new copy of "
+            {"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}, "result": REAL | ok(
+                "Linked the Fog of Fog to FogProfiles/morning_haze.fogprofile (the project's new copy of "
                 "builtin:morning_haze); its Type is now Height (one undo step). Used by 1.",
-                {"changed": True, "entity": 30, "component": "fog", "profile": "assets/FogProfiles/morning_haze.fogprofile",
+                {"changed": True, "entity": 30, "component": "fog", "profile": "FogProfiles/morning_haze.fogprofile",
                  "created": True, "typeChanged": True, "usedBy": 1})},
             {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 30}]})},
         ],
@@ -1382,12 +1386,12 @@ CASES = [
                 "Skybox [17] skybox (no transform)\nFog [1005] fog\nCave [1010] mesh\n",
                 {"entity_count": 10, "scene_id": 1, "scene_name": "Main", "truncated": False})},
             {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCave [1010] mesh", {"entities": [{"id": 1010, "path": "Cave"}]})},
-            {"tool": "get_entity", "args": {"entity": "re:^(1010|Cave)$"}, "result": ok(
+            {"tool": "get_entity", "args": {"entity": "re:^(1010|Cave)$"}, "result": REAL | ok(
                 "Cave [1010] components: transform mesh",
                 {"id": 1010, "name": "Cave", "path": "Cave", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
                  "components": {"transform": {"position": [40, 4, 0], "rotation": [0, 0, 0, 1], "scale": [20, 8, 20]},
                                 "mesh": {"submeshes": 1}}})},
-            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": ok(
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
                 "Fog [1005] components: transform fog",
                 {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
                  "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
@@ -1404,7 +1408,7 @@ CASES = [
             {"tool": "apply_atmosphere_preset", "result": {"recorded": "apply_fog_profile_zone"}},
             {"tool": "set_properties", "result": ok("Set the properties (one undo step).", {"entities": [{"id": 1020}]})},
             {"tool": "set_transform", "result": ok("Moved 1 GameObject(s) (one undo step).", {"entities": [{"id": 1020}]})},
-            {"tool": "save_scene", "result": {"recorded": "save_scene"}},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "fog_zone"}}]},
                               {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog_?zone"}}]}],
@@ -1425,6 +1429,8 @@ CASES = [
         "source": "docs/specs/vapor.md R37 (the third new case), R43",
         "prompt": "Make the fog in Main much denser: attenuation distance 30. Level2 uses the same fog profile and must keep "
                   "its look.",
+        # the shared profile, as the editor copied builtin night on first use
+        "files": {"FogProfiles/night.fogprofile": "{\n  \"version\": 1,\n  \"name\": \"Night\",\n  \"description\": \"A dark blue fog close to the ground, little sun scattering\",\n  \"fields\": {\n    \"color\": [0.0020508443, 0.0028788275, 0.00778151],\n    \"attenuationDistance\": 200.0,\n    \"baseHeight\": 0.0,\n    \"maximumHeight\": 60.0,\n    \"startDistance\": 0.0,\n    \"maxFogDistance\": 2000.0,\n    \"maxOpacity\": 0.95,\n    \"directionalInscattering\": 0.05,\n    \"anisotropy\": 0.3,\n    \"skyFill\": true,\n    \"skyFillAngle\": 4.0\n  }\n}\n"},
         "mocks": [
             {"tool": "get_scene_tree", "result": ok(
                 "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
@@ -1433,29 +1439,29 @@ CASES = [
                 "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
                 {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
             {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
-            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": ok(
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
                 "Fog [1005] components: transform fog",
                 {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
                  "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
                                 "fog": {"type": "height", "profile": "FogProfiles/night.fogprofile", "color": [0.8, 0.8, 0.8],
                                         "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
                                         "volumetric": False}}})},
-            {"tool": "get_atmosphere_info", "result": ok(
-                "Atmosphere (game view): quality high, 1 passes, fog profile assets/FogProfiles/night.fogprofile.",
+            {"tool": "get_atmosphere_info", "result": REAL | ok(
+                "Atmosphere (game view): quality high, 1 passes, fog profile FogProfiles/night.fogprofile.",
                 {"view": "game", "quality": "high", "fog": {"present": True, "type": "height",
-                                                            "profile": "assets/FogProfiles/night.fogprofile"},
+                                                            "profile": "FogProfiles/night.fogprofile"},
                  "zones": [], "blend": None, "diagnostics": [], "opacity": {"at10": 0.04, "at50": 0.19, "at200": 0.55,
                                                                            "includes": "analytic"}})},
-            {"tool": "list_atmosphere_presets", "result": ok(
+            {"tool": "list_atmosphere_presets", "result": REAL | ok(
                 "9 built-in fog profiles: morning_haze ground_mist mountain_valley horizon_haze night bright_haze murky "
-                "infernal toxic; 1 project profiles: assets/FogProfiles/night.fogprofile (used by 2).",
-                {"kind": "fog", "profiles": [{"path": "assets/FogProfiles/night.fogprofile", "name": "Night", "overrides": 10,
+                "infernal toxic; 1 project profiles: FogProfiles/night.fogprofile (used by 2).",
+                {"kind": "fog", "profiles": [{"path": "FogProfiles/night.fogprofile", "name": "Night", "overrides": 10,
                                               "usedBy": 2}]})},
             {"tool": "set_properties", "result": {"recorded": "set_properties_fog_profile_field"}},
             {"tool": "edit_fog_profile", "args": {"from": {"profile": "*"}}, "result": {"recorded": "edit_fog_profile_copy"}},
             {"tool": "edit_fog_profile", "result": {"recorded": "edit_fog_profile_shared"}},
             {"tool": "apply_atmosphere_preset", "result": {"recorded": "apply_fog_profile_copy"}},
-            {"tool": "save_scene", "result": {"recorded": "save_scene"}},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         "checks": {"calls": [{"tool": "edit_fog_profile", "args": {"from": {"profile": "re:night"}}},
                              {"tool": "apply_atmosphere_preset", "args": {"preset": "re:\\.fogprofile$"}}],

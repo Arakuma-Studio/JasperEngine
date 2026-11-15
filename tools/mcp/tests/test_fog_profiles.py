@@ -19,7 +19,7 @@ EDITOR = {"create": True, "name": "Fog Profiles CI"}
 TIMEOUT = 900
 
 S: dict = {}
-NIGHT = "assets/FogProfiles/night.fogprofile"
+NIGHT = "FogProfiles/night.fogprofile"
 
 
 async def setup(ed: Editor) -> dict:
@@ -145,7 +145,7 @@ async def test_edit_profile_and_undo(ed: Editor):
     ed.check_in("set_properties", bad, "technique fields stay on the Fog")
     bad = await ed.call("edit_fog_profile", path=NIGHT, set={"thickness": 2}, expect_error=True)
     ed.check_in("attenuationDistance", bad, "an unknown field lists the fields")
-    bad = await ed.call("edit_fog_profile", path="assets/FogProfiles/none.fogprofile", set={"density": 1}, expect_error=True)
+    bad = await ed.call("edit_fog_profile", path="FogProfiles/none.fogprofile", set={"density": 1}, expect_error=True)
     ed.check_in("from", bad, "a new file needs from")
 
 
@@ -176,7 +176,7 @@ async def test_duplicate_for_one_scene(ed: Editor):
     ed.check_in("edit_fog_profile", shared.get("next", ""), "a shared profile's next routes to edit_fog_profile")
     ed.check_in("from: {profile", shared.get("next", ""), "and to a copy for one scene")
 
-    cave = "assets/FogProfiles/cave.fogprofile"
+    cave = "FogProfiles/cave.fogprofile"
     made = await ed.call("edit_fog_profile", path=cave, **{"from": {"profile": NIGHT}}, set={"attenuationDistance": 20.0})
     ed.check(made["created"] and made["usedBy"] == 0, f"{made}")
     ed.check_in("apply_atmosphere_preset", made.get("next", ""), "an unused profile's next says how to link it")
@@ -225,7 +225,7 @@ async def test_diagnostics_round_trip(ed: Editor):
     ed.check("zone_no_effect" not in codes(got), f"fixed: {got['diagnostics']}")
 
     # a profile with only a distance fog's field, on a zone over a Height fog
-    dist = "assets/FogProfiles/distance.fogprofile"
+    dist = "FogProfiles/distance.fogprofile"
     await ed.call("edit_fog_profile", path=dist, **{"from": {"builtin": "night"}})
     every = list((await ed.call("edit_fog_profile", path=dist))["fields"])
     await ed.call("edit_fog_profile", path=dist, clear=every, set={"density": 0.2})
@@ -247,6 +247,20 @@ async def test_diagnostics_round_trip(ed: Editor):
     got = await ed.call("get_atmosphere_info", scene=lonely, view="scene")
     ed.check("fog_missing" not in codes(got), f"fixed: {got['diagnostics']}")
     await ed.call("select_scene", scene=s["scene"])
+
+
+async def test_write_file_takes_fog_profiles(ed: Editor):
+    """A .fogprofile is JSON text: write_file and read_file take it, and the project lists the profile."""
+    ed.require_tools("write_file", "read_file", "list_atmosphere_presets")
+    await setup(ed)
+    path = "FogProfiles/written.fogprofile"
+    text = json.dumps({"version": 1, "name": "Written", "fields": {"attenuationDistance": 75.0}}, indent=2) + "\n"
+    await ed.call("write_file", path=path, content=text)
+    got = await ed.call_raw("read_file", {"path": path})
+    ed.check(not got.is_error and "attenuationDistance" in got.text, f"read_file reads it back: {got.text[:300]}")
+    listed = await ed.call("list_atmosphere_presets", kind="fog")
+    written = [p for p in listed["profiles"] if p["path"] == path]
+    ed.check(written and written[0]["name"] == "Written" and written[0]["overrides"] == 1, f"listed: {listed['profiles']}")
 
 
 async def test_unlink_keeps_the_look(ed: Editor):

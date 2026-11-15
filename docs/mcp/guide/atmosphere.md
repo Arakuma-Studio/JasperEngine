@@ -73,7 +73,7 @@ set cost or technique (`type`, `volumetric`, `volumetricDistance`, `lightShafts`
 
 The built-ins are `morning_haze`, `ground_mist`, `mountain_valley`, `horizon_haze`, `night` (the
 old presets' looks) and the Lit looks `bright_haze`, `murky`, `infernal`, `toxic`. Linking one
-copies it to `assets/FogProfiles/<id>.fogprofile` the first time, in the same undo step; later
+copies it to `FogProfiles/<id>.fogprofile` in the assets folder the first time, in the same undo step; later
 links reuse that copy. Linking a profile that sets height fog fields makes a distance fog a Height
 fog in the same step.
 

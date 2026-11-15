@@ -84,15 +84,15 @@ RECORD = {
     "create_entity_fog_zone": ("create_entity", {"type": "fog_zone", "name": "Cave Fog", "position": [40, 0, 0]}),
     "apply_fog_profile_zone_shared": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "night"}),
     "set_properties_fog_profile_field": ("set_properties", {"entity": "Fog", "values": {"fog": {"attenuationDistance": 30.0}}}),
-    "edit_fog_profile_shared": ("edit_fog_profile", {"path": "assets/FogProfiles/night.fogprofile", "set": {"attenuationDistance": 30.0}}),
+    "edit_fog_profile_shared": ("edit_fog_profile", {"path": "FogProfiles/night.fogprofile", "set": {"attenuationDistance": 30.0}}),
     "undo_fog_profile_shared": ("undo", {"scope": "project"}),
-    "edit_fog_profile_copy": ("edit_fog_profile", {"path": "assets/FogProfiles/night_dense.fogprofile",
-                                                   "from": {"profile": "assets/FogProfiles/night.fogprofile"},
+    "edit_fog_profile_copy": ("edit_fog_profile", {"path": "FogProfiles/night_dense.fogprofile",
+                                                   "from": {"profile": "FogProfiles/night.fogprofile"},
                                                    "set": {"attenuationDistance": 30.0}}),
-    "apply_fog_profile_copy": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "assets/FogProfiles/night_dense.fogprofile"}),
-    "edit_fog_profile_cave": ("edit_fog_profile", {"path": "assets/FogProfiles/cave.fogprofile", "from": {"builtin": "murky"},
+    "apply_fog_profile_copy": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "FogProfiles/night_dense.fogprofile"}),
+    "edit_fog_profile_cave": ("edit_fog_profile", {"path": "FogProfiles/cave.fogprofile", "from": {"builtin": "murky"},
                                                    "set": {"albedo": [0.05, 0.3, 0.05], "attenuationDistance": 15.0}}),
-    "apply_fog_profile_zone": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "assets/FogProfiles/cave.fogprofile"}),
+    "apply_fog_profile_zone": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "FogProfiles/cave.fogprofile"}),
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}
@@ -139,6 +139,8 @@ async def record(out: Path) -> dict:
                 continue
             recorded[key] = {"tool": tool, "args": args, "text": r.text,
                              "structured": r.structured, "is_error": r.is_error}
+        # the Fog Profiles the recordings wrote are no part of the world a sample starts from
+        shutil.rmtree(ed.project / "FogProfiles", ignore_errors=True)
         await build_world(ed)
         contents = {}
         for res in resources.resources:

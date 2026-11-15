@@ -118,7 +118,7 @@ async def test_presets(ed: Editor):
     ed.check(applied["changed"], "the preset changed the fog")
     after = await values(ed, s["fog"], "fog")
     ed.check_eq(after["type"], "height", "a fog preset makes a height fog")
-    ed.check_eq(applied["profile"], "assets/FogProfiles/ground_mist.fogprofile", "linked to the profile")
+    ed.check_eq(applied["profile"], "FogProfiles/ground_mist.fogprofile", "linked to the profile")
     looks = await ed.call("get_atmosphere_info", scene=s["scene"], resolved=True)
     ed.check_eq(looks["resolved"]["attenuationDistance"], {"value": 40, "source": "profile"}, "the look's fields")
     top = (await ed.call("get_undo_history", scene=s["scene"], limit=5))["entries"][0]

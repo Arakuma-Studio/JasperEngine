@@ -1258,10 +1258,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create: parent, name (default: the type's Unity name), local transform, "
+            "GameObject > Create: parent, name (default: its Unity name), local transform, "
             "components, values ({component: "
             "{property: value}} or set_properties changes). empty: Transform only; bare: "
-            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted, bound to "
             "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
