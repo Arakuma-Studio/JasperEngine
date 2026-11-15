@@ -278,8 +278,13 @@ dav1d_configure(dav1d)
 target_include_directories(dav1d SYSTEM PUBLIC ${DAV1D_DIR}/include)
 target_compile_definitions(dav1d INTERFACE DAV1D_API=)
 
-find_package(Threads REQUIRED)
-target_link_libraries(dav1d PRIVATE Threads::Threads)
+# Android: bionic's libc holds the pthreads. There CMake 3.22's FindThreads fails its libc check (its test
+# calls pthread_cancel, which bionic lacks) and falls back to -pthread, an interface option that reaches
+# the NASM sources too, where it reads as "-p thread" (preinclude a file named thread)
+if(NOT ANDROID)
+    find_package(Threads REQUIRED)
+    target_link_libraries(dav1d PRIVATE Threads::Threads)
+endif()
 if(NOT MSVC AND NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(dav1d PRIVATE m)
 endif()
