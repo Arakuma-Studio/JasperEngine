@@ -19,7 +19,7 @@
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteSkinComponent.h"
-#include "component/Transform.h"
+#include "math/Quaternion.h"
 #include "sprite/SpriteSheetIO.h"
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"

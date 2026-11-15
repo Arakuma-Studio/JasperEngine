@@ -18,7 +18,7 @@
 #include "util/UIProbe.h"
 
 #include "component/SpriteSkinComponent.h"
-#include "component/Transform.h"
+#include "math/Quaternion.h"
 #include "sprite/SpriteSkinning.h"
 
 #include "imgui.h"
