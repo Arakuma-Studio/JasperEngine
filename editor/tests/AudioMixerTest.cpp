@@ -1098,6 +1098,38 @@ TEST(AudioSourceSerializationTest, AbsentMixerKeysAreTheirDefaultsOverAnExisting
     EXPECT_EQ(again.loadType, AudioLoadType::Streaming);
 }
 
+// S97 REQ-44 (AC29): a scene saved before S97 has none of its keys; decoded over an edited source
+// (an undo, a prefab override) they are their defaults, and the defaults are not written
+TEST(AudioSourceSerializationTest, AbsentS97KeysAreTheirDefaults) {
+    AudioSourceComponent edited;
+    edited.filename = "engine.ogg";
+    AudioSourceEffectDef lowpass;
+    lowpass.type = "lowpass";
+    lowpass.params["cutoff"] = 800.0f;
+    edited.effects.push_back(lowpass);
+    edited.spatialBlend = 0.25f;
+    edited.slot = 2;
+    AudioSourceComponent plain;
+    plain.filename = "engine.ogg";
+    const YAML::Node node = encodeAudioSource(plain);
+    EXPECT_FALSE(node["effects"]) << "defaults are not written";
+    EXPECT_FALSE(node["spatialBlend"]);
+    EXPECT_FALSE(node["slot"]);
+    const AudioSourceComponent restored = decodeAudioSource(node, &edited);
+    EXPECT_TRUE(restored.effects.empty());
+    EXPECT_FLOAT_EQ(restored.spatialBlend, 1.0f) << "an old source with a Transform stays 3D";
+    EXPECT_EQ(restored.slot, 0);
+    // and the other way
+    const YAML::Node written = encodeAudioSource(edited);
+    ASSERT_TRUE(written["effects"]);
+    const AudioSourceComponent again = decodeAudioSource(written, &plain);
+    ASSERT_EQ(again.effects.size(), 1u);
+    EXPECT_EQ(again.effects[0].type, "lowpass");
+    EXPECT_FLOAT_EQ(again.effects[0].params.at("cutoff"), 800.0f);
+    EXPECT_FLOAT_EQ(again.spatialBlend, 0.25f);
+    EXPECT_EQ(again.slot, 2);
+}
+
 // ================================================================== AudioLuaTest
 
 TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
