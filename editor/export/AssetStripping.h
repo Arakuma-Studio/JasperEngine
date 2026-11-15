@@ -54,7 +54,7 @@ namespace jasperengine::editor {
 
         // The file types Referenced Only may leave out: textures, models, audio, video, fonts,
         // materials, prefabs, UI documents and stylesheets, animation and particle assets, sprite
-        // and tile assets, Title Art, voxel volumes
+        // and tile assets, Title Art, voxel volumes, .mesh assets
         static bool isStrippable(const std::string& projectRelative, const std::string& assetsDir);
 
     private:

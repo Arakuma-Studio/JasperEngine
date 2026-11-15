@@ -145,6 +145,8 @@ std::string assetType(const fs::path& path) {
     // Title Art documents (.titleart, S80; the baked PNGs are textures)
     if (Util::isTitleArtFile(p)) return "title_art";
     if (Util::isSoundEventFile(p)) return "sound_event";
+    // .mesh assets (S98 F1)
+    if (Util::isMeshAssetFile(p)) return "mesh";
     return "other";
 }
 

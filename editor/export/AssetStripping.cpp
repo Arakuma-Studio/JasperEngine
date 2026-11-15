@@ -129,7 +129,7 @@ bool editor::AssetStrippingPlan::isStrippable(const std::string& projectRelative
         case AssetType::ColorLut: case AssetType::ParticleEffect: case AssetType::AnimationClip: case AssetType::PoseAnimation:
         case AssetType::VertexAnimation: case AssetType::AnimatorController: case AssetType::AvatarMask:
         case AssetType::AnimationMontage: case AssetType::AsepriteSprite: case AssetType::Tileset: case AssetType::SoundEvent:
-        case AssetType::TitleArt: case AssetType::VoxelVolume:
+        case AssetType::TitleArt: case AssetType::VoxelVolume: case AssetType::Mesh:
             return true;
         default:
             return false;

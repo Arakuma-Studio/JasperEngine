@@ -321,7 +321,7 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         if (!readComponents(record.body, scene, entity, false, error)) return false;
     }
 
-    if (file.header.minor >= 6) {
+    if (file.header.minor >= 7) {
         // the hierarchy, each child appended to its parent in Transform order
         r.record();   // resources
         Reader hierarchy = r.record();
@@ -377,7 +377,7 @@ SceneResources CookedSceneLoader::sceneResources(std::span<const uint8_t> bytes)
     read(list, resources.sounds);
     read(list, resources.models);
     read(list, resources.clips);
-    if (file.header.minor >= 6) {
+    if (file.header.minor >= 7) {
         read(list, resources.vats);
         read(list, resources.masks);
         read(list, resources.controllers);

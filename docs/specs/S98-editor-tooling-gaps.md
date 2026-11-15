@@ -49,7 +49,7 @@ report failures as failures. Each fix ships a test that fails without it.
     §8 there).
   - E41's `mesh.sortPriority`: S94 R48 owns sort priority per renderer, which is the same key.
 - **A `.mesh` asset** (E1's embedded custom-mesh buffers): a format feature that belongs with S53's
-  mesh pipeline. Recorded as follow-up F1 (§9).
+  mesh pipeline. Recorded as follow-up F1 (§9); brought into scope as WP-7 (Deviations).
 - **The game-side items** (§3): no engine change.
 - **Play Asset Delivery in source exports (Gradle asset-pack modules)**: REQ-16 covers prebuilt App
   Bundles, the route a Lua-only game such as the arcade takes. Recorded as follow-up F2.
@@ -727,6 +727,59 @@ Avoiding conflicts:
 
 ## Deviations
 
+- **F1 brought into scope (WP-7, E1): the `.mesh` asset.** The coordinator moved F1 out of the
+  follow-ups. Decisions, each Unity's behaviour unless noted:
+  - **Format.** A binary file (`engine/core/model/MeshAsset.h`): magic `JMSH`, u16 major and minor
+    (1.0), a string table, then the cooked scenes' codecs (`CookTypes.h`): the vertices' bounds, the
+    vertex count, the interleaved vertex buffer, the index buffer, the external buffers and each
+    submesh's primitive type, vertex count and attributes. The bytes depend only on the geometry
+    (the counts a load gives, not what a frame set), so the same geometry is the same file. Readers
+    refuse another major. Materials, shaders, the skin's palette and the component's settings stay
+    on the Mesh Renderer, as on Unity's MeshRenderer.
+  - **Identity and reference.** `AssetType::Mesh = 37` (35 and 36 are S95's), a `.meta` sidecar
+    GUID (S04), `AssetKind::Mesh`. `MeshComponent::meshAsset` (an `AssetRef`, Inspector label
+    "Mesh", saved as `meshAsset` / `meshAssetGuid`, omitted when empty). A mesh showing a file saves
+    neither its buffers nor the bounds and vertex counts they give, so a save does not depend on
+    whether the file was read (S63).
+  - **Runtime.** `MeshSystem::update` reads the file when `meshAsset` differs from what it last read
+    (`loadedMeshAsset`; a missing or bad file is logged once per path), before RenderSystem and
+    PhysicsSystem run, in the editor, a prebuilt player and a compiled game alike. A generated
+    primitive (`MeshSystem::create*`: Shape fields, `set_mesh_geometry`, `Primitive:create*`) lets go
+    of the file: the geometry is the mesh's own again and the file is never written by a geometry
+    edit of one GameObject.
+  - **Saving through it: both, automatic above 4 KB.** Save Mesh As Asset... (the Mesh Renderer's
+    menu, `set_mesh_geometry save_as`) writes any mesh of its own. A scene save also moves each mesh
+    of its own with more than 4 KB of geometry (`MeshAssetFiles::EXTRACT_ABOVE_BYTES`) to
+    `<scene folder>/<scene name>/<GameObject>.mesh` (Unity's per-scene folder, as for lighting data;
+    `<assets>/Meshes/<scene name>/` for a scene outside the assets folder). Rejected: always (every
+    cube and plane would become a file of 1-2 KB), and Save As only (a sphere's 45 KB base64 line,
+    E1's fragile hand edit, would stay). Meshes of the same geometry share one file; a file there
+    with the same bytes is used again (an undo past the save finds it), one with other bytes is never
+    written over (`<name> 1.mesh`). Prefab instances keep their prefab's mesh, and prefab saves do not
+    extract (a prefab names a `.mesh` through Save As or a GameObject that already shows one). An
+    extracted file nothing shows any more stays until deleted, as Unity never deletes assets.
+  - **Format bump.** Scene 8 -> 9 and prefab 9 -> 10, identity migrations (`StreamMigrations.cpp`,
+    fixture `migrations/scene-v8-inline-mesh.scene`, `MeshAssetMigration.*`): an older file's inline
+    buffers still read and keep their meaning, but an older editor must refuse a file whose meshes
+    name `.mesh` assets rather than show them empty (S44's sprite-sheet precedent). Cooked scenes
+    are format 1.6: the reference is a field of the mesh's table and its buffers are not written
+    (`ComponentHooks.cpp writeMesh`); compiled scenes emit `mesh.meshAsset = "..."` instead of the
+    buffers (`Factory::createMeshComponent`). Exports ship `.mesh` files through `copyAssets`, which
+    copies every asset it does not skip.
+  - **Editor.** The Mesh field (drop a `.mesh`, pick one, Reset), Save Mesh As Asset... (one undo
+    step; undo keeps the file), dropping a `.mesh` in the Hierarchy or the Scene view makes a
+    GameObject showing it, a Project window icon, `t:mesh` search, hot reload of a file another
+    program changed.
+  - **Lua.** `Mesh.meshAsset` (read at once, so `vertexCount` and `getAABB()` answer straight away).
+  - **MCP.** Extended, no new tool: `set_mesh_geometry save_as` (alone: the current geometry; with
+    `shape`: the new one), `get_asset_info` on a `.mesh` (format, vertices, indices, submeshes,
+    attributes, bounds, users in the open scenes), `list_assets type: mesh`, `set_properties`
+    `mesh.meshAsset`. Eval case `guard_mesh_save_as_asset`. The core listing was at its budget:
+    `set_mesh_geometry`'s text was shortened to fit `save_as`, and `get_asset_info`'s description
+    does not list `.mesh` (its result does; the meshes guide names the call).
+  - **With WP-6 (asset stripping):** a `.mesh` is a strippable type: Referenced Only ships the ones
+    the dependency index reaches (the reflection asset rows, `AssetKind::Mesh`) and leaves out an
+    extracted file nothing shows any more (`MeshAssetSaveTest.AssetStrippingShipsTheMeshesTheScenesShow`).
 - **WP-3, REQ-25 (E37):** no code change. Measured first (below): the handler takes 0-2 ms whatever
   the scene; a call's time is its wait for the editor's next frame, which grows with the scene for
   every tool (`editor_status` alike). The frame is WP-5's (REQ-41). `test_particles_perf.py` guards
@@ -764,10 +817,11 @@ Avoiding conflicts:
   flags, `reflect/Codegen.cpp`), the navigation and voxel settings' code, the curve literals and the
   scene-dump `bake` op; `toIdentifier` moved to `editor/util/CppIdentifier.h`, `BakedPrefab` to
   `cook/SceneCooker.h`. The tests that pinned generated code were removed or turned into cooked
-  round trips.
+  round trips. WP-7's `mesh.meshAsset` line in `Factory::createMeshComponent` went with it: a
+  Compile build reads the reference from the cooked mesh table, as the prebuilt player does.
 - **WP-1, REQ-52:** the cooker dropped four of a scene's preload lists (VATs, masks, controllers,
-  bitmap fonts) that the generated `resources_<scene>()` had: cooked format 1.6 carries them (a 1.5
-  file still reads).
+  bitmap fonts) that the generated `resources_<scene>()` had: cooked format 1.7 carries them (an older
+  file still reads; 1.6 is WP-7's .mesh asset).
 - **WP-1, REQ-2:** the project's own CMake build reads `<internal>/cooked/` through
   `JASPERENGINE_COOKED_PATH`; its asset path stays the project's assets folder, so a scene drawing
   the editor's built-in default sky (faces held in memory by the editor) has no sky there. Exports
@@ -781,7 +835,7 @@ Avoiding conflicts:
   persist on their own a second after an edit (T1 R29), which is no unsaved change of the user's.
 - **WP-1, REQ-52 (hierarchy):** a cooked scene carried no hierarchy (a Transform's parent is no
   field of its record; only prefabs had a hierarchy record), so a prebuilt player made every child
-  a root. Format 1.6 adds the scene's hierarchy record after the resources (an older player skips
+  a root. Format 1.7 adds the scene's hierarchy record after the resources (an older player skips
   it). A texture with no image but a sampler (a Text's font atlas, a sprite sheet's page) is
   written as an empty id, which every 1.x reader takes, instead of nothing.
 - **WP-1, REQ-5 / E27:** the determinism guard is `CookDeterminism.EveryComponentDefaultInitialisedCooksTheSameBytes`
@@ -790,6 +844,18 @@ Avoiding conflicts:
 - **WP-1, REQ-10 in Compile builds:** `player::readGameConfig` (the generated main's) applies the
   `stripped` list of a `content-manifest.json` beside `game.json`, as the prebuilt player does.
 
+- **WP-5, AC24 (a):** the AC24 fixture logs no "No free system entity slot" on the code before
+  WP-5 (its gizmos took about 450 of the 1,000 system slots), so `test_editor_cost.py` guards it
+  and the red run is `SceneRenderGizmos.SystemEntitiesPerKind` (500 lights and 500 bodies: the
+  slot error, then an exception, before WP-5; at most 3 system entities after). The test is in
+  `editor/tests/render/`, which the AC names.
+- **WP-5, REQ-30:** the icons are one instanced billboard sprite over an atlas of the five icon
+  images (one icon batch per view, as specified); the lines are one `LineRenderer` per kind, in
+  the scene for depth-tested kinds and in the tools layer for the ones drawn over the meshes, as
+  before. A Game view pass that hid the batches makes them write their renderer again when they
+  show (no stale instance list).
+- **WP-5, REQ-31:** Maximize On Play covers the editor's panels: the covered Hierarchy is not
+  built and the covered Scene view updates and draws nothing (Unity hides them too).
 ### WP-6 (what ships)
 
 - **Keys under `export:`.** The settings are stored as `export.assetStripping` (`referencedOnly`;
@@ -844,6 +910,58 @@ Avoiding conflicts:
   no scene source. AC7 manual: after that build, the scene file was removed and a new
   `probe_configure_depends.cpp` added; the next `assembleDebug` printed `GLOB mismatch!`, compiled
   the probe, dropped the scene from `build.ninja`, and linked `app-debug.apk`.
+- **WP-7 (F1, `.mesh` assets)** implemented on `feature/s98-editor-tooling-gaps--7` (Deviations).
+  Red controls: `test_mesh_assets.py` on the editor of `3ef9338fa` (3 of 3 fail: `save_as` unknown,
+  no `.mesh` written); the editor unit tests with `MeshSystem`'s read and the save's extraction
+  turned off (5 of 7 `MeshAsset*` fail). Evidence: `/tmp/arcade-gaps/evidence/s98-7/`.
+- **WP-5, REQ-31 profile** (`test_editor_cost.py`, its generated fixture: 1,500 GameObjects under 12
+  groups, Hierarchy expanded, nothing selected; Release editor, headless, llvmpipe, build box;
+  median frame of 60 of `capture_profile`). Before WP-5 (the base with only the new scopes):
+  Editor UI 8.09 ms (Hierarchy 6.14, of which its rows 3.07; Inspector 0.74; Scene Window 0.11),
+  Scene View Gizmos 0.55 ms: editor-side 8.64 ms. Play with the Game view maximised: Hierarchy
+  2.94 + Scene View Gizmos 0.63 + Scene Window 0.08 = 3.65 ms. After: Editor UI 2.40-2.52 ms
+  (Hierarchy 0.58-0.72, rows 0.46-0.62; Inspector 0.62-0.85), Scene View Gizmos 0.31-0.41 ms:
+  editor-side 2.71-2.93 ms; maximised Play 0.06 ms (only the Scene window's tab).
+  - Findings: the Hierarchy drew every row (now only the visible ones); its timed 0.5 s tree
+    rebuild (3.8 ms with 1,500 GameObjects) ran on every frame of an editor slower than 2 fps (one
+    run measured it at the median, Hierarchy 4.4 ms): it now also waits 15 frames; under Maximize
+    On Play the covered Hierarchy was built and the Scene view updated its gizmos each frame (now
+    neither). The per-object gizmo objects cost a system entity each and a renderer update each;
+    the shared batches write a renderer only when its lines or icons changed.
+  - The Hierarchy's tree rebuild (`test_editor_cost.py::test_hierarchy_rebuild_budget`: the median
+    of the timed rebuilds in 120 frames, three runs, enforced with `JASPER_MCP_PERF_SLACK=1`): 2.28,
+    2.28, 2.41 ms before (red, over the 1 ms); 0.62-0.69 ms after in four runs (0.72 ms in a run
+    with `-j 3`). Phases measured first (one rebuild, ms): the row loop 0.6-0.9, the set of the scene's
+    GameObjects 0.36-0.48, freeing the old tree 0.23-0.33, the GameObjects without a Transform
+    0.16-0.35, the prefab passes 0.13-0.27; in the rows, the locked-parent scan 0.51 and the icon
+    chain 0.24 of 1.3. Now the timed rebuild, which catches what changes without a structural
+    command, fills the last rebuild's rows again in place while every row keeps its order and
+    parent (no allocation), from indexes made once (LockedParentIndex, the icons by signature, the
+    model ancestors); a structural change still rebuilds the whole tree, once per change: 1.6-1.9 ms with
+    the fixture, measured with phase scopes before the in-place refresh (the full path has since
+    only lost the set's rebuild and the rows' copies; not measured again: a capture cannot start
+    before the frame a command's rebuild runs in). `LockedParentIndex` now also answers the Voxel Volumes' and
+    splines' generated GameObjects, as `getLockedEntityParent` does (it had fallen behind).
+  - On the tree merged with WP-3, WP-6 and the imports: 2.07-3.07 ms editor UI in four runs (one
+    alone, three in parallel); one run among eight files with `-j 3` measured Hierarchy rows at
+    4.6 ms (editor-side 7.0 ms, within the 8 ms), as if no row were clipped. Not reproduced in
+    the eight runs since (four alone, four among other files with `-j 3`: 0.41-0.64 ms);
+    unexplained.
+  - `test_scene_view_icons.py` fails under load (three copies with `-j 3` on a build box) on the
+    code before WP-5 as after it, by the same 0.056: the difference is the Scene view's camera
+    gauge fading between the shots (pixels x 6-37), not the icon, which is back. Not changed here.
+- **WP-5 imports (E15, E21; REQ-32, REQ-33, D10).** `editor/model/FbxImportQueue` is the one
+  scheduler: any thread queues an FBX; one Background Heavy job converts the queue once a frame
+  queued nothing new (a scene's load is one batch); Play startup, the export (before
+  `loadAndSaveAllScenes`, on its thread) and reload jobs convert on their own threads.
+  `fbxImportCallMutex` and the scan task are gone. Main-thread callers queue: `ModelLoadCmd`
+  waits (`whenModelImported`), foliage layers draw once imported, `import_files` replies from a
+  deferred wait, thumbnails ask again, the cook queue keeps the model queued, VAT bake/preview
+  report "still importing". `MeshSystem::setModelImportGate` keeps a pending model waiting with
+  no error. `editor_status` lists the `model_import` job with `done`/`total`. Red control (the
+  delay hook alone on `3ef9338fa`): AC25 fails (`read_console` answered only after
+  `create_entity` converted on the main thread), AC26 fails ("Model load failed, not retrying").
+  The guide gained no line: the result says it (eval case `guard_model_import_pending`, not run).
 - **WP-6, what ships** (AC9, AC10, AC11, AC35, AC36): `test_asset_stripping.py` 6/6 on the WP-6
   editor; red on the spec branch's editor (3ef9338fa): 0/6, everything shipped (`textures/unused.png`
   and `dev/debug.png` cooked), Play imported the unused FBX, two copies of the shader source

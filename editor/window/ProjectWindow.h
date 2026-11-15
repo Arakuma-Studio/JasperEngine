@@ -65,7 +65,8 @@ namespace jasperengine::editor {
         PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
-        TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        MESH_ASSET          // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
     };
 
     struct FileEntry {
@@ -189,6 +190,9 @@ namespace jasperengine::editor {
         std::vector<uint8_t> paletteIconPixels;
         Texture tilesetIcon;
         std::vector<uint8_t> tilesetIconPixels;
+        // a wireframe for .mesh files (S98 F1)
+        Texture meshAssetIcon;
+        std::vector<uint8_t> meshAssetIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;

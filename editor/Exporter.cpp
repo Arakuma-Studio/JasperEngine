@@ -1262,6 +1262,10 @@ void editor::Exporter::runExport() {
         return;
     }
 
+    // every FBX import lands on this thread, so the scenes' cook on the main thread waits for and
+    // converts none (S98 REQ-32)
+    project->importFbxModels();
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndCookAllScenes()) return;
     if (!checkMissingAssets()) return;
     resolveShaderKeys();

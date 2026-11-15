@@ -265,7 +265,7 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t
         rt::write(w, resources.sounds);
         rt::write(w, resources.models);
         rt::write(w, resources.clips);
-        // format minor 6
+        // format minor 7
         rt::write(w, resources.vats);
         rt::write(w, resources.masks);
         rt::write(w, resources.controllers);
@@ -274,7 +274,7 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t
     }
 
     {
-        // format minor 6: the hierarchy, each child appended to its parent in Transform order (a
+        // format minor 7: the hierarchy, each child appended to its parent in Transform order (a
         // Transform's parent is no field of its record)
         const std::unordered_set<Entity> cooked(ordered.begin(), ordered.end());
         std::vector<Entity> children;

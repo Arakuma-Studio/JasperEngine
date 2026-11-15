@@ -1935,6 +1935,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
     core/model/CookedModels.cpp
+    core/model/MeshAsset.cpp
     core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp
