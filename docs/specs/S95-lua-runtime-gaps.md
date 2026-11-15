@@ -580,6 +580,10 @@ Per package, before merging:
   untouched (S92 owns its patch) and hardens LuaBridge's class tables from
   `LuaBinding.cpp` (`hardenClassTables`) instead. S92 fixes the same crashes inside LuaBridge;
   once both are on `main` the workaround is removable in one commit.
+- **AC-2 under ASan found a Debug-only abort.** The ASan unit build is Debug, and there
+  `Vector2`/`Vector4` division by a zero scalar asserted (the sweep divides by 0 from Lua). Release
+  already gave infinities, and `Vector3` never asserted, so the asserts are gone: every vector
+  divides by zero as Unity does.
 
 ### WP-1 Lua API correctness
 
