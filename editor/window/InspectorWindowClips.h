@@ -11,6 +11,7 @@
 #pragma once
 
 #include "animation/AnimationClip.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ClipValidation.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
@@ -67,6 +68,37 @@ namespace jasperengine::editor::inspectorclips{
     bool subClipNamed(const std::vector<std::string>& subClipNames, const std::string& clip);
     // "Default", "Once", "Loop", "Ping Pong", "Clamp Forever"
     const char* wrapLabel(ClipWrapMode wrap);
+
+    // Unity's Root Transform rows of a clip (S94 F32): per part Bake Into Pose, Based Upon and
+    // Offset. The clip Inspector and the model's clip settings draw them; each reports the one
+    // field an edit changed, so a multi-clip edit sets only that field on every clip.
+    enum class RootTransformField : uint8_t {
+        None, BakeRotation, RotationBasedUpon, RotationOffset, BakePositionY, PositionYBasedUpon, PositionYOffset,
+        BakePositionXZ, PositionXZBasedUpon
+    };
+    struct RootTransformMixed{
+        bool bakeRotation = false, rotationBasedUpon = false, rotationOffset = false;
+        bool bakePositionY = false, positionYBasedUpon = false, positionYOffset = false;
+        bool bakePositionXZ = false, positionXZBasedUpon = false;
+        // the fields where `other` differs from `first` (or-ed in)
+        void add(const anim::ClipRootMotion& first, const anim::ClipRootMotion& other);
+    };
+    struct RootTransformEdit{
+        RootTransformField field = RootTransformField::None;
+        anim::ClipRootMotion value;     // the drawn value with the edit
+        const char* undoName = "";
+        bool changed() const { return field != RootTransformField::None; }
+        // `field` of `value` set on `target`
+        void applyTo(anim::ClipRootMotion& target) const;
+    };
+    // "Original", "Body Orientation", "Center of Mass", "Feet" (Unity's)
+    const char* rootRotationBasisLabel(anim::RootRotationBasis basis);
+    const char* rootPositionYBasisLabel(anim::RootPositionYBasis basis);
+    const char* rootPositionXZBasisLabel(anim::RootPositionXZBasis basis);
+    // draws a row's label (and its tooltip) in the caller's two-column table
+    using RootTransformLabel = std::function<void(const char* label, const char* tooltip)>;
+    RootTransformEdit drawRootTransformRows(const anim::ClipRootMotion& value, const RootTransformMixed& mixed, const char* idPrefix,
+                                            const RootTransformLabel& label);
     // "Position", "Rotation", "Scale", "Blend Shapes", "Lattice", "Property": the window's row names
     // too (clipui::channelLabel)
     const char* channelLabel(ClipChannel channel);

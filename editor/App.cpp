@@ -771,6 +771,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("assets.import"),
         catalogItem("assets.importTitleArt"),
+        catalogItem("assets.importUnityAnimation"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
         catalogItem("assets.importSoundEssentials"),

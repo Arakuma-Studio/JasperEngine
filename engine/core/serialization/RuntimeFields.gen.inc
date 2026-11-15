@@ -2126,6 +2126,7 @@ const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
     JE_RF(AnimationPlayerComponent, defaultFadeTime, 0x3dc0f0a8u, Float),
     JE_RF(AnimationPlayerComponent, poseFrameRate, 0xd7dfba9eu, Float),
+    JE_RF(AnimationPlayerComponent, applyRootMotion, 0x11500aacu, Bool),
 };
 const StructTable kBody_AnimationPlayerComponent{"animationplayer", kBody_AnimationPlayerComponent_fields, std::size(kBody_AnimationPlayerComponent_fields)};
 

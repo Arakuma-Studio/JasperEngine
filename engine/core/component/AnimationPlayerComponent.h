@@ -108,6 +108,9 @@ namespace jasperengine{
         float poseFrameRate = 0.0f;
         // empty = one "Base Layer" (anim::playerLayers)
         std::vector<AnimationPlayerLayer> layers;
+        // Unity's Apply Root Motion (S94 F34): the root motion of the base layer's clips moves
+        // this GameObject. Off, a clip with a root_motion block still leaves it out of the pose.
+        bool applyRootMotion = false;
 
         // runtime only (not serialised)
         bool needsLoad = true;      // the clip list changed: the next update (re)loads and rebinds

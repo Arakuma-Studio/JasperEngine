@@ -92,6 +92,10 @@ namespace jasperengine{
         // back to the starting state (Play starts and stops: the scene is restored)
         void resetAnimators();
 
+        // A ragdoll took the bones over (S94 F37): the skins of the Animator on `entity` go back to
+        // the render system (from the bone transforms) until the Animator updates again
+        void parkSkins(Entity entity);
+
         // 0 workers or not: the wave's jobs (ParallelEqualsSerial, benchmarks)
         void setParallel(bool parallel);
         // the last run (the update or a fixed step)

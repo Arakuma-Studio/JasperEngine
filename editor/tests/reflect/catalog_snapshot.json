@@ -15370,6 +15370,7 @@
    "icon": "ef8088",
    "key": "animationplayer",
    "known_keys": [
+    "applyRootMotion",
     "clips",
     "controller",
     "defaultClip",
@@ -15382,6 +15383,11 @@
    ],
    "name": "AnimationPlayerComponent",
    "properties_of_default": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -15424,6 +15430,11 @@
     ]
    },
    "properties_without_component": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -24801,6 +24812,11 @@
    ]
   },
   "AnimationPlayerComponent": {
+   "applyRootMotion": [
+    0,
+    0,
+    true
+   ],
    "clips": [
     15,
     8796093022208,
