@@ -7,11 +7,14 @@
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/Transform.h"
 #include "render/AtmosphereMath.h"
 #include "render/AtmosphereQuality.h"
+#include "render/FogProfile.h"
+#include "render/FogResolve.h"
 #include "subsystem/AtmosphereRenderer.h"
 
 #include <algorithm>
@@ -28,11 +31,15 @@ namespace {
         Scene& scene;
         // the view's last frame (null: none drawn yet)
         const AtmosphereInfo* info;
-        // the Fog the scene uses (its first), and its GameObject
-        FogComponent* fog;
+        // the Fog the scene uses (its first) with its look as the main camera sees it (its profile,
+        // a blend, the Fog Zones and runtime writes layered: FogScene), and its GameObject
+        const FogComponent* fog;
         Entity fogEntity;
-        // the active Local Volumetric Fog volumes
+        // the Fog as stored (its own fields and its profile reference)
+        const FogComponent* ownFog;
+        // the active Local Volumetric Fog volumes and Fog Zones
         std::vector<Entity> volumes;
+        std::vector<Entity> zones;
         // the main camera
         Entity camera;
         const AtmosphereOpacity& opacity;
@@ -119,10 +126,17 @@ namespace {
     // ---------------------------------------------------------------- the checks
 
     void checkAtmosphereFogMissing(AtmosphereCheckContext& context){
-        if (context.fog || context.volumes.empty())
+        if (context.fog || (context.volumes.empty() && context.zones.empty()))
             return;
+        if (context.volumes.empty()){
+            addDiagnostic(context, "fog_missing", AtmosphereSeverity::Warning, NULL_ENTITY,
+                "The scene has Fog Zones but no Fog: a zone blends its profile over the scene's Fog, so without one it changes nothing.",
+                "Add a Fog (GameObject > Effects > Fog): the zones' profiles then blend over it.");
+            return;
+        }
         addDiagnostic(context, "fog_missing", AtmosphereSeverity::Warning, NULL_ENTITY,
-            "The scene has Local Volumetric Fog but no Fog: volumes show only through the volumetric fog of a Fog of Type Height.",
+            std::string("The scene has Local Volumetric Fog but no Fog: volumes show only through the volumetric fog of a Fog of Type Height.") +
+                (context.zones.empty() ? "" : " Its Fog Zones change nothing without a Fog either."),
             "Add a Fog (GameObject > Effects > Fog), set its Type to Height and turn on Volumetric Fog > Enabled.");
     }
 
@@ -134,6 +148,101 @@ namespace {
                 "The Fog on " + quotedEntityName(context.scene, entity) + " is ignored: a scene uses only its first Fog, the one on " +
                     quotedEntityName(context.scene, context.fogEntity) + ".",
                 "Remove one of the two Fog components, and keep the look on the other.");
+        }
+    }
+
+    // the labels of the fields a profile sets, the first few
+    std::string profileFieldList(const FogProfileData& profile){
+        std::string list;
+        size_t listed = 0;
+        for (size_t i = 0; i < FOG_FIELD_COUNT; i++){
+            if (!profile.set.test(i))
+                continue;
+            if (listed == 4){
+                list += ", ...";
+                break;
+            }
+            list += (listed++ ? ", " : "") + std::string(FogFields::info(static_cast<FogField>(i)).label);
+        }
+        return list;
+    }
+
+    // a profile that sets fields, none of which the scene's fog type reads: profile_no_effect on
+    // `entity` (`owner` names it in the message)
+    void checkProfileEffect(AtmosphereCheckContext& context, const FogProfileData& profile, const std::string& key, Entity entity,
+                            const std::string& owner){
+        if (!context.fog || profile.set.none())
+            return;
+        const FogType type = context.fog->type;
+        for (size_t i = 0; i < FOG_FIELD_COUNT; i++){
+            if (profile.set.test(i) && FogFields::readByType(type, static_cast<FogField>(i)))
+                return;
+        }
+        const bool height = type == FogType::HEIGHT;
+        addDiagnostic(context, "profile_no_effect", AtmosphereSeverity::Warning, entity,
+            owner + " profile \"" + key + "\" sets only fields a fog of Type " + diagnosticFogType(type) + " ignores (" +
+                profileFieldList(profile) + "): it changes nothing.",
+            height ? "Set the Fog's Type to Linear or Exponential, or use a profile that sets the height fog's fields."
+                   : "Set the Fog's Type to Height (its height fog fields then apply), or use a profile that sets Color, Density or "
+                     "the Linear range.");
+    }
+
+    // a profile that is named but does not read: profile_missing (R6); true when it is missing
+    bool checkProfileMissing(AtmosphereCheckContext& context, const std::string& key, Entity entity, const std::string& owner,
+                             const char* consequence){
+        std::string reason;
+        if (!FogProfileLibrary::isMissing(key, &reason))
+            return false;
+        addDiagnostic(context, "profile_missing", AtmosphereSeverity::Warning, entity,
+            owner + " profile \"" + key + "\" is missing or does not read" + (reason.empty() ? std::string() : " (" + reason + ")") + ": " +
+                consequence,
+            "Restore the file, or set the Profile to an existing Fog Profile (or None).");
+        return true;
+    }
+
+    void checkAtmosphereFogProfile(AtmosphereCheckContext& context){
+        if (!context.ownFog)
+            return;
+        const std::string key = FogScene::profileKey(*context.ownFog);
+        if (key.empty())
+            return;
+        const std::shared_ptr<const FogProfileData> profile = FogScene::profileOf(*context.ownFog);
+        if (!profile){
+            checkProfileMissing(context, key, context.fogEntity, "The Fog's", "the Fog renders its own values.");
+            return;
+        }
+        checkProfileEffect(context, *profile, key, context.fogEntity, "The Fog's");
+    }
+
+    void checkAtmosphereZones(AtmosphereCheckContext& context){
+        for (Entity entity : context.zones){
+            const FogZoneComponent& zone = context.scene.getComponent<FogZoneComponent>(entity);
+            const std::string name = quotedEntityName(context.scene, entity);
+            if (!zone.profile.isSet()){
+                addDiagnostic(context, "zone_no_effect", AtmosphereSeverity::Warning, entity,
+                    "The Fog Zone " + name + " has no profile: it changes nothing.",
+                    "Set its Profile to the Fog Profile whose look it blends in.");
+                continue;
+            }
+            const std::string key = !zone.profile.path.empty() ? zone.profile.path : zone.profile.guid.str();
+            const std::shared_ptr<const FogProfileData> profile = FogProfileLibrary::getRef(zone.profile);
+            if (!profile){
+                checkProfileMissing(context, key, entity, "The Fog Zone " + name + "'s", "the zone changes nothing.");
+                continue;
+            }
+            if (profile->set.none()){
+                addDiagnostic(context, "zone_no_effect", AtmosphereSeverity::Warning, entity,
+                    "The Fog Zone " + name + "'s profile \"" + key + "\" sets no field: the zone changes nothing.",
+                    "Set the fields the zone should change in that profile, or use another profile.");
+                continue;
+            }
+            if (!(zone.weight > 0.0f)){
+                addDiagnostic(context, "zone_no_effect", AtmosphereSeverity::Warning, entity,
+                    "The Fog Zone " + name + " has Weight 0: it changes nothing.",
+                    "Raise its Weight (1: its profile's full look inside it).");
+                continue;
+            }
+            checkProfileEffect(context, *profile, key, entity, "The Fog Zone " + name + "'s");
         }
     }
 
@@ -378,6 +487,8 @@ namespace {
     void (*const ATMOSPHERE_CHECKS[])(AtmosphereCheckContext&) = {
         checkAtmosphereFogMissing,
         checkAtmosphereSecondFog,
+        checkAtmosphereFogProfile,
+        checkAtmosphereZones,
         checkAtmosphereVolumetricNeedsHeight,
         checkAtmosphereVolumetricQuality,
         checkAtmosphereMainCameraOnly,
@@ -392,25 +503,46 @@ namespace {
 
 }
 
+namespace {
+
+    // the look of `fog` the camera sees: its own fields, or with its profile, a blend, the Fog
+    // Zones at the camera and the runtime writes layered (in `scratch`)
+    const FogComponent& atmosphereLookAt(Scene& scene, const FogComponent& fog, Entity camera, FogResolve& scratch){
+        if (!FogScene::needsResolve(&scene, fog))
+            return fog;
+        const Transform* transform = camera != NULL_ENTITY ? scene.findComponent<Transform>(camera) : nullptr;
+        FogScene::resolve(&scene, fog, transform ? transform->worldPosition : FogScene::mainCameraPosition(&scene), scratch);
+        return scratch.resolved;
+    }
+
+    AtmosphereOpacity atmosphereOpacityOf(Scene& scene, const FogComponent* look, Entity camera){
+        AtmosphereOpacity opacity;
+        if (!look || camera == NULL_ENTITY)
+            return opacity;
+        const CameraComponent* component = scene.findComponent<CameraComponent>(camera);
+        const Transform* transform = scene.findComponent<Transform>(camera);
+        if (!component || !transform)
+            return opacity;
+        // worldDirection is the view's backward axis (RenderSystem::updateCamera)
+        Vector3 forward(-component->worldDirection.x, -component->worldDirection.y, -component->worldDirection.z);
+        forward = forward.length() > 0.0f ? forward.normalized() : Vector3(0.0f, 0.0f, -1.0f);
+        const Vector3& origin = transform->worldPosition;
+        opacity.valid = true;
+        opacity.at10 = AtmosphereMath::fogOpacity(*look, origin, forward, 10.0f);
+        opacity.at50 = AtmosphereMath::fogOpacity(*look, origin, forward, 50.0f);
+        opacity.at200 = AtmosphereMath::fogOpacity(*look, origin, forward, 200.0f);
+        return opacity;
+    }
+
+}
+
 AtmosphereOpacity AtmosphereDiagnostics::estimateOpacity(Scene& scene, Entity camera){
-    AtmosphereOpacity opacity;
-    FogComponent* fog = scene.findComponentFromIndex<FogComponent>(0);
+    const FogComponent* fog = scene.findComponentFromIndex<FogComponent>(0);
     const Entity cameraEntity = camera != NULL_ENTITY ? camera : scene.getCamera();
-    if (!fog || cameraEntity == NULL_ENTITY)
-        return opacity;
-    const CameraComponent* component = scene.findComponent<CameraComponent>(cameraEntity);
-    const Transform* transform = scene.findComponent<Transform>(cameraEntity);
-    if (!component || !transform)
-        return opacity;
-    // worldDirection is the view's backward axis (RenderSystem::updateCamera)
-    Vector3 forward(-component->worldDirection.x, -component->worldDirection.y, -component->worldDirection.z);
-    forward = forward.length() > 0.0f ? forward.normalized() : Vector3(0.0f, 0.0f, -1.0f);
-    const Vector3& origin = transform->worldPosition;
-    opacity.valid = true;
-    opacity.at10 = AtmosphereMath::fogOpacity(*fog, origin, forward, 10.0f);
-    opacity.at50 = AtmosphereMath::fogOpacity(*fog, origin, forward, 50.0f);
-    opacity.at200 = AtmosphereMath::fogOpacity(*fog, origin, forward, 200.0f);
-    return opacity;
+    if (!fog)
+        return AtmosphereOpacity();
+    FogResolve scratch;
+    return atmosphereOpacityOf(scene, &atmosphereLookAt(scene, *fog, cameraEntity, scratch), cameraEntity);
 }
 
 AtmosphereReport AtmosphereDiagnostics::run(const AtmosphereDiagnosticsInput& input){
@@ -419,16 +551,26 @@ AtmosphereReport AtmosphereDiagnostics::run(const AtmosphereDiagnosticsInput& in
         return report;
     Scene& scene = *input.scene;
     const Entity camera = input.camera != NULL_ENTITY ? input.camera : scene.getCamera();
-    report.opacity = estimateOpacity(scene, camera);
 
     auto fogs = scene.getComponentArray<FogComponent>();
-    FogComponent* fog = fogs->size() > 0 ? &fogs->getComponentFromIndex(0) : nullptr;
-    AtmosphereCheckContext context{input, scene, input.info, fog, fog ? fogs->getEntity(0) : NULL_ENTITY, {}, camera, report.opacity,
-                               report.diagnostics};
+    const FogComponent* fog = fogs->size() > 0 ? &fogs->getComponentFromIndex(0) : nullptr;
+    FogResolve resolved;
+    const FogComponent* look = fog ? &atmosphereLookAt(scene, *fog, camera, resolved) : nullptr;
+    report.opacity = atmosphereOpacityOf(scene, look, camera);
+
+    AtmosphereCheckContext context{input, scene, input.info, look, fog ? fogs->getEntity(0) : NULL_ENTITY, fog, {}, {}, camera,
+                                   report.opacity, report.diagnostics};
     auto volumes = scene.getComponentArray<LocalVolumetricFogComponent>();
     for (size_t i = 0; i < volumes->size(); i++){
         if (scene.isEntityActiveInHierarchy(volumes->getEntity(i)))
             context.volumes.push_back(volumes->getEntity(i));
+    }
+    if (scene.isComponentRegistered<FogZoneComponent>()){
+        auto zones = scene.getComponentArray<FogZoneComponent>();
+        for (size_t i = 0; i < zones->size(); i++){
+            if (scene.isEntityActiveInHierarchy(zones->getEntity(i)))
+                context.zones.push_back(zones->getEntity(i));
+        }
     }
     for (auto check : ATMOSPHERE_CHECKS)
         check(context);

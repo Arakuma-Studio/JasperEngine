@@ -90,6 +90,11 @@ namespace jasperengine{
         static void read(const FogComponent& fog, FogField field, float* out);
         static void write(FogComponent& fog, FogField field, const float* in);
 
+        // a fog of this type reads the field: the distance types their colour, density and linear
+        // range; Height every other one, and its colour (diagnostics' profile_no_effect, the
+        // Type a link switches to)
+        static bool readByType(FogType type, FogField field);
+
         // "color", "sky", "lit"
         static const char* colorModeName(FogColorMode mode);
         static bool findColorMode(std::string_view name, FogColorMode& mode);

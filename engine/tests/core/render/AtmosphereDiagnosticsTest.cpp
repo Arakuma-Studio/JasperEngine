@@ -2,20 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 // The atmosphere's diagnostics (docs/specs/vapor.md R17, AC9): each test builds the state that
-// raises one code, expects it, fixes the cause and expects it gone. The view's last frame is an
+// raises one code, expects it, fixes the cause and expects it gone. Fog Profiles are set in the
+// library (no files). The view's last frame is an
 // AtmosphereInfo built here (what RenderSystem::getAtmosphereInfo would hand over).
 
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/Transform.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/environment/Fog.h"
+#include "object/environment/FogZone.h"
 #include "object/environment/LocalVolumetricFog.h"
 #include "render/AtmosphereDiagnostics.h"
+#include "render/AtmosphereMath.h"
+#include "render/FogProfile.h"
 #include "subsystem/AtmosphereRenderer.h"
 
 #include <gtest/gtest.h>
@@ -37,8 +42,11 @@ namespace {
         std::vector<std::unique_ptr<LocalVolumetricFog>> volumes;
         std::vector<std::unique_ptr<Light>> lights;
         std::vector<std::unique_ptr<Camera>> cameras;
+        std::vector<std::unique_ptr<FogZone>> zones;
 
         void SetUp() override{
+            // the profiles a test sets (FogProfileLibrary is process-wide)
+            FogProfileLibrary::clear();
             // a frame of the view, at High
             info.frame = 1;
             info.quality = AtmosphereQuality::HIGH;
@@ -56,6 +64,25 @@ namespace {
 
         Entity fogEntity(size_t i = 0) const{
             return fogs[i]->getEntity();
+        }
+
+        void TearDown() override{
+            FogProfileLibrary::clear();
+        }
+
+        // a Fog Zone at the origin (its world transform as the resolve reads it)
+        FogZoneComponent& addZone(const char* name, const char* profile = nullptr){
+            zones.push_back(std::make_unique<FogZone>(&scene));
+            scene.setEntityName(zones.back()->getEntity(), name);
+            scene.getComponent<Transform>(zones.back()->getEntity()).worldPosition = Vector3(0.0f, 0.0f, 0.0f);
+            FogZoneComponent& zone = zones.back()->getComponent<FogZoneComponent>();
+            if (profile)
+                zone.profile = AssetRef(profile);
+            return zone;
+        }
+
+        Entity zoneEntity(size_t i = 0) const{
+            return zones[i]->getEntity();
         }
 
         Entity addVolume(const char* name){
@@ -117,6 +144,14 @@ namespace {
         return text.find(part) != std::string::npos;
     }
 
+    // a profile that sets the given fields to `values`' values
+    FogProfileData profileOf(std::initializer_list<FogField> fields, const FogComponent& values = FogComponent()){
+        FogProfileData profile;
+        for (FogField field : fields)
+            profile.setFrom(values, field);
+        return profile;
+    }
+
 }
 
 TEST_F(AtmosphereDiagnosticsTest, FogMissing){
@@ -127,6 +162,19 @@ TEST_F(AtmosphereDiagnosticsTest, FogMissing){
     EXPECT_FALSE(found[0].fix.empty());
 
     volumetricFog();
+    EXPECT_FALSE(has("fog_missing"));
+}
+
+// Fog Zones blend over the scene's Fog: without one they change nothing
+TEST_F(AtmosphereDiagnosticsTest, FogMissingForZones){
+    FogProfileLibrary::set("FogProfiles/cave.fogprofile", profileOf({FogField::AttenuationDistance}));
+    addZone("Cave", "FogProfiles/cave.fogprofile");
+    const std::vector<AtmosphereDiagnostic> found = find("fog_missing");
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "Fog Zones")) << found[0].message;
+    EXPECT_FALSE(found[0].fix.empty());
+
+    addFog(FogType::HEIGHT, false);
     EXPECT_FALSE(has("fog_missing"));
 }
 
@@ -334,6 +382,111 @@ TEST_F(AtmosphereDiagnosticsTest, FogOpaque){
     ASSERT_TRUE(has("fog_opaque", fogEntity()));
     fog.attenuationDistance = 400.0f;
     EXPECT_FALSE(has("fog_opaque"));
+}
+
+// a profile named but missing renders as an empty one (R6): the Fog keeps its own look, a zone has no effect
+TEST_F(AtmosphereDiagnosticsTest, ProfileMissing){
+    FogComponent& fog = addFog(FogType::HEIGHT, false);
+    fog.profile = AssetRef("FogProfiles/gone.fogprofile");
+    std::vector<AtmosphereDiagnostic> found = find("profile_missing", fogEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "FogProfiles/gone.fogprofile")) << found[0].message;
+    EXPECT_TRUE(mentions(found[0].message, "own values")) << found[0].message;
+    EXPECT_FALSE(found[0].fix.empty());
+    FogProfileLibrary::set("FogProfiles/gone.fogprofile", profileOf({FogField::AttenuationDistance}));
+    EXPECT_FALSE(has("profile_missing"));
+
+    addZone("Cave", "FogProfiles/cave.fogprofile");
+    found = find("profile_missing", zoneEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "\"Cave\"")) << found[0].message;
+    EXPECT_TRUE(mentions(found[0].message, "FogProfiles/cave.fogprofile")) << found[0].message;
+    // a missing profile is not also reported as a zone without effect
+    EXPECT_FALSE(has("zone_no_effect"));
+    FogProfileLibrary::set("FogProfiles/cave.fogprofile", profileOf({FogField::AttenuationDistance}));
+    EXPECT_FALSE(has("profile_missing"));
+}
+
+// a profile that sets only fields the fog's type ignores changes nothing
+TEST_F(AtmosphereDiagnosticsTest, ProfileNoEffect){
+    FogComponent& fog = addFog(FogType::LINEAR, false);
+    FogProfileLibrary::set("FogProfiles/night.fogprofile", profileOf({FogField::AttenuationDistance, FogField::BaseHeight}));
+    fog.profile = AssetRef("FogProfiles/night.fogprofile");
+    std::vector<AtmosphereDiagnostic> found = find("profile_no_effect", fogEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "Linear")) << found[0].message;
+    EXPECT_TRUE(mentions(found[0].message, "FogProfiles/night.fogprofile")) << found[0].message;
+    EXPECT_TRUE(mentions(found[0].fix, "Height")) << found[0].fix;
+    fog.type = FogType::HEIGHT;
+    EXPECT_FALSE(has("profile_no_effect"));
+
+    // a distance fog's fields on a Height fog, through a zone
+    FogProfileLibrary::set("FogProfiles/old.fogprofile", profileOf({FogField::Density, FogField::LinearEnd}));
+    addZone("Cave", "FogProfiles/old.fogprofile");
+    ASSERT_TRUE(has("profile_no_effect", zoneEntity()));
+    FogProfileLibrary::set("FogProfiles/old.fogprofile", profileOf({FogField::Density, FogField::Color}));
+    EXPECT_FALSE(has("profile_no_effect"));
+}
+
+// a zone without a profile, with a profile that sets nothing, or of weight 0 changes nothing
+TEST_F(AtmosphereDiagnosticsTest, ZoneNoEffect){
+    addFog(FogType::HEIGHT, false);
+    FogZoneComponent& zone = addZone("Cave");
+    std::vector<AtmosphereDiagnostic> found = find("zone_no_effect", zoneEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "no profile")) << found[0].message;
+
+    FogProfileLibrary::set("FogProfiles/empty.fogprofile", FogProfileData());
+    zone.profile = AssetRef("FogProfiles/empty.fogprofile");
+    found = find("zone_no_effect", zoneEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "sets no field")) << found[0].message;
+
+    FogProfileLibrary::set("FogProfiles/empty.fogprofile", profileOf({FogField::AttenuationDistance}));
+    EXPECT_FALSE(has("zone_no_effect"));
+
+    zone.weight = 0.0f;
+    found = find("zone_no_effect", zoneEntity());
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(mentions(found[0].message, "Weight 0")) << found[0].message;
+    zone.weight = 1.0f;
+    EXPECT_FALSE(has("zone_no_effect"));
+}
+
+// the estimate and the look checks read what the main camera sees: the Fog under its profile and zones
+TEST_F(AtmosphereDiagnosticsTest, OpacityFollowsProfile){
+    addMainCamera();
+    FogComponent& fog = addFog(FogType::HEIGHT, false);
+    fog.attenuationDistance = 100000.0f;
+    ASSERT_TRUE(has("fog_invisible", fogEntity()));
+    const float thin = run().opacity.at200;
+
+    FogComponent dense;
+    dense.attenuationDistance = 100.0f;
+    FogProfileLibrary::set("FogProfiles/dense.fogprofile", profileOf({FogField::AttenuationDistance}, dense));
+    fog.profile = AssetRef("FogProfiles/dense.fogprofile");
+    AtmosphereReport report = run();
+    ASSERT_TRUE(report.opacity.valid);
+    EXPECT_GT(report.opacity.at200, thin + 0.5f);
+    // the same as the Fog's own field at that value
+    FogComponent same = fog;
+    same.profile = AssetRef();
+    same.attenuationDistance = 100.0f;
+    EXPECT_NEAR(report.opacity.at200, AtmosphereMath::fogOpacity(same, Vector3(0.0f, 2.0f, 0.0f), Vector3(0.0f, 0.0f, -1.0f), 200.0f), 1e-5f);
+    EXPECT_FALSE(has("fog_invisible"));
+    EXPECT_NEAR(AtmosphereDiagnostics::estimateOpacity(scene).at200, report.opacity.at200, 1e-6f);
+
+    // a zone the camera is in thickens it to opaque
+    FogComponent opaque;
+    opaque.attenuationDistance = 1.0f;
+    FogProfileLibrary::set("FogProfiles/wall.fogprofile", profileOf({FogField::AttenuationDistance}, opaque));
+    addZone("Wall", "FogProfiles/wall.fogprofile");
+    ASSERT_TRUE(has("fog_opaque", fogEntity()));
+    zones.back()->getComponent<FogZoneComponent>().weight = 0.0f;
+    EXPECT_FALSE(has("fog_opaque"));
+
+    fog.profile = AssetRef();
+    EXPECT_TRUE(has("fog_invisible", fogEntity()));
 }
 
 // a scene without atmosphere has nothing to say, and a view that drew no frame skips the checks

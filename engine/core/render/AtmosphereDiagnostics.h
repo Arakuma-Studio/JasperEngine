@@ -32,8 +32,9 @@ namespace jasperengine{
     };
 
     // How much of the scene the analytic fog hides along the main camera's forward ray at 10,
-    // 50 and 200 m (R18): exact for the analytic fog; Local Volumetric Fog and the noise are not
-    // included
+    // 50 and 200 m (R18), of the look that camera sees (the Fog with its profile, a blend, the
+    // Fog Zones and runtime writes: FogScene::resolve): exact for the analytic fog; Local
+    // Volumetric Fog and the noise are not included
     struct AtmosphereOpacity{
         bool valid = false;        // the scene has a Fog and a main camera
         float at10 = 0.0f;
@@ -59,6 +60,8 @@ namespace jasperengine{
     };
 
     // Runs only when asked (an open inspector, an MCP call): never per frame in a player (R21).
+    // The checks of the look read it as the main camera sees it (FogScene::resolve at its
+    // position), so a profile, a blend or a zone counts.
     //
     // Adding a code: write a check in AtmosphereDiagnostics.cpp (void(AtmosphereCheckContext&); it
     // appends to context.out) and add it to ATMOSPHERE_CHECKS there, in the order its diagnostics

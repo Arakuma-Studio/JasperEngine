@@ -463,6 +463,14 @@ void FogFields::write(FogComponent& fog, FogField field, const float* in){
     }
 }
 
+bool FogFields::readByType(FogType type, FogField field){
+    const bool distanceField = field == FogField::Color || field == FogField::Density || field == FogField::LinearStart ||
+                               field == FogField::LinearEnd;
+    if (type != FogType::HEIGHT)
+        return distanceField;
+    return field == FogField::Color || !distanceField;
+}
+
 const char* FogFields::colorModeName(FogColorMode mode){
     switch (mode){
         case FogColorMode::COLOR: return "color";
