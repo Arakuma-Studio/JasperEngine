@@ -972,11 +972,14 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     }
 
     // the quad in world units: the pixel size over the Pixels Per Unit (S41 R6; 1 by default,
-    // exact: the vertices are the pixel sizes then)
+    // exact: the vertices are the pixel sizes then), or the Sprite's Size (S94 F30) with the pivot
+    // at the same fraction of it
     const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
-    pivotPos = Vector2(pivotPos.x / ppu, pivotPos.y / ppu);
-    const float quadWidth = (float)sprite.width / ppu;
-    const float quadHeight = (float)sprite.height / ppu;
+    const Vector2 quadSize = spriteWorldSize(sprite);
+    const float quadWidth = quadSize.x;
+    const float quadHeight = quadSize.y;
+    pivotPos = Vector2(sprite.size.x > 0.0f ? (sprite.width > 0 ? pivotPos.x / (float)sprite.width * quadWidth : 0.0f) : pivotPos.x / ppu,
+                       sprite.size.y > 0.0f ? (sprite.height > 0 ? pivotPos.y / (float)sprite.height * quadHeight : 0.0f) : pivotPos.y / ppu);
 
     if (grid > 1){
         createSpriteGrid(sprite, mesh, texWidth, texHeight, pivotPos, grid);
@@ -1015,6 +1018,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     sprite.builtFxExpand = packSpriteFxExpand(fxExpand);
     growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, frameRect.getWidth() < 0.0f,
                    frameRect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
+    flipSpriteX(sprite, x0, x1, u0, u1);
 
     mesh.buffer.addVector3(attVertex, Vector3(x0, y0, 0));
     mesh.buffer.addVector3(attVertex, Vector3(x1, y0, 0));
@@ -1037,7 +1041,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     // 2D light path. The bitangent points where v shrinks, up the image (OpenGL green),
     // which flipY turns toward +y (flatTangentHandedness)
     Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
-    Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    Vector4 tangent = spriteTangent(sprite);
 
     mesh.buffer.addVector4(attTangent, tangent);
     mesh.buffer.addVector4(attTangent, tangent);
@@ -1083,9 +1087,8 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                                   Vector2 pivotPos, int grid){
     // world units, as createSprite's quad (pivotPos is in them already)
-    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
-    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y,
-                    (float)sprite.width / ppu - pivotPos.x, (float)sprite.height / ppu - pivotPos.y, grid);
+    const Vector2 quadSize = spriteWorldSize(sprite);
+    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y, quadSize.x - pivotPos.x, quadSize.y - pivotPos.y, grid);
 }
 
 void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
@@ -1116,6 +1119,7 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         growSpriteRect(fxExpand, (float)texWidth * rectWidth, (float)texHeight * rectHeight, rect.getWidth() < 0.0f,
                        rect.getHeight() < 0.0f, x0, y0, x1, y1, u0, u1, vBottom, vTop);
     }
+    flipSpriteX(sprite, x0, x1, u0, u1);
 
     // exact at both ends: (1 - t) * a + t * b
     auto lerp = [](float a, float b, float t){
@@ -1129,7 +1133,7 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
     Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
 
     // the quad's tangent: the bitangent up the image (flatTangentHandedness)
-    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    const Vector4 tangent = spriteTangent(sprite);
 
     // rows from the bottom (y0) up, x fastest
     for (int row = 0; row <= grid; row++){
@@ -1225,7 +1229,15 @@ void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh,
     Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
     Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
     Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
-    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    const Vector4 tangent = spriteTangent(sprite);
+    // Flip X: the columns mirrored about the pivot, still left to right (the cells keep their winding)
+    if (sprite.flipX){
+        const SpriteSlicedMesh unflipped = sliced;
+        for (int column = 0; column < 4; column++){
+            sliced.x[column] = -unflipped.x[3 - column];
+            sliced.u[column] = unflipped.u[3 - column];
+        }
+    }
     for (int row = 0; row < 4; row++){
         for (int column = 0; column < 4; column++){
             mesh.buffer.addVector3(attVertex, Vector3(sliced.x[column], sliced.y[row], 0));
@@ -1551,6 +1563,24 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     tilemap.renderedTiles = numTiles;
 
     return true;
+}
+
+void MeshSystem::flipSpriteX(const SpriteComponent& sprite, float& x0, float& x1, float& u0, float& u1){
+    if (!sprite.flipX)
+        return;
+    // mirrored about the pivot (x 0): the left edge takes the right one's place and texels, so the
+    // vertices stay left to right and the triangles keep their winding
+    const float left = -x1;
+    x1 = -x0;
+    x0 = left;
+    std::swap(u0, u1);
+}
+
+Vector4 MeshSystem::spriteTangent(const SpriteComponent& sprite){
+    // u runs along -X when flipped: the tangent turns, and the handedness with it so the
+    // bitangent still points up the image
+    const float mirror = sprite.flipX ? -1.0f : 1.0f;
+    return Vector4(mirror, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY) * mirror);
 }
 
 float MeshSystem::flatTangentHandedness(bool flipY){
@@ -7281,6 +7311,7 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     input.flipY = sprite.flipY;
     input.pageWidth = page.width;
     input.pageHeight = page.height;
+    input.size = sprite.size;
     if (sliced || sprite.builtSliced){
         // a 9-slice is rebuilt on every frame change (its lattice depends on the frame's border);
         // back to Simple, the buffer goes back to the quad's size
@@ -7480,6 +7511,7 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
     input.flipY = sprite.flipY;
     input.pageWidth = page.width;
     input.pageHeight = page.height;
+    input.size = sprite.size;
     const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
     const int grid = requestedSpriteGrid(mesh);
     const int previousGrid = sprite.builtSliced ? 0 : builtSpriteGrid(mesh);

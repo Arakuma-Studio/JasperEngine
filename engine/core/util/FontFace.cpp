@@ -211,6 +211,7 @@ void FontFace::readTables(){
     int fsSelection = 0;
     int os2Weight = 0;
     int os2XHeight = 0;
+    int os2CapHeight = 0;
 
     hb_blob_t* os2 = hb_face_reference_table(face, HB_TAG('O', 'S', '/', '2'));
     unsigned int os2Length = 0;
@@ -221,6 +222,9 @@ void FontFace::readTables(){
         fsSelection = fontReadU16(os2Data + 62);
         if (fontReadU16(os2Data) >= 2 && os2Length >= 88){
             os2XHeight = readS16(os2Data + 86);
+        }
+        if (fontReadU16(os2Data) >= 2 && os2Length >= 90){
+            os2CapHeight = readS16(os2Data + 88);
         }
     }
     hb_blob_destroy(os2);
@@ -261,6 +265,22 @@ void FontFace::readTables(){
             xHeight = extents.y_bearing;
         }else{
             xHeight = ascender / 2;
+        }
+    }
+
+    if (os2CapHeight > 0){
+        capHeight = os2CapHeight;
+    }else{
+        int x0, y0, x1, y1;
+        hb_codepoint_t glyph = 0;
+        hb_glyph_extents_t extents = {};
+        if (rasterizable && stbtt_GetCodepointBox(&info, 'H', &x0, &y0, &x1, &y1) && y1 > 0){
+            capHeight = y1;
+        }else if (!rasterizable && hb_font_get_nominal_glyph(font, 'H', &glyph) && hb_font_get_glyph_extents(font, glyph, &extents) &&
+                  extents.y_bearing > 0){
+            capHeight = extents.y_bearing;
+        }else{
+            capHeight = (int)std::lround(unitsPerEm * 0.7);
         }
     }
 
@@ -307,6 +327,10 @@ int FontFace::getLineGap() const{
 
 int FontFace::getXHeight() const{
     return xHeight;
+}
+
+int FontFace::getCapHeight() const{
+    return capHeight;
 }
 
 int FontFace::getUnderlinePosition() const{

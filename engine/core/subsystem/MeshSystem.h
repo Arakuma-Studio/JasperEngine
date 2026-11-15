@@ -239,6 +239,10 @@ namespace jasperengine{
         // where v shrinks, so normal maps read OpenGL style (green up), as Lit. v shrinks toward
         // +y exactly when flipY is on (world cameras): +1 then, -1 without flipY (UI cameras)
         static float flatTangentHandedness(bool flipY);
+        // Flip X (S94 F29): a sprite quad's x span and u span mirrored about its pivot, and the
+        // tangent of its quads (flipped: along -X, the handedness turned with it)
+        static void flipSpriteX(const SpriteComponent& sprite, float& x0, float& x1, float& u0, float& u1);
+        static Vector4 spriteTangent(const SpriteComponent& sprite);
 
         bool setFoliagePreviewEntity(Entity entity);
         bool hasPendingFoliageUpdates() const;

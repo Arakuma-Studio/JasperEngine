@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest f66d3a4693d30941
+digest 25fefaa8154c87be
 --- 0
 enabled: false
 type: camera_ui
@@ -16,6 +16,7 @@ transparentSort: false
 depthTest: false
 useTarget: false
 autoResize: false
+orthographicSize: 3e+38
 framebufferWidth: 4050
 framebufferHeight: 86
 framebufferFilter: linear
@@ -36,6 +37,7 @@ transparentSort: true
 depthTest: false
 useTarget: true
 autoResize: false
+orthographicSize: 7438.5024
 framebufferWidth: 1257
 framebufferHeight: 4535
 framebufferFilter: nearest_mipmap_nearest
@@ -58,6 +60,7 @@ transparentSort: false
 depthTest: false
 useTarget: true
 autoResize: true
+orthographicSize: -44
 framebufferWidth: 3607
 framebufferHeight: 2790
 framebufferFilter: nearest_mipmap_linear
@@ -80,6 +83,7 @@ transparentSort: true
 depthTest: true
 useTarget: false
 autoResize: true
+orthographicSize: 0.5385486
 framebufferWidth: 3244
 framebufferHeight: 1359
 framebufferFilter: linear_mipmap_linear
@@ -101,6 +105,7 @@ transparentSort: false
 depthTest: true
 useTarget: true
 autoResize: true
+orthographicSize: 7070.1284
 framebufferWidth: 3701
 framebufferHeight: 1197
 framebufferFilter: linear
@@ -123,6 +128,7 @@ transparentSort: true
 depthTest: true
 useTarget: false
 autoResize: true
+orthographicSize: 3e+38
 framebufferWidth: 3000
 framebufferHeight: 3619
 framebufferFilter: nearest
@@ -145,6 +151,7 @@ transparentSort: false
 depthTest: false
 useTarget: true
 autoResize: true
+orthographicSize: -.inf
 framebufferWidth: 4713
 framebufferHeight: 3899
 framebufferFilter: linear_mipmap_linear
@@ -164,6 +171,7 @@ transparentSort: true
 depthTest: true
 useTarget: false
 autoResize: true
+orthographicSize: -0.4694375
 framebufferWidth: 2075
 framebufferHeight: 3783
 framebufferFilter: nearest_mipmap_linear
