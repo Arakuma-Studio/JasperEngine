@@ -132,7 +132,8 @@ TEST_F(LocalizationTest, TableRoundTripsAndReportsBadEntries) {
 }
 
 TEST_F(LocalizationTest, PluralTravelsAsIcuMessageFormat) {
-    const StringTableValue* value = uiTable().find("hud.coins")->find("en");
+    const StringTable table = uiTable();
+    const StringTableValue* value = table.find("hud.coins")->find("en");
     ASSERT_NE(value, nullptr);
     const std::string icu = value->toMessageFormat();
     EXPECT_EQ(icu, "{count, plural, one {{count} coin} other {{count} coins}}");
