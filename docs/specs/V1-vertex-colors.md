@@ -641,4 +641,18 @@ named in the PR).
 
 ## Deviations
 
-None yet.
+- **D8, the view's channel** (render stream): the Draw Mode's unlit debug shader is a view variant of
+  each submesh's own shader (MESH bits `Vcv`, `Vcs`, `Vk1`, `Vk2`, `includes/vertex_color_view.glsl`)
+  rather than `library:vertex_color` with a channel uniform, and the channel is a variant bit. A
+  substituted library shader would need the submesh loaded again on another vertex layout and
+  bindings, which a per-view draw mode cannot do (the Game view of the same scene keeps drawing
+  shaded); the view variant keeps its base's bindings, so it draws through the same pipeline
+  description, skinned, morphed, instanced, VAT and lattice meshes included. A uniform would add a
+  block to every view variant. Cost: the first switch to a channel compiles its variants (the mesh
+  draws shaded meanwhile). A library shader that reads no vertex colour (no `@require color` or
+  `rawcolor`) shows white in the view, and an OIT submesh draws shaded.
+- **R71, the base weight** (render stream): with fewer than five layers, `w_base` is
+  `1 - (r + g + ...)` over the channels of the layers there are (at five, `1 - (r+g+b+a)`); the
+  height-blend contrast is per layer (the formula with one contrast is the case of equal ones); ORM
+  maps reach up to four layers (at five the factors apply), which keeps five layers within 16
+  fragment textures on GLES3 with the lights.

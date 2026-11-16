@@ -123,6 +123,16 @@ rock, sand, dirt); bricks, tiles and planks lose their grid.
   (`stochasticSetup`, `stochasticTextureLuminance`, `stochasticTexture`, `stochasticNormal`...).
   The texture must wrap (REPEAT).
 
+## Vertex Blend
+
+`library:vertex_blend` blends texture layers by the mesh's vertex colours: a base and the R, G,
+B, A layers (`shaderFeatures` `LAYERS_TWO` default, to `LAYERS_FIVE`). Paint black for the base
+alone; a channel at 1 is its layer. Each layer has `u_<layer>Albedo` (height in alpha: where it
+is higher it shows first), `u_<layer>Normal`, `<layer>Tiling`, `<layer>Contrast` (wider
+blends), `<layer>Roughness`, `<layer>Metallic` (`<layer>`: `base`, `r`, `g`, `b`, `a`). `ORM`
+adds `u_<layer>Orm` maps up to four layers; `TRIPLANAR` projects by world position instead of
+`uv1`.
+
 ## Presets, stencil and the extra pass
 
 Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
