@@ -1194,6 +1194,8 @@ void VertexPaintWindow::drawDialog(uint32_t sceneId) {
         if (!open && !job.running) dialog = Dialog::None;
         return;
     }
+    // auto-resize follows the widest item: the stretched fields have none, so a floor keeps the width
+    ImGui::Dummy(ImVec2(ImGui::GetFontSize() * 22.0f, 0.0f));
     const size_t targets = VertexPaintTools::get().actingTargets(sceneId).size();
     ImGui::TextDisabled("On %zu target%s%s", targets, targets == 1 ? "" : "s", VertexPaintTools::get().selectedCount(sceneId) ? ", the selection only" : "");
     ImGui::BeginDisabled(job.running);
