@@ -48,7 +48,7 @@ namespace jasperengine::vertexcolor {
         std::vector<Vector3> faceNormals;      // per triangle, unit (zero for degenerate)
         std::vector<float> faceAreas;
         std::vector<Vector3> logicalPositions;
-        std::vector<Vector3> logicalNormals;   // area-weighted average of the member normals, unit
+        std::vector<Vector3> logicalNormals;   // corner-angle-weighted average of the member normals, unit
         AABB bounds;
 
         // derives everything above from the inputs; false (with `error`) on inconsistent inputs

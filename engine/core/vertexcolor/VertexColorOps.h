@@ -225,18 +225,28 @@ namespace jasperengine::vertexcolor {
         // R97
         const std::atomic<bool>* cancel = nullptr;
         std::function<void(float progress)> progress;
+        // the first op's number in errors ("ops[i]"): 0 for JSON callers, 1 for Lua (OpJsonHooks::firstIndex)
+        size_t firstIndex = 0;
+        // R28 per-channel stats before and after; they read every corner, so a brush turns them off
+        bool stats = true;
     };
 
     // R31: per-stroke memory (start value and the strongest weight so far per touched element)
     struct JASPERENGINE_API StrokeState {
-        std::vector<uint32_t> touched;          // GPU vertices (Vertex element) or corners (Face) touched
+        std::vector<uint32_t> touched;          // GPU vertices (base values), or corners | 0x80000000, touched
         std::vector<Vector4> start;             // value at the stroke's start, parallel to touched
         std::vector<float> weight;              // strongest weight so far, parallel to touched
-        std::vector<int32_t> slot;              // GPU vertex / corner -> index in touched, -1
-        std::vector<int32_t> cornerSlot;
-        bool hasLastPoint = false;              // the last stamp of the previous call (spacing carries over)
+        std::vector<int32_t> slot;              // GPU vertex -> index in touched, -1
+        std::vector<int32_t> cornerSlot;        // corner -> index in touched, -1
+        bool hasLastPoint = false;              // the last input point of the previous call (spacing carries over)
         Vector3 lastPoint;
-        float carry = 0.0f;
+        float lastPressure = 1.0f;
+        float carry = 0.0f;                     // arc length since the last stamp
+        // the last stamp: the next one sweeps a capsule from it (R30), across calls too
+        bool hasLastStamp = false;
+        Vector3 lastStamp;
+        float lastStampRadius = 0.0f;
+        float lastStampPressure = 1.0f;
         void reset();
     };
 
