@@ -373,7 +373,12 @@ async def test_mesh_colors_from_checker_texture(ed: Editor):
 async def test_mesh_colors_model_info_facts(ed: Editor):
     ed.require_tools("get_model_info")
     s = await colors_setup(ed)
-    info = await ed.call("get_model_info", scene=s["scene"], entity=s["quad"])
+    # split_vertices is what the render path bound: drawn frames bind the split the edit made
+    for _ in range(20):
+        info = await ed.call("get_model_info", scene=s["scene"], entity=s["quad"])
+        if info["vertex_colors"][0].get("split_vertices"):
+            break
+        await ed.screenshot("scene", scene=s["scene"])
     colors = info["vertex_colors"]
     ed.check_eq(len(colors), 1, f"one target: {colors}")
     target = colors[0]
@@ -384,20 +389,35 @@ async def test_mesh_colors_model_info_facts(ed: Editor):
     ed.check_eq(got.get("vertex_colors"), colors, "get_entity reports the same facts")
 
 
+def central_box(png: bytes) -> list:
+    """The pixels around the center of the view: on a framed ball whatever the camera's angle"""
+    w, h, rgba = pngdiff.decode(png)
+    half = int(0.06 * h)
+    out = []
+    for y in range(h // 2 - half, h // 2 + half):
+        for x in range(w // 2 - half, w // 2 + half):
+            at = (y * w + x) * 4
+            out.append(tuple(rgba[at:at + 3]))
+    return out
+
+
 async def test_mesh_colors_vertex_color_view(ed: Editor):
-    ed.require_tools("set_scene_camera", "frame_entity")
+    ed.require_tools("set_scene_camera", "frame_entity", "select_entities")
     s = await colors_setup(ed)
-    await ed.call("edit_mesh_colors", scene=s["scene"], entity=s["sphere"], ops=[{"op": "fill", "target": {"kind": "all"}, "value": "#FF0000"}])
-    await ed.call("frame_entity", scene=s["scene"], entity=s["sphere"])
+    # a ball of its own, away from the others, unselected (no gizmo over it)
+    ball = (await ed.call("create_entity", scene=s["scene"], type="sphere", name="ViewBall", position=[20, 0, 0]))["entity_id"]
+    await ed.call("edit_mesh_colors", scene=s["scene"], entity=ball, ops=[{"op": "fill", "target": {"kind": "all"}, "value": "#FF0000"}])
+    await ed.call("select_entities", scene=s["scene"], entities=[])
+    await ed.call("frame_entity", scene=s["scene"], entity=ball)
     try:
         await ed.call("set_scene_camera", scene=s["scene"], display={"draw_mode": "vertex_color"})
-        w, h, rgba = pngdiff.decode(await ed.screenshot("scene", scene=s["scene"]))
-        at = ((h // 2) * w + w // 2) * 4
-        ed.check(rgba[at] > 200 and rgba[at + 1] < 60 and rgba[at + 2] < 60, f"the ball draws its stored red, unlit: {tuple(rgba[at:at + 3])}")
+        red = central_box(await ed.screenshot("scene", scene=s["scene"]))
+        flat = sum(1 for p in red if p[0] > 240 and p[1] < 20 and p[2] < 20)
+        ed.check(flat >= 0.95 * len(red), f"the ball draws its stored red, unlit and unshaded: {flat}/{len(red)} pure red ({red[:4]})")
         await ed.call("set_scene_camera", scene=s["scene"], display={"draw_mode": "vertex_color", "vertex_color_channel": "g"})
-        w, h, rgba = pngdiff.decode(await ed.screenshot("scene", scene=s["scene"]))
-        at = ((h // 2) * w + w // 2) * 4
-        ed.check(rgba[at] < 60 and rgba[at] == rgba[at + 1] == rgba[at + 2], f"channel g is black grey: {tuple(rgba[at:at + 3])}")
+        green = central_box(await ed.screenshot("scene", scene=s["scene"]))
+        black = sum(1 for p in green if max(p) < 20)
+        ed.check(black >= 0.95 * len(green), f"channel g of red draws black: {black}/{len(green)} ({green[:4]})")
     finally:
         await ed.call("set_scene_camera", scene=s["scene"], display={"draw_mode": "shaded"})
 

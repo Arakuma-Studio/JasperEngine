@@ -21,8 +21,6 @@
 
 #include "Project.h"
 #include "Scene.h"
-#include "command/CommandHandle.h"
-#include "command/CommandHistory.h"
 #include "component/MeshComponent.h"
 #include "subsystem/VertexColorScene.h"
 #include "texture/Material.h"
@@ -515,9 +513,6 @@ EditSummary editSummary(const ColorCall& c, const vce::EditResult& result, bool 
         splits += ts;
     }
     for (const vc::Warning& w : result.warnings) addWarning(warnings, w.code, w.message);
-    if (result.createdComponent || result.createdFile) {
-        addWarning(warnings, "created", "Added the Vertex Colors component and its .vcolors file (in the same undo step).");
-    }
     out["targets"] = targets;
     out["changed"] = Json{{"vertices", vertices}, {"corners", corners}, {"split_added", splits}};
     out["warnings"] = warnings;
@@ -577,54 +572,29 @@ void editMeshColorsTool(const CallPtr& call) {
     const std::string undoName = "Edit Vertex Colors (" + c.name + ")";
     auto cache = std::make_shared<HookCache>();
 
-    // one request for every target unless an op means something else on each
+    // one op list for every target, unless an op means something else on each (its selection, its
+    // material): then each target's own list, still one request and one undo step
+    vce::EditRequest request;
+    for (size_t index : chosen) request.targets.push_back(vce::TargetRef{c.entity, c.targets[index].key});
     if (chosen.size() == 1 || !targetDependent(args["ops"])) {
-        vce::EditRequest request;
         if (!parseOps(c, c.targets[chosen[0]].key, args["ops"], cache, request.ops, error)) {
             call->fail(failText(error));
             return;
         }
-        for (size_t index : chosen) request.targets.push_back(vce::TargetRef{c.entity, c.targets[index].key});
-        request.world = world;
-        request.dryRun = dryRun;
-        request.undoName = undoName;
-        startEditJob(call, c, std::move(request), dryRun, wantHash, wait, timeout);
-        return;
-    }
-
-    // each target with its own ops, run now, grouped into one undo step (rolled back together)
-    CommandHistory* history = CommandHandle::get(c.scene->id);
-    const size_t start = history ? history->mark() : 0;
-    auto rollback = [&]() {
-        while (history && history->position() > start && history->canUndo() && history->undo()) {}
-    };
-    vce::EditResult merged;
-    merged.ok = true;
-    for (size_t index : chosen) {
-        vce::EditRequest request;
-        if (!parseOps(c, c.targets[index].key, args["ops"], cache, request.ops, error)) {
-            rollback();
-            call->fail(failText(c.targets[index].name + ": " + error));
-            return;
+    } else {
+        for (size_t index : chosen) {
+            std::vector<vc::Op> ops;
+            if (!parseOps(c, c.targets[index].key, args["ops"], cache, ops, error)) {
+                call->fail(failText(c.targets[index].name + ": " + error));
+                return;
+            }
+            request.perTargetOps.push_back(std::move(ops));
         }
-        request.targets.push_back(vce::TargetRef{c.entity, c.targets[index].key});
-        request.world = world;
-        request.dryRun = dryRun;
-        request.undoName = undoName;
-        vce::EditResult result = vce::applyEdit(c.project, c.scene->id, request);
-        if (!result.ok) {
-            rollback();
-            call->fail(failText(c.targets[index].name + ": " + result.error));
-            return;
-        }
-        merged.createdComponent = merged.createdComponent || result.createdComponent;
-        merged.createdFile = merged.createdFile || result.createdFile;
-        for (vce::TargetResult& t : result.targets) merged.targets.push_back(std::move(t));
-        for (vc::Warning& w : result.warnings) merged.warnings.push_back(std::move(w));
     }
-    if (history && !dryRun && history->position() > start) history->groupSince(start, undoName);
-    EditSummary summary = editSummary(c, merged, dryRun, wantHash, undoName);
-    call->ok(summary.text, summary.out);
+    request.world = world;
+    request.dryRun = dryRun;
+    request.undoName = undoName;
+    startEditJob(call, c, std::move(request), dryRun, wantHash, wait, timeout);
 }
 
 // R97: the facade sends large edits and bakes to a job and hands the result back on the main thread
@@ -970,6 +940,12 @@ void bakeMeshColorsTool(const CallPtr& call) {
         call->fail("path: a texture bake writes a .png; name one such as textures/rock_colors.png.");
         return;
     }
+    // the facade's paths are the assets folder's; MCP's are the project's
+    if (!c.project->isInsideAssetsPath(absolute.lexically_normal())) {
+        call->fail("path: '" + path + "' is outside the project's assets folder; write the file inside it.");
+        return;
+    }
+    const std::string assetPath = FileUtils::pathToGenericUtf8(c.project->normalizeToAssetsRelative(absolute.lexically_normal()));
     bool anyPainted = false;
     for (const vce::TargetInfo& info : c.targets) anyPainted = anyPainted || info.painted;
     if (!anyPainted) {
@@ -979,7 +955,7 @@ void bakeMeshColorsTool(const CallPtr& call) {
 
     vce::BakeTextureOptions texture;
     vce::ExportModelOptions model;
-    model.path = path;
+    model.path = assetPath;
     model.replaceInScene = mcBool(args, "replace_in_scene", false);
     model.splitHardEdges = mcBool(args, "split_hard_edges", true);
     if (output == "texture") {
@@ -993,7 +969,7 @@ void bakeMeshColorsTool(const CallPtr& call) {
             return;
         }
         texture.key = c.targets[chosen[0]].key;
-        texture.path = path;
+        texture.path = assetPath;
         auto intArg = [&](const char* key, int& out, int lo, int hi) {
             if (!mcHas(args, key)) return true;
             if (!args[key].is_number_integer() || args[key].get<int64_t>() < lo || args[key].get<int64_t>() > hi) {
