@@ -70,7 +70,7 @@ ROCK_TARGET = {"index": 0, "name": "Rock (node 0, primitive 0)", "node": 0, "pri
 ROCK_COLORS = [dict(ROCK_TARGET, mesh=51, mesh_submesh=0, vertex_count=2400, has_vertex_colors=False, painted=False)]
 MESH_COLORS_NEXT = ("Check the values with sample_mesh_colors {entity: 50, query: \"stats\"}, then look with set_scene_camera "
                     "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material "
-                    "does not use. Stronger or weaker: one call with another strength, not the same op again.")
+                    "does not use.")
 
 
 def mesh_colors_edit(vertices=640, corners=0, next_text=MESH_COLORS_NEXT, created=False):
@@ -5288,7 +5288,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Vertex painting is meshes-group work, listed only once the group is enabled: the agent must find it "
                          "rather than tint the material or make a texture.",
-        "text_at_issue": "tool_groups' meshes description ('vertex colors: paint, sample, bake')",
+        "text_at_issue": "none: tool_groups lists edit_mesh_colors under meshes (passed 2/2 without new group text, so none was added)",
         "source": "docs/specs/V1-vertex-colors.md R120, R126",
         "prompt": "Use vertex colors to make the top of the Rock moss green. Don't touch its material or textures.",
         "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(created=True)}],
@@ -5345,12 +5345,11 @@ CASES = [
     },
     {
         "id": "vc_more_is_strength_not_repeat",
-        "kind": "bad",
+        "kind": "guard",
         "groups_enabled": ["meshes"],
-        "what_happened": "Told the moss it had painted was too faint, an agent sent the same stroke three more times; one call with a "
-                         "higher strength (or blend add) gives a predictable result.",
-        "text_at_issue": "edit_mesh_colors description ('for more, one call with a higher strength, never the op repeated'), result "
-                         "next; jasper://docs/meshes 'Ops'",
+        "what_happened": "Told a stroke it painted was too faint, an agent must change the strength (or blend add) in one call, not "
+                         "send the same stroke again and again (R126). Agents did so 2/2 without any text, so the tool text says nothing of it.",
+        "text_at_issue": "none in the tool text; jasper://docs/meshes 'Ops' explains strength as reference",
         "source": "docs/specs/V1-vertex-colors.md R21, R31, R126",
         "history": [
             {"user": "Paint some light moss on the top of the Rock with a brush stroke."},
@@ -5369,13 +5368,14 @@ CASES = [
     },
     {
         "id": "vc_view_asset_colors",
-        "kind": "bad",
+        "kind": "guard",
         "groups_enabled": ["meshes"],
         "what_happened": "Asked which parts of a model's own vertex colors are dark, agents swapped materials to an unlit one to "
                          "see them, or guessed from a shaded screenshot; the Scene view's Vertex Color Draw Mode draws them, "
                          "editor only.",
         "text_at_issue": "jasper://docs/meshes ('draw_mode: \"vertex_color\" draws each mesh's raw vertex colours unlit'); "
-                         "set_scene_camera's draw_mode error",
+                         "set_scene_camera's draw_mode error. Passed 2/2 without the docs line (agents guess the name; the real "
+                         "server's error lists it), so it guards the behaviour, not that line",
         "source": "docs/specs/V1-vertex-colors.md R123",
         "prompt": "models/rock.glb came with baked vertex colors. In the Scene view, show me those colors on the Rock without "
                   "lighting, and tell me which side is darkest. Don't change the Rock or its material.",

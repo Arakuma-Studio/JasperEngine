@@ -529,8 +529,7 @@ EditSummary editSummary(const ColorCall& c, const vce::EditResult& result, bool 
         std::string next;
         if (hasWarning(warnings, "material_ignores_channels")) next = "The material does not show some painted channels (see warnings): fix that first. ";
         next += "Check the values with sample_mesh_colors {entity: " + id + ", query: \"stats\"}, then look with set_scene_camera "
-                "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material does not use. "
-                "Stronger or weaker: one call with another strength, not the same op again.";
+                "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material does not use.";
         out["next"] = next;
     }
     s.text = std::string(dryRun ? "Dry run: " : "") + "\"" + c.name + "\": " + std::to_string(vertices) + " vertices and " + std::to_string(corners) +
@@ -1099,8 +1098,8 @@ void registerMeshColorTools(McpRegistry& registry) {
         tool.allowedWhilePlaying = false;
         tool.description =
             "Paint a Model's or Mesh's vertex colors with ops: all-or-nothing, one undo step a call; adds the Vertex Colors "
-            "component. Vertex targets blend; faces/corners (or element: face) give hard edges. For more, one call with a higher "
-            "strength, never the op repeated. dry_run changes nothing. sample_mesh_colors reads. Ops: jasper://docs/meshes.";
+            "component. Vertex targets blend; faces/corners (or element: face) give hard edges. dry_run changes nothing. "
+            "sample_mesh_colors reads. Ops: jasper://docs/meshes.";
         Json op = anyObject("{op, target: {kind: all|vertices|faces|corners|selection|sphere|box|capsule|color}, value, strength...}");
         op["properties"] = Json{{"op", stringEnum("", {"set", "fill", "stroke", "gradient", "smooth", "sharpen", "noise", "adjust", "channel",
                                                         "replace_color", "from_texture", "bake_ao", "bake_thickness", "bake_curvature",
