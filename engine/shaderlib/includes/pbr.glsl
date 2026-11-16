@@ -33,8 +33,8 @@ vec4 getVertexColor(){
 // no channel of them is mapped. mesh.frag declares the block member (LIT_VC_MASKS)
 #if defined(LIT_VC_MASKS)
     // the product of the channels mapped to the input (1 when none is)
-    float vertexColorMask(float input){
-        vec4 mapped = vec4(equal(pbrParams.vertexColorMasks, vec4(input)));
+    float vertexColorMask(float target){
+        vec4 mapped = vec4(equal(pbrParams.vertexColorMasks, vec4(target)));
         vec4 values = mix(vec4(1.0), getVertexColor(), mapped);
         return values.x * values.y * values.z * values.w;
     }
