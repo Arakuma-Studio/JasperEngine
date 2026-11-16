@@ -1,8 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// docs/specs/V1-vertex-colors.md R8, R92, R131: writing the .vcolors file (layout in VertexColorFile.h),
-// apart from the reader so a game that only reads links no zstd compressor
+// docs/specs/V1-vertex-colors.md R8, R92, R131: writing the .vcolors file (layout in VertexColorFile.h).
+// The engine links only zstd's decoder (player size): the body is compressed by the compressor the
+// editor sets (editor/vertexcolor/VertexColorCompressor.cpp), else written raw, which every reader takes.
 
 #include "vertexcolor/VertexColorFile.h"
 #include "vertexcolor/VertexColorFileFormat.h"
@@ -10,8 +11,7 @@
 #include "io/AtomicFile.h"
 #include "texture/TexturePrepare.h"
 
-#include "zstd.h"
-
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <string_view>
@@ -21,6 +21,9 @@ namespace jasperengine::vertexcolor {
     namespace {
 
         using namespace fileformat;
+
+        // the editor's zstd (setBodyCompressor); none in a game, which links only zstd's decoder
+        std::atomic<BodyCompressor> vcolorsCompressor{nullptr};
 
         // Explicit little-endian bytes, never a struct dump (the file reads the same on every target)
         class VcolorsWriter {
@@ -95,20 +98,19 @@ namespace jasperengine::vertexcolor {
 
     }
 
+    void setBodyCompressor(BodyCompressor compressor) {
+        vcolorsCompressor.store(compressor);
+    }
+
     std::vector<uint8_t> encode(const Data& data, bool includeEditor) {
         std::vector<uint8_t> body;
         encodeVcolorsBody(data, includeEditor, body);
 
         uint8_t flags = includeEditor ? VCOLORS_FLAG_EDITOR : 0;
         std::vector<uint8_t> packed;
-        if (!body.empty()) {
-            packed.resize(ZSTD_compressBound(body.size()));
-            const size_t size = ZSTD_compress(packed.data(), packed.size(), body.data(), body.size(), 3);
-            if (!ZSTD_isError(size) && size < body.size()) {
-                packed.resize(size);
-                flags |= VCOLORS_FLAG_ZSTD;
-            }
-        }
+        const BodyCompressor compressor = vcolorsCompressor.load();
+        if (!body.empty() && compressor && compressor(body, packed) && packed.size() < body.size())
+            flags |= VCOLORS_FLAG_ZSTD;
 
         std::vector<uint8_t> out;
         VcolorsWriter w(out);

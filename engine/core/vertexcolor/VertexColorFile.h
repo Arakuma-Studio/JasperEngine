@@ -25,7 +25,14 @@ namespace jasperengine::vertexcolor {
     constexpr uint32_t VCOLORS_VERSION = 1;
     constexpr const char* VCOLORS_EXTENSION = ".vcolors";
 
-    // includeEditor: the snapshot section (R9); exports pass false (R92)
+    // Compresses a body into `packed` (zstd, level 3); false when it cannot. The engine links only zstd's
+    // decoder: the editor sets it once at start (editor/vertexcolor/VertexColorCompressor.cpp);
+    // without one (a game) bodies are written raw
+    using BodyCompressor = bool (*)(const std::vector<uint8_t>& body, std::vector<uint8_t>& packed);
+    JASPERENGINE_API void setBodyCompressor(BodyCompressor compressor);
+
+    // includeEditor: the snapshot section (R9); exports pass false (R92). The body is compressed when
+    // a compressor is set and that is smaller
     JASPERENGINE_API std::vector<uint8_t> encode(const Data& data, bool includeEditor);
     JASPERENGINE_API bool decode(const uint8_t* bytes, size_t size, Data& out, std::string& error);
 
