@@ -5,6 +5,7 @@
 // set_properties (every property type), set_transform, list_component_types
 #include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
+#include "MeshColorTools.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
@@ -355,6 +356,12 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit mode only: the facade reads the edited scene)
+    auto wanted = [&filter](ComponentType type) { return filter.empty() || std::find(filter.begin(), filter.end(), type) != filter.end(); };
+    if (detail != "summary" && scene->playState == ScenePlayState::STOPPED &&
+        (wanted(ComponentType::MeshComponent) || wanted(ComponentType::ModelComponent) || wanted(ComponentType::VertexColorsComponent))) {
+        if (Json colors = vertexColorTargetsJson(project, scene->id, entity); !colors.is_null()) data["vertex_colors"] = colors;
+    }
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::FluidSimulationComponent) != filter.end()) {
         const Json fluid = McpValues::fluidStatsToJson(registry, entity);

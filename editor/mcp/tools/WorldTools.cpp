@@ -14,6 +14,7 @@
 #include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
+#include "MeshColorTools.h"
 #include "AnimationKeys.h"
 
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
@@ -6142,6 +6143,8 @@ void getModelInfoTool(const CallPtr& call) {
         if (!filename.empty() && project->isInsideAssetsPath(absolute) && isModelSource(project->normalizeToAssetsRelative(absolute).generic_string()))
             info["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(absolute).generic_string());
     }
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit_mesh_colors' targets)
+    if (Json colors = vertexColorTargetsJson(call->ctx().project(), target.sceneId(), target.entity); !colors.is_null()) info["vertex_colors"] = colors;
     call->ok("Model \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(info["meshes"].size()) + " mesh(es), " +
              std::to_string(info["bone_count"].get<size_t>()) + " bone(s), " + std::to_string(info["animations"].size()) + " animation(s).", info);
 }
