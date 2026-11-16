@@ -6746,6 +6746,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     for (size_t i = 0; i < mesh.submeshes.stored(); i++){
         mesh.submeshes[i].vertexColors = (vertexColors && i < mesh.numSubmeshes) ? vertexColors->getBinding(entity, (unsigned int)i) : nullptr;
         if (mesh.submeshes[i].vertexColors){
+            // (a dynamic stream is made empty: written before the first pass that draws it)
+            mesh.submeshes[i].vertexColors->uploadColor();
             for (ExternalBuffer& buffer : mesh.submeshes[i].vertexColors->buffers)
                 buffers[buffer.getName()] = &buffer;
         }
@@ -10425,6 +10427,16 @@ void RenderSystem::updateMeshBuffers(Entity entity, MeshComponent& mesh){
             else
                 lattice.texture.updateTexture(lattice.texels.data(), lattice.texels.size() * sizeof(Vector4));
             lattice.needUpload = false;
+        }
+    }
+
+    // a Vertex Colors stream written in place (V1 R14): made empty as every dynamic buffer, then
+    // each change, once a frame
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        SubmeshVertexColors* colors = mesh.submeshes[s].vertexColors.get();
+        if (colors && colors->needUpload && colors->color && colors->color->getRender()->isCreated()){
+            colors->color->getRender()->updateBuffer((unsigned int)colors->color->getSize(), colors->color->getData());
+            colors->needUpload = false;
         }
     }
 

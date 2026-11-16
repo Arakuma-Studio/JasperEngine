@@ -73,9 +73,10 @@ void SubmeshVertexColors::releaseGpu(){
 }
 
 bool SubmeshVertexColors::uploadColor(){
-    if (!color || color->getUsage() == BufferUsage::IMMUTABLE || !color->getRender()->isCreated())
+    if (!color || color->getUsage() == BufferUsage::IMMUTABLE)
         return false;
-    return color->getRender()->updateBuffer((unsigned int)color->getSize(), color->getData());
+    needUpload = true;
+    return true;
 }
 
 // ---------------------------------------------------------------- state
@@ -597,7 +598,6 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
         }
         if (target.dynamic){
             std::memcpy(shown.data(), bytes.data(), bytes.size());
-            // (a buffer not made yet is made with these bytes by the next load)
             if (target.binding->uploadColor())
                 stats.colorUploads++;
             target.lastChange = frame;

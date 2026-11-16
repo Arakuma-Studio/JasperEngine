@@ -404,6 +404,8 @@ TEST_F(VertexColorRenderGpu, SplitDrawsTheUnsplitResultWhereNoOverride){
     ASSERT_TRUE(model.loadModel(vctest::writeGridModel(dir, "skinned", {vctest::GltfNode{"Strip", {grid}}})));
     camera.setPosition(-0.45f, 0.3f, 1.6f);
     camera.setTarget(-0.45f, 0.3f, 0.0f);
+    // shadows on: the depth passes draw it too (on the shared geometry)
+    sun.setShadows(true);
     ASSERT_TRUE(settle());
 
     // the mesh that draws the node, posed: the tip joint bent, the morph target half on
@@ -444,6 +446,11 @@ TEST_F(VertexColorRenderGpu, SplitDrawsTheUnsplitResultWhereNoOverride){
 
     const SubmeshVertexColors* binding = bindingOf(strip);
     EXPECT_EQ(binding->splitVertices, 1u) << "one vertex copy for one differing corner";
+    // the colour pass draws the split's indices, the depth passes the shared ones (R12)
+    const Submesh& drawn = mesh.submeshes[0];
+    EXPECT_EQ(drawn.render.getIndexBufferId(), binding->index->getRender()->backend.get().id);
+    EXPECT_NE(drawn.depthRender.getIndexBufferId(), binding->index->getRender()->backend.get().id);
+    EXPECT_NE(drawn.depthRender.getIndexBufferId(), 0u);
     EXPECT_EQ(boundSplitVertices(&scene, model.getEntity(), key), 1u);
     for (AttributeType type : {AttributeType::POSITION, AttributeType::NORMAL, AttributeType::BONEIDS, AttributeType::BONEWEIGHTS,
                                AttributeType::MORPHTARGET0, AttributeType::COLOR, AttributeType::INDEX})
@@ -517,11 +524,13 @@ TEST_F(VertexColorRenderGpu, EditsWriteTheStreamInPlace){
     EXPECT_EQ(colors().getStats().bindings, bindings + 1) << "written in place";
     GpuEnvironment::drawFrames(3);
     EXPECT_EQ(colors().getStats().colorUploads, uploads + 1) << "no change, no upload";
+    const std::vector<uint8_t> dynamicImage = capture();
 
     GpuEnvironment::drawFrames(100);
     ASSERT_TRUE(settle());
     EXPECT_EQ(bindingOf(box.getEntity())->color->getUsage(), BufferUsage::IMMUTABLE) << "settled: pooled again";
     EXPECT_EQ(colors().getStats().bindings, bindings + 2);
+    EXPECT_EQ(capture(), dynamicImage) << "the stream written in place draws what the immutable one of its bytes draws";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

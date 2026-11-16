@@ -47,8 +47,11 @@ namespace jasperengine {
                                   std::vector<uint8_t>&& data, BufferUsage usage);
         // the GPU buffers go (RenderSystem::destroyMesh); the next load makes them again
         void releaseGpu();
-        // the colour stream's bytes changed in place: written to its DYNAMIC buffer (false: it is
-        // not dynamic or not made yet)
+        // a DYNAMIC colour stream's bytes to write before the frame's first pass
+        // (RenderSystem::updateMeshBuffers): a dynamic buffer is made empty, and an edit writes in place
+        bool needUpload = false;
+        // the colour stream's bytes changed in place: written before the next pass that draws them
+        // (false: it is not dynamic)
         bool uploadColor();
     };
 
