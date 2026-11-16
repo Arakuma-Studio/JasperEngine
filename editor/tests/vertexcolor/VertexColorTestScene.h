@@ -41,6 +41,8 @@ namespace jasperengine::editor::vertexcolortest {
         SceneProject* sceneProject = nullptr;
         uint32_t sceneId = 0;
         CommandHistory* history = nullptr;
+        // the objects own their entities: kept until the test ends (the scene goes first)
+        std::vector<std::unique_ptr<EntityHandle>> objects;
 
         void SetUp() override {
             // a level below the scratch directory: one directly in the temp directory is the editor's
@@ -69,33 +71,35 @@ namespace jasperengine::editor::vertexcolortest {
             releaseVertexColorFiles();
             if (project) test::closeProject(*project);
             project.reset();
+            objects.clear();
         }
 
         Scene* scene() const { return sceneProject->scene; }
 
-        Entity track(Primitive& primitive, const std::string& name) {
-            const Entity entity = primitive.getEntity();
+        Entity track(std::unique_ptr<EntityHandle> object, const std::string& name) {
+            const Entity entity = object->getEntity();
             scene()->setEntityName(entity, name);
             sceneProject->entities.push_back(entity);
+            objects.push_back(std::move(object));
             return entity;
         }
 
         Entity addBox(const std::string& name = "Box") {
-            Primitive box(scene());
-            box.createBox(1.0f, 1.0f, 1.0f);
-            return track(box, name);
+            auto box = std::make_unique<Primitive>(scene());
+            box->createBox(1.0f, 1.0f, 1.0f);
+            return track(std::move(box), name);
         }
 
         Entity addSphere(const std::string& name = "Ball") {
-            Primitive sphere(scene());
-            sphere.createSphere(1.0f, 48, 24);
-            return track(sphere, name);
+            auto sphere = std::make_unique<Primitive>(scene());
+            sphere->createSphere(1.0f, 48, 24);
+            return track(std::move(sphere), name);
         }
 
         Entity addGrid(const std::string& name, unsigned int segments) {
-            Primitive grid(scene());
-            grid.createGrid(2.0f, 2.0f, segments);
-            return track(grid, name);
+            auto grid = std::make_unique<Primitive>(scene());
+            grid->createGrid(2.0f, 2.0f, segments);
+            return track(std::move(grid), name);
         }
 
         vc::TargetKey firstKey(Entity entity) {

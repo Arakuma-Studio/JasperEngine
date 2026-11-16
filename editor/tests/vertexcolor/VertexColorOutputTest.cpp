@@ -43,10 +43,7 @@ namespace {
             const std::vector<uint8_t> bytes = editor::test::makeTestModel(8, false);
             std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(path));
-            Model model(scene());
-            const Entity entity = model.getEntity();
-            scene()->setEntityName(entity, "Statue");
-            sceneProject->entities.push_back(entity);
+            const Entity entity = track(std::make_unique<Model>(scene()), "Statue");
             scene()->getComponent<ModelComponent>(entity).filename.set(file, project->getAssetDatabase().getAssetGuid(path));
             EXPECT_TRUE(scene()->getSystem<MeshSystem>()->loadGLTF(entity, path.string()));
             return entity;
@@ -284,7 +281,8 @@ TEST_F(VertexColorOutput, BakeToTextureRasterizesInUvSpace) {
         ASSERT_TRUE(vce::bakeToTexture(project.get(), sceneId, grid, options, &error)) << error;
         unsigned char* grey = stbi_load(file.string().c_str(), &width, &height, &channels, 4);
         ASSERT_NE(grey, nullptr);
-        EXPECT_NEAR((int)grey[(32 * 64 + 32) * 4], srgb ? 188 : 128, 1);
+        // (the engine's sRGB curve is its deterministic series, not libm's: within a few levels of 188)
+        EXPECT_NEAR((int)grey[(32 * 64 + 32) * 4], srgb ? 188 : 128, 3);
         stbi_image_free(grey);
     }
 }
@@ -347,7 +345,7 @@ TEST_F(VertexColorOutput, MaterialWarningsNameTheIgnoredChannelsAndTheFix) {
     history->addCommandNoMerge(new PropertyCmd<std::string>(project.get(), sceneId, box, ComponentType::VertexColorsComponent, "channelNames[0]", std::string("Moss")));
     std::array<std::string, 4> uses = vce::channelUses(project.get(), sceneId, box);
     EXPECT_EQ(uses[0], "Moss (Lit: " + std::string(MaterialPbr::getVertexColorTargetLabel(VertexColorTarget::ROUGHNESS_MULTIPLY)) + ")");
-    EXPECT_EQ(uses[1], "Lit: Tint") << "with G and B unmapped, RGB tints";
+    EXPECT_EQ(uses[1], "") << "R is mapped: G and B feed nothing (RGB tints only when R, G and B are all unmapped)";
 
     // vertex_blend with two layers reads R only
     material.shader = "library:vertex_blend";

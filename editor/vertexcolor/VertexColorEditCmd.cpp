@@ -136,9 +136,10 @@ std::string VertexColorEditCmd::refusalFor(bool toAfter) const {
     for (const TargetDelta& delta : targets) {
         std::string error;
         const std::shared_ptr<vc::Data> data = vcd::resolve(project, sceneId, delta.entity, &error);
-        if (!data) {
-            return error.empty() ? "The GameObject has no Vertex Colors file now, so this step can't be " + std::string(toAfter ? "redone." : "undone.") : error;
-        }
+        // a file that does not read stays as it is
+        if (!data && !error.empty()) return error;
+        // no file yet: an earlier step of the same group makes it (the first edit's component and file)
+        if (!data) continue;
         // the state the step left (undo) or found (redo)
         const bool exists = toAfter ? delta.existsBefore : delta.existsAfter;
         const vc::Fingerprint& fingerprint = toAfter ? delta.fingerprintBefore : delta.fingerprintAfter;

@@ -213,7 +213,9 @@ TEST_F(VertexColorEditing, StrokeCapsAtItsStrengthAndCancels) {
     const uint64_t kept = hashOf(grid);
     const size_t kept_steps = steps();
     ASSERT_TRUE(stroke.begin(project.get(), sceneId, {{grid, key}}, "Paint Vertex Colors", &error)) << error;
-    ASSERT_TRUE(stroke.apply(strokeThrough(from, to, 3, 1.0f, false)));
+    vc::Op white = strokeThrough(from, to, 3, 1.0f, false);
+    white.value = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+    ASSERT_TRUE(stroke.apply(white));
     EXPECT_NE(hashOf(grid), kept) << "the stroke shows as it goes";
     stroke.cancel();
     EXPECT_EQ(hashOf(grid), kept);
