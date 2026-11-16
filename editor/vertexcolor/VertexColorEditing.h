@@ -175,6 +175,10 @@ namespace jasperengine::editor::vertexcolor {
     // R73: the painted channels the entity's materials do not read, with the fix ("Set the material's
     // Vertex Color Use to Masks"), empty when every channel is used
     std::vector<vc::Warning> materialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted);
+    // R73's one-click fix, one undo step: a Lit material that is Off goes to Tint, Tint gets Alpha
+    // multiplies opacity when A is painted, vertex_blend gets the Layers the channels need. False with
+    // `error` when something is left (a Masks channel to map is the person's choice of input)
+    bool fixMaterialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted, std::string* error);
 
     // R7, R72: what each channel feeds ("Moss (Lit: Roughness)", "Wind (foliage)") for the panel and MCP
     std::array<std::string, 4> channelUses(Project* project, uint32_t sceneId, Entity entity);

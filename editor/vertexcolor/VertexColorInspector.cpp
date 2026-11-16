@@ -176,6 +176,15 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
 
     if (single) {
         for (const std::string& line : vertexColorProblemLines(project, sceneId, entity)) vcErrorText(line);
+        // R73: the one-click fix of the materials that ignore painted channels
+        const vc::ChannelMask painted = vcPaintedMask(project, sceneId, entity);
+        if (!materialWarnings(project, sceneId, entity, painted).empty()) {
+            if (ImGui::Button(ICON_FA_WAND_MAGIC_SPARKLES " Fix Materials")) {
+                actionError.clear();
+                fixMaterialWarnings(project, sceneId, entity, painted, &actionError);
+            }
+            ImGui::SetItemTooltip("Make the materials read the painted channels (Vertex Color Use, Alpha multiplies opacity, Layers). One undo step");
+        }
         std::string why;
         const bool paintable = canPaint(project, sceneId, entity, &why);
         ImGui::BeginDisabled(!paintable);

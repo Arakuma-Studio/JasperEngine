@@ -319,6 +319,19 @@ TEST_F(VertexColorOutput, MaterialWarningsNameTheIgnoredChannelsAndTheFix) {
     EXPECT_EQ(codes(vc::CHANNEL_R), "");
     EXPECT_NE(codes(vc::CHANNEL_G).find("channel G"), std::string::npos) << codes(vc::CHANNEL_G);
 
+    // R73's fix: Off back to Tint with Alpha multiplies opacity, one step, undoable
+    pbr.vertexColor.use = VertexColorUse::OFF;
+    material.pbr = pbr;
+    const size_t before = steps();
+    std::string fixError;
+    EXPECT_TRUE(vce::fixMaterialWarnings(project.get(), sceneId, box, vc::CHANNELS_RGBA, &fixError)) << fixError;
+    EXPECT_EQ(codes(vc::CHANNELS_RGBA), "");
+    EXPECT_EQ(steps(), before + 1);
+    ASSERT_TRUE(history->undo());
+    EXPECT_NE(codes(vc::CHANNEL_R), "");
+    pbr.vertexColor.use = VertexColorUse::MASKS;
+    material.pbr = pbr;
+
     // R7, R72: what each channel feeds, after its name
     std::string error;
     ASSERT_TRUE(vce::ensureComponent(project.get(), sceneId, box, &error)) << error;
