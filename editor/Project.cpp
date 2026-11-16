@@ -1837,12 +1837,13 @@ const editor::PlayerCrashSettings& editor::Project::getPlayerCrash() const{
 }
 
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
-    return samples == 1 || samples == 2 || samples == 4 || samples == 8;
+    return samples == 0 || samples == 1 || samples == 2 || samples == 4 || samples == 8;
 }
 
 void editor::Project::setHtmlUiMsaaSamples(int samples){
-    int valid = 1;
-    while (valid * 2 <= samples && valid < 8){
+    // 0 (Auto) stays; a count rounds down to 1, 2, 4 or 8
+    int valid = samples <= 0 ? 0 : 1;
+    while (valid > 0 && valid * 2 <= samples && valid < 8){
         valid *= 2;
     }
     this->htmlUiMsaaSamples = valid;

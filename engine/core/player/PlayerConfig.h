@@ -101,7 +101,7 @@ namespace jasperengine::player {
         int voxelCpuBudgetMB = 0;
         int voxelMeshBudgetMB = 0;
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
-        int htmlUiMsaa = 4;
+        int htmlUiMsaa = 0;   // HTML UI MSAA samples, 0 = Auto (1 on phones and the web, 4 on desktop)
         int glyphAtlasMiB = 0;
         bool sdfPrimitives = true;
         bool transformAwareText = true;

@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest b4b1f25fcd642323
+digest 9a8f257f4cee2849
 --- 0
 enabled: true
 filename: ""
@@ -7,6 +7,7 @@ sortOrder: 6
 textureWidth: 1
 textureHeight: 12
 pixelRatio: 7085.833
+msaaSamples: 8
 --- 1
 enabled: false
 filename: ui/menu.html
@@ -22,6 +23,7 @@ interactive: false
 textureWidth: 1
 textureHeight: 5
 pixelRatio: 3160.6855
+msaaSamples: 7
 --- 3
 enabled: true
 filename: ui/menu.html

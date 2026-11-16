@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: clip-path basic shapes</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .s { position: absolute; top: 10px; width: 100px; height: 70px; background: #e0a020; }
+  .s > div { margin-top: 25px; margin-left: -10px; width: 120px; height: 20px; background: #3060c0; }
+  #a { left: 10px; clip-path: inset(8px 6px round 14px); }
+  #b { left: 120px; clip-path: circle(32px at 50% 50%); }
+  #c { left: 230px; clip-path: ellipse(40px 26px at 45% 55%); }
+  #d { left: 10px; top: 90px; clip-path: inset(10% 5% 15% 20% round 20px 4px 12px / 8px); background: linear-gradient(90deg, #339966, #3366cc); }
+  #e { left: 120px; top: 90px; clip-path: circle(closest-side at 30% 50%); transform: scale(1.2); }
+  #f { left: 230px; top: 90px; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+</style>
+</head>
+<body><div class="s" id="a"><div></div></div><div class="s" id="b"><div></div></div><div class="s" id="c"><div></div></div><div class="s" id="d"><div></div></div><div class="s" id="e"><div></div></div><div class="s" id="f"><div></div></div></body>
+</html>

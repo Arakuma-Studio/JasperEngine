@@ -57,6 +57,10 @@ namespace jasperengine {
     struct RmlGeometry {
         bool alive = false;         // compiled and not released (released ones wait for reuse)
         uint64_t generation = 0;    // unique per CompileGeometry: a reused struct is another geometry to the run cache
+        // S92 R9: a hash of its vertices and indices, for the generation it was taken of (0: none
+        // yet): equal elements' layer scopes share a cache entry
+        uint64_t contentHash = 0;
+        uint64_t contentHashOf = 0;
         Rml::Span<const Rml::Vertex> vertices;
         Rml::Span<const int> indices;
         // the vertices' bounding box (document px, before the translation), computed on first use

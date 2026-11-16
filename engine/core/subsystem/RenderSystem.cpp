@@ -5463,6 +5463,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
         uberRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, pip);
     uberPassRender.endRenderPass();
 
     // where a later pass into the same destination (a layer scene's) reads the blurred scene: the
@@ -12516,6 +12517,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         ssrPassRender.applyViewport(targetViewRect());
     }
     drawSSRComposite(targetFormatFor(destination ? PIP_RTT : PIP_DEFAULT), reflection, prefiltered);
+    drawOverlayDocuments(destination, destination ? PIP_RTT : PIP_DEFAULT);
     ssrPassRender.endRenderPass();
 }
 
@@ -12854,11 +12856,48 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport, const Vector
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, blitPip);
     fixedResPassRender.endRenderPass();
 }
 
 void RenderSystem::renderFixedResolutionBlit(){
     renderBlit(&rv().fixedResFramebuffer.getRender().getColorTexture(), targetViewRect());
+}
+
+bool RenderSystem::writesView(const FramebufferRender* destination) const{
+    if (!destination)
+        return true;
+    Framebuffer* target = targetFramebuffer();
+    return target && destination == &target->getRender();
+}
+
+void RenderSystem::drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip){
+    if (!overlayDocumentsPending || !writesView(destination))
+        return;
+    overlayDocumentsPending = false;
+    // the view's framebuffer is stored bottom row first on GL, as the camera pass draws into it
+    // (isRenderingFlipped); the swapchain is not
+    scene->getSystem<UIDocumentSystem>()->drawComposite(pip, pip != PIP_DEFAULT && Engine::isOpenGL(), 1, overlayCanvasWidth,
+                                                        overlayCanvasHeight);
+}
+
+void RenderSystem::documentsCanvas(const CameraComponent& camera, float& width, float& height) const{
+    width = 0.0f;
+    height = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    // the editor's Game view outside Play frames the project canvas while the documents keep the
+    // layout the editor gave them: an Auto Resize UI or 2D camera's clip rectangle is the canvas
+    // the view shows, which the documents' canvas pixels are placed in. A game lays its documents
+    // out in the canvas its camera covers (they fill the viewport), and a Pixel Perfect Camera
+    // spans its own rectangle
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE && camera.autoResize && !camera.renderToTexture && camera.leftClip == 0.0f
+        && camera.bottomClip == 0.0f && !findPixelPerfectDrive(camera)){
+        width = camera.rightClip;
+        height = camera.topClip;
+    }
+#else
+    (void)camera;
+#endif
 }
 
 void RenderSystem::needReloadPostProcess(){
@@ -13152,6 +13191,7 @@ void RenderSystem::renderPostProcessCopy(TextureRender* source, FramebufferRende
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, PIP_RTT);
     postProcessPassRender.endRenderPass();
 }
 
@@ -13215,6 +13255,8 @@ TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, b
             applyCustomUniforms(pass.render, pass.params, frameTime, frameSceneTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
+        if (writeDestination)
+            drawOverlayDocuments(destination, PIP_RTT);
         postProcessPassRender.endRenderPass();
 
         if (writeDestination){
@@ -20157,18 +20199,32 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
-    // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
-    // 3D camera fills its viewport, in the game camera only
+    // A game view fills the viewport under any camera (S92 R15); the editor's Scene view draws
+    // the canvas of UI and 2D cameras in world space and no document under a 3D camera
     // (the documents draw over every run)
     endBatchPass();
 
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
+    bool documentsSceneView = false;
 #ifdef JASPERENGINE_EDITOR
+    documentsSceneView = passDrawsOverlays;
     drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
 #endif
-    if (drawDocuments){
+    // Screen Space - Overlay (S92 R13): when a later pass writes the camera's output (the uber
+    // pass, a blit, the chain's or SSR's composite), the documents composite there, after post
+    // and at the output resolution. The camera pass is the output without them, and with SSR
+    // composited inside it onto the view itself (the pass continues on its alias)
+    const bool ssrPassOnView = ssrInPass && ssrPassTarget != &rv().ssrSceneTarget && !usePostProcess && !useUber && !useFixedRes;
+    const bool laterOutputPass = useUber || useFixedRes || usePostProcess || (useSSR && !ssrPassOnView) || useSceneColorRedirect
+        || useMsaaRedirect;
+    overlayDocumentsPending = drawDocuments && !documentsSceneView && laterOutputPass
+        && scene->getHtmlUiRenderMode() == UIRenderMode::OVERLAY;
+    if (drawDocuments)
+        documentsCanvas(camera, overlayCanvasWidth, overlayCanvasHeight);
+    if (drawDocuments && !overlayDocumentsPending){
         camera.render.applyScissor(colorPassViewport);
-        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa);
+        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa,
+                                                            documentsSceneView, overlayCanvasWidth, overlayCanvasHeight);
     }
 
     camera.render.endRenderPass();
@@ -20290,6 +20346,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect(), barsColor);
     }
+    // (a pass above that wrote the view drew the held documents)
+    overlayDocumentsPending = false;
     passHidesEditorHidden = false;
 }
 

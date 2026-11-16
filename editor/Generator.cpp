@@ -2636,7 +2636,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // before any scene: what differs from the defaults, "{}" for a default project
     mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
 
-    // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
+    // MSAA of the HTML UI targets (Project Settings > Graphics; 0: Auto, the platform's count), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // the HTML UI's glyph atlas budget, SDF primitives and transform-aware text (S16)
     mainContent += "    UIDocumentSystem::setHtmlUiRenderOptions(" + std::to_string(htmlUiRender.glyphAtlasMiB) + ", " +
