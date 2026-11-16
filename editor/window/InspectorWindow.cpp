@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "vertexcolor/VertexPaintInspector.h"
 #include "TerrainQualityPanel.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
@@ -7988,6 +7989,8 @@ void editor::InspectorWindow::drawSubmeshMaterialRows(ComponentType cpType, Scen
 }
 
 void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // V1 R100: adds the Vertex Colors component and arms the Paint tool
+    vertexcolor::paintVertexColorsButton(project, sceneProject, entities, false);
     // a model made of parts draws its parts' meshes: its own (empty) one changes nothing
     std::vector<Entity> parts;
     if (entities.size() == 1) {
@@ -8469,6 +8472,7 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
 }
 
 void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    vertexcolor::paintVertexColorsButton(project, sceneProject, entities, true);
     beginTable(cpType, getLabelSize("Model File"));
 
     prefabRowProperty = "filename";

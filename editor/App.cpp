@@ -39,6 +39,7 @@
 #include "window/PixelArtCheckWindow.h"
 #include "window/PixelArtCleanupWindow.h"
 #include "tilemap/TilePaletteWindow.h"
+#include "vertexcolor/VertexPaintWindow.h"
 #include "tilemap/TilesetEditorWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
@@ -872,6 +873,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        catalogItem("window.vertexPaint", windowMenuLabel(vertexcolor::VertexPaintWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
@@ -1197,6 +1199,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTilePalette:
             tilePaletteWindow->setOpen(true);
+            break;
+        case AppMenuCommand::ToggleVertexPaint:
+            vertexcolor::VertexPaintWindow::get().setProject(&project);
+            vertexcolor::VertexPaintWindow::get().setOpen(true);
             break;
         case AppMenuCommand::ToggleTilesetEditor:
             // the payload: a .tileset to open (Assets > Open and run_command pass one)
@@ -2719,6 +2725,7 @@ void editor::App::setup() {
     pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
     pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
     tilePaletteWindow->bindCommands(CommandCatalog::editor());
+    vertexcolor::VertexPaintWindow::get().bindCommands(CommandCatalog::editor());
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -3215,6 +3222,9 @@ void editor::App::show(){
     pixelArtCleanupWindow->show();
     tilePaletteWindow->show();
     tilesetEditorWindow->show();
+    // also the cursor's fade and a running generator with the window closed
+    vertexcolor::VertexPaintWindow::get().setProject(&project);
+    vertexcolor::VertexPaintWindow::get().show();
     applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
@@ -5569,6 +5579,7 @@ void editor::App::prepareForProjectSwitch() {
     pixelArtCheckWindow->resetForProjectSwitch();
     pixelArtCleanupWindow->resetForProjectSwitch();
     tilePaletteWindow->resetForProjectSwitch();
+    vertexcolor::VertexPaintTools::get().reset();
     tilesetEditorWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
