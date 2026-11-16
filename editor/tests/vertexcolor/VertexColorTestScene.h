@@ -70,7 +70,8 @@ namespace jasperengine::editor::vertexcolortest {
         void TearDown() override {
             releaseVertexColorFiles();
             if (project) test::closeProject(*project);
-            project.reset();
+            // useProjectPaths registered it to be released when the tests end: it lives until then
+            (void)project.release();
             objects.clear();
         }
 

@@ -21,7 +21,6 @@
 #include "vertexcolor/VertexColorFile.h"
 
 #include <condition_variable>
-#include <cstdio>
 #include <map>
 #include <mutex>
 #include <string_view>
@@ -62,9 +61,11 @@ namespace {
             fs::path root;
         };
 
+        // never destroyed: its drain task belongs to the job system, gone at exit before statics are.
+        // What is queued is written when the project closes (releaseVertexColorFiles flushes)
         static VcFileWriter& get() {
-            static VcFileWriter writer;
-            return writer;
+            static VcFileWriter* writer = new VcFileWriter();
+            return *writer;
         }
 
         void enqueue(const std::string& file, std::shared_ptr<const vc::Data> data, uint64_t version, fs::path root) {
@@ -116,18 +117,6 @@ namespace {
             jobs.clear();
             failed.clear();
             written.clear();
-        }
-
-        ~VcFileWriter() {
-            drainTask.wait();
-            // a drain the job system's shutdown cancelled: written now, so no paint is lost at exit
-            for (auto& [file, job] : failed) {
-                if (jobs.find(file) == jobs.end()) jobs[file] = std::move(job);
-            }
-            for (const auto& [file, job] : jobs) {
-                std::string error;
-                if (!write(file, job, error)) std::fprintf(stderr, "[ERROR] Vertex colors lost, could not be written: %s: %s\n", file.c_str(), error.c_str());
-            }
         }
 
         static bool write(const std::string& file, const Job& job, std::string& error);
