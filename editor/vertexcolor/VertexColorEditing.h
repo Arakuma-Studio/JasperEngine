@@ -112,6 +112,7 @@ namespace jasperengine::editor::vertexcolor {
         bool begin(Project* project, uint32_t sceneId, std::vector<TargetRef> targets, const std::string& undoName, std::string* error);
         // runs the op (usually a stroke with the new points) on every target the stamps reach
         bool apply(const vc::Op& op, std::function<bool(const Vector3&)> visible = nullptr);
+        void lift();
         void end();          // commits one undo step
         void cancel();       // R106: restores the values from before begin()
         bool active() const;
