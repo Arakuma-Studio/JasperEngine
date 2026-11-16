@@ -162,6 +162,7 @@ namespace {
         std::vector<std::pair<std::string, size_t>> attributes;     // sorted by semantic
         std::vector<std::vector<std::pair<std::string, size_t>>> targets;
         bool blended = false;
+        bool painted = false;           // V1 R9: its vertex and triangle order is its vertex colors'
         std::string foreignExtension;
         int group = -1;
         // the cook's
@@ -337,6 +338,7 @@ namespace {
                     size_t material = 0;
                     info.blended = (GltfDocument::getIndex(primitive, "material", material) && blendedMaterials.count(material)) ||
                                    request.blended.count({(int)m, (int)p}) || request.blended.count({-1, (int)p});
+                    info.painted = request.painted.count({(int)m, (int)p}) || request.painted.count({-1, (int)p}) || request.painted.count({-1, -1});
                     if (primitive.contains("extensions") && primitive["extensions"].is_object()){
                         for (auto it = primitive["extensions"].begin(); it != primitive["extensions"].end(); ++it){
                             if (it.key() == "KHR_draco_mesh_compression"){
@@ -464,6 +466,8 @@ namespace {
             for (size_t p : group.primitives){
                 const Primitive& primitive = primitives[p];
                 if (primitive.mode != 4) lock("it is not a triangle list");
+                // its vertex colors key on the source's order (V1 R9, D11): no pass may move a vertex or a triangle
+                if (primitive.painted) lock("it is painted with vertex colors");
                 if (!primitive.foreignExtension.empty()) lock("it has the extension " + primitive.foreignExtension);
                 if (primitive.indices && (indexGroup[*primitive.indices] == -2 || otherUse[*primitive.indices] ||
                                           !vertexGroups[*primitive.indices].empty()))
@@ -822,7 +826,8 @@ namespace {
             const Primitive& primitive = primitives[p];
             if (!primitive.indexed)
                 continue;
-            if (primitive.mode != 4 || primitive.list.size() % 3 != 0)
+            // a painted primitive keeps its corners where they are (assemble encodes it as a sequence)
+            if (primitive.mode != 4 || primitive.list.size() % 3 != 0 || primitive.painted)
                 return;
             const size_t key = primitive.indices && !primitive.newIndices ? *primitive.indices : std::numeric_limits<size_t>::max() - p;
             auto [at, added] = offsets.emplace(key, all.size());
@@ -1450,7 +1455,9 @@ namespace {
                     indices.offsets.push_back(indices.data.size());
                     indices.data.insert(indices.data.end(), data[primitive.indexAccessor].begin(), data[primitive.indexAccessor].end());
                     indices.count += layouts[primitive.indexAccessor].count;
-                    indices.triangles = indices.triangles && primitive.mode == 4 && primitive.list.size() % 3 == 0;
+                    // a painted primitive's corners are its vertex colors' (V1 R3): the sequence codec, which keeps
+                    // every triangle's corner order, where the triangle codec would rotate them
+                    indices.triangles = indices.triangles && primitive.mode == 4 && primitive.list.size() % 3 == 0 && !primitive.painted;
                     indices.stride = layouts[primitive.indexAccessor].elementSize;
                     placed[primitive.indexAccessor] = true;
                 }
@@ -1913,7 +1920,7 @@ bool ModelCooker::planKey(ModelCookCache& cache, const ModelCookRequest& request
         error = "cannot read " + request.assetPath + " or one of its buffers";
         return false;
     }
-    key = ModelCookCache::key(sha, request.settings, request.family, request.blended);
+    key = ModelCookCache::key(sha, request.settings, request.family, request.blended, request.painted);
     return true;
 }
 

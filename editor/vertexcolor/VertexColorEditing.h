@@ -72,6 +72,9 @@ namespace jasperengine::editor::vertexcolor {
     struct EditRequest {
         std::vector<TargetRef> targets;          // every op runs on each target
         std::vector<vc::Op> ops;
+        // R107, R110: when not empty, perTargetOps[i] runs on targets[i] instead of `ops` (Apply and
+        // Gradient Across on several targets' own selections, from_texture per material), one step
+        std::vector<std::vector<vc::Op>> perTargetOps;
         bool world = true;
         bool dryRun = false;
         std::string undoName;                    // "Apply Color to 412 Faces"
@@ -109,6 +112,9 @@ namespace jasperengine::editor::vertexcolor {
         bool begin(Project* project, uint32_t sceneId, std::vector<TargetRef> targets, const std::string& undoName, std::string* error);
         // runs the op (usually a stroke with the new points) on every target the stamps reach
         bool apply(const vc::Op& op, std::function<bool(const Vector3&)> visible = nullptr);
+        // the pointer left the surface: the next op starts a new segment (no capsule swept across the
+        // gap), the stroke's strength cap goes on
+        void lift();
         void end();          // commits one undo step
         void cancel();       // R106: restores the values from before begin()
         bool active() const;
@@ -149,6 +155,9 @@ namespace jasperengine::editor::vertexcolor {
     // R132: a private copy of a shared file
     bool makeUnique(Project* project, uint32_t sceneId, Entity entity, std::string* error);
     int fileUserCount(Project* project, const std::string& assetPath);
+    // R100: what the Inspector's Paint (and Paint Vertex Colors) calls once the component is there:
+    // the Vertex Paint window sets it to open itself with the Paint tool armed (empty: nothing opens)
+    std::function<void(Project* project, uint32_t sceneId, Entity entity)>& paintToolHook();
 
     // R61
     struct ExportModelOptions {
@@ -172,6 +181,9 @@ namespace jasperengine::editor::vertexcolor {
     // R73: the painted channels the entity's materials do not read, with the fix ("Set the material's
     // Vertex Color Use to Masks"), empty when every channel is used
     std::vector<vc::Warning> materialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted);
+    // R73: the one-click fix of a materialWarnings() entry (the material's Vertex Color Use or channel
+    // mapping set so it reads the painted channels), one undo step; false with `error`
+    bool fixMaterialWarning(Project* project, uint32_t sceneId, Entity entity, const vc::Warning& warning, std::string* error);
 
     // R7, R72: what each channel feeds ("Moss (Lit: Roughness)", "Wind (foliage)") for the panel and MCP
     std::array<std::string, 4> channelUses(Project* project, uint32_t sceneId, Entity entity);

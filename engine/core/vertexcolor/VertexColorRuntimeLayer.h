@@ -39,6 +39,10 @@ namespace jasperengine::vertexcolor {
         bool update(double now);
         // authored values (per GPU vertex) -> values with the layer over them; clears dirty()
         void combine(std::span<const Vector4> authored, std::vector<Vector4>& out) const;
+        // ... over split vertices (R12): authored[i] is a copy of GPU vertex sourceVertex[i]
+        void combine(std::span<const Vector4> authored, std::span<const uint32_t> sourceVertex, std::vector<Vector4>& out) const;
+        // one GPU vertex's authored value with the layer over it (sampling; leaves dirty())
+        Vector4 over(uint32_t vertex, const Vector4& authored) const;
         // no live paint: no per-frame work (R82)
         bool live() const { return liveCount > 0; }
         bool dirty() const { return changed; }

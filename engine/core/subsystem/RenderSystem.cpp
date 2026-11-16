@@ -61,6 +61,9 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "component/VertexColorsComponent.h"
+#include "subsystem/VertexColorBinding.h"
+#include "subsystem/VertexColorRenderer.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
@@ -122,6 +125,55 @@ namespace {
                 pixels[y * size + x] = 0x00FFFFFFu | (alpha << 24);
             }
         }
+    }
+
+}
+
+namespace {
+
+    // V1 R11, R12: while a mesh loads, each painted submesh's attributes are its Vertex Colors
+    // binding's over its own (the colour stream; with a split every input and the indices), so the
+    // colour render and what shares its bindings (extra pass, OIT, instancing, the fade and view
+    // variants) draw them; the submesh's own come back when the load returns
+    class VertexColorAttributes {
+    public:
+        explicit VertexColorAttributes(MeshComponent& mesh): mesh(mesh){
+            for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
+                Submesh& submesh = mesh.submeshes[i];
+                if (!submesh.vertexColors)
+                    continue;
+                submesh.vertexColors->own = submesh.attributes;
+                for (const auto& [type, attribute] : submesh.vertexColors->attributes)
+                    submesh.attributes[type] = attribute;
+            }
+        }
+        ~VertexColorAttributes(){
+            restore();
+        }
+        // the submesh's own attributes back (what the detail levels are made from)
+        void restore(){
+            if (restored)
+                return;
+            restored = true;
+            for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
+                Submesh& submesh = mesh.submeshes[i];
+                if (submesh.vertexColors)
+                    submesh.attributes = submesh.vertexColors->own;
+            }
+        }
+        VertexColorAttributes(const VertexColorAttributes&) = delete;
+        VertexColorAttributes& operator=(const VertexColorAttributes&) = delete;
+    private:
+        MeshComponent& mesh;
+        bool restored = false;
+    };
+
+    // the attributes a pass binds during that load: a program that reads no vertex colour (the depth,
+    // shadow and SSAO passes, the G-buffer) keeps the shared, unsplit geometry
+    const std::map<AttributeType, Attribute>& vertexColorPassAttributes(const Submesh& submesh, ShaderData& shader){
+        if (submesh.vertexColors && shader.getAttrIndex(AttributeType::COLOR) == -1)
+            return submesh.vertexColors->own;
+        return submesh.attributes;
     }
 
 }
@@ -970,6 +1022,12 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
 
 RenderSystem::~RenderSystem(){
     setDynamicResolutionGpuTiming(false);
+}
+
+VertexColorRenderer& RenderSystem::getVertexColors(){
+    if (!vertexColors)
+        vertexColors = std::make_unique<VertexColorRenderer>(scene);
+    return *vertexColors;
 }
 
 void RenderSystem::load(){
@@ -3777,6 +3835,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
                 if (MeshSystem::usesTextureRect(submesh))
                     submesh.hasTextureRect = true;
                 scanSubmeshAttributes(submesh, buffers);
+                // a painted submesh draws a colour stream of four values (V1 R11)
+                if (submesh.vertexColors){
+                    submesh.hasVertexColor3 = false;
+                    submesh.hasVertexColor4 = true;
+                }
 
                 SubmeshShaderInputs inputs = getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
                 inputs.pixelArt = isPixelArtDrawable(entity);
@@ -6678,6 +6741,18 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         return false;
     }
 
+    // V1 R11, R12: what a Vertex Colors component binds over each submesh, its buffers made with
+    // the mesh's (a copy of the component holds the original's until this load)
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++){
+        mesh.submeshes[i].vertexColors = (vertexColors && i < mesh.numSubmeshes) ? vertexColors->getBinding(entity, (unsigned int)i) : nullptr;
+        if (mesh.submeshes[i].vertexColors){
+            // (a dynamic stream is made empty: written before the first pass that draws it)
+            mesh.submeshes[i].vertexColors->uploadColor();
+            for (ExternalBuffer& buffer : mesh.submeshes[i].vertexColors->buffers)
+                buffers[buffer.getName()] = &buffer;
+        }
+    }
+
     std::map<std::string, unsigned int> bufferStride;
 
     std::vector<BufferRender*> buffersCreatedThisLoad;
@@ -6725,6 +6800,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         bufferNameToRender[buf.first] = bufferRender;
         bufferStride[buf.first] = buf.second->getStride();
     }
+    // their colour passes bind them over the submeshes' own attributes (back when the load ends)
+    VertexColorAttributes vertexColorAttributes(mesh);
 
     if (instmesh){
         // Now buffer size is zero than it needed to be calculated
@@ -7501,7 +7578,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
 
-            for (auto const& attr : mesh.submeshes[i].attributes){
+            for (auto const& attr : vertexColorPassAttributes(mesh.submeshes[i], depthShaderData)){
                 if (bufferNameToRender.count(attr.second.getBufferName())){
                     if (attr.first == AttributeType::INDEX){
                         depthRender.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
@@ -7671,7 +7748,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
 
-            for (auto const& attr : mesh.submeshes[i].attributes){
+            for (auto const& attr : vertexColorPassAttributes(mesh.submeshes[i], gbufferShaderData)){
                 if (bufferNameToRender.count(attr.second.getBufferName())){
                     if (attr.first == AttributeType::INDEX){
                         gbufferRender.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
@@ -7864,6 +7941,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
     }
 
+    vertexColorAttributes.restore();
     updateMeshLods(entity, mesh, true);
     if (instmesh){
         instanceViewsDirty = true;
@@ -8840,7 +8918,7 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
                     batch.addAttribute(data.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
             }
         }
-        for (auto const& attr : submesh.attributes){
+        for (auto const& attr : vertexColorPassAttributes(submesh, data)){
             if (!bufferNameToRender.count(attr.second.getBufferName()))
                 continue;
             if (attr.first == AttributeType::INDEX){
@@ -10045,7 +10123,13 @@ namespace{
         const MeshLodData* lodData = submesh.lodData.get();
         const bool lodReady = lodData && lodData->numLevels > 1 && submesh.lodIndices.getRender()->isCreated();
         level = lodReady ? std::min(level, lodData->numLevels - 1) : 0;
-        if (level > 0){
+        // V1 R12: a render on split vertices draws the level's remapped triangles from the split's
+        // index buffer (the passes on the shared geometry draw the pool's)
+        const SubmeshVertexColors* colors = submesh.vertexColors.get();
+        if (level > 0 && colors && colors->index && level < colors->levels.size() &&
+                render.getIndexBufferId() == colors->index->getRender()->backend.get().id){
+            render.draw(colors->levels[level].first, colors->levels[level].second, instances);
+        }else if (level > 0){
             render.setIndexBuffer(submesh.lodIndices.getRender());
             render.draw(lodData->levels[level].indexBase, lodData->levels[level].indexCount, instances);
             render.resetIndexBuffer();
@@ -10343,6 +10427,16 @@ void RenderSystem::updateMeshBuffers(Entity entity, MeshComponent& mesh){
             else
                 lattice.texture.updateTexture(lattice.texels.data(), lattice.texels.size() * sizeof(Vector4));
             lattice.needUpload = false;
+        }
+    }
+
+    // a Vertex Colors stream written in place (V1 R14): made empty as every dynamic buffer, then
+    // each change, once a frame
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        SubmeshVertexColors* colors = mesh.submeshes[s].vertexColors.get();
+        if (colors && colors->needUpload && colors->color && colors->color->getRender()->isCreated()){
+            colors->color->getRender()->updateBuffer((unsigned int)colors->color->getSize(), colors->color->getData());
+            colors->needUpload = false;
         }
     }
 
@@ -13583,6 +13677,12 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         if (preserveAssets && mesh.eBuffers[i].isDataReleased())
             continue;
         mesh.eBuffers[i].getRender()->destroyBuffer();
+    }
+
+    // the Vertex Colors buffers this load made (V1): the next load makes them again
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++){
+        if (mesh.submeshes[i].vertexColors)
+            mesh.submeshes[i].vertexColors->releaseGpu();
     }
 
     if (mesh.needReload){
@@ -17778,6 +17878,9 @@ void RenderSystem::update(double dt){
     // them), then the bindings are packed into the meshes the loop below loads and bounds
     scene->getSystem<LatticeSystem>()->lateUpdate();
     LatticeRender::prepare(scene, latticeState);
+    // V1: the Vertex Colors components' bindings, before the meshes load below (none: one size check)
+    if (vertexColors || scene->getComponentArray<VertexColorsComponent>()->size() > 0)
+        getVertexColors().prepare();
     // the Vertex Animators' variants, payloads, clocks and bounds, before the meshes load and
     // their bounds are made below
     updateVertexAnimations();

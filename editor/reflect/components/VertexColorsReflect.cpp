@@ -38,22 +38,23 @@ namespace enums {
 namespace {
 
     constexpr uint32_t kVertexColorsOmit = OmitIfDefault | EmptyIsDefault | CodegenIfChanged;
+    constexpr uint64_t kVertexColorsUpdate = UpdateFlags_VertexColors;
 
     bool vertexColorsCustomInitialVisible(const void* owner) {
         return static_cast<const VertexColorsComponent*>(owner)->initialValue == vertexcolor::InitialValue::Custom;
     }
 
     constexpr FieldDesc kVertexColorsFields[] = {
-        JE_FIELD(VertexColorsComponent, enabled, .flags = kVertexColorsOmit,
+        JE_FIELD(VertexColorsComponent, enabled, .flags = kVertexColorsOmit, .updateFlags = kVertexColorsUpdate,
                  .tooltip = "Off: the mesh draws as without vertex colors, at no cost."),
-        JE_FIELD(VertexColorsComponent, data, .flags = kVertexColorsOmit, .asset = AssetKind::VertexColors, .label = "Data",
+        JE_FIELD(VertexColorsComponent, data, .flags = kVertexColorsOmit, .updateFlags = kVertexColorsUpdate, .asset = AssetKind::VertexColors, .label = "Data",
                  .tooltip = "The .vcolors asset holding this object's colors. Empty until the first edit creates it."),
-        JE_FIELD(VertexColorsComponent, format, .enumDesc = &enums::kVertexColorFormat, .flags = kVertexColorsOmit,
+        JE_FIELD(VertexColorsComponent, format, .enumDesc = &enums::kVertexColorFormat, .flags = kVertexColorsOmit, .updateFlags = kVertexColorsUpdate,
                  .tooltip = "How the colors are stored. High Precision keeps values above 1 and fine data channels."),
-        JE_FIELD(VertexColorsComponent, initialValue, .enumDesc = &enums::kVertexColorInitialValue, .flags = kVertexColorsOmit, .label = "Initial Value",
+        JE_FIELD(VertexColorsComponent, initialValue, .enumDesc = &enums::kVertexColorInitialValue, .flags = kVertexColorsOmit, .updateFlags = kVertexColorsUpdate, .label = "Initial Value",
                  .tooltip = "What a mesh holds before its first edit, and what Erase goes back to. Asset Colors: the mesh's own "
                             "colors, or white."),
-        JE_FIELD(VertexColorsComponent, customInitial, .flags = kVertexColorsOmit | ColorLinear | Hdr, .label = "Custom Initial",
+        JE_FIELD(VertexColorsComponent, customInitial, .flags = kVertexColorsOmit | ColorLinear | Hdr, .updateFlags = kVertexColorsUpdate, .label = "Custom Initial",
                  .visibleIf = &vertexColorsCustomInitialVisible),
         JE_FIELD(VertexColorsComponent, channelNames, .flags = kVertexColorsOmit | ListElements, .label = "Channel Names",
                  .tooltip = "Names for R, G, B and A (\"Moss\", \"Wetness\"); empty: unnamed."),

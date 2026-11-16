@@ -34,6 +34,8 @@
 namespace jasperengine{
 
     namespace vat{ class VertexAnimation; }
+    // V1 (subsystem/VertexColorBinding.h)
+    struct SubmeshVertexColors;
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
     // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
@@ -485,6 +487,9 @@ namespace jasperengine{
         // over the same buffers: null until a shadow pass first draws it, then kept (empty when
         // they would not pay off)
         std::shared_ptr<ShadowIndexBuffer> shadowIndices;
+        // runtime, set at load: what its Vertex Colors component binds over its own geometry (V1
+        // R11, R12; VertexColorRenderer owns it, null: nothing). Never saved
+        std::shared_ptr<SubmeshVertexColors> vertexColors;
     };
 
     // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
