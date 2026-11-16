@@ -183,6 +183,11 @@ namespace jasperengine{
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
         // MESH's LOD cross-fade bit ('Lfd', spec S54): the dithered variant of fading draws
         static uint64_t getLodFadeProperty();
+        // MESH's Vertex Color Draw Mode bits (V1 R102: 'Vcv', 'Vcs', 'Vk1', 'Vk2'): the editor's
+        // view variant of a mesh's shader, its raw vertex colour (channel: 0 RGB, 1-4 R, G, B, A),
+        // and their mask
+        static uint64_t getVertexColorViewProperties(int channel);
+        static uint64_t getVertexColorViewMask();
         static uint64_t getVatProperties(ShaderType shaderType);
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type

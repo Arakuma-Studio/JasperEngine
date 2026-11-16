@@ -52,8 +52,10 @@ namespace jasperengine::editor{
         NavOverlaySettings navigation;
         // the terrain overlay (T1 R65; terrain/TerrainOverlay.h)
         TerrainOverlaySettings terrainOverlay;
-        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
+        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view, and the channel
+        // the Vertex Color mode shows (V1 R102)
         ViewDrawMode drawMode = ViewDrawMode::SHADED;
+        ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
         bool showStats = false;
     };
 

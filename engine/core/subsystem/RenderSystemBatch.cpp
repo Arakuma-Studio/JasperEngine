@@ -278,10 +278,12 @@ void RenderSystem::ensureBatchMVP(Entity entity, Transform& transform){
 BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass){
     if (!Engine::isDynamicBatching())
         return BatchBreak::DISABLED;
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
     // the Scene view's LOD Level and Overdraw Draw Modes tint each object's material colour, which
-    // a batch's vertex colours already carry (each drawn alone takes the tint)
-    if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW) && !isEditorOverlay(entity))
+    // a batch's vertex colours already carry (each drawn alone takes the tint); Vertex Color draws
+    // the mesh's own vertex colours, which a batch's replace
+    if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW || rv().drawMode == ViewDrawMode::VERTEX_COLOR) &&
+            !isDrawModeExempt(entity))
         return BatchBreak::DISABLED;
 #endif
     if (signature.test(scene->getComponentId<InstancedMeshComponent>()) || mesh.spriteInstanced)

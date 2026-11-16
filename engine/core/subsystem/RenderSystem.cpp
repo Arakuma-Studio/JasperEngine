@@ -4386,6 +4386,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // Lit Quality
     if (!manifest){
         variant.litDefines = variant.pbr.defines;
+        // the material's Vertex Color section (V1 R70), for a mesh with vertex colours: none for
+        // Tint, what Lit always drew
+        if (inputs.material && (p_vertexColorVec3 || p_vertexColorVec4) && !inputs.terrain && inputs.voxelTier == 0){
+            const std::vector<std::string> vertexColorDefines = MaterialPbr::getVertexColorDefines(inputs.material->pbr, p_unlit);
+            variant.litDefines.insert(variant.litDefines.end(), vertexColorDefines.begin(), vertexColorDefines.end());
+        }
         if (inputs.terrain){
             const std::vector<std::string> terrainDefines = MaterialPbr::getDefinesFromBits(
                 getTerrainDefineBits(environment, inputs.terrainVariant, p_terrainSurface, p_unlit, inputs.normal));
@@ -6410,11 +6416,13 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
     this->disableFaceCulling = disableFaceCulling;
 }
 
-void RenderSystem::setDrawMode(ViewDrawMode drawMode){
-#ifdef JASPERENGINE_EDITOR
+void RenderSystem::setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel){
+#ifdef JE_VIEW_DRAW_MODES
     primaryView.drawMode = drawMode;
+    primaryView.vertexColorChannel = vertexColorChannel;
 #else
     (void)drawMode;
+    (void)vertexColorChannel;
 #endif
 }
 
@@ -7087,19 +7095,29 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].pbrExtOffset = 0;
         mesh.submeshes[i].pbrSetsOffset = -1;
         mesh.submeshes[i].pbrHairOffset = -1;
+        mesh.submeshes[i].pbrVertexColorOffset = -1;
         if (mesh.submeshes[i].litDefineBits != 0 && mesh.submeshes[i].customShaderId != 0){
             unsigned int paramsSize = 0;
             if (const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_pbrParams", paramsSize)){
+                bool lobes = false;
                 for (const ShaderUniform& member : *members){
                     const std::string name = ShaderData::getUniformShortName(member.name);
                     if (name == "clearcoat"){
                         mesh.submeshes[i].pbrParamsSize = (uint16_t)paramsSize;
                         mesh.submeshes[i].pbrExtOffset = (uint16_t)member.offset;
+                        lobes = true;
                     }else if (name == "set0"){
                         mesh.submeshes[i].pbrSetsOffset = (int16_t)member.offset;
                     }else if (name == "hair0"){
                         mesh.submeshes[i].pbrHairOffset = (int16_t)member.offset;
+                    }else if (name == "vertexColorMasks"){
+                        mesh.submeshes[i].pbrVertexColorOffset = (int16_t)member.offset;
                     }
+                }
+                // the vertex colour masks alone (V1 R70): the material's prefix, then the masks
+                if (!lobes && mesh.submeshes[i].pbrVertexColorOffset >= 0){
+                    mesh.submeshes[i].pbrParamsSize = (uint16_t)paramsSize;
+                    mesh.submeshes[i].pbrExtOffset = (uint16_t)mesh.submeshes[i].pbrVertexColorOffset;
                 }
             }
         }
@@ -10128,6 +10146,79 @@ void RenderSystem::releaseSubmeshLodFade(Submesh& submesh){
     submesh.lodFadeRefused = false;
 }
 
+#ifdef JE_VIEW_DRAW_MODES
+ShaderRender* RenderSystem::prepareVertexColorView(Entity entity, unsigned int submeshIndex, Submesh& submesh, ViewVertexColorChannel channel){
+    vertexColorViewDraw = drawCount;
+    if (!submesh.shader || !submesh.shader->isCreated())
+        return nullptr;
+    // the variant the submesh draws with, viewed (a fade's dither is no part of the view)
+    const uint64_t properties = (submesh.shaderProperties & ~(ShaderPool::getVertexColorViewMask() | ShaderPool::getLodFadeProperty())) |
+                                ShaderPool::getVertexColorViewProperties((int)channel);
+    VertexColorView& view = vertexColorViews[((uint64_t)entity << 8) | submeshIndex];
+    // made for another variant (a reload, another channel, an entity id used again): it goes
+    if ((view.shader || view.refused) && (view.properties != properties || view.shaderId != submesh.customShaderId || view.base != submesh.shader.get())){
+        submesh.render.releaseViewVariants();
+        if (view.shader){
+            view.shader.reset();
+            ShaderPool::remove(ShaderType::MESH, view.properties, view.shaderId);
+        }
+        view = VertexColorView();
+    }
+    if (view.refused)
+        return nullptr;
+    if (!view.shader || !view.shader->isCreated()){
+        // built off the main thread like any variant (spec S32): drawn shaded until it is ready
+        view.properties = properties;
+        view.shaderId = submesh.customShaderId;
+        view.base = submesh.shader.get();
+        view.shader = ShaderPool::get(ShaderType::MESH, properties, view.shaderId);
+    }
+    if (!view.shader->isCreated()){
+        if (ShaderPool::isShaderBuildFailed(ShaderType::MESH, properties, view.shaderId)){
+            Log::warn("The Vertex Color Draw Mode's variant %s did not build; '%s' draws shaded in it",
+                      ShaderPool::getShaderStr(ShaderType::MESH, properties, view.shaderId).c_str(), scene->getEntityName(entity).c_str());
+            view.refused = true;
+        }
+        return nullptr;
+    }
+    if (!view.checked){
+        if (!sameLodFadeBindings(submesh.shader->shaderData, view.shader->shaderData)){
+            Log::warn("The Vertex Color Draw Mode's variant %s binds other slots than its base; '%s' draws shaded in it",
+                      ShaderPool::getShaderStr(ShaderType::MESH, properties, view.shaderId).c_str(), scene->getEntityName(entity).c_str());
+            view.refused = true;
+            return nullptr;
+        }
+        view.checked = true;
+    }
+    return view.shader.get();
+}
+
+void RenderSystem::releaseVertexColorViews(){
+    for (auto& [key, view] : vertexColorViews){
+        // the objects' pipelines on the variant first, then the variant
+        const Entity entity = (Entity)(key >> 8);
+        const unsigned int submeshIndex = (unsigned int)(key & 0xff);
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+            if (submeshIndex < mesh->numSubmeshes)
+                mesh->submeshes[submeshIndex].render.releaseViewVariants();
+        }
+        if (view.shader){
+            view.shader.reset();
+            ShaderPool::remove(ShaderType::MESH, view.properties, view.shaderId);
+        }
+    }
+    vertexColorViews.clear();
+}
+#endif
+
+bool RenderSystem::isVertexColorViewPending() const{
+    for (const auto& [key, view] : vertexColorViews){
+        if (!view.refused && (!view.shader || !view.shader->isCreated() || !view.checked))
+            return true;
+    }
+    return false;
+}
+
 // a culled view draws each level bucket of its slice, and of its fade copies the dominant ones
 // (none in a pass leaving fading draws out: passLodFade); anything else draws every instance at
 // one level
@@ -10484,23 +10575,25 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         if (passLodFade == LodFadePass::FADE && !fadeCopies && !fadePlan){
             return false;
         }
-        const bool prepareFade = fadeView && lodView->enabled && lodView->crossFade && mesh.lodEnabled && mesh.numLods > 1 &&
-                                 canLodFade(mesh) && !mesh.needVariantReload;
+        bool prepareFade = fadeView && lodView->enabled && lodView->crossFade && mesh.lodEnabled && mesh.numLods > 1 &&
+                           canLodFade(mesh) && !mesh.needVariantReload;
         bool fadeReady = prepareFade;
 
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
         // the Scene view's Draw Mode (spec S54 R11): Wireframe draws the wires alone (the
-        // editor's line overlay), LOD Level and Overdraw draw every mesh in a colour of theirs
+        // editor's line overlay), LOD Level and Overdraw draw every mesh in a colour of theirs,
+        // Vertex Color with the view variant of its shader (V1 R102: no fade, no extra pass)
         const ViewDrawMode drawMode = rv().drawMode;
-        if (drawMode == ViewDrawMode::WIREFRAME && !isEditorOverlay(entity)){
+        const bool vertexColorView = drawMode == ViewDrawMode::VERTEX_COLOR && !isDrawModeExempt(entity);
+        if (drawMode == ViewDrawMode::WIREFRAME && !isDrawModeExempt(entity)){
             return false;
         }
         struct OverdrawScope{
             explicit OverdrawScope(bool on): on(on){ if (on) SokolObject::setOverdraw(true); }
             ~OverdrawScope(){ if (on) SokolObject::setOverdraw(false); }
             bool on;
-        } overdrawScope(drawMode == ViewDrawMode::OVERDRAW && !isEditorOverlay(entity));
-        const bool tintLevels = drawMode == ViewDrawMode::LOD_LEVEL && !isEditorOverlay(entity);
+        } overdrawScope(drawMode == ViewDrawMode::OVERDRAW && !isDrawModeExempt(entity));
+        const bool tintLevels = drawMode == ViewDrawMode::LOD_LEVEL && !isDrawModeExempt(entity);
         // the material drawn in a level's colour, or as a layer of heat
         std::optional<Material> tinted;
         auto drawModeMaterial = [&](const Material& material, unsigned int level) -> const Material&{
@@ -10521,7 +10614,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         };
 #else
         auto drawModeMaterial = [](const Material& material, unsigned int) -> const Material&{ return material; };
+        const bool vertexColorView = false;
 #endif
+        if (vertexColorView){
+            prepareFade = false;
+            fadeReady = false;
+        }
 
         updateMeshBuffers(entity, mesh);
         writeCustomUniforms(scene, mesh);
@@ -10618,7 +10716,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
         };
-        if (hasBeforePasses){
+        if (hasBeforePasses && !vertexColorView){
             drawExtraPasses(MaterialPassOrder::BEFORE);
         }
 
@@ -10679,14 +10777,22 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 fadeReady = fadeReady && ready;
                 if (ready && (fadePlan || (fadeCopies && passLodFade == LodFadePass::FADE)))
                     fadeShader = mesh.submeshes[i].lodFadeShader.get();
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
                 // (an Overdraw layer counts once: the dominant level)
                 if (overdrawScope.on && !fadeCopies)
                     fadeShader = nullptr;
 #endif
             }
 
-            if (!(oitDraw ? render.beginAccumulationDraw(pipType, mirroredDraw) : render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw, fadeShader))){
+            // the Vertex Color Draw Mode's view variant (shaded while it is being made, or when it
+            // cannot be: an OIT draw has none)
+            ShaderRender* viewShader = nullptr;
+#ifdef JE_VIEW_DRAW_MODES
+            if (vertexColorView && !oitDraw)
+                viewShader = prepareVertexColorView(entity, (unsigned int)i, mesh.submeshes[i], rv().vertexColorChannel);
+#endif
+
+            if (!(oitDraw ? render.beginAccumulationDraw(pipType, mirroredDraw) : render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw, fadeShader, viewShader))){
                 // a submesh whose pipeline is still being created or warmed (spec S32) draws
                 // nothing this frame, the others draw
                 if (render.isDrawWaiting())
@@ -10875,6 +10981,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         std::memcpy(block + sub.pbrSetsOffset, setsFloat, sizeof(setsFloat));
                     }
                     writePbrHairBlock(sub, block, size);
+                    if (sub.pbrVertexColorOffset >= 0 && sub.pbrVertexColorOffset + 4 * sizeof(float) <= size){
+                        float masks[4];
+                        MaterialPbr::getVertexColorMasks(material.pbr, masks);
+                        std::memcpy(block + sub.pbrVertexColorOffset, masks, sizeof(masks));
+                    }
                     render.applyUniformBlock(sub.slotFSParams, size, block);
                 }else if (sub.pbrParamsSize == 0 && batch && batch->neutralColor){
                     // a batch's vertex colours carry each object's colour factor
@@ -10888,7 +10999,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applyMaterialBlock(drawModeMaterial(mesh.submeshes[i].material, draw.lod));
             // per level (an instance view's buckets, a fade's two sides) in the LOD Level Draw Mode
             const std::function<void(unsigned int)>* beforeLevel = nullptr;
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
             std::function<void(unsigned int)> tintLevel;
             if (tintLevels){
                 tintLevel = [&](unsigned int level){
@@ -10962,7 +11073,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
         }
 
-        if (hasAfterPasses){
+        if (hasAfterPasses && !vertexColorView){
             drawExtraPasses(MaterialPassOrder::AFTER);
         }
         if (prepareFade){
@@ -13381,6 +13492,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.pbrExtOffset = 0;
         submesh.pbrSetsOffset = -1;
         submesh.pbrHairOffset = -1;
+        submesh.pbrVertexColorOffset = -1;
         submesh.slotFSLightOcclusion = -1;
         submesh.sizeFSLightOcclusion = 0;
         submesh.slotTiledLights = {-1, -1};
@@ -18892,6 +19004,11 @@ void RenderSystem::drawCameras(bool includeMain){
     drawCount++;
     rv().sceneInputDraws++;
     releaseUnusedCameraShadows();
+#ifdef JE_VIEW_DRAW_MODES
+    // the Vertex Color Draw Mode's variants go a few draws after the last view in the mode
+    if (!vertexColorViews.empty() && drawCount > vertexColorViewDraw + 3)
+        releaseVertexColorViews();
+#endif
 
     // scene inputs (phase 3): what this frame's passes did, and the targets no pass used
     // for a while (nothing to do in a scene that never read the scene)
@@ -21608,6 +21725,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.disableFog = desc.disableFog;
     view.disableFaceCulling = desc.disableFaceCulling;
     view.drawMode = desc.drawMode;
+    view.vertexColorChannel = desc.vertexColorChannel;
     view.postProcessing = desc.postProcessing;
     view.disableClouds = desc.disableClouds;
     view.atmosphereQuality = desc.atmosphereQuality;

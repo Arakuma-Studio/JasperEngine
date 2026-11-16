@@ -698,6 +698,24 @@ uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
 }
 
+// MESH 55-58, after S50's 'Tcl': 'Vcv' the view, 'Vcs' one channel as grey, 'Vk1' 'Vk2' its index
+// (R 0, G 1, B 2, A 3). Only the editor's Scene view asks for them (RenderSystem::drawMesh)
+uint64_t ShaderPool::getVertexColorViewProperties(int channel){
+    if (channel <= 0)
+        return shaderPropertyBit(55);
+    const int index = std::min(channel, 4) - 1;
+    uint64_t bits = shaderPropertyBit(55) | shaderPropertyBit(56);
+    if (index & 1)
+        bits |= shaderPropertyBit(57);
+    if (index & 2)
+        bits |= shaderPropertyBit(58);
+    return bits;
+}
+
+uint64_t ShaderPool::getVertexColorViewMask(){
+    return shaderPropertyBit(55) | shaderPropertyBit(56) | shaderPropertyBit(57) | shaderPropertyBit(58);
+}
+
 uint64_t ShaderPool::getWaterExclusionProperty(){
     return shaderPropertyBit(42);
 }
@@ -791,7 +809,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 55;
+        case ShaderType::MESH:   return 59;
         case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -928,6 +946,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 53: return shortName ? "Twd" : "Terrain World";
             // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
             case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
+            // the editor's Vertex Color Draw Mode (V1 R102, getVertexColorViewProperties): the
+            // view, one channel as grey, and that channel's index
+            case 55: return shortName ? "Vcv" : "Vertex Color View";
+            case 56: return shortName ? "Vcs" : "Vertex Color View Channel";
+            case 57: return shortName ? "Vk1" : "Vertex Color View Channel Bit 1";
+            case 58: return shortName ? "Vk2" : "Vertex Color View Channel Bit 2";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {

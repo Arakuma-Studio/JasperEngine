@@ -109,6 +109,13 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
                 case PbrFieldType::TexCoord: field(path.c_str(), *(int*)pbrField.ref(before), *(int*)pbrField.ref(after)); break;
             }
         }
+        // the Vertex Color section (V1 R70)
+        field("pbr.vertexColor.use", fromPbr.vertexColor.use, toPbr.vertexColor.use);
+        field("pbr.vertexColor.alphaOpacity", fromPbr.vertexColor.alphaOpacity, toPbr.vertexColor.alphaOpacity);
+        field("pbr.vertexColor.r", fromPbr.vertexColor.r, toPbr.vertexColor.r);
+        field("pbr.vertexColor.g", fromPbr.vertexColor.g, toPbr.vertexColor.g);
+        field("pbr.vertexColor.b", fromPbr.vertexColor.b, toPbr.vertexColor.b);
+        field("pbr.vertexColor.a", fromPbr.vertexColor.a, toPbr.vertexColor.a);
     }
     return true;
 }

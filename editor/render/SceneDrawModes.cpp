@@ -35,6 +35,20 @@ namespace{
         {ViewDrawMode::SHADED_WIREFRAME, "shaded_wireframe", "Shaded Wireframe"},
         {ViewDrawMode::LOD_LEVEL, "lod_level", "LOD Level"},
         {ViewDrawMode::OVERDRAW, "overdraw", "Overdraw"},
+        {ViewDrawMode::VERTEX_COLOR, "vertex_color", "Vertex Color"},
+    };
+
+    struct ChannelName{
+        ViewVertexColorChannel channel;
+        const char* key;
+        const char* label;
+    };
+    const ChannelName kChannels[VERTEX_COLOR_CHANNEL_COUNT] = {
+        {ViewVertexColorChannel::RGB, "rgb", "RGB"},
+        {ViewVertexColorChannel::R, "r", "R"},
+        {ViewVertexColorChannel::G, "g", "G"},
+        {ViewVertexColorChannel::B, "b", "B"},
+        {ViewVertexColorChannel::A, "a", "A"},
     };
 
     const Vector4 kWireColor(0.05f, 0.05f, 0.05f, 1.0f);
@@ -64,6 +78,28 @@ const char* editor::drawModeLabel(ViewDrawMode mode){
 
 bool editor::drawModeHasWires(ViewDrawMode mode){
     return mode == ViewDrawMode::WIREFRAME || mode == ViewDrawMode::SHADED_WIREFRAME;
+}
+
+const char* editor::vertexColorChannelKey(ViewVertexColorChannel channel){
+    for (const ChannelName& name : kChannels)
+        if (name.channel == channel) return name.key;
+    return "rgb";
+}
+
+bool editor::vertexColorChannelFromKey(std::string_view key, ViewVertexColorChannel& channel){
+    for (const ChannelName& name : kChannels){
+        if (key == name.key){
+            channel = name.channel;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* editor::vertexColorChannelLabel(ViewVertexColorChannel channel){
+    for (const ChannelName& name : kChannels)
+        if (name.channel == channel) return name.label;
+    return "RGB";
 }
 
 const SceneWireframe::Edges* SceneWireframe::edgesOf(MeshComponent& mesh, Entity entity, unsigned int submesh, unsigned int level){

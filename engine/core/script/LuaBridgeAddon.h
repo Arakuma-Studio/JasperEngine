@@ -239,6 +239,9 @@ namespace luabridge
     // S57's lighting
     template<> struct Stack<TransparencyMode> : EnumWrapper<TransparencyMode>{};
     template<> struct Stack<ShadingModel> : EnumWrapper<ShadingModel>{};
+    // the built-in Lit's Vertex Color section (V1 R70)
+    template<> struct Stack<VertexColorUse> : EnumWrapper<VertexColorUse>{};
+    template<> struct Stack<VertexColorTarget> : EnumWrapper<VertexColorTarget>{};
     template<> struct Stack<CapsuleCastShadows> : EnumWrapper<CapsuleCastShadows>{};
     template<> struct Stack<CapsuleDirection> : EnumWrapper<CapsuleDirection>{};
     template<> struct Stack<LightMode> : EnumWrapper<LightMode>{};

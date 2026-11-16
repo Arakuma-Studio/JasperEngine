@@ -542,6 +542,24 @@ std::string editor::Factory::formatMaterialPbr(int indentSpaces, const Material&
                 break;
         }
     }
+    // the Vertex Color section (V1 R70)
+    const MaterialPbrExtensions::VertexColor& vertexColor = values.vertexColor;
+    const std::string vertexColorMember = target + ".pbr.edit().vertexColor.";
+    static const char* const useNames[] = {"VertexColorUse::TINT", "VertexColorUse::MASKS", "VertexColorUse::OFF"};
+    static const char* const targetNames[] = {"VertexColorTarget::NONE", "VertexColorTarget::OCCLUSION", "VertexColorTarget::ROUGHNESS_MULTIPLY",
+                                              "VertexColorTarget::ROUGHNESS_REPLACE", "VertexColorTarget::METALLIC", "VertexColorTarget::EMISSION",
+                                              "VertexColorTarget::OPACITY", "VertexColorTarget::ALBEDO_TINT"};
+    static_assert(sizeof(targetNames) / sizeof(targetNames[0]) == (size_t)VertexColorTarget::COUNT, "a name per VertexColorTarget");
+    if (vertexColor.use != defaults.vertexColor.use && (int)vertexColor.use >= 0 && (int)vertexColor.use < 3)
+        code << ind << vertexColorMember << "use = " << useNames[(int)vertexColor.use] << ";\n";
+    if (vertexColor.alphaOpacity != defaults.vertexColor.alphaOpacity)
+        code << ind << vertexColorMember << "alphaOpacity = " << formatBool(vertexColor.alphaOpacity) << ";\n";
+    const char* const channels[] = {"r", "g", "b", "a"};
+    for (int channel = 0; channel < 4; channel++) {
+        const int value = (int)MaterialPbr::getVertexColorTarget(vertexColor, channel);
+        if (value > 0 && value < (int)VertexColorTarget::COUNT)
+            code << ind << vertexColorMember << channels[channel] << " = " << targetNames[value] << ";\n";
+    }
     return code.str();
 }
 

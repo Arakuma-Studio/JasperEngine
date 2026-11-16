@@ -940,6 +940,36 @@
      16,
      true
     ],
+    "submeshes[].material.pbr.vertexColor.a": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.alphaOpacity": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.b": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.g": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.r": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.use": [
+     13,
+     16,
+     true
+    ],
     "submeshes[].material.pbr.volume.attenuationColor": [
      5,
      0,
@@ -28065,6 +28095,36 @@
    ],
    "submeshes[N].material.pbr.transmission.mapTexCoord": [
     8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.a": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.alphaOpacity": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.b": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.g": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.r": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.use": [
+    13,
     16,
     true
    ],

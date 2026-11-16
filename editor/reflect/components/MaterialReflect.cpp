@@ -141,6 +141,16 @@ namespace {
         JE_FIELD(PBR::Hair, flowMapTexCoord, .updateFlags = kTexture, .min = 0.0f, .max = 1.0f, .label = "Flow Map UV Set"),
     };
 
+    // the Vertex Color section (V1 R70): every value picks the variant (its defines)
+    constexpr FieldDesc kVertexColorFields[] = {
+        JE_FIELD(PBR::VertexColor, use, .enumDesc = &enums::kVertexColorUse, .updateFlags = kTexture),
+        JE_FIELD(PBR::VertexColor, alphaOpacity, .updateFlags = kTexture, .label = "Alpha Multiplies Opacity"),
+        JE_FIELD(PBR::VertexColor, r, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "R Channel"),
+        JE_FIELD(PBR::VertexColor, g, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "G Channel"),
+        JE_FIELD(PBR::VertexColor, b, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "B Channel"),
+        JE_FIELD(PBR::VertexColor, a, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "A Channel"),
+    };
+
     const StructDesc kClearcoatStruct = JE_STRUCT_DESC(PBR::Clearcoat, "Clearcoat", kClearcoatFields);
     const StructDesc kSheenStruct = JE_STRUCT_DESC(PBR::Sheen, "Sheen", kSheenFields);
     const StructDesc kAnisotropyStruct = JE_STRUCT_DESC(PBR::Anisotropy, "Anisotropy", kAnisotropyFields);
@@ -150,6 +160,7 @@ namespace {
     const StructDesc kSpecularStruct = JE_STRUCT_DESC(PBR::Specular, "Specular", kSpecularFields);
     const StructDesc kHexStruct = JE_STRUCT_DESC(PBR::Hex, "Hex", kHexFields);
     const StructDesc kHairStruct = JE_STRUCT_DESC(PBR::Hair, "Hair", kHairFields);
+    const StructDesc kVertexColorStruct = JE_STRUCT_DESC(PBR::VertexColor, "VertexColor", kVertexColorFields);
 
     constexpr FieldDesc kPbrFields[] = {
         JE_FIELD(PBR, clearcoat, .ops = &ops::Value<PBR::Clearcoat>, .structDesc = &kClearcoatStruct, .label = "Clear Coat"),
@@ -161,6 +172,7 @@ namespace {
         JE_FIELD(PBR, specular, .ops = &ops::Value<PBR::Specular>, .structDesc = &kSpecularStruct, .label = "Specular & IOR"),
         JE_FIELD(PBR, hex, .ops = &ops::Value<PBR::Hex>, .structDesc = &kHexStruct, .label = "Hex Tiling"),
         JE_FIELD(PBR, hair, .ops = &ops::Value<PBR::Hair>, .structDesc = &kHairStruct),
+        JE_FIELD(PBR, vertexColor, .ops = &ops::Value<PBR::VertexColor>, .structDesc = &kVertexColorStruct, .label = "Vertex Color"),
     };
 
 }

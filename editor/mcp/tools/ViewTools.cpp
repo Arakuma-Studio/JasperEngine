@@ -1096,7 +1096,7 @@ void setSceneCameraTool(const CallPtr& call) {
             if (it.key() == "draw_mode") {
                 ViewDrawMode mode;
                 if (!it.value().is_string() || !drawModeFromKey(it.value().get<std::string>(), mode)) {
-                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level or overdraw.");
+                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level, overdraw or vertex_color.");
                     return;
                 }
                 if (!is3D && mode != ViewDrawMode::SHADED) {
@@ -1105,11 +1105,19 @@ void setSceneCameraTool(const CallPtr& call) {
                 }
                 continue;
             }
+            if (it.key() == "vertex_color_channel") {
+                ViewVertexColorChannel channel;
+                if (!it.value().is_string() || !vertexColorChannelFromKey(it.value().get<std::string>(), channel)) {
+                    call->fail("display.vertex_color_channel must be rgb, r, g, b or a (the channel draw_mode vertex_color shows).");
+                    return;
+                }
+                continue;
+            }
             if (!displayFlags().count(it.key()) || !it.value().is_boolean()) {
                 std::string valid;
                 for (const auto& [name, member] : displayFlags()) valid += " " + name;
                 call->fail("display." + it.key() + " is not a boolean display flag. Valid:" + valid +
-                           ", grid_spacing_2d, grid_spacing_3d (numbers).");
+                           ", grid_spacing_2d, grid_spacing_3d (numbers), draw_mode, vertex_color_channel.");
                 return;
             }
         }
@@ -1310,6 +1318,7 @@ void setSceneCameraTool(const CallPtr& call) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
                 else if (it.key() == "grid_spacing_3d" && it.value().is_number()) s->displaySettings.gridSpacing3D = it.value().get<float>();
                 else if (it.key() == "draw_mode") drawModeFromKey(it.value().get<std::string>(), s->displaySettings.drawMode);
+                else if (it.key() == "vertex_color_channel") vertexColorChannelFromKey(it.value().get<std::string>(), s->displaySettings.vertexColorChannel);
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
@@ -1321,6 +1330,8 @@ void setSceneCameraTool(const CallPtr& call) {
         Json displayJson = Json::object();
         for (const auto& [name, member] : displayFlags()) displayJson[name] = s->displaySettings.*member;
         displayJson["draw_mode"] = drawModeKey(s->displaySettings.drawMode);
+        if (s->displaySettings.drawMode == ViewDrawMode::VERTEX_COLOR)
+            displayJson["vertex_color_channel"] = vertexColorChannelKey(s->displaySettings.vertexColorChannel);
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";

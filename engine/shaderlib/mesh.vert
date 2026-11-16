@@ -101,11 +101,14 @@ in vec3 a_position;
     #endif
 #endif
 
+// (VERTEX_COLOR_ATTRIBUTE: declared, for the Draw Mode's view, includes/vertex_color_view.glsl)
 #ifdef HAS_VERTEX_COLOR_VEC3
+    #define VERTEX_COLOR_ATTRIBUTE
     in vec3 a_color;
 #endif
 
 #ifdef HAS_VERTEX_COLOR_VEC4
+    #define VERTEX_COLOR_ATTRIBUTE
     in vec4 a_color;
 #endif
 // instancing multiplies by the vec4 instance color, so a vec3 attribute is promoted

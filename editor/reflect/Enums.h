@@ -87,6 +87,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kMaterialDepthTest;
     extern const EnumDesc kMaterialDepthWrite;
     extern const EnumDesc kMaterialLighting;
+    extern const EnumDesc kVertexColorUse;
+    extern const EnumDesc kVertexColorTarget;
     extern const EnumDesc kTerrainQualitySetting;
     extern const EnumDesc kTerrainOffscreenShadows;
     extern const EnumDesc kTerrainMacroMode;
