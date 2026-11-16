@@ -133,6 +133,7 @@ bool StrokeSession::apply(const vc::Op& op, std::function<bool(const Vector3&)> 
             } else {
                 target.scratch.snapshotPositions = std::move(live->snapshotPositions);
                 target.scratch.snapshotNormals = std::move(live->snapshotNormals);
+                target.scratch.snapshotIndices = std::move(live->snapshotIndices);
                 *live = std::move(target.scratch);
             }
             target.touched = true;

@@ -709,6 +709,7 @@ namespace {
             out.fingerprint = source.fingerprint;
             out.snapshotPositions = source.snapshotPositions;
             out.snapshotNormals = source.snapshotNormals;
+            out.snapshotIndices = source.snapshotIndices;
             out.base.resize(base.size());
             for (size_t v = 0; v < base.size(); v++) out.base[v] = quantize(base[v], format);
             std::vector<uint32_t> overlay(cornerIds);
@@ -1236,6 +1237,34 @@ namespace {
                     continue;
                 }
                 const uint32_t l = id;
+                if (field.exactCorners) {
+                    // R60 with corners: every corner takes its own value (overrides where it differs
+                    // from its vertex), the base its vertex's most common corner value (fewest
+                    // overrides; ties: the first). Corners first: an untouched one reads the old base
+                    for (uint32_t m = mesh.memberStart[l]; m < mesh.memberStart[l + 1]; m++) {
+                        const uint32_t v = mesh.members[m];
+                        if (!valid(v)) continue;
+                        const uint32_t first = mesh.vertexCornerStart[v], last = mesh.vertexCornerStart[v + 1];
+                        Vector4 baseSource = field.vertexValues[v];
+                        uint32_t most = 0;
+                        for (uint32_t k = first; k < last; k++) {
+                            const Vector4& value = field.cornerValues[mesh.vertexCorners[k]];
+                            uint32_t count = 0;
+                            for (uint32_t j = first; j < last; j++) count += field.cornerValues[mesh.vertexCorners[j]] == value ? 1u : 0u;
+                            if (count > most) {
+                                most = count;
+                                baseSource = value;
+                            }
+                        }
+                        const Vector4 oldBase = base[v];
+                        for (uint32_t k = first; k < last; k++) {
+                            const uint32_t c = mesh.vertexCorners[k];
+                            setCorner(c, blendValue(corner(c), field.cornerValues[c], op.blend, op.strength, op.channels));
+                        }
+                        setBase(v, blendValue(oldBase, baseSource, op.blend, op.strength, op.channels));
+                    }
+                    continue;
+                }
                 // the corners of the logical vertex in member, then corner order
                 struct Sample {
                     uint32_t corner;

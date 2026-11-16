@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <span>
 
 using namespace vctest;
 
@@ -500,6 +501,54 @@ TEST(VertexColorBake, TransferGridMatchesBruteForce) {
     }
 }
 
+// R10, R60: a source with corner values carries its hard edges. The source is a plane whose faces left
+// of x = 0 are red over white vertices; the target the same surface with its vertices in another
+// order and its quads cut along the other diagonal (a reimport's new topology)
+TEST(VertexColorBake, TransferCarriesHardEdgesFromSourceCorners) {
+    const Vector4 red(1, 0, 0, 1), white(1, 1, 1, 1);
+    MeshView painted;
+    addPlane(painted, 2.0f, 4, 0.0f);
+    build(painted);
+    auto source = std::make_shared<TransferSource>();
+    source->positions = painted.positions;
+    source->values.assign(painted.vertexCount(), white);
+    source->indices = painted.indices;
+    auto leftOf = [](const MeshView& m, uint32_t t) {
+        return m.positions[m.indices[t * 3]].x + m.positions[m.indices[t * 3 + 1]].x + m.positions[m.indices[t * 3 + 2]].x < 0.0f;
+    };
+    for (uint32_t c = 0; c < (uint32_t)painted.indices.size(); c++) source->cornerValues.push_back(leftOf(painted, c / 3) ? red : white);
+
+    MeshView m;
+    const uint32_t n = painted.vertexCount(), row = 5;
+    for (uint32_t v = 0; v < n; v++) addVertex(m, painted.positions[n - 1 - v]);
+    for (uint32_t j = 0; j < 4; j++) {
+        for (uint32_t i = 0; i < 4; i++) {
+            const uint32_t a = n - 1 - (j * row + i), b = a - 1, c = a - row, d = c - 1;
+            m.indices.insert(m.indices.end(), {a, c, d, a, d, b});
+        }
+    }
+    build(m);
+
+    Op op = transferOp(source);
+    TargetData data;
+    const OpsResult result = applyOps(data, m, std::span<const Op>(&op, 1), ApplyOptions());
+    ASSERT_TRUE(result.ok) << result.error;
+    for (uint32_t t = 0; t < m.triangleCount(); t++) {
+        for (uint32_t k = 0; k < 3; k++) EXPECT_EQ(data.cornerValue(t * 3 + k, m.indices), leftOf(m, t) ? red : white) << "triangle " << t << " corner " << k;
+    }
+    // the overrides are the edge's: corners of the vertices on x = 0, one side of them
+    ASSERT_FALSE(data.corners.empty());
+    for (const CornerValue& corner : data.corners) EXPECT_EQ(m.positions[m.indices[corner.corner]].x, 0.0f) << corner.corner;
+    EXPECT_EQ(result.ops[0].splitAdded, (uint32_t)data.corners.size());
+
+    // without the source's corners each vertex takes one value: the edge is gone
+    source->indices.clear();
+    source->cornerValues.clear();
+    TargetData smooth;
+    ASSERT_TRUE(applyOps(smooth, m, std::span<const Op>(&op, 1), ApplyOptions()).ok);
+    EXPECT_FALSE(smooth.hasOverrides());
+}
+
 TEST(VertexColorBake, TransferRefusesInconsistentSources) {
     const MeshView m = targetPlane();
     bake::Field field;
@@ -514,4 +563,13 @@ TEST(VertexColorBake, TransferRefusesInconsistentSources) {
     source->normals.pop_back();
     EXPECT_FALSE(bake::transfer(m, transferOp(source), ApplyOptions(), field, result, error));
     EXPECT_NE(error.find("normals"), std::string::npos) << error;
+    source = gridSource();
+    source->indices = {0, 1, 9};
+    source->cornerValues = {Vector4(1, 0, 0, 1)};
+    EXPECT_FALSE(bake::transfer(m, transferOp(source), ApplyOptions(), field, result, error));
+    EXPECT_NE(error.find("corner values"), std::string::npos) << error;
+    source->indices = {0, 1, 81};
+    source->cornerValues.assign(3, Vector4(1, 0, 0, 1));
+    EXPECT_FALSE(bake::transfer(m, transferOp(source), ApplyOptions(), field, result, error));
+    EXPECT_NE(error.find("past its 81 positions"), std::string::npos) << error;
 }

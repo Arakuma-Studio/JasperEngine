@@ -96,6 +96,9 @@ namespace jasperengine::vertexcolor {
         // the time of the last save, so a reimport can transfer the values (R10, R60)
         std::vector<Vector3> snapshotPositions;
         std::vector<Vector3> snapshotNormals;
+        // and its triangle list, so the transfer carries corner overrides (hard edges) too. The file
+        // keeps it only for a target with overrides: without them the per-vertex transfer is exact
+        std::vector<uint32_t> snapshotIndices;
 
         // corner override or the base value of the corner's vertex
         Vector4 cornerValue(uint32_t corner, const std::vector<uint32_t>& indices) const;

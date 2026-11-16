@@ -60,6 +60,10 @@ namespace jasperengine::editor::vertexcolor {
     const vc::TargetData* targetData(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key);
     // the target's values, or a temporary initialized from its initial value when not painted yet
     vc::TargetData targetDataOrInitial(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key);
+    // R60: the entity's colors as a transfer op's source, world space: every target's values (its
+    // initial value where not painted) and, when one has hard edges, every corner's, so they carry
+    // over. Null (with `error`) when no mesh of it is loaded
+    std::shared_ptr<const vc::TransferSource> transferSource(Project* project, uint32_t sceneId, Entity entity, std::string* error);
     // ApplyOptions with the entity's model, format and initial value filled in
     vc::ApplyOptions applyOptions(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key, bool world);
 

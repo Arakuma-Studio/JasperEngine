@@ -92,6 +92,14 @@ namespace jasperengine::vertexcolor {
                         w.f32(n.y);
                         w.f32(n.z);
                     }
+                    // only overrides need the triangles to transfer: a smooth target's vertices say it all
+                    // (a list that does not fit its snapshot is left out, never written to fail the read)
+                    bool indices = target.hasOverrides() && target.snapshotIndices.size() % 3 == 0;
+                    for (size_t i = 0; indices && i < target.snapshotIndices.size(); i++) indices = target.snapshotIndices[i] < target.snapshotPositions.size();
+                    w.u32(indices ? (uint32_t)target.snapshotIndices.size() : 0u);
+                    if (indices) {
+                        for (uint32_t index : target.snapshotIndices) w.u32(index);
+                    }
                 }
             }
         }

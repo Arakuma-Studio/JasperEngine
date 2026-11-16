@@ -8,7 +8,9 @@
 //   u32 targetCount, then per target: key (3 x i32), fingerprint (2 x u32, 2 x u64),
 //   u32 vertexCount, values (RGBA8: 4 bytes, RGBA16F: 4 halves), u32 overrideCount,
 //   overrides (u32 corner + value), and, with the editor flag, u32 snapshotCount,
-//   positions (3 x f32) and normals (3 x f32) per snapshot vertex.
+//   positions (3 x f32) and normals (3 x f32) per snapshot vertex, then (version 2) u32
+//   snapshotIndexCount and that many u32 indices of the snapshot's triangles (0 for a target
+//   without overrides). Version 1 has no snapshot indices and still reads.
 //   The body after the header is zstd-compressed when that is smaller (flags bit1).
 // A future version is refused with a message and the bytes are left alone (S03).
 
@@ -22,7 +24,7 @@
 
 namespace jasperengine::vertexcolor {
 
-    constexpr uint32_t VCOLORS_VERSION = 1;
+    constexpr uint32_t VCOLORS_VERSION = 2;
     constexpr const char* VCOLORS_EXTENSION = ".vcolors";
 
     // Compresses a body into `packed` (zstd, level 3); false when it cannot. The engine links only zstd's

@@ -68,7 +68,7 @@ namespace jasperengine::vertexcolor {
 
         size_t vcolorsValueBytes(Format format) { return format == Format::RGBA8 ? 4u : 8u; }
 
-        bool decodeVcolorsBody(VcolorsReader& r, Format format, bool hasEditor, Data& out, std::string& error) {
+        bool decodeVcolorsBody(VcolorsReader& r, Format format, bool hasEditor, uint32_t version, Data& out, std::string& error) {
             const size_t valueBytes = vcolorsValueBytes(format);
             if (!r.has(4)) {
                 error = "truncated: no target count";
@@ -148,6 +148,26 @@ namespace jasperengine::vertexcolor {
                         n.y = r.f32();
                         n.z = r.f32();
                     }
+                    // version 1 kept no snapshot indices: its targets transfer per vertex only
+                    if (version >= 2) {
+                        if (!r.has(4)) {
+                            error = where + "truncated: no snapshot index count";
+                            return false;
+                        }
+                        const uint32_t indexCount = r.u32();
+                        if (indexCount % 3 != 0 || !r.has((uint64_t)indexCount * 4)) {
+                            error = where + "corrupt snapshot index count " + std::to_string(indexCount);
+                            return false;
+                        }
+                        target.snapshotIndices.resize(indexCount);
+                        for (uint32_t& index : target.snapshotIndices) {
+                            index = r.u32();
+                            if (index >= snapshotCount) {
+                                error = where + "snapshot index " + std::to_string(index) + " past its " + std::to_string(snapshotCount) + " vertices";
+                                return false;
+                            }
+                        }
+                    }
                 }
             }
             if (r.left() != 0) {
@@ -213,7 +233,7 @@ namespace jasperengine::vertexcolor {
         Data data;
         data.format = (Format)formatByte;
         VcolorsReader r(body, bodySize);
-        if (!decodeVcolorsBody(r, data.format, (flags & VCOLORS_FLAG_EDITOR) != 0, data, error)) return false;
+        if (!decodeVcolorsBody(r, data.format, (flags & VCOLORS_FLAG_EDITOR) != 0, version, data, error)) return false;
         out = std::move(data);
         return true;
     }

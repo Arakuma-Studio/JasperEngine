@@ -3,7 +3,8 @@
 
 // Stale targets (docs/specs/V1-vertex-colors.md R10): a painted target whose mesh no longer matches
 // its fingerprint, a reimport having changed the source, is transferred from its snapshot (the mesh
-// it was painted on, R9) by nearest point with a normal filter (R60). The scene becomes modified, the
+// it was painted on, R9) by nearest point with a normal filter (R60), its corner overrides by the
+// nearest old corner on the same side of the hard edge. The scene becomes modified, the
 // file keeps its bytes until the scene is saved, and the issue is logged once. A target with no
 // snapshot, or no vertex within reach, stays as it was (unmatched): the file is never made poorer.
 
@@ -70,6 +71,12 @@ namespace {
         source->positions = target.snapshotPositions;
         if (target.snapshotNormals.size() == target.snapshotPositions.size()) source->normals = target.snapshotNormals;
         source->values = target.base;
+        // the hard edges go with their faces (R10, R60): each old corner's value at its triangle
+        if (target.hasOverrides() && target.snapshotIndices.size() == target.fingerprint.indexCount) {
+            source->indices = target.snapshotIndices;
+            source->cornerValues.resize(source->indices.size());
+            for (uint32_t c = 0; c < (uint32_t)source->indices.size(); c++) source->cornerValues[c] = target.cornerValue(c, source->indices);
+        }
 
         vc::TargetData fresh;
         fresh.key = target.key;
@@ -98,8 +105,7 @@ namespace {
         if (!result.ok || result.ops.empty() || result.ops[0].unmatched >= mesh.vertexCount()) return false;
         issue.unmatched = false;
         issue.meanDistance = result.ops[0].meanDistance;
-        fresh.snapshotPositions = mesh.positions;
-        fresh.snapshotNormals = mesh.normals.size() == mesh.positions.size() ? mesh.normals : std::vector<Vector3>();
+        vcd::fillSnapshot(fresh, mesh);
         target = std::move(fresh);
         return true;
     }
