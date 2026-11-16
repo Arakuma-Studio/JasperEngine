@@ -1424,7 +1424,13 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
 
     if (viewShader)
         lodFadeShader = nullptr;
-    const Selection selection = selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, viewShader, selectedPipeline);
+    Selection selection = selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, viewShader, selectedPipeline);
+    // a view variant that cannot be made: the draw is the shaded one
+    if (selection == Selection::FAIL && viewShader){
+        viewShader = nullptr;
+        selectedPipeline = pipelineOf(pipType);
+        selection = selectPipeline(pipType, disableFaceCulling, mirrored, nullptr, nullptr, selectedPipeline);
+    }
     if (selection != Selection::READY){
         drawWaiting = selection == Selection::WAIT;
         waitingDraws += drawWaiting ? 1 : 0;

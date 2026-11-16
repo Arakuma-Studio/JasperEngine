@@ -10193,14 +10193,6 @@ ShaderRender* RenderSystem::prepareVertexColorView(Entity entity, unsigned int s
     return view.shader.get();
 }
 
-bool RenderSystem::isVertexColorViewPending() const{
-    for (const auto& [key, view] : vertexColorViews){
-        if (!view.refused && (!view.shader || !view.shader->isCreated() || !view.checked))
-            return true;
-    }
-    return false;
-}
-
 void RenderSystem::releaseVertexColorViews(){
     for (auto& [key, view] : vertexColorViews){
         // the objects' pipelines on the variant first, then the variant
@@ -10218,6 +10210,14 @@ void RenderSystem::releaseVertexColorViews(){
     vertexColorViews.clear();
 }
 #endif
+
+bool RenderSystem::isVertexColorViewPending() const{
+    for (const auto& [key, view] : vertexColorViews){
+        if (!view.refused && (!view.shader || !view.shader->isCreated() || !view.checked))
+            return true;
+    }
+    return false;
+}
 
 // a culled view draws each level bucket of its slice, and of its fade copies the dominant ones
 // (none in a pass leaving fading draws out: passLodFade); anything else draws every instance at

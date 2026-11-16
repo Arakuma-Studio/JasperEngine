@@ -1587,12 +1587,10 @@ namespace jasperengine{
 			bool disableClouds = false;
 			int atmosphereQuality = -1;
 
-#ifdef JE_VIEW_DRAW_MODES
 			// the Scene view's Draw Mode (setDrawMode, ViewDesc::drawMode) and the channel its
-			// Vertex Color mode shows
+			// Vertex Color mode shows (drawn where JE_VIEW_DRAW_MODES is: render/ViewDrawMode.h)
 			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 			ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
-#endif
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -3031,7 +3029,6 @@ namespace jasperengine{
 		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
 	private:
 		void releaseSubmeshLodFade(Submesh& submesh);
-#ifdef JE_VIEW_DRAW_MODES
 		// the Vertex Color Draw Mode's view variant of a drawn submesh (MESH 'Vcv' on its
 		// properties and shader; V1 R102, D8), made while the mode draws it and checked against
 		// its base variant's bindings; null while it is not ready, or when it cannot be made (the
@@ -3048,9 +3045,9 @@ namespace jasperengine{
 		std::unordered_map<uint64_t, VertexColorView> vertexColorViews;
 		// drawCount at the last draw in the mode: the variants go a few draws after it
 		uint64_t vertexColorViewDraw = 0;
+		// (defined where JE_VIEW_DRAW_MODES is)
 		ShaderRender* prepareVertexColorView(Entity entity, unsigned int submeshIndex, Submesh& submesh, ViewVertexColorChannel channel);
 		void releaseVertexColorViews();
-#endif
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
 		const std::vector<ShadowSlot>& collectShadowSlots();
@@ -3855,10 +3852,8 @@ namespace jasperengine{
 		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only), and the
 		// channel of its Vertex Color mode
 		void setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB);
-#ifdef JE_VIEW_DRAW_MODES
 		// a mesh drawn in the Vertex Color Draw Mode waits for its view variant (drawn shaded meanwhile)
 		bool isVertexColorViewPending() const;
-#endif
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's

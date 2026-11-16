@@ -1376,9 +1376,9 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
             const std::string& file = vertex ? args.vert_file : args.frag_file;
             auto source = args.fileBuffers.find(file);
             const size_t versionEnd = source == args.fileBuffers.end() ? std::string::npos : source->second.find('\n');
-            if (versionEnd == std::string::npos || source->second.compare(0, 8, "#version") != 0 ||
-                    (!vertex && source->second.find("g_finalColor") == std::string::npos)){
-                error = "The Vertex Color Draw Mode needs a mesh shader starting with #version and writing g_finalColor (" + file + ")";
+            // (g_finalColor may be an include's: a shader without it fails to compile)
+            if (versionEnd == std::string::npos || source->second.compare(0, 8, "#version") != 0){
+                error = "The Vertex Color Draw Mode needs a mesh shader starting with #version (" + file + ")";
                 return false;
             }
             std::string wrapped = source->second;
