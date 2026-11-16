@@ -797,6 +797,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
                       displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
+    layers.back().vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     // S41 R21: Snap Preview, the drawables snapped on this view's own grid of art pixels (a scene
     // without a snapping Pixel Perfect Camera has no snapped variants: nothing changes)
     if (!previewing && displaySettings.pixelSnapPreview && zoom > 0.0f && dynamic_cast<SceneRender2D*>(this))
@@ -881,6 +882,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
     base.drawMode = (uint8_t)displaySettings.drawMode;
+    base.vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -1019,7 +1021,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     // the Draw Mode the same way (spec S54 R11)
-    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode, displaySettings.vertexColorChannel);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)

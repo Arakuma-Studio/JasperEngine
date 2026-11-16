@@ -3197,6 +3197,7 @@ void editor::SceneWindow::show() {
                         "The shaded scene with the meshes' edges over it",
                         "Each mesh tinted by the detail level it draws: LOD 0 green, 1 blue, 2 amber, 3 red; a cross-fade dithers two",
                         "Every layer of the meshes adds heat, nothing hides another: bright areas draw their pixels many times",
+                        "Each mesh unlit in its vertex colours (white without any), or one channel as grey",
                     };
                     for (int mode = 0; mode < SCENE_DRAW_MODE_COUNT; mode++) {
                         if (mode == (int)ViewDrawMode::LOD_LEVEL)
@@ -3212,6 +3213,32 @@ void editor::SceneWindow::show() {
                     ImGui::EndCombo();
                 }
                 ImGui::SetItemTooltip("Draw Mode of this Scene view (editor only)");
+                // the channel the Vertex Color mode shows (V1 R102)
+                if (drawMode == ViewDrawMode::VERTEX_COLOR) {
+                    ImGui::SameLine();
+                    ViewVertexColorChannel& channel = sceneProject.displaySettings.vertexColorChannel;
+                    ImGui::SetNextItemWidth(Theme::dpi(56.0f));
+                    if (ImGui::BeginCombo(("##VertexColorChannel" + std::to_string(sceneProject.id)).c_str(), vertexColorChannelLabel(channel))) {
+                        static const char* const channelHelp[VERTEX_COLOR_CHANNEL_COUNT] = {
+                            "The vertex colours",
+                            "The red channel as grey",
+                            "The green channel as grey",
+                            "The blue channel as grey",
+                            "The alpha channel as grey, over a checker where it is low",
+                        };
+                        for (int c = 0; c < VERTEX_COLOR_CHANNEL_COUNT; c++) {
+                            const ViewVertexColorChannel item = (ViewVertexColorChannel)c;
+                            if (ImGui::Selectable(vertexColorChannelLabel(item), item == channel)) {
+                                channel = item;
+                                sceneProject.needUpdateRender = true;
+                                project->saveWorkspaceFile();
+                            }
+                            ImGui::SetItemTooltip("%s", channelHelp[c]);
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SetItemTooltip("The channel the Vertex Color Draw Mode shows");
+                }
                 ImGui::SameLine();
                 bool& showStats = sceneProject.displaySettings.showStats;
                 ImGui::PushStyleColor(ImGuiCol_Button, showStats ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);

@@ -2216,6 +2216,8 @@ endif()
 if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+    # the editor's Draw Modes (render/ViewDrawMode.h), which the GPU suites draw
+    target_compile_definitions(jasperengine PUBLIC JASPERENGINE_VIEW_DRAW_MODES)
 endif()
 
 if(JASPERENGINE_HTMLUI)

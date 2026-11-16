@@ -435,6 +435,15 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
     if (prop & ShaderPool::getTileClampProperty()) defs.push_back({"TILE_CLAMP_FRAME", "1"}); // 'Tcl'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv'
+    // V1 R102: the Vertex Color Draw Mode's view of the variant ('Vcv', 'Vcs', 'Vk1', 'Vk2'; its
+    // main is wrapped, prepareVariantArgs): -1 the colour, 0-3 one channel (R, G, B, A)
+    if (prop & ShaderPool::getVertexColorViewProperties(0)) {
+        defs.push_back({"VERTEX_COLOR_VIEW", "1"});
+        int channel = -1;
+        if (prop & shaderPropertyBit(56))
+            channel = ((prop & shaderPropertyBit(57)) ? 1 : 0) + ((prop & shaderPropertyBit(58)) ? 2 : 0);
+        defs.push_back({"VERTEX_COLOR_VIEW_CHANNEL", std::to_string(channel)});
+    }
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -1351,6 +1360,36 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
         wrapped.insert(versionEnd + 1, "#define main oitShadeMain\n#line 2\n");
         wrapped += "\n#undef main\n#include \"includes/oit.glsl\"\nvoid main(){\n    oitShadeMain();\n    g_finalColor = oitAccumulate(g_finalColor);\n}\n";
         source->second = wrapped;
+    }
+
+    // V1 R102: the Vertex Color Draw Mode's view of a mesh variant. Both mains are wrapped: the
+    // vertex stage's runs, then hands the raw vertex colour on (includes/vertex_color_view.glsl);
+    // the fragment stage draws that colour, its own main left behind a test no fragment passes,
+    // so the view variant keeps every block, texture and sampler of its base at the same slots
+    // (the draw keeps the base's bindings, RenderSystem::sameLodFadeBindings)
+    if (shaderType == ShaderType::MESH && (properties & ShaderPool::getVertexColorViewProperties(0))){
+        if (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)){
+            error = "The Vertex Color Draw Mode has no Order Independent transparency variant";
+            return false;
+        }
+        for (const bool vertex : {true, false}){
+            const std::string& file = vertex ? args.vert_file : args.frag_file;
+            auto source = args.fileBuffers.find(file);
+            const size_t versionEnd = source == args.fileBuffers.end() ? std::string::npos : source->second.find('\n');
+            if (versionEnd == std::string::npos || source->second.compare(0, 8, "#version") != 0 ||
+                    (!vertex && source->second.find("g_finalColor") == std::string::npos)){
+                error = "The Vertex Color Draw Mode needs a mesh shader starting with #version and writing g_finalColor (" + file + ")";
+                return false;
+            }
+            std::string wrapped = source->second;
+            wrapped.insert(versionEnd + 1, "#define main vertexColorViewShadeMain\n#line 2\n");
+            wrapped += vertex ? "\n#undef main\n#define VERTEX_COLOR_VIEW_VS\n#include \"includes/vertex_color_view.glsl\"\n"
+                                "void main(){\n    vertexColorViewShadeMain();\n    vertexColorViewWrite();\n}\n"
+                              : "\n#undef main\n#define VERTEX_COLOR_VIEW_FS\n#include \"includes/vertex_color_view.glsl\"\n"
+                                "void main(){\n    if (gl_FragCoord.x < -1.0){\n        vertexColorViewShadeMain();\n        return;\n    }\n"
+                                "    g_finalColor = vertexColorViewColor();\n}\n";
+            args.fileBuffers[file] = wrapped;
+        }
     }
 
     // phase 6: a stateful effect's passes and states, from its manifest (any form: the draw reads

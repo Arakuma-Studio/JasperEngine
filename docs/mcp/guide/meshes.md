@@ -105,6 +105,8 @@ cross-fade with a dither for `mesh_lod_cross_fade_duration` seconds (0.5) when
 - **See the levels in the Scene view:** `set_scene_camera {display: {draw_mode: "lod_level"}}`
   tints each mesh by its level (`wireframe`, `shaded_wireframe`, `overdraw` and `shaded` too;
   `show_stats: true` adds the Stats box), then `screenshot`. Editor only: games draw Shaded.
+  `draw_mode: "vertex_color"` draws each mesh's raw vertex colours unlit (white without any),
+  `vertex_color_channel` `rgb` (default), `r`, `g`, `b` or `a` one channel as grey.
 
 ## Draw submission
 

@@ -2360,6 +2360,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
+    if (ds.vertexColorChannel != ViewVertexColorChannel::RGB)
+        sceneNode["vertexColorChannel"] = vertexColorChannelKey(ds.vertexColorChannel);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
     // S41: written only when turned off (on by default)
@@ -2412,6 +2414,9 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
+    ds.vertexColorChannel = ViewVertexColorChannel::RGB;
+    if (node["vertexColorChannel"] && node["vertexColorChannel"].IsScalar())
+        vertexColorChannelFromKey(node["vertexColorChannel"].as<std::string>(), ds.vertexColorChannel);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);

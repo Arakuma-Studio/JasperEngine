@@ -1587,6 +1587,13 @@ namespace jasperengine{
 			bool disableClouds = false;
 			int atmosphereQuality = -1;
 
+#ifdef JE_VIEW_DRAW_MODES
+			// the Scene view's Draw Mode (setDrawMode, ViewDesc::drawMode) and the channel its
+			// Vertex Color mode shows
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
+			ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
+#endif
+
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
 			// where the view draws
@@ -1600,8 +1607,6 @@ namespace jasperengine{
 			bool disableFog = false;
 			// its camera passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
-			// the Scene view's Draw Mode (ViewDesc::drawMode)
-			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 			// the view's copy of its camera, sized for the view: the scene's camera
 			// component is never touched (it may be drawn by the frame or another view)
 			CameraComponent camera;
@@ -3026,6 +3031,26 @@ namespace jasperengine{
 		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
 	private:
 		void releaseSubmeshLodFade(Submesh& submesh);
+#ifdef JE_VIEW_DRAW_MODES
+		// the Vertex Color Draw Mode's view variant of a drawn submesh (MESH 'Vcv' on its
+		// properties and shader; V1 R102, D8), made while the mode draws it and checked against
+		// its base variant's bindings; null while it is not ready, or when it cannot be made (the
+		// submesh then draws shaded)
+		struct VertexColorView{
+			std::shared_ptr<ShaderRender> shader;
+			// the base variant it was made for (a stand-in's or the submesh's own)
+			const ShaderRender* base = nullptr;
+			uint64_t properties = 0;
+			uint16_t shaderId = 0;
+			bool checked = false;
+			bool refused = false;
+		};
+		std::unordered_map<uint64_t, VertexColorView> vertexColorViews;
+		// drawCount at the last draw in the mode: the variants go a few draws after it
+		uint64_t vertexColorViewDraw = 0;
+		ShaderRender* prepareVertexColorView(Entity entity, unsigned int submeshIndex, Submesh& submesh, ViewVertexColorChannel channel);
+		void releaseVertexColorViews();
+#endif
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
 		const std::vector<ShadowSlot>& collectShadowSlots();
@@ -3827,8 +3852,13 @@ namespace jasperengine{
 		// Editor-only viewport debug override (see member declaration). Free to toggle:
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
-		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only)
-		void setDrawMode(ViewDrawMode drawMode);
+		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only), and the
+		// channel of its Vertex Color mode
+		void setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB);
+#ifdef JE_VIEW_DRAW_MODES
+		// a mesh drawn in the Vertex Color Draw Mode waits for its view variant (drawn shaded meanwhile)
+		bool isVertexColorViewPending() const;
+#endif
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
@@ -4237,6 +4267,7 @@ namespace jasperengine{
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
 			ViewDrawMode drawMode = ViewDrawMode::SHADED;
+			ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
 			// the Scene view's Snap Preview (S41 R21): a scene with a Pixel Perfect Camera draws its
 			// snapped drawables on this view's own grid of base pixels (snapPreviewScale view pixels
 			// each, fractions for zooms below 1x); 0: no preview
