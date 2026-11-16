@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "ecs/Entity.h"
 #include "math/Vector2.h"
@@ -41,12 +42,38 @@ namespace jasperengine {
         Color4,
         EntityReference,
         Prefab,         // a PrefabAsset: a prefab dragged from the Project window
-        Asset           // an AssetRef of the type assetType names ("texture", "model", ...)
+        Asset,          // an AssetRef of the type assetType names ("texture", "model", ...); "dataasset": a Data Asset
+        List            // a ScriptPropertyList of elementType values (S95 REQ-20); appended: the cooked files store the number
     };
 
     struct EntityReference {
         Entity entity = NULL_ENTITY;
         uint32_t sceneId = 0;
+
+        bool operator==(const EntityReference& other) const { return entity == other.entity && sceneId == other.sceneId; }
+    };
+
+    // One value of a list property: every kind a single property holds, lists aside (no list of lists, as Unity)
+    using ScriptPropertyElement = std::variant<
+        std::monostate,
+        bool,
+        int,
+        float,
+        std::string,
+        Vector2,
+        Vector3,
+        Vector4,
+        EntityReference,
+        PrefabAsset,
+        AssetRef
+    >;
+
+    // A list property's value (`type = "list", of = <type>`): its elements, all of the property's elementType
+    struct ScriptPropertyList {
+        std::vector<ScriptPropertyElement> items;
+
+        bool operator==(const ScriptPropertyList& other) const { return items == other.items; }
+        bool operator!=(const ScriptPropertyList& other) const { return !(*this == other); }
     };
 
     using ScriptPropertyValue = std::variant<
@@ -60,8 +87,18 @@ namespace jasperengine {
         Vector4,
         EntityReference,
         PrefabAsset,
-        AssetRef
+        AssetRef,
+        ScriptPropertyList
     >;
+
+    // An element as a property value (and back: a list's value gives monostate), the alternatives sharing their order
+    JASPERENGINE_API ScriptPropertyValue scriptPropertyValueOf(const ScriptPropertyElement& element);
+    JASPERENGINE_API ScriptPropertyElement scriptPropertyElementOf(const ScriptPropertyValue& value);
+    // the value a new element of a list of `type` starts with (0, "", None...)
+    JASPERENGINE_API ScriptPropertyElement scriptPropertyElementDefault(ScriptPropertyType type);
+    // A `properties` entry's `type` string, case-insensitive ("int", "vec3", "list", "entity"...); false
+    // for any other name (a wrapper, script or data class name)
+    JASPERENGINE_API bool scriptPropertyTypeFromName(const std::string& name, ScriptPropertyType& type);
 
     struct JASPERENGINE_API ScriptProperty {
         std::string name;
@@ -77,8 +114,15 @@ namespace jasperengine {
         // Optional: Store the actual type name for editor UI/debugging
         std::string ptrTypeName; // e.g., "Mesh*", "GameObject*", "EntityHandle*"
 
-        // Asset properties: the asset type the value must have ("texture", "model", ...; empty = any)
+        // Asset properties: the asset type the value must have ("texture", "model", ...; empty = any).
+        // "dataasset": a .dataasset, whose class ptrTypeName names (Lua gets the asset's table)
         std::string assetType;
+
+        // List properties: the type of every element (assetType and ptrTypeName apply to them)
+        ScriptPropertyType elementType = ScriptPropertyType::Float;
+
+        // a Data Asset reference (an Asset property, or a list of them, of assetType "dataasset")
+        bool isDataAssetReference() const;
 
         // Helper template to get typed value
         template<typename T>

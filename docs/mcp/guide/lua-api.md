@@ -179,9 +179,14 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
 | `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
+| `"list"` with `of = <any type of this table but list>` (Unity's `List<T>`) | a Lua array of `of` values; an unassigned reference in it is `false` | an array of `of`'s defaults (`{1, 2}`, `{{0, 1, 0}}`), or none (empty) |
+| a data class name (`"ItemData"`), or `"asset"` with `assetType = "dataasset"` (any class) | that Data Asset's shared table (2.4.3), or `nil` when left None | a path (`"items/sword.dataasset"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
+
+A data class name wins over a script of the same name. The Inspector shows a list as rows with Add (+),
+reorder and Remove, and a Data Asset field as a picker of the class's assets.
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
@@ -204,6 +209,10 @@ a sound -> `"AudioSource"`).
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
 | `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+
+Both look the method up by name at each call: `self.onUpdate = other` takes effect at the next
+event. While `self[methodName]` is not a function (nil, a value) the call is skipped, with one
+warning per subscription.
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -244,12 +253,12 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 |---|---|---|
 | `onUpdate` | none | every frame (variable step; use `Engine.deltatime`) |
 | `onFixedUpdate` | none | every fixed step (`Engine.updateTime`, default 1/60 s), 0..n times per frame, before physics steps |
-| `onPostUpdate` | none | every frame after scenes update |
+| `onPostUpdate` | none | every frame after the scenes' update, the timers and the coroutines (Unity's `LateUpdate`); what it moves is drawn in the same frame |
 | `onDraw` | none | every frame before drawing |
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
-| `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onViewDestroyed` | none | view destroyed: the GPU context went (Android in the background, a lost WebGL context). Scenes, scripts and HTML UI documents stay; their GPU objects are made again after `onViewLoaded` |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent). The first frame after a resume or a view restore gets a delta of at most `Engine.updateTime`: no clock jumps by the time away |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onVisibilityChanged` | `visible` | the window was hidden or shown again (minimized, unmapped, fully covered on macOS; a hidden web page): a hidden desktop game updates without drawing ([platform-services.md](platform-services.md)) |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
@@ -516,8 +525,8 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
-| `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
-| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
+| `canvasWidth`, `canvasHeight` | ro | current canvas, never 0: in `init()` the first frame's layout where the screen is known before the view (desktop windows, web, iOS); on Android the project size, and `onCanvasChanged` fires before the first `onUpdate` when the window differs |
+| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size |
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
@@ -536,7 +545,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `mouseCursor` | rw | `CursorType.*` |
 | `mouseMode` | rw | `MouseMode.*` |
 | `setMousePosition(x, y)` | static fn | |
-| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags |
+| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags; `callTouchInMouseEvent` (the mouse is also finger 0) starts at Project Settings > Input > Simulate Touch From Mouse (`input.simulate_touch_from_mouse`) |
 | `isUIEventReceived()` | static fn | |
 | `platform` | ro | `Platform.*` |
 | `graphicBackend` | ro | `GraphicBackend.*` |
@@ -855,21 +864,92 @@ most 3 s), so `init` reads them; if the restore takes longer, `data://` writes r
 them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
 paths, but on Web call `System.syncFileSystem()` after writing.
 
-Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
-(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
-{allowComments = true})`), exported with them; or a Lua data module shared by every
-script that requires it:
+Data assets (Unity ScriptableObjects) are the `.dataasset` files of 2.4.3; plain data a game only
+reads can also be a JSON file (`Json.readFile("asset://levels/1.json", {allowComments = true})`)
+or a Lua module every script `require`s.
+
+### 2.4.3 DataAsset (static): Data Assets, Unity's ScriptableObject
+
+A **data class** is a Lua module whose first lines hold `---@dataasset`: its `properties` (1.2,
+without GameObject references: an asset outlives the scenes) are the fields of its assets, its
+functions their methods. Make an asset with Assets > Create > Data Asset > <class> (or MCP
+`edit_data_asset`); the Inspector edits its values, with undo. A script property typed with the
+class name holds one.
 
 ```lua
--- lua/data/items.lua
-return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- lua/data/ItemData.lua
+---@dataasset
+local ItemData = {
+    properties = {
+        { name = "displayName", type = "string", default = "Item" },
+        { name = "price", type = "int", default = 10 },
+        { name = "icon", type = "asset", assetType = "texture" },
+        { name = "upgrade", type = "ItemData" },
+        { name = "tags", type = "list", of = "string" },
+    }
+}
+function ItemData:label() return self.displayName .. " (" .. self.price .. ")" end
+return ItemData
 ```
 
+| Function | Returns |
+|---|---|
+| `DataAsset.load(pathOrGuid)` | the asset's table (path relative to the assets folder, `asset://`, or its GUID), or `nil, message` |
+| `DataAsset.loadAll(className)` | every asset of the class the game ships, sorted by path (one that does not load is left out, warned), or `nil, message` |
+| `DataAsset.create(className)` | a new table of the class with its defaults, of no file, or `nil, message` |
+| `DataAsset.classOf(t)` / `DataAsset.pathOf(t)` | the class / file of an asset's table, `nil` for anything else (`pathOf` of a created one) |
+
 ```lua
--- in a script
-local Items = require("data.items")
-local price = Items.sword.price
+local Shop = { properties = { { name = "featured", type = "ItemData" }, { name = "stock", type = "list", of = "ItemData" } } }
+function Shop:start()
+    print(self.featured:label())
+    for _, item in ipairs(DataAsset.loadAll("ItemData")) do print(item.displayName, item.price) end
+end
+return Shop
 ```
+
+- One table per asset and run: every property, list and `load` gets the same table, made on its first
+  use (an asset's references to other Data Assets are their tables too; cycles are fine).
+- Changes made to a table in the game stay in that run and are never written to the file (Unity's
+  editor keeps them; JasperEngine never does). The next Play reads the files again.
+- A field the file lacks has its class default; a value of no field (a field renamed in the class)
+  stays in the file, unused, and the Inspector and `edit_data_asset` report it.
+- Exports ship every `.dataasset` (references at their current paths) and an index of the classes
+  (`je-dataassets.json`) for `loadAll`; C++ games read the JSON themselves.
+
+### 2.4.4 Localization (static): String Tables
+
+Unity's Localization package. Texts live in `.stringtable` assets (Assets > Create > String
+Table; Window > Localization > String Tables; MCP `edit_string_table`): keys, with a value per
+language of Project Settings > Localization.
+
+| Member | What |
+|---|---|
+| `Localization.get(key [, args])` | the key's value in the game's language, else its base language (`pt-BR` -> `pt`), else the project default, else the key itself (warned once per key). `"Table:key"` looks in one table (its file name); a bare key in every table (a key two tables define is a `check` error) |
+| `Localization.has(key)` | boolean |
+| `Localization.language` | rw: the game's language (the resolved one, never `""`). It is TitleArt's: setting it is `TitleArt.setLanguage`, so titles and strings switch together; `""` goes back to the device's languages; an invalid tag raises |
+| `Localization.languages` | ro: the project's languages (else the tables') |
+| `Localization.onLanguageChanged` | the event of `TitleArt.onLanguageChanged`: `(code)` once per change |
+
+`args`: the list part fills `{0}`, `{1}`, the string keys fill `{name}`; `{{` and `}}` are
+braces. A plural value (forms `zero`, `one`, `two`, `few`, `many`, `other`) picks its form by
+the `count` argument (else the first of the list) under the CLDR rules of the value's
+language; without a number it shows `other`. The start language is the device's (the Game
+view's Device > Language in Play) matched against the project's languages; with Project
+Settings > Localization > Remember Language Choice (default on) a language the game chose is
+stored in UserSettings and applied at the next start.
+
+```lua
+Localization.language = "es"                                  -- titles follow
+local label = Localization.get("menu.play")                   -- "Jugar"
+local coins = Localization.get("hud.coins", { count = 3 })    -- "3 monedas"
+local hello = Localization.get("greet", { "Ana" })            -- "Hola {0}" -> "Hola Ana"
+Localization.onLanguageChanged:add("hud", function(code) Log.info("language " .. code) end)
+```
+
+Bound text: a Text's `localizationKey` (Inspector: Localization Key) shows the key's value and
+follows the language; an HTML UI element with `data-loc="key"` (and `data-loc-args='{"count":
+3}'`) too, and `el:setLocalized(key [, args])` does it from Lua.
 
 ### 2.5 System (static)
 
@@ -1194,6 +1274,7 @@ Entities are plain integers (`0` = none).
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
+| `fixedTimestep` (number, rw) | the fixed step (seconds) while this is the main scene, 0 = the project's (default); the scene setting `fixed_timestep`. A load into this scene applies it before its scripts' `init`; a load into a scene without one after it brings the project's back. Setting it at runtime takes effect at the next load: change the running step with `Time.fixedDeltaTime` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
@@ -1533,7 +1614,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 |---|---|---|
 | `deltaTime` | ro | game seconds of this frame (times `timeScale`, 0 during a hit-stop); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime`; inside a Hit Stop Exempt GameObject's callbacks the delta without the hit-stop |
 | `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
-| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
+| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`): starts at Project Settings > Time > Fixed Timestep (`time.fixed_timestep`, default 1/60); a scene's Fixed Timestep (`scene.fixedTimestep`) applies when a load makes it the main scene; a value set here survives loads into scenes without one |
 | `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
 | `time` | ro | game seconds since start (inside a fixed step, `fixedTime`) |
 | `fixedTime` | ro | sum of the fixed steps run (inside a step: the time at its start) |
@@ -1542,7 +1623,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `timeSinceLevelLoad` | ro | game seconds since the last `SceneManager.loadScene` (or Play start) |
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
-| `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `maximumDeltaTime` | rw | cap of a frame's delta: starts at Project Settings > Time > Maximum Allowed Timestep (`time.maximum_delta_time`, default 0.25); values <= 0 are ignored with a warning |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
 | `smoothDeltaTime` | ro | exponential average of `deltaTime` |
 | `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
@@ -1655,9 +1736,11 @@ animation timing stays `anime.createTimer` (milliseconds, the UI clock); for gam
 `self:invoke` / `Timer.after`.
 
 Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
-`waitForFixedUpdate`), `onUpdate`, then `invoke` timers and the coroutines whose wait is over (seconds,
-frames, predicates, `waitFor`; in the order they were started), the scenes' update,
-`onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
+`waitForFixedUpdate`), `onUpdate`, the scenes' update, then `invoke` timers and the coroutines whose
+wait is over (seconds, frames, predicates, `waitFor`; in the order they were started),
+`onPostUpdate`, destroys, the late transform pass (what moved since the scenes' update gets its
+world matrices, so it is drawn in this frame), the draw, then the coroutines waiting
+`waitForEndOfFrame`. Every wait
 resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
 coroutine (at once).
 
@@ -1778,15 +1861,30 @@ assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
 | `Quaternion()` | identity (w=1); same as `Quaternion.IDENTITY` |
 | `Quaternion(w, x, y, z)` | raw components (w first) |
 | `Quaternion(xDeg, yDeg, zDeg)` | Euler angles in default units (degrees), ZYX order |
-| `Quaternion(x, y, z, RotationOrder.XYZ)` | Euler with explicit order |
-| `Quaternion(angle, axisVector3)` | angle-axis |
+| `Quaternion.euler(x, y, z [, order])` | Euler angles with an order (`RotationOrder.*`, default ZYX, as `Quaternion(x, y, z)`); four numbers to the constructor are always `(w, x, y, z)` |
+| `Quaternion(angle, axisVector3)` | angle-axis (a unit axis); `Quaternion.angleAxis(angle, axis)` normalizes the axis (Unity's `AngleAxis`) |
 | `Quaternion(Matrix3)`, `Quaternion(Matrix4)`, `Quaternion(xAxis, yAxis, zAxis)` | |
 | `Quaternion.IDENTITY` | static |
 | fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector, `* number` / `number *` scales; `+ - unary- == tostring` | |
 | methods | `fromEulerAngles(x, y, z, order)`, `getEulerAngles(order)`, `fromAngle(a)` (Z axis), `fromAngleAxis(a, axis)`, `fromAxes(...)`, `fromRotationMatrix(m)`, `getRotationMatrix()`, `xAxis() yAxis() zAxis()`, `dot(q) norm() inverse() unitInverse() exp() log()`, `normalize() normalized() normalizeL()`, `getRoll() getPitch() getYaw()` (default units) |
 | static | `Quaternion.slerp(t, a, b [, shortestPath])`, `Quaternion.nlerp(t, a, b [, shortestPath])`, `Quaternion.squad(...)`, `Quaternion.slerpExtraSpins(...)`, `Quaternion.lookRotation(forward [, up])` |
 
-`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`.
+`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`. An order names the product of the three
+axis rotations, left to right, so the last letter turns a vector first:
+
+| Unity | JasperEngine |
+|---|---|
+| `Quaternion.Euler(x, y, z)` (z, then x, then y) | `Quaternion.euler(x, y, z, RotationOrder.YXZ)` |
+| `Quaternion.AngleAxis(angle, axis)` | `Quaternion.angleAxis(angle, axis)` |
+
+```lua run
+local unity = Quaternion.angleAxis(45, Vector3(0, 1, 0)) * Quaternion.angleAxis(10, Vector3(1, 0, 0))
+local q = Quaternion.euler(10, 45, 0, RotationOrder.YXZ)
+assert(math.abs(q:dot(unity)) > 0.99999)
+```
+
+A wrong argument (nil, another class, an order that is not a `RotationOrder`, a matrix index
+outside 0..2 or 0..3) raises an error.
 
 ### 3.3 Other math types (partial)
 
@@ -1887,14 +1985,14 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | Member | Kind | Notes |
 |---|---|---|
 | `position` | rw `Vector3` | local position |
-| `setPosition(x, y, z)`, `setPosition(x, y)` | method | |
-| `getWorldPosition()` | method | Vector3 |
+| `setPosition(x, y [, z])` | method | z 0 when left out |
+| `getWorldPosition()` | method | Vector3, current: a move of it or a parent earlier in the frame is included (Unity's `transform.position`) |
 | `rotation` | rw `Quaternion` | |
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
-| `getWorldRotation()` | method | Quaternion |
+| `getWorldRotation()` | method | Quaternion, current as `getWorldPosition()` |
 | `scale` | rw `Vector3` | |
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
-| `getWorldScale()` | method | |
+| `getWorldScale()` | method | current as `getWorldPosition()` |
 | `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
 | `parent` | rw `GameObject` or nil | Unity's `transform.parent`: assigning keeps the world placement (nil: to the root) |
@@ -1903,7 +2001,8 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `findChild(path)` | method | Unity's `Transform.Find`: a child by name, or a path of names below it (`"Arm/Hand"`); nil when missing |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
-| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
+| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | `modelMatrix` is current as `getWorldPosition()`; `normalMatrix` is the last frame's |
+| (no Transform) | | On a GameObject without a Transform (an action, a tween) `position`, `rotation`, `scale`, `parent`, the matrices and `getWorld*()` are nil; setting one raises `GameObject '<name>' has no Transform` |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
@@ -2428,7 +2527,7 @@ end
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
-`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
+`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `useTarget`, `up` (Vector3), `autoResize`,
 `renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
 (`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
 `oitWeightScale` (`jasper://docs/lighting`).
@@ -2439,9 +2538,13 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 `rotatePosition(a)`, `elevateView(a)`, `elevatePosition(a)`, `walkForward(d)`, `zoom(d)`,
 `slide(d)`, `slideForward(d)`, `slideUp(d)`, `getViewMatrix()`, `getProjectionMatrix()`,
 `getViewProjectionMatrix()`, `getDistanceFromTarget()`, `updateCamera()`.
-A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
-ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
-cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
+`Camera(scene)` aims with the GameObject's rotation (`useTarget` false), as Unity and the editor's
+GameObject > Camera do: forward is `rotation * Vector3(0, 0, -1)`. `setTarget(...)` or assigning
+`target` turns target mode on (`useTarget` true): the view is a look-at of the target and the
+rotation is ignored until `useTarget = false` (`disableTarget()`). A script that relied on a new
+camera looking at the origin without a target sets `cam.useTarget = true` (or `setTarget(0, 0, 0)`).
+Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch), cos(pitch)cos(yaw)) * distance, then
+`setTarget(target)`.
 `camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).
 
 ### 4.9.2 PixelPerfectCamera (EntityHandle)
@@ -2581,7 +2684,8 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `snap()` | the next update places it without damping |
 
 Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
-(warned once). Writes in `onPostUpdate` reach the camera a frame late.
+(warned once). A target moved in `onPostUpdate`, a timer or a coroutine is followed in the same
+frame, damped as if it had moved in `onUpdate`.
 
 ```lua
 -- MilkShake's CameraShaker.cs, ported
@@ -2651,7 +2755,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); `localizationKey` (a String Tables key the text follows, §2.4.4); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
@@ -3670,56 +3774,54 @@ Rigidbody wrappers by index.
     `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
     (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
     also returns the copy's script.
-19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
-    `init`; use `Engine.preferredCanvasWidth/Height` there.
-20. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
+19. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
     `string.format` for other layouts.
-21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
+20. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+21. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
     also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
     for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
     automatically.
-23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
-25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+24. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+25. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
-27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+26. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
     (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
     `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
     `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
-28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+27. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
-29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+28. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
     equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
     for a persistent manager, or keep shared state in a `require`d module table.
-30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+29. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
     name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
-31. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+30. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
     and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
     coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
     (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
     metamethod or another C callback raise too ("waits cannot cross a C function").
-32. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+31. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
     `timeScale = 0` but not while the app is in the background or the editor's Play is paused
     (unlike Unity's wall clock).
-33. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+32. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
     GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
     on reactivation: start them again (in `onEnable`, or where you reactivate).
-34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+33. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
-35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+34. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
 

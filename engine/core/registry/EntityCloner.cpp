@@ -1033,6 +1033,7 @@ void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, Clone
     follow.foreignWriteDetected = false;
     follow.warnedForeignWrite = false;
     follow.warnedMissingTarget = false;
+    follow.frameStep = CameraFollowStep();
 }
 
 template<>

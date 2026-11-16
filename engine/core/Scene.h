@@ -159,6 +159,11 @@ namespace jasperengine{
 
         void load();
         void destroy();
+        // A view loss (Engine::systemViewDestroyed / systemViewLoaded): every system releases
+        // (restores) its GPU objects and keeps its CPU state (SubSystem::releaseGpu); destroy()
+        // is the real teardown
+        void releaseGpu();
+        void restoreGpu();
         void draw();
         void update(double dt);
         void fixedUpdate(double dt);
@@ -405,6 +410,11 @@ namespace jasperengine{
         // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
         void setPhysics2DSubSteps(int subSteps);
         int getPhysics2DSubSteps() const;
+
+        // Fixed Timestep override while this is the main scene (seconds; 0 = the project's).
+        // Applied when a load makes it the main scene, not by this setter
+        void setFixedTimestep(float seconds);
+        float getFixedTimestep() const;
 
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;

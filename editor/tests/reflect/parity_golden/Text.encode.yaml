@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest e67ea6a015d89189
+digest e4d3cec3c71602f1
 --- 0
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf, fonts/F3.ttf]
 text: "  padded  "
@@ -18,6 +18,7 @@ shadowOffset: [105.42857, 1366.032]
 shadowSoftness: 0.47148538
 shadowDilate: -110.85714
 visibleCharacters: -8
+localizationKey: a/b/c.html
 --- 1
 font: [fonts/F0.ttf]
 text: true
@@ -36,6 +37,7 @@ shadowOffset: [-0, 1456.3378]
 shadowSoftness: 0.9795933
 shadowDilate: 1756.6619
 visibleCharacters: -10
+localizationKey: true
 --- 2
 font: []
 text: "multi\nline"
@@ -74,6 +76,7 @@ shadowOffset: [101.71429, 1e-45]
 shadowSoftness: 0.2857143
 shadowDilate: 3e+38
 visibleCharacters: -17
+localizationKey: a
 --- 4
 font: []
 text: textures/a.png
@@ -92,6 +95,7 @@ shadowColor: [69.71429, 0.9640227, 0, 0]
 shadowOffset: [1e-45, 3e+38]
 shadowSoftness: 1e-45
 visibleCharacters: -12
+localizationKey: textures/a.png
 --- 5
 font: []
 text: true
@@ -110,6 +114,7 @@ shadowOffset: [-0.113736905, 34]
 shadowSoftness: 986.53687
 shadowDilate: -49.857143
 visibleCharacters: 1
+localizationKey: "~"
 --- 6
 font: [fonts/F0.ttf]
 text: "- dash"
@@ -129,6 +134,7 @@ shadowOffset: [-0.95130086, 0.5805234]
 shadowSoftness: -14.857142
 shadowDilate: 162.16138
 visibleCharacters: 19
+localizationKey: a
 --- 7
 font: ["", "", fonts/F2.ttf, fonts/F3.ttf]
 text: with "quotes"
@@ -148,3 +154,4 @@ shadowOffset: [-88.14286, 3e+38]
 shadowSoftness: .nan
 shadowDilate: 3e+38
 visibleCharacters: -19
+localizationKey: true

@@ -63,7 +63,9 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
         {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
             // upstream's scene settings (SYNC#4): written away from their defaults
-            "canvasScaler", "physics2DSubSteps"}},
+            "canvasScaler", "physics2DSubSteps",
+            // S95: the scene's Fixed Timestep override
+            "fixedTimestep"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -77,6 +79,8 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
             // S87: Project Settings > Localization
             "localization",
+            // S95: Project Settings > Time and Input > Simulate Touch From Mouse
+            "time", "simulateTouchFromMouse",
             // Project Settings > Voxels (T6 R7)
             "voxel"}},
         {RootKind::Material, {}},
@@ -680,6 +684,7 @@ const EnumTable<ScriptPropertyType>& StreamSchema::scriptPropertyType() {
         {ScriptPropertyType::EntityReference, "EntityReference"},
         {ScriptPropertyType::Prefab, "Prefab"},
         {ScriptPropertyType::Asset, "Asset"},
+        {ScriptPropertyType::List, "List"},
     }, ScriptPropertyType::Bool);
     return table;
 }

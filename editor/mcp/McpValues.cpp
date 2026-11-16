@@ -39,6 +39,7 @@
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
+#include "dataasset/DataAssets.h"
 #include "component/TextComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -2570,8 +2571,50 @@ Json McpValues::readYamlProperty(ReadContext& ctx, const std::string& name, bool
     return yamlToJson(node);
 }
 
+namespace {
+
+// The declared property a "scripts[N].<name>" names, null for any other property
+const ScriptProperty* findScriptPropertyNamed(Scene* scene, Entity entity, ComponentType component, const std::string& name) {
+    if (component != ComponentType::ScriptComponent || !scene || name.rfind("scripts[", 0) != 0) return nullptr;
+    const size_t close = name.find("].");
+    if (close == std::string::npos) return nullptr;
+    char* end = nullptr;
+    const unsigned long index = std::strtoul(name.c_str() + 8, &end, 10);
+    if (end != name.c_str() + close) return nullptr;
+    const std::string field = name.substr(close + 2);
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts || index >= scripts->scripts.size()) return nullptr;
+    for (const ScriptProperty& prop : scripts->scripts[index].properties) {
+        if (prop.name == field) return &prop;
+    }
+    return nullptr;
+}
+
+// a list script property's value (S95 REQ-20): its elements as single values read
+Json scriptListToJson(Project* project, SceneProject* scene, const ScriptProperty& prop, const ScriptPropertyList& list) {
+    Json items = Json::array();
+    ScriptProperty element = prop;
+    element.type = prop.elementType;
+    for (const ScriptPropertyElement& item : list.items) {
+        if (const EntityReference* ref = std::get_if<EntityReference>(&item)) {
+            items.push_back(McpValues::entityReferenceToJson(project, scene, *ref));
+        } else {
+            items.push_back(DataAssets::toJson(project, element, scriptPropertyValueOf(item)));
+        }
+    }
+    return items;
+}
+
+} // namespace
+
 Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const PropertyData& property, bool readDefault) {
     void* ref = readDefault ? property.def : property.ref;
+    if (property.type == PropertyType::Custom && ref && ctx.scene) {
+        const ScriptProperty* prop = findScriptPropertyNamed(ctx.scene->scene, ctx.entity, ctx.component, name);
+        if (prop && prop->type == ScriptPropertyType::List) {
+            return scriptListToJson(ctx.project, ctx.scene, *prop, *static_cast<ScriptPropertyList*>(ref));
+        }
+    }
     if (property.type == PropertyType::Custom) {
         // an Animation Player entry's wrap has a default ("default"), like an enum
         if (readDefault){
@@ -3053,6 +3096,17 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 text = FileUtils::pathToGenericUtf8(found);
             }
+            // a Data Asset property takes a .dataasset of its class (S95 REQ-22)
+            if (const ScriptProperty* dataProp = stringType == PropertyType::Asset ? findScriptPropertyNamed(scene->scene, entity, component, propertyName) : nullptr;
+                    dataProp && dataProp->isDataAssetReference() && !text.empty()) {
+                ScriptPropertyValue checked;
+                std::string why;
+                if (!DataAssets::fromJson(project, *dataProp, Json(text), true, checked, why)) {
+                    error = propertyName + ": " + why + " (make one with edit_data_asset).";
+                    return nullptr;
+                }
+                return new PropertyCmd<AssetRef>(project, sceneId, entity, component, propertyName, std::get<AssetRef>(checked), onChanged);
+            }
             // a foliage layer's FBX mesh loads from its import, created here the first time
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
                     FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
@@ -3486,6 +3540,32 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     return nullptr;
                 }
                 return new PropertyCmd<AnimationLayerBlend>(project, sceneId, entity, component, propertyName, blend, onChanged);
+            }
+            if (const ScriptProperty* listProp = findScriptPropertyNamed(scene->scene, entity, component, propertyName);
+                    listProp && listProp->type == ScriptPropertyType::List) {
+                // the whole list: each element as its single property takes it (S95 REQ-20)
+                if (!value.is_array()) {
+                    error = "Property " + propertyName + " is a list: give an array of its elements.";
+                    return nullptr;
+                }
+                ScriptPropertyList list;
+                for (size_t i = 0; i < value.size(); i++) {
+                    ScriptPropertyElement element;
+                    std::string why;
+                    if (listProp->elementType == ScriptPropertyType::EntityReference) {
+                        Entity target = NULL_ENTITY;
+                        if (!value[i].is_null() && (target = McpRefs::resolveEntity(scene, value[i], why)) == NULL_ENTITY) {
+                            error = "Property " + propertyName + "[" + std::to_string(i) + "]: " + why;
+                            return nullptr;
+                        }
+                        element = EntityReference{target, 0};
+                    } else if (!DataAssets::elementFromJson(project, *listProp, value[i], true, element, why)) {
+                        error = "Property " + propertyName + "[" + std::to_string(i) + "]: " + why;
+                        return nullptr;
+                    }
+                    list.items.push_back(std::move(element));
+                }
+                return new PropertyCmd<ScriptPropertyList>(project, sceneId, entity, component, propertyName, list, onChanged);
             }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;

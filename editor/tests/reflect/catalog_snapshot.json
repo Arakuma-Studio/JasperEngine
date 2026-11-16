@@ -10682,6 +10682,7 @@
     "font",
     "fontGuid",
     "fontSize",
+    "localizationKey",
     "maxTextSize",
     "multiline",
     "outlineColor",
@@ -10717,6 +10718,11 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "localizationKey": [
+     1,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10809,6 +10815,11 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "localizationKey": [
+     1,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -31518,6 +31529,11 @@
    "fontSize": [
     9,
     65536,
+    true
+   ],
+   "localizationKey": [
+    1,
+    32768,
     true
    ],
    "maxTextSize": [

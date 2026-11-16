@@ -2501,7 +2501,10 @@ std::vector<Setting> mcpSettingsTable() {
                     const std::string code = TitleArtLanguage::canonicalize(item.get<std::string>());
                     if (std::find(codes.begin(), codes.end(), code) == codes.end()) codes.push_back(code);
                 }
-                if (apply) ctx.project()->getLocalizationSettings().languages = codes;
+                if (apply) {
+                    ctx.project()->getLocalizationSettings().languages = codes;
+                    ctx.project()->applyLocalization();
+                }
                 return true;
             };
             add(s);
@@ -2520,11 +2523,22 @@ std::vector<Setting> mcpSettingsTable() {
                 }
                 const std::string code = value.get<std::string>();
                 if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
-                if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                if (apply) {
+                    ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                    ctx.project()->applyLocalization();
+                }
                 return true;
             };
             add(s);
         }
+        // S95 REQ-27: the language a game chose comes back at its next start
+        add(boolSetting("localization.remember_language",
+                        "Store the language a game chooses (Localization.language, TitleArt.setLanguage) in UserSettings and apply it at its next start.",
+                        [](Project& p) { return p.getLocalizationSettings().rememberLanguage; },
+                        [](Project& p, bool v) {
+                            p.getLocalizationSettings().rememberLanguage = v;
+                            p.applyLocalization();
+                        }));
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
                             [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
@@ -3147,6 +3161,42 @@ std::vector<Setting> mcpSettingsTable() {
                 double v;
                 if (!readNumber(value, 0.0, 0.95, v, error)) return false;
                 if (apply) ctx.project()->setInputDeadzone(static_cast<float>(v));
+                return true;
+            };
+            add(std::move(s));
+        }
+        add(boolSetting("input.simulate_touch_from_mouse",
+                        "The mouse also acts as finger 0 (onTouchStart/Move/End with the mouse events; Engine.callTouchInMouseEvent) "
+                        "in Play and in desktop and web builds. The Game view's Simulate Touch preference is per user.",
+                        [](Project& p) { return p.isSimulateTouchFromMouse(); },
+                        [](Project& p, bool v) { p.setSimulateTouchFromMouse(v); }));
+
+        // ---- time (Unity's Project Settings > Time, S95 REQ-13)
+        {
+            Setting s;
+            s.key = "time.fixed_timestep";
+            s.type = "number";
+            s.description = "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and at Play "
+                            "start; a scene's fixed_timestep overrides it while that scene is the main scene.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getFixedTimestep()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setFixedTimestep(v);
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "time.maximum_delta_time";
+            s.type = "number";
+            s.description = "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getMaximumDeltaTime()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setMaximumDeltaTime(v);
                 return true;
             };
             add(std::move(s));
@@ -4380,6 +4430,7 @@ const Placement placements[] = {
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"localization.languages", "Localization", "", "Languages", "language locale translation"},
     {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
+    {"localization.remember_language", "Localization", "", "Remember Language Choice", "language locale translation saved userSettings playerprefs"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
@@ -4420,6 +4471,9 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.simulate_touch_from_mouse", "Input", "", "Simulate Touch From Mouse", "input touch mouse finger emulate simulate mobile"},
+    {"time.fixed_timestep", "Time", "", "Fixed Timestep", "time fixed step fixeddeltatime physics hz rate onfixedupdate"},
+    {"time.maximum_delta_time", "Time", "", "Maximum Allowed Timestep", "time maximum delta frame cap clamp spiral"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
@@ -4723,6 +4777,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
         {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
         {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
+        {"Time", SettingsScope::Project, 21, "time fixed timestep step physics rate maximum delta"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

@@ -245,6 +245,42 @@ return S
     Engine::onUpdate.remove("reloadAnonymous");
 }
 
+// S95 AC-11 (REQ-7, S13): a registration names the method, which is looked up at each call:
+// replacing self.onUpdate takes effect at the next event; a value that is not a function skips
+// the call and warns once for the subscription. Red: the function registered first keeps running
+TEST_F(LuaReloadTest, HandlerLookedUpAtCallTime) {
+    const char* code = R"(
+local S = {}
+function S:init() RegisterEngineEvent(self, "onUpdate") end
+function S:onUpdate() reloadLog.first = (reloadLog.first or 0) + 1 end
+return S
+)";
+    ASSERT_EQ(lua("reloadLog = {}"), "");
+    instantiate("scripts/handler.lua", code, {}, "reloadHandler");
+    Engine::onUpdate.call();
+    EXPECT_EQ(number("reloadLog.first"), 1);
+
+    ASSERT_EQ(lua("reloadHandler.onUpdate = function(self) reloadLog.second = (reloadLog.second or 0) + 1 end"), "");
+    Engine::onUpdate.call();
+    EXPECT_EQ(number("reloadLog.first"), 1) << "the replaced method no longer runs";
+    EXPECT_EQ(number("reloadLog.second or 0"), 1) << "the new one runs at the next call";
+
+    // nil on the instance and on its class: no call, one warning however many events come
+    test::LogCapture log;
+    ASSERT_EQ(lua("reloadHandler.onUpdate = nil; getmetatable(reloadHandler).__index.onUpdate = nil"), "");
+    Engine::onUpdate.call();
+    Engine::onUpdate.call();
+    EXPECT_EQ(number("reloadLog.first"), 1);
+    EXPECT_EQ(number("reloadLog.second"), 1);
+    EXPECT_EQ(log.count(D_LOG_WARN, "'onUpdate' is nil"), 1u) << "warned once for the subscription";
+    EXPECT_EQ(log.count(D_LOG_ERROR, ""), 0u) << "skipped, not an error";
+
+    // a function again: called again, the subscription never ended
+    ASSERT_EQ(lua("reloadHandler.onUpdate = function(self) reloadLog.third = (reloadLog.third or 0) + 1 end"), "");
+    Engine::onUpdate.call();
+    EXPECT_EQ(number("reloadLog.third or 0"), 1);
+}
+
 TEST_F(LuaReloadTest, OnReloadRunsOnceAndInitDoesNot) {
     const char* v1 = R"(
 local S = {}

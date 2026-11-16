@@ -1,7 +1,8 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// The Text component's Inspector (S51 R22): its table's rows, and with a bitmap font a Pixel Font
+// The Text component's Inspector (S51 R22): its table's rows, the Localization Key picker over the
+// project's String Tables (S95 REQ-29), and with a bitmap font a Pixel Font
 // section: Font Size stepping in multiples of the native size, the pixel Outline Width and its
 // Neighbors, a whole-pixel Shadow Offset and a note of the scale. Each edit is one undo step.
 
@@ -11,6 +12,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "component/TextComponent.h"
 #include "external/IconsFontAwesome6.h"
+#include "localization/StringTables.h"
 #include "pixelart/BitmapFont.h"
 #include "pixelart/BitmapFontPool.h"
 #include "pixelart/FontPixelReport.h"
@@ -18,6 +20,7 @@
 #include "util/UIProbe.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -38,6 +41,45 @@ namespace {
         multi->setNoMerge();
     }
 
+    std::string ipfLower(std::string s){
+        for (char& c : s) c = (char)std::tolower((unsigned char)c);
+        return s;
+    }
+
+    struct IpfKey{
+        std::string key;        // bare when one table has it, else "Table:key"
+        std::string table;
+        std::string preview;    // the value in the project's default language
+    };
+
+    // every key of the project's String Tables, read again when the asset database changes
+    const std::vector<IpfKey>& ipfStringKeys(Project* project){
+        static std::vector<IpfKey> keys;
+        static uint64_t version = ~uint64_t(0);
+        static const Project* owner = nullptr;
+        static double readAt = -1000.0;
+        // a table's edit does not change the database: its values come back within a second
+        const double now = ImGui::GetTime();
+        if (owner == project && version == project->getAssetDatabase().getVersion() && now - readAt < 1.0) return keys;
+        owner = project;
+        version = project->getAssetDatabase().getVersion();
+        readAt = now;
+        keys.clear();
+        const std::vector<stringtables::TableFile> tables = stringtables::readAll(project->getProjectPath(), project->getAssetsPath());
+        const auto duplicates = stringtables::duplicateKeys(tables);
+        const std::string language = project->getLocalizationSettings().effectiveDefault();
+        for (const stringtables::TableFile& table : tables) {
+            for (const StringTableEntry& entry : table.table.entries) {
+                IpfKey key;
+                key.key = duplicates.count(entry.key) ? table.name + ":" + entry.key : entry.key;
+                key.table = table.name;
+                if (const StringTableValue* value = entry.find(language)) key.preview = value->form(PluralCategory::OTHER);
+                keys.push_back(std::move(key));
+            }
+        }
+        return keys;
+    }
+
     void ipfLabel(const char* label){
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -51,6 +93,38 @@ namespace {
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
+
+    // S95 REQ-29: Localization Key, picked from the project's String Tables
+    beginTable(cpType, getLabelSize("Localization Key"), "localization");
+    ipfLabel("Localization Key");
+    const std::vector<IpfKey>& keys = ipfStringKeys(project);
+    const std::string shown = text.localizationKey.empty() ? std::string("None") : text.localizationKey;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##textLocalizationKey", shown.c_str(), ImGuiComboFlags_HeightLarge)) {
+        static char filter[96] = "";
+        if (ImGui::IsWindowAppearing()) {
+            filter[0] = '\0';
+            ImGui::SetKeyboardFocusHere();
+        }
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextWithHint("##textLocalizationKeyFilter", "Search keys", filter, sizeof(filter));
+        if (ImGui::Selectable("None", text.localizationKey.empty()) && !text.localizationKey.empty())
+            ipfCommit<std::string>(project, sceneProject, entities, "localizationKey", std::string());
+        for (const IpfKey& key : keys) {
+            if (filter[0] && ipfLower(key.key).find(ipfLower(filter)) == std::string::npos && ipfLower(key.preview).find(ipfLower(filter)) == std::string::npos)
+                continue;
+            const std::string label = key.key + "  (" + key.table + ")";
+            if (ImGui::Selectable(label.c_str(), key.key == text.localizationKey) && key.key != text.localizationKey)
+                ipfCommit<std::string>(project, sceneProject, entities, "localizationKey", key.key);
+            if (ImGui::IsItemHovered() && !key.preview.empty()) ImGui::SetTooltip("%s", key.preview.c_str());
+        }
+        if (keys.empty()) ImGui::TextDisabled("No keys: Window > Localization > String Tables");
+        ImGui::EndCombo();
+    }
+    UIProbe::item("text.localizationKey");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The text is this String Tables key's value in the game's language");
+    endTable();
+
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;
 

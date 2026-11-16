@@ -632,7 +632,7 @@ is the global `document`.
 | Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching and atlas counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
 | Tree | `id`, `tagName` (`"DIV"`; lower case in `.rml`), `localName` (`"div"`), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
-| Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it) |
+| Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it), `setLocalized(key[, args])` (String Tables, below) |
 | Attributes | `getAttribute(name)` (nil when absent), `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes()`, `dataset.userName` = `data-user-name` |
 | Classes and style | `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`; `style.backgroundColor` or `style["background-color"]` (write: inline, `""` or nil removes; read: the computed value as CSS text), `style:getPropertyValue/setProperty/removeProperty`, `style.cssText` |
 | Forms | `value`, `checked`, `disabled` (read the new value in `input`/`change` listeners from `event.target.value`) |
@@ -645,6 +645,24 @@ classes (`htmlui-*`) are invisible to scripts. Show and hide parts of a page wit
 `style.display = "none"`; the whole document with `doc:hide()` / `doc:show()` (hidden documents
 get no input). Create elements with `createElement` or `innerHTML`, then `appendChild`;
 `remove()` removes one.
+
+### Localized text: `data-loc`
+
+An element with `data-loc="key"` shows the String Tables value of `key` in the game's language
+(jasper://docs/localization), with `data-loc-args` as its arguments (JSON: an object of named
+ones, a list of positional ones). The text is set when the document loads, before `onLoad`, and
+again whenever the language changes; it is text, never markup, and replaces the element's
+children.
+
+```html
+<button id="play" data-loc="menu.play">Play</button>
+<span id="coins" data-loc="hud.coins" data-loc-args='{"count": 3}'></span>
+```
+
+```lua
+local doc = UIDocument(self.scene, self.entity)
+doc:getElementById("coins"):setLocalized("hud.coins", { count = 12 })   -- follows the language too
+```
 
 ### UI events
 
@@ -711,6 +729,11 @@ games (layout needs no GPU). A later change of the document reloads it in one of
   form value and focus; the rest comes from the file again, animations of the replaced
   elements are cancelled and listeners of elements without an id are dropped with one warning.
   `onUnload` then `onLoad` fire.
+
+A view loss is not a reload: when Android drops the GPU context in the background or a browser
+loses the WebGL context, the documents keep their DOM, handles, listeners, data models and scroll,
+and no `onLoad`/`onUnload` fires; only their textures are made again (`send_input` app
+`view_lost` / `view_restored` tries it in Play).
 
 A stylesheet-only change restyles in place and keeps everything. Each reload logs one Console
 line, `[HTML UI] Patched ui/menu.html: 3 updated, 1 inserted, 0 removed, 0 replaced, 12

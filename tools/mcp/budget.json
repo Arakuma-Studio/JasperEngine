@@ -70,7 +70,7 @@
         "scripting": {
             "chars": 15000,
             "tools": 13,
-            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools) and upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4)"
+            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools), upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4) and S95's edit_data_asset (Data Assets, the scripts' data classes)"
         },
         "animation": {
             "chars": 16000,
@@ -140,8 +140,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1990,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
+            "limit": 2014,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); +24 measured for the app actions view_lost|view_restored (S95 REQ-18, eval case bad_app_view_lost)"
         },
         "create_particles": {
             "limit": 1888,

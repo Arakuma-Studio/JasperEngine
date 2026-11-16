@@ -3,6 +3,7 @@
 
 #include "Generator.h"
 #include "RepositoryUrl.h"
+#include "script/DataAsset.h"
 #include "object/FluidSimulation.h"
 #include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
@@ -42,6 +43,7 @@
 #include <cerrno>
 #include <map>
 #include <sstream>
+#include <iomanip>
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
@@ -1575,6 +1577,19 @@ std::set<std::string> fieldsDeclaredInScript(const std::string& code, const std:
 // reading a property does not need a nil check per use.
 std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::string, std::string>& wrappers,
                             const std::set<std::string>& scriptClasses) {
+    // a list: its element type, an array (S95 REQ-20); an unassigned reference in it is false
+    if (prop.type == ScriptPropertyType::List) {
+        ScriptProperty element = prop;
+        element.type = prop.elementType;
+        const std::string type = luaPropertyType(element, wrappers, scriptClasses);
+        const bool reference = prop.elementType == ScriptPropertyType::EntityReference || prop.elementType == ScriptPropertyType::Prefab ||
+                               prop.elementType == ScriptPropertyType::Asset;
+        return reference ? "(" + type + "|false)[]" : type.find('|') != std::string::npos ? "(" + type + ")[]" : type + "[]";
+    }
+    // a Data Asset: the table of its class (S95 REQ-22)
+    if (prop.type == ScriptPropertyType::Asset && prop.assetType == DataAsset::ASSET_TYPE) {
+        return prop.ptrTypeName.empty() ? std::string("table") : prop.ptrTypeName;
+    }
     switch (prop.type) {
         case ScriptPropertyType::Bool: return "boolean";
         case ScriptPropertyType::Int: return "integer";
@@ -1587,7 +1602,8 @@ std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::stri
         case ScriptPropertyType::Color4: return "Vector4";
         case ScriptPropertyType::Prefab: return "PrefabAsset";
         case ScriptPropertyType::Asset: return "AssetRef";
-        case ScriptPropertyType::EntityReference: break;
+        case ScriptPropertyType::EntityReference:
+        case ScriptPropertyType::List: break;
     }
     // "entity": the GameObject's first Lua script instance, else an EntityHandle
     if (prop.ptrTypeName.empty()) return "ScriptInstance|EntityHandle";
@@ -2617,6 +2633,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
+    mainContent += timeAndTouchInitSource(fixedTimestep, maximumDeltaTime, simulateTouchFromMouse);
     // Project Settings > Navigation: the agent types and areas every navmesh and grid reads
     mainContent += navigationSettingsCode;
     // Project Settings > Voxels: what the project lowers of this platform's limits (T6 R7)
@@ -2744,6 +2761,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
         // Project Settings > Localization > Default Language (S87 R12 step 4)
         mainContent += "    TitleArtLanguage::setProjectDefault(" + Factory::formatString(playerSettings.defaultLanguage) + ");\n";
+        // ... and its String Tables, the remembered language applied before any script (S95 REQ-27)
+        {
+            auto list = [](const std::vector<std::string>& values) {
+                std::string out = "{";
+                for (size_t i = 0; i < values.size(); i++) out += (i ? ", " : "") + Factory::formatString(values[i]);
+                return out + "}";
+            };
+            const LocalizationConfig& localization = playerSettings.localization;
+            mainContent += "    Localization::configure({" + list(localization.languages) + ", " + (localization.rememberLanguage ? "true" : "false") +
+                ", " + list(localization.tables) + "});\n";
+            mainContent += "    Localization::start();\n";
+        }
         // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
         if (!playerSettings.dynamicBatching)
             mainContent += "    Engine::setDynamicBatchingDefault(false);\n";
@@ -2912,6 +2941,23 @@ std::string editor::Generator::inputSettingsInitSource(const std::string& action
     // a project without an actions asset keeps the engine's Unity Input Manager defaults
     if (!actionsAsset.empty())
         source += "    InputActions::loadDefault(" + Factory::formatString(actionsAsset) + ");\n";
+    return source;
+}
+
+std::string editor::Generator::timeAndTouchInitSource(double fixedTimestep, double maximumDeltaTime, bool simulateTouchFromMouse) {
+    // every digit of the double: 1/120 is the step the editor's Play runs
+    auto exact = [](double value) {
+        std::ostringstream text;
+        text << std::showpoint << std::setprecision(17) << value;
+        return text.str();
+    };
+    std::string source;
+    if (fixedTimestep != 1.0 / 60.0)
+        source += "    Engine::setProjectUpdateTime(" + exact(fixedTimestep) + ");\n";
+    if (maximumDeltaTime != 0.25)
+        source += "    Engine::setMaxDeltatime(" + exact(maximumDeltaTime) + "f);\n";
+    if (simulateTouchFromMouse)
+        source += "    Engine::setCallTouchInMouseEvent(true);\n";
     return source;
 }
 

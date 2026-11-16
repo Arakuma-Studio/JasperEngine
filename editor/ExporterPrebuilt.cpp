@@ -499,6 +499,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
+    if (!writeDataAssetIndex()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
     if (!buildAndSaveShaders()) return false;
@@ -641,6 +642,9 @@ bool editor::Exporter::writeGameConfig() {
     game.foliageQualityUncapped = !project->isFoliageQualityDeclared();
     game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
+    game.simulateTouchFromMouse = project->isSimulateTouchFromMouse();
+    game.fixedTimestep = project->getFixedTimestep();
+    game.maximumDeltaTime = project->getMaximumDeltaTime();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
     game.voxelMaxDimension = project->getVoxelSettings().maxDimension;
@@ -692,6 +696,9 @@ bool editor::Exporter::writeGameConfig() {
     game.audioSampleRate = audio.sampleRate;
     game.audioOutputStage = audio.outputStage;
     game.audioIosSession = audio.iosSessionCategory;
+    // Project Settings > Localization and the String Tables (S95 REQ-27, REQ-30)
+    game.defaultLanguage = project->getLocalizationSettings().effectiveDefault();
+    game.localization = project->getLocalizationConfig();
 
     // the project icon, at the content root: the window and taskbar icon of every platform
     fs::path icon = project->getWindowIcon();

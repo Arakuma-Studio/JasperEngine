@@ -58,6 +58,7 @@
 #include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
+#include "window/ScriptValueEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/RenderSystem.h"
@@ -12556,6 +12557,37 @@ static void drawAssetScriptProperty(editor::Project* project, editor::SceneProje
     ImGui::PopID();
 }
 
+// A list property, or a Data Asset reference (S95 REQ-20, REQ-22): the shared value editor
+// (ScriptValueEditor) on the first GameObject's value, set on all of them as one undo step; a drag
+// or text edit merges into one step until it ends
+static void drawScriptValueProperty(editor::Project* project, editor::SceneProject* sceneProject, const std::vector<Entity>& entities,
+        editor::ComponentType cpType, const std::string& propertyId, const ScriptProperty& prop,
+        const std::function<void()>& onValueChanged, editor::Command*& cmd) {
+    using namespace editor;
+
+    PropertyData data = Catalog::findProperty(sceneProject->scene, entities.front(), cpType, propertyId);
+    if (!data.ref) return;
+    ScriptPropertyValue value = prop.type == ScriptPropertyType::List ? ScriptPropertyValue(*static_cast<ScriptPropertyList*>(data.ref))
+                                                                      : ScriptPropertyValue(*static_cast<AssetRef*>(data.ref));
+    const ScriptValueEdit edit = drawScriptValue(project, sceneProject, prop, value, propertyId);
+    if (edit.changed) {
+        for (Entity entity : entities) {
+            if (const ScriptPropertyList* list = std::get_if<ScriptPropertyList>(&value)) {
+                cmd = new PropertyCmd<ScriptPropertyList>(project, sceneProject->id, entity, cpType, propertyId, *list, onValueChanged);
+            } else if (const AssetRef* ref = std::get_if<AssetRef>(&value)) {
+                cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, propertyId, *ref, onValueChanged);
+            } else {
+                continue;
+            }
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        }
+    }
+    if (!edit.editing && cmd) {
+        cmd->setNoMerge();
+        cmd = nullptr;
+    }
+}
+
 void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.empty()) return;
 
@@ -13165,6 +13197,13 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                         propertyHeader(displayName, -1, false, false);
                         prefabRowProperty.clear();
                         drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, propSettings.onValueChanged, cmd, finishProperty);
+                        continue;
+                    }
+                    if (prop.type == ScriptPropertyType::List || prop.isDataAssetReference()) {
+                        prefabRowProperty = propertyId;
+                        propertyHeader(displayName, -1, false, false);
+                        prefabRowProperty.clear();
+                        drawScriptValueProperty(project, sceneProject, entities, cpType, propertyId, prop, propSettings.onValueChanged, cmd);
                         continue;
                     }
                     if (prop.type == ScriptPropertyType::Asset) {
@@ -14074,6 +14113,46 @@ void editor::InspectorWindow::show(){
 
                     ImGui::EndTable();
                 }
+            }
+
+            // S95 REQ-13: the fixed step while this is the main scene (Project Settings > Time otherwise)
+            ImGui::SeparatorText("Time");
+
+            if (ImGui::BeginTable("scene_time_table", 2, tableFlags)) {
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Fixed Timestep"));
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                float step = Catalog::getSceneProperty<float>(sceneProject->scene, "fixed_timestep");
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("Fixed Timestep");
+                if (step != 0.0f) {
+                    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
+                    ImGui::SameLine();
+                    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                    if (ImGui::Button(ICON_FA_ROTATE_LEFT"##reset_fixed_timestep")) {
+                        CommandHandle::get(sceneProject->id)->addCommandNoMerge(new ScenePropertyCmd<float>(project, sceneProject->id, "fixed_timestep", 0.0f));
+                    }
+                    ImGui::PopStyleColor(2);
+                    ImGui::PopStyleVar(3);
+                }
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(5 * ImGui::GetFontSize());
+                if (ImGui::InputFloat("##fixed_timestep", &step, 0.0f, 0.0f, "%.4f s")) {
+                    step = step <= 0.0f ? 0.0f : std::clamp(step, (float)Project::minFixedTimestep, (float)Project::maxFixedTimestep);
+                    CommandHandle::get(sceneProject->id)->addCommand(new ScenePropertyCmd<float>(project, sceneProject->id, "fixed_timestep", step));
+                }
+                if (step == 0.0f) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("Project's");
+                }
+                ImGui::SetItemTooltip("Seconds per fixed step (onFixedUpdate, physics) while this is the main scene: a load into it "
+                                      "applies it, a load into a scene without one brings Project Settings > Time back. 0 = the project's.");
+
+                ImGui::EndTable();
             }
 
             // the UI's own space: a UI scene's native UI and every scene's screen HTML documents

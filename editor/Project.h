@@ -684,10 +684,14 @@ namespace jasperengine::editor{
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
+        // S95 REQ-27: a language the game chose is stored in UserSettings and applied at the next start
+        bool rememberLanguage = true;
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
-        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator==(const LocalizationSettings& other) const {
+            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberLanguage == other.rememberLanguage;
+        }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 
@@ -953,6 +957,11 @@ namespace jasperengine::editor{
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Input > Simulate Touch From Mouse: Engine::callTouchInMouseEvent at the game's start and Play's
+        bool simulateTouchFromMouse = false;
+        // Time: the fixed step and the frame delta cap, set before init in games and at Play start
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
         PlayerCrashSettings playerCrash;
@@ -1818,6 +1827,20 @@ namespace jasperengine::editor{
         std::string getInputActionsEnginePath() const;
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
+        void setSimulateTouchFromMouse(bool simulate) { simulateTouchFromMouse = simulate; }
+        bool isSimulateTouchFromMouse() const { return simulateTouchFromMouse; }
+
+        // Project Settings > Time (Unity's Fixed Timestep, Maximum Allowed Timestep), seconds; the
+        // defaults are the engine's (Engine::updateTime, maxDeltatime). Play stop gives the editor
+        // the defaults back
+        static constexpr double defaultFixedTimestep = 1.0 / 60.0;
+        static constexpr double defaultMaximumDeltaTime = 0.25;
+        static constexpr double minFixedTimestep = 0.0001;
+        static constexpr double maxFixedTimestep = 10.0;
+        void setFixedTimestep(double seconds) { fixedTimestep = seconds; }
+        double getFixedTimestep() const { return fixedTimestep; }
+        void setMaximumDeltaTime(double seconds) { maximumDeltaTime = seconds; }
+        double getMaximumDeltaTime() const { return maximumDeltaTime; }
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports
@@ -2139,6 +2162,14 @@ namespace jasperengine::editor{
         const PresentationSettings& getPresentationSettings() const;
         LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
         const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
+        // S95 REQ-27, REQ-30: what a game's Localization gets (its languages, Remember Language
+        // Choice and every .stringtable of the assets folder, in path order)
+        LocalizationConfig getLocalizationConfig() const;
+        // the editor's Localization and project default language from the project: at its open,
+        // a Localization settings change and a .stringtable change (Edit mode and Play alike)
+        void applyLocalization();
+        // after files changed on disk: a changed, added or removed .stringtable applies again
+        void localizationFilesChanged(const std::vector<std::filesystem::path>& changed);
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();

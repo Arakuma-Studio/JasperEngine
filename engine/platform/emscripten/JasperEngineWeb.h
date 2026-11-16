@@ -48,6 +48,8 @@ private:
     static bool pageHidden;
     static bool adPlaying;
     static bool contextLost;
+    // made once (init); a lost context comes back in the same handle
+    static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE glContext;
     // the window's focus (applied once the project has started)
     static bool windowFocused;
     // requestAnimationFrame intervals of the first frames (Screen.refreshRate)

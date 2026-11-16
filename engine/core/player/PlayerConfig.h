@@ -19,6 +19,7 @@
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
+#include "localization/Localization.h"
 #include "pixelart/ScreenTransition.h"
 
 #include "json.hpp"
@@ -95,6 +96,11 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // Input > Simulate Touch From Mouse (Engine::callTouchInMouseEvent)
+        bool simulateTouchFromMouse = false;
+        // Project Settings > Time, seconds: the fixed step and the frame delta cap
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;
@@ -151,6 +157,11 @@ namespace jasperengine::player {
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
 
+        // Project Settings > Localization (S87 R64, S95 REQ-27): the default language with its
+        // fallbacks applied, and the String Tables (a Compile build's generated main sets the same)
+        std::string defaultLanguage = "en";
+        LocalizationConfig localization;
+
         // the project's native plugins with code for other platforms only (the Compile build's
         // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
         // Lua mock answering logs a warning
@@ -170,5 +181,7 @@ namespace jasperengine::player {
     // The player's audio as Play and a Compile build have it: the voices and sample rate, then the
     // project's mixer (before the first scene loads)
     JASPERENGINE_API void applyAudio(const PlayerConfig& game);
+    // ... and its languages and String Tables, Remember Language Choice applied (before any script)
+    JASPERENGINE_API void applyLocalization(const PlayerConfig& game);
 
 }

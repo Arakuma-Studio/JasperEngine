@@ -5,6 +5,7 @@
 #include "pixelart/PixelColor.h"
 
 #include "audio/AudioMixer.h"
+#include "util/TitleArtLanguage.h"
 #include "subsystem/AudioSystem.h"
 
 #include <algorithm>
@@ -96,6 +97,11 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (simulateTouchFromMouse)
+        out["input"]["simulateTouchFromMouse"] = true;
+    // (only when set: a game at the defaults keeps its file)
+    if (fixedTimestep != PlayerConfig().fixedTimestep || maximumDeltaTime != PlayerConfig().maximumDeltaTime)
+        out["time"] = {{"fixedTimestep", fixedTimestep}, {"maximumDeltaTime", maximumDeltaTime}};
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
         areas.push_back({{"name", area.name}, {"cost", area.cost}, {"color", {area.color.x, area.color.y, area.color.z, area.color.w}}});
@@ -149,6 +155,8 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    out["localization"] = {{"defaultLanguage", defaultLanguage}, {"languages", localization.languages},
+                           {"rememberLanguage", localization.rememberLanguage}, {"tables", localization.tables}};
     return out;
 }
 
@@ -238,6 +246,18 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+            config.simulateTouchFromMouse = input->value("simulateTouchFromMouse", false);
+        }
+        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
+            // a step the engine refuses keeps the default
+            auto seconds = [&](const char* key, double fallback) {
+                const auto value = time->find(key);
+                if (value == time->end() || !value->is_number()) return fallback;
+                const double v = value->get<double>();
+                return v > 0.0 && std::isfinite(v) ? v : fallback;
+            };
+            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
+            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
@@ -363,6 +383,13 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
             }
         }
+        // absent (an older editor's game.json): English, no String Tables
+        if (const auto localization = in.find("localization"); localization != in.end() && localization->is_object()) {
+            config.defaultLanguage = localization->value("defaultLanguage", config.defaultLanguage);
+            config.localization.languages = localization->value("languages", std::vector<std::string>());
+            config.localization.rememberLanguage = localization->value("rememberLanguage", config.localization.rememberLanguage);
+            config.localization.tables = localization->value("tables", std::vector<std::string>());
+        }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
         out = std::move(config);
@@ -413,4 +440,10 @@ const GameScene* PlayerConfig::findScene(const std::string& nameOrId) const {
     } catch (...) {
     }
     return nullptr;
+}
+
+void jasperengine::player::applyLocalization(const PlayerConfig& game) {
+    TitleArtLanguage::setProjectDefault(game.defaultLanguage);
+    Localization::configure(game.localization);
+    Localization::start();
 }

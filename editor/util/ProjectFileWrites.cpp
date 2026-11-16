@@ -228,6 +228,8 @@ editor::ProjectFileWrites::Refreshed editor::ProjectFileWrites::refresh(Project*
     VatDocument::filesChanged(changedPaths, project);
     // the project's audio mixer is heard as the file now says (Edit mode and Play alike)
     project->audioFilesChanged(changedPaths);
+    // String Tables (S95 REQ-29): Texts and data-loc show the new values
+    project->localizationFilesChanged(changedPaths);
 
     if (anyMaterial || force) {
         // the linked .material files written (every one when forced) read again into their

@@ -73,6 +73,9 @@ namespace jasperengine{
         void load() override;
         void draw() override;
         void destroy() override;
+        // no GPU objects: the state machines keep their states through a view loss (destroy resets them)
+        void releaseGpu() override {}
+        void restoreGpu() override {}
         void update(double dt) override;
         void fixedUpdate(double dt) override;
         void onComponentRemoved(Entity entity, ComponentId componentId) override;

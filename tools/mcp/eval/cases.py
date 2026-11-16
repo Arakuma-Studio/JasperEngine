@@ -573,6 +573,79 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "control_time_settings",
+        "kind": "control",
+        "what_happened": "A game port set Time.fixedDeltaTime in every scene's init and reset it by hand at Play stop, "
+                         "as there was no project setting (S95 REQ-13 adds Project Settings > Time).",
+        "text_at_issue": "get_project_settings rows time.fixed_timestep and time.maximum_delta_time (their descriptions)",
+        "source": "S95 spec, ledger item S14 (a port's Framework.lua fixed-step reset)",
+        "files": GAME_FILES,
+        "prompt": "Physics should run at 50 Hz in the whole game, in Play and in builds, and a hitch should never give the "
+                  "game a frame longer than 0.1 s.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "time.fixed_timestep", "page": "Time", "label": "Fixed Timestep", "scope": "project",
+                              "value": 1 / 60},
+                             {"key": "time.maximum_delta_time", "page": "Time", "label": "Maximum Allowed Timestep",
+                              "scope": "project", "value": 0.25}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "time.fixed_timestep = 0.02; time.maximum_delta_time = 0.1",
+                {"settings": {"time.fixed_timestep": 0.02, "time.maximum_delta_time": 0.1}})},
+            {"tool": "get_project_settings", "result": ok(
+                "time.fixed_timestep = 0.0166667 (Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before "
+                "init in builds and at Play start; a scene's fixed_timestep overrides it while that scene is the main scene.); "
+                "time.maximum_delta_time = 0.25 (Longest frame delta in seconds (default 0.25): a longer frame is clamped "
+                "(Time.maximumDeltaTime).)",
+                {"settings": {"time.fixed_timestep": 1 / 60, "time.maximum_delta_time": 0.25},
+                 "schema": {"time.fixed_timestep": {"type": "number", "description":
+                                "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and "
+                                "at Play start; a scene's fixed_timestep overrides it while that scene is the main scene."},
+                            "time.maximum_delta_time": {"type": "number", "description":
+                                "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime)."}}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["time.fixed_timestep", "time.maximum_delta_time"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"time.fixed_timestep": "re:^0\\.02$"}}},
+                             {"tool": "set_project_settings", "args": {"values": {"time.maximum_delta_time": "re:^0\\.1$"}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "control_simulate_touch_from_mouse",
+        "kind": "control",
+        "what_happened": "A touch-only game port set Engine.callTouchInMouseEvent from a script for desktop testing; the "
+                         "Game view's Simulate Touch is a per-user preference and builds never had it (S95 REQ-12).",
+        "text_at_issue": "get_project_settings row input.simulate_touch_from_mouse (its description); configure_game_view "
+                         "simulate_touch",
+        "source": "S95 spec, ledger item S8 (a port's Framework.lua mouseAsTouch)",
+        "files": GAME_FILES,
+        "prompt": "Our game is touch-only. Make the mouse act as a finger for the whole team: in Play and in the desktop "
+                  "and web builds.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "input.simulate_touch_from_mouse", "page": "Input", "label": "Simulate Touch From Mouse",
+                              "scope": "project", "value": False},
+                             {"key": "preferences.simulate_touch", "page": "General", "section": "Game View",
+                              "label": "Simulate Touch", "scope": "preference", "value": False}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = true", {"settings": {"input.simulate_touch_from_mouse": True}})},
+            {"tool": "get_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = false (The mouse also acts as finger 0 (onTouchStart/Move/End with the "
+                "mouse events; Engine.callTouchInMouseEvent) in Play and in desktop and web builds. The Game view's Simulate "
+                "Touch preference is per user.)",
+                {"settings": {"input.simulate_touch_from_mouse": False}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["input.simulate_touch_from_mouse"]})},
+            {"tool": "configure_game_view", "result": ok("Game view: simulate_touch on (this editor only).",
+                                                        {"changed": ["simulate_touch"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"input.simulate_touch_from_mouse": True}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_duplicate_name",
         "kind": "bad",
         "what_happened": "create_entity renamed the new camera \"Main Camera 2\" because the name was taken; the agent then "
@@ -667,6 +740,32 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
                    "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_app_view_lost",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "An Android return after the GPU context went rebuilt every HTML UI document from its file; in "
+                         "editor Play agents could only pause and resume or send low_memory, which keep the context, so "
+                         "the reset never showed before a device test.",
+        "text_at_issue": "send_input description: 'app: action ...|low_memory|hide|show|view_lost|view_restored|orientation'",
+        "source": "JasperArcade port ledger S30; docs/specs/S95-lua-runtime-gaps.md REQ-18",
+        "prompt": "The game is playing. On Android, after the app sits in the background, the system sometimes drops the "
+                  "game's OpenGL context and the app makes it again on return. Reproduce that GPU context loss and "
+                  "return here in Play, then check the HUD's state.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}, "result": ok(
+                "Sent 3 events over 5 frames; playing.", {"frames": 5, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_restored"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"paused": False, "lifecycle": {
+                                                         "view_lost": 1, "view_restored": 1, "view": "loaded"}}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}}],
+                   "shell_must_not": [r"adb|xdotool"]},
         "max_turns": 10,
     },
     {
@@ -4209,6 +4308,25 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_lua_api_frame_order",
+        "kind": "guard",
+        "what_happened": "A Unity port wrote its own LateUpdate module because a camera moved in onPostUpdate was drawn a "
+                         "frame late and a handler swapped after RegisterEngineEvent kept the old function (JasperArcade "
+                         "S13, S24, S26); the engine now draws what onPostUpdate moves that frame, getWorldPosition is "
+                         "current, and handlers are looked up by name at each call.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 1.3 (the lookup by name; onPostUpdate's row), 2.17 frame order, "
+                         "4.2 getWorldPosition",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-5, REQ-6, REQ-7",
+        "prompt": "Going by the editor's Lua API guide: my camera script sets its position from the player's "
+                  "getWorldPosition() in onPostUpdate, after the player moved in onUpdate. Is the camera drawn a frame late, "
+                  "so I need a workaround? And after RegisterEngineEvent(self, 'onUpdate'), if I assign "
+                  "self.onUpdate = self.fastUpdate, which function runs on the next frame? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"(same|this) frame", r"fastUpdate"],
+                   "reply_must_not": [r"(is|are|gets?|be) drawn (a|one) frame late", r"(the )?old (one|function|method|onUpdate) (still )?runs"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_lua_api_model_parts",
         "kind": "guard",
         "what_happened": "On a model imported from a glTF with several mesh nodes, Mesh/Model calls changed the root's empty mesh; "
@@ -5241,5 +5359,72 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_string_table_set_not_json_edit",
+        "kind": "guard",
+        "what_happened": "S95 String Tables: edit_string_table set writes a .stringtable as one undo step, refuses a "
+                         "language the project does not ship and answers the keys each language still misses. Asked to "
+                         "fill a table's missing translations, agents should use it (the localization group) rather than "
+                         "hand-edit the JSON, which gives no undo, no check of the plural forms and no missing report. The "
+                         "tool is in a group, so only the guide's Other areas entry and Tool groups line lead to it.",
+        "text_at_issue": "Guide 'Other areas': 'localization' and the Tool groups line's 'localization'; edit_string_table description: 'set writes "
+                         "{key: {language: text or plural forms or null, comment}} in one undo step'.",
+        "source": "S95 WP-6 (new tool text); no failure on record",
+        "prompt": "assets/Localization/UI.stringtable lacks Spanish for two keys: menu.quit is \"Salir\", and hud.lives is "
+                  "\"{count} vida\" for one and \"{count} vidas\" otherwise. Add them.",
+        "files": {"assets/Localization/UI.stringtable": '{\n  "version": 1,\n  "entries": [\n'
+                  '    {"key": "menu.quit", "values": {"en": "Quit"}},\n'
+                  '    {"key": "hud.lives", "values": {"en": {"one": "{count} life", "other": "{count} lives"}}}\n  ]\n}\n'},
+        "mocks": [
+            {"tool": "edit_string_table", "args": {"action": "get"},
+             "result": ok("assets/Localization/UI.stringtable: 2 key(s). es misses 2 key(s) (menu.quit, ...).",
+                          {"path": "assets/Localization/UI.stringtable", "name": "UI", "keys": 2, "languages": ["en", "es"],
+                           "missing": {"en": [], "es": ["menu.quit", "hud.lives"]},
+                           "entries": [{"key": "menu.quit", "values": {"en": "Quit"}},
+                                       {"key": "hud.lives", "values": {"en": {"one": "{count} life", "other": "{count} lives"}}}],
+                           "next": "es misses 2 key(s) (menu.quit, ...)."})},
+            {"tool": "edit_string_table", "args": {"action": "set"},
+             "result": ok("Changed assets/Localization/UI.stringtable: 2 key(s) set, one undo step. Nothing missing.",
+                          {"path": "assets/Localization/UI.stringtable", "name": "UI", "keys": 2, "languages": ["en", "es"],
+                           "missing": {"en": [], "es": []}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_string_table", "args": {"action": "set"}}],
+                   "edits_must_not": [r"\.stringtable$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_data_asset_written_by_hand",
+        "kind": "bad",
+        "what_happened": "S95 REQ-24: a .dataasset is JSON, so an agent asked for one writes the file itself and gets no GUID "
+                         "meta check, no type check of the values and no undo step. edit_data_asset sits in the scripting group, so "
+                         "it has to be found from the task: the group's line names Data Assets, the tool's description says to edit "
+                         "them with it, not by writing the JSON.",
+        "text_at_issue": "McpToolGroups.cpp scripting: '... numeric expressions and Data Assets.'; DataAssetTools.cpp edit_data_asset "
+                         "description: 'Edit them with this tool, not by writing the JSON.'",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-24, AC-21 (new tool; no failure on record)",
+        "files": {"lua/data/ItemData.lua": "---@dataasset\nlocal ItemData = { properties = {\n"
+                                           "    { name = 'displayName', type = 'string', default = 'Item' },\n"
+                                           "    { name = 'price', type = 'int', default = 10 },\n} }\nreturn ItemData\n"},
+        "prompt": "lua/data/ItemData.lua is a data class. Make a Data Asset of it at assets/items/sword.dataasset: a Sword that costs 30.",
+        "mocks": [
+            {"tool": "edit_data_asset", "args": {"action": "list"}, "result": ok(
+                "1 data class(es): ItemData (0 asset(s)).",
+                {"classes": [{"class": "ItemData", "script": "lua/data/ItemData.lua",
+                              "fields": [{"name": "displayName", "type": "string"}, {"name": "price", "type": "int"}], "assets": []}]})},
+            {"tool": "edit_data_asset", "args": {"action": "create"}, "result": ok(
+                "Created assets/items/sword.dataasset (ItemData, 2 field(s)). One undo step.",
+                {"path": "assets/items/sword.dataasset", "guid": "4b1e9c0d2a7f4e31b6c58d0f9e2a7c13", "class": "ItemData",
+                 "values": {"displayName": "Sword", "price": 30}, "problems": [], "written": True,
+                 "next": "Scripts reach it through a property typed \"ItemData\" (set_script_properties: this path), or "
+                         "DataAsset.load(\"items/sword.dataasset\") in Lua."})},
+            {"tool": "edit_data_asset", "args": {"action": "get"}, "result": ok(
+                "assets/items/sword.dataasset: ItemData, 2 field(s), 0 problem(s).",
+                {"path": "assets/items/sword.dataasset", "class": "ItemData", "values": {"displayName": "Sword", "price": 30}, "problems": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_data_asset", "args": {"action": "create", "class": "ItemData",
+                                                                  "values": {"displayName": "Sword", "price": 30}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.dataasset$"]},
+        "max_turns": 10,
     },
 ]

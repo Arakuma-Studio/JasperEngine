@@ -36,6 +36,7 @@
 #include "audio/MusicPlayer.h"
 #include "object/sound/Audio.h"
 #endif
+#include "object/TitleArt.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -195,6 +196,10 @@ Engine::FrameStats Engine::currentFrameStats;
 double Engine::maxDeltatime = 0.25;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
+double Engine::projectUpdateTime = 1.0 / 60.0;
+bool Engine::sceneUpdateTimeApplied = false;
+int Engine::startScreenWidth = 0;
+int Engine::startScreenHeight = 0;
 
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
@@ -215,6 +220,7 @@ bool Engine::inFixedStep = false;
 float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
+bool Engine::releasingScenesGpu = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
@@ -594,8 +600,24 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
         refreshCanvas(true);
     }else{
         // Scenes and scripts can start before the view exists; the screen refines this once it loads
-        Engine::canvasWidth = canvasWidth;
-        Engine::canvasHeight = canvasHeight;
+        layoutBeforeView();
+    }
+}
+
+void Engine::setStartScreenSize(int width, int height){
+    startScreenWidth = std::max(width, 0);
+    startScreenHeight = std::max(height, 0);
+    if (!viewLoaded)
+        layoutBeforeView();
+}
+
+void Engine::layoutBeforeView(){
+    if (startScreenWidth > 0 && startScreenHeight > 0 && preferredCanvasWidth > 0 && preferredCanvasHeight > 0){
+        computeViewLayout(startScreenWidth, startScreenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                          Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    }else{
+        Engine::canvasWidth = preferredCanvasWidth;
+        Engine::canvasHeight = preferredCanvasHeight;
     }
 }
 
@@ -616,6 +638,8 @@ void Engine::setScalingMode(Scaling scalingMode){
 
     if (viewLoaded){
         refreshCanvas(true);
+    }else{
+        layoutBeforeView();
     }
 }
 
@@ -869,6 +893,30 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+void Engine::setProjectUpdateTime(double seconds){
+    if (!(seconds > 0.0) || !std::isfinite(seconds)){
+        Log::warn("Engine::setProjectUpdateTime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    projectUpdateTime = seconds;
+    updateTime = seconds;
+    sceneUpdateTimeApplied = false;
+}
+
+double Engine::getProjectUpdateTime(){
+    return projectUpdateTime;
+}
+
+void Engine::applySceneUpdateTime(double sceneSeconds){
+    if (sceneSeconds > 0.0 && std::isfinite(sceneSeconds)){
+        updateTime = sceneSeconds;
+        sceneUpdateTimeApplied = true;
+    }else if (sceneUpdateTimeApplied){
+        updateTime = projectUpdateTime;
+        sceneUpdateTimeApplied = false;
+    }
 }
 
 int Engine::getFixedStepsLeft(){
@@ -1728,6 +1776,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
+    // TitleArt.onLanguageChanged, which is Localization.onLanguageChanged too (S95 REQ-27)
+    TitleArt::getOnLanguageChanged().removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
@@ -1780,6 +1830,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
+    TitleArt::getOnLanguageChanged().clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
 #if JASPERENGINE_SOUND_LAYER
@@ -2206,7 +2257,7 @@ void Engine::systemViewLoaded(){
     }
     
     for (Scene* scene : getScenesSnapshot()){
-        scene->load();
+        scene->restoreGpu();
     }
 }
 
@@ -2709,6 +2760,22 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->compactComponents();
         }
+        // the late transform pass (S95 REQ-5): what onPostUpdate, the timers, the coroutines and
+        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame
+        // (a Camera Follow follows a target moved then); the 3D listener and sources are heard where
+        // they are drawn. Nothing moved: one compare per scene
+        bool lateMoved = false;
+        bool viewMoved = false;
+        for (int i = 0; i < scenes.size(); i++) {
+            const LateTransformResult late = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms();
+            lateMoved = lateMoved || late.moved;
+            viewMoved = viewMoved || late.viewMoved;
+        }
+        if (lateMoved) {
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<AudioSystem>()->updateLate(viewMoved);
+            }
+        }
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
     }
@@ -2910,8 +2977,10 @@ void Engine::systemViewDestroyed(){
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->destroy();
+        scenes[i]->releaseGpu();
     }
+    // the frame that brings the view back measured the time without it
+    clampNextDelta = true;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -2925,6 +2994,37 @@ void Engine::systemViewDestroyed(){
     clearPools();
 
     drawSemaphore.release();
+}
+
+void Engine::releaseScenesGpu(const std::vector<Scene*>& list){
+    if (!viewLoaded)
+        return;
+
+    drawSemaphore.acquire();
+    // the systems tell a view loss from a teardown by the view (RenderSystem keeps its CPU
+    // assets for the next load, UISystem its buttons' textures)
+    viewLoaded = false;
+    releasingScenesGpu = true;
+    for (Scene* scene : list){
+        if (scene)
+            scene->releaseGpu();
+    }
+    releasingScenesGpu = false;
+    viewLoaded = true;
+    clampNextDelta = true;
+    drawSemaphore.release();
+}
+
+void Engine::restoreScenesGpu(const std::vector<Scene*>& list){
+    for (Scene* scene : list){
+        if (scene)
+            scene->restoreGpu();
+    }
+    clampNextDelta = true;
+}
+
+bool Engine::isReleasingScenesGpu(){
+    return releasingScenesGpu;
 }
 
 void Engine::systemShutdown(){
@@ -3031,6 +3131,8 @@ void Engine::applyPause(){
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
     if (!want){
+        // the first frame back measured the time in the background: no game clock jumps by it
+        clampNextDelta = true;
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
             [](ScriptBase& script) { script.onApplicationPause(false); });
