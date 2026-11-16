@@ -163,9 +163,11 @@ namespace jasperengine::editor::vertexcolor {
     // the Vertex Paint window sets it to open itself with the Paint tool armed (empty: nothing opens)
     std::function<void(Project* project, uint32_t sceneId, Entity entity)>& paintToolHook();
 
-    // R61
+    // R61: a Model's file written again with the paint (with Merge Static Meshes too), or a plain
+    // mesh's (or an OBJ Model's) geometry written as a new .glb. Replace in Scene swaps the GameObject
+    // to a Model of it and removes the component, one undo step
     struct ExportModelOptions {
-        std::string path;                 // project-relative .glb
+        std::string path;                 // project-relative .glb ("": beside the model, or the .vcolors file)
         bool replaceInScene = false;
         bool splitHardEdges = true;
     };
