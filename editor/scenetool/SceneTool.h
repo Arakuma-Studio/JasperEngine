@@ -11,12 +11,14 @@
 
 #include "math/Ray.h"
 #include "math/Vector3.h"
+#include "math/Vector4.h"
 
 #include "imgui.h"
 
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
     class Scene;
@@ -37,6 +39,18 @@ namespace jasperengine::editor {
         bool ctrl = false;
         bool alt = false;
         int button = 0;
+        // a pen's pressure 0..1, or -1 for a mouse (Backend::penPressure; V1 R35)
+        float pressure = -1.0f;
+        // this frame's mouse wheel (ImGuiIO::MouseWheel); the view still zooms with it
+        float wheel = 0.0f;
+    };
+
+    // line segments in world space the view draws in its scene, depth tested: a cursor on a
+    // surface (V1 R103), as the terrain and voxel brush decals are drawn
+    struct SceneToolDecal {
+        std::vector<Vector3> points;    // two per segment
+        std::vector<Vector4> colors;    // one per segment, sRGB with alpha
+        uint64_t revision = 0;          // changes when the lines do
     };
 
     enum class SceneToolPress { NotMine, Captured };
@@ -53,7 +67,16 @@ namespace jasperengine::editor {
         virtual void hover(const SceneToolEvent&) {}
         virtual bool key(ImGuiKey, const SceneToolEvent&) { return false; }
         virtual void cancel() {}                            // Esc, tool switch, scene change: revert
+        // an Alt+left click that did not become an orbit (released before the drag threshold)
+        virtual bool altClick(const SceneToolEvent&) { return false; }
+        // a right-button drag with Ctrl or Shift held, in view pixels; true: the tool takes it and the
+        // camera does not look around (brush size and strength gestures)
+        virtual bool rightDrag(const SceneToolEvent&, float, float) { return false; }
         virtual void drawOverlay(SceneRender&, ImDrawList&) {}
+        // null: none
+        virtual const SceneToolDecal* decal() const { return nullptr; }
+        // the badge's exit button
+        virtual const char* exitTooltip() const { return "Exit the tool"; }
         virtual ImGuiMouseCursor cursor() const { return ImGuiMouseCursor_Arrow; }
         virtual std::string status() const { return {}; }
     };
@@ -70,9 +93,13 @@ namespace jasperengine::editor {
         static void setCanvas(uint32_t sceneId, ImVec2 canvasMin, ImVec2 engineScale);
         // a world point on the view's image, in screen coordinates; false when behind the camera
         static bool worldToScreen(uint32_t sceneId, SceneRender& render, const Vector3& world, ImVec2& screen);
+        // a SceneToolEvent's canvas pixels in screen coordinates (a drag's box, drawn in the overlay)
+        static ImVec2 canvasToScreen(uint32_t sceneId, float x, float y);
         // the Scene the tool of `sceneId` works on (SceneRender asks by Scene: gizmos, hover redraw)
         static void setScene(uint32_t sceneId, const Scene* scene);
         static bool activeOn(const Scene* scene);
+        // the active tool of the view showing `scene` (null: none)
+        static SceneTool* activeFor(const Scene* scene);
     };
 
 }
