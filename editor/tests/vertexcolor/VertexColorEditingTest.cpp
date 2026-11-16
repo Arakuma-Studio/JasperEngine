@@ -357,3 +357,56 @@ TEST_F(VertexColorEditing, VertexBlendMaterialStartsBlack) {
     ASSERT_TRUE(vce::ensureComponent(project.get(), sceneId, lit, &error)) << error;
     EXPECT_EQ(colorsOf(lit)->initialValue, vc::InitialValue::Asset);
 }
+
+TEST_F(VertexColorEditing, PerTargetOpsRunEachTargetsOwnListInOneStep) {
+    const Entity red = addBox("Red");
+    const Entity blue = addBox("Blue");
+    vce::EditRequest request;
+    request.targets = {{red, firstKey(red)}, {blue, firstKey(blue)}};
+    request.perTargetOps = {{fillAll(kRed)}};
+    vce::EditResult result = vce::applyEdit(project.get(), sceneId, request);
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.error.find("perTargetOps"), std::string::npos) << result.error;
+
+    const size_t before = steps();
+    request.perTargetOps = {{fillAll(kRed)}, {fillAll(kBlue)}};
+    request.undoName = "Apply Color to 2 Objects";
+    result = vce::applyEdit(project.get(), sceneId, request);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_EQ(steps(), before + 1);
+    EXPECT_EQ(vce::targetData(project.get(), sceneId, red, firstKey(red))->base[0], kRed);
+    EXPECT_EQ(vce::targetData(project.get(), sceneId, blue, firstKey(blue))->base[0], kBlue);
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(colorsOf(red), nullptr);
+    EXPECT_EQ(colorsOf(blue), nullptr);
+}
+
+TEST_F(VertexColorEditing, LiftedStrokeSweepsNoCapsuleAcrossTheGap) {
+    const Entity grid = addGrid("Floor", 8);
+    const vc::TargetKey key = firstKey(grid);
+    const std::shared_ptr<const vc::MeshView> mesh = vce::meshView(project.get(), sceneId, grid, key);
+    ASSERT_NE(mesh, nullptr);
+    auto dab = [](const Vector3& at) {
+        vc::Op op = strokeThrough(at, at, 0, 1.0f, false);
+        op.points = {{at, 1.0f}};
+        return op;
+    };
+    uint32_t centre = 0;
+    for (uint32_t v = 0; v < mesh->vertexCount(); v++) {
+        if (std::fabs(mesh->positions[v].x) < 1e-4f && std::fabs(mesh->positions[v].z) < 1e-4f) centre = v;
+    }
+    for (const bool lifted : {false, true}) {
+        vce::StrokeSession stroke;
+        std::string error;
+        ASSERT_TRUE(stroke.begin(project.get(), sceneId, {{grid, key}}, "Paint Vertex Colors", &error)) << error;
+        ASSERT_TRUE(stroke.apply(dab(Vector3(-0.9f, 0.0f, 0.0f))));
+        if (lifted) stroke.lift();
+        ASSERT_TRUE(stroke.apply(dab(Vector3(0.9f, 0.0f, 0.0f))));
+        const vc::TargetData* data = vce::targetData(project.get(), sceneId, grid, key);
+        ASSERT_NE(data, nullptr);
+        // swept, the capsule from one dab to the other paints the centre; lifted, nothing does
+        if (lifted) EXPECT_NEAR(data->base[centre].x, 1.0f, 1e-3f);
+        else EXPECT_NEAR(data->base[centre].x, 0.0f, 1e-3f);
+        stroke.cancel();
+    }
+}

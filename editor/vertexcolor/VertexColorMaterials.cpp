@@ -196,46 +196,76 @@ std::array<std::string, 4> editor::vertexcolor::channelUses(Project* project, ui
     return out;
 }
 
-bool editor::vertexcolor::fixMaterialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted, std::string* error) {
+bool editor::vertexcolor::fixMaterialWarning(Project* project, uint32_t sceneId, Entity entity, const vc::Warning& warning, std::string* error) {
+    auto fail = [&](const std::string& why) {
+        if (error) *error = why;
+        return false;
+    };
     Scene* scene = vcd::sceneOf(project, sceneId);
-    if (!scene) return false;
+    if (!scene) return fail("scene " + std::to_string(sceneId) + " is not open.");
+    // the warning names its material and channels (materialWarnings' text)
+    const std::string open = "Material '", close = "' does not read vertex color channel";
+    const size_t nameAt = warning.message.find(open);
+    const size_t nameEnd = warning.message.find(close);
+    if (warning.code != "material_ignores_channels" || nameAt != 0 || nameEnd == std::string::npos) {
+        return fail("not a material_ignores_channels warning of materialWarnings(): nothing to fix.");
+    }
+    const std::string name = warning.message.substr(open.size(), nameEnd - open.size());
+    vc::ChannelMask ignored = 0;
+    for (size_t at = nameEnd + close.size(); at < warning.message.size() && warning.message[at] != '.'; at++) {
+        for (int c = 0; c < 4; c++) {
+            if (warning.message[at] == kVcChannelLetters[c][0] && warning.message[at - 1] == ' ') ignored |= (vc::ChannelMask)(1u << c);
+        }
+    }
     CommandHistory* history = CommandHandle::get(sceneId);
     const size_t mark = history->mark();
+    bool found = false;
     std::set<std::pair<Entity, unsigned int>> seen;
     for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
         const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
         if (!mesh || target.submesh >= mesh->numSubmeshes || !seen.insert({target.meshEntity, target.submesh}).second) continue;
+        if ((target.material.empty() ? "Submesh " + std::to_string(target.submesh) : target.material) != name) continue;
+        found = true;
         const Material& material = mesh->submeshes[target.submesh].material;
         const std::string prefix = "submeshes[" + std::to_string(target.submesh) + "].material.";
         auto set = [&](const std::string& property, auto value) {
             history->addCommandNoMerge(new PropertyCmd<decltype(value)>(project, sceneId, target.meshEntity, ComponentType::MeshComponent, prefix + property, value));
         };
         if (material.shader.path == "library:vertex_blend") {
-            // the highest painted channel decides: R needs two layers, A five
+            // the highest channel decides: R needs two layers, A five
             int needed = 0;
             for (int c = 0; c < 4; c++) {
-                if (painted & (1u << c)) needed = c + 2;
+                if (ignored & (1u << c)) needed = c + 2;
             }
             if (needed <= vcBlendLayers(material)) continue;
-            static const char* const names[] = {"LAYERS_TWO", "LAYERS_THREE", "LAYERS_FOUR", "LAYERS_FIVE"};
+            static const char* const layerNames[] = {"LAYERS_TWO", "LAYERS_THREE", "LAYERS_FOUR", "LAYERS_FIVE"};
             std::vector<std::string> features;
             for (const std::string& feature : material.shaderFeatures) {
                 if (feature.rfind("LAYERS_", 0) != 0) features.push_back(feature);
             }
-            features.push_back(names[needed - 2]);
+            features.push_back(layerNames[needed - 2]);
             set("shaderFeatures", features);
             continue;
         }
         if (!material.shader.path.empty()) continue;
         const MaterialPbrExtensions& pbr = material.pbr;
-        if (pbr.vertexColor.use == VertexColorUse::OFF) set("pbr.vertexColor.use", (int)VertexColorUse::TINT);
-        if (pbr.vertexColor.use != VertexColorUse::MASKS && (painted & vc::CHANNEL_A) && !pbr.vertexColor.alphaOpacity) set("pbr.vertexColor.alphaOpacity", true);
+        const MaterialPbrExtensions::VertexColor vertexColor = pbr.vertexColor;
+        if (vertexColor.use == VertexColorUse::MASKS) {
+            // an unmapped channel shows as a grey tint, A as opacity: visible, and a start to remap
+            static const char* const channelFields[] = {"r", "g", "b", "a"};
+            for (int c = 0; c < 4; c++) {
+                if (!(ignored & (1u << c)) || MaterialPbr::getVertexColorTarget(vertexColor, c) != VertexColorTarget::NONE) continue;
+                set(std::string("pbr.vertexColor.") + channelFields[c], (int)(c == 3 ? VertexColorTarget::OPACITY : VertexColorTarget::ALBEDO_TINT));
+            }
+            continue;
+        }
+        if (vertexColor.use == VertexColorUse::OFF) set("pbr.vertexColor.use", (int)VertexColorUse::TINT);
+        if ((ignored & vc::CHANNEL_A) && !vertexColor.alphaOpacity) set("pbr.vertexColor.alphaOpacity", true);
     }
-    history->groupSince(mark, "Fix Vertex Color Materials (" + scene->getEntityName(entity) + ")");
-    const std::vector<vc::Warning> left = materialWarnings(project, sceneId, entity, painted);
-    if (!left.empty()) {
-        if (error) *error = left.front().message;
-        return false;
+    if (!found) return fail("no material '" + name + "' on " + scene->getEntityName(entity) + " now.");
+    history->groupSince(mark, "Fix Vertex Color Material (" + name + ")");
+    for (const vc::Warning& left : materialWarnings(project, sceneId, entity, ignored)) {
+        if (left.message.rfind(open + name + close, 0) == 0) return fail(left.message);
     }
     return true;
 }

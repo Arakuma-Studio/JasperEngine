@@ -324,13 +324,22 @@ TEST_F(VertexColorOutput, MaterialWarningsNameTheIgnoredChannelsAndTheFix) {
     material.pbr = pbr;
     const size_t before = steps();
     std::string fixError;
-    EXPECT_TRUE(vce::fixMaterialWarnings(project.get(), sceneId, box, vc::CHANNELS_RGBA, &fixError)) << fixError;
+    std::vector<vc::Warning> warnings = vce::materialWarnings(project.get(), sceneId, box, vc::CHANNELS_RGBA);
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_TRUE(vce::fixMaterialWarning(project.get(), sceneId, box, warnings[0], &fixError)) << fixError;
     EXPECT_EQ(codes(vc::CHANNELS_RGBA), "");
     EXPECT_EQ(steps(), before + 1);
     ASSERT_TRUE(history->undo());
     EXPECT_NE(codes(vc::CHANNEL_R), "");
+    // Masks with A unmapped: the fix maps A to opacity
     pbr.vertexColor.use = VertexColorUse::MASKS;
     material.pbr = pbr;
+    warnings = vce::materialWarnings(project.get(), sceneId, box, vc::CHANNEL_A);
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_TRUE(vce::fixMaterialWarning(project.get(), sceneId, box, warnings[0], &fixError)) << fixError;
+    EXPECT_EQ(((const MaterialPbrExtensions&)material.pbr).vertexColor.a, VertexColorTarget::OPACITY);
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(vce::fixMaterialWarning(project.get(), sceneId, box, {"low_density", "x"}, &fixError));
 
     // R7, R72: what each channel feeds, after its name
     std::string error;

@@ -157,6 +157,15 @@ bool StrokeSession::apply(const vc::Op& op, std::function<bool(const Vector3&)> 
     return ok;
 }
 
+void StrokeSession::lift() {
+    // the next stamp starts where the pointer comes back; the per-vertex cap state stays (R31)
+    for (Impl::Target& target : impl->targets) {
+        target.state.hasLastPoint = false;
+        target.state.hasLastStamp = false;
+        target.state.carry = 0.0f;
+    }
+}
+
 void StrokeSession::end() {
     Impl& s = *impl;
     if (!s.active) return;

@@ -81,6 +81,7 @@ namespace {
         TargetRef ref;
         std::shared_ptr<const vc::MeshView> mesh;
         vc::TargetData data;              // the copy the ops run on
+        std::vector<vc::Op> ops;          // the request's ops, or this target's own (perTargetOps)
         bool painted = false;             // the live file had the target
         uint64_t startHash = 0;           // the live target's hash at the start (0: not painted)
         vc::ApplyOptions options;
@@ -88,20 +89,23 @@ namespace {
 
     struct VcEditPlan {
         std::vector<VcWorkItem> items;
-        std::vector<vc::Op> ops;
         bool dryRun = false;
         std::string undoName;
     };
 
     bool vcPlan(Project* project, uint32_t sceneId, const EditRequest& request, VcEditPlan& plan, EditResult& result) {
-        plan.ops = request.ops;
         plan.dryRun = request.dryRun;
         plan.undoName = request.undoName.empty() ? "Paint Vertex Colors" : request.undoName;
         if (request.targets.empty()) {
             result.error = "targets: no target given; name the GameObject and the mesh to paint.";
             return false;
         }
-        if (request.ops.empty()) {
+        if (!request.perTargetOps.empty() && request.perTargetOps.size() != request.targets.size()) {
+            result.error = "perTargetOps: " + std::to_string(request.perTargetOps.size()) + " lists for " + std::to_string(request.targets.size()) +
+                           " targets; give one list per target, or none and `ops`.";
+            return false;
+        }
+        if (request.perTargetOps.empty() && request.ops.empty()) {
             result.error = "ops: no operation given.";
             return false;
         }
@@ -132,6 +136,11 @@ namespace {
             }
             VcWorkItem item;
             item.ref = ref;
+            item.ops = request.perTargetOps.empty() ? request.ops : request.perTargetOps[i];
+            if (item.ops.empty()) {
+                result.error = "perTargetOps[" + std::to_string(i) + "]: no operation for this target.";
+                return false;
+            }
             item.mesh = vc::sceneMeshView(scene, ref.entity, ref.key);
             if (!item.mesh) {
                 result.error = where + ": the mesh of " + vcEntityName(project, sceneId, ref.entity) + " is not loaded yet; try again once it shows.";
@@ -173,7 +182,7 @@ namespace {
             }
             TargetResult target;
             target.target = item.ref;
-            target.result = vc::applyOps(item.data, *item.mesh, plan.ops, item.options, false);
+            target.result = vc::applyOps(item.data, *item.mesh, item.ops, item.options, false);
             if (target.result.cancelled || (cancel && cancel->load())) {
                 result.ok = false;
                 result.error = "cancelled: nothing was written.";
@@ -256,7 +265,11 @@ namespace {
         if (result.createdComponent) result.warnings.push_back({"created", "Added a Vertex Colors component and its .vcolors file."});
         // Table 2: a painted channel the material does not read
         for (Entity entity : prepared) {
-            for (const vc::Warning& warning : materialWarnings(project, sceneId, entity, vcPaintedChannels(plan.ops))) result.warnings.push_back(warning);
+            vc::ChannelMask painted = 0;
+            for (const VcWorkItem& item : plan.items) {
+                if (item.ref.entity == entity) painted |= vcPaintedChannels(item.ops);
+            }
+            for (const vc::Warning& warning : materialWarnings(project, sceneId, entity, painted)) result.warnings.push_back(warning);
         }
     }
 
@@ -461,8 +474,10 @@ EditResult editor::vertexcolor::applyEdit(Project* project, uint32_t sceneId, co
 
     size_t elements = 0;
     bool bake = false;
-    for (const VcWorkItem& item : plan->items) elements += item.mesh->vertexCount();
-    for (const vc::Op& op : plan->ops) bake = bake || vcIsBake(op.type);
+    for (const VcWorkItem& item : plan->items) {
+        elements += item.mesh->vertexCount();
+        for (const vc::Op& op : item.ops) bake = bake || vcIsBake(op.type);
+    }
     if (!request.done || (!bake && elements <= kVcJobElements)) {
         vcCompute(*plan, result, request.cancel, request.progress);
         vcCommit(project, sceneId, *plan, result);
