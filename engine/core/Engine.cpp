@@ -35,8 +35,8 @@
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/MusicPlayer.h"
 #include "object/sound/Audio.h"
-#include "object/TitleArt.h"
 #endif
+#include "object/TitleArt.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
