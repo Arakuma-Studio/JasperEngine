@@ -240,26 +240,14 @@ std::shared_ptr<const vc::TransferSource> transferFrom(Project* project, ScenePr
         error = "\"" + scene->scene->getEntityName(source) + "\" has no colors to transfer: " + why;
         return nullptr;
     }
-    auto out = std::make_shared<vc::TransferSource>();
     bool colored = false;
-    for (const vce::TargetInfo& info : vce::listTargets(project, scene->id, source)) {
-        std::shared_ptr<const vc::MeshView> view = vce::meshView(project, scene->id, source, info.key);
-        if (!view) continue;
-        colored = colored || info.painted || info.hasAssetColors;
-        const vc::TargetData data = vce::targetDataOrInitial(project, scene->id, source, info.key);
-        const Matrix4 model = vce::targetModel(project, scene->id, source, info.key);
-        const Matrix4 normalMatrix = model.inverse().transpose();
-        for (uint32_t v = 0; v < view->vertexCount() && v < data.base.size(); v++) {
-            out->positions.push_back(model * view->positions[v]);
-            if (!view->normals.empty()) out->normals.push_back((normalMatrix * view->normals[v]).normalized());
-            out->values.push_back(data.base[v]);
-        }
-    }
-    if (!colored || out->positions.empty()) {
+    for (const vce::TargetInfo& info : vce::listTargets(project, scene->id, source)) colored = colored || info.painted || info.hasAssetColors;
+    // every target's values and, with hard edges, its corners (they carry over, R60)
+    std::shared_ptr<const vc::TransferSource> out = colored ? vce::transferSource(project, scene->id, source, nullptr) : nullptr;
+    if (!out) {
         error = "\"" + scene->scene->getEntityName(source) + "\" has no vertex colors (none painted, no COLOR_0 in its mesh); paint it first.";
         return nullptr;
     }
-    if (out->normals.size() != out->positions.size()) out->normals.clear();
     return out;
 }
 

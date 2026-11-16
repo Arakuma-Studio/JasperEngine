@@ -442,6 +442,31 @@ async def test_mesh_colors_selections_of_two_targets_one_step(ed: Editor):
     ed.check_eq(undone, before, "one undo restores both targets")
 
 
+async def test_mesh_colors_transfer_keeps_hard_edges(ed: Editor):
+    """transfer from a GameObject with face colors carries its hard edges as corner overrides (R60)"""
+    ed.require_tools("edit_mesh_colors", "sample_mesh_colors")
+    s = await colors_setup(ed)
+    write_checker_quad(ed.project / "models" / "edges.gltf", quads=4)
+    made = []
+    for name in ("Edged", "Copy"):
+        made.append((await ed.call("set_model", scene=s["scene"], create={"name": name, "position": [20, 0, 0]}, path="models/edges.gltf"))["model"]["id"])
+    source, copy = made
+    # the faces of x < 20 red over white: the vertices on x = 20 hold both
+    await ed.call("edit_mesh_colors", scene=s["scene"], entity=source, ops=[
+        {"op": "fill", "target": {"kind": "all"}, "value": "#FFFFFF"},
+        {"op": "set", "target": {"kind": "box", "center": [19.5, 0, 0], "half_extents": [0.501, 0.5, 1.5], "element": "face"}, "value": "#FF0000"}])
+    r = await ed.call("edit_mesh_colors", scene=s["scene"], entity=copy, ops=[{"op": "transfer", "source_entity": source, "max_distance": 0.01}])
+    ed.check(r["changed"]["split_added"] > 0, f"the edge's corners split: {r['changed']}")
+
+    async def palette(entity) -> dict:
+        got = await ed.call("sample_mesh_colors", scene=s["scene"], entity=entity, query="palette")
+        return {e["hex"]: e["corners"] for e in got["targets"][0]["palette"]}
+
+    want = await palette(source)
+    ed.check(len(want) == 2, f"the source has red and white corners: {want}")
+    ed.check_eq(await palette(copy), want, "every corner took its own side's color")
+
+
 def central_box(png: bytes) -> list:
     """The pixels around the center of the view: on a framed ball whatever the camera's angle"""
     w, h, rgba = pngdiff.decode(png)

@@ -660,9 +660,8 @@ named in the PR).
   is 2, version 1 files (no triangles; they transfer per vertex) still read and are written back as
   version 2 (`engine/tests/core/fixtures/vertexcolor/version1.vcolors`).
 - **R60, transfer from another GameObject** (fixups): `editor::vertexcolor::transferSource` builds
-  the source (every target's values in world space and, when one has hard edges, every corner's);
-  the Vertex Paint window and `edit_mesh_colors` are meant to call it rather than gather vertices
-  themselves.
+  the source (every target's values in world space and, when one has hard edges, every corner's)
+  for the Vertex Paint window's Transfer From and `edit_mesh_colors`' `transfer`.
 - **R61, Export as Model** (fixups): the file is written by editing the model's glTF JSON
   (`GltfDocument`), not through `LatticeBakeGltf`. Merge Static Meshes models write each merged
   submesh back into the file primitive it was made of (the loader's order: mesh nodes ascending,
