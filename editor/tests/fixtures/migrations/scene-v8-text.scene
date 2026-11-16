@@ -1,6 +1,8 @@
 formatVersion: 8
 id: 9408
 name: Text v8
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
 sceneType: scene_3d
 mainCamera: 0
 entities:
