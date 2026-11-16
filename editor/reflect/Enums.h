@@ -52,10 +52,17 @@ namespace jasperengine::editor::reflect::enums {
     // pixel art (PixelArtReflect.cpp, S41)
     extern const EnumDesc kPixelUpscaleMode;
     extern const EnumDesc kPixelRotation;
+    // Text alignment and font size unit (UIReflect.cpp, S94)
+    extern const EnumDesc kTextHorizontalAlignment;
+    extern const EnumDesc kTextVerticalAlignment;
+    extern const EnumDesc kTextFontSizeUnit;
     // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
     extern const EnumDesc kSpriteSortPoint;
     extern const EnumDesc kSpriteBatchMode;
     extern const EnumDesc kSpriteBatchSpace;
+    // the Outline (OutlineReflect.cpp, S94)
+    extern const EnumDesc kOutlineMode;
+    extern const EnumDesc kOutlineWidthUnits;
     extern const EnumDesc kJointAnchorSpace;
     extern const EnumDesc kCollisionDetection2D;
     extern const EnumDesc kSleepMode2D;
@@ -83,6 +90,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
+    extern const EnumDesc kMaterialBlendFactor;
+    extern const EnumDesc kMaterialBlendOp;
     extern const EnumDesc kMaterialCullMode;
     extern const EnumDesc kMaterialDepthTest;
     extern const EnumDesc kMaterialDepthWrite;
@@ -168,5 +177,7 @@ namespace jasperengine::editor::reflect::enums {
 
     // masks of enum values a field offers (FieldDesc::enumMask)
     constexpr uint64_t bit(int value) { return uint64_t(1) << value; }
+    // the blend modes a component (Points, Line, Trail, UI) offers: Custom's factors are a material's
+    constexpr uint64_t kComponentBlendModes = bit(0) | bit(1) | bit(2) | bit(3) | bit(4) | bit(5);
 
 }

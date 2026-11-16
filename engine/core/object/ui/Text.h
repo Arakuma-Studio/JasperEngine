@@ -9,6 +9,10 @@
 
 namespace jasperengine{
     class JASPERENGINE_API STBText;
+    // component/TextComponent.h
+    enum class TextHorizontalAlignment;
+    enum class TextVerticalAlignment;
+    enum class TextFontSizeUnit;
 
     class JASPERENGINE_API Text: public RectTransform{
 
@@ -24,6 +28,13 @@ namespace jasperengine{
 
         bool createText();
         bool load();
+
+        // the glyphs laid out now when the text, font or size changed since the last layout (S94
+        // F25): width and height are final right after setText. False without a font to load.
+        bool updateLayout();
+        // the text's box, laid out first when it is dirty (RectTransform's are the stored size)
+        unsigned int getWidth() const;
+        unsigned int getHeight() const;
 
         void setFixedSize(bool fixedSize);
 
@@ -69,6 +80,16 @@ namespace jasperengine{
         void setFlipY(bool flipY);
         bool isFlipY() const;
 
+        // TextMesh Pro's alignment (S94 F24): the point of the box on the origin, each line in the box
+        void setHorizontalAlignment(TextHorizontalAlignment alignment);
+        TextHorizontalAlignment getHorizontalAlignment() const;
+        void setVerticalAlignment(TextVerticalAlignment alignment);
+        TextVerticalAlignment getVerticalAlignment() const;
+        // the font size as ascender to descender (the default) or as the em square (S94 F26)
+        void setFontSizeUnit(TextFontSizeUnit unit);
+        TextFontSizeUnit getFontSizeUnit() const;
+
+        // deprecated: the alignment before S94 (Baseline and Center)
         void setPivotBaseline(bool pivotBaseline);
         bool isPivotBaseline() const;
 

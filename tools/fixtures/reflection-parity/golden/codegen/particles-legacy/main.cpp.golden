@@ -12,6 +12,8 @@ using namespace jasperengine;
 
 void create_scene_Legacy_Particles_1(Scene* scene);
 SceneResources resources_scene_Legacy_Particles_1();
+void create_scene_Legacy_K_2(Scene* scene);
+SceneResources resources_scene_Legacy_K_2();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
@@ -19,6 +21,7 @@ extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jaspereng
 extern "C" void moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count);
 
 static Scene* _scene_Legacy_Particles_1 = nullptr;
+static Scene* _scene_Legacy_K_2 = nullptr;
 
 // --- Scene stack: Legacy Particles ---
 void load_scene_Legacy_Particles_1() {
@@ -47,6 +50,12 @@ void load_scene_Legacy_Particles_1() {
 
     Engine::setScene(_scene_Legacy_Particles_1);
 
+    if (_scene_Legacy_K_2 && !Engine::isSceneRunning(_scene_Legacy_K_2)) {
+        cleanupScripts(_scene_Legacy_K_2);
+        SceneManager::removeScenePtr(2);
+        delete _scene_Legacy_K_2;
+        _scene_Legacy_K_2 = nullptr;
+    }
 }
 
 void add_scene_Legacy_Particles_1() {
@@ -64,6 +73,59 @@ void add_scene_Legacy_Particles_1() {
 
     if (_scene_Legacy_Particles_1_needsInit) {
         initScripts(_scene_Legacy_Particles_1);
+    }
+}
+
+// --- Scene stack: Legacy K ---
+void load_scene_Legacy_K_2() {
+    if (_scene_Legacy_K_2 && !Engine::isSceneRunning(_scene_Legacy_K_2)) {
+        cleanupScripts(_scene_Legacy_K_2);
+        SceneManager::removeScenePtr(2);
+        delete _scene_Legacy_K_2;
+        _scene_Legacy_K_2 = nullptr;
+    }
+
+    bool _scene_Legacy_K_2_needsInit = false;
+
+    if (!_scene_Legacy_K_2){
+        _scene_Legacy_K_2 = new Scene();
+        SceneManager::setScenePtr(2, _scene_Legacy_K_2);
+        _scene_Legacy_K_2_needsInit = true;
+    }
+
+    if (_scene_Legacy_K_2_needsInit) {
+        create_scene_Legacy_K_2(_scene_Legacy_K_2);
+    }
+
+    if (_scene_Legacy_K_2_needsInit) {
+        initScripts(_scene_Legacy_K_2);
+    }
+
+    Engine::setScene(_scene_Legacy_K_2);
+
+    if (_scene_Legacy_Particles_1 && !Engine::isSceneRunning(_scene_Legacy_Particles_1)) {
+        cleanupScripts(_scene_Legacy_Particles_1);
+        SceneManager::removeScenePtr(1);
+        delete _scene_Legacy_Particles_1;
+        _scene_Legacy_Particles_1 = nullptr;
+    }
+}
+
+void add_scene_Legacy_K_2() {
+    bool _scene_Legacy_K_2_needsInit = false;
+
+    if (!_scene_Legacy_K_2){
+        _scene_Legacy_K_2 = new Scene();
+        SceneManager::setScenePtr(2, _scene_Legacy_K_2);
+        _scene_Legacy_K_2_needsInit = true;
+    }
+
+    if (_scene_Legacy_K_2_needsInit) {
+        create_scene_Legacy_K_2(_scene_Legacy_K_2);
+    }
+
+    if (_scene_Legacy_K_2_needsInit) {
+        initScripts(_scene_Legacy_K_2);
     }
 }
 
@@ -118,6 +180,7 @@ JASPERENGINE_INIT void init() {
 #else
     System::setApplicationInfo({"ParticlesLegacy", "com.yourcompany.project", "1.0", 1});
 #endif
+    SortingLayers::setTransparencySortMode(TransparencySortMode::PERSPECTIVE);
 #ifdef JASPERENGINE_PHYSICS_3D
     PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
 #endif
@@ -132,6 +195,7 @@ JASPERENGINE_INIT void init() {
     }
 
     SceneManager::registerScene(1, "Legacy Particles", load_scene_Legacy_Particles_1, add_scene_Legacy_Particles_1, {1}, resources_scene_Legacy_Particles_1);
+    SceneManager::registerScene(2, "Legacy K", load_scene_Legacy_K_2, add_scene_Legacy_K_2, {2}, resources_scene_Legacy_K_2);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
     ObjectManager::setCppScriptMoveHook(moveEntityScripts);

@@ -88,7 +88,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
         // constraint's shape and its last solve, bones only)
         {"Animator", 0xe5218434u},
-        {"AnimationPlayer", 0x6216f07fu},
+        // (S94 applyRootMotion reviewed: where the root goes, never what it draws with)
+        {"AnimationPlayer", 0xbe579cefu},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
@@ -115,7 +116,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"AnimationComponent", 0x1f9ef76eu},
         {"TweenComponent", 0x6fb2e681u},
         {"ActionSystem", 0x2b5420b8u},
-        {"AnimationPlayerComponent", 0xcf5f06f5u},
+        {"AnimationPlayerComponent", 0x9ed81675u},
         {"AnimatorComponent", 0xc953276au},
         {"PoseAnimatorComponent", 0x39f009a9u},
         {"SplineFrame", 0x2e6a235du},
@@ -178,7 +179,8 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "getActionSystem", "getAudioSystem", "getPhysicsSystem", "getNavigationSystem", "getChangeTick",
             "findEntitiesWith", "findChangedEntities", "markChanged", "camera", "backgroundColor",
             "gravity2D", "gravity3D", "physicsInterpolation", "enableUIEvents", "maxLightsPerObject",
-            "shadowQuality", "litQuality", "effectiveShadowTier"}},
+            "shadowQuality", "litQuality", "effectiveShadowTier", "ambientMode", "ambientSkyColor", "ambientEquatorColor",
+            "ambientGroundColor", "setAmbientGradient"}},
         // the hierarchy, the transform, visibility, destruction, and the components above that draw
         // nothing (not instantiate: a clone can land in a scene of other lighting; not
         // billboarding)

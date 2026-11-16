@@ -77,6 +77,9 @@ namespace jasperengine::editor {
     // (scriptsSetShadowQuality). An export drops them for the backends no platform of which
     // has a High tier (ShadowTiers::cooksHighFilters).
     //
+    // An Outline's pass (S94 F22) comes with every mesh an Outline covers, in both width units,
+    // and with every mesh when the project's scripts mention Outline (scriptsAddOutlines).
+    //
     // Every Device Tier the project's settings let a player apply (spec S56), with the thermal
     // steps of the families whose Thermal Response is on, is collected too: a tier's render scale
     // below 1 needs the uber pass's upscale ('Scl'), and its SSAO, bloom, Lit Quality, shadow,
@@ -92,6 +95,9 @@ namespace jasperengine::editor {
         // point or spot light, and the scene then draws the general variant (a build missing the
         // 'Dlo' one falls back to it, ShaderPool::getFallbackProperties; the reverse cannot)
         static void addDirectionalOnlyTwins(std::set<ShaderKey>& keys);
+        // Each lit MESH variant ('Agr' or not) with its Environment Lighting Source twin: a project
+        // script switching scene.ambientMode draws the other (S94 F15)
+        static void addAmbientGradientTwins(std::set<ShaderKey>& keys);
 
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
@@ -99,7 +105,8 @@ namespace jasperengine::editor {
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
                                  bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
-                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS);
+                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS,
+                                 bool scriptsAddOutlines = false);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,
@@ -133,7 +140,7 @@ namespace jasperengine::editor {
                                           const std::filesystem::path& projectRoot, bool scriptsSetPostProcessing,
                                           const std::vector<std::string>& scriptPostProcessingFields, bool allLightCapacities,
                                           bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier,
-                                          uint32_t terrainTiers);
+                                          uint32_t terrainTiers, bool scriptsAddOutlines);
     };
 
 }

@@ -6,6 +6,13 @@
 
 namespace jasperengine::cook {
 
+template<> struct Codec<ShaderPropertyOverrides> {
+    static void write(Writer& w, const ShaderPropertyOverrides& value);
+    static void read(Reader& r, ShaderPropertyOverrides& value);
+};
+template<> struct TextureVisit<ShaderPropertyOverrides> {
+    static void visit(ShaderPropertyOverrides& value, const TextureVisitor& f);
+};
 template<> struct Codec<MaterialStencil> {
     static void write(Writer& w, const MaterialStencil& value);
     static void read(Reader& r, MaterialStencil& value);
@@ -306,6 +313,15 @@ template<> struct TextureVisit<TitleArtOverride> {
 
 namespace jasperengine::cook {
 
+const FieldEntry kStruct_ShaderPropertyOverrides_fields[] = {
+    JE_RF(ShaderPropertyOverrides, values, 0xc3ebfa7eu, Custom),
+    JE_RF(ShaderPropertyOverrides, textures, 0x826a84d0u, Custom),
+};
+const StructTable kStruct_ShaderPropertyOverrides{"ShaderPropertyOverrides", kStruct_ShaderPropertyOverrides_fields, std::size(kStruct_ShaderPropertyOverrides_fields)};
+void Codec<ShaderPropertyOverrides>::write(Writer& w, const ShaderPropertyOverrides& value) { writeStruct(w, kStruct_ShaderPropertyOverrides, &value); }
+void Codec<ShaderPropertyOverrides>::read(Reader& r, ShaderPropertyOverrides& value) { readStruct(r, kStruct_ShaderPropertyOverrides, &value); }
+void TextureVisit<ShaderPropertyOverrides>::visit(ShaderPropertyOverrides& value, const TextureVisitor& f) { visitStructTextures(kStruct_ShaderPropertyOverrides, &value, f); }
+
 const FieldEntry kStruct_MaterialStencil_fields[] = {
     JE_RF(MaterialStencil, compare, 0xa190d50du, Enum),
     JE_RF(MaterialStencil, ref, 0x6d5fb9d7u, Int),
@@ -326,6 +342,12 @@ const FieldEntry kStruct_MaterialPass_fields[] = {
     JE_RF(MaterialPass, shaderTextures, 0x1264f2e0u, Custom),
     JE_RF(MaterialPass, shaderFeatures, 0xd4db1b9fu, Custom),
     JE_RF(MaterialPass, blendMode, 0x3e922b3bu, Enum),
+    JE_RF(MaterialPass, blendSrc, 0x8ed7cf9eu, Enum),
+    JE_RF(MaterialPass, blendDst, 0x30f3dd13u, Enum),
+    JE_RF(MaterialPass, blendSrcAlpha, 0xe8712786u, Enum),
+    JE_RF(MaterialPass, blendDstAlpha, 0xbf757a75u, Enum),
+    JE_RF(MaterialPass, blendOp, 0x0fe7196fu, Enum),
+    JE_RF(MaterialPass, blendOpAlpha, 0x3131cc31u, Enum),
     JE_RF(MaterialPass, cullMode, 0x21cee422u, Enum),
     JE_RF(MaterialPass, depthWrite, 0x8b82a1a5u, Enum),
     JE_RF(MaterialPass, depthTest, 0x2be356dau, Enum),
@@ -502,6 +524,12 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
     JE_RF(Material, shaderPalettes, 0xbf00e75bu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
+    JE_RF(Material, blendSrc, 0x00ef2a6du, Enum),
+    JE_RF(Material, blendDst, 0xed300ba0u, Enum),
+    JE_RF(Material, blendSrcAlpha, 0x3da7e023u, Enum),
+    JE_RF(Material, blendDstAlpha, 0x9ff8a894u, Enum),
+    JE_RF(Material, blendOp, 0x8dc4d7deu, Enum),
+    JE_RF(Material, blendOpAlpha, 0x5a291ec6u, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
     JE_RF(Material, depthTest, 0x416653b7u, Enum),
@@ -525,6 +553,7 @@ const FieldEntry kStruct_Submesh_fields[] = {
     JE_RF(Submesh, faceCulling, 0x3d4d2cf5u, Bool),
     JE_RF(Submesh, textureShadow, 0xc50665adu, Bool),
     JE_RF(Submesh, textureRect, 0x4cf2534bu, Rect),
+    JE_RF(Submesh, propertyOverrides, 0x506cb058u, Struct),
 };
 const StructTable kStruct_Submesh{"Submesh", kStruct_Submesh_fields, std::size(kStruct_Submesh_fields)};
 void Codec<Submesh>::write(Writer& w, const Submesh& value) { writeStruct(w, kStruct_Submesh, &value); }
@@ -990,6 +1019,7 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, customShader, 0x2001d200u, AssetPath),
     JE_RF(MeshComponent, customDepthShader, 0xeece191bu, AssetPath),
     JE_RF(MeshComponent, shaderUniforms, 0xcd4a788eu, Custom),
+    JE_RF(MeshComponent, propertyOverrides, 0x04b95b48u, Struct),
     JE_RF(MeshComponent, numSubmeshes, 0x677dfcfdu, UInt),
     JE_RF(MeshComponent, submeshes, 0x0ec3fc65u, Array),
     JE_RF(MeshComponent, morphWeights, 0x4c647c89u, Array),
@@ -1155,6 +1185,7 @@ const FieldEntry kBody_ModelComponent_fields[] = {
     JE_RF(ModelComponent, filename, 0xd893ddd1u, AssetPath),
     JE_RF(ModelComponent, mergeStaticMeshes, 0xc4ab8017u, Bool),
     JE_RF(ModelComponent, animationEntities, 0x062d0905u, Bool),
+    JE_RF(ModelComponent, preserveHierarchy, 0xfc594a07u, Bool),
     JE_RF_ENTITY(ModelComponent, skeleton, 0x423c5073u, Entity),
     JE_RF_ENTITIES(ModelComponent, animations, 0x44efadebu, Array),
 };
@@ -1388,6 +1419,7 @@ const FieldEntry kBody_CameraComponent_fields[] = {
     JE_RF(CameraComponent, depthTest, 0xf932cca5u, Bool),
     JE_RF(CameraComponent, useTarget, 0xbca34c66u, Bool),
     JE_RF(CameraComponent, autoResize, 0x71a84fdfu, Bool),
+    JE_RF(CameraComponent, orthographicSize, 0x749dd4dfu, Float),
     JE_RF(CameraComponent, framebufferWidth, 0xd5ea99f5u, UInt),
     JE_RF(CameraComponent, framebufferHeight, 0xb5849a0cu, UInt),
     JE_RF(CameraComponent, framebufferFilter, 0xfb40220du, Enum),
@@ -1643,6 +1675,7 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
+    JE_RF_ENTITY(ParticleSystemComponent, legacyFrom, 0x0c6e8893u, Entity),
 };
 const StructTable kBody_ParticleSystemComponent{"particlesystem", kBody_ParticleSystemComponent_fields, std::size(kBody_ParticleSystemComponent_fields)};
 
@@ -1728,6 +1761,8 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, height, 0x3d0b5a9du, UInt),
     JE_RF(SpriteComponent, automaticFlipY, 0x3ef6b209u, Bool),
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
+    JE_RF(SpriteComponent, flipX, 0xbbcada37u, Bool),
+    JE_RF(SpriteComponent, size, 0xa6631eb7u, Vector2),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
     JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
@@ -1750,8 +1785,9 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, maxTextSize, 0x52da0394u, UInt),
     JE_RF(TextComponent, fixedWidth, 0x63011216u, Bool),
     JE_RF(TextComponent, fixedHeight, 0x4053cda9u, Bool),
-    JE_RF(TextComponent, pivotBaseline, 0x921eadabu, Bool),
-    JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
+    JE_RF(TextComponent, horizontalAlignment, 0x4cfaeba5u, Enum),
+    JE_RF(TextComponent, verticalAlignment, 0x4ee575efu, Enum),
+    JE_RF(TextComponent, fontSizeUnit, 0xd180defau, Enum),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
     JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
@@ -2090,6 +2126,7 @@ const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
     JE_RF(AnimationPlayerComponent, defaultFadeTime, 0x3dc0f0a8u, Float),
     JE_RF(AnimationPlayerComponent, poseFrameRate, 0xd7dfba9eu, Float),
+    JE_RF(AnimationPlayerComponent, applyRootMotion, 0x11500aacu, Bool),
 };
 const StructTable kBody_AnimationPlayerComponent{"animationplayer", kBody_AnimationPlayerComponent_fields, std::size(kBody_AnimationPlayerComponent_fields)};
 
@@ -2724,6 +2761,23 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_OutlineComponent_fields[] = {
+    JE_RF(OutlineComponent, enabled, 0x7ac7ddc2u, Bool),
+    JE_RF(OutlineComponent, mode, 0x21f8bb06u, Enum),
+    JE_RF(OutlineComponent, color, 0xd49eb1ecu, Vector4),
+    JE_RF(OutlineComponent, width, 0x7dbfee43u, Float),
+    JE_RF(OutlineComponent, widthUnits, 0xebe692beu, Enum),
+    JE_RF(OutlineComponent, includeChildren, 0xad9417e4u, Bool),
+};
+const StructTable kBody_OutlineComponent{"outline", kBody_OutlineComponent_fields, std::size(kBody_OutlineComponent_fields)};
+
+const FieldEntry kBody_SpriteSkinComponent_fields[] = {
+    JE_RF(SpriteSkinComponent, enabled, 0x92a8c7b2u, Bool),
+    JE_RF_ENTITY(SpriteSkinComponent, rootBone, 0xca6e03d3u, Entity),
+    JE_RF_ENTITIES(SpriteSkinComponent, bones, 0x53e25968u, Array),
+};
+const StructTable kBody_SpriteSkinComponent{"spriteskin", kBody_SpriteSkinComponent_fields, std::size(kBody_SpriteSkinComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2843,6 +2897,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(OutlineComponent, "outline", 0x361ad8bdu),
+    JE_RF_COMPONENT(SpriteSkinComponent, "spriteskin", 0x5e8efcadu),
     JE_RF_COMPONENTS_END
 };
 

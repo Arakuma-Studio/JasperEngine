@@ -122,6 +122,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -232,6 +234,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -340,6 +344,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -351,7 +357,7 @@ namespace {
         &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
-        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
+        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialBlendFactor, &enums::kMaterialBlendOp, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kTerrainQualitySetting, &enums::kTerrainOffscreenShadows,
         &enums::kTerrainMacroMode, &enums::kTerrainCliffProjection, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,
@@ -374,6 +380,10 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // Text alignment (S94)
+        &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment, &enums::kTextFontSizeUnit,
+        // the Outline (S94)
+        &enums::kOutlineMode, &enums::kOutlineWidthUnits,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

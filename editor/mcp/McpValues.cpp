@@ -4,6 +4,7 @@
 #include "pixelart/PixelArtAssign.h"
 #include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
+#include "component/CameraComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
@@ -37,6 +38,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/ModelComponent.h"
+#include "tiny_gltf.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
@@ -622,6 +624,14 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& ambientModeOptions() {
+    static const EnumOptions options = {
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
+    };
+    return options;
+}
+
 const EnumOptions& planarReflectionResolutionOptions() {
     static const EnumOptions options = {
         {(int)PlanarReflectionResolution::OFF, "off", "Off"},
@@ -837,6 +847,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
@@ -845,6 +856,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"texture_alpha_border", &tableOptions(reflect::enums::kTextureAlphaBorder)},
         {"material_alpha_mode", &tableOptions(reflect::enums::kMaterialAlphaMode)},
         {"material_blend_mode", &tableOptions(reflect::enums::kMaterialBlendMode)},
+        {"material_blend_factor", &tableOptions(reflect::enums::kMaterialBlendFactor)},
+        {"material_blend_op", &tableOptions(reflect::enums::kMaterialBlendOp)},
         {"material_cull_mode", &tableOptions(reflect::enums::kMaterialCullMode)},
         {"material_depth_write", &tableOptions(reflect::enums::kMaterialDepthWrite)},
         {"material_depth_test", &tableOptions(reflect::enums::kMaterialDepthTest)},
@@ -2108,7 +2121,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, emissiveStrength, pbr, baseColorTexture, emissiveTexture, "
                     "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, stochasticTiling, "
                     "stochasticCellSize, stochasticBlendSharpness, stochasticContrast, stochasticRotation, shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
         }
@@ -2882,6 +2895,9 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
     switch (property.type) {
         case PropertyType::Bool:
             if (!value.is_boolean()) return expect("true or false");
+            // a value the model's load reads: the reload that applies it is part of the step (S94 F47)
+            if (component == ComponentType::ModelComponent && ModelLoadCmd::isLoadOption(propertyName))
+                return ModelLoadCmd::setLoadOption(project, sceneId, entity, propertyName, value.get<bool>());
             return new PropertyCmd<bool>(project, sceneId, entity, component, propertyName, value.get<bool>(), onChanged);
         case PropertyType::String:
         case PropertyType::Asset:
@@ -3889,6 +3905,33 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
+std::string McpValues::modelNodeMeshError(SceneProject* sceneProject, Entity entity) {
+    Scene* scene = sceneProject && sceneProject->scene ? sceneProject->scene : nullptr;
+    if (!scene || !scene->isComponentRegistered<ModelComponent>() || scene->findComponent<MeshComponent>(entity)) return "";
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        const Entity root = models->getEntity(i);
+        if (!model.gltfModel) continue;
+        int node = -1;
+        for (const auto* mapping : {&model.nodesIdMapping, &model.bonesIdMapping}) {
+            for (const auto& [index, mapped] : *mapping) {
+                if (mapped == entity) node = index;
+            }
+        }
+        if (node < 0 || node >= (int)model.gltfModel->nodes.size() || model.gltfModel->nodes[(size_t)node].mesh < 0 ||
+            model.meshNodesMapping.count(node)) {
+            continue;
+        }
+        const MeshComponent* rootMesh = scene->findComponent<MeshComponent>(root);
+        if (!rootMesh || rootMesh->numSubmeshes == 0) continue;
+        return McpRefs::entityPath(sceneProject, entity) + " is a node of the model " + McpRefs::entityPath(sceneProject, root) +
+               ", whose own GameObject draws this node's mesh: set the mesh and material values on " + McpRefs::entityPath(sceneProject, root) +
+               ", or set model.preserveHierarchy true on it (every node then draws its own mesh).";
+    }
+    return "";
+}
+
 std::string McpValues::safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property) {
     static const std::set<std::string> driven = {
         "width", "height", "anchorPointLeft", "anchorPointTop", "anchorPointRight", "anchorPointBottom",
@@ -3939,6 +3982,28 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
         list[0][change.property.substr(10)] = change.value;
     }
     out[at - 1].value = list;
+    return out;
+}
+
+// A camera's bounds written by hand (S94 F27): Auto Resize and an Orthographic Size would overwrite
+// them on the next canvas change, so they go off in the same command, as Camera's Lua setters do
+static std::vector<McpValues::Change> withCameraClipWrites(Scene* scene, Entity entity, const std::vector<McpValues::Change>& changes) {
+    const CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+    if (!camera || (!camera->autoResize && camera->orthographicSize == 0.0f)) return changes;
+    bool clips = false;
+    bool autoResize = false;
+    bool size = false;
+    for (const McpValues::Change& change : changes) {
+        if (change.component != ComponentType::CameraComponent) continue;
+        const std::string& name = change.property;
+        clips = clips || (change.op == "set" && (name == "left" || name == "right" || name == "bottom" || name == "top"));
+        autoResize = autoResize || name == "autoResize";
+        size = size || name == "orthographicSize";
+    }
+    if (!clips) return changes;
+    std::vector<McpValues::Change> out = changes;
+    if (camera->autoResize && !autoResize) out.push_back({ComponentType::CameraComponent, "autoResize", "set", Json(false), -1});
+    if (camera->orthographicSize != 0.0f && !size) out.push_back({ComponentType::CameraComponent, "orthographicSize", "set", Json(0.0), -1});
     return out;
 }
 
@@ -4041,7 +4106,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
     }
     for (Entity entity : entities) {
         const std::string label = "GameObject " + std::to_string(entity) + " \"" + scene->scene->getEntityName(entity) + "\"";
-        const std::vector<Change> changes = withPlayerLayerList(project, scene->scene, entity, allChanges);
+        const std::vector<Change> changes = withCameraClipWrites(scene->scene, entity, withPlayerLayerList(project, scene->scene, entity, allChanges));
         // an entry's layer is one of the player's layers after this edit (anim layers spec 10)
         if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity)) {
             int layers = (int)anim::playerLayers(*player).size();
@@ -4101,8 +4166,10 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
         for (ComponentType component : order) {
             const std::string componentLabel = McpRefs::componentName(component);
             if (!McpRefs::hasComponent(scene, entity, component)) {
-                error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
-                        "components).";
+                const std::string drawnByRoot = component == ComponentType::MeshComponent ? modelNodeMeshError(scene, entity) : std::string();
+                error = !drawnByRoot.empty() ? drawnByRoot
+                                             : label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
+                                               "components).";
                 return false;
             }
             if (component == ComponentType::RectTransformComponent) {

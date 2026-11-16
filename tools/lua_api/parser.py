@@ -3020,6 +3020,17 @@ OVERRIDES[('SpriteBatch', 'setFx')] = {
     'doc': ['Every instance\'s amount of one effect slot: `"palette"`, `"flash"`, `"fade"` or `"dissolve"`.'],
     'overloads': [([('slot', 'string'), ('amounts', 'number[]')], '')]}
 
+# S94 MaterialPropertyBlock: its setters take any vector (engine/core/script/binding/MaterialPropertyBlockLua.cpp)
+OVERRIDES[('MaterialPropertyBlock', 'setFloat')] = {
+    'doc': ['Overrides the shader member `name` with a number.'],
+    'overloads': [([('name', 'string'), ('value', 'number')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setVector')] = {
+    'doc': ['Overrides the shader member `name` with a vector (missing components 0).'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3|Vector2')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setColor')] = {
+    'doc': ['Overrides the colour member `name`: sRGB in (Unity\'s SetColor), linear in the shader; a Vector3 is opaque.'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3')], '')]}
+
 # S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
 OVERRIDES[('HitStop', 'play')] = {
     'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',

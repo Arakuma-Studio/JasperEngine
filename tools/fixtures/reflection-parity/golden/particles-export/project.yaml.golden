@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: ParticlesExport
 canvasWidth: 960
 canvasHeight: 540
@@ -15,6 +15,7 @@ windowHeight: 540
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 startSceneId: 1
 scenes:
   - filepath: Particles.scene

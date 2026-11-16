@@ -67,6 +67,8 @@ jasperengine_add_test_target(jasperengine-editor-tests
     # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
     INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
         ${CMAKE_SOURCE_DIR}/engine/libs/meshoptimizer
+        # ufbx: FbxImportTest checks the import against ufbx's own skinning evaluation (S94 F41)
+        ${CMAKE_SOURCE_DIR}/libs/ufbx
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr

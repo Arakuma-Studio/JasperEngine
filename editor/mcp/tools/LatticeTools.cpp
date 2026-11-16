@@ -174,7 +174,9 @@ Json ijkJson(const LatticeView& view, int index) {
 
 // the entity has something a lattice deforms (terrains are never targets)
 bool hasMesh(Scene* scene, Entity entity) {
-    return scene->findComponent<MeshComponent>(entity) && !scene->findComponent<TerrainComponent>(entity);
+    // a Model made of parts (its node GameObjects draw: Preserve Hierarchy, S94 F44) has an empty Mesh of its own
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    return mesh && mesh->numSubmeshes > 0 && !scene->findComponent<TerrainComponent>(entity);
 }
 
 bool isLattice(Scene* scene, Entity entity) {

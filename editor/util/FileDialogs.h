@@ -35,7 +35,9 @@ namespace jasperengine::editor{
         FILE_DIALOG_UNITY_PREFAB_SCENE = 1 << 16,
         // upstream (audio-mixer, video-mp4): 15 and 16 there, after ours here
         FILE_DIALOG_AUDIO_MIXER = 1 << 17,
-        FILE_DIALOG_VIDEO = 1 << 18
+        FILE_DIALOG_VIDEO = 1 << 18,
+        // a Unity .anim, .controller or .mask (Assets > Import Unity Animation...)
+        FILE_DIALOG_UNITY_ANIMATION = 1 << 19
     };
 
     class FileDialogs{
@@ -99,6 +101,9 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_UNITY_PREFAB_SCENE) {
                 filterItems.push_back({ "Unity prefabs and scenes", "prefab,unity" });
+            }
+            if (filterFlags & FILE_DIALOG_UNITY_ANIMATION) {
+                filterItems.push_back({ "Unity clips, controllers and masks", "anim,controller,mask" });
             }
             if (filterFlags & FILE_DIALOG_AVATAR_MASK) {
                 filterItems.push_back({ "Avatar Masks", "mask" });

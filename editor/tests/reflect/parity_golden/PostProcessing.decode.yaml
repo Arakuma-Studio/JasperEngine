@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest adfa3006f922f663
+digest 0d38047278a32985
 --- 0
 exposure: 10
 tonemap: agx
@@ -13,6 +13,7 @@ lutTexture: fonts/Main.ttf
 lutContribution: 0
 lutInputEncoding: linear
 lutSize: 16
+lutFlipGreen: true
 monochromeMode: sepia
 vignetteEnabled: true
 vignetteSmoothness: 0.01
@@ -79,40 +80,38 @@ monochromeEnabled: true
 vignetteEnabled: true
 vignetteSmoothness: 0.01
 vignetteColor: [1, 1, 0]
+pixelateSize: 45
 crtMask: 1
-crtCurvature: 0
-crtVignette: 1
+edgeDetectThreshold: 0
 edgeDetectColor: [0.9389774, 1, 0]
+filmGrainIntensity: 1
 filmGrainResponse: 1
-filmGrainType: lens
 filmGrainSize: 5
 filmFrameRate: 1
 vhsWobble: 2
-vhsTracking: 2
 vhsColorBleed: 0
+vhsTapeNoise: 2
 vhsChromaStreaks: 2
-vhsDropouts: 2
-vhsScanlines: 0.015418006
-filmDamageIntensity: 0
+vhsSpeed: 4
 filmHairAmount: 8
-filmDustAmount: 0
-filmGateMask: anamorphic_239
+filmDustSize: 24
+sharpenIntensity: 1
+bloomEnabled: true
 bloomKnee: 1
 bloomTint: [1, 0, 0]
 bloomScatter: 1
 blurEnabled: true
-blurRadius: 0
-halationTint: [1, 0, 0.34099245]
-renderScale: 0.5
-dynamicResolutionMinScale: 1
+halationThreshold: 0
+msaaSamples: 4
+dynamicResolutionEnabled: true
+paletteEnabled: true
 palette: textures/a.png
 paletteDither: bayer2
-paletteDistance: rgb
+glitchIntensity: 0
 glitchTears: 8
+glitchTearShift: 0
 glitchInterlace: 1
 glitchBurstRate: 0
-glitchFps: 1
-glitchSeed: 5
 --- 2
 tonemap: neutral
 tint: -1
@@ -124,9 +123,12 @@ gain: [4, 4, 4]
 lutTexture: fonts/Main.ttf
 lutContribution: 0
 lutInputEncoding: srgb
+lutFlipGreen: true
 monochromeMode: sepia
 monochromeIntensity: 0
 vignetteRoundness: -0
+vignetteStart: 2
+vignetteEnd: 3
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 0.16825324
 pixelateEnabled: true
@@ -199,39 +201,41 @@ lutTexture: ui/menu.html
 vignetteIntensity: 1
 vignetteSmoothness: 0.01
 vignetteRoundness: 0.7174981
-chromaticAberrationIntensity: 0
-pixelateSize: 1
-crtVignette: 0
-edgeDetectColor: [1, 0, 0]
-filmGrainColored: true
-filmFrameRate: 1
+vignetteStart: 0.56022286
+crtCurvature: 1
+edgeDetectEnabled: true
+filmGrainResponse: 1
+filmGrainSize: 8
 vhsEnabled: true
+vhsIntensity: -0
+vhsWobble: 0
 vhsTracking: 0
 vhsColorBleed: 2
 vhsDropouts: 2
 filmDamageEnabled: true
+filmHairAmount: 8
 filmScratchAmount: 0.030500745
 filmDustSize: 24
 filmGateWeave: 0.00047569815
 filmGateMaskFeather: 256
 sharpenEnabled: true
+sharpenIntensity: 1
 bloomThreshold: 0
 bloomKnee: 1
-bloomIntensity: 10
-bloomTint: [1, 1e-45, 1]
-bloomScatter: 0
+blurIntensity: 1e-45
 halationThreshold: 1
 halationTint: [0, 0, 0]
 renderScale: 0.5
 dynamicResolutionTargetFps: 20
+paletteEnabled: true
 palette: textures/a.png
 paletteDither: bayer2
 palettePrecision: high
 glitchEnabled: true
-glitchRgbSplit: 8
+glitchIntensity: 0
 glitchTears: 0
-glitchTearShift: 32
-glitchBurstRate: 8
+glitchFps: 60
+glitchSeed: 9
 --- 4
 exposure: 10
 tonemap: agx
@@ -247,6 +251,9 @@ monochromeMode: sepia
 monochromeIntensity: 0.32869467
 vignetteIntensity: 1e-45
 vignetteColor: [0, 1, 1]
+vignetteFalloff: radii
+vignetteStart: 0
+vignetteEnd: 0
 fxaaEnabled: true
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 1
@@ -321,32 +328,30 @@ vignetteRoundness: 0
 vignetteColor: [1, 0, 0]
 fxaaEnabled: true
 pixelateEnabled: true
-crtScanlines: 0
+crtMask: 0
+crtCurvature: 0
 crtVignette: 0
 edgeDetectEnabled: true
 edgeDetectThreshold: 1
-edgeDetectIntensity: 0
-edgeDetectColor: [1e-45, 0, 1]
-filmGrainResponse: 0
+filmGrainEnabled: true
+filmGrainIntensity: 0.5727632
 filmGrainType: lens
+filmGrainSize: 8
 filmGrainColored: true
-vhsIntensity: 1e-45
 vhsWobble: 1e-45
-vhsTapeNoise: 1e-45
-vhsChromaStreaks: 2
+vhsTracking: 2
 vhsInterference: 2
+vhsGlitches: 0.6655403
 vhsSpeed: 4
-filmHairAmount: 0
 filmScratchAmount: 0
-filmDustSize: 24
+filmGateMask: rounded
 filmGateMaskFeather: 256
 sharpenEnabled: true
-sharpenIntensity: 0
 bloomEnabled: true
 bloomKnee: 0.9061514
-bloomIntensity: 1e-45
-bloomTint: [1, 1, 1e-45]
+bloomScatter: 0
 halationIntensity: 0
+halationThreshold: 1
 halationRadius: 0
 halationTint: [1, 1, 1]
 msaaSamples: 4
@@ -358,8 +363,6 @@ glitchRgbSplit: 1e-45
 glitchTears: 2
 glitchInterlace: 1
 glitchBurstRate: 0.2961261
-glitchBurstLength: 0.05
-glitchFps: 1
 --- 6
 exposure: 1e-45
 temperature: -1
@@ -372,12 +375,16 @@ gain: [4, 0, 0]
 lutContribution: -0
 lutInputEncoding: logc3
 lutSize: 16
+lutFlipGreen: true
 monochromeEnabled: true
 monochromeMode: sepia
 vignetteIntensity: 0
 vignetteSmoothness: 1
 vignetteRoundness: 0
 vignetteColor: [0.11438704, 1e-45, 0]
+vignetteFalloff: radii
+vignetteStart: 2
+vignetteEnd: 3
 fxaaEnabled: true
 chromaticAberrationIntensity: 1
 pixelateEnabled: true
@@ -446,39 +453,44 @@ gamma: [0.1, 0.1, 4]
 gain: [0, 0, 0.48483515]
 lutTexture: ui/menu.html
 lutContribution: 0
+lutFlipGreen: true
+vignetteRoundness: 0
 vignetteColor: [0, 0, 1]
+vignetteFalloff: radii
+vignetteStart: 2
+vignetteEnd: 3
 ditherEnabled: true
-chromaticAberrationIntensity: 0.92168254
 pixelateEnabled: true
 pixelateSize: 1
 crtEnabled: true
-crtMask: 1
-crtCurvature: 1
+crtScanlines: 1e-45
 crtVignette: 1
 edgeDetectEnabled: true
+edgeDetectThreshold: 1
 edgeDetectColor: [0, 1, 1]
 filmGrainIntensity: 1
 filmGrainType: filmic
 filmGrainSize: 8
 filmGrainColored: true
 vhsWobble: 0
-vhsTracking: 0
+vhsColorBleed: 0.18206729
 vhsChromaStreaks: 0
-vhsScanlines: 2
-vhsGlitches: 2
 filmDamageIntensity: 0
-filmDustSize: 24
+filmScratchAmount: 0
+filmGateWeave: 0
 filmGateMask: rounded
 bloomEnabled: true
 bloomKnee: 1
+bloomIntensity: 10
 bloomTint: [0, 0, 0]
+bloomScatter: 1e-45
 blurEnabled: true
 blurRadius: 0
 blurIntensity: 0
-halationThreshold: 1e-45
-halationRadius: 1
-halationTint: [0, 0, 0]
+dynamicResolutionMinScale: 0.5
+paletteEnabled: true
 paletteDistance: rgb
-glitchTearShift: 0
+glitchRgbSplit: 8
+glitchTears: 6
 glitchInterlace: 0
 glitchBurstLength: 0.05

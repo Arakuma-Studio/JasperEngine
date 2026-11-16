@@ -198,13 +198,41 @@ namespace jasperengine::anim{
 
     // ---- .anim root motion (an extension member kept by AnimationClipIO) ----
 
+    // Unity's Root Transform "Based Upon" (S94 F32): what the root transform follows. Body
+    // Orientation and Center Of Mass need a humanoid rig, else they act as Original (warned once).
+    enum class RootRotationBasis : uint8_t { Original, BodyOrientation };
+    enum class RootPositionYBasis : uint8_t { Original, CenterOfMass, Feet };
+    enum class RootPositionXZBasis : uint8_t { Original, CenterOfMass };
+
     struct JASPERENGINE_API ClipRootMotion{
         bool present = false;           // the clip declares a root_motion block
         std::string bone;               // path; empty: the Animator's choice (R10)
         bool bakeRotation = false;      // keep the heading in the pose (no turning root motion)
         bool bakePositionY = true;      // keep the height in the pose
         bool bakePositionXZ = false;    // keep the horizontal motion in the pose
+        RootRotationBasis rotationBasedUpon = RootRotationBasis::Original;
+        float rotationOffset = 0.0f;    // degrees about +y, added to the pose (and its motion)
+        RootPositionYBasis positionYBasedUpon = RootPositionYBasis::Original;
+        float positionYOffset = 0.0f;   // added to the pose's height
+        RootPositionXZBasis positionXZBasedUpon = RootPositionXZBasis::Original;
+
+        bool operator==(const ClipRootMotion& other) const{
+            return present == other.present && bone == other.bone && bakeRotation == other.bakeRotation &&
+                   bakePositionY == other.bakePositionY && bakePositionXZ == other.bakePositionXZ &&
+                   rotationBasedUpon == other.rotationBasedUpon && rotationOffset == other.rotationOffset &&
+                   positionYBasedUpon == other.positionYBasedUpon && positionYOffset == other.positionYOffset &&
+                   positionXZBasedUpon == other.positionXZBasedUpon;
+        }
+        bool operator!=(const ClipRootMotion& other) const{ return !(*this == other); }
     };
+
+    // "original", "body_orientation", "center_of_mass", "feet"
+    JASPERENGINE_API const char* rootRotationBasisName(RootRotationBasis basis);
+    JASPERENGINE_API bool rootRotationBasisFromName(const std::string& name, RootRotationBasis& out);
+    JASPERENGINE_API const char* rootPositionYBasisName(RootPositionYBasis basis);
+    JASPERENGINE_API bool rootPositionYBasisFromName(const std::string& name, RootPositionYBasis& out);
+    JASPERENGINE_API const char* rootPositionXZBasisName(RootPositionXZBasis basis);
+    JASPERENGINE_API bool rootPositionXZBasisFromName(const std::string& name, RootPositionXZBasis& out);
 
     // from a clip's unknown keys ("root_motion"); warnings for bad members
     JASPERENGINE_API ClipRootMotion readClipRootMotion(const std::vector<std::pair<std::string, std::string>>& unknownKeys,

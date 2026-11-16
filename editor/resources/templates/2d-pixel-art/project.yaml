@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: 2D Pixel Art
 canvasWidth: 320
 canvasHeight: 180
@@ -49,13 +49,14 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 654718099
+startSceneId: 4196398950
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: c5258b3cf0774b85065b45563b8aced3
+    filepathGuid: 47a54e8832be9948080634562b68dd61

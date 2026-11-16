@@ -10,6 +10,7 @@
 #include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "graph/GraphEditorHooks.h"
+#include "component/CameraComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/Transform.h"
 #include "pool/ShaderPool.h"
@@ -538,6 +539,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
                 if (changed) {
                     value = static_cast<LitQuality>(currentItem);
+                }
+            }
+            if constexpr (std::is_same_v<T, AmbientMode>) {
+                const char* sourceNames[] = { "Color", "Gradient" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
+                if (changed) {
+                    value = static_cast<AmbientMode>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, PlanarReflectionResolution>) {
@@ -6330,6 +6339,22 @@ void editor::InspectorWindow::submitRowCommand(SceneProject* sceneProject, Compo
         cmd = nullptr;
         return;
     }
+    // S94 F27: a camera bound set by hand turns Auto Resize and the Orthographic Size off in the same
+    // undo step (as Camera's Lua setters); always a MultiPropertyCmd, so a drag's frames merge
+    if (cpType == ComponentType::CameraComponent && cmd && (id == "left" || id == "right" || id == "bottom" || id == "top")){
+        auto* multi = new MultiPropertyCmd();
+        const EntityEdit* edit = dynamic_cast<const EntityEdit*>(cmd);
+        const std::vector<Entity> edited = edit ? edit->editedEntities() : std::vector<Entity>();
+        multi->addCommand(std::unique_ptr<Command>(cmd));
+        for (Entity entity : edited){
+            const CameraComponent* camera = sceneProject->scene->findComponent<CameraComponent>(entity);
+            if (camera && camera->autoResize)
+                multi->addPropertyCmd<bool>(project, sceneProject->id, entity, cpType, "autoResize", false);
+            if (camera && camera->orthographicSize != 0.0f)
+                multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "orthographicSize", 0.0f);
+        }
+        cmd = multi;
+    }
     CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
 }
 
@@ -8015,7 +8040,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     drawMeshComponentFields(cpType, sceneProject, entities);
     ImGui::EndDisabled();
     const ImVec2 fieldsBottom(ImGui::GetWindowPos().x + ImGui::GetWindowWidth(), ImGui::GetCursorScreenPos().y);
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
         ImGui::SetTooltip("Edit the parts");
     }
 }
@@ -8320,6 +8345,8 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     drawBlendShapes(sceneProject, entities);
 
     drawCustomShaderRow(cpType, ShaderType::MESH, sceneProject, entities);
+    // over every submesh's material (S94 F7)
+    drawPropertyOverridesRows(cpType, sceneProject, entities, -1);
 
     unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entities[0]).numSubmeshes;
     for (Entity& entity : entities){
@@ -8461,6 +8488,9 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
         propertyRow(RowPropertyType::Vector4, cpType, "submeshes["+std::to_string(s)+"].textureRect", "Texture Rect", sceneProject, entities, settingsTextureRect);
 
         endTable();
+        // a mesh of several submeshes: each one's over the Mesh's
+        if (numSubmeshes > 1)
+            drawPropertyOverridesRows(cpType, sceneProject, entities, s);
 
         if (submeshGenerated) ImGui::EndDisabled();
         ImGui::PopID();
@@ -8588,6 +8618,33 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 
     }else{
         ImGui::TextDisabled("Select a single GameObject");
+    }
+
+    // Unity's Preserve Hierarchy (S94 F44): the reload that applies it is part of the step
+    prefabRowProperty = "preserveHierarchy";
+    propertyHeader("Preserve Hierarchy");
+    {
+        const ModelComponent& first = sceneProject->scene->getComponent<ModelComponent>(entities[0]);
+        bool preserve = first.preserveHierarchy;
+        bool mixed = false;
+        for (Entity entity : entities) {
+            const ModelComponent* other = sceneProject->scene->findComponent<ModelComponent>(entity);
+            mixed = mixed || (other && other->preserveHierarchy != preserve);
+        }
+        ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+        if (ImGui::Checkbox("##model_preserve_hierarchy", &preserve)) {
+            auto* multi = new MultiPropertyCmd();
+            for (Entity entity : entities) {
+                multi->addCommand(std::unique_ptr<Command>(ModelLoadCmd::setLoadOption(project, sceneProject->id, entity, "preserveHierarchy", preserve)));
+            }
+            multi->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multi);
+        }
+        ImGui::PopItemFlag();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Every node of the file gets a GameObject of its own, and a lone mesh is never merged into the "
+                              "Model's. Changing it reloads the model.");
     }
 
     propertyRow(RowPropertyType::LocalEntity, cpType, "skeleton", "Skeleton", sceneProject, entities);
@@ -9422,8 +9479,14 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     beginTable(cpType, getLabelSize("Pixels Per Unit"), "sprite_size");
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
+    // S94 F30: Unity's Size, in world units (0 on an axis: Width / Height over Pixels Per Unit)
+    RowSettings settingsSize;
+    settingsSize.help = "The quad's size in world units, in every Draw Mode (Sliced corners keep theirs). 0 on an axis: Width / Height over Pixels Per Unit.";
+    propertyRow(RowPropertyType::Vector2, cpType, "size", "Size", sceneProject, entities, settingsSize);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
+    // S94 F29: mirrored about the pivot
+    propertyRow(RowPropertyType::Bool, cpType, "flipX", "Flip X", sceneProject, entities, RowSettings());
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
@@ -9722,11 +9785,22 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
         propertyRow(RowPropertyType::Float, cpType, "aspect", "Aspect", sceneProject, entities, defaultSettings);
     }
 
+    // S94 F28: Unity's Size; while set it places the bounds, which then show what it gave them
+    if (camera.type == CameraType::CAMERA_ORTHO) {
+        RowSettings sizeSettings;
+        sizeSettings.help = "Half the view's height in world units; the width follows the aspect. 0: off, the bounds below stay as set.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "orthographicSize", "Size", sceneProject, entities, sizeSettings);
+    }
     if (camera.type == CameraType::CAMERA_ORTHO || camera.type == CameraType::CAMERA_UI) {
-        propertyRow(RowPropertyType::Float, cpType, "left", "Left", sceneProject, entities, defaultSettings);
+        const bool sized = camera.type == CameraType::CAMERA_ORTHO && camera.orthographicSize > 0.0f;
+        ImGui::BeginDisabled(sized);
+        RowSettings clipSettings;
+        clipSettings.help = sized ? "Set by Size" : "Setting a bound turns Auto Resize off";
+        propertyRow(RowPropertyType::Float, cpType, "left", "Left", sceneProject, entities, clipSettings);
         propertyRow(RowPropertyType::Float, cpType, "right", "Right", sceneProject, entities, defaultSettings);
         propertyRow(RowPropertyType::Float, cpType, "bottom", "Bottom", sceneProject, entities, defaultSettings);
         propertyRow(RowPropertyType::Float, cpType, "top", "Top", sceneProject, entities, defaultSettings);
+        ImGui::EndDisabled();
     }
 
     propertyRow(RowPropertyType::Float, cpType, "near", "Near", sceneProject, entities, defaultSettings);
@@ -13866,13 +13940,24 @@ void editor::InspectorWindow::show(){
 
             LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
-                ImGui::SeparatorText("Global Illumination");
+                ImGui::SeparatorText("Environment Lighting");
 
                 if (ImGui::BeginTable("scene_globalillum_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
+                    drawScenePropertyRow<AmbientMode>(sceneProject, "ambient_mode", "Source", ScenePropertyInputType::Combo, 6 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "Where the ambient light comes from (Unity's Environment Lighting Source):\n"
+                        "- Color: one colour from every direction\n"
+                        "- Gradient: the Sky Color from above, the Equator Color from the side and the Ground Color from below\n"
+                        "Intensity scales either. A sky's image-based lighting replaces both on the built-in Lit.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientMode>(sceneProject->scene, "ambient_mode") == AmbientMode::GRADIENT) {
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);
+                    } else {
+                        drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
+                    }
                     drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
 
                     ImGui::EndTable();

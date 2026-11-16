@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Empty
 canvasWidth: 1280
 canvasHeight: 720
@@ -29,13 +29,14 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 4156712284
+startSceneId: 2556116812
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: b2a530fccff0fd64dd67b5dd72139f08
+    filepathGuid: 7d2eed4b265672d20ae84bb0fa47b23b

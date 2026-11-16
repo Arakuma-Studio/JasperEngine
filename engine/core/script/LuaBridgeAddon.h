@@ -30,6 +30,7 @@
 #include "component/FogComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
@@ -247,6 +248,7 @@ namespace luabridge
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
     template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
+    template<> struct Stack<AmbientMode> : EnumWrapper<AmbientMode>{};
     template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
@@ -256,6 +258,7 @@ namespace luabridge
     template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
     template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
+    template<> struct Stack<VignetteFalloff> : EnumWrapper<VignetteFalloff>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
     template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
@@ -285,6 +288,10 @@ namespace luabridge
     template<> struct Stack<SpriteBatchMode> : EnumWrapper<SpriteBatchMode>{};
     template<> struct Stack<SpriteBatchSpace> : EnumWrapper<SpriteBatchSpace>{};
     template<> struct Stack<SpriteSortPoint> : EnumWrapper<SpriteSortPoint>{};
+    // Text alignment and font size unit (S94)
+    template<> struct Stack<TextHorizontalAlignment> : EnumWrapper<TextHorizontalAlignment>{};
+    template<> struct Stack<TextVerticalAlignment> : EnumWrapper<TextVerticalAlignment>{};
+    template<> struct Stack<TextFontSizeUnit> : EnumWrapper<TextFontSizeUnit>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

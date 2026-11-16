@@ -653,6 +653,11 @@ namespace {
             pendFinish(runtime, state, when(eventsTo));
         }
 
+        // the step on the stored time line, for the clip's root motion (S94 F34)
+        state.rootMotion.stepped = true;
+        state.rootMotion.stepFrom = from;
+        state.rootMotion.stepTo = to;
+
         if ((wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0){
             // the stored form: [0, 2 * length) and whole periods (no precision loss over time)
             const double period = 2.0 * length;
@@ -1175,6 +1180,7 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
     // fades (real time), held states included
     for (anim::PlayerStateRuntime& state : states){
         fadeState(state, dt);
+        state.rootMotion.stepped = false;
     }
 
     // each layer's queue head waits for the states playing now on that layer (R17 per layer):
@@ -1326,6 +1332,7 @@ void ActionSystem::updatePlayers(double dt){
             continue;
         }
         advancePlayer(entity, player, step);
+        stepPlayerRootMotion(entity, player);
         samplePlayerStates(entity, player);
         if (!runtime.pendingCues.empty() || !runtime.cueVoices.empty()) firePlayerCues(entity, player, step);
 

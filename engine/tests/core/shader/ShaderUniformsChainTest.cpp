@@ -9,6 +9,9 @@
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
+#include "System.h"
+
+#include "LogCapture.h"
 
 #include <gtest/gtest.h>
 
@@ -98,4 +101,49 @@ TEST(ShaderUniformsChain, WriteValuesPacksTheChain) {
     // the old overload has no scene layer: the member reads zero
     block.writeValues(own, nullptr, nullptr);
     EXPECT_EQ(written(block, 0), Vector4(0, 0, 0, 0));
+}
+
+// S94 F7 (AC7): Property Overrides win over everything below them, a submesh's over its
+// renderer's, a global binding included; an absent override leaves the chain as it was
+TEST(ShaderUniformsChain, PropertyOverridesWin) {
+    ShaderUniformValues submeshOverride = {{"tint", Vector4(1, 0, 0, 0)}};
+    ShaderUniformValues rendererOverride = {{"tint", Vector4(2, 0, 0, 0)}, {"speed", Vector4(3, 0, 0, 0)}, {"bound", Vector4(4, 0, 0, 0)}};
+    ShaderUniformValues own = {{"tint", Vector4(-1, 0, 0, 0)}, {"speed", Vector4(-1, 0, 0, 0)}, {"other", Vector4(5, 0, 0, 0)}};
+    ShaderGlobals::setVector(ShaderGlobals::propertyToID("chainOverrideGlobal"), Vector4(9, 9, 9, 9));
+    const ShaderGlobalBindings bindings = {{"bound", "chainOverrideGlobal"}};
+    UniformChain chain;
+    chain.submeshOverride = &submeshOverride;
+    chain.rendererOverride = &rendererOverride;
+    chain.values = &own;
+    chain.bindings = &bindings;
+    UniformSource source = UniformSource::Zero;
+    EXPECT_FLOAT_EQ(ShaderUniforms::resolve(chain, "tint", &source).x, 1.0f);
+    EXPECT_EQ(source, UniformSource::Override);
+    EXPECT_FLOAT_EQ(ShaderUniforms::resolve(chain, "speed", &source).x, 3.0f);
+    EXPECT_EQ(source, UniformSource::Override);
+    EXPECT_FLOAT_EQ(ShaderUniforms::resolve(chain, "bound", &source).x, 4.0f);
+    EXPECT_EQ(source, UniformSource::Override);
+    EXPECT_FLOAT_EQ(ShaderUniforms::resolve(chain, "other", &source).x, 5.0f);
+    EXPECT_EQ(source, UniformSource::Own);
+    EXPECT_STREQ(uniformSourceName(UniformSource::Override), "override");
+    chain.submeshOverride = nullptr;
+    chain.rendererOverride = nullptr;
+    EXPECT_FLOAT_EQ(ShaderUniforms::resolve(chain, "tint", &source).x, -1.0f);
+    EXPECT_EQ(source, UniformSource::Own);
+    ShaderGlobals::resetToDefaults();
+}
+
+// S94 F8 (AC8): a Mesh value its material's parameter of the same name hides warns once per
+// GameObject and name, naming Property Overrides; a name the material does not set is silent
+TEST(ShaderUniforms, ShadowedMeshUniformWarnsOnce) {
+    test::LogCapture log;
+    const ShaderUniformValues material = {{"zoneColor", Vector4(1, 0, 0, 1)}};
+    static int sceneTag = 0;
+    EXPECT_TRUE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 7, "Zone", "zoneColor", material));
+    EXPECT_TRUE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 7, "Zone", "zoneColor", material));
+    EXPECT_FALSE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 7, "Zone", "speed", material));
+    EXPECT_EQ(log.count(D_LOG_WARN, "Property Override"), 1u);
+    // another GameObject: its own warning
+    EXPECT_TRUE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 8, "Zone 2", "zoneColor", material));
+    EXPECT_EQ(log.count(D_LOG_WARN, "Property Override"), 2u);
 }

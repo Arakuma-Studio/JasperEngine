@@ -55,6 +55,7 @@
 #include "Configs.h"
 #include "Stream.h"
 #include "util/ProjectUtils.h"
+#include "util/Color.h"
 #include "particles/ParticleEffectCodec.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
@@ -382,8 +383,30 @@ static std::string formatBlendMode(MaterialBlendMode mode) {
         case MaterialBlendMode::PREMULTIPLIED: return "MaterialBlendMode::PREMULTIPLIED";
         case MaterialBlendMode::ADDITIVE: return "MaterialBlendMode::ADDITIVE";
         case MaterialBlendMode::MULTIPLY: return "MaterialBlendMode::MULTIPLY";
+        case MaterialBlendMode::CUSTOM: return "MaterialBlendMode::CUSTOM";
         default: return "MaterialBlendMode::AUTO";
     }
+}
+
+// Blend Mode Custom's factors (MaterialBlendFactors), each away from its default
+static std::string formatBlendFactors(const std::string& ind, const std::string& target, const MaterialBlendFactors& factors) {
+    using editor::Factory;
+    namespace enums = editor::reflect::enums;
+    const MaterialBlendFactors defaults;
+    std::string code;
+    auto factor = [&](const char* name, MaterialBlendFactor value, MaterialBlendFactor fallback) {
+        if (value != fallback)
+            code += ind + target + "." + name + " = " + Factory::formatEnum(enums::kMaterialBlendFactor, (int)value) + ";\n";
+    };
+    factor("blendSrc", factors.src, defaults.src);
+    factor("blendDst", factors.dst, defaults.dst);
+    factor("blendSrcAlpha", factors.srcAlpha, defaults.srcAlpha);
+    factor("blendDstAlpha", factors.dstAlpha, defaults.dstAlpha);
+    if (factors.op != defaults.op)
+        code += ind + target + ".blendOp = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.op) + ";\n";
+    if (factors.opAlpha != defaults.opAlpha)
+        code += ind + target + ".blendOpAlpha = " + Factory::formatEnum(enums::kMaterialBlendOp, (int)factors.opAlpha) + ";\n";
+    return code;
 }
 
 static std::string formatCullMode(MaterialCullMode mode) {
@@ -489,6 +512,7 @@ std::string editor::Factory::formatMaterialPass(int indentSpaces, const Material
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(pass.shaderFeatures) << ";\n";
     if (pass.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(pass.blendMode) << ";\n";
+    code << formatBlendFactors(ind, target, pass.getBlendFactors());
     if (pass.cullMode != MaterialCullMode::AUTO)
         code << ind << target << ".cullMode = " << formatCullMode(pass.cullMode) << ";\n";
     if (pass.depthWrite != MaterialDepthWrite::AUTO)
@@ -572,6 +596,7 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
     }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
+    code << formatBlendFactors(ind, target, material.getBlendFactors());
     if (material.cullMode != MaterialCullMode::AUTO)
         code << ind << target << ".cullMode = " << formatCullMode(material.cullMode) << ";\n";
     if (material.depthWrite != MaterialDepthWrite::AUTO)
@@ -1277,6 +1302,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.customDepthShader = " << formatString(mesh.customDepthShader) << ";\n";
     if (!mesh.shaderUniforms.empty())
         code << ind << "mesh.shaderUniforms = " << formatShaderUniforms(mesh.shaderUniforms) << ";\n";
+    // Property Overrides (S94 F7)
+    if (!mesh.propertyOverrides->values.empty())
+        code << ind << "mesh.propertyOverrides.edit().values = " << formatShaderUniforms(mesh.propertyOverrides->values) << ";\n";
+    code << formatShaderTextures(indentSpaces, mesh.propertyOverrides->textures, "mesh.propertyOverrides.edit().textures", projectPath);
     // Kept for a model too: its load reads the count to find the edited submeshes.
     code << ind << "mesh.numSubmeshes = " << formatUInt(numSubmeshes) << ";\n";
     for (unsigned int s = 0; s < numSubmeshes; s++){
@@ -1317,6 +1346,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.normalTexture, "mesh.submeshes[" + idx + "].material.normalTexture", projectPath);
+
+        if (!mesh.submeshes[s].propertyOverrides->values.empty())
+            code << ind << "mesh.submeshes[" << idx << "].propertyOverrides.edit().values = " << formatShaderUniforms(mesh.submeshes[s].propertyOverrides->values) << ";\n";
+        code << formatShaderTextures(indentSpaces, mesh.submeshes[s].propertyOverrides->textures, "mesh.submeshes[" + idx + "].propertyOverrides.edit().textures", projectPath);
 
         // The UV set each texture samples: only a model or a linked material sets it, and an
         // overridden texture is put back together with it.
@@ -1665,6 +1698,11 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.height = " << formatUInt(sprite.height) << ";\n";
     code << ind << "sprite.automaticFlipY = " << formatBool(sprite.automaticFlipY) << ";\n";
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
+    // S94: exported only when set
+    if (sprite.flipX)
+        code << ind << "sprite.flipX = true;\n";
+    if (sprite.size.x != 0.0f || sprite.size.y != 0.0f)
+        code << ind << "sprite.size = " << formatVector2(sprite.size) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
     if (sprite.drawMode != SpriteDrawMode::SIMPLE) {
@@ -2302,6 +2340,7 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     code << ind << "modelcomp.mergeStaticMeshes = " << formatBool(model.mergeStaticMeshes) << ";\n";
     // an Animation Player plays the model's clips: no entity animations (9.R15)
     if (!model.animationEntities) code << ind << "modelcomp.animationEntities = false;\n";
+    if (model.preserveHierarchy) code << ind << "modelcomp.preserveHierarchy = true;\n";
     code << ind << "modelcomp.skeleton = " << formatEntity(model.skeleton, entityVarNames) << ";\n";
     if (!model.animations.empty()) {
         code << ind << "modelcomp.animations.clear();\n";
@@ -2750,6 +2789,7 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
     code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
     code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
     if (player.poseFrameRate != 0.0f) code << ind << "animationplayer.poseFrameRate = " << formatFloat(player.poseFrameRate) << ";\n";
+    if (player.applyRootMotion) code << ind << "animationplayer.applyRootMotion = true;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
     return code.str();
 }
@@ -3264,6 +3304,21 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
+    // the Environment Lighting Source (S94); the gradient's colours away from their defaults (a
+    // script may switch to it)
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT)
+        out << ind2 << "scene->setAmbientMode(AmbientMode::GRADIENT);\n";
+    {
+        const SceneSettings ambientDefaults;
+        auto differs = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (differs(scene->getAmbientSkyColor(), Color::linearTosRGB(ambientDefaults.ambientSkyColor)) ||
+            differs(scene->getAmbientEquatorColor(), Color::linearTosRGB(ambientDefaults.ambientEquatorColor)) ||
+            differs(scene->getAmbientGroundColor(), Color::linearTosRGB(ambientDefaults.ambientGroundColor)))
+            out << ind2 << "scene->setAmbientGradient(" << formatVector3(scene->getAmbientSkyColor()) << ", " << formatVector3(scene->getAmbientEquatorColor())
+            << ", " << formatVector3(scene->getAmbientGroundColor()) << ");\n";
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         out << ind2 << "scene->setMaxLightsPerObject(" << scene->getMaxLightsPerObject() << ");\n";
     // always written: a Scene made in code is High, a scene saved before Lit Quality is Standard
@@ -3733,6 +3788,7 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
     for (Entity plane : p.collisionPlanes)
         code << ind << "particles.collisionPlanes.push_back(" << formatEntity(plane, entityVarNames) << ");\n";
+    if (p.legacyFrom != NULL_ENTITY) code << ind << "particles.legacyFrom = " << formatEntity(p.legacyFrom, entityVarNames) << ";\n";
     if (!p.enabled) code << ind << "particles.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);

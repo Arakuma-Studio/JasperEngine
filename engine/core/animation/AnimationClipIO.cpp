@@ -166,7 +166,7 @@ bool anim::isUnityYamlClip(const std::string& text){
 
 const char* anim::unityYamlRefusal(){
     return "This is a Unity .anim (YAML). JasperEngine clips are JSON {\"format\": \"jasperengine.anim\"}: "
-           "create one with Assets > Create > Animation Clip or edit_animation {clip, create}.";
+           "import it with Assets > Import Unity Animation... or edit_animation {clip, create: {unity: \"<absolute .anim path>\"}}.";
 }
 
 std::string anim::generateClipGuid(){
@@ -1154,8 +1154,9 @@ namespace{
             warn(warnings, "humanoid.human_scale", "expected a positive number: dropped");
             data.humanoid.humanScale = 0.0f;
         }
-        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose" && data.source.kind != "aseprite"){
-            warn(warnings, "source.kind", "expected model, entity, pose or aseprite: source dropped");
+        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose" && data.source.kind != "aseprite" &&
+                data.source.kind != "unity"){
+            warn(warnings, "source.kind", "expected model, entity, pose, aseprite or unity: source dropped");
             data.source = ClipSource();
         }
 

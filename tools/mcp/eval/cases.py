@@ -5242,4 +5242,446 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P7 model import: rest pose and the GameObject that draws a model's mesh
+    {
+        "id": "guard_model_rest_pose_first_frame",
+        "kind": "guard",
+        "what_happened": "New text (S94 F40): get_model_info reports first_frame_differs (a take starting with the hips away from "
+                         "the file's nodes, CLEIVER's 5.6 m) and its next names set_model_import_settings rest_pose: first_frame; "
+                         "an agent fixes the pose there instead of moving bones by hand.",
+        "text_at_issue": "get_model_info next: 'Its clips start with the root or hips away from where the file's nodes put them "
+                         "... set_model_import_settings with settings {rest_pose: \"first_frame\"} ...'",
+        "source": "S94 F40 (new result text); ARCADE R37",
+        "prompt": "The Cleiver model stands about 5 metres too low compared to how it looks in its animations. Fix the model so it "
+                  "imports in the right pose.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCleiver [30] model", {"entities": [{"id": 30, "path": "Cleiver"}]})},
+            {"tool": "get_model_info", "result": ok(
+                "Model \"Cleiver\": 1 mesh(es), 52 bone(s), 1 animation(s).",
+                {"model": {"id": 30, "name": "Cleiver"}, "file": "assets/models/cleiver@T-Pose.fbx", "loading": False,
+                 "first_frame_differs": [{"animation": "mixamo.com", "node": "Hips", "node_translation": [0, 0.2, 0],
+                                          "first_frame": [0, 5.8, 0], "distance": 5.6}],
+                 "next": "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                         "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: "
+                         "\"first_frame\"} (rest_pose_take names another take) does the same, and the model reloads."})},
+            {"tool": "get_entity", "result": ok("Cleiver [30] components: model mesh transform", {"id": 30, "name": "Cleiver"})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/cleiver@T-Pose.fbx"], "unchanged": 0, "models": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"rest_pose": "first_frame"}}}],
+                   "must_not_call": ["set_properties", "set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_model_node_material_on_root",
+        "kind": "guard",
+        "what_happened": "New text (S94 F45): a mesh value sent to a model node whose mesh the model's own GameObject draws fails "
+                         "naming that GameObject and preserveHierarchy; the agent sets it on the root (or turns Preserve Hierarchy "
+                         "on) instead of giving up or adding a Mesh to the node.",
+        "text_at_issue": "set_properties error: 'Shark/Body is a node of the model Shark, whose own GameObject draws this node's "
+                         "mesh: set the mesh and material values on Shark, or set model.preserveHierarchy true on it ...'",
+        "source": "S94 F45 (new error text); ARCADE R52 (M's shark)",
+        "prompt": "Turn off shadow casting on the shark's Body mesh (GameObject Shark/Body).",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nShark [50] model\nShark/Body [51] bone",
+                                                  {"entities": [{"id": 50, "path": "Shark"}, {"id": 51, "path": "Shark/Body"}]})},
+            {"tool": "set_properties", "args": {"entity": "re:(?i)^(51|Shark/Body)$"}, "result": err(
+                "Shark/Body is a node of the model Shark, whose own GameObject draws this node's mesh: set the mesh and material "
+                "values on Shark, or set model.preserveHierarchy true on it (every node then draws its own mesh).")},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 50 \"Shark\".", {"entity": {"id": 50}})},
+            {"tool": "get_entity", "result": ok("Shark/Body [51] components: bone transform", {"id": 51, "name": "Body"})},
+            {"tool": "get_model_info", "result": ok("Model \"Shark\": 1 mesh(es), 12 bone(s), 0 animation(s).",
+                {"model": {"id": 50, "name": "Shark"}, "mesh_nodes": [{"node": 1, "name": "Body", "entity": {"id": 51},
+                                                                       "drawn_by": {"id": 50, "name": "Shark"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:(?i)^(50|Shark)$"}}],
+                   "must_not_call": ["add_component"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P6: Root Transform Based Upon (F32)
+    {
+        "id": "guard_root_motion_body_orientation",
+        "kind": "guard",
+        "what_happened": "New text (S94 F32): edit_animation's root_motion takes Unity's Based Upon; asked to make a clip that "
+                         "starts turned away face forward, an agent sets rotation_based_upon instead of rewriting the hips' keys.",
+        "text_at_issue": "animation.md clip mode arguments: root_motion '... rotation_based_upon ... a clip that starts turned away "
+                         "or off the ground: rotation_based_upon: \"body_orientation\"'",
+        "source": "docs/specs/S94-rendering-anim-gaps.md F32 (new text); no failure on record",
+        "prompt": "assets/anims/walk.anim was captured with the actor turned about 30 degrees, so the character walks along its "
+                  "forward but faces off to the side. Make the clip face the GameObject's forward when it plays.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "assets/anims/walk.anim: 1.00 s, loop, 2 tracks (Hips position, Hips rotation), root_motion {bake_position_y}.",
+                {"clip": "assets/anims/walk.anim", "length": 1.0, "wrap": "loop",
+                 "tracks": [{"index": 0, "path": "Hips", "channel": "position", "keys": 3},
+                            {"index": 1, "path": "Hips", "channel": "rotation", "keys": 3}],
+                 "root_motion": {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                                 "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                 "position_y_offset": 0, "position_xz_based_upon": "original"}})},
+            {"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "root_motion": "*"}, "result": ok(
+                "assets/anims/walk.anim: root_motion changed (one project undo step).",
+                {"clip": "assets/anims/walk.anim", "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim",
+                                                                  "root_motion": {"rotation_based_upon": "body_orientation"}}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"tracks": "*"}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
+    {
+        "id": "guard_camera_orthographic_size",
+        "kind": "guard",
+        "what_happened": "New text (S94 F28, R46): the camera guide names camera.orthographicSize (Unity's Size, following the "
+                         "aspect); without it an agent writes fixed left/right/top/bottom bounds for one aspect (the port's "
+                         "workaround) or leaves Auto Resize showing the canvas in pixels.",
+        "text_at_issue": "jasper://docs/camera 'Orthographic bounds': 'For Unity's Size, set camera.orthographicSize (> 0) ...'",
+        "source": "S94 F28 (new guide text); ARCADE ENGINE_LIMITATIONS R46",
+        "prompt": "The 2D level was made in Unity with an orthographic camera Size of 11. Make the Main Camera show the same "
+                  "vertical extent on every screen shape.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [10] camera transform",
+                                                   {"entities": [{"id": 10, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(10|Main Camera)$"}, "result": ok(
+                "Main Camera [10] components: camera transform; camera: type orthographic, autoResize true, left 0, right 1280, "
+                "bottom 0, top 720, orthographicSize 0", {"id": 10, "name": "Main Camera"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 10}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"camera": {"orthographicSize": 11}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "orthographicSize", "value": 11}]}}]}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_capline_alignment",
+        "kind": "guard",
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text alignment names center + capline for a number centred on a "
+                         "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
+                         "sat too high).",
+        "text_at_issue": "jasper://docs/ui 'Text alignment and size': 'To centre a number on a plaque, use center + capline.'",
+        "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
+        "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
+                  "(it sits at the plaque's centre). Fix how the text is anchored.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
+                                                   {"entities": [{"id": 21, "path": "Door12"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, horizontalAlignment "
+                "left, verticalAlignment bottom", {"id": 21, "name": "Door12"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"horizontalAlignment": "center",
+                                                                                                  "verticalAlignment": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "verticalAlignment", "value": "re:capline|middle"}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_flip_x",
+        "kind": "guard",
+        "what_happened": "New text (S94 F29, R9): the sprites guide names sprite.flipX; without it an agent mirrors a sprite with a "
+                         "negative scale, which also flips its colliders and children.",
+        "text_at_issue": "jasper://docs/sprites 'Flip and Size': 'sprite.flipX mirrors the quad about its pivot'",
+        "source": "S94 F29 (new guide text); ARCADE ENGINE_LIMITATIONS R9",
+        "prompt": "Make the Hero sprite face left: mirror its picture horizontally, but leave its transform and collider alone.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] sprite mesh transform rigidbody2d",
+                                                   {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(7|Hero)$"}, "result": ok(
+                "Hero [7] components: mesh rigidbody2d sprite transform; sprite: width 32, height 32, flipX false, flipY true",
+                {"id": 7, "name": "Hero"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 7}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"sprite": {"flipX": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "flipX", "value": True}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F15: the Environment Lighting Source (Unity's gradient ambient)
+    {
+        "id": "guard_ambient_gradient_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F15): set_scene_settings takes ambient_mode gradient and the sky, equator and "
+                         "ground colours; an agent porting Unity's trilight ambient sets them instead of writing a shader "
+                         "or faking it with lights.",
+        "text_at_issue": "get_scene_settings: 'ambient_mode = color' with 'ambient source: color (global_illumination_color), "
+                         "gradient (sky, equator and ground colours)' and ambient_sky_color, ambient_equator_color, "
+                         "ambient_ground_color",
+        "source": "S94 F15 (new setting text); no failure on record",
+        "prompt": "The Unity scene I am porting uses Environment Lighting Source Gradient: sky (0.4, 0.6, 1.0), equator "
+                  "(0.5, 0.5, 0.5), ground (0.3, 0.2, 0.1), intensity 1. Make this scene's ambient light the same.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nglobal_illumination_color = [1.0,1.0,1.0] (ambient light color [r,g,b] (sRGB))\n"
+                "global_illumination_intensity = 0.1 (ambient light intensity)\nambient_mode = color (ambient source: color "
+                "(global_illumination_color), gradient (sky, equator and ground colours))\nambient_sky_color = "
+                "[0.212,0.227,0.259] (gradient ambient from above [r,g,b] (sRGB))\nambient_equator_color = [0.114,0.125,0.133] "
+                "(gradient ambient from the side [r,g,b] (sRGB))\nambient_ground_color = [0.047,0.043,0.035] (gradient "
+                "ambient from below [r,g,b] (sRGB))",
+                {"scene_id": 1, "settings": {"global_illumination_intensity": 0.1, "ambient_mode": "color"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set scene setting(s) (one undo step).", {"scene_id": 1})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_mode": "gradient"}}}],
+                   "must_not_call": ["fork_shader", "create_entity"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 8,
+    },
+    # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
+    {
+        "id": "guard_property_override_per_object_colour",
+        "kind": "guard",
+        "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
+                         "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
+                         "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
+        "text_at_issue": "set_shader_uniform: '... (+ component, + submesh; override: the Mesh's Property Override, over its materials) ...'",
+        "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
+        "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nCrate [30] mesh transform\nCrate2 [31] mesh transform",
+                                                   {"entities": [{"id": 30, "path": "Crate"}, {"id": 31, "path": "Crate2"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 31 \"Crate2\": transform, mesh (submeshes[0] material materials/crate.material, "
+                                               "shader library:unlit, shaderParams {baseColor: [1, 1, 1, 1]}).", {"id": 31, "name": "Crate2"})},
+            {"tool": "get_shader_uniforms", "result": ok("library:unlit on Crate2 submesh 0: baseColor [1, 1, 1, 1] (own), tiling [1, 1, 0, 0] (shader_default).",
+                                                        {"parameters": [{"member": "baseColor", "source": "own", "effective": [1, 1, 1, 1]}]})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set baseColor on Crate2 (Property Override).", {"entity": {"id": 31, "name": "Crate2"}, "property": "propertyOverrides.values",
+                                                                 "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set baseColor on Crate2 (submesh 0 material).", {"entity": {"id": 31, "name": "Crate2"}, "property": "submeshes[0].material.shaderParams",
+                                                                  "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"Crate2\".", {"entity": {"id": 31}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}],
+                   "must_not_call": ["update_material"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_shadowed_mesh_uniform_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F8): set_shader_uniform's next says a Mesh value is hidden by its material's parameter "
+                         "of the same name and names override: true; the agent sets the value again as an override.",
+        "text_at_issue": "set_shader_uniform next: 'Submesh 0's material sets 'speed', which wins over this value: set it again "
+                         "with override: true (a Property Override) to win.'",
+        "source": "S94 F8, ARCADE ledger R15 (a silent failure)",
+        "prompt": "Set the Conveyor's shader uniform speed to 3.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nConveyor [40] mesh transform", {"entities": [{"id": 40, "path": "Conveyor"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 40 \"Conveyor\": transform, mesh (customShader shaders/belt, submeshes[0] material "
+                                               "shaderParams {speed: 1}).", {"id": 40, "name": "Conveyor"})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set speed on Conveyor (Property Override).", {"entity": {"id": 40}, "property": "propertyOverrides.values", "name": "speed",
+                                                               "declared": True, "value": [3, 0, 0, 0]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set speed on Conveyor.", {"entity": {"id": 40}, "property": "shaderUniforms", "name": "speed", "declared": True,
+                                           "value": [3, 0, 0, 0],
+                                           "next": "Submesh 0's material sets 'speed', which wins over this value: set it again with "
+                                                   "override: true (a Property Override) to win."})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 F35, F36: Unity .anim / .controller / .mask import
+    {
+        "id": "guard_unity_anim_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation's create.unity imports a Unity YAML .anim; an agent given a Unity "
+                         "clip imports it instead of hand-converting its curves into tracks or copying the YAML.",
+        "text_at_issue": "edit_animation: 'create {from?, humanoid?, unity: Unity .anim}' (schema: create.unity, create.mirror_x)",
+        "source": "S94 F35 (new description text); the JasperArcade port converted .anim files with its own script",
+        "prompt": "Bring the Unity clip /home/me/UnityGame/Assets/Anim/Walk.anim into this project as assets/anim/walk.anim.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "assets/anim/walk.anim: created, 3 tracks, 1 s, loop; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Walk.anim (3 tracks, 1 event)",
+                {"path": "assets/anim/walk.anim", "created": True, "tracks": [], "wrap": "loop", "length": 1,
+                 "unity": {"source": "Assets/Anim/Walk.anim", "tracks": 3, "events": 1, "unmapped": [], "notes": [],
+                           "muscle_curves": {"count": 0, "names": []}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim$", "create": {"unity": "re:Walk\\.anim$"}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.anim$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_unity_anim_unmapped_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation create.unity's next sends the agent to list_properties when Unity "
+                         "bindings did not map, so it keys their engine equivalents instead of reporting the clip done.",
+        "text_at_issue": "edit_animation next: 'unity.unmapped lists the Unity bindings with no engine property: key their engine "
+                         "equivalents with tracks (get_animation {root, list_properties} lists what a GameObject can animate)'",
+        "source": "S94 F35 (new result text); no failure on record",
+        "prompt": "Import the Unity clip /home/me/UnityGame/Assets/Anim/Blink.anim as assets/anim/blink.anim for the Hero "
+                  "GameObject, and make sure everything it animated in Unity is animated here too.",
+        "mocks": [
+            {"tool": "edit_animation", "args": {"create": "*"}, "result": ok(
+                "assets/anim/blink.anim: created, 1 track, 0.5 s, once; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Blink.anim (1 track, 0 events)",
+                {"path": "assets/anim/blink.anim", "created": True, "tracks": [], "wrap": "once", "length": 0.5,
+                 "unity": {"source": "Assets/Anim/Blink.anim", "tracks": 1, "events": 0, "notes": [],
+                           "unmapped": [{"binding": "Face: MonoBehaviour.eyeOpen", "reason": "script fields of Unity MonoBehaviours "
+                                         "have no engine binding: key the Lua script's field (script:<Class>) with edit_animation"}],
+                           "muscle_curves": {"count": 0, "names": []}},
+                 "next": "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                         "(get_animation {root, list_properties} lists what a GameObject can animate)"})},
+            {"tool": "get_animation", "result": ok(
+                "\"Face\": animatable properties (track component, property, kind):\nscript:face eyeOpen float\nmesh "
+                "submeshes[0].material.baseColorFactor color4",
+                {"properties": [{"component": "script:face", "property": "eyeOpen", "kind": "float"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] transform\nHero/Face [8] mesh script",
+                                                   {"entities": [{"id": 7, "path": "Hero"}, {"id": 8, "path": "Hero/Face"}]})},
+            {"tool": "edit_animation", "args": {"tracks": "*"}, "result": ok(
+                "assets/anim/blink.anim: 2 tracks, 0.5 s, once (one project undo step: undo scope project)",
+                {"path": "assets/anim/blink.anim", "created": False, "tracks": []})},
+        ],
+        "checks": {"calls": [{"tool": "get_animation", "args": {"list_properties": "*"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_unity_controller_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F36): edit_animator_controller's create.unity imports a Unity .controller with the clips "
+                         "and masks it uses; an agent imports it in one call instead of rebuilding states with ops or importing "
+                         "each clip first, and follows next for the model clip that did not map.",
+        "text_at_issue": "edit_animator_controller create: 'true, or {unity: an absolute Unity .controller}'; next: 'unity.unmapped "
+                         "lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: set_state "
+                         "{clip: \"<model>#<clip>\"} once the model is in the project)'",
+        "source": "S94 F36 (new schema and result text); no failure on record",
+        "prompt": "Import the Unity Animator Controller /home/me/UnityGame/Assets/Anim/Hero.controller as "
+                  "assets/anim/hero.controller, with everything it needs. The Hero model is already in the project at "
+                  "assets/models/hero.fbx.",
+        "mocks": [
+            {"tool": "edit_animator_controller", "args": {"create": "*"}, "result": ok(
+                "assets/anim/hero.controller: imported Assets/Anim/Hero.controller (4 file(s), one project undo step); 1 unmapped "
+                "item(s): see unity.unmapped\nlayers[Base Layer].states[Jump].motion: a clip of the model Assets/Models/Hero.fbx "
+                "(\"Jump\"): import the model into the project, then set the state's clip to \"<model path>#Jump\" with "
+                "edit_animator_controller set_state",
+                {"path": "assets/anim/hero.controller", "created": True,
+                 "files": ["assets/anim/hero.controller", "assets/anim/Walk.anim", "assets/anim/Run.anim", "assets/anim/UpperBody.mask"],
+                 "unity": {"source": "Assets/Anim/Hero.controller", "kind": "controller", "layers": 2, "states": 5,
+                           "unmapped": [{"what": "layers[Base Layer].states[Jump].motion", "reason": "a clip of the model "
+                                         "Assets/Models/Hero.fbx (\"Jump\"): import the model into the project, then set the state's "
+                                         "clip to \"<model path>#Jump\" with edit_animator_controller set_state"}]},
+                 "next": "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's "
+                         "clip: set_state {clip: \"<model>#<clip>\"} once the model is in the project)"})},
+            {"tool": "edit_animator_controller", "args": {"ops": "*"}, "result": ok(
+                "assets/anim/hero.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/hero.controller", "changes": ["set_state Jump"], "diagnostics": [], "warnings": []})},
+            {"tool": "get_animator", "result": ok("assets/anim/hero.controller: 6 parameters, 2 layers, 5 states.",
+                                                  {"controller": {"layers": []}})},
+            {"tool": "get_model_info", "result": ok("assets/models/hero.fbx: 1 mesh, 32 bones, clips: Jump, Idle.",
+                                                    {"clips": [{"name": "Jump"}, {"name": "Idle"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animator_controller", "args": {"create": {"unity": "re:Hero\\.controller$"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"clip": "re:hero\\.fbx#Jump"}]}}],
+                   "must_not_call": ["edit_animation"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F48, F49: layered PSD/PSB import and 2D skinning
+    {
+        "id": "guard_psd_layers_import_mode",
+        "kind": "guard",
+        "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
+                         "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
+                         "exporting PNGs per layer by hand.",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers gives a PSD/PSB a frame per layer and a prefab'",
+        "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
+        "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
+                  "in the document.",
+        "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset: assets/art/truck.psb (texture)", {"assets": [{"path": "assets/art/truck.psb", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/art/truck.psb: texture 512x256 (PSB).", {"path": "assets/art/truck.psb", "kind": "texture"})},
+            {"tool": "get_texture_import_settings", "result": ok("assets/art/truck.psb: type default, max_size 2048.", {"path": "assets/art/truck.psb"})},
+            {"tool": "set_texture_import_settings", "result": ok(
+                "Updated the import settings of 1 texture(s); their cooks are queued. Undo with scope project.",
+                {"updated": ["assets/art/truck.psb"], "unchanged": 0,
+                 "layers": [{"path": "assets/art/truck.psb", "prefab": "assets/art/truck.psb.prefab",
+                             "sprites": [{"name": "Body", "key": "layer:1"}, {"name": "Wheel", "key": "layer:2"}]}],
+                 "next": "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name."})},
+            {"tool": "instantiate_prefab", "result": ok("Instantiated assets/art/truck.psb.prefab as \"truck\" [20].", {"root": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "set_texture_import_settings", "args": {"settings": {"import_mode": "layers"}}}],
+                   "must_not_call": ["create_sprite", "edit_sprite"], "edits_must_not": [r"\.png$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_skin_bones",
+        "kind": "guard",
+        "what_happened": "New tool (S94 F49): edit_sprite_skin makes a Sprite's bones, mesh and weights; an agent asked to make "
+                         "a sprite arm bend at the elbow skins it instead of cutting the sprite into two GameObjects.",
+        "text_at_issue": "edit_sprite_skin: '2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, "
+                         "auto_geometry, auto_weights, set_weights ...'",
+        "source": "S94 F49 (new tool); the JasperArcade port rebuilt its rig as parent/child GameObjects (ledger R45)",
+        "prompt": "The Arm sprite (a 16x64 vertical arm, shoulder at the bottom) should bend smoothly at the elbow halfway up. "
+                  "Set that up so I can animate the bend.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nArm [12] sprite transform", {"entities": [{"id": 12, "path": "Arm"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Arm\": transform, sprite (sheet assets/skin/arm.png, frame arm).", {"id": 12})},
+            {"tool": "edit_sprite_skin", "result": ok(
+                "Edited the skin of 'arm' (assets/skin/arm.png): 2 bones, 27 vertices. One undo step (scope timeline).",
+                {"bones": [{"name": "upper_arm", "parent": None, "head": [8, 64], "tail": [8, 32], "vertices": 15, "gameobject": {"id": 30}},
+                           {"name": "forearm", "parent": "upper_arm", "head": [8, 32], "tail": [8, 0], "vertices": 15, "gameobject": {"id": 31}}],
+                 "vertices": 27, "triangles": 32, "weighted": True, "source": "assets/skin/arm.png", "frame": "arm", "changed": True,
+                 "next": "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"forearm\".", {"entity": {"id": 31}})},
+            {"tool": "screenshot", "result": ok("Game view, 640x360.", {"width": 640, "height": 360})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_skin", "args": {"entity": "re:(?i)^(12|Arm)$"}}],
+                   "must_not_call": ["create_entity", "duplicate_entities", "edit_sprite"]},
+        "max_turns": 10,
+    },
 ]

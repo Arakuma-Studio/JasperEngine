@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: PbrExtendedExport
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,6 +15,7 @@ windowHeight: 720
 windowResizable: true
 luaDir: .
 runtimeShaders: false
+transparencySortMode: perspective
 startSceneId: 3270106840
 scenes:
   - filepath: Lobes.scene

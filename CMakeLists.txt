@@ -892,6 +892,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/OutlineReflect.cpp
+    ${EDITOR_DIR}/reflect/components/SpriteSkinReflect.cpp
     ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
@@ -1250,6 +1252,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/texture/TiffReader.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
     ${EDITOR_DIR}/window/ImporterFields.cpp
     ${EDITOR_DIR}/window/ModelImporterView.cpp
@@ -1401,6 +1404,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/unity/UnityYaml.cpp
     ${EDITOR_DIR}/unity/UnityProject.cpp
     ${EDITOR_DIR}/unity/UnityParticleImport.cpp
+    # the Unity .anim / .controller / .mask importer (S94 F35, F36)
+    ${EDITOR_DIR}/unity/UnityAnimImport.cpp
+    ${EDITOR_DIR}/unity/UnityControllerImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp

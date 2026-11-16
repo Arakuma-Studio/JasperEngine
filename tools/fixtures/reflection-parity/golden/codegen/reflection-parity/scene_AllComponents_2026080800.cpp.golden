@@ -112,7 +112,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1102);
     scene->recreateEntity(1103);
     scene->recreateEntity(1104);
-    scene->setLastEntity(1104);
+    scene->recreateEntity(1105);
+    scene->recreateEntity(1106);
+    scene->setLastEntity(1106);
 
     {
         // Entity 1001 (Transform)
@@ -1519,8 +1521,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = true;
         text.fixedHeight = true;
-        text.pivotBaseline = true;
-        text.pivotCentered = true;
+        text.horizontalAlignment = TextHorizontalAlignment::CENTER;
+        text.verticalAlignment = TextVerticalAlignment::BASELINE;
         text.outlineWidth = 0.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
         text.outlineNeighbors = 8;
@@ -3515,6 +3517,57 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         titleArt.animationUnscaledTime = false;
         titleArt.driveAnimation = "";
         scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
+    }
+
+    {
+        // Entity 1105 (OutlineComponent)
+        scene->setEntityName(1105, "OutlineComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(104.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1105, transform);
+
+        OutlineComponent outline;
+        outline.mode = OutlineMode::OUTLINE_HIDDEN;
+        outline.color = Vector4(0.250000f, 0.500000f, 0.750000f, 0.500000f);
+        outline.width = 3.500000f;
+        outline.widthUnits = OutlineWidthUnits::WORLD;
+        outline.includeChildren = false;
+        outline.enabled = false;
+        scene->addComponent<OutlineComponent>(1105, outline);
+    }
+
+    {
+        // Entity 1106 (SpriteSkinComponent)
+        scene->setEntityName(1106, "SpriteSkinComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(105.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1106, transform);
+
+        SpriteSkinComponent spriteSkin;
+        spriteSkin.rootBone = 1104;
+        spriteSkin.enabled = false;
+        spriteSkin.bones = {1104, 1103};
+        scene->addComponent<SpriteSkinComponent>(1106, spriteSkin);
     }
 
     // Default Camera 1

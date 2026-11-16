@@ -550,6 +550,14 @@ float AnimationPlayer::getPoseFrameRate() const{
     return getComponent<AnimationPlayerComponent>().poseFrameRate;
 }
 
+void AnimationPlayer::setApplyRootMotion(bool apply){
+    getComponent<AnimationPlayerComponent>().applyRootMotion = apply;
+}
+
+bool AnimationPlayer::getApplyRootMotion() const{
+    return getComponent<AnimationPlayerComponent>().applyRootMotion;
+}
+
 void AnimationPlayer::setDefaultClip(const std::string& name){
     getComponent<AnimationPlayerComponent>().defaultClip = name;
 }

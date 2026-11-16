@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteAtlasBuilder.h"
+#include "texture/PsdLayerImport.h"
 #include "SpriteSheetBuilder.h"
 
 #include "EditorHost.h"
@@ -361,6 +362,7 @@ namespace jasperengine::editor::sprite {
         }
         project = newProject;
         SpriteSheetBuilder::get().attach(project);
+        PsdLayerImporter::get().attach(project);
         if (!project) return;
         currentMode = atlasModeFromName(project->getSpriteAtlasMode());
         ImportedAssets::setSheetProvider([this](const std::string& ref, std::string& out) { return resolve(ref, out); });
@@ -1317,6 +1319,8 @@ namespace jasperengine::editor::sprite {
         }
         // a texture with a Sprite Mode (its own frames)
         if (key == "sheet") return SpriteSheetBuilder::get().resolve(source, fileOut);
+        // S94 F48: a layered PSD/PSB's pages
+        if (key.rfind("image#", 0) == 0 && isPsdPath(source)) return PsdLayerImporter::get().resolve(source, key, fileOut);
         return false;
     }
 

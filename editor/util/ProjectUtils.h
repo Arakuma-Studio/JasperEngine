@@ -222,6 +222,7 @@ public:
             std::filesystem::path path;    // absolute
             std::string content;
         };
+        // the copied includes, and a library source's own depth program (<base>_depth.*)
         std::vector<IncludeFile> includeFiles;
     };
 
