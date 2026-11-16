@@ -259,6 +259,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.vertexPaint", "Vertex Paint", AppMenuCommand::ToggleVertexPaint).description =
+        "Paint, select and generate the vertex colors of Models and Meshes";
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
@@ -459,6 +461,39 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("terrain.overlay.layerWeights", "Layer Weights Overlay", C::TerrainBrush, "4");
     b.add("terrain.overlay.off", "Overlay Off", C::TerrainBrush, "0");
     b.add("terrain.disarm", "Put the Brush Down", C::TerrainBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
+
+    // V1 R105, Table 3: the Vertex Paint tools, while one is armed and the Scene view has the pointer or
+    // the focus (size and strength are the Terrain group's [ and ] above)
+    b.group = "Vertex Paint";
+    b.add("vertexPaint.tool.select", "Select Tool", C::VertexPaint, "Q").description = "Click, box or lasso the vertices, faces or corners to color";
+    b.add("vertexPaint.tool.paint", "Paint Tool", C::VertexPaint, "B").description = "Ctrl erases, Shift paints the secondary color";
+    b.add("vertexPaint.tool.smooth", "Smooth Tool", C::VertexPaint, "S").description = "Ctrl sharpens";
+    b.add("vertexPaint.tool.fill", "Fill Tool", C::VertexPaint, "G").description = "Fills the connected part under the click, or the selection";
+    b.add("vertexPaint.tool.gradient", "Gradient Tool", C::VertexPaint, "D").description = "Drag from the primary to the secondary color";
+    b.add("vertexPaint.tool.pick", "Pick Tool", C::VertexPaint, "I").description = "The next click takes the stored color under the cursor";
+    b.add("vertexPaint.channelR", "Toggle Channel R", C::VertexPaint, "1");
+    b.add("vertexPaint.channelG", "Toggle Channel G", C::VertexPaint, "2");
+    b.add("vertexPaint.channelB", "Toggle Channel B", C::VertexPaint, "3");
+    b.add("vertexPaint.channelA", "Toggle Channel A", C::VertexPaint, "4");
+    b.add("vertexPaint.swapColors", "Swap Primary and Secondary", C::VertexPaint, "X");
+    b.add("vertexPaint.mode.vertex", "Vertex Selection Mode", C::VertexPaint, "F1").description = "Shared values: smooth";
+    b.add("vertexPaint.mode.face", "Face Selection Mode", C::VertexPaint, "F2").description = "Whole faces: hard edges";
+    b.add("vertexPaint.mode.corner", "Corner Selection Mode", C::VertexPaint, "F3").description = "One face's corner of a vertex: hard edges";
+    b.add("vertexPaint.apply", "Apply Color to Selection", C::VertexPaint, "Enter", "NumpadEnter");
+    b.add("vertexPaint.select.all", "Select All Elements", C::VertexPaint, "Ctrl+A");
+    b.add("vertexPaint.select.none", "Select No Elements", C::VertexPaint, "Alt+A");
+    b.add("vertexPaint.select.invert", "Invert Element Selection", C::VertexPaint, "Ctrl+I");
+    b.add("vertexPaint.select.grow", "Grow Element Selection", C::VertexPaint, "Ctrl+=", "Ctrl+NumpadAdd");
+    b.add("vertexPaint.select.shrink", "Shrink Element Selection", C::VertexPaint, "Ctrl+-", "Ctrl+NumpadSubtract");
+    b.add("vertexPaint.select.linked", "Select Linked", C::VertexPaint, "L").description = "Everything connected to the selection, across seams";
+    b.add("vertexPaint.view.rgb", "View RGB", C::VertexPaint, "V").description = "The Scene view shows the vertex colors";
+    b.add("vertexPaint.view.cycle", "Cycle View Channel", C::VertexPaint, "Shift+V").description = "RGB, R, G, B, A";
+    b.add("vertexPaint.xray", "X-Ray", C::VertexPaint, "Alt+Z").description = "Box and lasso select through to hidden elements";
+    b.gesture("vertexPaint.altClick", "Pick Color", C::VertexPaint, "Alt+Left Click", "Takes the stored color under the cursor, in any tool");
+    b.gesture("vertexPaint.sizeStrength", "Brush Size and Strength", C::VertexPaint, "Ctrl+Right Drag", "Up and down: size; left and right: strength");
+    b.gesture("vertexPaint.hardness", "Brush Hardness and Stencil Rotation", C::VertexPaint, "Shift+Right Drag",
+              "Up and down: hardness; left and right: the stencil's rotation");
+    b.gesture("vertexPaint.escape", "Cancel Stroke / Exit", C::VertexPaint, "Escape", "Esc cancels the stroke in progress; a second Esc puts the tool down");
 
     // The Animation window editing a clip (docs/animation-clips.md): while it has focus
     b.group = "Animation";
