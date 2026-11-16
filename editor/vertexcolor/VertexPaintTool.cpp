@@ -110,7 +110,9 @@ void VertexPaintTools::armIn(uint32_t sceneId, PaintTool tool) {
     if (tool == PaintTool::Pick && brush.tool != PaintTool::Pick) toolBeforePick = brush.tool;
     if (stroke.active && tool != brush.tool) endStroke();
     brush.tool = tool;
-    if (!activeTool || toolScene != sceneId) {
+    // one view at a time: the tool of another scene's view goes first
+    if (activeTool && toolScene != sceneId) SceneTools::deactivate(toolScene);
+    if (!activeTool) {
         SceneTools::activate(sceneId, std::make_unique<VertexPaintSceneTool>(sceneId));
     }
     enterView(sceneId);
