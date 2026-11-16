@@ -436,12 +436,16 @@ TEST_F(VertexPaint, DrawModeSwitchesAndComesBack) {
     EXPECT_EQ(display.drawMode, ViewDrawMode::WIREFRAME) << "a change of the user's stays";
 }
 
-// R100: Paint Vertex Colors adds the component (undoable), opens the window and arms Paint
+// R100: Paint Vertex Colors adds the component (undoable), and the hook opens the window with Paint armed
 TEST_F(VertexPaint, PaintVertexColorsOpensTheWindowArmed) {
     const Entity box = create("Box", EntityCreationType::BOX);
     project->replaceSelectedEntities(sceneId, {});
     std::string error;
-    ASSERT_TRUE(openVertexPaint(project, sceneId, box, &error)) << error;
+    // what the Paint buttons run: the component, then the hook the window set at startup
+    VertexPaintWindow::installPaintToolHook();
+    ASSERT_TRUE(ensureComponent(project, sceneId, box, &error)) << error;
+    ASSERT_TRUE(paintToolHook());
+    paintToolHook()(project, sceneId, box);
     EXPECT_NE(scene()->findComponent<VertexColorsComponent>(box), nullptr);
     EXPECT_TRUE(VertexPaintWindow::get().isOpen());
     EXPECT_TRUE(VertexPaintTools::get().isArmedIn(sceneId));
@@ -539,7 +543,9 @@ TEST_F(VertexPaint, WindowAndDialogsDrawInAFrame) {
         ImGui::EndFrame();
     };
     std::string error;
-    ASSERT_TRUE(openVertexPaint(project, sceneId, box, &error)) << error;
+    VertexPaintWindow::installPaintToolHook();
+    ensureComponent(project, sceneId, box, &error);
+    paintToolHook()(project, sceneId, box);
     frame();
     VertexPaintTools::get().armIn(sceneId, PaintTool::Select);
     ASSERT_TRUE(VertexPaintTools::get().selectCommand(sceneId, VertexPaintTools::SelectCommand::All));

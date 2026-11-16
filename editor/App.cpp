@@ -2726,6 +2726,7 @@ void editor::App::setup() {
     pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
     tilePaletteWindow->bindCommands(CommandCatalog::editor());
     vertexcolor::VertexPaintWindow::get().bindCommands(CommandCatalog::editor());
+    vertexcolor::VertexPaintWindow::installPaintToolHook();
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,

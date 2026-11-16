@@ -35,6 +35,9 @@ namespace jasperengine::editor::vertexcolor {
         void show();
         // the VertexPaint context's commands (Table 3) run here
         void bindCommands(CommandCatalog& catalog);
+        // R100: the facade's paintToolHook (what every Paint button runs after ensureComponent)
+        // selects the entity, opens this window and arms Paint
+        static void installPaintToolHook();
 
         // ---- R101 Generate & Bake
         enum class Dialog { None, FromTexture, AmbientOcclusion, Curvature, Thickness, Gradient, Noise, Direction, TransferFrom, Adjust, Channels,

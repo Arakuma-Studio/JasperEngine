@@ -35,11 +35,6 @@ namespace jasperengine::editor::vertexcolor {
 
     class VertexPaintSceneTool;
 
-    // R100: what Paint Vertex Colors runs (the MeshComponent and Model Inspectors, the component's
-    // Paint button): adds the component when missing (one undo step), selects the entity, opens the
-    // Vertex Paint window and arms Paint. False with `error` when the entity cannot be painted.
-    bool openVertexPaint(Project* project, uint32_t sceneId, Entity entity, std::string* error = nullptr);
-
     // a point of a painted surface under a ray
     struct TargetHit {
         bool hit = false;

@@ -9,7 +9,7 @@
 #include "component/ModelComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIProbe.h"
-#include "vertexcolor/VertexPaintTool.h"
+#include "vertexcolor/VertexColorEditing.h"
 
 #include "imgui.h"
 
@@ -35,7 +35,9 @@ void editor::vertexcolor::paintVertexColorsButton(Project* project, SceneProject
         ImGui::SetTooltip("%s", paintable ? "Adds Vertex Colors if missing and opens the Vertex Paint window with the Paint tool" : why.c_str());
     }
     if (clicked) {
+        // the component first (one undo step when it was missing), then the hook the window set
         std::string error;
-        if (!openVertexPaint(project, sceneProject->id, entity, &error) && !error.empty()) Out::warning("Vertex Paint: %s", error.c_str());
+        if (!ensureComponent(project, sceneProject->id, entity, &error) && !error.empty()) Out::warning("Vertex Paint: %s", error.c_str());
+        else if (paintToolHook()) paintToolHook()(project, sceneProject->id, entity);
     }
 }

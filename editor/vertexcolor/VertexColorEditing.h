@@ -179,6 +179,9 @@ namespace jasperengine::editor::vertexcolor {
     // mapping set so it reads the painted channels), one undo step; false with `error`
     bool fixMaterialWarning(Project* project, uint32_t sceneId, Entity entity, const vc::Warning& warning, std::string* error);
 
+    // R100: what the Paint buttons run after ensureComponent (the Vertex Paint window sets it at startup)
+    std::function<void(Project*, uint32_t sceneId, Entity)>& paintToolHook();
+
     // R7, R72: what each channel feeds ("Moss (Lit: Roughness)", "Wind (foliage)") for the panel and MCP
     std::array<std::string, 4> channelUses(Project* project, uint32_t sceneId, Entity entity);
 

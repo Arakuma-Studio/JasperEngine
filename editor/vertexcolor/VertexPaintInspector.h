@@ -4,8 +4,8 @@
 #pragma once
 
 // docs/specs/V1-vertex-colors.md R100: the Paint Vertex Colors button of the MeshComponent and Model
-// Inspectors. The Vertex Colors component's own Paint button calls openVertexPaint
-// (vertexcolor/VertexPaintTool.h) the same way.
+// Inspectors: ensureComponent, then the facade's paintToolHook, as the Vertex Colors component's own
+// Paint button does.
 
 #include "ecs/Entity.h"
 

@@ -10,7 +10,6 @@
 #include "picking/MeshRaycast.h"
 #include "render/SceneRender.h"
 #include "subsystem/VertexColorScene.h"
-#include "vertexcolor/VertexPaintWindow.h"
 
 #include <algorithm>
 #include <cmath>
@@ -48,27 +47,6 @@ namespace {
         return name;
     }
 
-}
-
-// ==================================================================== entry (R100)
-
-bool editor::vertexcolor::openVertexPaint(Project* project, uint32_t sceneId, Entity entity, std::string* error) {
-    if (!project) return false;
-    std::string why;
-    if (!canPaint(project, sceneId, entity, &why)) {
-        if (error) *error = why;
-        return false;
-    }
-    if (!ensureComponent(project, sceneId, entity, &why) && !why.empty()) {
-        if (error) *error = why;
-        return false;
-    }
-    project->replaceSelectedEntities(sceneId, {entity});
-    VertexPaintTools& tools = VertexPaintTools::get();
-    tools.setProject(project);
-    VertexPaintWindow::get().setOpen(true);
-    tools.armIn(sceneId, PaintTool::Paint);
-    return true;
 }
 
 // ==================================================================== state
