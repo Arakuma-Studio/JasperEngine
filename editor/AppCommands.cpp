@@ -64,6 +64,7 @@
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "voxel/VoxelBrushTool.h"
+#include "vertexcolor/VertexPaintTool.h"
 
 #include "imgui_internal.h"
 
@@ -386,17 +387,23 @@ void editor::App::registerCommands(){
         const SceneProject* scene = project.getSelectedScene();
         return scene && scene->sceneRender && scene->sceneRender->isFluidPainting();
     };
-    auto brush = [this, &bind, terrainEditing, dyePainting, noDrag](const char* id, bool size, float factor) {
-        bind(id, [this, size, factor, dyePainting](const CommandArgs&) {
+    // an armed Vertex Paint tool (V1 R105): its brush's size and strength
+    auto vertexPainting = [this]() { return vertexcolor::VertexPaintTools::get().isArmedIn(project.getSelectedSceneId()); };
+    auto brush = [this, &bind, terrainEditing, dyePainting, vertexPainting, noDrag](const char* id, bool size, float factor) {
+        bind(id, [this, size, factor, dyePainting, vertexPainting](const CommandArgs&) {
             const SceneProject* selected = project.getSelectedScene();
             // the nav-grid brush (S19): a cell more or less across
             if (size && selected && NavigationEditor::get().isBrushPainting(selected->scene)) {
                 NavigationEditor::Brush& navBrush = NavigationEditor::get().getBrush();
                 navBrush.size = std::clamp(navBrush.size + (factor > 1.0f ? 1 : -1), 1, 64);
+            } else if (vertexPainting()) {
+                vertexcolor::VertexPaintSettings& paint = vertexcolor::VertexPaintTools::get().settings();
+                if (size) vertexcolor::adjustSize(paint, factor);
+                else vertexcolor::adjustStrength(paint, factor);
             } else if (size && dyePainting()) FluidEditorTools::adjustRadius(factor);
             else if (size) terrainEditWindow->adjustBrushSize(factor);
             else terrainEditWindow->adjustBrushStrength(factor);
-        }, [terrainEditing, dyePainting, size]() { return terrainEditing() || (size && dyePainting()); }, noDrag);
+        }, [terrainEditing, dyePainting, vertexPainting, size]() { return terrainEditing() || vertexPainting() || (size && dyePainting()); }, noDrag);
     };
     brush("terrain.brushSmaller", true, 1.0f / 1.15f);
     brush("terrain.brushLarger", true, 1.15f);
@@ -710,6 +717,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
         terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
         state.panels.push_back(ShortcutContext::TerrainBrush);
+    }
+    // V1 R105: an armed Vertex Paint tool, the Scene view under the pointer or focused
+    if ((sceneWindow->isHovered() || sceneWindow->isFocused()) && vertexcolor::VertexPaintTools::get().isArmedIn(project.getSelectedSceneId())) {
+        state.panels.push_back(ShortcutContext::VertexPaint);
     }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
