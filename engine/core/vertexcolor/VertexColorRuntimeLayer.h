@@ -37,7 +37,7 @@ namespace jasperengine::vertexcolor {
         uint32_t paint(const MeshView& mesh, const Vector3& localPoint, const RuntimePaint& paint, double now);
         // advances fades; true when combined values changed since the last combine()
         bool update(double now);
-        // authored values (per GPU vertex) -> values with the layer over them
+        // authored values (per GPU vertex) -> values with the layer over them; clears dirty()
         void combine(std::span<const Vector4> authored, std::vector<Vector4>& out) const;
         // no live paint: no per-frame work (R82)
         bool live() const { return liveCount > 0; }
@@ -58,7 +58,8 @@ namespace jasperengine::vertexcolor {
         double epoch = 0.0;
         double lastUpdate = -1.0;
         uint32_t liveCount = 0;
-        bool changed = false;
+        // set by paint/update/clear, cleared by combine (the caller uploads what it combined)
+        mutable bool changed = false;
     };
 
 }
