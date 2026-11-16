@@ -656,3 +656,12 @@ named in the PR).
   height-blend contrast is per layer (the formula with one contrast is the case of equal ones); ORM
   maps reach up to four layers (at five the factors apply), which keeps five layers within 16
   fragment textures on GLES3 with the lights.
+- **AC6, the test file** (MCP stream): the MCP tests extend `tools/mcp/tests/test_meshes.py`, the
+  meshes group's CI file on a new empty project, instead of adding `test_mesh_colors.py`: AGENTS.md
+  asks to extend an existing file, since every MCP file costs shard time. Their names start
+  `test_mesh_colors_` or `test_bake_mesh_colors_`, so `-k mesh_colors` selects them; the group's
+  hidden-until-enabled check is that file's `test_meshes_group_is_hidden_until_enabled`.
+- **R120-R124, result shapes** (MCP stream): `edit_mesh_colors` reports `changed`, `ops[]`, `stats`
+  (min/mean/max; `sample_mesh_colors` gives percentiles and histograms) and `hash` per target in
+  `targets[]`, the sum in `changed`; `get_model_info` and `get_entity` list `vertex_colors`, one
+  entry per target with its mesh GameObject (`mesh`) and submesh (`mesh_submesh`).
