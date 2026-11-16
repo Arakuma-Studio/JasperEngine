@@ -3,9 +3,12 @@
 
 // docs/specs/V1-vertex-colors.md R41-R43, R60: the value-field generators. Deterministic on every
 // platform (R27): fixed sample patterns, a hashed sequence for the rays, arithmetic and sqrt only on
-// the paths that decide values, and ties broken by index.
+// the paths that decide values (VertexColorInternal.h's maths, never the contracted engine/core/math
+// out-of-line operations), and ties broken by index.
 
 #include "vertexcolor/VertexColorBake.h"
+
+#include "vertexcolor/VertexColorInternal.h"
 
 #include "math/HashRandom.h"
 #include "picking/MeshBvh.h"
@@ -58,7 +61,7 @@ namespace jasperengine::vertexcolor::bake {
         pixelart::Lab bakeLab(const Vector4& v) { return pixelart::linearToOklab(v.x, v.y, v.z); }
 
         float bakeTriangleArea(const Vector3& a, const Vector3& b, const Vector3& c) {
-            return 0.5f * std::sqrt((b - a).crossProduct(c - a).squaredLength());
+            return 0.5f * detail::length3(detail::cross3(b - a, c - a));
         }
 
         // Barycentrics of the samples of corner 0's area: the part of the triangle where corner 0
@@ -104,9 +107,11 @@ namespace jasperengine::vertexcolor::bake {
             b2 = Vector3(b, sign + n.y * n.y * a, -n.y);
         }
 
-        Vector3 bakeDirectionToWorld(const Matrix4& model, const Vector3& d) {
-            const Vector4 w = model * Vector4(d, 0.0f);
-            return Vector3(w.x, w.y, w.z);
+        // a ray direction through the model's linear part (not normalized: its length is the scale)
+        Vector3 bakeLinear(const detail::Space& space, const Vector3& d) {
+            if (space.identity) return d;
+            const float* m = space.m;
+            return Vector3(m[0] * d.x + m[4] * d.y + m[8] * d.z, m[1] * d.x + m[5] * d.y + m[9] * d.z, m[2] * d.x + m[6] * d.y + m[10] * d.z);
         }
 
         // A uniform grid over the transfer source's points (D6) with an exact nearest-point query
@@ -134,7 +139,7 @@ namespace jasperengine::vertexcolor::bake {
                             axes++;
                         }
                     }
-                    cell = (float)std::pow(measure / (double)points.size(), 1.0 / (double)axes);
+                    cell = (float)detail::detPow(measure / (double)points.size(), 1.0 / (double)axes);
                     cell = std::max(cell, largest / 1024.0f);
                     const uint64_t maxCells = (uint64_t)points.size() * 4u + 64u;
                     for (;;) {
@@ -384,6 +389,7 @@ namespace jasperengine::vertexcolor::bake {
         // off the surface by a ten-thousandth of the size, so a ray does not hit its own triangles
         const float epsilon = std::max(std::sqrt((hi - lo).squaredLength()) * 1e-4f, 1e-7f);
         const bool scene = op.sceneScope && options.sceneOccluded;
+        const detail::Space space = detail::Space::of(options.model);
 
         std::vector<float> logicalValue(logicalCount, 1.0f);
         for (uint32_t l = 0; l < logicalCount; l++) {
@@ -400,7 +406,7 @@ namespace jasperengine::vertexcolor::bake {
             Vector3 b1, b2;
             bakeBasis(normal, b1, b2);
             const Vector3 origin = mesh.logicalPositions[l] + normal * epsilon;
-            const Vector3 worldOrigin = scene ? options.model * origin : Vector3();
+            const Vector3 worldOrigin = scene ? space.point(origin) : Vector3();
             // one sequence per (seed, logical vertex): the same rays on every platform and run
             const uint64_t sequence = ((uint64_t)op.seed << 32) | (uint64_t)l;
             int64_t draw = 0;
@@ -421,7 +427,7 @@ namespace jasperengine::vertexcolor::bake {
                 float worldMax = op.distance;
                 Vector3 worldDirection;
                 if (scene || options.world) {
-                    worldDirection = bakeDirectionToWorld(options.model, direction);
+                    worldDirection = bakeLinear(space, direction);
                     const float scale = std::sqrt(worldDirection.squaredLength());
                     if (scale > 0.0f) {
                         if (options.world) localMax = op.distance / scale;
@@ -528,8 +534,8 @@ namespace jasperengine::vertexcolor::bake {
             sourceNormals[i] = length > 0.0f ? source->normals[i] / length : Vector3();
         }
         const bool normalFilter = !sourceNormals.empty() && op.normalAngle < 180.0f;
-        const float cosAngle = normalFilter ? (float)std::cos((double)op.normalAngle * 3.14159265358979323846 / 180.0) : -1.0f;
-        const Matrix4 normalMatrix = options.model.inverse().transpose();
+        const float cosAngle = normalFilter ? (float)detail::detCos((double)op.normalAngle * detail::kPi / 180.0) : -1.0f;
+        const detail::Space space = detail::Space::of(options.model);
 
         const TransferGrid grid(source->positions);
         out = Field();
@@ -546,14 +552,12 @@ namespace jasperengine::vertexcolor::bake {
                 }
                 bakeProgress(options, v, vertexCount);
             }
-            const Vector3 world = options.model * mesh.positions[v];
+            const Vector3 world = space.point(mesh.positions[v]);
             Vector3 normal;
             if (vertexNormals) normal = mesh.normals[v];
             else if (hasLogicalNormals) normal = mesh.logicalNormals[mesh.logical[v]];
-            normal = bakeDirectionToWorld(normalMatrix, normal);
-            const float length = std::sqrt(normal.squaredLength());
-            const bool hasNormal = normalFilter && length > 0.0f;
-            if (hasNormal) normal = normal / length;
+            normal = space.direction(normal);
+            const bool hasNormal = normalFilter && normal.squaredLength() > 0.0f;
 
             uint32_t index = 0;
             float d2 = 0.0f;

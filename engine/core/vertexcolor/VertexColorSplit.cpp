@@ -6,6 +6,8 @@
 
 #include "vertexcolor/VertexColorSplit.h"
 
+#include "vertexcolor/VertexColorInternal.h"
+
 #include "texture/TexturePrepare.h"
 
 #include <algorithm>
@@ -20,9 +22,7 @@ namespace jasperengine::vertexcolor {
         }
 
         Vector3 splitFaceNormal(const std::vector<Vector3>& positions, uint32_t a, uint32_t b, uint32_t c) {
-            const Vector3 n = (positions[b] - positions[a]).crossProduct(positions[c] - positions[a]);
-            const float length = std::sqrt(n.squaredLength());
-            return length > 0.0f ? n / length : Vector3();
+            return detail::normalize3(detail::cross3(positions[b] - positions[a], positions[c] - positions[a]));
         }
 
         // The output vertices: originals first, then one copy per distinct (vertex, value) pair in the

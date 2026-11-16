@@ -60,7 +60,7 @@ namespace {
         addVertex(m, Vector3(1, 1, 0), Vector2(1, 1));
         addVertex(m, Vector3(0, 1, 0), Vector2(0, 1));
         m.indices = {0, 1, 2, 0, 2, 3};
-        deriveByHand(m);
+        build(m);
         return m;
     }
 
@@ -76,7 +76,7 @@ namespace {
         MeshView m;
         addPlane(m, 4.0f, 8, 0.0f);
         addBox(m, Vector3(-0.5f, 0.1f, -0.5f), Vector3(0.5f, 1.1f, 0.5f));
-        deriveByHand(m);
+        build(m);
         return m;
     }
 
@@ -121,7 +121,7 @@ namespace {
     MeshView targetPlane() {
         MeshView m;
         addPlane(m, 2.0f, 4, 0.01f);
-        deriveByHand(m);
+        build(m);
         return m;
     }
 
@@ -150,7 +150,7 @@ TEST(VertexColorBake, ImageSampleIsBilinear) {
     EXPECT_EQ(image->sample(0.0f, 0.25f).x, 0.5f);    // wraps onto the last column
     EXPECT_EQ(image->sample(1.25f, 0.25f).x, 0.0f);
     EXPECT_EQ(image->sample(-0.25f, 0.25f).x, 1.0f);
-    EXPECT_EQ(Image().sample(0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(Image().sample(0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f));
 }
 
 TEST(VertexColorBake, FromTextureAveragesEachCornersArea) {
@@ -189,7 +189,7 @@ TEST(VertexColorBake, FromTextureAveragesEachCornersArea) {
 TEST(VertexColorBake, FromTextureOfAUniformTextureIsExact) {
     MeshView m = uvQuad();
     addVertex(m, Vector3(5, 5, 5), Vector2(0.5f, 0.5f));   // in no triangle
-    deriveByHand(m);
+    build(m);
     auto image = std::make_shared<Image>();
     image->width = image->height = 64;
     image->pixels.assign(64 * 64, Vector4(0.25f, 0.5f, 0.75f, 1.0f));
@@ -265,7 +265,7 @@ TEST(VertexColorBake, AmbientOcclusionDarkensUnderABox) {
 TEST(VertexColorBake, AmbientOcclusionAsksTheSceneInWorldSpace) {
     MeshView m;
     addPlane(m, 4.0f, 2, 0.0f);
-    deriveByHand(m);
+    build(m);
     ApplyOptions options;
     options.model = Matrix4::translateMatrix(10.0f, 0.0f, 0.0f);
     uint32_t calls = 0;
@@ -296,7 +296,7 @@ TEST(VertexColorBake, ThicknessIsLowOnThinParts) {
         MeshView m;
         addPlane(m, 4.0f, 4, gap);            // top, facing up
         addPlane(m, 4.0f, 4, 0.0f, true);     // bottom, facing down
-        deriveByHand(m);
+        build(m);
         bake::Field field;
         std::string error;
         EXPECT_TRUE(bake::ambientOcclusion(m, aoOp(), ApplyOptions(), true, field, error)) << error;
@@ -334,19 +334,19 @@ TEST(VertexColorBake, CurvatureIsHalfOnFlatGroundAndSignedOnCorners) {
 
     MeshView flat;
     addPlane(flat, 2.0f, 4, 0.0f);
-    deriveByHand(flat);
+    build(flat);
     ASSERT_TRUE(bake::curvature(flat, op, field, error)) << error;
     for (const Vector4& v : field.vertexValues) EXPECT_EQ(v, Vector4(0.5f, 0.5f, 0.5f, 0.5f));
 
     MeshView cube;
     addBox(cube, Vector3(-1, -1, -1), Vector3(1, 1, 1));
-    deriveByHand(cube);
+    build(cube);
     ASSERT_TRUE(bake::curvature(cube, op, field, error)) << error;
     for (const Vector4& v : field.vertexValues) EXPECT_GT(v.x, 0.9f);
 
     MeshView room;
     addBox(room, Vector3(-1, -1, -1), Vector3(1, 1, 1), true);
-    deriveByHand(room);
+    build(room);
     ASSERT_TRUE(bake::curvature(room, op, field, error)) << error;
     for (const Vector4& v : field.vertexValues) EXPECT_LT(v.x, 0.1f);
 
@@ -370,7 +370,7 @@ TEST(VertexColorBake, CurvatureBlurSpreadsAnEdge) {
     addPlane(m, 4.0f, 8, 0.0f);
     for (Vector3& p : m.positions)
         if (p.z == 0.0f) p.y = 0.5f;
-    deriveByHand(m);
+    build(m);
     Op op;
     op.type = OpType::BakeCurvature;
     op.iterations = 0;

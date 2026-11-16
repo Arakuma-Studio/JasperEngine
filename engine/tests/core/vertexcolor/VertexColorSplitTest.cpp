@@ -24,7 +24,7 @@ namespace {
         MeshView m;
         m.positions = {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1), Vector3(1, 1, 1)};
         m.indices = {0, 1, 2, 0, 2, 3};
-        deriveByHand(m);
+        build(m);
         return m;
     }
 
@@ -71,7 +71,7 @@ TEST(VertexColorSplit, CornersWithTheSameValueShareOneCopy) {
     MeshView m;
     m.positions = {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(-1, 1, 0)};
     m.indices = {0, 1, 2, 0, 2, 3, 0, 3, 4};
-    deriveByHand(m);
+    build(m);
     TargetData t = whiteTarget(m);
     t.corners = {CornerValue{0, BLUE}, CornerValue{3, RED}, CornerValue{6, RED}};
     const SplitResult r = buildSplit(t, m, {});
@@ -136,7 +136,7 @@ TEST(VertexColorSplit, SameDataGivesTheSameBuffers) {
     // R13: identical content must produce identical bytes, so the buffer pool shares them
     MeshView m;
     addPlane(m, 2.0f, 6, 0.0f);
-    deriveByHand(m);
+    build(m);
     TargetData t = whiteTarget(m);
     for (uint32_t c = 0; c < m.indices.size(); c += 7) t.corners.push_back(CornerValue{c, Vector4((float)(c % 3) / 2.0f, 0.25f, 0.5f, 1.0f)});
     const std::vector<std::vector<uint32_t>> lods = {std::vector<uint32_t>(m.indices.begin(), m.indices.begin() + 30)};

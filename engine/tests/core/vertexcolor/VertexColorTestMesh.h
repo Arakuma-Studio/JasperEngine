@@ -3,14 +3,15 @@
 
 #pragma once
 
-// Tiny meshes for the vertex color tests, with MeshView's derived tables filled here by brute
-// force: the file, split, bake and runtime tests check their own code, not MeshView::build.
+// Tiny meshes for the split, bake and runtime tests: planes, boxes and single vertices, built
+// through MeshView::build.
 
 #include "vertexcolor/VertexColorMesh.h"
 
-#include <algorithm>
-#include <cmath>
+#include <gtest/gtest.h>
+
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace vctest {
@@ -18,78 +19,10 @@ namespace vctest {
     using namespace jasperengine;
     using namespace jasperengine::vertexcolor;
 
-    // logical vertices (exact position match), CSR tables, face normals and areas, logical normals
-    // (area-weighted corner normals) and edge neighbours, as R4 / VertexColorMesh.h describe them
-    inline void deriveByHand(MeshView& m) {
-        const uint32_t n = (uint32_t)m.positions.size();
-        const uint32_t triangles = (uint32_t)(m.indices.size() / 3);
-        m.bounds = AABB();
-        for (const Vector3& p : m.positions) m.bounds.merge(p);
-
-        m.logical.assign(n, 0);
-        m.logicalPositions.clear();
-        for (uint32_t v = 0; v < n; v++) {
-            uint32_t found = UINT32_MAX;
-            for (uint32_t l = 0; l < m.logicalPositions.size(); l++) {
-                if (m.logicalPositions[l] == m.positions[v]) {
-                    found = l;
-                    break;
-                }
-            }
-            if (found == UINT32_MAX) {
-                found = (uint32_t)m.logicalPositions.size();
-                m.logicalPositions.push_back(m.positions[v]);
-            }
-            m.logical[v] = found;
-        }
-        const uint32_t logicalCount = (uint32_t)m.logicalPositions.size();
-        m.memberStart.assign(logicalCount + 1, 0);
-        m.members.clear();
-        for (uint32_t l = 0; l < logicalCount; l++) {
-            for (uint32_t v = 0; v < n; v++)
-                if (m.logical[v] == l) m.members.push_back(v);
-            m.memberStart[l + 1] = (uint32_t)m.members.size();
-        }
-        m.vertexCornerStart.assign(n + 1, 0);
-        m.vertexCorners.clear();
-        for (uint32_t v = 0; v < n; v++) {
-            for (uint32_t c = 0; c < m.indices.size(); c++)
-                if (m.indices[c] == v) m.vertexCorners.push_back(c);
-            m.vertexCornerStart[v + 1] = (uint32_t)m.vertexCorners.size();
-        }
-
-        m.faceNormals.assign(triangles, Vector3());
-        m.faceAreas.assign(triangles, 0.0f);
-        std::vector<Vector3> sums(logicalCount, Vector3());
-        std::vector<std::vector<uint32_t>> adjacent(logicalCount);
-        for (uint32_t t = 0; t < triangles; t++) {
-            const uint32_t a = m.indices[t * 3], b = m.indices[t * 3 + 1], c = m.indices[t * 3 + 2];
-            const Vector3 cross = (m.positions[b] - m.positions[a]).crossProduct(m.positions[c] - m.positions[a]);
-            const float length = std::sqrt(cross.squaredLength());
-            m.faceAreas[t] = 0.5f * length;
-            m.faceNormals[t] = length > 0.0f ? cross / length : Vector3();
-            const uint32_t corners[3] = {a, b, c};
-            for (uint32_t k = 0; k < 3; k++) {
-                const Vector3 normal = m.normals.empty() ? m.faceNormals[t] : m.normals[corners[k]];
-                sums[m.logical[corners[k]]] += normal * m.faceAreas[t];
-                const uint32_t la = m.logical[corners[k]], lb = m.logical[corners[(k + 1) % 3]];
-                if (la != lb) {
-                    adjacent[la].push_back(lb);
-                    adjacent[lb].push_back(la);
-                }
-            }
-        }
-        m.logicalNormals.assign(logicalCount, Vector3());
-        m.neighborStart.assign(logicalCount + 1, 0);
-        m.neighbors.clear();
-        for (uint32_t l = 0; l < logicalCount; l++) {
-            const float length = std::sqrt(sums[l].squaredLength());
-            m.logicalNormals[l] = length > 0.0f ? sums[l] / length : Vector3();
-            std::sort(adjacent[l].begin(), adjacent[l].end());
-            adjacent[l].erase(std::unique(adjacent[l].begin(), adjacent[l].end()), adjacent[l].end());
-            m.neighbors.insert(m.neighbors.end(), adjacent[l].begin(), adjacent[l].end());
-            m.neighborStart[l + 1] = (uint32_t)m.neighbors.size();
-        }
+    // the derived tables through MeshView::build
+    inline void build(MeshView& m) {
+        std::string error;
+        EXPECT_TRUE(m.build(&error)) << error;
     }
 
     inline uint32_t addVertex(MeshView& m, const Vector3& p, const Vector2& uv = Vector2()) {
