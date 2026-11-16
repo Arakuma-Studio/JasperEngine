@@ -193,7 +193,7 @@ def write_checker_png(path: Path, size: int = 256) -> None:
     path.write_bytes(pngdiff.encode(size, size, rgba))
 
 
-def write_checker_quad(path: Path, quads: int = QUADS) -> None:
+def write_checker_quad(path: Path, quads: int = QUADS, primitives: int = 1) -> None:
     """A 2x2 quad on XZ facing up, quads x quads cells sharing their vertices, uv = ((x+1)/2, (z+1)/2)."""
     positions, normals, uvs, indices = [], [], [], []
     for j in range(quads + 1):
@@ -208,6 +208,8 @@ def write_checker_quad(path: Path, quads: int = QUADS) -> None:
     pos = struct.pack(f"<{len(positions)}f", *positions)
     nor = struct.pack(f"<{len(normals)}f", *normals)
     uv = struct.pack(f"<{len(uvs)}f", *uvs)
+    # several primitives share the vertices and split the cells between them (rows of cells)
+    per = len(indices) // primitives
     idx = struct.pack(f"<{len(indices)}H", *indices)
     blob = pos + nor + uv + idx
     count = len(positions) // 3
@@ -219,15 +221,15 @@ def write_checker_quad(path: Path, quads: int = QUADS) -> None:
         "asset": {"version": "2.0"},
         "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"name": "Checker", "mesh": 0}],
         "materials": [{"pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]}}],
-        "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0}]}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3 + k, "material": 0}
+                                   for k in range(primitives)]}],
         "buffers": [{"byteLength": len(blob), "uri": "data:application/octet-stream;base64," + base64.b64encode(blob).decode()}],
         "bufferViews": views,
         "accessors": [
             {"bufferView": 0, "componentType": 5126, "count": count, "type": "VEC3", "min": [-1.0, 0.0, -1.0], "max": [1.0, 0.0, 1.0]},
             {"bufferView": 1, "componentType": 5126, "count": count, "type": "VEC3"},
             {"bufferView": 2, "componentType": 5126, "count": count, "type": "VEC2"},
-            {"bufferView": 3, "componentType": 5123, "count": len(indices), "type": "SCALAR"},
-        ],
+        ] + [{"bufferView": 3, "byteOffset": k * per * 2, "componentType": 5123, "count": per, "type": "SCALAR"} for k in range(primitives)],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc))
@@ -387,6 +389,29 @@ async def test_mesh_colors_model_info_facts(ed: Editor):
     ed.check(target["split_vertices"] > 0, f"the checker's hard edges split vertices: {target}")
     got = await ed.call("get_entity", scene=s["scene"], entity=s["quad"])
     ed.check_eq(got.get("vertex_colors"), colors, "get_entity reports the same facts")
+
+
+async def test_mesh_colors_selections_of_two_targets_one_step(ed: Editor):
+    """Each target's own selection, one call, one undo step (EditRequest::perTargetOps)"""
+    ed.require_tools("edit_mesh_colors", "sample_mesh_colors")
+    s = await colors_setup(ed)
+    write_checker_quad(ed.project / "models" / "halves.gltf", primitives=2)
+    made = await ed.call("set_model", scene=s["scene"], create={"name": "Halves", "position": [0, 0, 10]}, path="models/halves.gltf")
+    halves = made["model"]["id"]
+    targets = (await ed.call("get_model_info", scene=s["scene"], entity=halves))["vertex_colors"]
+    ed.check_eq(len(targets), 2, f"two targets: {targets}")
+    picked = await ed.call("sample_mesh_colors", scene=s["scene"], entity=halves, query="elements", select=True,
+                           region={"kind": "box", "center": [0, 0, 9.6], "half_extents": [0.3, 0.1, 0.6], "element": "face"})
+    counts = [len(t["ids"]) for t in picked["targets"]]
+    ed.check(all(n > 0 for n in counts) and counts[0] != counts[1], f"both halves have selected faces, not as many: {counts}")
+    before = [t["hash"] for t in (await ed.call("sample_mesh_colors", scene=s["scene"], entity=halves, query="hash"))["targets"]]
+    r = await ed.call("edit_mesh_colors", scene=s["scene"], entity=halves, ops=[{"op": "set", "target": {"kind": "selection"}, "value": "#00FFFF"}])
+    ed.check_eq([t["ops"][0]["in_target"] for t in r["targets"]], counts, "each target sets its own selection")
+    after = [t["hash"] for t in (await ed.call("sample_mesh_colors", scene=s["scene"], entity=halves, query="hash"))["targets"]]
+    ed.check(all(a != b for a, b in zip(after, before)), "both targets changed")
+    await ed.call("undo", scene=s["scene"])
+    undone = [t["hash"] for t in (await ed.call("sample_mesh_colors", scene=s["scene"], entity=halves, query="hash"))["targets"]]
+    ed.check_eq(undone, before, "one undo restores both targets")
 
 
 def central_box(png: bytes) -> list:
