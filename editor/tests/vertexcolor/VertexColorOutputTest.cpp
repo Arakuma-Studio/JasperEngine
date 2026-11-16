@@ -10,6 +10,7 @@
 #include "VertexColorTestScene.h"
 
 #include "Catalog.h"
+#include "command/type/ModelLoadCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ModelComponent.h"
 #include "model/GltfDocument.h"
@@ -305,7 +306,9 @@ TEST_F(VertexColorOutput, ExportAsModelWritesAPlainMeshAndMakesItAModel) {
     }
     EXPECT_TRUE(primitive.contains("material"));
 
-    // Replace in Scene: a Model of the file, its mesh the file's, no component, one step
+    // Replace in Scene: a Model of the file, its mesh the file's, no component, one step (the
+    // editor loads models on a worker: the load is finished here)
+    ModelLoadCmd::completePendingLoad(sceneId, tile);
     const ModelComponent* model = scene()->findComponent<ModelComponent>(tile);
     ASSERT_NE(model, nullptr);
     EXPECT_EQ(model->filename.path, options.path);
@@ -319,7 +322,9 @@ TEST_F(VertexColorOutput, ExportAsModelWritesAPlainMeshAndMakesItAModel) {
     EXPECT_EQ(vce::listTargets(project.get(), sceneId, tile).at(0).vertexCount, vertices) << "the mesh's own geometry back";
     EXPECT_EQ(hashOf(tile), paintedHash) << "and its paint";
     ASSERT_TRUE(history->redo());
+    ModelLoadCmd::completePendingLoad(sceneId, tile);
     EXPECT_NE(scene()->findComponent<ModelComponent>(tile), nullptr);
+    EXPECT_EQ(vce::listTargets(project.get(), sceneId, tile).at(0).vertexCount, colors.size() / 4);
     EXPECT_EQ(colorsOf(tile), nullptr);
 }
 

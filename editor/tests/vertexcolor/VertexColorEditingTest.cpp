@@ -359,8 +359,12 @@ TEST_F(VertexColorEditing, ChangedMeshKeepsItsHardEdges) {
     const Entity grid = addGrid("Floor", 4);
     ASSERT_TRUE(edit(grid, {fillAll(kBlue), leftFaces(grid, kRed)}).ok);
     ASSERT_TRUE(vce::targetData(project.get(), sceneId, grid, firstKey(grid))->hasOverrides());
-    ASSERT_TRUE(project->saveSceneNow(sceneId));
-    // the values as the next open reads them: from the file
+    // the file as a scene save writes it (the snapshot of the mesh, then the editor section), and the
+    // values as the next open reads them: from that file
+    vc::Data& live = *colorsOf(grid)->loaded;
+    vce::detail::refreshSnapshots(project.get(), sceneId, grid, live);
+    std::string error;
+    ASSERT_TRUE(vc::writeFile(project->getAssetsPath() / colorsOf(grid)->data.path, live, true, error)) << error;
     vce::detail::resetFiles();
     colorsOf(grid)->loaded.reset();
 
