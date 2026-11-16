@@ -3252,6 +3252,37 @@ OVERRIDES[('Terrain', 'setHeights')] = {
     'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
             'Returns the result table, as applyOps.'],
     'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
+# V1 R125: VertexColors, raw functions taking and returning tables (docs/mcp/guide/lua-api.md 4.3.1)
+_VC_TARGET = 'integer|{node: integer, primitive: integer}|{submesh: integer}'
+OVERRIDES[('VertexColors', 'applyOps')] = {
+    'doc': ['Runs edit_mesh_colors\' op tables (world space) on every target or on `target`, all or nothing; errors name',
+            'ops[i] from 1. Returns one result table per target.'],
+    'overloads': [([('ops', 'table[]'), ('target?', _VC_TARGET)], 'table[]')]}
+OVERRIDES[('VertexColors', 'getValue')] = {
+    'doc': ['The stored value of a GPU vertex (0-based), without runtime paint.'],
+    'overloads': [([('target', _VC_TARGET), ('vertex', 'integer')], 'Vector4')]}
+OVERRIDES[('VertexColors', 'getValues')] = {
+    'doc': ['The stored values of `count` GPU vertices from `first` (0-based), at most 65,536.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('count', 'integer')], 'Vector4[]')]}
+OVERRIDES[('VertexColors', 'setValues')] = {
+    'doc': ['Sets GPU vertices from `first` (0-based) to `values` (Vector4 or {r, g, b[, a]}), clearing their face colours.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('values', 'table')], 'boolean')]}
+OVERRIDES[('VertexColors', 'stats')] = {
+    'doc': ['Per-channel count, min, mean, max, p05, p50, p95 and histogram of a target.'],
+    'overloads': [([('target', _VC_TARGET)], 'table')]}
+OVERRIDES[('VertexColors', 'sampleAt')] = {
+    'doc': ['The value drawn at the surface point nearest to a world point (bind pose) or at a MeshRaycast hit,',
+            'runtime paint included; nil when nothing is loaded.'],
+    'overloads': [([('point', 'Vector3')], 'Vector4|nil'), ([('hit', 'MeshRaycastHit')], 'Vector4|nil')]}
+OVERRIDES[('VertexColors', 'paint')] = {
+    'doc': ['Runtime paint over the stored colours at a world point or a MeshRaycast hit: radius (world), value,',
+            'channels, strength, hardness, hold and fade (game seconds). Returns the vertices touched.'],
+    'overloads': [([('point', 'Vector3'), ('opts?', '{radius: number|nil, value: table|Vector4|string|nil, channels: string|nil, '
+                    'strength: number|nil, hardness: number|nil, hold: number|nil, fade: number|nil}')], 'integer'),
+                  ([('hit', 'MeshRaycastHit'), ('opts?', 'table')], 'integer')]}
+PROPERTY_OVERRIDES[('VertexColors', 'channelNames')] = ('string[]', True)
+PROPERTY_OVERRIDES[('VertexColors', 'targets')] = ('{node: integer|nil, primitive: integer|nil, submesh: integer|nil, name: string, '
+                                                   'vertexCount: integer, triangleCount: integer}[]', True)
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',

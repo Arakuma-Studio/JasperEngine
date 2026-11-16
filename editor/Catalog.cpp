@@ -42,6 +42,7 @@
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -1249,6 +1250,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_Model){
         if (ModelComponent* model = registry->findComponent<ModelComponent>(entity)){
             model->needUpdateModel = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_VertexColors){
+        if (VertexColorsComponent* colors = registry->findComponent<VertexColorsComponent>(entity)){
+            colors->needUpdate = true;
         }
     }
     if (updateFlags & UpdateFlags_TileLayer){

@@ -1843,6 +1843,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
+    core/script/binding/VertexColorClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
@@ -1892,6 +1893,9 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystem.cpp
     core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/VertexColorScene.cpp
+    core/object/VertexColors.cpp
+    core/subsystem/VertexColorRenderer.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
