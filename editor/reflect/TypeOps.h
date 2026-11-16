@@ -29,6 +29,7 @@
 #include "util/GrowArray.h"
 #include "util/StableArray.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <new>
@@ -104,6 +105,8 @@ namespace jasperengine::editor::reflect {
         // a list of structs exported as push_backs of each element's aggregate initializer (its
         // members in table order, which must be their declaration order)
         void structPushBackStatements(const FieldDesc&, const void*, const std::string&, const CodegenContext&, std::string&);
+        // a fixed-size array exported as an assignment per element away from its default
+        void fixedArrayStatements(const FieldDesc&, const void*, const std::string&, const CodegenContext&, std::string&);
 
         bool skipEmptyAssetPath(const FieldDesc&, const void* value);
 
@@ -161,6 +164,8 @@ namespace jasperengine::editor::reflect {
         bool structFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node arrayToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool arrayFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        // a fixed-size array keeps its length: the node's first elements over default ones
+        bool fixedArrayFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
 
         // ---- exported code
         std::string boolLiteral(const FieldDesc&, const void*, const CodegenContext&);
@@ -531,6 +536,21 @@ namespace jasperengine::editor::reflect {
         }
         template<typename T, size_t N> bool equalFixed(const void* a, const void* b, float epsilon);
 
+        // std::array<T, N>: a fixed-size array that is saved (channel names), unlike the T[N] runtime state
+        template<typename T, size_t N> size_t stdArraySize(const void*) { return N; }
+        template<typename T, size_t N> void stdArrayResize(void*, size_t) {}
+        template<typename T, size_t N> void* stdArrayAt(void* array, size_t index) {
+            return static_cast<std::array<T, N>*>(array)->data() + index;
+        }
+        template<typename T, size_t N> void stdArrayInsert(void*, size_t, const void*) {}
+        template<typename T, size_t N> void stdArrayErase(void*, size_t) {}
+        template<typename T, size_t N> void stdArrayMove(void* array, size_t from, size_t to) {
+            fixedMove<T, N>(static_cast<std::array<T, N>*>(array)->data(), from, to);
+        }
+        template<typename T, size_t N> bool equalStdArray(const void* a, const void* b, float epsilon) {
+            return equalFixed<T, N>(static_cast<const std::array<T, N>*>(a)->data(), static_cast<const std::array<T, N>*>(b)->data(), epsilon);
+        }
+
         template<typename T> bool equalVector(const void* a, const void* b, float epsilon);
 
     }
@@ -570,6 +590,17 @@ namespace jasperengine::editor::reflect {
         inline constexpr TypeOps Fixed{"array", Kind::Array, PropertyType::Custom, sizeof(T) * N,
             &detail::fixedConstruct<T, N>, &detail::fixedDestroy<T, N>, &detail::fixedCopy<T, N>, &detail::equalFixed<T, N>,
             &detail::arrayToYaml, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::arraySchema};
+
+        // std::array<T, N>: saved and read whole, its length fixed (typeName "array", as T[N]: the
+        // Inspector shows no add or remove buttons)
+        template<typename T, size_t N>
+        inline constexpr ArrayOps StdArrayOps{&detail::stdArraySize<T, N>, &detail::stdArrayResize<T, N>, &detail::stdArrayAt<T, N>,
+            &detail::stdArrayInsert<T, N>, &detail::stdArrayErase<T, N>, &detail::stdArrayMove<T, N>};
+        template<typename T, size_t N>
+        inline constexpr TypeOps StdArray = detail::withStatements(TypeOps{"array", Kind::Array, PropertyType::Custom, sizeof(std::array<T, N>),
+            &detail::construct<std::array<T, N>>, &detail::destroy<std::array<T, N>>, &detail::copy<std::array<T, N>>, &detail::equalStdArray<T, N>,
+            &detail::arrayToYaml, &detail::fixedArrayFromYaml, nullptr, nullptr, nullptr, false, nullptr, &detail::arraySchema},
+            &detail::fixedArrayStatements);
 
     }
 
@@ -646,6 +677,14 @@ namespace jasperengine::editor::reflect {
         static constexpr const TypeOps* ops = &ops::Fixed<T, N>;
         static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
         static constexpr const ArrayOps* arrayOps = &ops::FixedArray<T, N>;
+    };
+
+    template<typename T, size_t N>
+    struct ReflectTraits<std::array<T, N>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
+        using Element = T;
+        static constexpr const TypeOps* ops = &ops::StdArray<T, N>;
+        static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
+        static constexpr const ArrayOps* arrayOps = &ops::StdArrayOps<T, N>;
     };
 
     template<typename T>

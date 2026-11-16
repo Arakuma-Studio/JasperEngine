@@ -12,9 +12,11 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstddef>
 #include <limits>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -450,6 +452,30 @@ bool reflect::detail::arrayFromYaml(const FieldDesc& field, const YAML::Node& no
     return true;
 }
 
+bool reflect::detail::fixedArrayFromYaml(const FieldDesc& field, const YAML::Node& node, void* value, const DecodeContext& ctx, std::string&) {
+    // every element is reset, then the node's first elements are read in order: a shorter list
+    // leaves the rest at their default, a longer one has its extra elements ignored
+    const size_t size = field.arrayOps->size(value);
+    for (size_t i = 0; i < size; i++) {
+        void* element = field.arrayOps->at(value, i);
+        field.elementOps->destroy(element);
+        field.elementOps->construct(element);
+    }
+    if (!node || !node.IsSequence()) {
+        return true;
+    }
+    for (size_t i = 0; i < size && i < node.size(); i++) {
+        void* element = field.arrayOps->at(value, i);
+        if (field.structDesc) {
+            decode(*field.structDesc, node[i], element, ctx);
+        } else {
+            std::string reason;
+            field.elementOps->fromYaml(field, node[i], element, ctx, reason);
+        }
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------- exported code
 
 std::string reflect::detail::boolLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
@@ -773,6 +799,22 @@ void reflect::detail::pushBackStatements(const FieldDesc& field, const void* val
 void reflect::detail::pushBackClearedStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
     out += Factory::indentation(ctx.indentSpaces) + target + ".clear();\n";
     pushBackStatements(field, value, target, ctx, out);
+}
+
+void reflect::detail::fixedArrayStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
+    void* array = const_cast<void*>(value);
+    const std::string ind = Factory::indentation(ctx.indentSpaces);
+    const size_t size = field.arrayOps->size(array);
+    // the default element: what a new component's array holds
+    const std::unique_ptr<std::max_align_t[]> storage(new std::max_align_t[(field.elementOps->size + sizeof(std::max_align_t) - 1) / sizeof(std::max_align_t)]);
+    void* defaults = storage.get();
+    field.elementOps->construct(defaults);
+    for (size_t i = 0; i < size; i++) {
+        const void* element = field.arrayOps->at(array, i);
+        if (field.elementOps->equals(element, defaults, 0.0f) || !field.elementOps->cppLiteral) continue;
+        out += ind + target + "[" + std::to_string(i) + "] = " + field.elementOps->cppLiteral(field, element, ctx) + ";\n";
+    }
+    field.elementOps->destroy(defaults);
 }
 
 void reflect::detail::structPushBackStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx,

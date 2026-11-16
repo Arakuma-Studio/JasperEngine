@@ -2745,6 +2745,16 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_VertexColorsComponent_fields[] = {
+    JE_RF(VertexColorsComponent, enabled, 0x5fd953d8u, Bool),
+    JE_RF(VertexColorsComponent, data, 0xc58db50bu, AssetPath),
+    JE_RF(VertexColorsComponent, format, 0x989e9c4cu, Enum),
+    JE_RF(VertexColorsComponent, initialValue, 0x3aba7f3eu, Enum),
+    JE_RF(VertexColorsComponent, customInitial, 0xf09c5324u, Vector4),
+    JE_RF(VertexColorsComponent, channelNames, 0xc794fd86u, Array),
+};
+const StructTable kBody_VertexColorsComponent{"vertexcolors", kBody_VertexColorsComponent_fields, std::size(kBody_VertexColorsComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2864,6 +2874,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(VertexColorsComponent, "vertexcolors", 0x1504a1dfu),
     JE_RF_COMPONENTS_END
 };
 

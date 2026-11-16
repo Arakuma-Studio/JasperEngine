@@ -24241,6 +24241,135 @@
    "type": 103,
    "type_of_key": 103,
    "type_of_name": 103
+  },
+  {
+   "display_name": "Vertex Colors",
+   "enum_options": {
+    "format": [
+     [
+      0,
+      "rgba8",
+      "RGBA8"
+     ],
+     [
+      1,
+      "rgba16f",
+      "High Precision (RGBA16F)"
+     ]
+    ],
+    "initialValue": [
+     [
+      0,
+      "asset",
+      "Asset Colors"
+     ],
+     [
+      1,
+      "white",
+      "White"
+     ],
+     [
+      2,
+      "black",
+      "Black"
+     ],
+     [
+      3,
+      "custom",
+      "Custom"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef94bf",
+   "key": "vertexcolors",
+   "known_keys": [
+    "channelNames",
+    "customInitial",
+    "data",
+    "enabled",
+    "format",
+    "initialValue"
+   ],
+   "name": "VertexColorsComponent",
+   "properties_of_default": {
+    "channelNames[0]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[1]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[2]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[3]": [
+     1,
+     0,
+     true
+    ],
+    "customInitial": [
+     6,
+     0,
+     true
+    ],
+    "data": [
+     18,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "format": [
+     13,
+     0,
+     true
+    ],
+    "initialValue": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "customInitial": [
+     6,
+     0,
+     true
+    ],
+    "data": [
+     18,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "format": [
+     13,
+     0,
+     true
+    ],
+    "initialValue": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 104,
+   "type_of_key": 104,
+   "type_of_name": 104
   }
  ],
  "ease_options": [
@@ -32693,6 +32822,38 @@
    ],
    "speed": [
     2,
+    0,
+    true
+   ]
+  },
+  "VertexColorsComponent": {
+   "channelNames[N]": [
+    1,
+    0,
+    true
+   ],
+   "customInitial": [
+    6,
+    0,
+    true
+   ],
+   "data": [
+    18,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "format": [
+    13,
+    0,
+    true
+   ],
+   "initialValue": [
+    13,
     0,
     true
    ]
