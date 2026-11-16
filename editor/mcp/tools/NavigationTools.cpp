@@ -1332,7 +1332,7 @@ void paintNavGridTool(const CallPtr& call) {
     }
     const bool world = args.value("space", std::string("cell")) == "world";
     NavGridBrush::Stroke stroke;
-    const Json& strokes = args["strokes"];
+    const Json& strokes = args.at("strokes");
     for (size_t s = 0; s < strokes.size(); s++) {
         const Json& item = strokes[s];
         const std::string mode = item.value("mode", std::string("paint"));

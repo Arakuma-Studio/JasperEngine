@@ -1245,7 +1245,7 @@ void setAudioImportSettingsTool(const CallPtr& call) {
     }
     auto work = std::make_shared<ImportWork>();
     work->cacheDirectory = AudioAnalysis::cacheDirectory(project->getProjectPath());
-    for (const Json& value : args["paths"]) {
+    for (const Json& value : args.at("paths")) {
         ClipEdit clip;
         clip.rel = value.get<std::string>();
         std::string error;
