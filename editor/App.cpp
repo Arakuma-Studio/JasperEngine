@@ -97,6 +97,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "lattice/LatticeSceneTools.h"
 #include "navigation/NavigationEditor.h"
+#include "vertexcolor/VertexColorProject.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -4238,6 +4239,8 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // V1 R10: painted meshes a reimport changed, transferred (nothing without a Vertex Colors component)
+    tickVertexColors(&project);
     // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
     ImpostorBaker::update();
     if (ImpostorBaker::isRunning()) requestFrame();

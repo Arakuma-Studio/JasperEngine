@@ -59,6 +59,7 @@
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "pool/VertexAnimationPool.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
@@ -744,6 +745,9 @@ namespace {
         // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
         // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
         bool meshHasLevels = false;
+        // V1 R16: the GameObject being collected holds Vertex Colors, so its submeshes also draw
+        // with a colour stream of four values (whatever their own colours; on or off at runtime: both)
+        bool vertexColorKeys = false;
         // the drawable being collected also draws pixel-snapped ('Pxs', S41)
         bool pixelSnapKeys = false;
         // and, a Sprite, with its snap pivot then ('Spv', S52)
@@ -815,6 +819,14 @@ namespace {
             }
             if (buffers){
                 RenderSystem::scanSubmeshAttributes(submesh, *buffers);
+            }
+            if (vertexColorKeys && !submesh.hasVertexColor4){
+                Submesh painted = submesh;
+                painted.hasVertexColor3 = false;
+                painted.hasVertexColor4 = true;
+                vertexColorKeys = false;
+                collectSubmesh(mesh, painted, nullptr, terrain, instmesh, mirror, lattice, vat);
+                vertexColorKeys = true;
             }
             // the submesh's shader as RenderSystem::loadMesh picks it: its material's, the
             // mesh's or the scene's, with its features; the depth pass's library program
@@ -930,6 +942,12 @@ namespace {
         }
 
         void collectMesh(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
+            vertexColorKeys = registry->findComponent<VertexColorsComponent>(entity) != nullptr;
+            collectMeshVariants(registry, entity, mesh);
+            vertexColorKeys = false;
+        }
+
+        void collectMeshVariants(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
             const InstancedMeshComponent* instmesh = registry->findComponent<InstancedMeshComponent>(entity);
             const bool mirror = registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = LatticeRender::isLatticeTarget(registry, entity);
@@ -1016,6 +1034,12 @@ namespace {
         }
 
         void collectModel(EntityRegistry* registry, Entity entity, const ModelComponent& model, std::unordered_set<Entity>& modelMeshes){
+            vertexColorKeys = registry->findComponent<VertexColorsComponent>(entity) != nullptr;
+            collectModelVariants(registry, entity, model, modelMeshes);
+            vertexColorKeys = false;
+        }
+
+        void collectModelVariants(EntityRegistry* registry, Entity entity, const ModelComponent& model, std::unordered_set<Entity>& modelMeshes){
             const ModelProbe& probe = probeModel(model.filename, model.mergeStaticMeshes);
             const MeshComponent* rootMesh = registry->findComponent<MeshComponent>(entity);
             if (rootMesh){

@@ -76,6 +76,8 @@ namespace jasperengine::pixelart{
 namespace jasperengine{
 
 	struct FoliageViewList;
+	// V1: what painted meshes bind (subsystem/VertexColorRenderer.h)
+	class VertexColorRenderer;
 	// S52 (component/SpriteBatchComponent.h)
 	struct SpriteBatchComponent;
 	struct SpriteBatchState;
@@ -3043,6 +3045,7 @@ namespace jasperengine{
 			bool refused = false;
 		};
 		std::unordered_map<uint64_t, VertexColorView> vertexColorViews;
+		std::unique_ptr<VertexColorRenderer> vertexColors;
 		// drawCount at the last draw in the mode: the variants go a few draws after it
 		uint64_t vertexColorViewDraw = 0;
 		// (defined where JE_VIEW_DRAW_MODES is)
@@ -3854,6 +3857,10 @@ namespace jasperengine{
 		void setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB);
 		// a mesh drawn in the Vertex Color Draw Mode waits for its view variant (drawn shaded meanwhile)
 		bool isVertexColorViewPending() const;
+		// the scene's Vertex Colors components on their meshes (V1 R11-R16), made on first use;
+		// find: null while the scene never had one (R95)
+		VertexColorRenderer& getVertexColors();
+		const VertexColorRenderer* findVertexColors() const { return vertexColors.get(); }
 		// an editor overlay (isEditorOverlay), which the Draw Modes draw as it is; none outside the editor
 		bool isDrawModeExempt(Entity entity) const{
 #ifdef JASPERENGINE_EDITOR

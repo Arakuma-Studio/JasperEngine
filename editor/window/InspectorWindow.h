@@ -1016,6 +1016,10 @@ namespace jasperengine::editor{
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // T6 R65 (InspectorVoxels.cpp)
         void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // V1 R100 (vertexcolor/VertexColorInspector.cpp): the component, and the Paint Vertex Colors
+        // entry of the Model and Mesh Inspectors
+        void drawVertexColorsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPaintVertexColorsButton(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces
         void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

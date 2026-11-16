@@ -347,7 +347,8 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
 
     // indexed 16-bit triangles of the mesh's own interleaved buffer: the pipeline draws the
     // batch's indices as the object's
-    if (submesh.primitiveType != PrimitiveType::TRIANGLES || mesh.numExternalBuffers != 0 || !submesh.attributes.empty() ||
+    // (a Vertex Colors stream is not the buffer's float4 colour: V1, section 9)
+    if (submesh.primitiveType != PrimitiveType::TRIANGLES || mesh.numExternalBuffers != 0 || !submesh.attributes.empty() || submesh.vertexColors ||
             submesh.smoothNormals >= 0 || !mesh.buffer.isRenderAttributes() || mesh.buffer.getStride() == 0 || !mesh.buffer.getData())
         return BatchBreak::INELIGIBLE_GEOMETRY;
     const Attribute* index = mesh.indices.getAttribute(AttributeType::INDEX);

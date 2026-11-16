@@ -969,6 +969,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerTitleArtClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
+    registerVertexColorClasses(L);
 #if JASPERENGINE_NOISE
     registerNoiseClasses(L);
 #endif

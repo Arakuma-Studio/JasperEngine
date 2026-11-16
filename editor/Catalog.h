@@ -114,6 +114,9 @@ namespace jasperengine::editor{
         UpdateFlags_Button              = (uint64_t)1 << 56,
         // a Grid, Tilemap Layer or Tilemap Collider 2D field (S50): their chunks rebuild
         UpdateFlags_TileLayer           = (uint64_t)1 << 57,
+        // a Vertex Colors field (V1 R15): its data reads again when `data` changed and its streams bind
+        // again (enabled, format, initial value)
+        UpdateFlags_VertexColors        = (uint64_t)1 << 58,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
