@@ -244,9 +244,10 @@ TEST(VertexPaintBrush, RegionSelectionAndXRay) {
     EXPECT_EQ(visible.ids, (std::vector<uint32_t>{0, 1})) << "X-Ray off: only what is seen";
     const vc::Selection corner = selectInRect(mesh, model, vc::ElementKind::Vertex, Vector2(380, 380), Vector2(420, 420), project, frontOnly);
     ASSERT_EQ(corner.ids.size(), 1u) << "the vertex at (-1, 1) alone";
-    const std::vector<Vector2> triangle = {Vector2(350, 350), Vector2(650, 650), Vector2(350, 650)};
-    const vc::Selection lasso = selectInLasso(mesh, model, vc::ElementKind::Face, triangle, project, frontOnly);
-    EXPECT_EQ(lasso.ids, (std::vector<uint32_t>{1})) << "the lower-left triangle's centroid is inside the lasso";
+    // triangle 1's centroid (-1/3, 1/3) is at (467, 467), triangle 0's (1/3, -1/3) at (533, 533)
+    const std::vector<Vector2> loop = {Vector2(350, 350), Vector2(500, 340), Vector2(510, 500), Vector2(345, 505)};
+    const vc::Selection lasso = selectInLasso(mesh, model, vc::ElementKind::Face, loop, project, frontOnly);
+    EXPECT_EQ(lasso.ids, (std::vector<uint32_t>{1})) << "only the triangle whose centroid the lasso holds";
     // Shift adds, Ctrl removes
     EXPECT_EQ(combineSelection(visible, lasso, false, true).ids, (std::vector<uint32_t>{0}));
     EXPECT_EQ(combineSelection(lasso, visible, true, false).ids, (std::vector<uint32_t>{0, 1}));
@@ -319,13 +320,25 @@ TEST_F(VertexPaint, SelectClickBoxAndXRay) {
     VertexPaintTools& tools = VertexPaintTools::get();
     tools.settings().selectionMode = vc::ElementKind::Face;
     tools.armIn(sceneId, PaintTool::Select);
-    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(0.2f, 0.1f), false, false));
+    // the two triangles of the front (+Z) face, clicked at their centroids
+    const std::vector<TargetRef> targets = targetsOf(box);
+    ASSERT_EQ(targets.size(), 1u);
+    std::shared_ptr<const vc::MeshView> mesh = meshView(project, sceneId, box, targets[0].key);
+    ASSERT_TRUE(mesh);
+    const Matrix4 model = targetModel(project, sceneId, box, targets[0].key);
+    std::vector<Vector3> front;
+    for (uint32_t t = 0; t < mesh->triangleCount(); t++) {
+        if (mesh->faceNormals[t].z < 0.9f) continue;
+        front.push_back(model * ((mesh->positions[mesh->indices[t * 3]] + mesh->positions[mesh->indices[t * 3 + 1]] + mesh->positions[mesh->indices[t * 3 + 2]]) / 3.0f));
+    }
+    ASSERT_EQ(front.size(), 2u) << "a box's front is two triangles";
+    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(front[0].x, front[0].y), false, false));
     ASSERT_EQ(elementSelection(sceneId).size(), 1u);
     EXPECT_EQ(elementSelection(sceneId)[0].entity, box);
     EXPECT_EQ(tools.selectedCount(sceneId), 1u);
-    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(-0.3f, -0.3f), true, false));
+    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(front[1].x, front[1].y), true, false));
     EXPECT_EQ(tools.selectedCount(sceneId), 2u) << "Shift adds the front's other triangle";
-    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(0.2f, 0.1f), false, true));
+    ASSERT_TRUE(tools.selectAt(sceneId, rayAt(front[0].x, front[0].y), false, true));
     EXPECT_EQ(tools.selectedCount(sceneId), 1u) << "Ctrl removes";
 
     // the box seen from +Z, orthographically, as pixels
