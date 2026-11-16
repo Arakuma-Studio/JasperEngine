@@ -24,8 +24,8 @@
 // - The 1-sample report (AC14): every benchmark at one sample with the defaults, printed, not gated.
 // - S92 R33 (B1, B2): the frame signature's CPU time <= 5 % of the recording and the plan's
 //   (Context::Render and the gather), and B1's frames kept by S92 R1 cost no more CPU than the same
-//   frames replayed. Every other measurement replays every frame (S92's frame reuse off: what
-//   S16 measures is the replay).
+//   frames replayed. Every other measurement replays every frame and every layer (S92's frame
+//   reuse and layer result cache off: what S16 measures is the replay).
 //
 // CPU time is the engine's own work, the frame's wall time less the graphics backend's share
 // (RenderBackendTime: llvmpipe and lavapipe do on this thread what a GPU driver does not), the
@@ -74,23 +74,26 @@ using namespace jasperengine::test;
 
 namespace {
 
-    // S16 off (D1) or the defaults; every frame replayed unless keep (S92's frame reuse: a kept
-    // frame replays nothing, and S16 measures the replay)
+    // S16 off (D1) or the defaults; every frame and layer replayed unless keep (S92's frame reuse
+    // and layer result cache: a kept frame replays nothing, a cached layer is not pushed, and S16
+    // measures the replay)
     struct S16Mode {
-        bool batching, primitives, transformAware, frameReuse;
+        bool batching, primitives, transformAware, frameReuse, layerCache;
         explicit S16Mode(bool on, bool keep = false):
             batching(RmlRenderer::isBatching()), primitives(RmlRenderer::isSdfPrimitives()), transformAware(RmlFontEngine::isTransformAwareText()),
-            frameReuse(RmlRenderer::isFrameReuse()){
+            frameReuse(RmlRenderer::isFrameReuse()), layerCache(RmlRenderer::isLayerCache()){
             RmlRenderer::setBatchingForTesting(on);
             RmlRenderer::setSdfPrimitivesForTesting(on);
             RmlFontEngine::setTransformAwareTextForTesting(on);
             RmlRenderer::setFrameReuseForTesting(keep);
+            RmlRenderer::setLayerCacheForTesting(keep);
         }
         ~S16Mode(){
             RmlRenderer::setBatchingForTesting(batching);
             RmlRenderer::setSdfPrimitivesForTesting(primitives);
             RmlFontEngine::setTransformAwareTextForTesting(transformAware);
             RmlRenderer::setFrameReuseForTesting(frameReuse);
+            RmlRenderer::setLayerCacheForTesting(layerCache);
         }
     };
 
