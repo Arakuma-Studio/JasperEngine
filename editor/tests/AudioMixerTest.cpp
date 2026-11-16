@@ -1909,6 +1909,10 @@ TEST_F(AudioSourceTest, MovedInPostUpdateIsHeardThereThatFrame) {
     }
     Engine::onPostUpdate.remove("lateAudioTest");
     Engine::setFixedDeltatime(0.0);
+    // a paused frame zeroes the unscaled delta these frames left: later tests of the binary
+    // (CanvasGroupTest's unscaled fade at time scale 0) read it as the frame's
+    Engine::pauseGameEvents(true);
+    Engine::systemUpdate();
     Engine::pauseGameEvents(!eventsWereEnabled);
     sound.stop();
 }
