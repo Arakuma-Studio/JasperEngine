@@ -155,6 +155,26 @@ namespace jasperengine::vertexcolor {
         changed = false;
     }
 
+    void RuntimeLayer::combine(std::span<const Vector4> authored, std::span<const uint32_t> sourceVertex, std::vector<Vector4>& out) const {
+        out.resize(authored.size());
+        for (size_t i = 0; i < authored.size(); i++)
+            out[i] = over(i < sourceVertex.size() ? sourceVertex[i] : (uint32_t)i, authored[i]);
+        changed = false;
+    }
+
+    Vector4 RuntimeLayer::over(uint32_t vertex, const Vector4& authored) const {
+        Vector4 out = authored;
+        if (vertex >= states.size()) return out;
+        const State& s = states[vertex];
+        if (s.mask == 0 || s.weight <= 0.0f) return out;
+        for (int c = 0; c < 4; c++) {
+            if (!(s.mask & (1u << c))) continue;
+            const float a = runtimeChannel(out, c);
+            runtimeSetChannel(out, c, a + (runtimeChannel(s.value, c) - a) * s.weight);
+        }
+        return out;
+    }
+
     void RuntimeLayer::clear() {
         if (!states.empty()) changed = true;
         std::vector<State>().swap(states);
