@@ -12,6 +12,7 @@
 #include "Workspace.h"
 #include "player/PlayerConfig.h"
 #include "settings/SettingsRegistry.h"
+#include "support/PosixCompat.h"
 
 #include <gtest/gtest.h>
 
@@ -19,7 +20,6 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
