@@ -10,6 +10,7 @@
 #include "VertexColorTestScene.h"
 
 #include "Catalog.h"
+#include "command/type/ModelLoadCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ModelComponent.h"
 #include "model/GltfDocument.h"
@@ -27,6 +28,7 @@
 #include "vertexcolor/VertexColorInspector.h"
 
 #include <fstream>
+#include <map>
 #include <set>
 
 using namespace jasperengine;
@@ -35,18 +37,51 @@ using namespace jasperengine::editor::vertexcolortest;
 
 namespace {
 
+    // two static mesh nodes, A (grid primitives of 2 and 3 quads a side) and B (4 quads, moved):
+    // what Merge Static Meshes merges, each primitive with its own vertex count
+    std::vector<uint8_t> staticTwoNodeModel() {
+        editor::test::GltfBuild build;
+        editor::test::GridOptions grid;
+        grid.welded = false;
+        grid.quads = 2;
+        const auto first = editor::test::addGridPrimitive(build, grid);
+        grid.quads = 3;
+        grid.seed = 5;
+        const auto second = editor::test::addGridPrimitive(build, grid);
+        grid.quads = 4;
+        grid.seed = 9;
+        const auto third = editor::test::addGridPrimitive(build, grid);
+        build.json["meshes"].push_back({{"name", "A"}, {"primitives", {first, second}}});
+        build.json["meshes"].push_back({{"name", "B"}, {"primitives", {third}}});
+        build.json["nodes"] = nlohmann::ordered_json::array({{{"name", "A"}, {"mesh", 0}}, {{"name", "B"}, {"mesh", 1}, {"translation", {3.0, 0.0, 0.0}}}});
+        build.json["scenes"] = nlohmann::ordered_json::array({{{"nodes", {0, 1}}}});
+        build.json["scene"] = 0;
+        return build.glb();
+    }
+
     class VertexColorOutput : public VertexColorSceneTest {
     protected:
-        // the cook tests' model in the assets, on a Model of the scene
-        Entity addModel(const std::string& file) {
+        // a model in the assets (the cook tests' by default), on a Model of the scene
+        Entity addModel(const std::string& file, const std::vector<uint8_t>& bytes = editor::test::makeTestModel(8, false), bool merged = false) {
             const fs::path path = project->getAssetsPath() / file;
-            const std::vector<uint8_t> bytes = editor::test::makeTestModel(8, false);
             std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(path));
             const Entity entity = track(std::make_unique<Model>(scene()), "Statue");
-            scene()->getComponent<ModelComponent>(entity).filename.set(file, project->getAssetDatabase().getAssetGuid(path));
+            ModelComponent& model = scene()->getComponent<ModelComponent>(entity);
+            model.filename.set(file, project->getAssetDatabase().getAssetGuid(path));
+            model.mergeStaticMeshes = merged;
             EXPECT_TRUE(scene()->getSystem<MeshSystem>()->loadGLTF(entity, path.string()));
             return entity;
+        }
+
+        // the COLOR_0 of a primitive of an exported file, and its triangle list
+        static void colorsIn(const GltfDocument& doc, const GltfDocument::Json& primitive, std::vector<float>& colors, std::vector<uint32_t>& indices) {
+            std::string error;
+            int components = 0;
+            ASSERT_TRUE(primitive["attributes"].contains("COLOR_0"));
+            ASSERT_TRUE(doc.readAccessorFloats(primitive["attributes"]["COLOR_0"].get<size_t>(), colors, components, error)) << error;
+            EXPECT_EQ(components, 4);
+            ASSERT_TRUE(doc.readIndices(primitive["indices"].get<size_t>(), indices, error)) << error;
         }
     };
 
@@ -227,6 +262,122 @@ TEST_F(VertexColorOutput, ExportAsModelWritesSplitColorsAndReplacesInOneStep) {
     options.replaceInScene = false;
     EXPECT_FALSE(vce::exportAsModel(project.get(), sceneId, statue, options, &error));
     EXPECT_NE(error.find("exists"), std::string::npos) << error;
+}
+
+// R61: a plain mesh (a built-in primitive) is written from its geometry, and Replace in Scene makes the
+// GameObject a Model of the new file in one step that an undo takes back to the mesh
+TEST_F(VertexColorOutput, ExportAsModelWritesAPlainMeshAndMakesItAModel) {
+    const Entity tile = addGrid("Tile", 2);
+    const vc::TargetKey key = firstKey(tile);
+    const uint32_t vertices = vce::listTargets(project.get(), sceneId, tile)[0].vertexCount;
+    vc::Op face;
+    face.type = vc::OpType::Set;
+    face.target.kind = vc::TargetKind::Faces;
+    face.target.ids = {0};
+    face.value = kGreen;
+    vce::EditRequest request;
+    request.targets = {{tile, key}};
+    request.ops = {fillAll(kRed), face};
+    const vce::EditResult painted = vce::applyEdit(project.get(), sceneId, request);
+    ASSERT_TRUE(painted.ok) << painted.error;
+    ASSERT_GT(painted.targets[0].splitVertices, 0u);
+
+    const uint64_t paintedHash = hashOf(tile);
+    vce::ExportModelOptions options;
+    options.path = "tile painted.glb";
+    options.replaceInScene = true;
+    const size_t before = steps();
+    std::string error;
+    ASSERT_TRUE(vce::exportAsModel(project.get(), sceneId, tile, options, &error)) << error;
+    GltfDocument doc;
+    ASSERT_TRUE(doc.load(project->getAssetsPath() / options.path, error)) << error;
+    ASSERT_EQ(doc.json()["meshes"].size(), 1u);
+    ASSERT_EQ(doc.json()["meshes"][0]["primitives"].size(), 1u);
+    const GltfDocument::Json& primitive = doc.json()["meshes"][0]["primitives"][0];
+    std::vector<float> colors;
+    std::vector<uint32_t> indices;
+    colorsIn(doc, primitive, colors, indices);
+    EXPECT_EQ(colors.size() / 4, (size_t)vertices + painted.targets[0].splitVertices) << "hard edges split in the file";
+    EXPECT_EQ(positionsOf(doc, 0, 0).size() / 3, colors.size() / 4);
+    ASSERT_GE(indices.size(), 6u);
+    for (int k = 0; k < 3; k++) {
+        EXPECT_NEAR(colors[indices[(size_t)k] * 4 + 1], 1.0f, 1e-3f) << "face 0 green";
+        EXPECT_NEAR(colors[indices[3 + (size_t)k] * 4], 1.0f, 1e-3f) << "face 1 red";
+    }
+    EXPECT_TRUE(primitive.contains("material"));
+
+    // Replace in Scene: a Model of the file, its mesh the file's, no component, one step (the
+    // editor loads models on a worker: the load is finished here)
+    ModelLoadCmd::completePendingLoad(sceneId, tile);
+    const ModelComponent* model = scene()->findComponent<ModelComponent>(tile);
+    ASSERT_NE(model, nullptr);
+    EXPECT_EQ(model->filename.path, options.path);
+    EXPECT_EQ(colorsOf(tile), nullptr);
+    EXPECT_EQ(vce::listTargets(project.get(), sceneId, tile).at(0).vertexCount, colors.size() / 4);
+    EXPECT_EQ(steps(), before + 1);
+    EXPECT_EQ(history->top()->name(), "Export as Model (Tile)");
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(scene()->findComponent<ModelComponent>(tile), nullptr);
+    ASSERT_NE(colorsOf(tile), nullptr);
+    EXPECT_EQ(vce::listTargets(project.get(), sceneId, tile).at(0).vertexCount, vertices) << "the mesh's own geometry back";
+    EXPECT_EQ(hashOf(tile), paintedHash) << "and its paint";
+    ASSERT_TRUE(history->redo());
+    ModelLoadCmd::completePendingLoad(sceneId, tile);
+    EXPECT_NE(scene()->findComponent<ModelComponent>(tile), nullptr);
+    EXPECT_EQ(vce::listTargets(project.get(), sceneId, tile).at(0).vertexCount, colors.size() / 4);
+    EXPECT_EQ(colorsOf(tile), nullptr);
+}
+
+// R2, R61: with Merge Static Meshes each merged submesh is written back into the file primitive it
+// came from, and the Model, still merged, reads the same submeshes from the new file
+TEST_F(VertexColorOutput, ExportAsModelWritesEachMergedSubmeshIntoItsPrimitive) {
+    const Entity statue = addModel("pair.glb", staticTwoNodeModel(), true);
+    const std::vector<vce::TargetInfo> targets = vce::listTargets(project.get(), sceneId, statue);
+    ASSERT_EQ(targets.size(), 3u);
+    const Vector4 shades[3] = {kRed, kGreen, Vector4(0.0f, 0.0f, 1.0f, 1.0f)};
+    std::map<uint32_t, Vector4> byVertices;   // each primitive has its own vertex count
+    vce::EditRequest request;
+    for (size_t i = 0; i < targets.size(); i++) {
+        ASSERT_GE(targets[i].key.submesh, 0) << "merged targets are submeshes";
+        request.targets.push_back({statue, targets[i].key});
+        request.perTargetOps.push_back({fillAll(shades[i])});
+        byVertices[targets[i].vertexCount] = shades[i];
+    }
+    ASSERT_EQ(byVertices.size(), 3u);
+    ASSERT_TRUE(vce::applyEdit(project.get(), sceneId, request).ok);
+
+    vce::ExportModelOptions options;
+    options.path = "pair painted.glb";
+    options.replaceInScene = true;
+    std::string error;
+    ASSERT_TRUE(vce::exportAsModel(project.get(), sceneId, statue, options, &error)) << error;
+    GltfDocument doc;
+    ASSERT_TRUE(doc.load(project->getAssetsPath() / options.path, error)) << error;
+    size_t checked = 0;
+    for (size_t m = 0; m < doc.json()["meshes"].size(); m++) {
+        for (size_t p = 0; p < doc.json()["meshes"][m]["primitives"].size(); p++) {
+            std::vector<float> colors;
+            std::vector<uint32_t> indices;
+            colorsIn(doc, doc.json()["meshes"][m]["primitives"][p], colors, indices);
+            const uint32_t count = (uint32_t)(colors.size() / 4);
+            ASSERT_TRUE(byVertices.count(count)) << "mesh " << m << " primitive " << p << ": " << count << " colors";
+            const Vector4 expected = byVertices[count];
+            EXPECT_EQ(positionsOf(doc, m, p).size() / 3, count);
+            for (uint32_t v = 0; v < count; v++) {
+                EXPECT_NEAR(colors[v * 4], expected.x, 1e-3f);
+                EXPECT_NEAR(colors[v * 4 + 1], expected.y, 1e-3f);
+                EXPECT_NEAR(colors[v * 4 + 2], expected.z, 1e-3f);
+            }
+            checked++;
+        }
+    }
+    EXPECT_EQ(checked, 3u);
+    EXPECT_EQ(scene()->getComponent<ModelComponent>(statue).filename.path, options.path);
+    EXPECT_TRUE(scene()->getComponent<ModelComponent>(statue).mergeStaticMeshes);
+    EXPECT_EQ(colorsOf(statue), nullptr);
+    const std::vector<vce::TargetInfo> reloaded = vce::listTargets(project.get(), sceneId, statue);
+    ASSERT_EQ(reloaded.size(), 3u);
+    for (size_t i = 0; i < 3; i++) EXPECT_EQ(reloaded[i].vertexCount, targets[i].vertexCount) << "the same merged submeshes";
 }
 
 // ---- Bake to Texture (R62)

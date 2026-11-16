@@ -651,6 +651,27 @@ named in the PR).
   block to every view variant. Cost: the first switch to a channel compiles its variants (the mesh
   draws shaded meanwhile). A library shader that reads no vertex colour (no `@require color` or
   `rawcolor`) shows white in the view, and an OIT submesh draws shaded.
+- **R9, R10, the snapshot** (fixups): the editor-only section keeps positions and normals per GPU
+  vertex, not per logical vertex (the transfer matches GPU vertices, so seams keep their own
+  values), and, for a target with corner overrides, the triangle list it was painted on. With it the
+  remap and `transfer` carry hard edges: each new corner takes the old corner at its vertex's place
+  whose triangle is nearest a point inside its own triangle (the side of the edge it lies on), so
+  overrides are written only where corners differ. This changed the file layout: `VCOLORS_VERSION`
+  is 2, version 1 files (no triangles; they transfer per vertex) still read and are written back as
+  version 2 (`engine/tests/core/fixtures/vertexcolor/version1.vcolors`).
+- **R60, transfer from another GameObject** (fixups): `editor::vertexcolor::transferSource` builds
+  the source (every target's values in world space and, when one has hard edges, every corner's)
+  for the Vertex Paint window's Transfer From and `edit_mesh_colors`' `transfer`.
+- **R61, Export as Model** (fixups): the file is written by editing the model's glTF JSON
+  (`GltfDocument`), not through `LatticeBakeGltf`. Merge Static Meshes models write each merged
+  submesh back into the file primitive it was made of (the loader's order: mesh nodes ascending,
+  primitives in order, reversed), refused when that primitive's triangles are not the painted ones.
+  A plain mesh (a built-in primitive) and an OBJ Model are written from their CPU geometry: one node,
+  one primitive per submesh, a glTF metallic-roughness material per submesh (factors, the five
+  texture maps by URI, alpha mode, double sided); a linked `.material`, a library shader or the Lit
+  extensions are not carried and are set on the Model again. Replace in Scene on a plain mesh removes
+  its Mesh (an undo puts the geometry back), adds a Model of the new file, and removes the component,
+  one undo step.
 - **R71, the base weight** (render stream): with fewer than five layers, `w_base` is
   `1 - (r + g + ...)` over the channels of the layers there are (at five, `1 - (r+g+b+a)`); the
   height-blend contrast is per layer (the formula with one contrast is the case of equal ones); ORM

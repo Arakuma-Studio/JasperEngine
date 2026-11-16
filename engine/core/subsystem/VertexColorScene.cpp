@@ -117,6 +117,7 @@ namespace jasperengine::vertexcolor::detail {
             target.triangleCount = s.primitiveType == PrimitiveType::TRIANGLES ? corners / 3 : 0;
             target.hasAssetColors = (bool)findAttribute(mesh, s, AttributeType::COLOR);
             target.material = s.material.name.str();
+            target.faceCulling = s.faceCulling;
         }
 
         void vcAppendTargets(std::vector<SceneTarget>& out, Entity meshEntity, const MeshComponent& mesh, int node, const std::string& name) {
@@ -443,6 +444,11 @@ namespace jasperengine::vertexcolor {
         RenderSystem* render = scene->findSystem<RenderSystem>().get();
         if (!mesh || !render) return nullptr;
         return render->getVertexColors().getMeshView(entity, target.meshEntity, target.submesh, *mesh);
+    }
+
+    const Material* sceneTargetMaterial(Scene* scene, const SceneTarget& target) {
+        const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(target.meshEntity) : nullptr;
+        return mesh && target.submesh < mesh->numSubmeshes ? &mesh->submeshes[target.submesh].material : nullptr;
     }
 
     Matrix4 sceneTargetModel(Scene* scene, Entity entity, const TargetKey& key) {

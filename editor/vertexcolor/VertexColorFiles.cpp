@@ -348,23 +348,28 @@ bool vcd::flushWrites() {
     return VcFileWriter::get().flushAll();
 }
 
+void vcd::fillSnapshot(vc::TargetData& target, const vc::MeshView& mesh) {
+    // a stale target keeps the snapshot of the mesh it was painted on: its transfer needs it (R10)
+    if (target.fingerprint != mesh.fingerprint()) return;
+    target.snapshotPositions = mesh.positions;
+    target.snapshotIndices = mesh.indices;
+    if (mesh.normals.size() == mesh.positions.size()) {
+        target.snapshotNormals = mesh.normals;
+        return;
+    }
+    target.snapshotNormals.resize(mesh.positions.size());
+    for (size_t v = 0; v < mesh.positions.size(); v++) {
+        const uint32_t logical = v < mesh.logical.size() ? mesh.logical[v] : 0;
+        target.snapshotNormals[v] = logical < mesh.logicalNormals.size() ? mesh.logicalNormals[logical] : Vector3(0.0f, 1.0f, 0.0f);
+    }
+}
+
 void vcd::refreshSnapshots(Project* project, uint32_t sceneId, Entity entity, vc::Data& data) {
     Scene* scene = sceneOf(project, sceneId);
     if (!scene) return;
     for (vc::TargetData& target : data.targets) {
         const std::shared_ptr<const vc::MeshView> mesh = vc::sceneMeshView(scene, entity, target.key);
-        // a stale target keeps the snapshot of the mesh it was painted on: its transfer needs it (R10)
-        if (!mesh || mesh->fingerprint() != target.fingerprint) continue;
-        target.snapshotPositions = mesh->positions;
-        if (mesh->normals.size() == mesh->positions.size()) {
-            target.snapshotNormals = mesh->normals;
-        } else {
-            target.snapshotNormals.resize(mesh->positions.size());
-            for (size_t v = 0; v < mesh->positions.size(); v++) {
-                const uint32_t logical = v < mesh->logical.size() ? mesh->logical[v] : 0;
-                target.snapshotNormals[v] = logical < mesh->logicalNormals.size() ? mesh->logicalNormals[logical] : Vector3(0.0f, 1.0f, 0.0f);
-            }
-        }
+        if (mesh) fillSnapshot(target, *mesh);
     }
 }
 

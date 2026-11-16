@@ -22,6 +22,8 @@ namespace jasperengine::vertexcolor::bake {
         std::vector<Vector4> vertexValues;
         std::vector<Vector4> cornerValues;
         bool perCorner = false;
+        // the corner values are exact (transfer): written as they are, never clustered by ΔE (R41)
+        bool exactCorners = false;
         // which GPU vertices / corners have a value (transfer may leave some unmatched: Unmatched::Keep)
         std::vector<uint8_t> valid;    // per GPU vertex; empty: all valid
     };
@@ -40,7 +42,10 @@ namespace jasperengine::vertexcolor::bake {
     JASPERENGINE_API bool curvature(const MeshView& mesh, const Op& op, Field& out, std::string& error);
 
     // R60: nearest point of op.source (world space) within op.maxDistance and op.normalAngle.
-    // Fills result.unmatched and meanDistance; `valid` marks matched vertices.
+    // Fills result.unmatched and meanDistance; `valid` marks matched vertices. A source with corner
+    // values gives each corner the value of a source corner at the same place whose triangle holds
+    // the corner's side (the one nearest a point inside the corner's triangle), so hard edges carry
+    // over (exactCorners); its vertex's value when no source vertex is in reach.
     JASPERENGINE_API bool transfer(const MeshView& mesh, const Op& op, const ApplyOptions& options,
                                    Field& out, OpResult& result, std::string& error);
 

@@ -16,7 +16,6 @@
 #include "command/CommandNames.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/PropertyCmd.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "jobs/JobSystem.h"
@@ -53,20 +52,6 @@ namespace {
         vc::ChannelMask mask = 0;
         for (const vc::Op& op : ops) mask |= op.channels;
         return mask;
-    }
-
-    void vcFillSnapshot(vc::TargetData& target, const vc::MeshView& mesh) {
-        if (target.fingerprint != mesh.fingerprint()) return;
-        target.snapshotPositions = mesh.positions;
-        target.snapshotNormals.resize(mesh.positions.size());
-        for (size_t v = 0; v < mesh.positions.size(); v++) {
-            if (mesh.normals.size() == mesh.positions.size()) {
-                target.snapshotNormals[v] = mesh.normals[v];
-            } else {
-                const uint32_t logical = v < mesh.logical.size() ? mesh.logical[v] : 0;
-                target.snapshotNormals[v] = logical < mesh.logicalNormals.size() ? mesh.logicalNormals[logical] : Vector3(0.0f, 1.0f, 0.0f);
-            }
-        }
     }
 
     // a model's asset path ("" when the entity draws no model)
@@ -250,10 +235,11 @@ namespace {
                 const vc::TargetData before = *live;
                 item.data.snapshotPositions = std::move(live->snapshotPositions);
                 item.data.snapshotNormals = std::move(live->snapshotNormals);
+                item.data.snapshotIndices = std::move(live->snapshotIndices);
                 *live = std::move(item.data);
                 cmd->addTarget(item.ref.entity, &before, live);
             } else {
-                vcFillSnapshot(item.data, *item.mesh);
+                vcd::fillSnapshot(item.data, *item.mesh);
                 vc::TargetData& added = data->add(item.ref.key);
                 added = std::move(item.data);
                 cmd->addTarget(item.ref.entity, nullptr, &added);
@@ -344,9 +330,9 @@ int vcd::vertexBlendLayers(Scene* scene, Entity entity) {
     if (!scene) return 0;
     int layers = 0;
     for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
-        if (!mesh || target.submesh >= mesh->numSubmeshes) continue;
-        const Material& material = mesh->submeshes[target.submesh].material;
+        const Material* found = vc::sceneTargetMaterial(scene, target);
+        if (!found) continue;
+        const Material& material = *found;
         if (material.shader.path != "library:vertex_blend") continue;
         const std::vector<std::string>& features = material.shaderFeatures;
         auto has = [&](const char* define) { return std::find(features.begin(), features.end(), define) != features.end(); };
@@ -455,6 +441,61 @@ vc::TargetData editor::vertexcolor::targetDataOrInitial(Project* project, uint32
     const vc::InitialValue initial = vcd::initialFor(project, sceneId, entity, &custom);
     vc::initializeTarget(data, *mesh, initial, custom);
     return data;
+}
+
+std::shared_ptr<const vc::TransferSource> editor::vertexcolor::transferSource(Project* project, uint32_t sceneId, Entity entity, std::string* error) {
+    struct Part {
+        std::shared_ptr<const vc::MeshView> mesh;
+        vc::TargetData data;
+        Matrix4 model;
+    };
+    std::vector<Part> parts;
+    bool corners = false;
+    for (const TargetInfo& info : listTargets(project, sceneId, entity)) {
+        Part part;
+        part.mesh = meshView(project, sceneId, entity, info.key);
+        if (!part.mesh) continue;
+        part.data = targetDataOrInitial(project, sceneId, entity, info.key);
+        // a stale target's overrides name corners of another index buffer: its vertices only
+        if (!part.data.fingerprint.sameTopology(part.mesh->fingerprint())) part.data.corners.clear();
+        part.model = targetModel(project, sceneId, entity, info.key);
+        corners = corners || part.data.hasOverrides();
+        parts.push_back(std::move(part));
+    }
+    auto source = std::make_shared<vc::TransferSource>();
+    bool normals = true;
+    for (const Part& part : parts) {
+        const vc::MeshView& mesh = *part.mesh;
+        const uint32_t first = (uint32_t)source->positions.size();
+        const uint32_t count = std::min<uint32_t>(mesh.vertexCount(), (uint32_t)part.data.base.size());
+        const Matrix4 normalMatrix = part.model.inverse().transpose();
+        normals = normals && mesh.normals.size() == mesh.positions.size();
+        for (uint32_t v = 0; v < count; v++) {
+            source->positions.push_back(part.model * mesh.positions[v]);
+            if (normals) {
+                const Vector3& n = mesh.normals[v];
+                const Vector4 w = normalMatrix * Vector4(n.x, n.y, n.z, 0.0f);
+                source->normals.push_back(Vector3(w.x, w.y, w.z).normalized());
+            }
+            source->values.push_back(part.data.base[v]);
+        }
+        // with any hard edge, every triangle: a corner then finds its own side wherever it lands
+        if (!corners) continue;
+        for (uint32_t t = 0; t < mesh.triangleCount(); t++) {
+            const uint32_t a = mesh.indices[t * 3], b = mesh.indices[t * 3 + 1], c = mesh.indices[t * 3 + 2];
+            if (a >= count || b >= count || c >= count) continue;
+            for (uint32_t k = 0; k < 3; k++) {
+                source->indices.push_back(first + mesh.indices[t * 3 + k]);
+                source->cornerValues.push_back(part.data.cornerValue(t * 3 + k, mesh.indices));
+            }
+        }
+    }
+    if (!normals) source->normals.clear();
+    if (source->positions.empty()) {
+        if (error) *error = CommandNames::entity(project, sceneId, entity) + " has no mesh loaded to transfer from.";
+        return nullptr;
+    }
+    return source;
 }
 
 vc::ApplyOptions editor::vertexcolor::applyOptions(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key, bool world) {

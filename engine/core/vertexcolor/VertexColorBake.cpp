@@ -217,6 +217,26 @@ namespace jasperengine::vertexcolor::bake {
                 return found;
             }
 
+            // every point within `radius` of q, in cell order
+            template <typename Visit>
+            void within(const Vector3& q, float radius, Visit visit) const {
+                if (points.empty() || !std::isfinite(q.x) || !std::isfinite(q.y) || !std::isfinite(q.z)) return;
+                int lo[3], hi[3];
+                cellCoords(q - Vector3(radius, radius, radius), lo);
+                cellCoords(q + Vector3(radius, radius, radius), hi);
+                const float radius2 = radius * radius;
+                for (int z = lo[2]; z <= hi[2]; z++) {
+                    for (int y = lo[1]; y <= hi[1]; y++) {
+                        for (int x = lo[0]; x <= hi[0]; x++) {
+                            const size_t cellId = cellIndex(x, y, z);
+                            for (uint32_t i = start[cellId]; i < start[cellId + 1]; i++) {
+                                if ((points[items[i]] - q).squaredLength() <= radius2) visit(items[i]);
+                            }
+                        }
+                    }
+                }
+            }
+
         private:
             void cellCoords(const Vector3& p, int c[3]) const {
                 for (int a = 0; a < 3; a++) {
@@ -235,6 +255,117 @@ namespace jasperengine::vertexcolor::bake {
             std::vector<uint32_t> start;
             std::vector<uint32_t> items;
         };
+
+        // a corner's stand-in point: inside its triangle, a quarter of the way to the centroid, so the
+        // corners of one vertex on either side of a hard edge are told apart by the face they lie in
+        constexpr float kTransferWedge = 0.25f;
+
+        Vector3 transferWedge(const Vector3& corner, const Vector3& b, const Vector3& c) {
+            const Vector3 centroid((corner.x + b.x + c.x) / 3.0f, (corner.y + b.y + c.y) / 3.0f, (corner.z + b.z + c.z) / 3.0f);
+            return corner + (centroid - corner) * kTransferWedge;
+        }
+
+        // squared distance from p to triangle (a, b, c), by the region of its closest point
+        float transferTriangleDistance2(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
+            const Vector3 ab = b - a, ac = c - a, ap = p - a;
+            const float d1 = detail::dot3(ab, ap), d2 = detail::dot3(ac, ap);
+            if (d1 <= 0.0f && d2 <= 0.0f) return ap.squaredLength();
+            const Vector3 bp = p - b;
+            const float d3 = detail::dot3(ab, bp), d4 = detail::dot3(ac, bp);
+            if (d3 >= 0.0f && d4 <= d3) return bp.squaredLength();
+            const float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) return (p - (a + ab * (d1 / (d1 - d3)))).squaredLength();
+            const Vector3 cp = p - c;
+            const float d5 = detail::dot3(ab, cp), d6 = detail::dot3(ac, cp);
+            if (d6 >= 0.0f && d5 <= d6) return cp.squaredLength();
+            const float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) return (p - (a + ac * (d2 / (d2 - d6)))).squaredLength();
+            const float va = d3 * d6 - d5 * d4;
+            if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) return (p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))))).squaredLength();
+            const float sum = va + vb + vc;
+            if (!(sum > 0.0f)) return ap.squaredLength();   // degenerate
+            return (p - (a + ab * (vb / sum) + ac * (vc / sum))).squaredLength();
+        }
+
+        // R60 with the source's corners. A vertex's corners choose among the corners of the source
+        // vertices at its nearest source vertex's place (within op.maxDistance; seams make several):
+        // each takes the one whose triangle is nearest its stand-in point (face normals within the
+        // angle when cosAngle > -1, ties to the lower corner). Nothing in reach: its vertex's value.
+        bool transferCorners(const MeshView& mesh, const Op& op, const ApplyOptions& options, const TransferSource& source, const TransferGrid& grid,
+                             float cosAngle, Field& out, std::string& error) {
+            const size_t sourceCorners = source.indices.size();
+            const size_t sourceVertices = source.positions.size();
+            // source vertex -> its corners (CSR)
+            std::vector<uint32_t> cornerStart(sourceVertices + 1, 0);
+            for (uint32_t index : source.indices) cornerStart[index + 1]++;
+            for (size_t v = 0; v < sourceVertices; v++) cornerStart[v + 1] += cornerStart[v];
+            std::vector<uint32_t> cornersOf(sourceCorners);
+            {
+                std::vector<uint32_t> fill(cornerStart.begin(), cornerStart.end() - 1);
+                for (uint32_t c = 0; c < (uint32_t)sourceCorners; c++) cornersOf[fill[source.indices[c]]++] = c;
+            }
+            std::vector<Vector3> faceNormals(sourceCorners / 3);
+            Vector3 lo = source.positions.empty() ? Vector3() : source.positions[0], hi = lo;
+            for (const Vector3& p : source.positions) {
+                lo = Vector3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
+                hi = Vector3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
+            }
+            for (size_t t = 0; t < faceNormals.size(); t++) {
+                const Vector3& a = source.positions[source.indices[t * 3]];
+                faceNormals[t] = detail::normalize3(detail::cross3(source.positions[source.indices[t * 3 + 1]] - a, source.positions[source.indices[t * 3 + 2]] - a));
+            }
+            // R4's tolerance: source vertices this close to the nearest one share its place
+            const float together = 1e-6f * detail::length3(hi - lo);
+            const detail::Space space = detail::Space::of(options.model);
+
+            out.cornerValues.resize(mesh.indices.size());
+            for (size_t c = 0; c < mesh.indices.size(); c++) out.cornerValues[c] = out.vertexValues[mesh.indices[c]];
+            std::vector<uint32_t> candidates;
+            for (uint32_t v = 0; v < mesh.vertexCount(); v++) {
+                if ((v & 1023u) == 0 && bakeCancelled(options)) {
+                    error = "cancelled";
+                    return false;
+                }
+                if (mesh.vertexCornerStart[v + 1] == mesh.vertexCornerStart[v]) continue;
+                const Vector3 p = space.point(mesh.positions[v]);
+                uint32_t nearest = 0;
+                float d2 = 0.0f;
+                if (!grid.nearest(p, op.maxDistance, [](uint32_t) { return true; }, nearest, d2)) continue;
+                candidates.clear();
+                grid.within(p, std::sqrt(d2) + together, [&](uint32_t s) {
+                    for (uint32_t k = cornerStart[s]; k < cornerStart[s + 1]; k++) candidates.push_back(cornersOf[k]);
+                });
+                std::sort(candidates.begin(), candidates.end());
+                for (uint32_t k = mesh.vertexCornerStart[v]; k < mesh.vertexCornerStart[v + 1]; k++) {
+                    const uint32_t c = mesh.vertexCorners[k];
+                    const uint32_t t = c / 3, at = c % 3;
+                    const Vector3 b = space.point(mesh.positions[mesh.indices[t * 3 + (at + 1) % 3]]);
+                    const Vector3 e = space.point(mesh.positions[mesh.indices[t * 3 + (at + 2) % 3]]);
+                    const Vector3 wedge = transferWedge(p, b, e);
+                    const Vector3 normal = detail::normalize3(detail::cross3(b - p, e - p));
+                    float best = std::numeric_limits<float>::infinity();
+                    bool found = false;
+                    uint32_t chosen = 0;
+                    for (uint32_t candidate : candidates) {
+                        const uint32_t st = candidate / 3;
+                        if (cosAngle > -1.0f && normal.squaredLength() > 0.0f && faceNormals[st].squaredLength() > 0.0f &&
+                            detail::dot3(normal, faceNormals[st]) < cosAngle)
+                            continue;
+                        const float d = transferTriangleDistance2(wedge, source.positions[source.indices[st * 3]], source.positions[source.indices[st * 3 + 1]],
+                                                                  source.positions[source.indices[st * 3 + 2]]);
+                        if (d < best) {
+                            best = d;
+                            chosen = candidate;
+                            found = true;
+                        }
+                    }
+                    if (found) out.cornerValues[c] = source.cornerValues[chosen];
+                }
+            }
+            out.perCorner = true;
+            out.exactCorners = true;
+            return true;
+        }
 
     }
 
@@ -520,6 +651,20 @@ namespace jasperengine::vertexcolor::bake {
                     std::to_string(source->normals.size()) + " normals";
             return false;
         }
+        const bool sourceCorners = !source->indices.empty() || !source->cornerValues.empty();
+        if (sourceCorners) {
+            if (source->cornerValues.size() != source->indices.size() || source->indices.size() % 3 != 0) {
+                error = "transfer: the source has " + std::to_string(source->indices.size()) + " indices and " +
+                        std::to_string(source->cornerValues.size()) + " corner values";
+                return false;
+            }
+            for (uint32_t index : source->indices) {
+                if (index >= source->positions.size()) {
+                    error = "transfer: the source has an index past its " + std::to_string(source->positions.size()) + " positions";
+                    return false;
+                }
+            }
+        }
         if (!(op.maxDistance >= 0.0f)) {
             error = "transfer: max_distance must be 0 or more";
             return false;
@@ -579,6 +724,9 @@ namespace jasperengine::vertexcolor::bake {
         }
         result.unmatched = unmatched;
         result.meanDistance = matched > 0 ? (float)(distanceSum / (double)matched) : 0.0f;
+        // the corners' filter compares face normals, which every source has
+        const float cornerCos = op.normalAngle < 180.0f ? (float)detail::detCos((double)op.normalAngle * detail::kPi / 180.0) : -1.0f;
+        if (sourceCorners && !transferCorners(mesh, op, options, *source, grid, cornerCos, out, error)) return false;
         bakeProgress(options, 1, 1);
         return true;
     }

@@ -4,6 +4,7 @@
 // docs/specs/V1-vertex-colors.md R8, R9, R92, R131 (AC4, AC13): the .vcolors file
 
 #include "TempDir.h"
+#include "TestPaths.h"
 #include "io/AtomicFile.h"
 #include "texture/TexturePrepare.h"
 #include "vertexcolor/VertexColorFile.h"
@@ -57,6 +58,7 @@ namespace {
             t.corners.push_back(CornerValue{1, Vector4(1.0f, 0.0f, 0.0f, 1.0f)});
             t.corners.push_back(CornerValue{7, Vector4(0.0f, 0.2f, 0.0f, 1.0f)});
         }
+        for (uint32_t c = 0; c < t.fingerprint.indexCount; c++) t.snapshotIndices.push_back((c * 7u) % vertices);
         return t;
     }
 
@@ -97,9 +99,13 @@ namespace {
             if (snapshot) {
                 EXPECT_EQ(x.snapshotPositions, y.snapshotPositions);
                 EXPECT_EQ(x.snapshotNormals, y.snapshotNormals);
+                // the triangles go with the overrides they transfer (R10)
+                if (x.hasOverrides()) EXPECT_EQ(x.snapshotIndices, y.snapshotIndices);
+                else EXPECT_TRUE(y.snapshotIndices.empty());
             } else {
                 EXPECT_TRUE(y.snapshotPositions.empty());
                 EXPECT_TRUE(y.snapshotNormals.empty());
+                EXPECT_TRUE(y.snapshotIndices.empty());
             }
         }
     }
@@ -130,19 +136,56 @@ namespace {
 
 TEST(VertexColorFile, RoundTrip) {
     for (const Format format : {Format::RGBA8, Format::RGBA16F}) {
-        const Data data = sample(format);
+        Data data = sample(format);
+        // a smooth target: its snapshot needs no triangles, the file leaves them out
+        data.targets.push_back(makeTarget(3, 1, -1, 2));
+        ASSERT_FALSE(data.targets.back().hasOverrides());
+        ASSERT_FALSE(data.targets.back().snapshotIndices.empty());
         const std::vector<uint8_t> bytes = encode(data, true);
         Data out;
         std::string error;
         ASSERT_TRUE(decode(bytes.data(), bytes.size(), out, error)) << error;
         expectSame(data, out, true);
+        ASSERT_EQ(out.targets.size(), 3u);
+        EXPECT_FALSE(out.targets[0].snapshotIndices.empty());
     }
+}
+
+// R131: a version 1 file (no snapshot triangles; engine/tests/core/fixtures/vertexcolor/version1.vcolors,
+// written by the version 1 layout) still reads, and is written again as the current version
+TEST(VertexColorFile, ReadsVersion1Files) {
+    Data out;
+    std::string error;
+    ASSERT_TRUE(readFile(std::filesystem::path(test::testPaths().assetDir) / "vertexcolor/version1.vcolors", out, error)) << error;
+    ASSERT_EQ(out.format, Format::RGBA8);
+    ASSERT_EQ(out.targets.size(), 1u);
+    const TargetData& t = out.targets[0];
+    EXPECT_EQ(t.key, (TargetKey{2, 0, -1}));
+    EXPECT_EQ(t.fingerprint.vertexCount, 4u);
+    EXPECT_EQ(t.fingerprint.indexCount, 6u);
+    EXPECT_EQ(t.fingerprint.topologyHash, 0x1122334455667788ull);
+    ASSERT_EQ(t.base.size(), 4u);
+    EXPECT_EQ(t.base[1], Vector4(0.0f, 1.0f, 0.0f, 1.0f));
+    EXPECT_EQ(t.base[3].w, 128.0f / 255.0f);
+    ASSERT_EQ(t.corners.size(), 1u);
+    EXPECT_EQ(t.corners[0].corner, 4u);
+    EXPECT_EQ(t.corners[0].value, Vector4(10.0f / 255.0f, 20.0f / 255.0f, 30.0f / 255.0f, 1.0f));
+    ASSERT_EQ(t.snapshotPositions.size(), 4u);
+    EXPECT_EQ(t.snapshotPositions[2], Vector3(1.0f, 0.0f, 1.0f));
+    EXPECT_EQ(t.snapshotNormals[3], Vector3(0.0f, 1.0f, 0.0f));
+    EXPECT_TRUE(t.snapshotIndices.empty()) << "version 1 kept no triangles: the transfer goes per vertex";
+
+    const std::vector<uint8_t> again = encode(out, true);
+    EXPECT_EQ(again[4], VCOLORS_VERSION);
+    Data reread;
+    ASSERT_TRUE(decode(again.data(), again.size(), reread, error)) << error;
+    expectSame(out, reread, true);
 }
 
 TEST(VertexColorFile, HeaderLayoutIsLittleEndian) {
     const std::vector<uint8_t> bytes = tinyFile();
     ASSERT_GE(bytes.size(), HEADER + 4 + TARGET_FIXED);
-    const uint8_t header[HEADER] = {'J', 'E', 'V', 'C', 1, 0, 0, 0, 0 /* RGBA8 */, 0 /* flags */, 0, 0};
+    const uint8_t header[HEADER] = {'J', 'E', 'V', 'C', 2, 0, 0, 0, 0 /* RGBA8 */, 0 /* flags */, 0, 0};
     EXPECT_EQ(0, std::memcmp(bytes.data(), header, HEADER));
     // target count 1, then the key -1, -1, 0
     const uint8_t start[16] = {1, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0};
@@ -230,11 +273,11 @@ TEST(VertexColorFile, CompressesTheBodyOnlyWhenSmaller) {
 
 TEST(VertexColorFile, RefusesFutureVersion) {
     std::vector<uint8_t> bytes = encode(sample(Format::RGBA8), true);
-    putU32(bytes, 4, 2);
+    putU32(bytes, 4, 3);
     Data out = sample(Format::RGBA16F);
     std::string error;
     EXPECT_FALSE(decode(bytes.data(), bytes.size(), out, error));
-    EXPECT_EQ(error, "made by a newer JasperEngine (version 2); this editor reads up to 1");
+    EXPECT_EQ(error, "made by a newer JasperEngine (version 3); this editor reads up to 2");
     // the caller's data is left alone
     EXPECT_EQ(out.format, Format::RGBA16F);
     EXPECT_EQ(out.targets.size(), 2u);
@@ -247,7 +290,7 @@ TEST(VertexColorFile, RefusesFutureVersion) {
         file.write((const char*)bytes.data(), (std::streamsize)bytes.size());
     }
     EXPECT_FALSE(readFile(path, out, error));
-    EXPECT_NE(error.find("made by a newer JasperEngine (version 2)"), std::string::npos) << error;
+    EXPECT_NE(error.find("made by a newer JasperEngine (version 3)"), std::string::npos) << error;
     std::ifstream in(path, std::ios::binary);
     const std::vector<uint8_t> after((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     EXPECT_EQ(after, bytes);
@@ -320,6 +363,20 @@ TEST(VertexColorFile, RejectsMalformedBytes) {
         std::vector<uint8_t> b = good;
         b[9] = 1;
         cases.push_back({"missing snapshot", b, "no snapshot count"});
+    }
+    {
+        // a snapshot triangle naming a vertex the snapshot does not have
+        Data one;
+        one.targets.push_back(makeTarget(-1, -1, 0, 4));
+        setBodyCompressor(nullptr);
+        std::vector<uint8_t> b = encode(one, true);
+        setBodyCompressor(&testZstd);
+        ASSERT_EQ(b[9], 1) << "uncompressed, with the editor section";
+        std::vector<uint8_t> odd = b;
+        putU32(b, b.size() - 4, 9);
+        cases.push_back({"snapshot index past its vertices", b, "past its 4 vertices"});
+        putU32(odd, odd.size() - 4 * 13, 13);
+        cases.push_back({"snapshot index count not of triangles", odd, "corrupt snapshot index count"});
     }
     {
         Data two;

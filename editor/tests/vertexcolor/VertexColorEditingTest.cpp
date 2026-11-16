@@ -23,10 +23,49 @@ using namespace jasperengine::editor::vertexcolortest;
 
 namespace {
 
-    class VertexColorEditing : public VertexColorSceneTest {};
-
     const Vector4 kRed(1.0f, 0.0f, 0.0f, 1.0f);
     const Vector4 kBlue(0.0f, 0.0f, 1.0f, 1.0f);
+
+    float centroidX(const vc::MeshView& mesh, uint32_t t) {
+        return (mesh.positions[mesh.indices[t * 3]].x + mesh.positions[mesh.indices[t * 3 + 1]].x + mesh.positions[mesh.indices[t * 3 + 2]].x) / 3.0f;
+    }
+
+    class VertexColorEditing : public VertexColorSceneTest {
+    protected:
+        // the faces left of x = 0 set to `value`: a hard edge along x = 0
+        vc::Op leftFaces(Entity entity, const Vector4& value) {
+            const std::shared_ptr<const vc::MeshView> mesh = vce::meshView(project.get(), sceneId, entity, firstKey(entity));
+            vc::Op op;
+            op.type = vc::OpType::Set;
+            op.target.kind = vc::TargetKind::Faces;
+            op.value = value;
+            for (uint32_t t = 0; mesh && t < mesh->triangleCount(); t++) {
+                if (centroidX(*mesh, t) < 0.0f) op.target.ids.push_back(t);
+            }
+            EXPECT_FALSE(op.target.ids.empty());
+            return op;
+        }
+
+        // every corner at a vertex of the 4-segment grid (0.5 apart) is red left of x = 0, blue right
+        void expectSides(Entity entity) {
+            const vc::TargetData* data = vce::targetData(project.get(), sceneId, entity, firstKey(entity));
+            const std::shared_ptr<const vc::MeshView> mesh = vce::meshView(project.get(), sceneId, entity, firstKey(entity));
+            ASSERT_NE(data, nullptr);
+            ASSERT_NE(mesh, nullptr);
+            ASSERT_EQ(data->fingerprint, mesh->fingerprint());
+            uint32_t checked = 0;
+            for (uint32_t c = 0; c < (uint32_t)mesh->indices.size(); c++) {
+                const Vector3& p = mesh->positions[mesh->indices[c]];
+                bool old = true;
+                for (unsigned a = 0; a < 3; a++) old = old && std::fabs(p[a] * 2.0f - std::round(p[a] * 2.0f)) < 1e-4f;
+                if (!old) continue;
+                EXPECT_EQ(data->cornerValue(c, mesh->indices), centroidX(*mesh, c / 3) < 0.0f ? kRed : kBlue) << "corner " << c;
+                checked++;
+            }
+            EXPECT_GT(checked, 0u);
+            EXPECT_TRUE(data->hasOverrides()) << "the vertices on the edge split";
+        }
+    };
 
     std::vector<uint8_t> fileBytes(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
@@ -312,6 +351,45 @@ TEST_F(VertexColorEditing, ChangedMeshIsTransferredAndTheFileWaitsForTheSave) {
     EXPECT_EQ(fileBytes(project->getAssetsPath() / path), saved) << "the old file stays until the save (R10)";
     ASSERT_TRUE(project->saveSceneNow(sceneId));
     EXPECT_NE(fileBytes(project->getAssetsPath() / path), saved);
+}
+
+// R10, R60: the hard edges go with their faces through a reimport. The file keeps the triangles of a
+// target with overrides; each new corner at an old vertex takes the old corner on its side
+TEST_F(VertexColorEditing, ChangedMeshKeepsItsHardEdges) {
+    const Entity grid = addGrid("Floor", 4);
+    ASSERT_TRUE(edit(grid, {fillAll(kBlue), leftFaces(grid, kRed)}).ok);
+    ASSERT_TRUE(vce::targetData(project.get(), sceneId, grid, firstKey(grid))->hasOverrides());
+    // the file as a scene save writes it (the snapshot of the mesh, then the editor section), and the
+    // values as the next open reads them: from that file
+    vc::Data& live = *colorsOf(grid)->loaded;
+    vce::detail::refreshSnapshots(project.get(), sceneId, grid, live);
+    std::string error;
+    ASSERT_TRUE(vc::writeFile(project->getAssetsPath() / colorsOf(grid)->data.path, live, true, error)) << error;
+    vce::detail::resetFiles();
+    colorsOf(grid)->loaded.reset();
+
+    // a reimport: the same surface in 8 segments, every old vertex among the new ones
+    Primitive(scene(), grid).createGrid(2.0f, 2.0f, 8);
+    tickVertexColors(project.get());
+    const std::vector<vce::RemapIssue> issues = vce::remapIssues(project.get(), sceneId);
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_FALSE(issues[0].unmatched);
+    expectSides(grid);
+}
+
+// R60: transfer from another GameObject carries its hard edges too (vce::transferSource)
+TEST_F(VertexColorEditing, TransferFromAnotherObjectKeepsItsHardEdges) {
+    const Entity painted = addGrid("Painted", 4);
+    ASSERT_TRUE(edit(painted, {fillAll(kBlue), leftFaces(painted, kRed)}).ok);
+    const Entity copy = addGrid("Copy", 8);
+    std::string error;
+    vc::Op transfer;
+    transfer.type = vc::OpType::Transfer;
+    transfer.source = vce::transferSource(project.get(), sceneId, painted, &error);
+    ASSERT_NE(transfer.source, nullptr) << error;
+    transfer.maxDistance = 0.01f;
+    ASSERT_TRUE(edit(copy, {transfer}).ok);
+    expectSides(copy);
 }
 
 TEST_F(VertexColorEditing, ElementSelectionChangesAreUndoSteps) {

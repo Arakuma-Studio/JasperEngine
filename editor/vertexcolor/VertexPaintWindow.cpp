@@ -86,29 +86,6 @@ namespace {
     const char* const kFalloffNames[] = {"Smooth", "Linear", "Constant", "Sphere", "Custom"};
     const char* const kChannelLetters[] = {"R", "G", "B", "A"};
 
-    // R60: another entity's colours in world space, per GPU vertex
-    std::shared_ptr<const vc::TransferSource> transferSourceOf(Project* project, uint32_t sceneId, Entity entity) {
-        auto source = std::make_shared<vc::TransferSource>();
-        for (const TargetInfo& info : listTargets(project, sceneId, entity)) {
-            std::shared_ptr<const vc::MeshView> mesh = meshView(project, sceneId, entity, info.key);
-            if (!mesh) continue;
-            const Matrix4 model = targetModel(project, sceneId, entity, info.key);
-            const Matrix4 normalMatrix = model.inverse().transpose();
-            const vc::TargetData data = targetDataOrInitial(project, sceneId, entity, info.key);
-            for (uint32_t v = 0; v < mesh->vertexCount() && v < data.base.size(); v++) {
-                source->positions.push_back(model * mesh->positions[v]);
-                if (v < mesh->normals.size()) {
-                    const Vector3& n = mesh->normals[v];
-                    const Vector4 w = normalMatrix * Vector4(n.x, n.y, n.z, 0.0f);
-                    source->normals.push_back(Vector3(w.x, w.y, w.z).normalized());
-                }
-                source->values.push_back(data.base[v]);
-            }
-        }
-        if (source->normals.size() != source->positions.size()) source->normals.clear();
-        return source->positions.empty() ? nullptr : source;
-    }
-
 }
 
 VertexPaintWindow& VertexPaintWindow::get() {
@@ -267,7 +244,8 @@ bool VertexPaintWindow::dialogOps(Dialog d, std::vector<std::vector<vc::Op>>& pe
                 error = "Choose the GameObject to transfer from.";
                 return false;
             }
-            op.source = transferSourceOf(projectPtr, sceneId, fields.transferSource);
+            // its corners too, so its hard edges carry over (R60)
+            op.source = transferSource(projectPtr, sceneId, fields.transferSource, nullptr);
             if (!op.source) {
                 error = "The source has no paintable mesh loaded.";
                 return false;

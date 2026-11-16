@@ -21,6 +21,7 @@
 
 namespace jasperengine {
     class Scene;
+    struct Material;
 }
 
 namespace jasperengine::vertexcolor {
@@ -34,6 +35,7 @@ namespace jasperengine::vertexcolor {
         uint32_t triangleCount = 0;
         bool hasAssetColors = false;
         std::string material;
+        bool faceCulling = true;        // its submesh culls back faces
     };
 
     // R1: why the entity cannot hold vertex colors ("" when it can): no Model/Mesh, or a mesh another
@@ -47,6 +49,10 @@ namespace jasperengine::vertexcolor {
     // (the same pointer until the mesh reloads); null when not loaded. Uses CPU geometry
     // (ModelCpuData::ensure for models, R83).
     JASPERENGINE_API std::shared_ptr<const MeshView> sceneMeshView(Scene* scene, Entity entity, const TargetKey& key);
+
+    // the material the target draws with (its submesh's), so callers need not include the mesh
+    // component; null when the submesh is gone
+    JASPERENGINE_API const Material* sceneTargetMaterial(Scene* scene, const SceneTarget& target);
 
     // local -> world of the target in its current transform (bind pose geometry, D12)
     JASPERENGINE_API Matrix4 sceneTargetModel(Scene* scene, Entity entity, const TargetKey& key);

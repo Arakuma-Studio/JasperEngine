@@ -114,6 +114,10 @@ namespace jasperengine::vertexcolor {
         std::vector<Vector3> positions;
         std::vector<Vector3> normals;   // may be empty: no normal filter
         std::vector<Vector4> values;
+        // optional: the source's triangles (into positions) and each corner's value, so its hard
+        // edges carry over as corner overrides. Empty: values per vertex only
+        std::vector<uint32_t> indices;
+        std::vector<Vector4> cornerValues;
     };
     enum class Unmatched : uint8_t { Keep, Nearest };
     enum class ClearTo : uint8_t { Initial, Asset, White, Black };

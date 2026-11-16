@@ -60,6 +60,10 @@ namespace jasperengine::editor::vertexcolor {
     const vc::TargetData* targetData(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key);
     // the target's values, or a temporary initialized from its initial value when not painted yet
     vc::TargetData targetDataOrInitial(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key);
+    // R60: the entity's colors as a transfer op's source, world space: every target's values (its
+    // initial value where not painted) and, when one has hard edges, every corner's, so they carry
+    // over. Null (with `error`) when no mesh of it is loaded
+    std::shared_ptr<const vc::TransferSource> transferSource(Project* project, uint32_t sceneId, Entity entity, std::string* error);
     // ApplyOptions with the entity's model, format and initial value filled in
     vc::ApplyOptions applyOptions(Project* project, uint32_t sceneId, Entity entity, const vc::TargetKey& key, bool world);
 
@@ -159,9 +163,11 @@ namespace jasperengine::editor::vertexcolor {
     // the Vertex Paint window sets it to open itself with the Paint tool armed (empty: nothing opens)
     std::function<void(Project* project, uint32_t sceneId, Entity entity)>& paintToolHook();
 
-    // R61
+    // R61: a Model's file written again with the paint (with Merge Static Meshes too), or a plain
+    // mesh's (or an OBJ Model's) geometry written as a new .glb. Replace in Scene swaps the GameObject
+    // to a Model of it and removes the component, one undo step
     struct ExportModelOptions {
-        std::string path;                 // project-relative .glb
+        std::string path;                 // project-relative .glb ("": beside the model, or the .vcolors file)
         bool replaceInScene = false;
         bool splitHardEdges = true;
     };

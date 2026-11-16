@@ -13,7 +13,6 @@
 #include "VertexColorInspector.h"
 
 #include "Project.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "external/IconsFontAwesome6.h"
@@ -294,7 +293,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         std::snprintf(exportPath, sizeof(exportPath), "%s", suggestion.c_str());
         ImGui::OpenPopup("Export as Model##vertexcolors");
     }
-    ImGui::SetItemTooltip("Write a new .glb with these colors as COLOR_0 (shared by every GameObject that uses it)");
+    ImGui::SetItemTooltip("Write a new .glb with these colors as COLOR_0 (a Mesh's geometry, or the Model's file; empty Path: beside it)");
     ImGui::SameLine();
     static char bakePath[512] = "";
     static int bakeTarget = 0;
@@ -316,7 +315,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         ImGui::Checkbox("Split Hard Edges", &exportSplit);
         ImGui::SetItemTooltip("Faces with their own colors get their own vertices in the file");
         ImGui::Checkbox("Replace in Scene", &exportReplace);
-        ImGui::SetItemTooltip("The Model uses the new file and loses this component, in one undo step");
+        ImGui::SetItemTooltip("The GameObject draws the new file as its Model (a Mesh becomes a Model) and loses this component, in one undo step");
         if (ImGui::Button("Export")) {
             ExportModelOptions options;
             options.path = exportPath;

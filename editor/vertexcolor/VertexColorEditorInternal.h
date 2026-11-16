@@ -65,7 +65,10 @@ namespace jasperengine::editor::vertexcolor::detail {
     std::string newFilePath(Project& project, const SceneProject& sceneProject, const std::string& entityName);
     // Blocks until every queued write was tried; false when one failed (kept for the next flush)
     bool flushWrites();
-    // R9: the editor-only positions and normals of each target that matches its mesh, from the mesh
+    // R9, R10: the editor-only positions, normals and triangles of the target from its mesh (nothing
+    // when the target does not match it: a stale one keeps the mesh it was painted on)
+    void fillSnapshot(vc::TargetData& target, const vc::MeshView& mesh);
+    // fillSnapshot of each target of the file from the entity's meshes
     void refreshSnapshots(Project* project, uint32_t sceneId, Entity entity, vc::Data& data);
     // A project closing (and tests): the table, the remap checks and issues, the element selections
     // forget everything
