@@ -149,6 +149,9 @@ namespace jasperengine::editor::vertexcolor {
     // R132: a private copy of a shared file
     bool makeUnique(Project* project, uint32_t sceneId, Entity entity, std::string* error);
     int fileUserCount(Project* project, const std::string& assetPath);
+    // R100: what the Inspector's Paint (and Paint Vertex Colors) calls once the component is there:
+    // the Vertex Paint window sets it to open itself with the Paint tool armed (empty: nothing opens)
+    std::function<void(Project* project, uint32_t sceneId, Entity entity)>& paintToolHook();
 
     // R61
     struct ExportModelOptions {
