@@ -110,6 +110,7 @@ namespace jasperengine::editor::mcp {
     void registerProfilerTools(McpRegistry& registry);
     // S54: capture_model_lods (group meshes, shared with S53's model import tools)
     void registerMeshLodTools(McpRegistry& registry);
+    void registerMeshColorTools(McpRegistry& registry);   // V1 (vertex colors)
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
