@@ -735,10 +735,14 @@ TEST_F(RenderRendererGpu, ImageDecodeIsAsync){
     EXPECT_EQ(test.renderer.getStats().imagesPending, 0u);
     std::printf("[bench] ImageDecodeIsAsync: idle frame %.2f ms, first frame %.2f ms (+%.2f), upload frame %.2f ms, visible after %d frames, %.1f ms\n",
                 idleMs, firstMs, firstMs - idleMs, uploadMs, frames, visibleMs);
-    // R42 on a quiet machine (JASPER_HTMLUI_PERF_SLACK set): <= 3 ms added, the upload frame <= 4 ms, visible within 0.5 s
+    // R42 on a quiet machine (JASPER_HTMLUI_PERF_SLACK set): <= 3 ms added, the upload frame <= 4 ms, visible within 0.5 s.
+    // The upload frame's bound holds on a hardware device only: on the reference renderer (llvmpipe)
+    // drawing is the main thread's own CPU work, and the frame that first draws the texture took
+    // 80-300 ms in a fresh process (5 ms on a repeat) while the image cache's upload took 5 ms of it
     if (const double slack = compat::benchmarkPerfSlack(); slack > 0.0){
         EXPECT_LE(firstMs - idleMs, 3.0 * slack);
-        EXPECT_LE(uploadMs, 4.0 * slack);
+        if (!GpuEnvironment::isReferenceRenderer())
+            EXPECT_LE(uploadMs, 4.0 * slack);
         EXPECT_LE(visibleMs, 500.0 * slack);
     }
     test.context->UnloadDocument(document);

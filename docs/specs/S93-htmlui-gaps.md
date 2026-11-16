@@ -1029,6 +1029,14 @@ Recorded by the packages and the integration. The code is what is true now.
   renderer do not reach. It failed whenever the particle shader was already compiled (later in a batch, or a
   repeat).
 
+**Re-merge with main (CI, PR #4)**
+- `project.yaml` omits `htmlUiImageCacheMiB` at its default (-1): it was always written, so an older project
+  re-saved with a new line.
+- R42's upload-frame bound (<= 4 ms) holds on hardware devices only. On the reference renderer (llvmpipe),
+  drawing is the main thread's own CPU work. The frame that first draws a 2048x2048 texture took 80-300 ms in
+  a fresh process (5 ms on a repeat), while the image cache's upload took 5 ms of it. The added first-frame
+  time and the visibility bound still hold there.
+
 **Merge order (coordinator)**
 - S92 rewrites the layer composite that `mix-blend-mode` uses. Merge S92 first, then merge main into S93
   again: region layers must blend too (S92's result cache already keys by blend mode).
