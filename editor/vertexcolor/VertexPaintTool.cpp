@@ -7,9 +7,8 @@
 #include "Scene.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
-#include "component/MeshComponent.h"
 #include "picking/MeshRaycast.h"
-#include "picking/PickGeometry.h"
+#include "vertexcolor/VertexPaintImages.h"
 #include "render/SceneRender.h"
 #include "subsystem/VertexColorScene.h"
 
@@ -28,26 +27,6 @@ namespace {
         MeshRaycastOptions options;
         options.kinds = MeshRaycast::MESH | MeshRaycast::INSTANCE | MeshRaycast::TERRAIN;
         return options;
-    }
-
-    // where the picking BVH numbers a submesh's triangles: PickGeometry::submeshFirstTriangle's rule
-    // (a source without float positions counts none, a strip its n - 2), without gathering a copy
-    bool pickTriangles(Scene* scene, Entity meshEntity, uint32_t submesh, uint32_t& first, uint32_t& count) {
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-        if (!mesh) return false;
-        PickGeometryLayout layout;
-        picking::resolveSources(*mesh, layout);
-        if (submesh >= layout.submeshes.size()) return false;
-        first = 0;
-        for (uint32_t i = 0; i < submesh; i++) {
-            const PickSubmeshSource& source = layout.submeshes[i];
-            if (source.valid) first += picking::primitiveTriangles(source.primitive, source.drawCount);
-        }
-        const PickSubmeshSource& own = layout.submeshes[submesh];
-        // the op engine's views are triangle lists: a strip's numbers are not theirs
-        if (!own.valid || own.primitive != PrimitiveType::TRIANGLES) return false;
-        count = picking::primitiveTriangles(own.primitive, own.drawCount);
-        return true;
     }
 
     // the largest axis scale of a matrix: a world radius in the target's local units
@@ -253,7 +232,7 @@ TargetHit VertexPaintTools::hitTargets(uint32_t sceneId, const Ray& ray) const {
             if (!picked.hit || picked.submesh != target.submesh) break;
             // the BVH numbers triangles across the mesh's submeshes, by its own count of each
             uint32_t first = 0, count = 0;
-            if (!pickTriangles(s, target.meshEntity, target.submesh, first, count) || count != mesh->triangleCount()) break;
+            if (!pickTriangleRange(s, target.meshEntity, target.submesh, first, count) || count != mesh->triangleCount()) break;
             if (picked.triangle < first || picked.triangle - first >= count) break;
             hit.hit = true;
             hit.triangle = picked.triangle - first;

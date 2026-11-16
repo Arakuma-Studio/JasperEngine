@@ -18,7 +18,6 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
-#include "component/MeshComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "scenetool/SceneTool.h"
 #include "shortcuts/ShortcutTestSupport.h"

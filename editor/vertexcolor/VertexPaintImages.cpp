@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "picking/PickGeometry.h"
 #include "subsystem/VertexColorScene.h"
 #include "texture/TextureData.h"
 #include "util/FileUtils.h"
@@ -132,4 +133,22 @@ std::shared_ptr<const vc::Image> editor::vertexcolor::materialImage(Project* pro
     }
     if (error) *error = "The target's material is not loaded.";
     return nullptr;
+}
+
+bool editor::vertexcolor::pickTriangleRange(Scene* scene, Entity meshEntity, uint32_t submesh, uint32_t& first, uint32_t& count) {
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
+    if (!mesh) return false;
+    PickGeometryLayout layout;
+    picking::resolveSources(*mesh, layout);
+    if (submesh >= layout.submeshes.size()) return false;
+    first = 0;
+    for (uint32_t i = 0; i < submesh; i++) {
+        const PickSubmeshSource& source = layout.submeshes[i];
+        if (source.valid) first += picking::primitiveTriangles(source.primitive, source.drawCount);
+    }
+    const PickSubmeshSource& own = layout.submeshes[submesh];
+    // the op engine's views are triangle lists: a strip's numbers are not theirs
+    if (!own.valid || own.primitive != PrimitiveType::TRIANGLES) return false;
+    count = picking::primitiveTriangles(own.primitive, own.drawCount);
+    return true;
 }
