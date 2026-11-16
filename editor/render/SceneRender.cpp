@@ -213,6 +213,7 @@ editor::SceneRender::~SceneRender(){
     }
     VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
+    delete sceneToolLines;
     delete physicsLines;
     delete camera;
 }
@@ -1370,6 +1371,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         // T1 R55: each frame, so the decal fades once the pointer rests and hides while the camera moves
         updateTerrainBrushCursor();
     }
+    updateSceneToolDecal();
 
     syncObject2DGizmoMode();
 
@@ -3021,6 +3023,29 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     }
 
     terrainBrushLines->setVisible(true);
+}
+
+void editor::SceneRender::updateSceneToolDecal(){
+    const SceneTool* tool = SceneTools::activeFor(scene);
+    const SceneToolDecal* decal = tool ? tool->decal() : nullptr;
+    if (!decal || decal->points.size() < 2){
+        if (sceneToolLines) sceneToolLines->setVisible(false);
+        return;
+    }
+    if (!sceneToolLines){
+        sceneToolLines = overlay(new LineRenderer(scene));
+        sceneToolLines->setMaxLines(4096);
+        sceneToolLinesRevision = 0;
+    }
+    if (decal->revision != sceneToolLinesRevision){
+        sceneToolLines->clearLines();
+        for (size_t i = 0; i + 1 < decal->points.size(); i += 2){
+            const Vector4 color = i / 2 < decal->colors.size() ? decal->colors[i / 2] : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+            sceneToolLines->addLine(decal->points[i], decal->points[i + 1], color);
+        }
+        sceneToolLinesRevision = decal->revision;
+    }
+    sceneToolLines->setVisible(true);
 }
 
 bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){

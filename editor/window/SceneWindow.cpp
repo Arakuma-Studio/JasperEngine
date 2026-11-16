@@ -96,6 +96,16 @@ static editor::VoxelAltGesture& terrainAltGesture(){
     return gesture;
 }
 
+// the active Scene-view tool's Alt+click (T1 DC12, V1 R104), and the Ctrl/Shift+right drag it took
+static editor::VoxelAltGesture& sceneToolAltGesture(){
+    static editor::VoxelAltGesture gesture;
+    return gesture;
+}
+static bool& sceneToolRightDrag(){
+    static bool dragging = false;
+    return dragging;
+}
+
 namespace {
 
     // A selected Camera Follow's Bounds (a box) and, on an orthographic or UI camera, its Dead Zone
@@ -1388,6 +1398,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         event.ctrl = io.KeyCtrl || io.KeySuper;
         event.alt = altHeld;
         event.button = button;
+        event.pressure = Backend::penPressure();
+        event.wheel = io.MouseWheel;
         return event;
     };
     // a captured stroke follows the pointer past the view's edges; its release comes below
@@ -2114,7 +2126,44 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         terrainAlt.cancel();
     }
 
-    if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+    // the active tool's Alt+click: a release before the drag threshold is the tool's (a pick), past it
+    // the orbit below. Its Ctrl/Shift+right drag (brush size, strength, hardness) is not a look.
+    VoxelAltGesture& toolAlt = sceneToolAltGesture();
+    if (sceneTool) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            toolAlt.press(mousePos.x, mousePos.y);
+        }
+        toolAlt.move(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (toolAlt.isActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && toolAlt.release()) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            sceneTool->altClick(sceneToolEvent(pickX, pickY, 0));
+        }
+        bool& toolRight = sceneToolRightDrag();
+        if (isMouseInWindow && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && (io.KeyCtrl || io.KeySuper || io.KeyShift)) {
+            float rx = mousePos.x - windowPos.x;
+            float ry = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, rx, ry);
+            toolRight = sceneTool->rightDrag(sceneToolEvent(rx, ry, 1), 0.0f, 0.0f);
+        }
+        if (toolRight) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+                float rx = mousePos.x - windowPos.x;
+                float ry = mousePos.y - windowPos.y;
+                toEngineCanvas(sceneId, rx, ry);
+                if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) sceneTool->rightDrag(sceneToolEvent(rx, ry, 1), mouseDelta.x, mouseDelta.y);
+            } else {
+                toolRight = false;
+            }
+        }
+    } else {
+        if (toolAlt.isActive()) toolAlt.cancel();
+        sceneToolRightDrag() = false;
+    }
+    const bool toolRightDrag = sceneTool && sceneToolRightDrag();
+
+    if (isMouseInWindow && ((ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !toolRightDrag)) ||
             (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse && !terrainAltPaints))) {
         draggingMouse[sceneId] = true;
 
@@ -2284,7 +2333,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         // Alt+LMB orbit
         if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding() &&
-                !(terrainAlt.isActive() && !terrainAlt.isOrbit())) {
+                !(terrainAlt.isActive() && !terrainAlt.isOrbit()) && !(toolAlt.isActive() && !toolAlt.isOrbit())) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -3792,7 +3841,7 @@ void editor::SceneWindow::drawSceneToolBadge(SceneProject& sceneProject) {
         SceneTools::deactivate(sceneProject.id);
         sceneProject.needUpdateRender = true;
     }
-    ImGui::SetItemTooltip("Exit tile painting");
+    ImGui::SetItemTooltip("%s", tool->exitTooltip());
 }
 
 void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){

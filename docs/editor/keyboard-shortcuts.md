@@ -227,6 +227,39 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Overlay Off | 0 | Terrain Brush |
 | Put the Brush Down | Escape | Terrain Brush |
 
+## Vertex Paint
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Select Tool | Q | Vertex Paint |
+| Paint Tool | B | Vertex Paint |
+| Smooth Tool | S | Vertex Paint |
+| Fill Tool | G | Vertex Paint |
+| Gradient Tool | D | Vertex Paint |
+| Pick Tool | I | Vertex Paint |
+| Toggle Channel R | 1 | Vertex Paint |
+| Toggle Channel G | 2 | Vertex Paint |
+| Toggle Channel B | 3 | Vertex Paint |
+| Toggle Channel A | 4 | Vertex Paint |
+| Swap Primary and Secondary | X | Vertex Paint |
+| Vertex Selection Mode | F1 | Vertex Paint |
+| Face Selection Mode | F2 | Vertex Paint |
+| Corner Selection Mode | F3 | Vertex Paint |
+| Apply Color to Selection | Enter / NumpadEnter | Vertex Paint |
+| Select All Elements | Ctrl+A | Vertex Paint |
+| Select No Elements | Alt+A | Vertex Paint |
+| Invert Element Selection | Ctrl+I | Vertex Paint |
+| Grow Element Selection | Ctrl+= / Ctrl+NumpadAdd | Vertex Paint |
+| Shrink Element Selection | Ctrl+- / Ctrl+NumpadSubtract | Vertex Paint |
+| Select Linked | L | Vertex Paint |
+| View RGB | V | Vertex Paint |
+| Cycle View Channel | Shift+V | Vertex Paint |
+| X-Ray | Alt+Z | Vertex Paint |
+| Pick Color | Alt+Left Click | Vertex Paint |
+| Brush Size and Strength | Ctrl+Right Drag | Vertex Paint |
+| Brush Hardness and Stencil Rotation | Shift+Right Drag | Vertex Paint |
+| Cancel Stroke / Exit | Escape | Vertex Paint |
+
 ## Animation
 
 | Command | Shortcut | Context |
