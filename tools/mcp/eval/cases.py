@@ -64,6 +64,46 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
+# edit_mesh_colors and sample_mesh_colors, in their real shapes (V1 R120, R121)
+ROCK = {"id": 50, "name": "Rock", "path": "Rock"}
+ROCK_TARGET = {"index": 0, "name": "Rock (node 0, primitive 0)", "node": 0, "primitive": 0}
+ROCK_COLORS = [dict(ROCK_TARGET, mesh=51, mesh_submesh=0, vertex_count=2400, has_vertex_colors=False, painted=False)]
+MESH_COLORS_NEXT = ("Check the values with sample_mesh_colors {entity: 50, query: \"stats\"}, then look with set_scene_camera "
+                    "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material "
+                    "does not use. Stronger or weaker: one call with another strength, not the same op again.")
+
+
+def mesh_colors_edit(vertices=640, corners=0, next_text=MESH_COLORS_NEXT, created=False):
+    """edit_mesh_colors' structuredContent for one target (V1 R120)"""
+    stats = {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.42, 0.5, 0.31, 1], "max": [1, 1, 1, 1]}
+    out = {"entity": ROCK, "dry_run": False, "created": {"component": created, "file": created},
+           "targets": [{"target": ROCK_TARGET, "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+                        "split_vertices": corners, "ops": [{"changed_vertices": vertices, "changed_corners": corners, "split_added": corners,
+                                                            "filtered_out": 0, "in_target": vertices}],
+                        "stats": {"before": stats, "after": stats}}],
+           "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+           "warnings": [{"code": "created", "message": "Added the Vertex Colors component and its .vcolors file (in the same undo step)."}] if created else [],
+           "undo_name": "Edit Vertex Colors (Rock)"}
+    if next_text:
+        out["next"] = next_text
+    return ok(f"\"Rock\": {vertices} vertices and {corners} corners changed in 1 target(s) (one undo step).", out)
+
+
+ROCK_MOCKS = [
+    {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nRock [50] model transform", {"entities": [{"id": 50, "path": "Rock"}]})},
+    {"tool": "get_entity", "result": ok("Rock [50] components: transform model", dict(ROCK, components={"transform": {}, "model": {}},
+                                                                                     vertex_colors=ROCK_COLORS))},
+    {"tool": "get_model_info", "result": ok("Model \"Rock\": 1 mesh(es), 0 bone(s), 0 animation(s).",
+                                            {"model": ROCK, "file": "models/rock.glb", "meshes": [{"id": 51, "name": "Rock", "node": 0, "submeshes": 1}],
+                                             "vertex_colors": ROCK_COLORS})},
+    {"tool": "sample_mesh_colors", "result": ok("\"Rock\": stats of 1 target(s).", {"entity": ROCK, "query": "stats", "targets": [
+        {"target": ROCK_TARGET, "painted": True, "stats": {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.5, 0.5, 0.5, 1], "max": [1, 1, 1, 1]}}]})},
+    {"tool": "frame_entity", "result": ok("Framed \"Rock\" in the Scene view.", {"entity": ROCK})},
+    {"tool": "set_scene_camera", "result": ok("Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "vertex_color"}})},
+    {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+]
+
+
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
                  "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
 
@@ -5240,6 +5280,108 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 12,
+    },
+    # -- V1 R126, AC12: vertex colors (meshes group). Each fails on the text without the guide section or result. --
+    {
+        "id": "vc_find_tools",
+        "kind": "guard",
+        "what_happened": "Vertex painting is meshes-group work, listed only once the group is enabled: the agent must find it "
+                         "rather than tint the material or make a texture.",
+        "text_at_issue": "tool_groups' meshes description ('vertex colors: paint, sample, bake')",
+        "source": "docs/specs/V1-vertex-colors.md R120, R126",
+        "prompt": "Use vertex colors to make the top of the Rock moss green. Don't touch its material or textures.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(created=True)}],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["meshes"]}}, "edit_mesh_colors"],
+                   "must_not_call": ["update_material", "set_material", "create_material"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_selection_fill_not_stroke",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked to color the faces the user selected, an agent swept brush strokes over where it guessed they "
+                         "were; the editor's element selection is an op target, filled exactly.",
+        "text_at_issue": "edit_mesh_colors ops' items '{op, target: {kind: ... selection ...}'; jasper://docs/meshes 'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R23, R50, R126",
+        "prompt": "I've selected some faces of the Rock in the Vertex Paint window. Make exactly those selected faces dark red (#8B0000).",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=36)}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(set|fill)$", "target": {"kind": "selection"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "stroke"}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_check_in_vertex_color_view",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "After painting a roughness mask, an agent checked a shaded screenshot, where a mask shows only as a faint "
+                         "shine; the Vertex Color draw mode shows the stored values.",
+        "text_at_issue": "edit_mesh_colors result next ('... set_scene_camera {display: {draw_mode: \"vertex_color\"}} ...'); "
+                         "jasper://docs/meshes 'The loop'",
+        "source": "docs/specs/V1-vertex-colors.md R123, R126",
+        "prompt": "The Rock's material reads the red vertex color channel as a wetness (roughness) mask. Paint the bottom half "
+                  "of the Rock wet (red channel 1) and the top dry (0), then check visually that the mask is right.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=1200)}],
+        "checks": {"calls": ["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"],
+                   "order": [["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                             [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_hard_edges_need_faces",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked for flat-colored faces with crisp borders, an agent set the faces' vertices, which blends each color "
+                         "into the neighbouring faces; a faces target writes the face's corners (hard edges).",
+        "text_at_issue": "edit_mesh_colors description ('faces/corners (element: face) make hard edges'); jasper://docs/meshes "
+                         "'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R3, R24, R126",
+        "prompt": "On the low-poly Rock, make triangles 0 to 5 solid #FF00FF with crisp, hard borders: no blending into the "
+                  "faces around them.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=18)}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "faces"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "vertices"}}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_more_is_strength_not_repeat",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Told the moss it had painted was too faint, an agent sent the same stroke three more times; one call with a "
+                         "higher strength (or blend add) gives a predictable result.",
+        "text_at_issue": "edit_mesh_colors description ('for more, one call with a higher strength, never the op repeated'), result "
+                         "next; jasper://docs/meshes 'Ops'",
+        "source": "docs/specs/V1-vertex-colors.md R21, R31, R126",
+        "history": [
+            {"user": "Paint some light moss on the top of the Rock with a brush stroke."},
+            {"assistant": "Painting a stroke.", "calls": [{"tool": "edit_mesh_colors", "args": {"entity": 50, "ops": [
+                {"op": "stroke", "points": [[-0.5, 1.0, 0.0], [0.5, 1.0, 0.0]], "radius": 0.4, "value": "#5A7A2A", "strength": 0.3}]},
+                "result": "\"Rock\": 220 vertices and 0 corners changed in 1 target(s) (one undo step)."}]},
+            {"assistant": "Painted a light moss stroke over the top of the Rock (strength 0.3)."},
+        ],
+        "prompt": "The moss is far too faint. Make it much stronger along that same stroke.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=220)}],
+        "checks": {"calls": ["edit_mesh_colors"], "max_calls": {"edit_mesh_colors": 2},
+                   "any_of": [{"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"strength": "re:^(0\\.[6-9]\\d*|1(\\.0+)?)$"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"blend": "add"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(stroke|fill)$", "buildup": True}]}}]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_view_asset_colors",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked which parts of a model's own vertex colors are dark, agents swapped materials to an unlit one to "
+                         "see them, or guessed from a shaded screenshot; the Scene view's Vertex Color Draw Mode draws them, "
+                         "editor only.",
+        "text_at_issue": "jasper://docs/meshes ('draw_mode: \"vertex_color\" draws each mesh's raw vertex colours unlit'); "
+                         "set_scene_camera's draw_mode error",
+        "source": "docs/specs/V1-vertex-colors.md R123",
+        "prompt": "models/rock.glb came with baked vertex colors. In the Scene view, show me those colors on the Rock without "
+                  "lighting, and tell me which side is darkest. Don't change the Rock or its material.",
+        "mocks": ROCK_MOCKS,
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                   "must_not_call": ["set_properties", "update_material", "set_material", "create_material", "edit_mesh_colors"]},
         "max_turns": 12,
     },
 ]
