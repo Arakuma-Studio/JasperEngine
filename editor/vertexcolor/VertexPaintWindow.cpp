@@ -409,9 +409,10 @@ void VertexPaintWindow::bindCommands(CommandCatalog& catalog) {
     };
     auto armed = []() { return VertexPaintTools::get().isArmed(); };
     auto scene = []() { return VertexPaintTools::get().armedScene(); };
+    // a tool's command arms it (the Search palette, run_command); its key only works once one is armed (the context)
     for (int i = 0; i < PAINT_TOOL_COUNT; i++) {
         const PaintTool tool = (PaintTool)i;
-        bind(paintToolCommand(tool), [tool]() { VertexPaintTools::get().arm(tool); }, armed);
+        bind(paintToolCommand(tool), [tool]() { VertexPaintTools::get().arm(tool); }, nullptr);
     }
     for (int c = 0; c < 4; c++) {
         static const char* const ids[] = {"vertexPaint.channelR", "vertexPaint.channelG", "vertexPaint.channelB", "vertexPaint.channelA"};
