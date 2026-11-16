@@ -679,7 +679,7 @@ void startEditJob(const CallPtr& call, const ColorCall& c, vce::EditRequest requ
     }
     pending->job = call->ctx().jobs().create("edit_mesh_colors", undoName);
     pending->job->setProgress(-1.0, "editing vertex colors");
-    pending->job->setCancelHandler([pending]() { pending->cancel->store(true); });
+    pending->job->setCancelHandler([cancel = pending->cancel]() { cancel->store(true); });
     if (pending->early) {
         const vce::EditResult early = *pending->early;
         pending->early.reset();
@@ -1098,11 +1098,10 @@ void registerMeshColorTools(McpRegistry& registry) {
         tool.attributesUndo = true;
         tool.allowedWhilePlaying = false;
         tool.description =
-            "Paint a Model's or Mesh's vertex colors with ops, all-or-nothing, one undo step a call; adds the Vertex Colors "
-            "component. Vertex targets blend; faces/corners (element: face) make hard edges. strength 0-1 is how far values move: "
-            "for more, one call with a higher strength, never the op repeated. dry_run changes nothing. Read with "
-            "sample_mesh_colors. Ops: jasper://docs/meshes.";
-        Json op = anyObject("{op, target: {kind: all|vertices|faces|corners|selection|sphere|box|capsule|color, ...}, value, strength, ...}");
+            "Paint a Model's or Mesh's vertex colors with ops: all-or-nothing, one undo step a call; adds the Vertex Colors "
+            "component. Vertex targets blend; faces/corners (or element: face) give hard edges. For more, one call with a higher "
+            "strength, never the op repeated. dry_run changes nothing. sample_mesh_colors reads. Ops: jasper://docs/meshes.";
+        Json op = anyObject("{op, target: {kind: all|vertices|faces|corners|selection|sphere|box|capsule|color}, value, strength...}");
         op["properties"] = Json{{"op", stringEnum("", {"set", "fill", "stroke", "gradient", "smooth", "sharpen", "noise", "adjust", "channel",
                                                         "replace_color", "from_texture", "bake_ao", "bake_thickness", "bake_curvature",
                                                         "by_direction", "transfer", "clear"})}};
@@ -1110,12 +1109,12 @@ void registerMeshColorTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"targets", array(target, "Default: all.")},
+            {"targets", array(target, "")},
             {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", op}}},
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
             {"dry_run", withDefault(boolean(""), false)},
             {"hash", withDefault(boolean(""), false)},
-            {"wait", withDefault(boolean("Bakes and large edits run as a job: false returns its job_id."), true)},
+            {"wait", withDefault(boolean("Large work runs as a job: false returns its job_id."), true)},
             {"timeout_seconds", withDefault(number("", 0, 3600), 120)}
         }, {"entity", "ops"});
         tool.handler = mesh_color_tools::editMeshColorsTool;

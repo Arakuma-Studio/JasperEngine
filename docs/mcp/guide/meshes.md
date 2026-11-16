@@ -166,7 +166,7 @@ and `stale` (the model changed since: check with `sample_mesh_colors`, repaint).
 - **An op's `target`** says which elements change: `{kind: "all"}`, `{kind: "vertices"|"faces"|"corners", ids}`
   (ids from `sample_mesh_colors {query: "elements"}`), `{kind: "selection"}` (the editor's element
   selection, also what `select: true` set), shapes `sphere {center, radius}`, `box {center,
-  half_extents, rotation}`, `capsule {from, to, radius}`, and `color {value, tolerance}`.
+  half_extents, rotation}` (Euler degrees), `capsule {from, to, radius}`, and `color {value, tolerance}`.
 - **Vertex** elements are shared by every face around them: the color blends across faces (smooth).
   UV and normal seams do not split them.
 - **Faces and corners** are written per face: **hard color edges**. For flat-colored faces (low-poly,
@@ -178,9 +178,10 @@ and `stale` (the model changed since: check with `sample_mesh_colors`, repaint).
 
 ### Ops
 
-Every op takes `target` (default all), `filter`, `channels` (a subset of `"rgba"`; default `rgb`
-for a 3-value color, `rgba` for 4) and, but `set`, `channel` and `clear`, `blend` (`replace`,
-`add`, `subtract`, `multiply`, `screen`, `overlay`, `min`, `max`, `lerp`) and `strength` 0..1.
+Every op takes `target` (default all), `filter` and `channels` (a subset of `"rgba"`; default `rgb`
+for a 3-value color, `rgba` for 4); every op but `set` takes `strength` 0..1, and every op but
+`set`, `channel` and `clear` takes `blend` (`replace`, `add`, `subtract`, `multiply`, `screen`,
+`overlay`, `min`, `max`, `lerp`).
 
 | op | Fields |
 |---|---|

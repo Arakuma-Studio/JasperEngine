@@ -5333,7 +5333,7 @@ CASES = [
         "groups_enabled": ["meshes"],
         "what_happened": "Asked for flat-colored faces with crisp borders, an agent set the faces' vertices, which blends each color "
                          "into the neighbouring faces; a faces target writes the face's corners (hard edges).",
-        "text_at_issue": "edit_mesh_colors description ('faces/corners (element: face) make hard edges'); jasper://docs/meshes "
+        "text_at_issue": "edit_mesh_colors description ('faces/corners (or element: face) give hard edges'); jasper://docs/meshes "
                          "'Targets and elements'",
         "source": "docs/specs/V1-vertex-colors.md R3, R24, R126",
         "prompt": "On the low-poly Rock, make triangles 0 to 5 solid #FF00FF with crisp, hard borders: no blending into the "
