@@ -116,6 +116,17 @@ VertexPaintWindow& VertexPaintWindow::get() {
     return window;
 }
 
+void VertexPaintWindow::installPaintToolHook() {
+    paintToolHook() = [](Project* project, uint32_t sceneId, Entity entity) {
+        if (!project) return;
+        project->replaceSelectedEntities(sceneId, {entity});
+        VertexPaintWindow& window = VertexPaintWindow::get();
+        window.setProject(project);
+        window.setOpen(true);
+        VertexPaintTools::get().armIn(sceneId, PaintTool::Paint);
+    };
+}
+
 void VertexPaintWindow::setProject(Project* project) {
     if (projectPtr == project) return;
     cancelJob();
