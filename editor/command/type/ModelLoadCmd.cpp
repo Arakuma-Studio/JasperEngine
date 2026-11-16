@@ -3,6 +3,7 @@
 
 #include "ModelLoadCmd.h"
 #include "component/BoneComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
@@ -30,6 +31,10 @@
 
 using namespace jasperengine;
 namespace fs = std::filesystem;
+
+struct editor::ModelLoadCmd::SavedSubmeshes {
+    MeshSystem::SubmeshOverrides overrides;
+};
 
 editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath){
     this->project = project;
@@ -531,7 +536,7 @@ void editor::ModelLoadCmd::finalizeLoad(){
     }
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.
-    scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
+    if (savedSubmeshOverrides) scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides->overrides, entity, newModel);
 
     sceneProject->isModified = true;
 
@@ -712,7 +717,8 @@ bool editor::ModelLoadCmd::execute(){
     // the submesh edits, taken now because the meshes holding them are deleted below. A reuse keeps
     // those meshes, so the loader restores them and these ordinals would be the pre-remap ones.
     if (sameModelFile && !reuseHierarchy) {
-        savedSubmeshOverrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
+        savedSubmeshOverrides = std::make_unique<SavedSubmeshes>();
+        savedSubmeshOverrides->overrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
     } else if (!sameModelFile) {
         for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
             mesh.submeshes[i].overrideFields = 0;

@@ -13,14 +13,20 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
-#include "subsystem/MeshSystem.h"
-#include "component/MeshComponent.h"
+#include "asset/AssetRef.h"
+#include "render/Render.h"
+#include "shader/ShaderUniforms.h"
 #include "yaml-cpp/yaml.h"
 
 #include <atomic>
 #include <map>
 #include <memory>
 #include <utility>
+
+namespace jasperengine{
+    struct ModelComponent;
+    enum class LodFadeMode;
+}
 
 namespace jasperengine::editor{
 
@@ -103,7 +109,10 @@ namespace jasperengine::editor{
 
         // The generated mesh entities are destroyed before the load, so their submesh edits are
         // taken aside here. Empty when the asset itself changed.
-        MeshSystem::SubmeshOverrides savedSubmeshOverrides;
+        // (MeshSystem::SubmeshOverrides, out of line: the header stays off the mesh component, whose
+        // edits would rebuild every includer, tools/check_fanout.py)
+        struct SavedSubmeshes;
+        std::unique_ptr<SavedSubmeshes> savedSubmeshOverrides;
         // The blend shape weights of the mesh parts by glTF node, carried across a layout switch
         // (R3): its rebuild makes new mesh entities (a legacy model entity's own mesh moves to its
         // node's entity). Taken on the first run, put back after every load of it.

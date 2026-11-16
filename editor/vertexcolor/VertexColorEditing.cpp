@@ -16,7 +16,6 @@
 #include "command/CommandNames.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/PropertyCmd.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "jobs/JobSystem.h"
@@ -344,9 +343,9 @@ int vcd::vertexBlendLayers(Scene* scene, Entity entity) {
     if (!scene) return 0;
     int layers = 0;
     for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
-        if (!mesh || target.submesh >= mesh->numSubmeshes) continue;
-        const Material& material = mesh->submeshes[target.submesh].material;
+        const Material* found = vc::sceneTargetMaterial(scene, target);
+        if (!found) continue;
+        const Material& material = *found;
         if (material.shader.path != "library:vertex_blend") continue;
         const std::vector<std::string>& features = material.shaderFeatures;
         auto has = [&](const char* define) { return std::find(features.begin(), features.end(), define) != features.end(); };

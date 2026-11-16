@@ -13,7 +13,6 @@
 #include "VertexColorInspector.h"
 
 #include "Project.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "external/IconsFontAwesome6.h"

@@ -15,11 +15,11 @@
 #include "command/CommandHistory.h"
 #include "command/type/PropertyCmd.h"
 #include "component/LatticeModifierComponent.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VertexColorsComponent.h"
 #include "subsystem/VertexColorScene.h"
+#include "texture/Material.h"
 #include "texture/MaterialPbr.h"
 
 #include <algorithm>
@@ -134,11 +134,11 @@ namespace {
         if (!scene) return out;
         std::set<std::string> seen;
         for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
-            const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
-            if (!mesh || target.submesh >= mesh->numSubmeshes) continue;
+            const Material* material = vc::sceneTargetMaterial(scene, target);
+            if (!material) continue;
             const std::string name = target.material.empty() ? "Submesh " + std::to_string(target.submesh) : target.material;
             if (!seen.insert(name).second) continue;
-            out.materials.push_back(vcReadsOf(mesh->submeshes[target.submesh].material, name));
+            out.materials.push_back(vcReadsOf(*material, name));
         }
         // a lattice binding scaled by a channel (LatticeModifierComponent.h)
         if (const LatticeModifierComponent* lattice = scene->findComponent<LatticeModifierComponent>(entity)) {
@@ -222,11 +222,11 @@ bool editor::vertexcolor::fixMaterialWarning(Project* project, uint32_t sceneId,
     bool found = false;
     std::set<std::pair<Entity, unsigned int>> seen;
     for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
-        if (!mesh || target.submesh >= mesh->numSubmeshes || !seen.insert({target.meshEntity, target.submesh}).second) continue;
+        const Material* current = vc::sceneTargetMaterial(scene, target);
+        if (!current || !seen.insert({target.meshEntity, target.submesh}).second) continue;
         if ((target.material.empty() ? "Submesh " + std::to_string(target.submesh) : target.material) != name) continue;
         found = true;
-        const Material& material = mesh->submeshes[target.submesh].material;
+        const Material& material = *current;
         const std::string prefix = "submeshes[" + std::to_string(target.submesh) + "].material.";
         auto set = [&](const std::string& property, auto value) {
             history->addCommandNoMerge(new PropertyCmd<decltype(value)>(project, sceneId, target.meshEntity, ComponentType::MeshComponent, prefix + property, value));
