@@ -14,17 +14,17 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <set>
-#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
 
 TEST(MeshSystemObjTest, MtlWindowsPaths){
-    const fs::path dir = fs::temp_directory_path() / ("jasperengine-mtl-paths-" + std::to_string(::getpid()));
+    const fs::path dir = fs::temp_directory_path() / ("jasperengine-mtl-paths-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::remove_all(dir);
     fs::create_directories(dir / "tex");
     std::ofstream(dir / "flag.obj") << "mtllib flag.mtl\n"
