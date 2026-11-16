@@ -504,8 +504,9 @@ async def test_save_scene_dialog_completes(ed: Editor):
     ed.check_in("name", fields(d), f"{d}")
     ed.check_in("folder", fields(d), f"{d}")
     r = await ed.call("respond_dialog", choice="ok", values={"name": "agent_saved", "folder": "scenes"})
-    ed.check("dialog" not in r, f"completed: {r}")
-    # the save is asynchronous, then a project in the temporary folder asks where it goes: reported the same way
+    # Save Scene closed; the save is asynchronous, then a project in the temporary folder asks where it goes,
+    # reported the same way (a save that writes no scene code ends in time for the reply to show it: S98 WP-1)
+    ed.check("dialog" not in r or r["dialog"].get("title") == "Save Project", f"completed: {r}")
     d = await wait_dialog(ed, "Save Project")
     ed.check(d, "Save All goes on to Save Project")
     ed.check_eq(d["kind"], "save_dialog", "its kind")

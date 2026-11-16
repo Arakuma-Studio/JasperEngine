@@ -155,8 +155,15 @@ async def test_pending_import_logs_no_error():
             ed.check("Model file not found" not in entry["message"] and "not retrying" not in entry["message"],
                      f"a pending import is no failure: {entry['message']}")
         lines = (await ed.call("read_console", regex=r"Importing \d+ models? \(first open\)", limit=1000, **args))["entries"]
-        ed.check_eq(len(lines), 1, f"one line for the batch: {[e['message'] for e in lines]}")
-        ed.check_in(f"Importing {len(MODELS)} models (first open): they appear when ready", lines[0]["message"] if lines else "")
+        # the scene's models in one batch, one line; the model cook queue's import of the unused d.fbx
+        # joins it, or starts a batch of its own when it comes after the line was written
+        messages = [e["message"] for e in lines]
+        scene_batch = [m for m in messages if any(f"Importing {n} models (first open): they appear when ready" in m
+                                                  for n in (len(MODELS), len(MODELS) + 1))]
+        ed.check_eq(len(scene_batch), 1, f"one line for the scene's batch: {messages}")
+        ed.check(len(messages) == 1 or (len(messages) == 2 and f"Importing {len(MODELS)} models" in scene_batch[0]
+                                        and any("Importing 1 model (first open)" in m for m in messages)),
+                 f"at most d.fbx's own line besides it: {messages}")
         ed.check(jobs, "editor_status listed the model_import job while it ran")
         ed.check(all(0 <= job["done"] <= job["total"] for job in jobs), f"done/total: {jobs}")
         # (the model cook queue's import of the unused d.fbx can join the batch)
