@@ -316,6 +316,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             report["build_report"] = result.buildReport.string();
             report["build_bytes"] = result.buildBytes;
             report["build_categories"] = result.buildCategories;
+            report["stripped_count"] = result.strippedCount;
+            report["stripped_bytes"] = result.strippedBytes;
         }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());

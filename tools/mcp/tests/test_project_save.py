@@ -4,7 +4,6 @@ ProjectSaveTest.cpp owns atomic file replacement, newline conversion and child-c
 These cases keep writer policy, command integration and actual Play-copy persistence.
 """
 
-import time
 import re
 import shutil
 
@@ -122,10 +121,12 @@ async def test_stop_keeps_child_scene_file():
             await ed.call("save_scene", all=True)
             project = ed.project
 
-        # Without its saved keys, the Play copy finds new ones, which Stop then saves
+        # Without its saved keys, the Play copy finds keys its file lacks: Stop once wrote them into
+        # it, and now writes no scene file (S98 REQ-27; the keys go to ShaderWarmup.json)
         hud_file = project / "scenes" / "Hud.scene"
         authored = without_shader_keys(hud_file.read_text())
         hud_file.write_text(authored)
+        authored_bytes = hud_file.read_bytes()
 
         second = Editor(project=project, keep=True, label="save-stop-play")
         async with second as ed:
@@ -140,15 +141,10 @@ async def test_stop_keeps_child_scene_file():
             stopped = await ed.call("play", action="stop")
             ed.check_eq(stopped["state"], "stopped", "stop")
 
-            # the save on Stop runs on the editor's main thread after the call returns
-            text = hud_file.read_text()
-            deadline = time.monotonic() + 10
-            while not shader_keys_block(text) and time.monotonic() < deadline:
+            # what Stop queues runs on the editor's main thread after the call returns
+            for _ in range(5):
                 await ed.call("editor_status")
-                text = hud_file.read_text()
-            ed.check(shader_keys_block(text), "Stop wrote the shader keys the Play copy found")
-            ed.check_eq(yaml.safe_load(without_shader_keys(text)), yaml.safe_load(authored),
-                        "Stop changed more of Hud.scene than its shaderKeys")
+            ed.check(hud_file.read_bytes() == authored_bytes, "Stop left Hud.scene as it was, shader keys included")
 
             opened = await ed.call("open_scene", scene="scenes/Hud.scene")
             box = await ed.call("get_entity", scene=opened["scene"]["id"], entity="Box",

@@ -13,7 +13,7 @@
 
 #include "Physics3DTestWorld.h"
 
-#include "Generator.h"
+#include "player/PlayerConfig.h"
 #include "math/Ray.h"
 #include "Project.h"
 #include "util/JoltPhysicsAux.h"
@@ -447,7 +447,7 @@ TEST(Physics3DReview, The3DWorldIsMadeWhenFirstNeeded) {
 }
 
 TEST(Physics3DReview, ExportedCapacityDefaultsAreTheEditors) {
-    const TagsAndLayers exported{};
+    const player::PlayerConfig exported{};
     const Physics3DWorldSettings project{};
     EXPECT_EQ(exported.maxBodies3D, project.maxBodies);
     EXPECT_EQ(exported.maxBodyPairs3D, project.maxBodyPairs);

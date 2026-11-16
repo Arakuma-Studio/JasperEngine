@@ -517,6 +517,10 @@ if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.Unrecovera
             ZipWriter zip;
             EXPECT_TRUE(zip.open(dir / "package.zip", zipError)) << zipError;
             EXPECT_TRUE(zip.add("AndroidManifest.xml", "x", 1, true, zipError)) << zipError;
+            // the content where an APK and a bundle's asset pack hold it: the package's content
+            // check (S98 REQ-13) finds every file it was given
+            for (const char* entry : {"assets/game/project.bin", "game_content/assets/game/project.bin"})
+                EXPECT_TRUE(zip.add(entry, "content", 7, false, zipError)) << zipError;
             EXPECT_TRUE(zip.finish(zipError)) << zipError;
 
             const fs::path runtime = dir / "runtime" / "android";
@@ -560,6 +564,41 @@ if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.Unrecovera
         }
     };
 
+}
+
+// S98 REQ-13, REQ-14, REQ-16: a content file the package lost fails the build naming it (red before:
+// the build succeeded); hidden and VCS files are left out of the staging and said; a bundle's
+// content is in its install-time asset pack; the debug key's package takes the Debug Package Suffix
+TEST(AndroidPackage, EveryContentFileIsInThePackage) {
+    FakeAndroid android;
+    ScopedVariable store("FAKE_STORE", "android"), key("FAKE_KEY", "android"), alias("FAKE_ALIAS", "androiddebugkey");
+    android.package.debug = true;
+    android.package.settings.debugPackageSuffix = ".dbg";
+    TestTempDir::write(android.dir / "content" / "_Onboarding" / ".gitkeep", "");
+    ASSERT_TRUE(android.build()) << android.error;
+    ASSERT_EQ(android.warnings.size(), 1u);
+    EXPECT_EQ(android.warnings.front().code, "W-ANDROID-ASSET-IGNORED");
+    EXPECT_NE(android.warnings.front().message.find("_Onboarding/.gitkeep"), std::string::npos) << android.warnings.front().message;
+    EXPECT_FALSE(fs::exists(android.package.workDir / "assets" / "game" / "_Onboarding" / ".gitkeep"));
+    EXPECT_NE(android.tools().find("--rename-manifest-package com.example.game.dbg"), std::string::npos) << android.tools();
+
+    TestTempDir::write(android.dir / "content" / "_Onboarding" / "a.png", "png");
+    EXPECT_FALSE(android.build());
+    EXPECT_NE(android.error.find("lacks 1 file(s) of the game's content"), std::string::npos) << android.error;
+    EXPECT_NE(android.error.find("assets/game/_Onboarding/a.png"), std::string::npos) << android.error;
+
+    // a bundle: the pack's manifest is linked, the content looked up in game_content/
+    android.package.format = AndroidFormat::Aab;
+    android.package.output = android.dir / "out" / "Game.aab";
+    EXPECT_FALSE(android.build());
+    EXPECT_NE(android.error.find("game_content/assets/game/_Onboarding/a.png"), std::string::npos) << android.error;
+    const std::string packManifest = TestTempDir::read(android.package.workDir / "game_content-manifest.xml");
+    EXPECT_NE(packManifest.find("<dist:install-time />"), std::string::npos) << packManifest;
+    EXPECT_NE(packManifest.find("split=\"game_content\""), std::string::npos) << packManifest;
+    fs::remove(android.dir / "content" / "_Onboarding" / "a.png");
+    ASSERT_TRUE(android.build()) << android.error;
+    EXPECT_NE(android.tools().find("--modules=" + (android.package.workDir / "base.zip").string() + "," +
+                                   (android.package.workDir / "game_content.zip").string()), std::string::npos) << android.tools();
 }
 
 TEST(AndroidSigning, TheDebugKeyByDefaultMadeWhenMissing) {

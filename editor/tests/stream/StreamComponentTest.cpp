@@ -395,15 +395,6 @@ TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
     EXPECT_FLOAT_EQ(old.startOffset, 0.0f);
     EXPECT_FALSE(old.randomStart);
 
-    // exported code: only when set
-    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::ActionComponent);
-    reflect::CodegenContext ctx;
-    ctx.variable = "action";
-    EXPECT_EQ(reflect::cppAssignments(desc, &plain, ctx).find("startOffset"), std::string::npos);
-    const std::string code = reflect::cppAssignments(desc, &set, ctx);
-    EXPECT_NE(code.find("action.startOffset = 0.35"), std::string::npos) << code;
-    EXPECT_NE(code.find("action.randomStart = true"), std::string::npos) << code;
-    EXPECT_EQ(code.find("phase"), std::string::npos) << code;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

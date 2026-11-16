@@ -113,11 +113,16 @@ namespace jasperengine::editor{
         TreeNode cachedRoot;
         std::unordered_set<Entity> cachedSceneEntitiesSet;
         std::unordered_set<Entity> cachedPlayCreatedEntities;
+        // the scene list cachedSceneEntitiesSet was made from (a timed rebuild reuses the set)
+        uint32_t setSceneId = 0;
+        std::vector<Entity> setEntities;
         uint32_t cacheSceneId = NULL_PROJECT_SCENE;
         uint64_t cacheStructureVersion = UINT64_MAX;
         size_t cacheEntityCount = SIZE_MAX;
         size_t cacheChildSignature = SIZE_MAX;
         double cacheBuildTime = -1.0;
+        int cacheBuildFrame = 0;
+        static constexpr int HIERARCHY_TIMED_REBUILD_FRAMES = 15;
         std::string cachedSearch;
         bool cachedMatchCase = false;
 
@@ -181,8 +186,32 @@ namespace jasperengine::editor{
         void revealInProject(const std::filesystem::path& path);
         friend struct HierarchyTestAccess;
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
+        // A timed rebuild with the structure unchanged: the rows of the last full rebuild filled again
+        // in place (names, icons, locks, prefab marks); false when a row's order or parent differs,
+        // or the tree lists more than the scene's own GameObjects (then the rebuild runs)
+        bool refreshEntityRows(SceneProject* sceneProject, TreeNode& root);
+        // the nearest ancestor of `entity` with a Model, noted in `known`
+        static Entity modelAncestorOf(Scene* scene, Entity entity, Entity parent, std::unordered_map<Entity, Entity>& known);
+        struct RowRecord {
+            Entity entity = NULL_ENTITY;
+            Entity parent = NULL_ENTITY;   // listed under (a Transform's parent, an action's target, a prefab root)
+            TreeNode* node = nullptr;
+        };
+        std::vector<RowRecord> rowRecords;
+        bool rowRecordsValid = false;
+        bool rowRecordsPrefabRows = false;
+        uint32_t rowRecordsSceneId = 0;
         void showToolbar();
         void showTreeNode(TreeNode& node);
+        // the open state a row's TreeNode takes this frame (search, first show, reveal), for the
+        // drawn and the clipped row alike
+        void setNextOpenState(const TreeNode& node, bool hasSearch, bool isModelWithChildren);
+        // A row outside the panel's visible part keeps its height and walks its open children,
+        // drawing nothing (S98 REQ-31: only the visible rows of a large scene are drawn): true when
+        // the row was clipped. Called with the row's ImGui id pushed.
+        bool showClippedRow(TreeNode& node, bool hasSearch);
+        // a drawn entity row's height with its spacing (0 until one is drawn: nothing is clipped)
+        float entityRowStep = 0.0f;
         void syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId = NULL_PROJECT_SCENE, Entity collapsedAncestor = NULL_ENTITY);
         bool collectRevealPath(TreeNode& node);
         void pushNodeImGuiId(const TreeNode& node);
@@ -300,7 +329,8 @@ namespace jasperengine::editor{
 
         HierarchyWindow(Project* project, SceneWindow* sceneWindow);
 
-        void show();
+        // covered: Maximize On Play hides the panel, which is not built (it keeps no focus)
+        void show(bool covered = false);
 
         // "This scene did not load completely" above the tree, when the scene has dropped load issues
 

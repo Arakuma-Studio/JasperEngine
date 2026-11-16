@@ -25,7 +25,6 @@
 #include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Catalog.h"
 #include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
@@ -157,6 +156,9 @@ struct ExportCliOptions {
     fs::path luaDir;
     std::string startScene;
     std::set<ShaderBackend> backends;
+    // --platform: the backends of that platform's Source Code preset, unless --backend gives some
+    bool hasPlatform = false;
+    BuildPlatform platform = BuildPlatform::Linux;
     std::set<ShaderKey> shaderKeys;
     std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
@@ -358,6 +360,8 @@ static void printUsage(const std::string& commandName) {
         << "      --assets <path>         Asset directory, relative to the project or absolute.\n"
         << "      --lua <path>            Lua directory, relative to the project or absolute.\n"
         << "      --start-scene <id|name> Start scene override.\n"
+        << "      --platform <id>         windows, linux, macos, android, ios or web: the backends that platform\n"
+        << "                              builds with (android, web: opengles only).\n"
         << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
@@ -367,7 +371,7 @@ static void printUsage(const std::string& commandName) {
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
-        << "If no --backend is provided, all supported backends are used.\n"
+        << "--backend wins over --platform. With neither, all supported backends are used.\n"
         << "If no --shader is provided, the shaders the scenes and prefabs need are exported, with the\n"
         << "shaders added to or removed from the build in the Build Settings window.\n"
         << "For standalone shader generation, use `" << commandName << " shaders`.\n";
@@ -456,6 +460,13 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         } else if (arg == "--start-scene") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             options.startScene = value;
+        } else if (arg == "--platform") {
+            if (!requireValue(argc, argv, i, value, error)) return false;
+            if (!parseBuildPlatform(value, options.platform)) {
+                error = "Unknown platform: " + value + " (windows, linux, macos, android, ios, web)";
+                return false;
+            }
+            options.hasPlatform = true;
         } else if (arg == "--backend") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             if (!parseBackendList(value, options.backends, error)) return false;
@@ -489,6 +500,9 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
     if (options.targetDir.empty() && !options.listScenes) {
         error = "Missing required --out path.";
         return false;
+    }
+    if (options.backends.empty() && options.hasPlatform) {
+        options.backends = sourceExportBackends(options.platform);
     }
     if (options.backends.empty()) {
         addAllSupportedBackends(options.backends);
@@ -1062,7 +1076,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   addObject {entity (the parent, may be empty), name} (a plain child GameObject with a Transform) |
 //   setRef {entity, component, property, target (a dump path or empty)} (an override on an
 //       instance's GameObject) | addLocalComponent / removeLocalComponent {entity, component} (the
-//       GameObject only, for record*Component) | bake {out} (each prefab's generated source) |
+//       GameObject only, for record*Component) |
 //   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
 //   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
 //   move {entity, target, insertion: before|after|into} (MoveEntityOrderCmd, a Hierarchy drag) |
@@ -1226,16 +1240,6 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             for (size_t i = 0; i < entries.size(); i++) {
                 std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
                           << (i < history.appliedCount() ? "" : " (redo)") << "\n";
-            }
-            continue;
-        }
-        if (name == "bake") {
-            // what the export generates for each prefab (build_prefab_*), from its baked instance
-            const fs::path out = resolveOpsPath(op["out"].as<std::string>());
-            fs::create_directories(out);
-            for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }

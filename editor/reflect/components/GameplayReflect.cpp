@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
@@ -102,7 +101,7 @@ namespace {
         JE_FIELD(BuoyancyComponent, enabled),
         JE_FIELD(BuoyancyComponent, columns, .enumDesc = &enums::kBuoyancyColumns),
         // the columns' bottoms in local space, with the CUSTOM columns
-        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole),
+        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::Array<Vector3>, .flags = NoDefault | ListWhole),
         JE_FIELD(BuoyancyComponent, volumeScale),
         JE_FIELD(BuoyancyComponent, dragScale),
     };
@@ -148,9 +147,6 @@ const ComponentDesc kCharacterController2DDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterController2DComponent),
     .codec = &kCharacterController2DCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterController2DComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
     .extraKeys = kCharacterController2DKnownKeys,
 };
@@ -162,9 +158,6 @@ const ComponentDesc kCharacterControllerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterControllerComponent),
     .codec = &kCharacterControllerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterControllerComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kCharacterControllerKnownKeys,
 };
@@ -176,9 +169,6 @@ const ComponentDesc kWaterVolumeDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterVolumeComponent),
     .codec = &kWaterVolumeCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createWaterVolumeComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kWaterVolumeKnownKeys,
 };
 
@@ -187,7 +177,6 @@ const ComponentDesc kWaterExcluderDesc{
     .displayName = "Water Excluder", .icon = ICON_FA_SHIP,
     .body = JE_STRUCT_DESC(WaterExcluderComponent, "WaterExcluderComponent", kWaterExcluderFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterExcluderComponent),
-    .codegenVar = "waterExcluder",
 };
 
 const ComponentDesc kWaterWakeDesc{
@@ -195,7 +184,6 @@ const ComponentDesc kWaterWakeDesc{
     .displayName = "Water Wake", .icon = ICON_FA_WATER,
     .body = JE_STRUCT_DESC(WaterWakeComponent, "WaterWakeComponent", kWaterWakeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterWakeComponent),
-    .codegenVar = "waterWake",
 };
 
 const ComponentDesc kBuoyancyDesc{
@@ -205,9 +193,6 @@ const ComponentDesc kBuoyancyDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(BuoyancyComponent),
     .codec = &kBuoyancyCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createBuoyancyComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kBuoyancyKnownKeys,
 };
 

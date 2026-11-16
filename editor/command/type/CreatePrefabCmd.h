@@ -40,6 +40,12 @@ namespace jasperengine::editor{
             bool variant = false;
             YAML::Node variantRootNode;
             Entity variantRoot = NULL_ENTITY;
+            // Unity's SaveAsPrefabAsset over an existing prefab: the file at filepath takes the
+            // GameObject's content and keeps its GUID (Project::overwritePrefab); the asset and
+            // its instances as they were, for the undo
+            bool overwrite = false;
+            Entity overwriteRoot = NULL_ENTITY;
+            PrefabUndoState overwritten;
         };
 
         Project* project;
@@ -50,6 +56,8 @@ namespace jasperengine::editor{
         bool wasModified;
         std::vector<Entity> lastSelected;
 
+        void undoOverwrite(SceneProject* sceneProject, Item& item);
+
     public:
         CreatePrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& prefabNode);
         // variants: every item a Prefab Variant of its instance root's prefab
@@ -57,6 +65,8 @@ namespace jasperengine::editor{
         // One item made a Prefab Variant (the others stay originals): the Project window drop
         // answered "Prefab Variant" for a selection holding instance roots
         void setVariant(size_t index, bool variant) { if (index < items.size()) items[index].variant = variant; }
+        // The item writes over the prefab already at its path (create_prefab overwrite)
+        void setOverwrite(size_t index, bool overwrite) { if (index < items.size()) items[index].overwrite = overwrite; }
 
         bool execute() override;
 
@@ -66,7 +76,9 @@ namespace jasperengine::editor{
         // "Create Prefab Player.prefab", "Create Prefab Variant Door Variant.prefab", "Create 2 Prefabs"
         std::string describe() const override {
             if (items.size() == 1) {
-                return std::string(items.front().variant ? "Create Prefab Variant " : "Create Prefab ") + CommandNames::file(items.front().filepath);
+                const Item& item = items.front();
+                return std::string(item.variant ? "Create Prefab Variant " : item.overwrite ? "Overwrite Prefab " : "Create Prefab ") +
+                       CommandNames::file(item.filepath);
             }
             return "Create " + std::to_string(items.size()) + " Prefabs";
         }
@@ -77,6 +89,12 @@ namespace jasperengine::editor{
                 bytes += sizeof(item) + yamlFootprint(item.prefabNode) + yamlFootprint(item.variantRootNode);
                 for (const auto& [root, node] : item.nestedRoots) {
                     bytes += yamlFootprint(node);
+                }
+                for (const PrefabUndoState::Asset& asset : item.overwritten.assets) {
+                    bytes += yamlFootprint(asset.node);
+                }
+                for (const PrefabUndoState::InstanceState& instance : item.overwritten.instances) {
+                    bytes += yamlFootprint(instance.rootNode);
                 }
             }
             return bytes;

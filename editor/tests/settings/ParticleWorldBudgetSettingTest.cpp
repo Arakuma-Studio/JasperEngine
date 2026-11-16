@@ -78,36 +78,7 @@ TEST(ParticleWorldBudgetSetting, RoundTripsAndAnOldProjectKeepsItsDefault){
 }
 
 TEST(ParticleWorldBudgetSetting, ReachesTheGames){
-    namespace fs = std::filesystem;
-    const fs::path project = fs::temp_directory_path() / ("jasper-generator-particles-" + std::to_string(::getpid()));
-    fs::remove_all(project);
-    fs::create_directories(project / "assets");
-    const fs::path internal = project / ".jasperengine";
-    auto generatedMain = [&](uint32_t budget){
-        Generator generator;
-        const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
-        generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                            TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
-                            ShaderCreationProjectSettings(), false, {}, PlayerSettings(), AudioSettings(), DebugSettings(), budget);
-        std::ifstream file(internal / "generated" / "main.cpp");
-        std::stringstream text;
-        text << file.rdbuf();
-        return text.str();
-    };
-    const std::string set = generatedMain(1000);
-    const size_t call = set.find("ParticleWorld::setProjectBudget(1000);");
-    ASSERT_NE(call, std::string::npos);
-    EXPECT_LT(call, set.find("SceneManager::loadScene")) << "before the first scene";
-    // an exported project's CMake does not define JASPERENGINE_PROJECT_PATH: the header has to be
-    // outside that block, or a compiled export does not build (the smoke test compiles one)
-    const size_t include = set.find("#include \"particles/ParticleWorld.h\"");
-    ASSERT_NE(include, std::string::npos);
-    EXPECT_LT(include, set.find("#ifdef JASPERENGINE_PROJECT_PATH"));
-    EXPECT_EQ(generatedMain(0).find("setProjectBudget"), std::string::npos) << "the default costs a game nothing";
-    fs::remove_all(project);
-
-    // a prebuilt player reads it from its configuration
+    // a game reads it from its game.json
     player::PlayerConfig game;
     game.particleWorldBudget = 1000;
     player::PlayerConfig read;

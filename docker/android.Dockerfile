@@ -20,7 +20,16 @@ RUN mkdir -p $ANDROID_HOME/cmdline-tools \
     && rm /tmp/tools.zip \
     && yes | sdkmanager --licenses >/dev/null \
     && sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null \
-    # The build runs as the host user; AGP installs any missing NDK/CMake here.
+    && chmod -R a+rwX $ANDROID_HOME
+
+# The NDK and CMake engine/workspaces/androidstudio/app/build.gradle pins (ndkVersion,
+# externalNativeBuild.cmake.version): a fresh container downloads neither
+# (tools/ci/check_android_image.sh, which tools/build.sh android runs, keeps the two in step).
+# A layer of its own, so the SDK layer above stays cached.
+ARG ANDROID_NDK=28.2.13676358
+ARG ANDROID_CMAKE=3.22.1
+RUN sdkmanager "ndk;${ANDROID_NDK}" "cmake;${ANDROID_CMAKE}" >/dev/null \
+    # The build runs as the host user; anything else AGP needs it installs here.
     && chmod -R a+rwX $ANDROID_HOME
 
 # eMudhra intermediate CA compromise (October 2026): ca-certificates 20260816 distrusts

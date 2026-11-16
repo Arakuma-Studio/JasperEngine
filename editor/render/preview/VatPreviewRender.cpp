@@ -130,7 +130,11 @@ bool editor::VatPreviewView::loadSource(Project* project, const std::string& pat
         }
     }else{
         const std::string asset = ClipConverters::assetRelative(project, absolute);
-        project->prepareModelFile(asset);
+        // the import runs on its job (S98 REQ-32): nothing waits for it here
+        if (project->prepareModelFile(asset) == Project::ModelImport::Pending){
+            error = "the model '" + path + "' is still importing";
+            return false;
+        }
         model = new Model(scene);
         root = model->getEntity();
         // the node hierarchy the clips address (as the baker's scratch scene loads it)

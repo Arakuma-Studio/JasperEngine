@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 9
 guid: 0f153ca2a957eb5d8f91ac03716acf99
 id: 1
 name: Legacy Particles
@@ -33,13 +33,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 0
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 0
 shaderKeys:
   - type: blit
   - type: blit

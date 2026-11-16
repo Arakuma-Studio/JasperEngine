@@ -47,6 +47,10 @@ namespace {
         {ScriptMeshData::Release, "release", "Release"}};
     const EnumName<AnimationEntitiesMode> animationEntitiesNames[] = {
         {AnimationEntitiesMode::Always, "always", "Always"}, {AnimationEntitiesMode::Auto, "auto", "Auto"}};
+    const EnumName<MaterialCreationMode> materialModeNames[] = {
+        {MaterialCreationMode::Import, "import", "Import"}, {MaterialCreationMode::None, "none", "None"}};
+    // a model-level key, outside R8's per-platform settings
+    const char* const materialModeKey = "materialCreationMode";
 
     template<class E, size_t N>
     const EnumName<E>& entryOf(const EnumName<E> (&table)[N], E value){
@@ -201,6 +205,7 @@ const char* editor::generateLodsName(GenerateLods value){ return entryOf(lodsNam
 const char* editor::lodReductionName(LodReduction value){ return entryOf(reductionNames, value).name; }
 const char* editor::scriptMeshDataName(ScriptMeshData value){ return entryOf(scriptNames, value).name; }
 const char* editor::animationEntitiesModeName(AnimationEntitiesMode value){ return entryOf(animationEntitiesNames, value).name; }
+const char* editor::materialCreationModeName(MaterialCreationMode value){ return entryOf(materialModeNames, value).name; }
 const char* editor::optimizeMeshLabel(OptimizeMesh value){ return entryOf(optimizeNames, value).label; }
 const char* editor::meshCompressionLabel(MeshCompression value){ return entryOf(compressionNames, value).label; }
 const char* editor::indexFormatLabel(IndexFormat value){ return entryOf(indexNames, value).label; }
@@ -211,7 +216,7 @@ const std::vector<std::string>& editor::modelEnumValues(const std::string& field
         {"optimizeMesh", namesOf(optimizeNames)}, {"meshCompression", namesOf(compressionNames)},
         {"indexFormat", namesOf(indexNames)}, {"readWrite", namesOf(readWriteNames)}, {"normals", namesOf(normalsNames)},
         {"generateLods", namesOf(lodsNames)}, {"lodReduction", namesOf(reductionNames)}, {"platform", namesOf(familyNames)},
-        {"scriptMeshData", namesOf(scriptNames)}};
+        {"scriptMeshData", namesOf(scriptNames)}, {materialModeKey, namesOf(materialModeNames)}};
     static const std::vector<std::string> none;
     auto it = values.find(field);
     return it == values.end() ? none : it->second;
@@ -219,6 +224,15 @@ const std::vector<std::string>& editor::modelEnumValues(const std::string& field
 
 const std::vector<std::string>& editor::modelSettingKeys(){
     static const std::vector<std::string> keys(std::begin(settingKeys), std::end(settingKeys));
+    return keys;
+}
+
+const std::vector<std::string>& editor::modelImporterKeys(){
+    static const std::vector<std::string> keys = [](){
+        std::vector<std::string> all(std::begin(settingKeys), std::end(settingKeys));
+        all.push_back(materialModeKey);
+        return all;
+    }();
     return keys;
 }
 
@@ -238,6 +252,7 @@ bool ModelImportSettings::parse(const YAML::Node& node, ModelImportSettings& out
     // this editor knows (its new keys are kept as unknown)
     out.version = currentVersion;
     readValues(r, out.values);
+    r.enumeration(materialModeKey, materialModeNames, out.materialCreationMode);
     if (const YAML::Node platforms = node["platforms"]){
         if (!platforms.IsMap()){
             r.fail("platforms", "expected a map of desktop, mobile, web");
@@ -266,7 +281,7 @@ bool ModelImportSettings::parse(const YAML::Node& node, ModelImportSettings& out
     out.unknown = YAML::Node(YAML::NodeType::Map);
     for (const auto& entry : node){
         const std::string key = entry.first.as<std::string>();
-        if (key != "version" && key != "platforms" && !isSettingKey(key))
+        if (key != "version" && key != "platforms" && key != materialModeKey && !isSettingKey(key))
             out.unknown[key] = YAML::Clone(entry.second);
     }
     if (!error.empty()){
@@ -280,6 +295,7 @@ YAML::Node ModelImportSettings::serialize() const{
     YAML::Node node(YAML::NodeType::Map);
     node["version"] = version;
     writeValues(node, values);
+    if (materialCreationMode) node[materialModeKey] = entryOf(materialModeNames, *materialCreationMode).name;
     YAML::Node platformsNode(YAML::NodeType::Map);
     for (size_t f = 0; f < kModelFamilyCount; f++){
         const ModelPlatformSettings& p = platforms[f];
@@ -305,7 +321,7 @@ bool ModelImportSettings::operator==(const ModelImportSettings& other) const{
 }
 
 bool ModelImportSettings::isDefault() const{
-    if (!values.empty() || (unknown && unknown.IsMap() && unknown.size() > 0))
+    if (!values.empty() || materialCreationMode || (unknown && unknown.IsMap() && unknown.size() > 0))
         return false;
     for (const ModelPlatformSettings& p : platforms)
         if (!p.empty())
@@ -364,8 +380,8 @@ std::string ResolvedModelSettings::canonical() const{
 }
 
 bool editor::validateModelSettingsField(const std::string& field, const YAML::Node& value, std::string& error){
-    if (!isSettingKey(field)){
-        error = field + ": not a model import setting (" + joined(modelSettingKeys()) + ")";
+    if (!isSettingKey(field) && field != materialModeKey){
+        error = field + ": not a model import setting (" + joined(modelImporterKeys()) + ")";
         return false;
     }
     YAML::Node wrapper(YAML::NodeType::Map);
@@ -392,6 +408,8 @@ YAML::Node editor::encodeModelProjectSettings(const ModelProjectSettings& settin
         node["keepCpuDataForScripts"] = scriptMeshDataName(settings.scriptMeshData);
     if (settings.animationEntities != defaults.animationEntities)
         node["animationEntities"] = animationEntitiesModeName(settings.animationEntities);
+    if (settings.materialCreationMode != defaults.materialCreationMode)
+        node[materialModeKey] = materialCreationModeName(settings.materialCreationMode);
     YAML::Node budgets(YAML::NodeType::Map);
     for (size_t f = 0; f < kModelFamilyCount; f++){
         const RenderBudget& b = settings.renderBudgets[f];
@@ -463,6 +481,13 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
         try { name = node["animationEntities"].Scalar(); } catch (...) { name.clear(); }
         if (valueOf(animationEntitiesNames, name, value))
             settings.animationEntities = value;
+    }
+    if (node[materialModeKey]){
+        MaterialCreationMode value;
+        std::string name;
+        try { name = node[materialModeKey].Scalar(); } catch (...) { name.clear(); }
+        if (valueOf(materialModeNames, name, value))
+            settings.materialCreationMode = value;
     }
     if (const YAML::Node budgets = node["renderBudgets"]; budgets && budgets.IsMap()){
         for (size_t f = 0; f < kModelFamilyCount; f++){

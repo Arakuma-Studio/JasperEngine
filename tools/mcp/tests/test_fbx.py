@@ -213,8 +213,10 @@ async def test_source_export_ships_the_imports(ed: Editor):
     ed.check((assets / "je-cooked" / "desktop" / index["models/textures/checker.png"]["file"]).is_file(),
              "its cooked file ships")
     ed.check(not (shipped / "textures" / "checker.png").exists(), "the cooked source itself is not shipped")
-    sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
-    ed.check(sources, "the scene source loads the model by its .fbx path")
+    # a source export carries the scenes cooked, as the prebuilt player reads them (S98 WP-1)
+    scenes = list((out / "project" / "content" / "scenes").glob("*.jscn"))
+    ed.check(any(b"models/rigged_cube.fbx" in p.read_bytes() for p in scenes),
+             f"the cooked scene loads the model by its .fbx path: {[p.name for p in scenes]}")
 
 
 async def test_an_asset_at_the_import_path_fails_the_export(ed: Editor):

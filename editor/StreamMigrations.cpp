@@ -699,6 +699,12 @@ namespace {
     void sheetSpritesIdentity(YAML::Node&, MigrationLog&){
     }
 
+    // Scene 8 -> 9, prefab 9 -> 10 (S98 F1): a Mesh Renderer may show a .mesh asset (meshAsset)
+    // instead of holding its buffers, and a save moves large geometry into one. An older file holds
+    // its buffers, which still read; the version keeps an older editor from reading a mesh without them.
+    void meshAssetsIdentity(YAML::Node&, MigrationLog&){
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -707,11 +713,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 8;
+        case DocumentKind::Scene: return 9;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 9;
+        case DocumentKind::Prefab: return 10;
     }
     return 0;
 }
@@ -752,6 +758,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
+        {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -767,6 +774,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
+        {9, 10, "mesh assets (identity: an older prefab holds its meshes' buffers)", meshAssetsIdentity},
     };
 
     switch (kind){

@@ -5,7 +5,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "audio/SoundEvent.h"
 #include "pool/SoundPool.h"
 #include "component/AudioSnapshotComponent.h"
@@ -48,7 +47,7 @@ namespace {
     constexpr uint64_t kCamera = UpdateFlags_Camera;
 
     constexpr FieldDesc kCameraFields[] = {
-        JE_FIELD(CameraComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(CameraComponent, enabled),
         JE_FIELD(CameraComponent, type, .enumDesc = &enums::kCameraType, .updateFlags = kCamera),
         // read by RenderSystem when the camera draws
         JE_FIELD(CameraComponent, cullingMask, .ops = &ops::LayerMask, .uiOrder = 1),
@@ -89,31 +88,17 @@ namespace {
                  .enumMask = enums::bit((int)TextureFilter::NEAREST) | enums::bit((int)TextureFilter::LINEAR)),
         // S57 R4: read by RenderSystem each frame (it reloads the variants itself), written only
         // away from their defaults
-        JE_FIELD(CameraComponent, transparencyMode, .enumDesc = &enums::kTransparencyMode, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(CameraComponent, transparencyMode, .enumDesc = &enums::kTransparencyMode, .flags = OmitIfDefault,
                  .tooltip = "Sorted draws blended renderers back to front. Order Independent draws alpha-blended materials through "
                             "weighted blended OIT: one extra pass into RGBA16F+R16F targets and a fullscreen resolve; Sorted on "
                             "devices without half-float targets.",
                  .uiOrder = 18),
-        JE_FIELD(CameraComponent, oitWeightScale, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0001f, .label = "OIT Weight Scale",
+        JE_FIELD(CameraComponent, oitWeightScale, .flags = OmitIfDefault, .min = 0.0001f, .label = "OIT Weight Scale",
                  .tooltip = "Multiplies the view depths the OIT weight takes: lower it for large scenes, so far layers keep their weight.",
                  .visibleIf = &cameraOrderIndependent, .uiOrder = 19),
     };
 
-    constexpr const char* kCameraCodegenOrder[] = {
-        "type", "target", "up", "left", "right", "bottom", "top", "yfov", "aspect", "near", "far", "renderToTexture", "transparentSort",
-        "depthTest", "cullingMask", "useTarget", "autoResize", "framebufferWidth", "framebufferHeight", "framebufferFilter", "transparencyMode", "oitWeightScale", "enabled"
-    };
-
     // ---------------------------------------------------------------- Audio Source
-
-    std::string exportedState(const FieldDesc&, const void* value, const CodegenContext&) {
-        // a build starts a Playing source stopped, and plays it through startTrigger
-        // (audioSourceCodegen); a Paused one stays Paused, as the editor's Play loads it
-        const AudioSourceState state = *static_cast<const AudioSourceState*>(value);
-        return state == AudioSourceState::Paused ? "AudioSourceState::Paused" : "AudioSourceState::Stopped";
-    }
-
-    constexpr TypeOps kAudioStateOps = detail::withLiteral(ops::Enum<AudioSourceState>, &exportedState);
 
     constexpr uint64_t kAudio = UpdateFlags_AudioSource;
 
@@ -176,8 +161,8 @@ namespace {
     bool audioClipMode(const void* audio) { return static_cast<const AudioSourceComponent*>(audio)->event.empty(); }
 
     constexpr FieldDesc kAudioSourceFields[] = {
-        JE_FIELD(AudioSourceComponent, enabled, .flags = CodegenIfChanged),
-        JE_FIELD(AudioSourceComponent, state, .ops = &kAudioStateOps, .enumDesc = &enums::kAudioSourceState, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, enabled),
+        JE_FIELD(AudioSourceComponent, state, .ops = &ops::Enum<AudioSourceState>, .enumDesc = &enums::kAudioSourceState, .updateFlags = kAudio),
         JE_FIELD(AudioSourceComponent, filename, .ops = &ops::AssetRefIfSet, .updateFlags = kAudio, .asset = AssetKind::Audio, .label = "Audio Clip", .assetMoved = &audioFileMoved),
         JE_FIELD(AudioSourceComponent, enableClocked, .updateFlags = kAudio, .label = "Clocked", .group = "Playback", .uiOrder = 7),
         JE_FIELD(AudioSourceComponent, volume, .ops = &ops::FiniteDouble, .flags = OmitIfNonFinite, .updateFlags = kAudio, .min = 0.0f,
@@ -210,38 +195,30 @@ namespace {
         // Output row set it, "" = Master); the update resolves the id (Catalog::updateEntity), saved
         // as upstream's "outputGroup" key and reached as outputGroupId
         JE_FIELD_NAMED(AudioSourceComponent, outputGroup, "outputGroupId", .yamlKey = "outputGroup",
-                       .flags = OmitIfDefault | Hidden | NotListed | CodegenIfChanged, .updateFlags = kAudio),
+                       .flags = OmitIfDefault | Hidden | NotListed, .updateFlags = kAudio),
         JE_FIELD_NAMED(AudioSourceComponent, outputGroupName, "outputGroup", .yamlKey = "outputGroupName",
-                       .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio, .label = "Output"),
-        JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, priority, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+                       .flags = OmitIfDefault, .updateFlags = kAudio, .label = "Output"),
+        JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, priority, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio,
                  .min = 0.0f, .max = 256.0f),
-        JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio,
                  .min = 1.0f, .max = 64.0f),
-        JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault, .updateFlags = kAudio),
         // Sound Events and triggers (docs/specs/S37-sound-events.md R9), after upstream's fields
-        JE_FIELD(AudioSourceComponent, event, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, event, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .updateFlags = kAudio,
                  .asset = AssetKind::SoundEvent, .label = "Event"),
-        JE_FIELD(AudioSourceComponent, playOn, .ops = &kAudioPlayOnOps, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, playOn, .ops = &kAudioPlayOnOps, .flags = OmitIfDefault, .updateFlags = kAudio,
                  .label = "Play On", .group = "Triggers"),
-        JE_FIELD(AudioSourceComponent, minImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, minImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite, .updateFlags = kAudio,
                  .unit = Unit::MetersPerSecond, .min = 0.0f, .step = 0.1f, .format = "%.2f", .group = "Triggers", .visibleIf = &audioHasCollisionFlag),
-        JE_FIELD(AudioSourceComponent, fullVolumeImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, fullVolumeImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite, .updateFlags = kAudio,
                  .unit = Unit::MetersPerSecond, .min = 0.0f, .step = 0.1f, .format = "%.2f", .tooltip = "0 = no scaling", .group = "Triggers", .visibleIf = &audioHasCollisionFlag),
-        JE_FIELD(AudioSourceComponent, pitchRandomSemitones, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, pitchRandomSemitones, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite, .updateFlags = kAudio,
                  .min = 0.0f, .max = 24.0f, .step = 0.1f, .format = "%.2f", .label = "Random Pitch", .tooltip = "Each start: +- this many semitones (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
-        JE_FIELD(AudioSourceComponent, volumeRandomDb, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+        JE_FIELD(AudioSourceComponent, volumeRandomDb, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite, .updateFlags = kAudio,
                  .unit = Unit::Decibels, .min = 0.0f, .max = 60.0f, .step = 0.1f, .format = "%.2f", .label = "Random Volume", .tooltip = "Each start: -this .. 0 dB, never louder (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
-    };
-
-    constexpr const char* kAudioSourceCodegenOrder[] = {
-        "state", "filename", "enableClocked", "volume", "speed", "pan", "looping", "loopingPoint", "protectVoice", "inaudibleBehaviorMustTick",
-        "inaudibleBehaviorKill", "minDistance", "maxDistance", "attenuationModel", "attenuationRolloffFactor", "dopplerFactor",
-        // upstream's audio-mixer fields, only when not their default (upstream's Factory)
-        "outputGroupId", "outputGroup", "loadType", "priority", "maxVoices", "ignoreListenerPause",
-        "event", "playOn", "minImpactSpeed", "fullVolumeImpactSpeed", "pitchRandomSemitones", "volumeRandomDb"
     };
 
     // ---------------------------------------------------------------- Mixer Snapshot action (S40 R18)
@@ -263,14 +240,6 @@ namespace {
             snapshot.previousSnapshot = old->previousSnapshot;
             snapshot.applied = old->applied;
         }
-    }
-
-    void audioSourceCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
-        const AudioSourceComponent& audio = *static_cast<const AudioSourceComponent*>(comp);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        out += ind + ctx.variable + ".needUpdate = true;\n";
-        if (audio.state == AudioSourceState::Playing) out += ind + ctx.variable + ".startTrigger = true;\n";
-        if (!audio.enabled) out += ind + ctx.variable + ".enabled = false;\n";
     }
 
     // The loaded sample stays while the file is the same; any other runtime state starts afresh
@@ -314,7 +283,6 @@ const ComponentDesc kCameraDesc{
     .type = ComponentType::CameraComponent, .cppName = "CameraComponent", .key = "camera", .displayName = "Camera", .icon = ICON_FA_VIDEO,
     .body = JE_STRUCT_DESC(CameraComponent, "CameraComponent", kCameraFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(CameraComponent),
-    .codegenVar = "camera", .codegenOrder = kCameraCodegenOrder,
 };
 
 const ComponentDesc kAudioSnapshotDesc{
@@ -323,7 +291,6 @@ const ComponentDesc kAudioSnapshotDesc{
     .body = JE_STRUCT_DESC(AudioSnapshotComponent, "AudioSnapshotComponent", kAudioSnapshotFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(AudioSnapshotComponent),
     .postDecode = &audioSnapshotPostDecode,
-    .codegenVar = "audiosnapshot",
 };
 
 const ComponentDesc kAudioSourceDesc{
@@ -332,7 +299,6 @@ const ComponentDesc kAudioSourceDesc{
     .body = JE_STRUCT_DESC(AudioSourceComponent, "AudioSourceComponent", kAudioSourceFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(AudioSourceComponent),
     .postDecode = &audioSourcePostDecode,
-    .codegenVar = "audio", .codegenOrder = kAudioSourceCodegenOrder, .codegenExtra = &audioSourceCodegen,
 };
 
 }

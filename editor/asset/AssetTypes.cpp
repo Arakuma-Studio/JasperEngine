@@ -71,6 +71,8 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
+            // .mesh assets (S98 F1): binary, so their GUID is in a .meta
+            {{AssetType::Mesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".mesh"}},
         };
         return table;
     }

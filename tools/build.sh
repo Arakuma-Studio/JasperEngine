@@ -772,6 +772,8 @@ android)
     # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
     # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
     run bash -euo pipefail -c "
+        # the NDK and CMake the template pins are the image's (no download in a fresh container)
+        tools/ci/check_android_image.sh
         cd engine/workspaces/androidstudio
         env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/

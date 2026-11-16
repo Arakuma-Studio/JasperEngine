@@ -24,7 +24,6 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "titleart/TitleArtDocument.h"
-#include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
 #include "reflect/Reflect.h"
@@ -141,7 +140,6 @@ void editor::Project::resolveScenePrefabInfos(SceneProject& sceneProject) {
         }
         if (info.prefabPath.lexically_normal() != resolved.lexically_normal()) {
             info.prefabPath = resolved;
-            info.functionName = Factory::prefabToFunctionName(resolved);
         }
         if (info.guid.empty()) {
             info.guid = assetDatabase.getGuid(resolved);
@@ -156,7 +154,7 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
             continue;
         }
         if (std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(), affected)) {
-            generator.clearSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
+            clearCookedScene(sceneProject.id);
             invalidated = true;
         }
     }
@@ -438,7 +436,6 @@ void editor::Project::remapPrefabPathsInMemory(const fs::path& oldRelative, cons
             fs::path updatedPath;
             if (remapRelativePath(oldRelative, newRelative, info.prefabPath, updatedPath)) {
                 info.prefabPath = updatedPath;
-                info.functionName = Factory::prefabToFunctionName(updatedPath);
             }
         }
 
