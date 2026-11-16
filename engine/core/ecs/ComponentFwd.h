@@ -105,6 +105,7 @@ namespace jasperengine{
     struct UIComponent;
     struct UIDocumentComponent;
     struct VertexAnimatorComponent;
+    struct VertexColorsComponent;   // V1
     struct VideoPlayerComponent;
     struct VolumetricCloudsComponent;
     struct VoxelVolumeComponent;

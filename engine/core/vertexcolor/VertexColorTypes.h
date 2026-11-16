@@ -18,11 +18,13 @@
 
 namespace jasperengine::vertexcolor {
 
-    // R5: how values are stored on the GPU and in the file
-    enum class Format : uint8_t { RGBA8 = 0, RGBA16F = 1 };
+    // R5: how values are stored on the GPU and in the file. Format and InitialValue are component
+    // fields: int-sized, as the editor's properties (Inspector, MCP, prefab overrides) read and write
+    // every enum as an int
+    enum class Format : int { RGBA8 = 0, RGBA16F = 1 };
 
     // R6: what a target holds before its first edit (and what Erase / clear{initial} go back to)
-    enum class InitialValue : uint8_t { Asset = 0, White = 1, Black = 2, Custom = 3 };
+    enum class InitialValue : int { Asset = 0, White = 1, Black = 2, Custom = 3 };
 
     // R21: a subset of rgba
     using ChannelMask = uint8_t;

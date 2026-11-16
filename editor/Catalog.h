@@ -249,12 +249,14 @@ namespace jasperengine::editor{
         TilemapLayerComponent,
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
-        TitleArtRendererComponent
+        TitleArtRendererComponent,
+        // the vertex colors of one placed Model or Mesh, in a .vcolors (V1 R1)
+        VertexColorsComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VertexColorsComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

@@ -59,6 +59,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::MeshComponent, "Draws a mesh with its materials"},
             {ComponentType::ModelComponent, "Loads a glTF, OBJ or FBX model"},
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
+            {ComponentType::VertexColorsComponent, "Colors per vertex of this Model or Mesh, kept beside it: the source is never written"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
             {ComponentType::VoxelVolumeComponent, "A box of smooth voxel terrain: caves, overhangs and destruction"},

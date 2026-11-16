@@ -135,6 +135,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kVoxelQuality;
     extern const EnumDesc kVoxelNavigationUpdate;
     extern const EnumDesc kVoxelTerrainCut;
+    // the Vertex Colors component's (editor/reflect/components/VertexColorsReflect.cpp)
+    extern const EnumDesc kVertexColorFormat;
+    extern const EnumDesc kVertexColorInitialValue;
     // the Grid and Tilemap Layer components' (editor/reflect/components/TilemapReflect.cpp)
     extern const EnumDesc kTileGridLayout;
     extern const EnumDesc kTileGridPlane;

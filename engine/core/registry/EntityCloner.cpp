@@ -79,6 +79,7 @@
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
@@ -977,6 +978,17 @@ void prepare<TilemapCollider2DComponent>(TilemapCollider2DComponent& collider, E
 }
 
 template<>
+void prepare<VertexColorsComponent>(VertexColorsComponent& colors, Entity, CloneContext& ctx) {
+    // the copy shares the .vcolors asset and its decoded values until either is edited (V1 R132,
+    // copy-on-write in the editor); gameplay paint (R80) is the original's own unless it moves, and
+    // the copy binds its own streams at its first draw
+    if (!ctx.move) colors.runtimeLayers.clear();
+    colors.boundRevision = 0;
+    colors.needUpdate = true;
+    colors.cpuGeometryLogged = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1449,6 +1461,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VertexColorsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TextEffectComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

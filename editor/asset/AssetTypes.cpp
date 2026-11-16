@@ -71,6 +71,8 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
+            // one object's vertex colors (V1 R1, R131): a binary file, its GUID in its .meta
+            {{AssetType::VertexColors, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".vcolors"}},
         };
         return table;
     }

@@ -22,6 +22,7 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/SplineAnimateComponent.h"
@@ -710,6 +711,7 @@ namespace {
         rows.push_back(enabledRow<LatticeModifierComponent>("latticemodifier"));
         rows.push_back(enabledRow<LatticeFollowerComponent>("latticefollower"));
         rows.push_back(enabledRow<VertexAnimatorComponent>("vertexanimator"));
+        rows.push_back(enabledRow<VertexColorsComponent>("vertexcolors"));
         rows.push_back(enabledRow<ShadowCaster2DComponent>("shadowcaster2d"));
         rows.push_back(enabledRow<OnScreenStickComponent>("onscreenstick"));
         rows.push_back(enabledRow<OnScreenButtonComponent>("onscreenbutton"));
