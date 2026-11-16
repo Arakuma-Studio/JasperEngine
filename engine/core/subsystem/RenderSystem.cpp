@@ -10584,16 +10584,16 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // editor's line overlay), LOD Level and Overdraw draw every mesh in a colour of theirs,
         // Vertex Color with the view variant of its shader (V1 R102: no fade, no extra pass)
         const ViewDrawMode drawMode = rv().drawMode;
-        const bool vertexColorView = drawMode == ViewDrawMode::VERTEX_COLOR && !isEditorOverlay(entity);
-        if (drawMode == ViewDrawMode::WIREFRAME && !isEditorOverlay(entity)){
+        const bool vertexColorView = drawMode == ViewDrawMode::VERTEX_COLOR && !isDrawModeExempt(entity);
+        if (drawMode == ViewDrawMode::WIREFRAME && !isDrawModeExempt(entity)){
             return false;
         }
         struct OverdrawScope{
             explicit OverdrawScope(bool on): on(on){ if (on) SokolObject::setOverdraw(true); }
             ~OverdrawScope(){ if (on) SokolObject::setOverdraw(false); }
             bool on;
-        } overdrawScope(drawMode == ViewDrawMode::OVERDRAW && !isEditorOverlay(entity));
-        const bool tintLevels = drawMode == ViewDrawMode::LOD_LEVEL && !isEditorOverlay(entity);
+        } overdrawScope(drawMode == ViewDrawMode::OVERDRAW && !isDrawModeExempt(entity));
+        const bool tintLevels = drawMode == ViewDrawMode::LOD_LEVEL && !isDrawModeExempt(entity);
         // the material drawn in a level's colour, or as a layer of heat
         std::optional<Material> tinted;
         auto drawModeMaterial = [&](const Material& material, unsigned int level) -> const Material&{

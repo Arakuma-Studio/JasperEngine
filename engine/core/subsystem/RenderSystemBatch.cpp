@@ -283,7 +283,7 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     // a batch's vertex colours already carry (each drawn alone takes the tint); Vertex Color draws
     // the mesh's own vertex colours, which a batch's replace
     if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW || rv().drawMode == ViewDrawMode::VERTEX_COLOR) &&
-            !isEditorOverlay(entity))
+            !isDrawModeExempt(entity))
         return BatchBreak::DISABLED;
 #endif
     if (signature.test(scene->getComponentId<InstancedMeshComponent>()) || mesh.spriteInstanced)

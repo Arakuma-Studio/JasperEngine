@@ -3854,6 +3854,15 @@ namespace jasperengine{
 		void setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB);
 		// a mesh drawn in the Vertex Color Draw Mode waits for its view variant (drawn shaded meanwhile)
 		bool isVertexColorViewPending() const;
+		// an editor overlay (isEditorOverlay), which the Draw Modes draw as it is; none outside the editor
+		bool isDrawModeExempt(Entity entity) const{
+#ifdef JASPERENGINE_EDITOR
+			return isEditorOverlay(entity);
+#else
+			(void)entity;
+			return false;
+#endif
+		}
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
