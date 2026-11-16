@@ -244,10 +244,12 @@ TargetHit VertexPaintTools::hitTargets(uint32_t sceneId, const Ray& ray) const {
         if (!sceneTargetsOf.count(ref.entity)) sceneTargetsOf[ref.entity] = vc::sceneTargets(s, ref.entity);
         const std::vector<vc::SceneTarget>& list = sceneTargetsOf[ref.entity];
         MeshHit hit;
+        bool bvhMissed = false;
         // what is drawn (a posed skin too) through the picking BVH, then the triangle in the bind pose (D12)
         for (const vc::SceneTarget& target : list) {
             if (target.key != ref.key) continue;
             const MeshRaycastHit picked = MeshRaycast::raycastEntity(s, target.meshEntity, ray);
+            bvhMissed = !picked.hit;
             if (!picked.hit || picked.submesh != target.submesh) break;
             // the BVH numbers triangles across the mesh's submeshes
             uint32_t first = 0;
@@ -263,7 +265,10 @@ TargetHit VertexPaintTools::hitTargets(uint32_t sceneId, const Ray& ray) const {
             hit.normal = picked.faceNormal.length() > 0.0f ? picked.faceNormal.normalized() : Vector3(0.0f, 1.0f, 0.0f);
             break;
         }
-        if (!hit.hit) hit = raycastMesh(*mesh, model, origin, direction, brush.xray);
+        // the BVH's triangle could not be mapped, or it saw nothing: the bind-pose triangles themselves,
+        // unless the mesh is too big to test each frame (a BVH miss is a miss then)
+        constexpr uint32_t BRUTE_FORCE_TRIANGLES = 20000;
+        if (!hit.hit && (!bvhMissed || mesh->triangleCount() <= BRUTE_FORCE_TRIANGLES)) hit = raycastMesh(*mesh, model, origin, direction, brush.xray);
         if (!hit.hit || (best.hit && hit.distance >= best.distance)) continue;
         if (!infosOf.count(ref.entity)) infosOf[ref.entity] = listTargets(projectPtr, sceneId, ref.entity);
         best.hit = true;
