@@ -112,7 +112,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1102);
     scene->recreateEntity(1103);
     scene->recreateEntity(1104);
-    scene->setLastEntity(1104);
+    scene->recreateEntity(1105);
+    scene->setLastEntity(1105);
 
     {
         // Entity 1001 (Transform)
@@ -3515,6 +3516,35 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         titleArt.animationUnscaledTime = false;
         titleArt.driveAnimation = "";
         scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
+    }
+
+    {
+        // Entity 1105 (VertexColorsComponent)
+        scene->setEntityName(1105, "VertexColorsComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(104.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1105, transform);
+
+        VertexColorsComponent vertexColors;
+        vertexColors.enabled = false;
+        vertexColors.data = "paint/Parity.vcolors";
+        vertexColors.format = vertexcolor::Format::RGBA16F;
+        vertexColors.initialValue = vertexcolor::InitialValue::Custom;
+        vertexColors.customInitial = Vector4(0.355556f, 0.711111f, 0.477778f, 1.000000f);
+        vertexColors.channelNames[0] = "Moss";
+        vertexColors.channelNames[2] = "text: [1, 2]";
+        vertexColors.channelNames[3] = "Snow";
+        scene->addComponent<VertexColorsComponent>(1105, vertexColors);
     }
 
     // Default Camera 1
