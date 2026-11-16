@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include "zstd.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -21,6 +23,21 @@ using namespace jasperengine;
 using namespace jasperengine::vertexcolor;
 
 namespace {
+
+    // the editor's compressor (editor/vertexcolor/VertexColorCompressor.cpp): the engine links only
+    // zstd's decoder, these tests link the encoder too
+    bool testZstd(const std::vector<uint8_t>& body, std::vector<uint8_t>& packed) {
+        packed.resize(ZSTD_compressBound(body.size()));
+        const size_t size = ZSTD_compress(packed.data(), packed.size(), body.data(), body.size(), 3);
+        if (ZSTD_isError(size)) return false;
+        packed.resize(size);
+        return true;
+    }
+
+    [[maybe_unused]] const bool testZstdSet = [] {
+        setBodyCompressor(&testZstd);
+        return true;
+    }();
 
     TargetData makeTarget(int32_t node, int32_t primitive, int32_t submesh, uint32_t vertices) {
         TargetData t;
@@ -177,6 +194,22 @@ TEST(VertexColorFile, ExportStripsTheEditorSection) {
     std::string error;
     ASSERT_TRUE(decode(exported.data(), exported.size(), out, error)) << error;
     expectSame(data, out, false);
+}
+
+// a game sets no compressor (it links only zstd's decoder): the body goes raw and reads the same
+TEST(VertexColorFile, WritesARawBodyWithoutACompressor) {
+    Data big;
+    big.targets.push_back(makeTarget(-1, -1, 0, 0));
+    big.targets[0].base.assign(10000, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+    setBodyCompressor(nullptr);
+    const std::vector<uint8_t> bytes = encode(big, false);
+    setBodyCompressor(&testZstd);
+    EXPECT_EQ(bytes[9] & 2, 0);
+    EXPECT_GT(bytes.size(), 10000u * 4u);
+    Data out;
+    std::string error;
+    ASSERT_TRUE(decode(bytes.data(), bytes.size(), out, error)) << error;
+    expectSame(big, out, false);
 }
 
 TEST(VertexColorFile, CompressesTheBodyOnlyWhenSmaller) {

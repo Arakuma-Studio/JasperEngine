@@ -43,6 +43,8 @@ namespace jasperengine{
         // the decoded file (editor: the live, possibly unsaved, values)
         std::shared_ptr<vertexcolor::Data> loaded;
         std::string loadedPath;
+        // loadedPath could not be read (logged once; a new `data` path tries again)
+        bool loadFailed = false;
         // bumped by every write to `loaded`; the render path re-uploads when it differs from what it bound
         uint64_t revision = 0;
         uint64_t boundRevision = 0;
