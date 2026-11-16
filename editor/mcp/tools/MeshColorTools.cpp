@@ -21,15 +21,11 @@
 
 #include "Project.h"
 #include "Scene.h"
-#include "component/MeshComponent.h"
 #include "subsystem/VertexColorScene.h"
-#include "texture/Material.h"
-#include "texture/TextureData.h"
-#include "texture/TextureImportSettings.h"
 #include "util/FileUtils.h"
-#include "util/FloatImage.h"
 #include "vertexcolor/VertexColorEditing.h"
 #include "vertexcolor/VertexColorOpsJson.h"
+#include "vertexcolor/VertexPaintImages.h"
 
 #include <algorithm>
 #include <atomic>
@@ -224,116 +220,11 @@ bool parseTargets(const Json& args, const char* key, const std::vector<vce::Targ
 
 // ---------------------------------------------------------------- what the op reader cannot do alone
 
-// a texture file as linear pixels: color data (an sRGB import) decoded, data kept as stored
-std::shared_ptr<const vc::Image> imageFromFile(const fs::path& absolute, const std::string& shown, bool grey, std::string& error) {
-    FloatImage file;
-    if (!readFloatImage(FileUtils::pathToGenericUtf8(absolute), file, &error)) return nullptr;
-    TextureImportSettings settings;
-    TextureImportSettings::load(FileUtils::pathToGenericUtf8(absolute), settings);
-    const bool srgb = !grey && settings.srgb.value_or(TextureImportSettings::defaultSrgb(settings.resolvedType()));
-    auto image = std::make_shared<vc::Image>();
-    image->width = file.width;
-    image->height = file.height;
-    image->pixels.resize(static_cast<size_t>(file.width) * file.height);
-    for (size_t i = 0; i < image->pixels.size(); i++) {
-        const float* c = &file.rgba[i * 4];
-        if (grey) {
-            image->pixels[i] = Vector4(c[0], c[0], c[0], 1.0f);
-        } else if (srgb) {
-            image->pixels[i] = Vector4(vc::srgbToLinear(c[0]), vc::srgbToLinear(c[1]), vc::srgbToLinear(c[2]), c[3]);
-        } else {
-            image->pixels[i] = Vector4(c[0], c[1], c[2], c[3]);
-        }
-    }
-    if (image->pixels.empty()) {
-        error = "\"" + shown + "\" has no pixels.";
-        return nullptr;
-    }
-    return image;
-}
-
-std::shared_ptr<const vc::Image> imageFromProjectPath(Project* project, const std::string& path, bool grey, std::string& error) {
+// a project-relative texture path, checked inside the project, read by the shared loader (VertexPaintImages)
+std::shared_ptr<const vc::Image> imageFromProjectPath(Project* project, const std::string& path, std::optional<bool> colorData, std::string& error) {
     fs::path absolute;
     if (!McpRefs::resolveProjectPath(project, path, absolute, error, true)) return nullptr;
-    return imageFromFile(absolute, path, grey, error);
-}
-
-// R41: a material slot of the target's submesh, times its factor (albedo: base color; emissive)
-std::shared_ptr<const vc::Image> imageFromMaterialSlot(Project* project, Scene* scene, Entity entity, const vc::TargetKey& key,
-                                                       const std::string& slot, int& texCoord, std::string& error) {
-    const Material* material = nullptr;
-    for (const vc::SceneTarget& target : vc::sceneTargets(scene, entity)) {
-        if (target.key != key) continue;
-        if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity)) {
-            if (target.submesh < mesh->numSubmeshes) material = &mesh->submeshes[target.submesh].material;
-        }
-    }
-    if (!material) {
-        error = "the submesh of " + key.describe() + " has no material to read.";
-        return nullptr;
-    }
-    const Texture* texture = nullptr;
-    Vector4 factor(1.0f, 1.0f, 1.0f, 1.0f);
-    bool color = true;
-    texCoord = 0;
-    if (slot == "albedo") {
-        texture = &material->baseColorTexture;
-        factor = material->baseColorFactor;
-        texCoord = material->baseColorTexCoord;
-    } else if (slot == "emissive") {
-        texture = &material->emissiveTexture;
-        factor = Vector4(material->emissiveFactor.x, material->emissiveFactor.y, material->emissiveFactor.z, 1.0f);
-        texCoord = material->emissiveTexCoord;
-    } else if (slot == "occlusion") {
-        texture = &material->occlusionTexture;
-        color = false;
-        texCoord = material->occlusionTexCoord;
-    } else if (slot == "metallic_roughness") {
-        texture = &material->metallicRoughnessTexture;
-        color = false;
-        texCoord = material->metallicRoughnessTexCoord;
-    } else {
-        for (const auto& [name, named] : material->shaderTextures) {
-            if (name == slot) texture = &named;
-        }
-        if (!texture) {
-            error = "\"" + slot + "\" is not a slot of the material: albedo, emissive, occlusion, metallic_roughness or a shader texture's name.";
-            return nullptr;
-        }
-        color = false;
-    }
-
-    std::shared_ptr<vc::Image> image;
-    const std::string path = texture->empty() ? std::string() : texture->getPath();
-    std::error_code ec;
-    if (!path.empty() && fs::is_regular_file(project->resolveAssetPath(path), ec)) {
-        auto decoded = imageFromFile(project->resolveAssetPath(path), path, false, error);
-        if (!decoded) return nullptr;
-        image = std::make_shared<vc::Image>(*decoded);
-    } else if (!texture->empty() && texture->hasData() && texture->getData().getColorFormat() == ColorFormat::RGBA && texture->getData().getData()) {
-        // a model's embedded image, still in memory
-        TextureData& data = texture->getData();
-        image = std::make_shared<vc::Image>();
-        image->width = data.getWidth();
-        image->height = data.getHeight();
-        const uint8_t* bytes = static_cast<const uint8_t*>(data.getData());
-        image->pixels.resize(static_cast<size_t>(image->width) * image->height);
-        for (size_t i = 0; i < image->pixels.size(); i++) {
-            const float r = bytes[i * 4] / 255.0f, g = bytes[i * 4 + 1] / 255.0f, b = bytes[i * 4 + 2] / 255.0f, a = bytes[i * 4 + 3] / 255.0f;
-            image->pixels[i] = color ? Vector4(vc::srgbToLinear(r), vc::srgbToLinear(g), vc::srgbToLinear(b), a) : Vector4(r, g, b, a);
-        }
-    } else if (texture->empty()) {
-        // no map: the factor alone
-        image = std::make_shared<vc::Image>();
-        image->width = 1;
-        image->height = 1;
-        image->pixels.assign(1, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
-    } else {
-        error = "the " + slot + " map of " + key.describe() + " is not readable here (an embedded image already uploaded); give texture with a file path instead.";
-        return nullptr;
-    }
-    for (Vector4& p : image->pixels) p = Vector4(p.x * factor.x, p.y * factor.y, p.z * factor.z, p.w * factor.w);
-    return image;
+    return vce::loadPaintImage(project, FileUtils::pathToUtf8(absolute), colorData, &error);
 }
 
 // R60: another entity's values in world space (every target it has, its own colors or its initial value)
@@ -391,20 +282,20 @@ vc::OpJsonHooks colorHooks(const ColorCall& c, const vc::TargetKey& key, const s
             const std::string path = item["texture"].get<std::string>();
             auto found = cache->images.find("file:" + path);
             if (found != cache->images.end()) return found->second;
-            auto image = imageFromProjectPath(project, path, false, error);
+            auto image = imageFromProjectPath(project, path, std::nullopt, error);
             if (image) cache->images["file:" + path] = image;
             return image;
         }
         field = "material_slot";
         int texCoord = 0;
-        auto image = imageFromMaterialSlot(project, scene->scene, entity, key, item["material_slot"].get<std::string>(), texCoord, error);
+        auto image = vce::materialImage(project, scene->id, vce::TargetRef{entity, key}, item["material_slot"].get<std::string>(), &error, &texCoord);
         if (image && opIndex && !mcHas(item, "uv_set")) cache->slotTexCoords[*opIndex] = texCoord;
         return image;
     };
     hooks.loadStencil = [project, cache](const std::string& path, std::string& error) -> std::shared_ptr<const vc::Image> {
         auto found = cache->images.find("stencil:" + path);
         if (found != cache->images.end()) return found->second;
-        auto image = imageFromProjectPath(project, path, true, error);
+        auto image = imageFromProjectPath(project, path, false, error);
         if (image) cache->images["stencil:" + path] = image;
         return image;
     };

@@ -193,7 +193,7 @@ def write_checker_png(path: Path, size: int = 256) -> None:
     path.write_bytes(pngdiff.encode(size, size, rgba))
 
 
-def write_checker_quad(path: Path, quads: int = QUADS, primitives: int = 1) -> None:
+def write_checker_quad(path: Path, quads: int = QUADS, primitives: int = 1, albedo: str | None = None) -> None:
     """A 2x2 quad on XZ facing up, quads x quads cells sharing their vertices, uv = ((x+1)/2, (z+1)/2)."""
     positions, normals, uvs, indices = [], [], [], []
     for j in range(quads + 1):
@@ -231,6 +231,11 @@ def write_checker_quad(path: Path, quads: int = QUADS, primitives: int = 1) -> N
             {"bufferView": 2, "componentType": 5126, "count": count, "type": "VEC2"},
         ] + [{"bufferView": 3, "byteOffset": k * per * 2, "componentType": 5123, "count": per, "type": "SCALAR"} for k in range(primitives)],
     }
+    if albedo:
+        doc["images"] = [{"uri": albedo}]
+        doc["samplers"] = [{"magFilter": 9729, "minFilter": 9729}]
+        doc["textures"] = [{"source": 0, "sampler": 0}]
+        doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] = {"index": 0}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc))
 
@@ -370,6 +375,29 @@ async def test_mesh_colors_from_checker_texture(ed: Editor):
     total = sum(e["corners"] for e in entries)
     pure = sum(e["corners"] for e in entries if any(all(abs(a - c / 255) < 0.1 for a, c in zip(e["value"][:3], rgb)) for rgb in CHECKER.values()))
     ed.check(total == QUADS * QUADS * 6 and pure >= 0.95 * total, f"the corners hold the four checker colours, none blended: {entries}")
+
+
+async def test_mesh_colors_from_material_slot(ed: Editor):
+    """R41: material_slot reads the target's own material (the shared loader the Vertex Paint window uses)"""
+    ed.require_tools("edit_mesh_colors", "sample_mesh_colors")
+    s = await colors_setup(ed)
+    write_checker_quad(ed.project / "models" / "textured.gltf", albedo="../textures/checker.png")
+    made = await ed.call("set_model", scene=s["scene"], create={"name": "Textured", "position": [0, 0, -10]}, path="models/textured.gltf")
+    textured = made["model"]["id"]
+    r = await ed.call("edit_mesh_colors", scene=s["scene"], entity=textured, ops=[{"op": "from_texture", "material_slot": "albedo"}])
+    op = r["targets"][0]["ops"][0]
+    ed.check(op["mean_delta_e"] < 3.0 and op["split_added"] > 0, f"the albedo map, hard edges kept: {op}")
+    got = await ed.call("sample_mesh_colors", scene=s["scene"], entity=textured, query="points", points=[[-0.5, 0, -10.5], [0.5, 0, -9.5]])
+    for sample, name in zip(got["points"], ["red", "yellow"]):
+        rgb = [c / 255 for c in CHECKER[name]]
+        ed.check(all(abs(a - b) < 0.1 for a, b in zip(sample["value"][:3], rgb)), f"{sample['point']} is {name}: {sample}")
+    flat = await ed.call("edit_mesh_colors", scene=s["scene"], entity=textured, hash=True,
+                         ops=[{"op": "from_texture", "material_slot": "metallic_roughness"}])
+    after = flat["targets"][0]["stats"]["after"]
+    ed.check(after["min"][:3] == [1.0, 1.0, 1.0] == after["max"][:3], f"no map: the slot's factor alone: {after}")
+    e = await ed.call("edit_mesh_colors", scene=s["scene"], entity=textured, expect_error=True,
+                      ops=[{"op": "from_texture", "material_slot": "detail"}])
+    ed.check("ops[0].material_slot" in e and "metallic_roughness" in e, f"an unknown slot lists the slots: {e}")
 
 
 async def test_mesh_colors_model_info_facts(ed: Editor):

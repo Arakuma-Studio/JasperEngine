@@ -985,7 +985,7 @@ bool VertexPaintWindow::dialogFields(uint32_t sceneId) {
             }
             if (f.fromMaterial) {
                 vpRow("Slot", "Albedo: the albedo map times the base color factor");
-                ImGui::Combo("##vp_ft_slot", &f.materialSlot, "Albedo\0Emissive\0Occlusion\0");
+                ImGui::Combo("##vp_ft_slot", &f.materialSlot, "Albedo\0Emissive\0Occlusion\0Metallic Roughness\0");
             } else {
                 vpRow("Texture", "An assets-relative path");
                 char path[512];

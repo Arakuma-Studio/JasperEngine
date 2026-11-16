@@ -194,7 +194,7 @@ for a 3-value color, `rgba` for 4); every op but `set` takes `strength` 0..1, an
 | `adjust` | one of `levels {in, gamma, out}`, `brightness_contrast`, `hsv {hue, saturation, value}`, `invert: true`, `clamp [low, high]` |
 | `channel` | one of `copy {from, to}`, `swap ["r", "g"]`, `invert: "a"`, `pack {r: "g" or 0.5, ...}` |
 | `replace_color` | `from`, `to`, `tolerance` |
-| `from_texture` | `texture` (a path) or `material_slot` (`albedo`: map × base color; `emissive`, `occlusion`, a shader texture), `uv_set`, `samples`, `keep_seams` (default true: hard edges where the texture has them) |
+| `from_texture` | `texture` (a path) or `material_slot` (`albedo`: map × base color; `emissive`, `occlusion`, `metallic_roughness`, a shader texture by name), `uv_set`, `samples`, `keep_seams` (default true: hard edges where the texture has them) |
 | `bake_ao`, `bake_thickness` | `rays`, `distance`, `scope` (self, scene), `seed` |
 | `bake_curvature` | `radius_edges`, `contrast` |
 | `by_direction` | `value`, `direction`, `range` `[low, high]` (cosine) |
