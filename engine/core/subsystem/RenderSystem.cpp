@@ -4386,6 +4386,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // Lit Quality
     if (!manifest){
         variant.litDefines = variant.pbr.defines;
+        // the material's Vertex Color section (V1 R70), for a mesh with vertex colours: none for
+        // Tint, what Lit always drew
+        if (inputs.material && (p_vertexColorVec3 || p_vertexColorVec4) && !inputs.terrain && inputs.voxelTier == 0){
+            const std::vector<std::string> vertexColorDefines = MaterialPbr::getVertexColorDefines(inputs.material->pbr, p_unlit);
+            variant.litDefines.insert(variant.litDefines.end(), vertexColorDefines.begin(), vertexColorDefines.end());
+        }
         if (inputs.terrain){
             const std::vector<std::string> terrainDefines = MaterialPbr::getDefinesFromBits(
                 getTerrainDefineBits(environment, inputs.terrainVariant, p_terrainSurface, p_unlit, inputs.normal));
@@ -7089,19 +7095,29 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].pbrExtOffset = 0;
         mesh.submeshes[i].pbrSetsOffset = -1;
         mesh.submeshes[i].pbrHairOffset = -1;
+        mesh.submeshes[i].pbrVertexColorOffset = -1;
         if (mesh.submeshes[i].litDefineBits != 0 && mesh.submeshes[i].customShaderId != 0){
             unsigned int paramsSize = 0;
             if (const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_pbrParams", paramsSize)){
+                bool lobes = false;
                 for (const ShaderUniform& member : *members){
                     const std::string name = ShaderData::getUniformShortName(member.name);
                     if (name == "clearcoat"){
                         mesh.submeshes[i].pbrParamsSize = (uint16_t)paramsSize;
                         mesh.submeshes[i].pbrExtOffset = (uint16_t)member.offset;
+                        lobes = true;
                     }else if (name == "set0"){
                         mesh.submeshes[i].pbrSetsOffset = (int16_t)member.offset;
                     }else if (name == "hair0"){
                         mesh.submeshes[i].pbrHairOffset = (int16_t)member.offset;
+                    }else if (name == "vertexColorMasks"){
+                        mesh.submeshes[i].pbrVertexColorOffset = (int16_t)member.offset;
                     }
+                }
+                // the vertex colour masks alone (V1 R70): the material's prefix, then the masks
+                if (!lobes && mesh.submeshes[i].pbrVertexColorOffset >= 0){
+                    mesh.submeshes[i].pbrParamsSize = (uint16_t)paramsSize;
+                    mesh.submeshes[i].pbrExtOffset = (uint16_t)mesh.submeshes[i].pbrVertexColorOffset;
                 }
             }
         }
@@ -10965,6 +10981,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         std::memcpy(block + sub.pbrSetsOffset, setsFloat, sizeof(setsFloat));
                     }
                     writePbrHairBlock(sub, block, size);
+                    if (sub.pbrVertexColorOffset >= 0 && sub.pbrVertexColorOffset + 4 * sizeof(float) <= size){
+                        float masks[4];
+                        MaterialPbr::getVertexColorMasks(material.pbr, masks);
+                        std::memcpy(block + sub.pbrVertexColorOffset, masks, sizeof(masks));
+                    }
                     render.applyUniformBlock(sub.slotFSParams, size, block);
                 }else if (sub.pbrParamsSize == 0 && batch && batch->neutralColor){
                     // a batch's vertex colours carry each object's colour factor
@@ -13471,6 +13492,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.pbrExtOffset = 0;
         submesh.pbrSetsOffset = -1;
         submesh.pbrHairOffset = -1;
+        submesh.pbrVertexColorOffset = -1;
         submesh.slotFSLightOcclusion = -1;
         submesh.sizeFSLightOcclusion = 0;
         submesh.slotTiledLights = {-1, -1};

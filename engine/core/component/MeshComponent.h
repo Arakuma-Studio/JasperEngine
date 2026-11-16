@@ -332,6 +332,9 @@ namespace jasperengine{
         int16_t pbrSetsOffset = -1;
         // and the Hair shading model's three vec4 after them (spec S57 R5; -1: no hair)
         int16_t pbrHairOffset = -1;
+        // and the material's vertex colour masks last (V1 R70; -1: none). A variant with the
+        // masks and no lobes has pbrParamsSize too, its pbrExtOffset the masks' offset
+        int16_t pbrVertexColorOffset = -1;
         // u_fs_lightOcclusion (includes/light_occlusion.glsl: capsule and contact shadows),
         // u_tiledLights and u_contactShadowTexture of the S57 variants ('Til', 'Cap', 'Cts')
         int slotFSLightOcclusion = -1;

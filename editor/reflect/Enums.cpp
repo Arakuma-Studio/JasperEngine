@@ -594,6 +594,23 @@ namespace {
         {v(MaterialLighting::NONE), "NONE", "None", "MaterialLighting::NONE", "none"},
     };
 
+    // V1 R70: the built-in Lit's Vertex Color section (texture/MaterialPbr.h)
+    constexpr EnumItem kVertexColorUseItems[] = {
+        {v(VertexColorUse::TINT), "tint", "Tint", "VertexColorUse::TINT"},
+        {v(VertexColorUse::MASKS), "masks", "Masks", "VertexColorUse::MASKS"},
+        {v(VertexColorUse::OFF), "off", "Off", "VertexColorUse::OFF"},
+    };
+    constexpr EnumItem kVertexColorTargetItems[] = {
+        {v(VertexColorTarget::NONE), "none", "None", "VertexColorTarget::NONE"},
+        {v(VertexColorTarget::OCCLUSION), "occlusion", "Occlusion", "VertexColorTarget::OCCLUSION"},
+        {v(VertexColorTarget::ROUGHNESS_MULTIPLY), "roughness_multiply", "Roughness (multiply)", "VertexColorTarget::ROUGHNESS_MULTIPLY"},
+        {v(VertexColorTarget::ROUGHNESS_REPLACE), "roughness_replace", "Roughness (replace)", "VertexColorTarget::ROUGHNESS_REPLACE"},
+        {v(VertexColorTarget::METALLIC), "metallic", "Metallic", "VertexColorTarget::METALLIC"},
+        {v(VertexColorTarget::EMISSION), "emission", "Emission", "VertexColorTarget::EMISSION"},
+        {v(VertexColorTarget::OPACITY), "opacity", "Opacity", "VertexColorTarget::OPACITY"},
+        {v(VertexColorTarget::ALBEDO_TINT), "albedo_tint", "Albedo Tint", "VertexColorTarget::ALBEDO_TINT"},
+    };
+
     constexpr EnumItem kMaterialPassOrderItems[] = {
         {v(MaterialPassOrder::BEFORE), "BEFORE", "Before", "MaterialPassOrder::BEFORE", "before"},
         {v(MaterialPassOrder::AFTER), "AFTER", "After", "MaterialPassOrder::AFTER", "after"},
@@ -856,6 +873,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kMaterialDepthTest{"MaterialDepthTest", kMaterialDepthTestItems, v(MaterialDepthTest::AUTO)};
     const EnumDesc kMaterialDepthWrite{"MaterialDepthWrite", kMaterialDepthWriteItems, v(MaterialDepthWrite::AUTO)};
     const EnumDesc kMaterialLighting{"MaterialLighting", kMaterialLightingItems, v(MaterialLighting::AUTO)};
+    const EnumDesc kVertexColorUse{"VertexColorUse", kVertexColorUseItems, v(VertexColorUse::TINT)};
+    const EnumDesc kVertexColorTarget{"VertexColorTarget", kVertexColorTargetItems, v(VertexColorTarget::NONE)};
     const EnumDesc kTerrainQualitySetting{"TerrainQualitySetting", kTerrainQualitySettingItems, v(TerrainQualitySetting::AUTO)};
     const EnumDesc kTerrainOffscreenShadows{"TerrainOffscreenShadows", kTerrainOffscreenShadowsItems, v(TerrainOffscreenShadows::AUTO)};
     const EnumDesc kTerrainMacroMode{"TerrainMacroMode", kTerrainMacroModeItems, v(TerrainMacroMode::OFF)};

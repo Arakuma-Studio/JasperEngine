@@ -2218,7 +2218,58 @@ Json McpValues::materialPbrToJson(Project* project, SceneProject* scene, const M
         }
         if (changed) out[lobe.name] = fields;
     }
+    // the Vertex Color section (V1 R70), when it is not Tint
+    if (pbr.vertexColor != defaults.vertexColor) {
+        const MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+        Json fields = {{"use", MaterialPbr::getVertexColorUseName(vertexColor.use)}, {"alphaOpacity", vertexColor.alphaOpacity}};
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (int channel = 0; channel < 4; channel++)
+            fields[channels[channel]] = MaterialPbr::getVertexColorTargetName(MaterialPbr::getVertexColorTarget(vertexColor, channel));
+        out["vertexColor"] = fields;
+    }
     return out;
+}
+
+namespace {
+
+    // pbr.vertexColor of update_material (V1 R70): {use, alphaOpacity, r, g, b, a}, partial values merge
+    bool vertexColorFromJson(const Json& value, MaterialPbrExtensions::VertexColor& out, std::string& error) {
+        if (!value.is_object()) {
+            error = "pbr.vertexColor must be an object: {use: tint|masks|off, alphaOpacity, r|g|b|a: none|occlusion|roughness_multiply|"
+                    "roughness_replace|metallic|emission|opacity|albedo_tint}.";
+            return false;
+        }
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            const std::string path = "pbr.vertexColor." + it.key();
+            if (it.key() == "use") {
+                if (!it.value().is_string() || !MaterialPbr::parseVertexColorUse(it.value().get<std::string>(), out.use)) {
+                    error = path + " must be tint, masks or off.";
+                    return false;
+                }
+                continue;
+            }
+            if (it.key() == "alphaOpacity") {
+                if (!it.value().is_boolean()) { error = path + " must be true or false."; return false; }
+                out.alphaOpacity = it.value().get<bool>();
+                continue;
+            }
+            int channel = -1;
+            for (int c = 0; c < 4; c++) {
+                if (it.key() == channels[c]) channel = c;
+            }
+            if (channel < 0) {
+                error = path + ": unknown field; vertexColor has use, alphaOpacity, r, g, b, a.";
+                return false;
+            }
+            if (!it.value().is_string() || !MaterialPbr::parseVertexColorTarget(it.value().get<std::string>(), MaterialPbr::vertexColorTarget(out, channel))) {
+                error = path + " must be none, occlusion, roughness_multiply, roughness_replace, metallic, emission, opacity or albedo_tint.";
+                return false;
+            }
+        }
+        return true;
+    }
+
 }
 
 bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error) {
@@ -2228,14 +2279,19 @@ bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const
     }
     if (!value.is_object()) {
         error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex, "
-                "hair (the Hair shading model: hair.enabled) (each {field: value}, partial values merge), or null for none.";
+                "hair (the Hair shading model: hair.enabled), vertexColor (the Vertex Color section: use, alphaOpacity, r, g, b, a) "
+                "(each {field: value}, partial values merge), or null for none.";
         return false;
     }
     for (auto lobeIt = value.begin(); lobeIt != value.end(); ++lobeIt) {
+        if (lobeIt.key() == "vertexColor") {
+            if (!vertexColorFromJson(lobeIt.value(), out.vertexColor, error)) return false;
+            continue;
+        }
         const PbrLobeInfo* lobe = MaterialPbr::findLobe(lobeIt.key());
         if (!lobe) {
             error = "pbr: unknown lobe "" + lobeIt.key() + ""; valid: clearcoat, sheen, anisotropy, iridescence, transmission, "
-                    "volume, specular, hex, hair.";
+                    "volume, specular, hex, hair, vertexColor.";
             return false;
         }
         if (!lobeIt.value().is_object()) {

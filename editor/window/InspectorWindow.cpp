@@ -7962,6 +7962,7 @@ void editor::InspectorWindow::drawSubmeshMaterialRows(ComponentType cpType, Scen
                                       firstMaterial.normalTexture, settingsMaterial.onValueChanged);
     }
     endTable();
+    drawMaterialVertexColorRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
     drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
     }else{
         // a library shader with @require normalmap reads the material's own Normal Texture

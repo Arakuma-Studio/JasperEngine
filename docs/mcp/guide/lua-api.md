@@ -2010,6 +2010,9 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
 hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
 `hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+The Vertex Color section: `vertexColorUse` (`VertexColorUse.TINT`, `MASKS`, `OFF`),
+`vertexColorAlphaOpacity` (Tint: A multiplies the opacity), and in Masks the input each channel
+masks, `vertexColorR`, `vertexColorG`, `vertexColorB`, `vertexColorA` (`VertexColorTarget.*`).
 E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
@@ -3560,6 +3563,8 @@ gate.area = 0 ; gate:remove()
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
 | `ShadingModel` | `STANDARD`, `HAIR` |
+| `VertexColorUse` | `TINT`, `MASKS`, `OFF` (`Material.vertexColorUse`) |
+| `VertexColorTarget` | `NONE`, `OCCLUSION`, `ROUGHNESS_MULTIPLY`, `ROUGHNESS_REPLACE`, `METALLIC`, `EMISSION`, `OPACITY`, `ALBEDO_TINT` |
 | `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
 | `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
 | `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |
