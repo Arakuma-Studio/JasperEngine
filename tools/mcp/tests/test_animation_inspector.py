@@ -88,7 +88,15 @@ class Ui:
                     await self.wheel(at, True, 1)
                     await self.frames()
                     moved = self.ed.ui_items().get(name)
-                    if not moved or moved[1] == rect[1]:
+                    if not moved:
+                        # that notch scrolled it past the panel's top, and the rect from before it
+                        # is stale: a click there lands on whatever row took its place
+                        await self.wheel(at, False, 1)
+                        await self.frames()
+                        moved = self.ed.ui_items().get(name)
+                        self.ed.check(moved, f"{name} is drawn again a notch back up")
+                        return moved
+                    if moved[1] == rect[1]:
                         break
                     rect = moved
                 return rect
