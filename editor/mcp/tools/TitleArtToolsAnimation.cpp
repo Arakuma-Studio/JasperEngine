@@ -361,7 +361,10 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
             request.region = s->region;
             TitleAnimFrame frame;
             std::string error;
+            const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
             if (!s->renderers[v]->render(request, frame, error)){
+                // a program still being built: the frame renders again on a later editor frame
+                if (TitleArtRenderHost::editor().notReadyCount() != waits) return false;
                 job.fail("The render at " + std::to_string(request.time) + " s failed: " + error);
                 return true;
             }

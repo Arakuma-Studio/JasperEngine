@@ -100,6 +100,9 @@ namespace jasperengine::editor {
         // CPU work after what is queued before it; false fails the export (after fail())
         void then(std::function<bool()> step);
         bool fail(const std::string& code, const std::string& message);
+        // from a CPU step whose render met a program still being built: the step runs again on a
+        // later frame, as the frames build it (S80 Deviation 61); true
+        bool later();
         void warn(const std::string& warning);
 
         // `<stem>[_<part>][.<code>].<ext>` (the code lowercase, as bake sets)
@@ -144,6 +147,7 @@ namespace jasperengine::editor {
         size_t rendersTotal = 0, rendersDone = 0;
         std::vector<std::pair<std::string, std::string>> zipEntries;    // name, content
         bool failed = false;
+        bool retry = false;             // later() was called by the step that ran
     };
 
     struct TitleExportFormat {

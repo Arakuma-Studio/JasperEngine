@@ -13,6 +13,7 @@ lint (its lint_allow excepted). Allowlists carry reasons and at most 10 % of a k
 Unavailable items are counted by reason, never skipped silently. Shard with
 JASPER_TITLE_LIBRARY_SHARD=<i>/<n> (the harness's -j runs one shard per editor)."""
 
+import asyncio
 import hashlib
 import fnmatch
 import os
@@ -80,6 +81,23 @@ def shard(items: list) -> list:
     return [item for k, item in enumerate(items) if k % n == i]
 
 
+async def checked(ed: Editor, path: str, **args) -> dict:
+    """check_title's report, following its job when the call hands one back: a check that meets
+    Title Art programs still being built runs again as they are built (S80 Deviation 61), past the
+    call's wait on a loaded host."""
+    report = await ed.call("check_title", path=path, **args)
+    if report.get("status") == "running":
+        deadline = time.monotonic() + 1800
+        while report.get("status") == "running" and time.monotonic() < deadline:
+            state = await ed.call("get_job", job_id=report["job_id"])
+            if state["status"] != "running":
+                ed.check_eq(state["status"], "succeeded", f"{path}: check_title: {state.get('message')}")
+                return state["result"]
+            await asyncio.sleep(0.5)
+        ed.fail(f"{path}: check_title still running")
+    return report
+
+
 async def render_once(ed: Editor, path: str) -> bytes:
     args = {"path": path, "max_width": 480, "backgrounds": ["transparent"]}
     r = await ed.call_raw("render_title", args)
@@ -138,7 +156,7 @@ async def test_gate(ed: Editor):
         ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
         # legibility is judged on the background the item is made for (no `background`: any)
         backgrounds = {"dark": ["black", "checker"], "light": ["white", "checker"]}.get(detail.get("background"), ["black", "white", "checker"])
-        report = await ed.call("check_title", path=path, backgrounds=backgrounds, render_scale=0.25)
+        report = await checked(ed, path, backgrounds=backgrounds, render_scale=0.25)
         for check in report["checks"]:
             cid = check["id"]
             if cid.endswith(".bands_dropped"):
@@ -158,7 +176,7 @@ RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "titl
 
 
 async def failing(ed: Editor, path: str) -> dict:
-    report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"], render_scale=0.25)
+    report = await checked(ed, path, backgrounds=["black", "white", "checker"], render_scale=0.25)
     return {c["id"]: c for c in report["checks"] if c["status"] in ("FAIL", "WARN")}
 
 
