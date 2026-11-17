@@ -7,6 +7,10 @@
 
 #include "TestScriptCommon.h"
 
+#include "HtmlUIPrewarm.h"
+#include "RmlFontEngine.h"
+#include "compat/PerfFixtures.h"
+
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Input.h>
 
@@ -16,6 +20,12 @@ using namespace jasperengine::test;
 namespace {
 
     class ScriptLuaTest : public ScriptTest {};
+
+    // S93 R15: the arcade shell, whose pause panel is display: none
+    class ScriptLua : public ScriptTest {
+    protected:
+        const char* documentFile() const override { return "arcade-shell/shell.html"; }
+    };
 
     bool endsWith(const std::string& text, const std::string& end){
         return text.size() >= end.size() && text.compare(text.size() - end.size(), end.size(), end) == 0;
@@ -490,4 +500,82 @@ TEST_F(ScriptLuaTest, LuaFunctionBaseReleasesItsReference){
         collectgarbage()
         assert(result[1] == nil)
     )");
+}
+
+TEST_F(ScriptLua, PrewarmMakesFirstShowColdFree){
+    // S93 R15 (AC19): doc:prewarm() makes the glyphs of the hidden pause panel (display: none: "PAUSED" with an outline and
+    // a glow, its line and the data-warm digits) on background jobs, placed within HtmlUI.prewarmBudgetMs a frame, and
+    // decodes its image; the frames that show the panel then rasterize nothing, draw no effect the slow way and decode
+    // nothing
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    // the engine's way: distance glyphs on the background lane (this binary makes them at once for its goldens)
+    struct AsyncDistanceGlyphs {
+        AsyncDistanceGlyphs(){ RmlFontEngine::setSynchronousDistanceGlyphsForTesting(false); }
+        ~AsyncDistanceGlyphs(){ RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true); }
+    } async;
+    EXPECT_LUA(R"(
+        assert(HtmlUI.prewarmBudgetMs == 2)
+        done = false
+        job = doc:prewarm()
+        assert(job.progress >= 0 and job.progress <= 1)
+        job.onDone = function() done = true end
+    )");
+    const double slack = test::compat::benchmarkPerfSlack();
+    double worst = 0.0;
+    int frames = 0;
+    for (; frames < 600 && luaString("done") != "true"; frames++){
+        GpuEnvironment::drawFrames(1);
+        worst = std::max(worst, HtmlUIPrewarm::getLastUpdateMs());
+    }
+    ASSERT_EQ(luaString("done"), "true") << "the prewarm did not end in " << frames << " frames";
+    EXPECT_EQ(luaString("job.done"), "true");
+    EXPECT_EQ(luaString("job.progress"), "1.0");
+    // the 2 ms placement budget plus 1 ms (enforced by the benchmark run, JASPER_HTMLUI_PERF_SLACK, elsewhere printed)
+    std::printf("[bench] ScriptLua.PrewarmMakesFirstShowColdFree: %d frames, the longest placement %.3f ms (budget 3 ms%s)\n", frames, worst,
+                slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+    if (slack > 0.0){
+        EXPECT_LE(worst, 3.0 * slack);
+    }
+
+    EXPECT_LUA(R"(
+        doc:getElementById("pause").style.display = "block"
+        doc:getElementById("pause"):querySelector("p").textContent = "12:34 0987"
+    )");
+    // the panel's first frames: nothing rasterized, no effect drawn the slow way
+    uint32_t decoded = 0;
+    auto drawn = [this, &decoded](uint32_t& glyphs, uint32_t& fallbacks){
+        glyphs = fallbacks = decoded = 0;
+        for (int frame = 0; frame < 3; frame++){
+            GpuEnvironment::drawFrames(1);
+            glyphs += document->getRenderStats().glyphsRasterized;
+            fallbacks += document->getRenderStats().textEffectFallbacks;
+            decoded += document->getRenderStats().imagesDecoded;
+        }
+    };
+    uint32_t glyphs = 0, fallbacks = 0;
+    drawn(glyphs, fallbacks);
+    EXPECT_EQ(glyphs, 0u);
+    EXPECT_EQ(fallbacks, 0u);
+    EXPECT_EQ(decoded, 0u);
+    EXPECT_GT(document->getElementById("pause-icon").getBoundingClientRect().width, 0.0f);
+    EXPECT_GT(document->getElementById("pause").getBoundingClientRect().height, 0.0f);
+    // the control: characters no prewarm asked for are rasterized when they show
+    EXPECT_LUA(R"(doc:getElementById("pause"):querySelector("p").textContent = "QWXZ jkv")");
+    drawn(glyphs, fallbacks);
+    EXPECT_GT(glyphs, 0u);
+
+    // a done prewarm calls a later onDone at the next update; bad options raise
+    EXPECT_LUA(R"(
+        late = false
+        job.onDone = function() late = true end
+    )");
+    update();
+    EXPECT_EQ(luaString("late"), "true");
+    EXPECT_NE(lua("HtmlUI.prewarmText{ text = 'x', effect = 'nonsense(' }"), "");
+    EXPECT_NE(lua("HtmlUI.prewarmText('x')"), "");
+    EXPECT_LUA(R"lua(
+        local text = HtmlUI.prewarmText{ family = "ShellSans", size = 96, weight = "bold", effect = "outline(5px #000)", text = "LEVEL 7" }
+        assert(text.progress >= 0)
+        job = nil; text = nil; done = nil; late = nil
+    )lua");
 }

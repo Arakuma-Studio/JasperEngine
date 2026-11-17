@@ -20,6 +20,7 @@ namespace jasperengine {
         uint32_t layersPushed = 0;
         uint32_t filtersApplied = 0;
         uint32_t compositesFused = 0;       // backdrop composites drawn without their temporary layer (p5-tooling)
+        uint32_t blendBackdropCopies = 0;   // mix-blend-mode composites: the backdrop copied to blend with (S93 R30)
         uint32_t regionLayers = 0;          // layers pushed covering more than the viewport (a filter's input beyond it, P7-F2)
         uint32_t regionTargetsCreated = 0;  // their images made (none while the pooled ones fit)
         uint32_t clipMasksRedrawn = 0;      // clip masks drawn again into another layer's depth-stencil (P7-F2)
@@ -41,6 +42,10 @@ namespace jasperengine {
         uint32_t textEffectFallbacks = 0;   // text effects drawn on the CPU or layer path
         uint32_t atlasBytes = 0;            // glyph atlas pages (base and MSDF), one copy each
         uint32_t atlasEvictions = 0;        // atlas pages cleared to make room, this frame
+        // S93: images (HtmlUIImageCache)
+        uint32_t imagesDecoded = 0;         // image files whose decode LoadTexture started (or ran) this frame
+        uint32_t imageCacheHits = 0;        // LoadTexture calls that reused a cached image this frame
+        uint32_t imagesPending = 0;         // images the context loaded whose decode is still running
 
         // every field by its name (the MCP render_stats, Lua's UIDocument:getRenderStats, the
         // benchmark's --ui-stats): fn(const char* name, uint32_t value)
@@ -54,6 +59,7 @@ namespace jasperengine {
             fn("layersPushed", layersPushed);
             fn("filtersApplied", filtersApplied);
             fn("compositesFused", compositesFused);
+            fn("blendBackdropCopies", blendBackdropCopies);
             fn("regionLayers", regionLayers);
             fn("regionTargetsCreated", regionTargetsCreated);
             fn("clipMasksRedrawn", clipMasksRedrawn);
@@ -74,6 +80,9 @@ namespace jasperengine {
             fn("textEffectFallbacks", textEffectFallbacks);
             fn("atlasBytes", atlasBytes);
             fn("atlasEvictions", atlasEvictions);
+            fn("imagesDecoded", imagesDecoded);
+            fn("imageCacheHits", imageCacheHits);
+            fn("imagesPending", imagesPending);
         }
 
         // another context's stats added: its frame counters when it rendered in this frame, the
@@ -89,6 +98,7 @@ namespace jasperengine {
                 layersPushed += other.layersPushed;
                 filtersApplied += other.filtersApplied;
                 compositesFused += other.compositesFused;
+                blendBackdropCopies += other.blendBackdropCopies;
                 regionLayers += other.regionLayers;
                 regionTargetsCreated += other.regionTargetsCreated;
                 clipMasksRedrawn += other.clipMasksRedrawn;
@@ -105,7 +115,10 @@ namespace jasperengine {
                 textRegenerations += other.textRegenerations;
                 textEffectFallbacks += other.textEffectFallbacks;
                 atlasEvictions += other.atlasEvictions;
+                imagesDecoded += other.imagesDecoded;
+                imageCacheHits += other.imageCacheHits;
             }
+            imagesPending += other.imagesPending;
             geometryLive += other.geometryLive;
             geometryBytes += other.geometryBytes;
             boxShadowTextures += other.boxShadowTextures;

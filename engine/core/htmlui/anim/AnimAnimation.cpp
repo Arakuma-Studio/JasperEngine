@@ -294,7 +294,7 @@ std::shared_ptr<AnimAnimation> AnimAnimation::set(const AnimTargetList& targets,
 
 AnimAnimation::AnimAnimation(const AnimTargetList& parsedTargets, const AnimParam& parameters, AnimTimeline* parent,
                              double parentPosition, bool fastSet, int index, const AnimTargetList* allTargets):
-        AnimTimer(Kind::ANIMATION, parameters, parent, parentPosition){
+        AnimTimer(Kind::ANIMATION, parameters, parent, parentPosition, clockOfTargets(parsedTargets)){
     ++animationId;
     AnimEngine::registerAnimation(this, true);
 

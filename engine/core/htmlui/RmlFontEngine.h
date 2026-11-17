@@ -32,6 +32,14 @@ namespace jasperengine {
 
     class FontFace;
 
+    // the glyphs one prewarm asked for (base, CPU effect and distance glyphs) and those in the atlas now (S93 R15,
+    // RmlFontEngine::prewarm; of default visibility: the prewarm state behind a public UIPrewarm holds it)
+    struct HtmlUIGlyphPrewarm {
+        size_t total = 0;
+        size_t ready = 0;
+        bool done() const{ return ready >= total; }
+    };
+
     // RmlUi's font engine on the engine text stack (FontFace, FontRegistry, TextShaper,
     // GlyphAtlas): HarfBuzz shaping, stb_truetype glyphs in atlas pages.
     //
@@ -83,7 +91,9 @@ namespace jasperengine {
         ~RmlFontEngine() override;
 
         void Initialize() override;     // registers built-ins in FontRegistry
-        void Shutdown() override;       // ReleaseFontResources(), prepared effect sets
+        void Shutdown() override;       // keeps the glyph cache (R13); drops retired handles and per-context state
+        // fork S93 R13: a context's render manager goes; its page textures are released, the glyphs and pages stay
+        void ReleaseRenderManager(Rml::RenderManager& render_manager) override;
         bool LoadFontFace(const Rml::String& file_name, int face_index, bool fallback_face, Rml::Style::FontWeight weight) override;
         bool LoadFontFace(const Rml::String& file_name, int face_index, const Rml::String& family,
                           Rml::Style::FontStyle style, Rml::Style::FontWeight weight, bool fallback_face) override;
@@ -104,7 +114,9 @@ namespace jasperengine {
         void GetBidiRuns(Rml::StringView string, const Rml::TextShapingContext& context, Rml::Vector<Rml::TextBidiRun>& runs) override;
         // per handle: changes when a page it drew from changed or went, and with the epoch
         int GetVersion(Rml::FontFaceHandle handle) override;
-        void ReleaseFontResources() override;                  // drops handles, glyph cache, pages; faces stay registered
+        // drops handles, glyph cache, pages; faces stay registered (a font file reload, the tests: RmlUi no longer calls it
+        // with its render managers or a view loss, R13 and R14)
+        void ReleaseFontResources() override;
         // fork S16-F3 (transform-aware text, distance glyphs, GPU text shadows)
         float GetBaseRasterScale(Rml::RenderManager& render_manager) override;
         bool PrepareGlyphs(Rml::FontFaceHandle handle, Rml::StringView string, const Rml::TextShapingContext& context) override;
@@ -185,6 +197,44 @@ namespace jasperengine {
         void setRenderTextForTesting(bool render);
         bool getRenderTextForTesting() const;
 
+        // R17 (HTMLUI-FONT-0001): code points of a text that the first available face of its font-family list lacks and a
+        // fallback face of the chain draws
+        struct FallbackGlyphs {
+            Rml::FontFaceHandle handle = 0;
+            std::string family;                 // the font-family list
+            std::string primary;                // the first available face of the list (its label)
+            std::vector<uint32_t> codepoints;   // ascending
+        };
+        // what the render manager's text drew from fallback faces since the last call, each (handle, code point) once while
+        // the render manager lives
+        std::vector<FallbackGlyphs> takeFallbackGlyphs(const Rml::RenderManager& renderManager);
+        // the same for a text without drawing it (static checks): the code points the first listed face lacks and a later
+        // face of the chain has; empty codepoints when there are none or no face of the list is available
+        FallbackGlyphs fallbackGlyphsOf(Rml::FontFaceHandle handle, Rml::StringView text) const;
+
+        // R15 (doc:prewarm, HtmlUI.prewarmText): a text to have in the atlas before it is shown, as a context draws it
+        struct PrewarmText {
+            Rml::FontFaceHandle handle = 0;
+            Rml::FontEffectsHandle effects = 0;   // PrepareFontEffects
+            std::string text;
+            Rml::Style::Direction direction = Rml::Style::Direction::Auto;
+            std::string language;
+        };
+        using GlyphPrewarm = HtmlUIGlyphPrewarm;
+        // Asks for the glyphs the texts draw at the raster scales of the render managers (none: the default scale): base and
+        // CPU effect bitmaps are made on the background lane (a custom effect's on the main thread), distance glyphs as
+        // drawn text asks for them; updatePrewarm puts them in the atlas. Glyphs already there count as ready.
+        std::shared_ptr<const GlyphPrewarm> prewarm(const std::vector<PrewarmText>& texts, const std::vector<const Rml::RenderManager*>& renderManagers);
+        // once per frame: places what the prewarm jobs made, for at most budgetMs (a deterministic clock waits for the jobs and
+        // places all of it); true while prewarms are in flight
+        bool updatePrewarm(double budgetMs);
+
+        // the main thread's time in GenerateString over the engine's life, ms (tests, benchmarks: R39, R41)
+        double getGenerateStringMs() const{ return generateStringMs; }
+
+        // tests: CPU effect glyph bitmaps held (R12)
+        size_t getEffectGlyphCount() const;
+
         // tests: the faces of a handle's chain, primary first; the "family, family" list split
         // and normalized as GetFontFaceHandle does
         std::vector<const FontFace*> getChain(Rml::FontFaceHandle handle) const;
@@ -201,6 +251,8 @@ namespace jasperengine {
             Rml::FontMetrics metrics = {};
             int version = 1;
             int epoch = 0;                 // the engine epoch version last saw
+            bool primaryListed = false;    // chain[0] is a face of the family list, not a built-in one
+            std::string family;            // the font-family list asked for
             // a bitmap face (S51 R15): its font and pixel scale k; then chain and faces are empty
             std::shared_ptr<pixelart::BitmapFont> bitmap;
             int pixelScale = 0;
@@ -211,7 +263,7 @@ namespace jasperengine {
             uint32_t glyphIndex;
             int rasterPixelSize;   // round(size * rasterScale * 64), transform-aware text round(size * scale * 4); effect glyphs: raster scale 1
             int bold;              // synthetic bold dilation in raster px, 0 = none
-            size_t effect;         // RmlFontEffects::effectId, 0 = the base glyph
+            size_t effect;         // RmlFontEffects::bitmapId, 0 = the base glyph
             uint64_t bitmap = 0;   // a bitmap face's font (BitmapFont::getSerial, face null), 0 = a FontFace's glyph
 
             bool operator==(const GlyphKey& other) const{
@@ -270,6 +322,7 @@ namespace jasperengine {
             // a render interface other than the engine's made a texture of it: new glyphs need a new
             // source (RmlUi uploads it again) and the text that drew from it is made again
             bool foreign = false;
+            std::set<const Rml::RenderManager*> foreignManagers;   // theirs: a context that goes is no longer one (R13)
             std::unique_ptr<Rml::CallbackTextureSource> source;
             // the textures its source made, by render manager (the base of its effect variants)
             std::unordered_map<const Rml::RenderManager*, Rml::TextureHandle> textures;
@@ -308,8 +361,9 @@ namespace jasperengine {
                             int& rasterKey) const;
         const GlyphEntry* findGlyph(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex, float scale, int rasterKey) const;
         const GlyphEntry& getGlyph(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex, float scale, int rasterKey);
+        // a CPU effect glyph, keyed by the effect's bitmapId (R12); offset is the effect's (not in the bitmap)
         const GlyphEntry& getEffectGlyph(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex,
-                                         const Rml::FontEffect& effect, size_t effectId);
+                                         const Rml::FontEffect& effect, size_t bitmapId, Rml::Vector2i offset);
         DistanceKey distanceKey(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex) const;
         // the glyph's distance entry; asks for it (a background job) when unknown
         const DistanceEntry& requestDistanceGlyph(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex);
@@ -334,6 +388,49 @@ namespace jasperengine {
         void refreshDirtyPages();
         void makeSource(Page& page);
         void clearGlyphs();
+        // a handle that goes: no page, job or list names it any more
+        void forgetHandle(FaceHandle* handle);
+        // the last coverage getEffectGlyph rasterized (the next effect of the same glyph takes it)
+        struct EffectCoverage {
+            const FontFace* face = nullptr;
+            uint32_t glyphIndex = 0;
+            int size = 0, bold = 0;
+            std::vector<unsigned char> pixels;
+            int width = 0, height = 0, xoff = 0, yoff = 0;
+        };
+        EffectCoverage effectCoverage;
+
+        // R15: one glyph of a prewarm, made off the main thread (mainThread: an effect without a bitmap key, made at placement)
+        struct PrewarmItem {
+            GlyphKey key;
+            PageKind kind = PageKind::BASE;
+            std::shared_ptr<FontFace> face;
+            float scale = 1.0f;     // px per font unit
+            int bold = 0;
+            int advance = 0;
+            Rml::SharedPtr<const Rml::FontEffect> effect;
+            Rml::Vector2i offset;
+            int size = 0;
+            bool mainThread = false;
+        };
+        struct PrewarmBitmap {
+            bool made = false;      // ink: a bitmap to place
+            std::vector<unsigned char> pixels;
+            int width = 0, height = 0, xoff = 0, yoff = 0;
+        };
+        struct PrewarmBatch;
+        static PrewarmBitmap makePrewarmBitmap(const PrewarmItem& item);
+        // the same from the glyph's coverage at the item's scale and bold (ink: it has some)
+        static PrewarmBitmap makePrewarmBitmap(const PrewarmItem& item, const std::vector<unsigned char>& coverage, int width, int height,
+                                               int xoff, int yoff, bool ink);
+        // GenerateString of big text (bigTextPixels and up): the bitmaps it misses (base glyphs, CPU effect glyphs of the
+        // effects with a bitmap key) made in parallel on the job system, then placed (R39)
+        static constexpr int bigTextPixels = 48;
+        void makeGlyphsTogether(const FaceHandle& handle, const std::vector<ShapedGlyph>& shaped, float scale, int rasterKey, bool distanceText,
+                                const RmlFontEffects::Set* effects, const std::vector<bool>& effectOnGpu);
+        // places one prewarmed bitmap as getGlyph and getEffectGlyph would have; false when it must wait for room
+        bool placePrewarm(const PrewarmItem& item, const PrewarmBitmap& bitmap);
+        std::vector<std::unique_ptr<PrewarmBatch>> prewarmBatches;
         FrameCounters* countersOf(const Rml::RenderManager* renderManager);
         void noteEviction();
 
@@ -359,6 +456,12 @@ namespace jasperengine {
         std::vector<uint64_t> evictionFrames;               // of the last evictions (the diagnostic's window)
         uint64_t evictions = 0;
         const Rml::RenderManager* currentManager = nullptr; // the context whose frame is counted
+        bool rmlInitialised = false;                        // between Initialize and Shutdown
+        double generateStringMs = 0.0;
+        // R17: per render manager, the fallback code points drawn and not taken yet, and those ever drawn
+        using FallbackSets = std::map<FaceHandle*, std::set<uint32_t>>;
+        std::unordered_map<const Rml::RenderManager*, FallbackSets> fallbackEvents;
+        std::unordered_map<const Rml::RenderManager*, FallbackSets> fallbackSeen;
 
         // the settle budget of the current frame (R15)
         uint64_t settleFrame = UINT64_MAX;

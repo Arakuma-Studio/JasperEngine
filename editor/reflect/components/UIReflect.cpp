@@ -266,6 +266,7 @@ namespace {
     // a bitmap font's rows (S51 R22): pixel outline neighbours; a vector font's: SDF softness, dilate
     // (the bitmap rows are the Text drawer's own: InspectorPixelFont.cpp)
     bool textIsVector(const void* text) { return !::jasperengine::pixelart::isBitmapFontPath(static_cast<const TextComponent*>(text)->font[0]); }
+    bool textAutoSizes(const void* text) { return static_cast<const TextComponent*>(text)->autoSize; }
 
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
@@ -279,6 +280,21 @@ namespace {
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
         JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
         JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // S93 R37 (TMP): drawn by the Text drawer's two Alignment button rows; Auto Size's rows here
+        JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Horizontal Alignment",
+                 .tooltip = "Each line inside the fixed width: Left, Center, Right or Justified (a paragraph's last line stays left)."),
+        JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Vertical Alignment",
+                 .tooltip = "The lines inside the fixed height: Top, Middle, Bottom, or Baseline (the first baseline on the middle)."),
+        JE_FIELD(TextComponent, autoSize, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas, .label = "Auto Size",
+                 .tooltip = "The largest whole font size from Min to Max whose text fits the fixed width and height "
+                            "(a bitmap font: the largest multiple of its native size).",
+                 .group = "Auto Size"),
+        JE_FIELD(TextComponent, fontSizeMin, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Min", .group = "Auto Size", .visibleIf = &textAutoSizes),
+        JE_FIELD(TextComponent, fontSizeMax, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Max", .group = "Auto Size", .visibleIf = &textAutoSizes),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
         // the widths read finite and not below 0, the visible characters not below -1 (its decode)
         JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline",
@@ -316,7 +332,15 @@ namespace {
     // ---------------------------------------------------------------- UI Document
 
     bool documentInTexture(const void* document) {
+        return rendersToTexture(static_cast<const UIDocumentComponent*>(document)->renderMode);
+    }
+
+    bool documentOnMesh(const void* document) {
         return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::TEXTURE;
+    }
+
+    bool documentInWorld(const void* document) {
+        return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::WORLD;
     }
 
     constexpr uint64_t kDocumentReload = UpdateFlags_UIDocument_Reload;
@@ -333,21 +357,33 @@ namespace {
                  .tooltip = "Receives pointer, keyboard and text input. Off: the game gets every event."),
         JE_FIELD(UIDocumentComponent, renderMode, .enumDesc = &enums::kUIDocumentRenderMode,
                  .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .updateFlags = kDocumentReload,
-                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows."),
+                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows. "
+                            "World Space: drawn as a quad at this GameObject, hidden behind what is in front of it."),
         JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
         JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
         JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
                  .tooltip = "Mesh whose surface receives the pointer (hit test on its UVs). None: this GameObject's own mesh.",
-                 .visibleIf = &documentInTexture),
+                 .visibleIf = &documentOnMesh),
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
+        // S93: optional, the defaults keep the old behaviour
+        JE_FIELD(UIDocumentComponent, updateMode, .enumDesc = &enums::kUIDocumentUpdateMode,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "Unscaled Time: animations run while the game is paused or slowed. Game Time: they follow Time Scale and stop with the game."),
+        JE_FIELD(UIDocumentComponent, pixelsPerUnit, .ops = &ops::FiniteFloat,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged, .min = 0.01f,
+                 .label = "Pixels Per Unit", .tooltip = "Texture pixels per world unit: the quad is Texture Width x Height / Pixels Per Unit.",
+                 .visibleIf = &documentInWorld),
+        JE_FIELD(UIDocumentComponent, billboard, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "Turns the quad to the camera.", .visibleIf = &documentInWorld),
     };
 
     constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio"
+        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio",
+        "updateMode", "pixelsPerUnit", "billboard"
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do

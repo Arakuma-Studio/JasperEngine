@@ -249,7 +249,7 @@ STBTextOptions UISystem::getTextOptions(const TextComponent& text) const{
     // a bitmap font's scale is in its quads and its outline in its pixels (S51 D3, R10)
     if (text.loaded ? (bool)text.bitmapText : pixelart::isBitmapFontPath(text.font[0]))
         return options;
-    const float fontSize = (float)std::max(text.fontSize, 1u);
+    const float fontSize = (float)std::max(effectiveFontSize(text), 1u);
 
     // whole raster pixels, so a resize reuses an atlas once the size settles
     const float scale = getTextRasterScale();
@@ -295,10 +295,10 @@ std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions&
             fontId += std::string(";") + text.font[i];
     }
 
-    fontId += std::string("|") + std::to_string(text.fontSize);
+    fontId += std::string("|") + std::to_string(effectiveFontSize(text));
     // another raster size or an SDF is another atlas (plain texts keep their old id)
     if (options.rasterScale != 1.0f)
-        fontId += std::string("@") + std::to_string((int)std::lround((float)text.fontSize * options.rasterScale));
+        fontId += std::string("@") + std::to_string((int)std::lround((float)effectiveFontSize(text) * options.rasterScale));
     if (options.sdfPadding > 0)
         fontId += std::string("~sdf") + std::to_string(options.sdfPadding);
     return fontId;
@@ -355,7 +355,7 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize, options);
+        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, effectiveFontSize(text), options);
         if (!text.stbtext) {
             Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
             return false;
@@ -366,6 +366,7 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
     text.atlasVersion = 0;
     text.rasterScale = options.rasterScale;
     text.sdfPadding = options.sdfPadding;
+    text.atlasFontSize = effectiveFontSize(text);
 
     text.needReloadAtlas = false;
     text.loaded = true;
@@ -552,6 +553,69 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), 0.0f, true, indices_array);
 }
 
+void UISystem::alignTextGlyphs(TextComponent& text, UIComponent& ui, const RectTransformComponent& layout, float ascent, float pivotStep){
+    const bool horizontal = text.horizontalAlignment != TextHorizontalAlignment::LEFT && layout.width > 0;
+    // (a baseline pivot has no box to place the lines in)
+    const bool vertical = text.verticalAlignment != TextVerticalAlignment::TOP && text.fixedHeight && layout.height > 0 && !text.pivotBaseline;
+    if ((!horizontal && !vertical) || text.glyphInfo.empty())
+        return;
+
+    // a bitmap text moves by whole font pixels (S51 R8)
+    auto snap = [pivotStep](float value){ return pivotStep > 0.0f ? std::round(value / pivotStep) * pivotStep : value; };
+
+    bool hadInvalid = false;
+    const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text.text, hadInvalid);
+    std::vector<float> offsets = horizontal ? TextAlignment::horizontalOffsets(text.glyphInfo, codepoints, (float)layout.width, text.horizontalAlignment)
+                                            : std::vector<float>(text.glyphInfo.size(), 0.0f);
+    for (float& offset : offsets)
+        offset = snap(offset);
+
+    float down = 0.0f;
+    if (vertical){
+        uint32_t lines = 0;
+        for (const TextGlyphInfo& glyph : text.glyphInfo)
+            lines = std::max(lines, glyph.line + 1);
+        const float lineHeight = text.bitmapText ? (float)text.bitmapText->getFont()->getLineHeight() * text.pixelUnit
+                                                 : (float)text.stbtext->getLineHeight();
+        down = snap(TextAlignment::verticalOffset(lines, lineHeight, ascent, (float)layout.height, text.verticalAlignment));
+    }
+
+    // the quads (4 vertices each, one glyph info each); y is up when the text is flipped
+    Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
+    const float dy = ui.flipY ? -down : down;
+    const int quads = std::min((int)text.glyphInfo.size(), (int)ui.buffer.getCount() / 4);
+    for (int q = 0; q < quads; q++){
+        for (int c = 0; c < 4; c++){
+            Vector3 vertex = ui.buffer.getVector3(atrVertice, q * 4 + c);
+            vertex.x += offsets[(size_t)q];
+            vertex.y += dy;
+            ui.buffer.setVector3(q * 4 + c, atrVertice, vertex);
+        }
+    }
+
+    // the caret and selection positions follow their characters (indexed without newlines)
+    std::vector<float> clusterOffset(codepoints.size(), 0.0f);
+    for (size_t g = 0; g < text.glyphInfo.size(); g++){
+        if (text.glyphInfo[g].cluster < clusterOffset.size())
+            clusterOffset[text.glyphInfo[g].cluster] = offsets[g];
+    }
+    size_t k = 0;
+    for (size_t i = 0; i < codepoints.size(); i++){
+        if (codepoints[i] == 10)
+            continue;
+        if (k < text.charPositions.size()){
+            text.charPositions[k].x += clusterOffset[i];
+            text.charPositions[k].y += down;
+        }
+        if (k < text.charExtents.size()){
+            text.charExtents[k].left += clusterOffset[i];
+            text.charExtents[k].right += clusterOffset[i];
+            text.charExtents[k].y += down;
+        }
+        k++;
+    }
+}
+
 void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
                                   bool fillColors, std::vector<uint16_t>& indices_array){
     float baselineOffsetY = ui.flipY ? (layout.height - ascent) : ascent;
@@ -562,6 +626,8 @@ void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTran
         offsetX = text.pivotCentered ? -std::floor((float)layout.width / 2.0f / pivotStep) * pivotStep : 0.0f;
     }
     float offsetY = text.pivotBaseline ? 0.0f : baselineOffsetY;
+
+    alignTextGlyphs(text, ui, layout, ascent, pivotStep);
 
     if (text.pivotCentered || !text.pivotBaseline){
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
@@ -1848,6 +1914,9 @@ void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
     }
     if (text.loaded && !text.needReloadAtlas){
         const STBTextOptions options = getTextOptions(text);
+        // (Auto Size fitted another size, or turned off: the atlas of the size it lays out at)
+        if (effectiveFontSize(text) != text.atlasFontSize)
+            text.needReloadAtlas = true;
         if (options.rasterScale != text.rasterScale || options.sdfPadding != text.sdfPadding){
             text.needReloadAtlas = true;
             // another shader variant (SDF on or off)
@@ -1855,6 +1924,49 @@ void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
                 ui.needReload = true;
         }
     }
+}
+
+bool UISystem::fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout){
+    const bool box = (text.fixedWidth && layout.width > 0) || (text.fixedHeight && layout.height > 0);
+    if (text.bitmapText){
+        // a bitmap font draws only at whole multiples of its native size (S51 R7): the largest
+        // scale whose multiple lies in [fontSizeMin, fontSizeMax] and fits; its atlas is the same
+        // at every scale, so nothing reloads
+        text.autoFontSize = (text.autoSize && box) ? fitBitmapTextAutoSize(text, layout) : 0;
+        return false;
+    }
+    // a vector font in a fixed box
+    if (!text.autoSize || !box || !text.loaded || !text.stbtext){
+        const bool changed = text.autoFontSize != 0;
+        text.autoFontSize = 0;
+        return changed && text.loaded && effectiveFontSize(text) != text.atlasFontSize;
+    }
+    const unsigned int fitted = TextAlignment::fitSize(text.fontSizeMin, text.fontSizeMax, [&](unsigned int size){
+        float width = 0.0f, height = 0.0f;
+        text.stbtext->measure(text.text, size, layout.width, text.fixedWidth, text.multiline, width, height);
+        return (!text.fixedWidth || width <= (float)layout.width) && (!text.fixedHeight || height <= (float)layout.height);
+    });
+    text.autoFontSize = fitted;
+    return fitted != text.atlasFontSize;
+}
+
+unsigned int UISystem::fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const{
+    const pixelart::BitmapFont& font = *text.bitmapText->getFont();
+    const unsigned int native = (unsigned int)std::max(font.getNativeSize(), 1);
+    // the scales whose sizes lie in the range; a range holding none takes the scale nearest to it
+    const unsigned int maxScale = std::max(text.fontSizeMax / native, 1u);
+    const unsigned int minScale = std::clamp((std::max(text.fontSizeMin, 1u) + native - 1) / native, 1u, maxScale);
+    const bool wrap = text.fixedWidth && text.multiline;
+    const unsigned int k = TextAlignment::fitSize(minScale, maxScale, [&](unsigned int scale){
+        const float unit = getBitmapTextUnit((int)scale);
+        // as BitmapText::createText lays it out
+        const int widthPx = (int)std::floor((float)layout.width / unit + 1e-4f);
+        int width = 0, height = 0;
+        pixelart::BitmapText::measure(font, text.text, wrap, widthPx, width, height);
+        return (!text.fixedWidth || std::ceil((float)width * unit - 1e-4f) <= (float)layout.width) &&
+               (!text.fixedHeight || std::ceil((float)height * unit - 1e-4f) <= (float)layout.height);
+    });
+    return k * native;
 }
 
 bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
@@ -1885,6 +1997,11 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
         }
 
         if (!text.loaded){
+            loadFontAtlas(text, ui, layout);
+        }
+        // S93 R37 Auto Size: the fitted size's atlas before the layout
+        if (fitTextAutoSize(text, layout)){
+            destroyText(text);
             loadFontAtlas(text, ui, layout);
         }
         createText(text, ui, layout);
@@ -2266,7 +2383,7 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     }
 
     const bool reduced = UISystem::isReducedMotion();
-    const float fontSize = (float)text.fontSize;
+    const float fontSize = (float)effectiveFontSize(text);
     const Vector4 baseSRGB(Color::linearTosRGB(plainRgb), base.w);
     // y up under an orthographic camera (flipped text): the effects work y down
     const float ySign = ui.flipY ? -1.0f : 1.0f;
@@ -2376,9 +2493,9 @@ void UISystem::updateTextEffects(double dt){
             effect.basePositions.resize(positions->getCount());
             for (unsigned int v = 0; v < positions->getCount(); v++)
                 effect.basePositions[v] = ui->buffer.getVector3(positions, v);
-            if (effect.appliedText != text->text || effect.appliedFontSize != text->fontSize){
+            if (effect.appliedText != text->text || effect.appliedFontSize != effectiveFontSize(*text)){
                 effect.appliedText = text->text;
-                effect.appliedFontSize = text->fontSize;
+                effect.appliedFontSize = effectiveFontSize(*text);
                 effect.cycleTime = 0.0;
                 effect.revealed = 0;
                 effect.finished = false;

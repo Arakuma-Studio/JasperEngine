@@ -106,4 +106,23 @@ void LayoutEngine::FormatLayoutBoundary(Element* element)
 	element->ClampScrollOffsetRecursive();
 }
 
+bool LayoutEngine::FormatInOwnBox(Element* element, bool check_height)
+{
+	RMLUI_ASSERT(element);
+	RMLUI_ZoneScoped;
+
+	LayoutMeasureCache::Scope measure_cache;
+	Vector2f containing_block(0.f);
+	if (Element* parent = element->GetParentNode())
+		containing_block = Math::Max(parent->GetBox().GetSize(BoxArea::Content), Vector2f(0.f));
+	RootBox root(containing_block);
+
+	const Box box = element->GetBox();
+	if (!FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+		return true;
+
+	const Vector2f overflow = element->scrollable_overflow_rectangle;
+	return overflow.x <= element->GetClientWidth() + 0.5f && (!check_height || overflow.y <= element->GetClientHeight() + 0.5f);
+}
+
 } // namespace Rml

@@ -93,3 +93,56 @@ TEST(StreamProjectHtmlUiRender, ExportCarriesThem) {
     text << in.rdbuf();
     EXPECT_NE(text.str().find("UIDocumentSystem::setHtmlUiRenderOptions(24, false, true);"), std::string::npos);
 }
+
+// S93 R19, R48, R56: htmlUiImageCacheMiB, the image cache's budget of released images
+TEST(StreamProjectHtmlUiRender, ImageCacheMiB) {
+    // a project saved before it: the platform's default (-1)
+    Project project;
+    Stream::decodeProject(&project, YAML::Load("vsync: true\nhtmlUiGlyphAtlasMiB: 0\n"), Workspace());
+    EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, -1);
+    // and re-saved without the key, as before it (byte-identical project.yaml after a settings undo)
+    EXPECT_FALSE(YAML::Load(YAML::Dump(Stream::encodeProject(&project)))["htmlUiImageCacheMiB"].IsDefined());
+
+    HtmlUiRenderSettings settings;
+    settings.imageCacheMiB = 0;
+    project.setHtmlUiRenderSettings(settings);
+    const YAML::Node encoded = YAML::Load(YAML::Dump(Stream::encodeProject(&project)));
+    EXPECT_EQ(encoded["htmlUiImageCacheMiB"].as<int>(), 0);
+    Project loaded;
+    Stream::decodeProject(&loaded, encoded, Workspace());
+    EXPECT_EQ(loaded.getHtmlUiRenderSettings().imageCacheMiB, 0);
+
+    // clamped to -1..1024
+    Stream::decodeProject(&loaded, YAML::Load("htmlUiImageCacheMiB: 5000\n"), Workspace());
+    EXPECT_EQ(loaded.getHtmlUiRenderSettings().imageCacheMiB, Project::maxHtmlUiImageCacheMiB);
+    Stream::decodeProject(&loaded, YAML::Load("htmlUiImageCacheMiB: -7\n"), Workspace());
+    EXPECT_EQ(loaded.getHtmlUiRenderSettings().imageCacheMiB, -1);
+
+    // undoable with the other HTML UI rendering settings
+    HtmlUiRenderSettings after = project.getHtmlUiRenderSettings();
+    after.imageCacheMiB = 128;
+    HtmlUiRenderSettingsCmd command(&project, after);
+    ASSERT_TRUE(command.execute());
+    EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, 128);
+    command.undo();
+    EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, 0);
+}
+
+TEST(StreamProjectHtmlUiRender, ExportCarriesTheImageCacheBudget) {
+    auto mainOf = [](const HtmlUiRenderSettings& settings) {
+        jasperengine::test::TempDir dir;
+        Generator generator;
+        generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
+                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
+                            ThreadingProjectSettings(), settings);
+        std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
+        std::stringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    HtmlUiRenderSettings settings;
+    settings.imageCacheMiB = 16;
+    EXPECT_NE(mainOf(settings).find("UIDocumentSystem::setHtmlUiImageCacheMiB(16);"), std::string::npos);
+    // the platform's default: nothing written
+    EXPECT_EQ(mainOf(HtmlUiRenderSettings()).find("setHtmlUiImageCacheMiB"), std::string::npos);
+}

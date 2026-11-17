@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: calc() mixing percentages and lengths in gradient colour stops</title>
+<style>
+  html, body { margin: 0; background: #0f172a; }
+  .b { position: absolute; width: 120px; height: 70px; }
+  #b1 { left: 10px; top: 10px; background: linear-gradient(90deg, red calc(100% - 10px), blue); }
+  #b2 { left: 150px; top: 10px; background: linear-gradient(#22c55e calc(50% - 15px), #f59e0b calc(50% + 15px)); }
+  #b3 { left: 290px; top: 10px; background: repeating-linear-gradient(90deg, #e2e8f0 0, #e2e8f0 calc(10% - 2px), #334155 calc(10% - 2px), #334155 10%); }
+  #b4 { left: 10px; top: 100px; background: radial-gradient(circle, red calc(100% - 10px), blue); }
+  #b5 { left: 150px; top: 100px; background: repeating-radial-gradient(circle, #f59e0b 0, #f59e0b calc(5% + 4px), #1e3a8a calc(5% + 4px), #1e3a8a calc(10% + 8px)); }
+  #b6 { left: 290px; top: 100px; background: conic-gradient(red calc(100% - 30deg), blue); }
+  #b7 { left: 10px; top: 190px; background: repeating-conic-gradient(#a855f7 0deg, #a855f7 calc(12.5% - 10deg), #fde047 calc(12.5% - 10deg), #fde047 12.5%); }
+  #b8 { left: 150px; top: 190px; background: linear-gradient(red, red min(40%, 20px), blue max(60%, 50px)); }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

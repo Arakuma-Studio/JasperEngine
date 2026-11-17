@@ -277,6 +277,7 @@ static std::vector<editor::EnumEntry>& entriesTextureWrap = *editor::InspectorWi
 static std::vector<editor::EnumEntry>& entriesTextureAlphaBorder = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureAlphaBorder);
 static std::vector<editor::EnumEntry>& entriesAudioAttenuation = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAudioSourceAttenuation);
 static std::vector<editor::EnumEntry>& entriesUIDocumentRenderMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kUIDocumentRenderMode);
+static std::vector<editor::EnumEntry>& entriesUIDocumentUpdateMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kUIDocumentUpdateMode);
 static std::vector<editor::EnumEntry>& entriesAudioState = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAudioSourceState);
 
 // the AudioSource Load Type row (audio-mixer; drawAudioComponent)
@@ -11932,7 +11933,19 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
 
     RowSettings modeSettings;
     modeSettings.enumEntries = &entriesUIDocumentRenderMode;
-    modeSettings.help = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows.";
+    modeSettings.help = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows. "
+                        "World Space: drawn as a quad at this GameObject, hidden behind what is in front of it.";
+
+    RowSettings updateSettings;
+    updateSettings.enumEntries = &entriesUIDocumentUpdateMode;
+    updateSettings.help = "Unscaled Time: animations run while the game is paused or slowed. Game Time: they follow Time Scale and stop with the game.";
+
+    RowSettings ppuSettings;
+    ppuSettings.secondColSize = 6 * ImGui::GetFontSize();
+    ppuSettings.help = "Texture pixels per world unit: the quad is Texture Width x Height / Pixels Per Unit.";
+
+    RowSettings billboardSettings;
+    billboardSettings.help = "Turns the quad to the camera.";
 
     RowSettings sizeSettings;
     sizeSettings.intMin = 1;
@@ -12073,11 +12086,18 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
 
     propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
     propertyRow(RowPropertyType::Bool, cpType, "interactive", "Interactive", sceneProject, entities, interactiveSettings);
+    propertyRow(RowPropertyType::Enum, cpType, "updateMode", "Update Mode", sceneProject, entities, updateSettings);
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, modeSettings);
-    if (document.renderMode == UIDocumentRenderMode::TEXTURE) {
+    if (rendersToTexture(document.renderMode)) {
         propertyRow(RowPropertyType::Int, cpType, "textureWidth", "Texture Width", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::Int, cpType, "textureHeight", "Texture Height", sceneProject, entities, sizeSettings);
+    }
+    if (document.renderMode == UIDocumentRenderMode::TEXTURE) {
         propertyRow(RowPropertyType::LocalEntity, cpType, "inputSurface", "Input Surface", sceneProject, entities, surfaceSettings);
+    }
+    if (document.renderMode == UIDocumentRenderMode::WORLD) {
+        propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, ppuSettings);
+        propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities, billboardSettings);
     }
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelRatio", "Pixel Ratio", sceneProject, entities, ratioSettings);
 

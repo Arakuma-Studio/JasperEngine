@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: filter on an element whose only paint is a border-image</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; top: 10px; width: 120px; height: 80px; box-sizing: border-box; border: 20px solid transparent;
+       border-image: url(img/nine-slice.png) 10 fill / 20px; image-rendering: pixelated; }
+  #plain { left: 10px; }
+  #filtered { left: 150px; filter: brightness(0.4) hue-rotate(90deg); }
+  #opacity { left: 290px; filter: opacity(0.5) grayscale(1); }
+</style>
+</head>
+<body><div class="b" id="plain"></div><div class="b" id="filtered"></div><div class="b" id="opacity"></div></body>
+</html>

@@ -10,7 +10,6 @@
 #include "AnimCommon.h"
 #include "AnimProperty.h"
 #include "AnimTimeline.h"
-#include "Engine.h"
 #include "HtmlUIClock.h"
 
 #include <unordered_set>
@@ -60,7 +59,8 @@ size_t AnimEngine::getLiveTimerCount(){
 }
 
 void AnimEngine::tick(double uiTimeSeconds){
-    tick(uiTimeSeconds, Engine::getGameTime());
+    // the game clock of the Game Time documents (S93 R35): stopped outside Play and in its Pause
+    tick(uiTimeSeconds, HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
 }
 
 void AnimEngine::tick(double uiTimeSeconds, double gameTimeSeconds){

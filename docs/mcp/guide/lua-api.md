@@ -2651,7 +2651,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); TMP alignment in the fixed box: `horizontalAlignment` (`TextHorizontalAlignment`), `verticalAlignment` (`TextVerticalAlignment`); TMP Auto Size: `autoSize`, `fontSizeMin`, `fontSizeMax` (the largest whole size that fits the fixed width and height; a bitmap font: the largest multiple of its native size); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` (the size drawn: Auto Size's fit, a bitmap font's multiple) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
@@ -3248,10 +3248,14 @@ makes a GameObject with one.
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 - `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
-  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`, `documentElement` (the
+  rw `filename`, `title`, `visible`, `sortOrder`, `updateMode` (`UIDocumentUpdateMode.UNSCALED_TIME`/`GAME_TIME`:
+  the clock of its animations, applied at once); ro `loaded`, `body`, `documentElement` (the
   `<html>`); `getDiagnostics()` (what the engine does not draw like a browser: a list of
   `{severity, code, name, message, suggestion, file, line, column, text}`),
   `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
+  `addStyleSheet(css[, name])`, `addStyleSheetFile(path)` (`.html` documents: CSS cascading after
+  the document's own sheets, kept over reloads; returns a `UIStyleSheet`: rw `enabled`, ro `name`,
+  `valid`, `remove()`; its rules' source is `injected:<name>:<line>`);
   `load(file)`,
   `reload([{mode = "patch"|"rebuild"}])`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
@@ -3259,8 +3263,9 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
   `removeDataModel(name)`, `getTargetTexture()` (TEXTURE mode: a `Framebuffer`, else nil),
   `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
-  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
+  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`/`WORLD`, applied at the next load: set
   `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
+  `updateMode`, `pixelsPerUnit`, `billboard` (WORLD mode's quad),
   `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`,
   `onReload` (after an in-place patch, with the report); ro `lastReloadReport` (`{mode, file,
   kept, updated, inserted, removed, replaced, runtimeKept, scriptsRerun, fallbackReason, ms,
@@ -3269,6 +3274,14 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `UIDocument.markdownToHtml(text)`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
+- Prewarm (made before they show; `jasper://docs/html-ui` "Prewarming text"): `doc:prewarm([{images =
+  false}])` (the glyphs of every text, `display: none` parts too, and of `data-warm` attributes, and
+  the document's images), `HtmlUI.prewarmText{family, size, weight, style, effect, text}` and
+  `HtmlUI.prewarmImage(path or {paths})` (paths as in CSS: an asset path, `#xywh=` or `#sprite=`
+  regions too) return a `UIPrewarm`: ro `done`, `progress` (0..1), rw `onDone` (a function, called
+  once on the main thread when done; the next frame when already done). Prewarmed images stay
+  cached while the `UIPrewarm` lives, then within the image cache's budget. rw
+  `HtmlUI.prewarmBudgetMs` (main-thread ms a frame for placing glyphs, default 2).
 - `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
   `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
   `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first
@@ -3276,7 +3289,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `el.style.textEffect = "wave(0.15em 1.5s)"`, `el:restartTextEffect()`, event `texteffectend`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an
-  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`
+  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`, `scrollVelocity`
+  (Vector2 px/s: the drag scroll's inertia or pan, set to fling); ro `tagName`
   (`DIV` in an `.html` document, as in the DOM; lower case in `.rml`), `localName`, `content`
   (a `<template>`'s fragment), `parentElement`, `children`,
   `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
@@ -3286,7 +3300,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
   `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
   `blur`, `click`, `insertAdjacentHTML(position, html)`, `show()`, `showModal()`,
-  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`,
+  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`, `stopScrolling`,
   `getBoundingClientRect` (UIRect),
   `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
   `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,
@@ -3535,7 +3549,10 @@ gate.area = 0 ; gate:remove()
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
 | `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
 | `LogLevel` | `INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` |
-| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
+| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE`, `WORLD` |
+| `UIDocumentUpdateMode` | `UNSCALED_TIME`, `GAME_TIME` |
+| `TextHorizontalAlignment` | `LEFT`, `CENTER`, `RIGHT`, `JUSTIFIED` |
+| `TextVerticalAlignment` | `TOP`, `MIDDLE`, `BOTTOM`, `BASELINE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |

@@ -764,7 +764,9 @@ namespace jasperengine{
 			PARTICLES,
 			// a thick Line Renderer, a Trail Renderer (blended ribbons)
 			LINES,
-			TRAIL
+			TRAIL,
+			// a World Space UI Document's quad (S93 R36, UIDocumentSystem::drawWorldDocument)
+			UI_DOCUMENT
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)

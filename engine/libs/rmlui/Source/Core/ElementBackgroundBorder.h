@@ -47,7 +47,19 @@ public:
 	const char* GetPaintReason() const { return paint_reason; }
 
 private:
-	enum class BackgroundType { BackgroundBorder, BoxShadowAndBackgroundBorder, ClipBorder, ClipPadding, ClipContent, BorderAbove, Outline, Count };
+	// BoxShadowInset (fork, S93 R24): the inset shadows of an element with background images or decorators, drawn
+	// above them and below the border (CSS Backgrounds 3, Appendix E); without images they stay in the background.
+	enum class BackgroundType {
+		BackgroundBorder,
+		BoxShadowAndBackgroundBorder,
+		ClipBorder,
+		ClipPadding,
+		ClipContent,
+		BorderAbove,
+		Outline,
+		BoxShadowInset,
+		Count
+	};
 	struct Background {
 		Geometry geometry;
 		Texture texture;

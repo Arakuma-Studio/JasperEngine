@@ -9,6 +9,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "BoxShadowCache.h"
+#include "ElementStyle.h"
 #include "ElementBackgroundLayers.h"
 #include "GeometryBackgroundBorder.h"
 #include "GeometryBorderStyles.h"
@@ -188,6 +189,14 @@ void ElementBackgroundBorder::Render(Element* element)
 
 void ElementBackgroundBorder::RenderBorder(Element* element)
 {
+	if (Background* inset = GetBackground(BackgroundType::BoxShadowInset))
+	{
+		const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
+		if (inset->box_shadow_and_background_border)
+			inset->box_shadow_and_background_border->geometry.Render(offset, inset->box_shadow_and_background_border->texture);
+		else if (RenderManager* render_manager = element->GetRenderManager())
+			RenderBackground(*render_manager, *inset, offset);
+	}
 	if (Background* border = GetBackground(BackgroundType::BorderAbove))
 	{
 		if (RenderManager* render_manager = element->GetRenderManager())
@@ -503,6 +512,18 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 
 	const ComputedValues& computed = element->GetComputedValues();
 	const bool has_box_shadow = computed.has_box_shadow();
+	bool has_inset_shadow = false, has_outer_shadow = false;
+	if (has_box_shadow)
+	{
+		if (const Property* property = element->GetStyle()->GetLocalPropertyWithResolvedVariables(PropertyId::BoxShadow))
+		{
+			if (property->value.GetType() == Variant::BOXSHADOWLIST)
+			{
+				for (const BoxShadow& shadow : property->value.GetReference<BoxShadowList>())
+					(shadow.inset ? has_inset_shadow : has_outer_shadow) = true;
+			}
+		}
+	}
 
 	const float opacity = element->GetDrawOpacity();
 	// (The canvas draws the background of its source.)
@@ -569,6 +590,15 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 			EraseBackground(BackgroundType::BorderAbove);
 		}
 
+		// the inset shadows above the background images and decorators, below the border
+		Vector<BoxPrimitive>* inset_primitives = &background.primitives;
+		EraseBackground(BackgroundType::BoxShadowInset);
+		if (border_above && has_inset_shadow)
+		{
+			Background& inset = GetOrCreateBackground(BackgroundType::BoxShadowInset);
+			inset_primitives = &inset.primitives;
+		}
+
 		const int num_boxes = element->GetNumBoxes();
 		const ColourbPremultiplied transparent(0, 0);
 		auto add_shadows = [&](bool inset) {
@@ -596,7 +626,7 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 					primitive.sigma = 0.5f * Math::Max(shadow.blur_radius.number, 0.f);
 					primitive.clip_box = clip_rect;
 					primitive.clip_radii = clip_radii;
-					background.primitives.push_back(primitive);
+					(inset ? inset_primitives : &background.primitives)->push_back(primitive);
 				}
 			}
 		};
@@ -657,12 +687,21 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 		EraseBackground(BackgroundType::BorderAbove);
 	}
 
-	if (has_box_shadow)
+	// With images or decorators the inset shadows have a texture of their own, drawn above them (RenderBorder).
+	const bool split_inset = border_above && has_inset_shadow;
+	if (split_inset)
+		GetOrCreateBackground(BackgroundType::BoxShadowInset).box_shadow_and_background_border =
+			BoxShadowCache::GetHandle(element, computed, false, BoxShadowPart::Inset);
+	else
+		EraseBackground(BackgroundType::BoxShadowInset);
+
+	if (has_box_shadow && (!split_inset || has_outer_shadow))
 	{
 		// The box shadow geometry also includes the element's background and border, thus we can skip the normal background generation.
 		EraseBackground(BackgroundType::BackgroundBorder);
 		Background& shadow_background = GetOrCreateBackground(BackgroundType::BoxShadowAndBackgroundBorder);
-		shadow_background.box_shadow_and_background_border = BoxShadowCache::GetHandle(element, computed, !border_above);
+		shadow_background.box_shadow_and_background_border =
+			BoxShadowCache::GetHandle(element, computed, !border_above, split_inset ? BoxShadowPart::Outer : BoxShadowPart::All);
 		return;
 	}
 

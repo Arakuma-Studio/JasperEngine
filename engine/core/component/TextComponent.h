@@ -9,6 +9,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "util/CharExtent.h"
+#include "util/TextAlignment.h"
 #include "util/TextGlyphInfo.h"
 #include "math/Vector4.h"
 
@@ -41,6 +42,16 @@ namespace jasperengine{
 
         bool pivotBaseline = false;
         bool pivotCentered = false;
+
+        // S93 R37: TMP Alignment, inside the fixed width / height (the old pivots without one)
+        TextHorizontalAlignment horizontalAlignment = TextHorizontalAlignment::LEFT;
+        TextVerticalAlignment verticalAlignment = TextVerticalAlignment::TOP;
+        // TMP Auto Size: the largest whole font size in [fontSizeMin, fontSizeMax] whose layout
+        // fits the fixed box (fontSize is then not used); a bitmap font's largest whole multiple
+        // of its native size there
+        bool autoSize = false;
+        unsigned int fontSizeMin = 18;
+        unsigned int fontSizeMax = 72;
 
         // Outline (TMP "Outline"): UI units drawn outside the glyph edge, and its colour
         // (linear, as UIComponent::color; Text's setters take sRGB)
@@ -77,12 +88,22 @@ namespace jasperengine{
         Vector3 bitmapFaceColor = Vector3(1.0f, 1.0f, 1.0f);
         bool bitmapSizeNoted = false;
 
+        // runtime: the size Auto Size fitted (0: none; the atlas and the layout use it), and the
+        // size the loaded atlas was made for
+        unsigned int autoFontSize = 0;
+        unsigned int atlasFontSize = 0;
+
         //atlas state this text was built with, see STBText
         unsigned long atlasVersion = 0;
 
         bool needReloadAtlas = false;
         bool needUpdateText = true;
     };
+
+    // the size the text is laid out and rastered at: Auto Size's fit, else fontSize
+    inline unsigned int effectiveFontSize(const TextComponent& text){
+        return (text.autoSize && text.autoFontSize > 0) ? text.autoFontSize : text.fontSize;
+    }
 
 }
 

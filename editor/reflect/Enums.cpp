@@ -19,6 +19,7 @@
 #include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/TextComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -771,8 +772,29 @@ namespace {
     constexpr EnumItem kUIDocumentRenderModeItems[] = {
         {v(UIDocumentRenderMode::TEXTURE), "texture", "Texture", "UIDocumentRenderMode::TEXTURE"},
         {v(UIDocumentRenderMode::SCREEN), "screen", "Screen", "UIDocumentRenderMode::SCREEN"},
+        {v(UIDocumentRenderMode::WORLD), "world", "World Space", "UIDocumentRenderMode::WORLD"},
     };
-    constexpr int kUIDocumentRenderModeOrder[] = {v(UIDocumentRenderMode::SCREEN), v(UIDocumentRenderMode::TEXTURE)};
+    constexpr int kUIDocumentRenderModeOrder[] = {v(UIDocumentRenderMode::SCREEN), v(UIDocumentRenderMode::TEXTURE),
+                                                  v(UIDocumentRenderMode::WORLD)};
+
+    constexpr EnumItem kUIDocumentUpdateModeItems[] = {
+        {v(UIDocumentUpdateMode::UNSCALED_TIME), "unscaled", "Unscaled Time", "UIDocumentUpdateMode::UNSCALED_TIME"},
+        {v(UIDocumentUpdateMode::GAME_TIME), "game", "Game Time", "UIDocumentUpdateMode::GAME_TIME"},
+    };
+
+    constexpr EnumItem kTextHorizontalAlignmentItems[] = {
+        {v(TextHorizontalAlignment::LEFT), "left", "Left", "TextHorizontalAlignment::LEFT"},
+        {v(TextHorizontalAlignment::CENTER), "center", "Center", "TextHorizontalAlignment::CENTER"},
+        {v(TextHorizontalAlignment::RIGHT), "right", "Right", "TextHorizontalAlignment::RIGHT"},
+        {v(TextHorizontalAlignment::JUSTIFIED), "justified", "Justified", "TextHorizontalAlignment::JUSTIFIED"},
+    };
+
+    constexpr EnumItem kTextVerticalAlignmentItems[] = {
+        {v(TextVerticalAlignment::TOP), "top", "Top", "TextVerticalAlignment::TOP"},
+        {v(TextVerticalAlignment::MIDDLE), "middle", "Middle", "TextVerticalAlignment::MIDDLE"},
+        {v(TextVerticalAlignment::BOTTOM), "bottom", "Bottom", "TextVerticalAlignment::BOTTOM"},
+        {v(TextVerticalAlignment::BASELINE), "baseline", "Baseline", "TextVerticalAlignment::BASELINE"},
+    };
 
     constexpr EnumItem kUIEventStateItems[] = {
         {v(UIEventState::NOT_SET), "not_set", "Not Set", "UIEventState::NOT_SET"},
@@ -888,6 +910,9 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};
     const EnumDesc kUIDocumentRenderMode{"UIDocumentRenderMode", kUIDocumentRenderModeItems, v(UIDocumentRenderMode::SCREEN), nullptr,
                                          kUIDocumentRenderModeOrder};
+    const EnumDesc kUIDocumentUpdateMode{"UIDocumentUpdateMode", kUIDocumentUpdateModeItems, v(UIDocumentUpdateMode::UNSCALED_TIME)};
+    const EnumDesc kTextHorizontalAlignment{"TextHorizontalAlignment", kTextHorizontalAlignmentItems, v(TextHorizontalAlignment::LEFT)};
+    const EnumDesc kTextVerticalAlignment{"TextVerticalAlignment", kTextVerticalAlignmentItems, v(TextVerticalAlignment::TOP)};
     const EnumDesc kUIEventState{"UIEventState", kUIEventStateItems, v(UIEventState::NOT_SET)};
     const EnumDesc kWindingOrder{"WindingOrder", kWindingOrderItems, v(WindingOrder::CCW)};
 

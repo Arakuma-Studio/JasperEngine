@@ -140,6 +140,10 @@ void AnimTimeline::addChild(const AnimParam& childParams, double timePosition, c
 }
 
 AnimTimeline& AnimTimeline::add(const AnimTargetList& targets, const AnimParam& params, const AnimParam& position){
+    // without a clock parameter, a timeline runs on the clock of its first animated targets'
+    // document (S93 R35), from before its first child is placed
+    if (!clockGiven && !childHead)
+        adoptClock(clockOfTargets(targets));
     hasChildren = true;
     const AnimParam childParams = params.isObject() ? params : AnimParam::object();
     if (position.isFunction()){

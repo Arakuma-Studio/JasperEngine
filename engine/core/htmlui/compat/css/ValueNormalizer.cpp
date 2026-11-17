@@ -449,7 +449,7 @@ namespace {
             const ComponentValue& v = hasEnv ? withVars : written;
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
-            if (calcFamily && context.calcNative && context.compat().fork.has(ForkFeature::Calc)){
+            if (calcFamily && (context.calcNative || gradientCalc) && context.compat().fork.has(ForkFeature::Calc)){
                 // the fork evaluates the expression at layout time: it is kept when it is valid
                 // (its types checked with any context; a var() without one static value is the
                 // fork's to substitute) and holds no other math function, which the fork lacks
@@ -785,7 +785,11 @@ namespace {
                 return;
             }
             ComponentValue copy = shell(v);
+            // the fork resolves calc() in a gradient's colour stops, positions and sizes against the gradient (S93 R25)
+            const bool outerGradient = gradientCalc;
+            gradientCalc = gradientCalc || (name.size() > 8 && name.compare(name.size() - 8, 8, "gradient") == 0);
             copy.children = list(v.children);
+            gradientCalc = outerGradient;
             out.push_back(std::move(copy));
         }
 
@@ -801,6 +805,7 @@ namespace {
         }
 
         const NormalizeContext& context;
+        bool gradientCalc = false;   // inside a gradient function: math functions stay for the fork
         struct Pending {
             DiagCode code;
             Severity severity;

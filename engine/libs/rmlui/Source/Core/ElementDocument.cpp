@@ -1,11 +1,18 @@
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/Context.h"
+#include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementText.h"
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
+#include "../../Include/RmlUi/Core/PropertyParser.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../Include/RmlUi/Core/SystemInterface.h"
+#include "Clock.h"
 #include "DocumentHeader.h"
 #include "ElementCascade.h"
 #include "ElementStyle.h"
@@ -17,6 +24,7 @@
 #include "Template.h"
 #include "TemplateCache.h"
 #include "XMLParseTools.h"
+#include <algorithm>
 #include <limits.h>
 #include <limits>
 
@@ -24,6 +32,8 @@ namespace Rml {
 
 // Fork (P7-L): how many UpdateLayout calls formatted layout boundaries alone (GetBoundaryLayoutCount).
 static int num_boundary_layouts = 0;
+// Fork (S93 R31): how many trial layouts the text-autosize fits made (GetTextAutosizeTrialCount).
+static int num_text_autosize_trials = 0;
 
 namespace {
 	constexpr int Infinite = INT_MAX;
@@ -584,6 +594,32 @@ void ElementDocument::SetCanvasBackground(bool enable, const String& body_tag)
 	// (ElementBackgroundBorder looks the canvas's source up as it renders.)
 }
 
+static void ShiftSubtreeAnimationStartTimes(Element* element, double delta)
+{
+	element->ShiftAnimationStartTimes(delta);
+	for (int i = 0; i < element->GetNumChildren(true); i++)
+		ShiftSubtreeAnimationStartTimes(element->GetChild(i), delta);
+}
+
+void ElementDocument::SetAnimationClock(int clock)
+{
+	if (clock == animation_clock)
+		return;
+	const double before = GetAnimationTime();
+	animation_clock = clock;
+	const double delta = GetAnimationTime() - before;
+	if (delta != 0.0)
+		ShiftSubtreeAnimationStartTimes(this, delta);
+}
+
+double ElementDocument::GetAnimationTime() const
+{
+	if (animation_clock == 0)
+		return Clock::GetElapsedTime();
+	SystemInterface* system_interface = GetSystemInterface();
+	return system_interface ? system_interface->GetAnimationClockTime(animation_clock) : 0.0;
+}
+
 bool ElementDocument::IsModal() const
 {
 	return modal && IsVisible();
@@ -606,6 +642,7 @@ void ElementDocument::UpdateLayout()
 {
 	// CSS counters (phase 3): the texts of the pseudo-elements and list markers that show them, before formatting.
 	ElementCascade::ResolveCounters(*this);
+	bool laid_out = false;
 
 	// Note: Carefully consider when to call this function for performance reasons.
 	// Ideally, only called once per update loop.
@@ -619,6 +656,7 @@ void ElementDocument::UpdateLayout()
 			containing_block = GetParentNode()->GetBox().GetSize();
 
 		LayoutEngine::FormatElement(this, containing_block);
+		laid_out = true;
 
 		// Ignore dirtied layout during document formatting. Layouting must not require re-iteration.
 		// In particular, scrollbars being enabled may set the dirty flag, but this case is already handled within the layout engine.
@@ -655,11 +693,171 @@ void ElementDocument::UpdateLayout()
 					nested |= (other.get() == ancestor && ancestor->IsLayoutBoundary());
 			}
 			if (!nested)
+			{
 				LayoutEngine::FormatLayoutBoundary(element);
+				laid_out = true;
+			}
 		}
 		num_boundary_layouts++;
 		// (a boundary formatted alone may still dirty the document, e.g. a scrollbar it enables: formatted fully next time)
 	}
+
+	// Fork (S93 R31): after a layout (nothing else changes what the fit reads), or while an element waits for its first
+	// fit (registered, or hidden at the last one: a document is laid out hidden, and showing it lays nothing out)
+	if ((laid_out || text_autosize_pending) && !text_autosize.empty())
+		FitTextAutosize();
+}
+
+void ElementDocument::SetTextAutosize(Element* element, bool active)
+{
+	auto it = std::find_if(text_autosize.begin(), text_autosize.end(), [element](const TextAutosizeEntry& entry) { return entry.element.get() == element; });
+	if (active && it == text_autosize.end())
+	{
+		text_autosize.push_back(TextAutosizeEntry{element->GetObserverPtr(), 0});
+		text_autosize_pending = true;
+	}
+	else if (!active && it != text_autosize.end())
+		text_autosize.erase(it);
+	if (!active)
+		element->GetStyle()->SetFontSizeOverride(0.f);
+}
+
+// The two lengths of 'text-autosize' in whole px (lengths in em are the parent's, as the element's font size is the result).
+static bool ParseTextAutosize(Element* element, int& min_size, int& max_size)
+{
+	const Property* property = element->GetProperty(PropertyId::TextAutosize);
+	if (!property || property->unit == Unit::KEYWORD)
+		return false;
+	StringList tokens;
+	StringUtilities::ExpandString(tokens, property->Get<String>(), ' ');
+	tokens.erase(std::remove(tokens.begin(), tokens.end(), String()), tokens.end());
+	PropertyParser* length_parser = StyleSheetSpecification::GetParser("length");
+	if (tokens.size() != 2 || !length_parser)
+		return false;
+	Element* basis = (element->GetParentNode() ? element->GetParentNode() : element);
+	float sizes[2] = {};
+	for (int i = 0; i < 2; i++)
+	{
+		Property length;
+		if (!length_parser->ParseValue(length, tokens[i], ParameterMap()))
+			return false;
+		sizes[i] = basis->ResolveLength(length.GetNumericValue());
+	}
+	min_size = Math::Max(1, int(Math::Round(sizes[0])));
+	max_size = Math::Max(min_size, int(Math::Round(sizes[1])));
+	return true;
+}
+
+// What the fit of an element reads besides its box: its text and the font it starts from.
+static void HashTextAutosizeContent(Element* element, size_t& seed)
+{
+	if (ElementText* text = rmlui_dynamic_cast<ElementText*>(element))
+		Utilities::HashCombine(seed, text->GetText());
+	const int num_children = element->GetNumChildren(true);
+	Utilities::HashCombine(seed, num_children);
+	for (int i = 0; i < num_children; i++)
+		HashTextAutosizeContent(element->GetChild(i), seed);
+}
+
+void ElementDocument::UpdatePropertiesRecursive(Element* element, float dp_ratio, Vector2f vp_dimensions)
+{
+	element->UpdateProperties(dp_ratio, vp_dimensions);
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+		UpdatePropertiesRecursive(element->GetChild(i), dp_ratio, vp_dimensions);
+}
+
+// The font size of each changed 'text-autosize' element is the largest whole px between its two lengths at which its
+// content stays inside its content box, wrapped as laid out (down too when its height is definite): a binary search of
+// trial layouts of the element alone in the box the document's layout gave it (D12: at most 7 for 18px..80px). Its em
+// descendants follow the size. An element whose height follows its content has the document laid out again with the
+// size, in this update: no frame shows another size.
+void ElementDocument::FitTextAutosize()
+{
+	RMLUI_ZoneScoped;
+	const float dp_ratio = (context ? context->GetDensityIndependentPixelRatio() : 1.0f);
+	const Vector2f vp_dimensions = (context ? Vector2f(context->GetDimensions()) : Vector2f(1.0f));
+	bool layout_again = false;
+	text_autosize_pending = false;
+
+	for (size_t i = 0; i < text_autosize.size();)
+	{
+		Element* element = text_autosize[i].element.get();
+		if (!element || element->GetOwnerDocument() != this)
+		{
+			text_autosize.erase(text_autosize.begin() + i);
+			continue;
+		}
+		TextAutosizeEntry& entry = text_autosize[i++];
+		int min_size = 0, max_size = 0;
+		if (!element->IsVisible(true))
+		{
+			// (fitted when it shows: its box is not laid out until then)
+			text_autosize_pending = true;
+			continue;
+		}
+		if (!ParseTextAutosize(element, min_size, max_size))
+			continue;
+
+		const ComputedValues& computed = element->GetComputedValues();
+		const bool definite_height = (computed.height().type != Style::Height::Auto);
+		const Vector2f content = element->GetBox().GetSize(BoxArea::Content);
+		size_t signature = 0;
+		Utilities::HashCombine(signature, min_size);
+		Utilities::HashCombine(signature, max_size);
+		Utilities::HashCombine(signature, content.x);
+		Utilities::HashCombine(signature, definite_height ? content.y : -1.f);
+		Utilities::HashCombine(signature, computed.font_family());
+		Utilities::HashCombine(signature, int(computed.font_weight()));
+		Utilities::HashCombine(signature, int(computed.font_style()));
+		HashTextAutosizeContent(element, signature);
+		if (signature == entry.signature)
+			continue;
+		entry.signature = signature;
+
+		ElementStyle* style = element->GetStyle();
+		const float before = style->GetFontSizeOverride();
+		auto fits = [&](int size) {
+			num_text_autosize_trials++;
+			style->SetFontSizeOverride(float(size));
+			UpdatePropertiesRecursive(element, dp_ratio, vp_dimensions);
+			return LayoutEngine::FormatInOwnBox(element, definite_height);
+		};
+		int best = min_size, tried = 0;
+		for (int low = min_size, high = max_size; low <= high;)
+		{
+			const int size = low + (high - low) / 2;
+			tried = size;
+			if (fits(size))
+			{
+				best = size;
+				low = size + 1;
+			}
+			else
+				high = size - 1;
+		}
+		if (tried != best)
+			fits(best);
+		element->ClampScrollOffsetRecursive();
+		if (!definite_height && float(best) != before)
+			layout_again = true;
+	}
+
+	if (layout_again)
+	{
+		Vector2f containing_block(0, 0);
+		if (GetParentNode() != nullptr)
+			containing_block = GetParentNode()->GetBox().GetSize();
+		LayoutEngine::FormatElement(this, containing_block);
+	}
+	// (the trial layouts dirtied it: they are the layout)
+	layout_dirty = false;
+	for (const ObserverPtr<Element>& boundary : dirty_layout_boundaries)
+	{
+		if (Element* element = boundary.get())
+			element->layout_boundary_dirty = false;
+	}
+	dirty_layout_boundaries.clear();
 }
 
 void ElementDocument::DirtyLayoutBoundary(Element* boundary)
@@ -673,6 +871,11 @@ void ElementDocument::DirtyLayoutBoundary(Element* boundary)
 int ElementDocument::GetBoundaryLayoutCount()
 {
 	return num_boundary_layouts;
+}
+
+int ElementDocument::GetTextAutosizeTrialCount()
+{
+	return num_text_autosize_trials;
 }
 
 void ElementDocument::UpdatePosition()

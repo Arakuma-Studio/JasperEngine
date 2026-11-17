@@ -116,7 +116,8 @@ std::string viewportText(double width, double height) {
 
 // An asset-relative engine path shown project-relative ("ui/menu.css" -> "assets/ui/menu.css")
 std::string assetToProject(Project* project, const std::string& assetPath) {
-    if (assetPath.empty()) return assetPath;
+    // a style sheet a script added (S93 R29) has no file: "injected:<name>"
+    if (assetPath.empty() || assetPath.rfind("injected:", 0) == 0) return assetPath;
     return w4::projectRelative(project, (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
 }
 
@@ -433,6 +434,7 @@ std::string imageUnavailable(Project* project, SceneProject* sp, Entity entity) 
     UIDocumentComponent* component = documentComponent(sp, entity);
     if (!component) return "the document is gone";
     if (component->renderMode == UIDocumentRenderMode::TEXTURE) return "the document renders to a texture, not to the Game view";
+    if (component->renderMode == UIDocumentRenderMode::WORLD) return "the document is drawn in World Space, not over the Game view";
     if (isPlaying(project)) {
         const std::vector<SceneProject*> running = runningScenes(project);
         if (std::find(running.begin(), running.end(), sp) == running.end()) {
@@ -1604,7 +1606,13 @@ void createUiDocumentTool(const CallPtr& call) {
         Json values = properties;
         if (has(args, "sort_order")) values["sortOrder"] = args["sort_order"];
         for (auto it = values.begin(); it != values.end(); ++it) {
-            PropertyData property = Catalog::findProperty(sp->scene, entity, ComponentType::UIDocumentComponent, it.key());
+            // snake_case names too (update_mode, render_mode, pixels_per_unit)
+            std::string name = it.key();
+            for (size_t underscore = name.find('_'); underscore != std::string::npos && underscore + 1 < name.size(); underscore = name.find('_')) {
+                name[underscore + 1] = (char)std::toupper((unsigned char)name[underscore + 1]);
+                name.erase(underscore, 1);
+            }
+            PropertyData property = Catalog::findProperty(sp->scene, entity, ComponentType::UIDocumentComponent, name);
             if (!property.ref) {
                 std::vector<std::string> names;
                 for (const auto& item : Catalog::findEntityProperties(sp->scene, entity, ComponentType::UIDocumentComponent)) {
@@ -1617,7 +1625,7 @@ void createUiDocumentTool(const CallPtr& call) {
             }
             std::string valueError;
             Command* command = McpValues::buildPropertyCommand(project, sp->id, entity, ComponentType::UIDocumentComponent,
-                                                               it.key(), property, it.value(), valueError);
+                                                               name, property, it.value(), valueError);
             if (!command) {
                 rollback("UI Document." + it.key() + ": " + valueError);
                 return;
@@ -1811,9 +1819,10 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
             return false;
         }
         UIDocumentComponent* component = documentComponent(matches[0].first, matches[0].second);
-        if (component->renderMode == UIDocumentRenderMode::TEXTURE) {
+        if (rendersToTexture(component->renderMode)) {
             error = "document " + documentLabel(project, matches[0].first, matches[0].second, true) +
-                    " renders to a texture: its elements are not at canvas points (click the surface it is drawn on with x, y)";
+                    (component->renderMode == UIDocumentRenderMode::WORLD ? " is drawn in World Space" : " renders to a texture") +
+                    ": its elements are not at canvas points (click the surface it is drawn on with x, y)";
             return false;
         }
         candidates.push_back({matches[0].first, matches[0].second, component->sortOrder, 0});
@@ -1821,7 +1830,7 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
         for (SceneProject* sp : scenes) {
             for (Entity entity : hui::HtmlUIInspector::documents(sp->scene)) {
                 UIDocumentComponent* component = documentComponent(sp, entity);
-                if (!component || component->renderMode == UIDocumentRenderMode::TEXTURE || component->filename.empty()) continue;
+                if (!component || rendersToTexture(component->renderMode) || component->filename.empty()) continue;
                 candidates.push_back({sp, entity, component->sortOrder, candidates.size()});
             }
         }

@@ -1554,11 +1554,13 @@ set(JASPERENGINE_SRCS
     core/picking/SceneBvh.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlUIClockElement.cpp
     core/htmlui/HtmlTextEffects.cpp
     core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
+    core/htmlui/HtmlUIImageCache.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
@@ -1567,8 +1569,11 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlRendererBatch.cpp
+    core/htmlui/RmlRendererWorld.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
+    core/htmlui/HtmlUIPrewarm.cpp
+    core/htmlui/HtmlUIFontDiagnostics.cpp
     core/htmlui/RmlKeyMap.cpp
     core/htmlui/RmlTextInputHandler.cpp
     core/htmlui/anim/AnimAnimation.cpp
@@ -1929,6 +1934,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/subsystem/UIDocumentSystemStyle.cpp
+    core/subsystem/UIDocumentSystemWorld.cpp
     core/model/CookedModels.cpp
     core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
@@ -1987,6 +1994,7 @@ set(JASPERENGINE_SRCS
     core/util/Scheduler.cpp
     core/util/Sha256.cpp
     core/util/STBText.cpp
+    core/util/TextAlignment.cpp
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp

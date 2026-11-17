@@ -193,6 +193,13 @@ namespace jasperengine{
         void createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
         // the pivot, clip, visible characters and indices of a text's glyph quads (pivotStep > 0:
         // a bitmap text's font pixel, the pivot offsets stay whole font pixels)
+        // S93 R37 Auto Size: the size whose layout fits the fixed box (Text::autoFontSize); true
+        // when the loaded atlas is of another size
+        bool fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout);
+        // a bitmap font's fit: a whole multiple of its native size
+        unsigned int fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const;
+        // S93 R37: the lines in the box by the Text's alignment (before the pivot moves the block)
+        void alignTextGlyphs(TextComponent& text, UIComponent& ui, const RectTransformComponent& layout, float ascent, float pivotStep);
         void finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
                                 bool fillColors, std::vector<uint16_t>& indices);
         // bitmap fonts (S51, UISystemBitmapText.cpp)

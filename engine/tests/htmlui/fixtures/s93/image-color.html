@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>image-color multiplies background-image and border-image, not mask-image</title>
+  <style>
+    body { margin: 0; }
+    div, img { position: absolute; top: 20px; width: 80px; height: 80px; }
+    #background { left: 20px; background-image: url("images/white.png"); image-color: #ff0000; }
+    #border { left: 120px; box-sizing: border-box; border: 20px solid transparent;
+              border-image: url("images/nine.png") 10 fill / 20px; image-color: #00ffff; image-rendering: pixelated; }
+    #mask { left: 220px; background: #00ff00; mask-image: url("images/white.png"); mask-size: 80px 80px;
+            image-color: rgba(255, 0, 0, 0.5); }
+    #image { left: 320px; image-color: #0000ff; }
+    #plain { left: 420px; background-image: url("images/white.png"); }
+  </style>
+</head>
+<body>
+  <div id="background"></div>
+  <div id="border"></div>
+  <div id="mask"></div>
+  <img id="image" src="images/white.png">
+  <div id="plain"></div>
+</body>
+</html>
