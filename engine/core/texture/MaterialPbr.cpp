@@ -56,10 +56,6 @@ bool MaterialPbrExtensions::Hair::operator == (const Hair& o) const{
            flowMapTexCoord == o.flowMapTexCoord;
 }
 
-bool MaterialPbrExtensions::VertexColor::operator == (const VertexColor& o) const{
-    return use == o.use && alphaOpacity == o.alphaOpacity && r == o.r && g == o.g && b == o.b && a == o.a;
-}
-
 bool MaterialPbrExtensions::operator == (const MaterialPbrExtensions& o) const{
     return clearcoat == o.clearcoat && sheen == o.sheen && anisotropy == o.anisotropy && iridescence == o.iridescence &&
            transmission == o.transmission && volume == o.volume && specular == o.specular && hex == o.hex &&

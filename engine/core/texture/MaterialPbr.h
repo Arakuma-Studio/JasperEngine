@@ -149,7 +149,11 @@ namespace jasperengine{
             VertexColorTarget g = VertexColorTarget::NONE;
             VertexColorTarget b = VertexColorTarget::NONE;
             VertexColorTarget a = VertexColorTarget::NONE;
-            bool operator == (const VertexColor& o) const;
+            // inline: the editor compares it across the engine DLL boundary, and MSVC does not export
+            // members of a nested struct of an exported class
+            bool operator == (const VertexColor& o) const {
+                return use == o.use && alphaOpacity == o.alphaOpacity && r == o.r && g == o.g && b == o.b && a == o.a;
+            }
             bool operator != (const VertexColor& o) const { return !(*this == o); }
         } vertexColor;
 
