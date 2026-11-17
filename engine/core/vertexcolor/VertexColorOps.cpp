@@ -4,6 +4,7 @@
 #include "vertexcolor/VertexColorOps.h"
 
 #include "noise/NoiseKernels.h"
+#include "noise/NoiseSwitch.h"
 #include "pixelart/PixelColor.h"
 #include "vertexcolor/VertexColorBake.h"
 #include "vertexcolor/VertexColorInternal.h"
@@ -786,7 +787,6 @@ namespace {
                         applyElement(kind, id, [&](const Vector4& old, uint32_t) { return blendValue(old, op.value, op.blend, op.strength * t, op.channels); });
                     });
                 }
-                case OpType::Noise: return runNoise(op, result);
                 default: return false;
             }
         }
@@ -864,7 +864,9 @@ namespace {
             return out;
         }
 
-        bool runNoise(const Op& op, OpResult& result) {
+        bool runNoise(const Op& op, OpResult& result, std::string& error) {
+#if JASPERENGINE_NOISE_ENABLED
+            (void)error;
             noise::FractalParams params;
             params.basis.basis = op.noiseKind == NoiseKind::Value ? noise::Basis::Value
                                  : (op.noiseKind == NoiseKind::Cellular ? noise::Basis::Cellular : noise::Basis::Simplex);
@@ -882,6 +884,14 @@ namespace {
                 const Vector4 src = opsLerp4(op.value, op.value2, t);
                 applyElement(kind, id, [&](const Vector4& old, uint32_t) { return blendValue(old, src, op.blend, op.strength, op.channels); });
             });
+#else
+            // a game exported without the Noise module (T2 R42): the kernels are not linked, so the op
+            // says so instead of the player failing to link
+            (void)op;
+            (void)result;
+            error = "noise: this build leaves out the Noise module (JASPERENGINE_NOISE); turn it on in the player's modules, or run the noise op in the editor so the values ship painted";
+            return false;
+#endif
         }
 
         bool runGradient(const Op& op, OpResult& result) {
@@ -1808,6 +1818,7 @@ namespace {
                     ok = engine.runStroke(op, opResult, stroke, error);
                     break;
                 case OpType::Gradient: ok = engine.runGradient(op, opResult); break;
+                case OpType::Noise: ok = engine.runNoise(op, opResult, error); break;
                 case OpType::Smooth:
                 case OpType::Sharpen: ok = engine.runSmooth(op, opResult); break;
                 case OpType::FromTexture:
