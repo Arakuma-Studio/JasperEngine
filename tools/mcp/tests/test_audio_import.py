@@ -128,6 +128,7 @@ async def test_all_paths_or_none(ed: Editor):
     ed.check("licence" in text, f"provenance keys: {text}")
     text = await ed.call("set_audio_import_settings", paths=[CLIP], expect_error=True)
     ed.check("settings" in text, f"nothing to set: {text}")
+    await ed.check_error("set_audio_import_settings", {"settings": {"gain_db": 1}}, contains="paths")
     ed.check_eq((meta_of(ed).read_text(), meta_of(ed, other).read_text()), (a, b), "a refused call writes nothing")
 
 

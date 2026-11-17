@@ -1280,7 +1280,7 @@ void optimizeAnimationTool(const CallPtr& call) {
     state->ctx = &call->ctx();
     state->root = project->getProjectPath();
     std::string error;
-    for (const Json& given : args["clips"]) {
+    for (const Json& given : args.value("clips", Json::array())) {
         NamedClip clip;
         if (!resolveNamedClip(project, given.get<std::string>(), clip, error)) {
             call->fail("clips: " + error);
@@ -1296,7 +1296,7 @@ void optimizeAnimationTool(const CallPtr& call) {
     if (args.contains("skin_distance_mm")) state->reduction.skinDistanceMm = args["skin_distance_mm"].get<double>();
     if (args.contains("joints")) {
         for (const Json& joint : args["joints"]) {
-            state->reduction.joints.push_back({joint["path"].get<std::string>(), joint["tolerance_mm"].get<double>()});
+            state->reduction.joints.push_back({joint.at("path").get<std::string>(), joint.at("tolerance_mm").get<double>()});
         }
     }
     if (args.contains("output")) {
