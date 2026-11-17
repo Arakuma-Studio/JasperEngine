@@ -19,6 +19,7 @@
 #include "reflect/Enums.h"
 #include "subsystem/VertexColorScene.h"
 #include "vertexcolor/VertexColorSplit.h"
+#include "window/EditorModal.h"
 #include "window/InspectorWindow.h"
 
 #include "imgui.h"
@@ -310,13 +311,14 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
     ImGui::SetItemTooltip("Rasterize a mesh's colors into a PNG in UV space");
     ImGui::EndDisabled();
 
-    if (ImGui::BeginPopupModal("Export as Model##vertexcolors", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::InputText("Path", exportPath, sizeof(exportPath));
-        ImGui::Checkbox("Split Hard Edges", &exportSplit);
+    if (EditorModal::begin("Export as Model##vertexcolors", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::inputText("Path", "path", exportPath, sizeof(exportPath));
+        EditorModal::checkbox("Split Hard Edges", "split_hard_edges", &exportSplit);
         ImGui::SetItemTooltip("Faces with their own colors get their own vertices in the file");
-        ImGui::Checkbox("Replace in Scene", &exportReplace);
+        EditorModal::checkbox("Replace in Scene", "replace_in_scene", &exportReplace);
         ImGui::SetItemTooltip("The GameObject draws the new file as its Model (a Mesh becomes a Model) and loses this component, in one undo step");
-        if (ImGui::Button("Export")) {
+        EditorModal::error(actionError);
+        if (EditorModal::button("Export", "ok")) {
             ExportModelOptions options;
             options.path = exportPath;
             options.replaceInScene = exportReplace;
@@ -325,22 +327,23 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
             if (exportAsModel(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         vcErrorText(actionError);
         ImGui::EndPopup();
     }
-    if (ImGui::BeginPopupModal("Bake to Texture##vertexcolors", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        std::vector<const char*> names;
-        for (const VertexColorTargetRow& row : targets) names.push_back(row.name.c_str());
-        if (!names.empty()) ImGui::Combo("Mesh", &bakeTarget, names.data(), (int)names.size());
-        ImGui::InputText("Path", bakePath, sizeof(bakePath));
-        ImGui::InputInt("Size", &bakeSize, 256, 1024);
-        ImGui::InputInt("Padding", &bakePadding);
+    if (EditorModal::begin("Bake to Texture##vertexcolors", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        std::vector<std::string> names;
+        for (const VertexColorTargetRow& row : targets) names.push_back(row.name);
+        if (!names.empty()) EditorModal::combo("Mesh", "target", &bakeTarget, names);
+        EditorModal::inputText("Path", "path", bakePath, sizeof(bakePath));
+        EditorModal::inputInt("Size", "size", &bakeSize, 256, 1024);
+        EditorModal::inputInt("Padding", "padding", &bakePadding);
         ImGui::SetItemTooltip("Texels grown around each UV island, so filtering never reads the background");
-        ImGui::Combo("UV Set", &bakeUv, "UV0\0UV1\0");
-        ImGui::Checkbox("sRGB", &bakeSrgb);
+        EditorModal::combo("UV Set", "uv_set", &bakeUv, {"UV0", "UV1"});
+        EditorModal::checkbox("sRGB", "srgb", &bakeSrgb);
         ImGui::SetItemTooltip("On for colors seen as colors; off for data channels (the values as they are)");
-        if (ImGui::Button("Bake")) {
+        EditorModal::error(actionError);
+        if (EditorModal::button("Bake", "ok")) {
             const std::vector<TargetInfo> infos = listTargets(project, sceneId, entity);
             BakeTextureOptions options;
             if (bakeTarget >= 0 && (size_t)bakeTarget < infos.size()) options.key = infos[(size_t)bakeTarget].key;
@@ -353,7 +356,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
             if (bakeToTexture(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         vcErrorText(actionError);
         ImGui::EndPopup();
     }
