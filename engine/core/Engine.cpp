@@ -2865,6 +2865,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
         desc.drawMode = (ViewDrawMode)layer.drawMode;
+        desc.vertexColorChannel = (ViewVertexColorChannel)layer.vertexColorChannel;
         desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;

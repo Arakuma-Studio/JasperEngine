@@ -4991,6 +4991,42 @@
 		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
+		4A534E53203F30621D7DDE5B /* VertexColors.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B68C31D26D607539 /* VertexColors.cpp */; };
+		4A534E53AF5F5C8B1AEBD635 /* VertexColorClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537365B50759F4E9D1 /* VertexColorClassesLua.cpp */; };
+		4A534E53212458EABC201753 /* VertexColorRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530EA6110BC53AA386 /* VertexColorRenderer.cpp */; };
+		4A534E53AF954C18F9A9319D /* VertexColorScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E531A009B0E0BEEA0D4 /* VertexColorScene.cpp */; };
+		4A534E53A87909732045C3F3 /* VertexColorBake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536A1D957A78C2A4C5 /* VertexColorBake.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53CBB8C2DF22E468B3 /* VertexColorFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53756C8FAAF5B42E30 /* VertexColorFile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53238451575B8ADF9B /* VertexColorFileWrite.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C2BA5E7B6765418B /* VertexColorFileWrite.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53F4562CA696F428DF /* VertexColorInternal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5335D3455C95E9F060 /* VertexColorInternal.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E530B30F41EFB70B9F8 /* VertexColorMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B27095F42A419769 /* VertexColorMesh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53D30BFF12C43D3BA4 /* VertexColorOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C60AEE77CBB0EA99 /* VertexColorOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53DE35C39BE9536614 /* VertexColorOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536C278C909D20125E /* VertexColorOpsJson.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5357F39CFC6A0C6965 /* VertexColorRuntimeLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5373073F9270FFBD7E /* VertexColorRuntimeLayer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53E6BBE380A9D15BC9 /* VertexColorSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537916862173A5EF4E /* VertexColorSelect.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E531E93DE5B167C22BC /* VertexColorSplit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5319BC65A27E3CFBE2 /* VertexColorSplit.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53A6DFD9C2ACCC28FA /* VertexColorTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53F493BE2F93FFAE8E /* VertexColorTypes.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E537F39A5798B93B136 /* VertexColors.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B68C31D26D607539 /* VertexColors.cpp */; };
+		4A534E536B0B2CB60DD8D407 /* VertexColorClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537365B50759F4E9D1 /* VertexColorClassesLua.cpp */; };
+		4A534E537A546296659FD3BA /* VertexColorRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530EA6110BC53AA386 /* VertexColorRenderer.cpp */; };
+		4A534E53420A636E34C81032 /* VertexColorScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E531A009B0E0BEEA0D4 /* VertexColorScene.cpp */; };
+		4A534E53B1DF021B2D07F2A6 /* VertexColorBake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536A1D957A78C2A4C5 /* VertexColorBake.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5364F079086133EECB /* VertexColorFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53756C8FAAF5B42E30 /* VertexColorFile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53E1861AF4A84FBE31 /* VertexColorFileWrite.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C2BA5E7B6765418B /* VertexColorFileWrite.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53E19CFA3111CF865B /* VertexColorInternal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5335D3455C95E9F060 /* VertexColorInternal.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E5394E351914B90A7FF /* VertexColorMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B27095F42A419769 /* VertexColorMesh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E532EA13BF518294E9A /* VertexColorOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C60AEE77CBB0EA99 /* VertexColorOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E539B3A433BACAC821D /* VertexColorOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536C278C909D20125E /* VertexColorOpsJson.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53063913367622F623 /* VertexColorRuntimeLayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5373073F9270FFBD7E /* VertexColorRuntimeLayer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53C03D3EB8C0BF0F2E /* VertexColorSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537916862173A5EF4E /* VertexColorSelect.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E536DC75A2F78C40A4A /* VertexColorSplit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5319BC65A27E3CFBE2 /* VertexColorSplit.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E53AFF5F6BD94B65944 /* VertexColorTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53F493BE2F93FFAE8E /* VertexColorTypes.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		4A534E4746135A66473AD83E /* VertexColorsComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4792B5070312EAAA1E /* VertexColorsComponent.h */; };
+		4A534E47A8B263D096332D07 /* VertexColors.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476B44DA2CF84AC121 /* VertexColors.h */; };
+		4A534E47595F310F315538D9 /* VertexColorBinding.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4791FFD9BB599710F5 /* VertexColorBinding.h */; };
+		4A534E47DFC0058357C0EBDF /* VertexColorRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470433EF71AEAF5357 /* VertexColorRenderer.h */; };
+		4A534E47F8A62B18DE9B0CC4 /* VertexColorScene.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470D8BF64D5C088B30 /* VertexColorScene.h */; };
+		4A534E473CD8708B9ABAD9C1 /* VertexColorSceneDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E9B6AC51D8900FED /* VertexColorSceneDetail.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9608,6 +9644,27 @@
 		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
+		4A534E53B68C31D26D607539 /* VertexColors.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColors.cpp; sourceTree = "<group>"; };
+		4A534E537365B50759F4E9D1 /* VertexColorClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E530EA6110BC53AA386 /* VertexColorRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorRenderer.cpp; sourceTree = "<group>"; };
+		4A534E531A009B0E0BEEA0D4 /* VertexColorScene.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorScene.cpp; sourceTree = "<group>"; };
+		4A534E536A1D957A78C2A4C5 /* VertexColorBake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorBake.cpp; sourceTree = "<group>"; };
+		4A534E53756C8FAAF5B42E30 /* VertexColorFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorFile.cpp; sourceTree = "<group>"; };
+		4A534E53C2BA5E7B6765418B /* VertexColorFileWrite.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorFileWrite.cpp; sourceTree = "<group>"; };
+		4A534E5335D3455C95E9F060 /* VertexColorInternal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorInternal.cpp; sourceTree = "<group>"; };
+		4A534E53B27095F42A419769 /* VertexColorMesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorMesh.cpp; sourceTree = "<group>"; };
+		4A534E53C60AEE77CBB0EA99 /* VertexColorOps.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorOps.cpp; sourceTree = "<group>"; };
+		4A534E536C278C909D20125E /* VertexColorOpsJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorOpsJson.cpp; sourceTree = "<group>"; };
+		4A534E5373073F9270FFBD7E /* VertexColorRuntimeLayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorRuntimeLayer.cpp; sourceTree = "<group>"; };
+		4A534E537916862173A5EF4E /* VertexColorSelect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorSelect.cpp; sourceTree = "<group>"; };
+		4A534E5319BC65A27E3CFBE2 /* VertexColorSplit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorSplit.cpp; sourceTree = "<group>"; };
+		4A534E53F493BE2F93FFAE8E /* VertexColorTypes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexColorTypes.cpp; sourceTree = "<group>"; };
+		4A534E4792B5070312EAAA1E /* VertexColorsComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorsComponent.h; sourceTree = "<group>"; };
+		4A534E476B44DA2CF84AC121 /* VertexColors.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColors.h; sourceTree = "<group>"; };
+		4A534E4791FFD9BB599710F5 /* VertexColorBinding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorBinding.h; sourceTree = "<group>"; };
+		4A534E470433EF71AEAF5357 /* VertexColorRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorRenderer.h; sourceTree = "<group>"; };
+		4A534E470D8BF64D5C088B30 /* VertexColorScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorScene.h; sourceTree = "<group>"; };
+		4A534E47E9B6AC51D8900FED /* VertexColorSceneDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorSceneDetail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10177,6 +10234,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E537365B50759F4E9D1 /* VertexColorClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11788,6 +11846,7 @@
 				5052544389C2D57FF7DC8B71 /* noise */,
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
+				4A534E537E750203CC7F39A4 /* vertexcolor */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -12120,6 +12179,7 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E4792B5070312EAAA1E /* VertexColorsComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12260,6 +12320,8 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E53B68C31D26D607539 /* VertexColors.cpp */,
+				4A534E476B44DA2CF84AC121 /* VertexColors.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12474,6 +12536,12 @@
 				4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */,
 				4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */,
 				4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */,
+				4A534E530EA6110BC53AA386 /* VertexColorRenderer.cpp */,
+				4A534E531A009B0E0BEEA0D4 /* VertexColorScene.cpp */,
+				4A534E4791FFD9BB599710F5 /* VertexColorBinding.h */,
+				4A534E470433EF71AEAF5357 /* VertexColorRenderer.h */,
+				4A534E470D8BF64D5C088B30 /* VertexColorScene.h */,
+				4A534E47E9B6AC51D8900FED /* VertexColorSceneDetail.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -16087,6 +16155,24 @@
 			path = clipper2;
 			sourceTree = "<group>";
 		};
+		4A534E537E750203CC7F39A4 /* vertexcolor */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E536A1D957A78C2A4C5 /* VertexColorBake.cpp */,
+				4A534E53756C8FAAF5B42E30 /* VertexColorFile.cpp */,
+				4A534E53C2BA5E7B6765418B /* VertexColorFileWrite.cpp */,
+				4A534E5335D3455C95E9F060 /* VertexColorInternal.cpp */,
+				4A534E53B27095F42A419769 /* VertexColorMesh.cpp */,
+				4A534E53C60AEE77CBB0EA99 /* VertexColorOps.cpp */,
+				4A534E536C278C909D20125E /* VertexColorOpsJson.cpp */,
+				4A534E5373073F9270FFBD7E /* VertexColorRuntimeLayer.cpp */,
+				4A534E537916862173A5EF4E /* VertexColorSelect.cpp */,
+				4A534E5319BC65A27E3CFBE2 /* VertexColorSplit.cpp */,
+				4A534E53F493BE2F93FFAE8E /* VertexColorTypes.cpp */,
+			);
+			path = vertexcolor;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -17019,6 +17105,12 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
+				4A534E4746135A66473AD83E /* VertexColorsComponent.h in Headers */,
+				4A534E47A8B263D096332D07 /* VertexColors.h in Headers */,
+				4A534E47595F310F315538D9 /* VertexColorBinding.h in Headers */,
+				4A534E47DFC0058357C0EBDF /* VertexColorRenderer.h in Headers */,
+				4A534E47F8A62B18DE9B0CC4 /* VertexColorScene.h in Headers */,
+				4A534E473CD8708B9ABAD9C1 /* VertexColorSceneDetail.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19723,6 +19815,21 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E537F39A5798B93B136 /* VertexColors.cpp in Sources */,
+				4A534E536B0B2CB60DD8D407 /* VertexColorClassesLua.cpp in Sources */,
+				4A534E537A546296659FD3BA /* VertexColorRenderer.cpp in Sources */,
+				4A534E53420A636E34C81032 /* VertexColorScene.cpp in Sources */,
+				4A534E53B1DF021B2D07F2A6 /* VertexColorBake.cpp in Sources */,
+				4A534E5364F079086133EECB /* VertexColorFile.cpp in Sources */,
+				4A534E53E1861AF4A84FBE31 /* VertexColorFileWrite.cpp in Sources */,
+				4A534E53E19CFA3111CF865B /* VertexColorInternal.cpp in Sources */,
+				4A534E5394E351914B90A7FF /* VertexColorMesh.cpp in Sources */,
+				4A534E532EA13BF518294E9A /* VertexColorOps.cpp in Sources */,
+				4A534E539B3A433BACAC821D /* VertexColorOpsJson.cpp in Sources */,
+				4A534E53063913367622F623 /* VertexColorRuntimeLayer.cpp in Sources */,
+				4A534E53C03D3EB8C0BF0F2E /* VertexColorSelect.cpp in Sources */,
+				4A534E536DC75A2F78C40A4A /* VertexColorSplit.cpp in Sources */,
+				4A534E53AFF5F6BD94B65944 /* VertexColorTypes.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20718,6 +20825,21 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E53203F30621D7DDE5B /* VertexColors.cpp in Sources */,
+				4A534E53AF5F5C8B1AEBD635 /* VertexColorClassesLua.cpp in Sources */,
+				4A534E53212458EABC201753 /* VertexColorRenderer.cpp in Sources */,
+				4A534E53AF954C18F9A9319D /* VertexColorScene.cpp in Sources */,
+				4A534E53A87909732045C3F3 /* VertexColorBake.cpp in Sources */,
+				4A534E53CBB8C2DF22E468B3 /* VertexColorFile.cpp in Sources */,
+				4A534E53238451575B8ADF9B /* VertexColorFileWrite.cpp in Sources */,
+				4A534E53F4562CA696F428DF /* VertexColorInternal.cpp in Sources */,
+				4A534E530B30F41EFB70B9F8 /* VertexColorMesh.cpp in Sources */,
+				4A534E53D30BFF12C43D3BA4 /* VertexColorOps.cpp in Sources */,
+				4A534E53DE35C39BE9536614 /* VertexColorOpsJson.cpp in Sources */,
+				4A534E5357F39CFC6A0C6965 /* VertexColorRuntimeLayer.cpp in Sources */,
+				4A534E53E6BBE380A9D15BC9 /* VertexColorSelect.cpp in Sources */,
+				4A534E531E93DE5B167C22BC /* VertexColorSplit.cpp in Sources */,
+				4A534E53A6DFD9C2ACCC28FA /* VertexColorTypes.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

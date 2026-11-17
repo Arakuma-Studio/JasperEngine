@@ -939,8 +939,10 @@ namespace jasperengine {
             int atmosphereQuality = -1;
             // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
             bool shadows = true;
-            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
+            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded) and the channel
+            // its Vertex Color mode shows (ViewVertexColorChannel; 0 RGB)
             uint8_t drawMode = 0;
+            uint8_t vertexColorChannel = 0;
             // the Scene view's Snap Preview (S41 R21): view pixels per base pixel of its own grid
             // (0: none; a scene without a snapping Pixel Perfect Camera has nothing to preview)
             float snapPreviewScale = 0.0f;

@@ -885,6 +885,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VertexColorsReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
@@ -1011,6 +1012,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/VoxelTools.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshColorTools.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainWorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
@@ -1614,6 +1616,8 @@ endif()
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the Voxel Volume's human editor (T6 R59-R65)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
+# vertex colors (V1): its own globbed list
+include(${EDITOR_DIR}/vertexcolor/VertexColorEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 # Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here

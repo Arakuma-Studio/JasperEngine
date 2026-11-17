@@ -34,6 +34,8 @@
 namespace jasperengine{
 
     namespace vat{ class VertexAnimation; }
+    // V1 (subsystem/VertexColorBinding.h)
+    struct SubmeshVertexColors;
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
     // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
@@ -332,6 +334,9 @@ namespace jasperengine{
         int16_t pbrSetsOffset = -1;
         // and the Hair shading model's three vec4 after them (spec S57 R5; -1: no hair)
         int16_t pbrHairOffset = -1;
+        // and the material's vertex colour masks last (V1 R70; -1: none). A variant with the
+        // masks and no lobes has pbrParamsSize too, its pbrExtOffset the masks' offset
+        int16_t pbrVertexColorOffset = -1;
         // u_fs_lightOcclusion (includes/light_occlusion.glsl: capsule and contact shadows),
         // u_tiledLights and u_contactShadowTexture of the S57 variants ('Til', 'Cap', 'Cts')
         int slotFSLightOcclusion = -1;
@@ -482,6 +487,9 @@ namespace jasperengine{
         // over the same buffers: null until a shadow pass first draws it, then kept (empty when
         // they would not pay off)
         std::shared_ptr<ShadowIndexBuffer> shadowIndices;
+        // runtime, set at load: what its Vertex Colors component binds over its own geometry (V1
+        // R11, R12; VertexColorRenderer owns it, null: nothing). Never saved
+        std::shared_ptr<SubmeshVertexColors> vertexColors;
     };
 
     // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)

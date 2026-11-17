@@ -83,6 +83,13 @@ template<> struct Codec<MaterialPbrExtensions::Hair> {
 template<> struct TextureVisit<MaterialPbrExtensions::Hair> {
     static void visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f);
 };
+template<> struct Codec<MaterialPbrExtensions::VertexColor> {
+    static void write(Writer& w, const MaterialPbrExtensions::VertexColor& value);
+    static void read(Reader& r, MaterialPbrExtensions::VertexColor& value);
+};
+template<> struct TextureVisit<MaterialPbrExtensions::VertexColor> {
+    static void visit(MaterialPbrExtensions::VertexColor& value, const TextureVisitor& f);
+};
 template<> struct Codec<MaterialPbrExtensions> {
     static void write(Writer& w, const MaterialPbrExtensions& value);
     static void read(Reader& r, MaterialPbrExtensions& value);
@@ -454,6 +461,19 @@ void Codec<MaterialPbrExtensions::Hair>::write(Writer& w, const MaterialPbrExten
 void Codec<MaterialPbrExtensions::Hair>::read(Reader& r, MaterialPbrExtensions::Hair& value) { readStruct(r, kStruct_MaterialPbrExtensions__Hair, &value); }
 void TextureVisit<MaterialPbrExtensions::Hair>::visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Hair, &value, f); }
 
+const FieldEntry kStruct_MaterialPbrExtensions__VertexColor_fields[] = {
+    JE_RF(MaterialPbrExtensions::VertexColor, use, 0xa343eafbu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, alphaOpacity, 0x4a600699u, Bool),
+    JE_RF(MaterialPbrExtensions::VertexColor, r, 0x887eb44eu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, g, 0x7d7ea2fdu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, b, 0x787e9b1eu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, a, 0x777e998bu, Enum),
+};
+const StructTable kStruct_MaterialPbrExtensions__VertexColor{"VertexColor", kStruct_MaterialPbrExtensions__VertexColor_fields, std::size(kStruct_MaterialPbrExtensions__VertexColor_fields)};
+void Codec<MaterialPbrExtensions::VertexColor>::write(Writer& w, const MaterialPbrExtensions::VertexColor& value) { writeStruct(w, kStruct_MaterialPbrExtensions__VertexColor, &value); }
+void Codec<MaterialPbrExtensions::VertexColor>::read(Reader& r, MaterialPbrExtensions::VertexColor& value) { readStruct(r, kStruct_MaterialPbrExtensions__VertexColor, &value); }
+void TextureVisit<MaterialPbrExtensions::VertexColor>::visit(MaterialPbrExtensions::VertexColor& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__VertexColor, &value, f); }
+
 const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, clearcoat, 0xabaa10f2u, Struct),
     JE_RF(MaterialPbrExtensions, sheen, 0xa0ae6679u, Struct),
@@ -464,6 +484,7 @@ const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, specular, 0x32677989u, Struct),
     JE_RF(MaterialPbrExtensions, hex, 0x08ecd2f5u, Struct),
     JE_RF(MaterialPbrExtensions, hair, 0xecf5b1a4u, Struct),
+    JE_RF(MaterialPbrExtensions, vertexColor, 0xce880bb9u, Struct),
 };
 const StructTable kStruct_MaterialPbrExtensions{"MaterialPbrExtensions", kStruct_MaterialPbrExtensions_fields, std::size(kStruct_MaterialPbrExtensions_fields)};
 void Codec<MaterialPbrExtensions>::write(Writer& w, const MaterialPbrExtensions& value) { writeStruct(w, kStruct_MaterialPbrExtensions, &value); }
@@ -2724,6 +2745,16 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_VertexColorsComponent_fields[] = {
+    JE_RF(VertexColorsComponent, enabled, 0x5fd953d8u, Bool),
+    JE_RF(VertexColorsComponent, data, 0xc58db50bu, AssetPath),
+    JE_RF(VertexColorsComponent, format, 0x989e9c4cu, Enum),
+    JE_RF(VertexColorsComponent, initialValue, 0x3aba7f3eu, Enum),
+    JE_RF(VertexColorsComponent, customInitial, 0xf09c5324u, Vector4),
+    JE_RF(VertexColorsComponent, channelNames, 0xc794fd86u, Array),
+};
+const StructTable kBody_VertexColorsComponent{"vertexcolors", kBody_VertexColorsComponent_fields, std::size(kBody_VertexColorsComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2843,6 +2874,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(VertexColorsComponent, "vertexcolors", 0x1504a1dfu),
     JE_RF_COMPONENTS_END
 };
 

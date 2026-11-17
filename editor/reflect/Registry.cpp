@@ -122,6 +122,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kVertexColorsDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -232,6 +233,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kVertexColorsDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -340,6 +342,7 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kVertexColorsDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -352,7 +355,8 @@ namespace {
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
-        &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kTerrainQualitySetting, &enums::kTerrainOffscreenShadows,
+        &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kVertexColorUse, &enums::kVertexColorTarget,
+        &enums::kTerrainQualitySetting, &enums::kTerrainOffscreenShadows,
         &enums::kTerrainMacroMode, &enums::kTerrainCliffProjection, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,
         &enums::kProgressbarType, &enums::kReflectionProbeMode, &enums::kReflectionProbeUpdateMode, &enums::kRigidbodyMotionQuality,
@@ -374,6 +378,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // Vertex Colors (V1)
+        &enums::kVertexColorFormat, &enums::kVertexColorInitialValue,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

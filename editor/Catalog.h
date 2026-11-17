@@ -114,6 +114,9 @@ namespace jasperengine::editor{
         UpdateFlags_Button              = (uint64_t)1 << 56,
         // a Grid, Tilemap Layer or Tilemap Collider 2D field (S50): their chunks rebuild
         UpdateFlags_TileLayer           = (uint64_t)1 << 57,
+        // a Vertex Colors field (V1 R15): its data reads again when `data` changed and its streams bind
+        // again (enabled, format, initial value)
+        UpdateFlags_VertexColors        = (uint64_t)1 << 58,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -249,12 +252,14 @@ namespace jasperengine::editor{
         TilemapLayerComponent,
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
-        TitleArtRendererComponent
+        TitleArtRendererComponent,
+        // the vertex colors of one placed Model or Mesh, in a .vcolors (V1 R1)
+        VertexColorsComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VertexColorsComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

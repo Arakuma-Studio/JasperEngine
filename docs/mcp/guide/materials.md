@@ -40,6 +40,24 @@ Every map has a `<map>TexCoord` (`mapTexCoord`, `normalTexCoord`): the UV set it
 The volume needs transmission; Vertex lighting draws no lobe (hex tiling still applies), and an
 unlit variant (no lights or IBL in the scene) only hex tiling.
 
+## Vertex Color
+
+What Lit does with a mesh's vertex colours, `pbr.vertexColor` (Inspector: Vertex Color):
+
+```
+update_material path="materials/rock.material" values={"pbr": {"vertexColor": {"use": "masks", "r": "roughness_replace", "g": "emission"}}}
+set_properties entity="Rock" component="MeshComponent" properties={"submeshes[0].material.pbr.vertexColor.use": "off"}
+```
+
+- `use`: `tint` (default: RGB multiplies the albedo, A the opacity while `alphaOpacity` is true),
+  `masks`, `off` (ignored; the colours stay for other systems).
+- `masks`: `r`, `g`, `b`, `a` each one of `none`, `occlusion`, `roughness_multiply`,
+  `roughness_replace`, `metallic`, `emission`, `opacity`, `albedo_tint`. Channels on one input
+  multiply. With `r`, `g` and `b` all `none`, RGB still tints the albedo. Unlit keeps `opacity`
+  and `albedo_tint` only.
+- Each choice other than Tint is a variant (`LIT_VC_*`); a mesh without vertex colours costs
+  nothing. To blend texture layers by the colours use `library:vertex_blend` (`jasper://docs/shaders`).
+
 ## Maps and the 16-texture budget
 
 GLES3 and WebGL2 have 16 fragment textures, and the busiest built-in Lit variant already binds
@@ -145,7 +163,9 @@ Flat `Material` properties on the copy `getMaterial` returns, then `setMaterial`
 `iridescenceThicknessRange`, `transmissionEnabled`, `transmissionFactor`, `volumeEnabled`,
 `thicknessFactor`, `attenuationColor`, `attenuationDistance`, `specularEnabled`,
 `specularFactor`, `specularColor`, `ior`, `emissiveStrength`, `hexTilingEnabled`,
-`hexTilingRotation`, `hexTilingContrast` (maps read only). `Light`: `intensityUnit`
+`hexTilingRotation`, `hexTilingContrast` (maps read only), `vertexColorUse`
+(`VertexColorUse.*`), `vertexColorAlphaOpacity`, `vertexColorR`..`vertexColorA`
+(`VertexColorTarget.*`). `Light`: `intensityUnit`
 (`LightUnit.*`), `useColorTemperature`, `colorTemperature`, `setIntensityUnit(unit,
 preserveBrightness)`. `scene.litQuality` (`LitQuality.*`), `scene.physicalLightEV100`. Terrain
 layers: `hexTiling`, `hexRotation`. Details: `jasper://docs/lua-api`.

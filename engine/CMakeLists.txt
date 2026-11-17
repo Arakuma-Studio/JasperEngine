@@ -1843,6 +1843,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
+    core/script/binding/VertexColorClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
@@ -1892,6 +1893,9 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystem.cpp
     core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/VertexColorScene.cpp
+    core/object/VertexColors.cpp
+    core/subsystem/VertexColorRenderer.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
@@ -2116,6 +2120,9 @@ if(JASPERENGINE_VOXEL)
         core/object/voxel/VoxelVolume.cpp
         core/script/binding/VoxelClassesLua.cpp)
 endif()
+# Vertex colors (V1): the pure module, always there (an absent component costs nothing, R95)
+include(core/vertexcolor/VertexColorSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VERTEXCOLOR_SRCS})
 # always there: with the module off it is the plain terrain query (T6 R45)
 list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
@@ -2213,6 +2220,10 @@ endif()
 if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+    # the editor's Draw Modes (render/ViewDrawMode.h), which the GPU suites draw: on the sources that
+    # draw them (the headers declare the same whatever the define)
+    set_property(SOURCE core/subsystem/RenderSystem.cpp core/subsystem/RenderSystemBatch.cpp renders/sokol/SokolObject.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_VIEW_DRAW_MODES)
 endif()
 
 if(JASPERENGINE_HTMLUI)

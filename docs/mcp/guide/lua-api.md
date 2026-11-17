@@ -2010,6 +2010,9 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
 hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
 `hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+The Vertex Color section: `vertexColorUse` (`VertexColorUse.TINT`, `MASKS`, `OFF`),
+`vertexColorAlphaOpacity` (Tint: A multiplies the opacity), and in Masks the input each channel
+masks, `vertexColorR`, `vertexColorG`, `vertexColorB`, `vertexColorA` (`VertexColorTarget.*`).
 E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
@@ -2020,6 +2023,53 @@ every Before pass ahead of all of them, in submesh order) with its own
 and the same parameter/texture/feature methods (`setShaderCubeTexture` included), resolved
 against its own shader; e.g.
 `m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.
+
+### 4.3.1 VertexColors (EntityHandle)
+
+The Vertex Colors component of a Model or Mesh GameObject: `VertexColors(self.scene, self.entity)`
+(`valid` is false without the component). Writes change the colours in memory only, never the
+`.vcolors` file, and have no undo; a copy of the GameObject that shares the file's values gets its
+own on its first write.
+
+| Member | Kind |
+|---|---|
+| `valid` | ro: the GameObject has the component |
+| `enabled` | rw: off draws the mesh as without it |
+| `format` | ro `"rgba8"` or `"rgba16f"` |
+| `channelNames` | ro `{r, g, b, a}` names (`""` unnamed) |
+| `targets` | ro list of `{node, primitive}` (a model's glTF node and primitive) or `{submesh}` (a primitive, a merged or OBJ model), with `name`, `vertexCount`, `triangleCount` |
+| `applyOps(ops [, target])` | `edit_mesh_colors`' op tables (`jasper://docs/meshes`), world space, on every target or one; all or nothing; errors name `ops[i]` from 1. Returns one result per target (`target`, `ops`, `stats`, `hash`). No `selection`, `from_texture` or `transfer` (editor only) |
+| `getValue(target, vertex)`, `getValues(target, first, count)` | the stored `Vector4` (linear) of GPU vertices, without runtime paint; at most 65,536 a call |
+| `setValues(target, first, values)` | `Vector4` or `{r, g, b[, a]}` values from vertex `first`; clears those vertices' face colours |
+| `stats(target)` | `count`, `min`, `mean`, `max`, `p05`, `p50`, `p95` (per channel), `histogram` |
+| `sampleAt(worldPoint)`, `sampleAt(hit)` | the `Vector4` drawn at the nearest surface point or a `MeshRaycast` hit, runtime paint included; `nil` when nothing is loaded |
+| `paint(worldPoint or hit, opts)` | runtime paint over the stored colours; returns the vertices touched |
+| `clearRuntime()` | drops all runtime paint |
+
+A `target` is an index into `targets` (1-based) or one of its tables; vertex ids are 0-based, as in
+the op tables. A world point is read in the mesh's bind pose; a `MeshRaycast` hit on a posed
+skinned mesh paints where the ray hit.
+
+`paint` options: `radius` (world units, 0.5), `value` (`{r, g, b[, a]}`, a `Vector4` or `"#RRGGBB"`),
+`channels` (`"rgba"` subset; default `"rgb"` for a value of three, else `"rgba"`), `strength`
+(0-1, 1), `hardness` (0-1, the share of the radius at full strength, 0), `hold` (seconds at full
+value; omitted: it stays) and `fade` (seconds to fade after the hold). Times are game time. A layer
+that has faded costs nothing per frame.
+
+```lua
+local Splash = {}
+
+function Splash:init()
+    self.colors = VertexColors(self.scene, self.entity)
+end
+
+function Splash:onHit(hit)
+    -- green in G for 3 s, then gone over 2 s; the stored colours come back
+    self.colors:paint(hit, { radius = 0.4, value = {0, 1, 0}, channels = "g", hold = 3, fade = 2 })
+end
+
+return Splash
+```
 
 ### 4.4 Primitive (Mesh)
 
@@ -3560,6 +3610,8 @@ gate.area = 0 ; gate:remove()
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
 | `ShadingModel` | `STANDARD`, `HAIR` |
+| `VertexColorUse` | `TINT`, `MASKS`, `OFF` (`Material.vertexColorUse`) |
+| `VertexColorTarget` | `NONE`, `OCCLUSION`, `ROUGHNESS_MULTIPLY`, `ROUGHNESS_REPLACE`, `METALLIC`, `EMISSION`, `OPACITY`, `ALBEDO_TINT` |
 | `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
 | `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
 | `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |

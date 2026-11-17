@@ -2946,3 +2946,27 @@ entities:
         cylindricalBillboard: false
       titleart:
         enabled: true
+  - type: Entity
+    entity: 1105
+    name: VertexColorsComponent
+    components:
+      transform:
+        position: [104, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexcolors:
+        enabled: false
+        data: paint/Parity.vcolors
+        format: rgba16f
+        initialValue: custom
+        customInitial: [0.35555556, 0.7111111, 0.4777778, 1]
+        channelNames:
+          - Moss
+          - ""
+          - "text: [1, 2]"
+          - Snow

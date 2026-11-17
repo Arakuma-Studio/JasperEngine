@@ -154,6 +154,7 @@
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "util/TitleArtLanguage.h"
 #include "object/TitleArt.h"
 #include "component/RectTransformComponent.h"

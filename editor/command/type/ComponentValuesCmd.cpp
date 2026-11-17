@@ -4,6 +4,7 @@
 #include "ComponentValuesCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "animation/ClipRecordHooks.h"
 

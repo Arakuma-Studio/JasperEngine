@@ -110,8 +110,9 @@ namespace jasperengine::editor {
         bool sourceHash(const std::filesystem::path& absolute, const std::vector<std::filesystem::path>& extra, std::string& sha256);
         void saveSources();
 
+        // `painted` (V1 R9) adds to the text only when not empty: the keys of models nobody paints stay
         static std::string key(const std::string& sourceSha256, const ResolvedModelSettings& settings, ModelFamily family,
-                               const std::set<std::pair<int, int>>& blended);
+                               const std::set<std::pair<int, int>>& blended, const std::set<std::pair<int, int>>& painted = {});
 
         std::filesystem::path artifactPath(const std::string& key, const char* suffix = ".glb") const;
         bool has(const std::string& key) const;

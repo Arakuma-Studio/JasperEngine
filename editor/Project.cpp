@@ -117,6 +117,7 @@
 #include "subsystem/VoxelSystem.h"
 #include "voxel/VoxelWorkQueue.h"
 #include "voxel/VoxelAssetFile.h"
+#include "vertexcolor/VertexColorProject.h"
 #include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
@@ -6462,6 +6463,9 @@ void editor::Project::resetConfigs() {
         popPrefabStage();
     }
 
+    // vertex colors' queued writes land, and their live values and remap issues go (V1 R8)
+    releaseVertexColorFiles();
+
     // Clear existing scenes
     for (auto& sceneProject : scenes) {
         deleteSceneProject(&sceneProject);
@@ -8201,6 +8205,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         NavigationEditor::get().saveSceneAssets(this, *sceneProject);
         // its dirty Voxel Volumes (T6 R77)
         saveSceneVoxelAssets(*this, *sceneProject);
+        // its paint not on disk yet, with each mesh's snapshot (V1 R8, R9)
+        saveSceneVertexColors(*this, *sceneProject);
         resolveSceneAssetRefs(*sceneProject, false);
     }
 
@@ -8591,6 +8597,8 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
     // its dirty Voxel Volumes (T6 R77): the store's tables belong to this thread
     saveSceneVoxelAssets(*this, *sceneProject);
+    // its paint not on disk yet (V1 R8): the live values belong to this thread too
+    saveSceneVertexColors(*this, *sceneProject);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
         if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {

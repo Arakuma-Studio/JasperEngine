@@ -2360,6 +2360,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
+    if (ds.vertexColorChannel != ViewVertexColorChannel::RGB)
+        sceneNode["vertexColorChannel"] = vertexColorChannelKey(ds.vertexColorChannel);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
     // S41: written only when turned off (on by default)
@@ -2412,6 +2414,9 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
+    ds.vertexColorChannel = ViewVertexColorChannel::RGB;
+    if (node["vertexColorChannel"] && node["vertexColorChannel"].IsScalar())
+        vertexColorChannelFromKey(node["vertexColorChannel"].as<std::string>(), ds.vertexColorChannel);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
@@ -5966,6 +5971,19 @@ YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, b
         }
         if (lobeNode.size() > 0) node[lobe.name] = lobeNode;
     }
+    // the Vertex Color section (V1 R70): what differs from Tint
+    const MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+    if (vertexColor != defaults.vertexColor) {
+        YAML::Node vertexColorNode;
+        if (vertexColor.use != defaults.vertexColor.use) vertexColorNode["use"] = MaterialPbr::getVertexColorUseName(vertexColor.use);
+        if (vertexColor.alphaOpacity != defaults.vertexColor.alphaOpacity) vertexColorNode["alphaOpacity"] = vertexColor.alphaOpacity;
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (int channel = 0; channel < 4; channel++) {
+            const VertexColorTarget target = MaterialPbr::getVertexColorTarget(vertexColor, channel);
+            if (target != VertexColorTarget::NONE) vertexColorNode[channels[channel]] = MaterialPbr::getVertexColorTargetName(target);
+        }
+        node["vertexColor"] = vertexColorNode;
+    }
     return node;
 }
 
@@ -5988,6 +6006,20 @@ MaterialPbrExtensions editor::Stream::decodeMaterialPbr(const YAML::Node& node) 
                 case PbrFieldType::Texture: *(Texture*)target = decodeTexture(value); break;
                 case PbrFieldType::TexCoord: *(int*)target = YamlNumbers::as<int>(value); break;
             }
+        }
+    }
+    // the Vertex Color section (V1 R70); a name this editor does not know keeps the default
+    const YAML::Node vertexColorNode = node["vertexColor"];
+    if (vertexColorNode && vertexColorNode.IsMap()) {
+        MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+        if (vertexColorNode["use"] && vertexColorNode["use"].IsScalar())
+            MaterialPbr::parseVertexColorUse(vertexColorNode["use"].as<std::string>(), vertexColor.use);
+        if (vertexColorNode["alphaOpacity"]) vertexColor.alphaOpacity = YamlNumbers::as<bool>(vertexColorNode["alphaOpacity"]);
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (int channel = 0; channel < 4; channel++) {
+            const YAML::Node target = vertexColorNode[channels[channel]];
+            if (target && target.IsScalar())
+                MaterialPbr::parseVertexColorTarget(target.as<std::string>(), MaterialPbr::vertexColorTarget(vertexColor, channel));
         }
     }
     // out of range from a hand edit or a newer writer: into range (the glTF loader warns, a

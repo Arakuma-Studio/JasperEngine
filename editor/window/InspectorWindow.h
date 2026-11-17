@@ -822,6 +822,10 @@ namespace jasperengine::editor{
         // the value and map rows of one extended lobe under prefix ("submeshes[N].material.pbr."), into the current table
         void drawMaterialPbrLobeRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                      const std::string& prefix, PbrLobe lobe, const RowSettings& settingsMaterial);
+        // A built-in Lit material's Vertex Color section (V1 R70): Use (Tint, Masks, Off), Tint's Alpha
+        // Multiplies Opacity, the input each channel masks in Masks
+        void drawMaterialVertexColorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                         unsigned int submesh, const RowSettings& settingsMaterial);
         // the built-in Lit's Shading Model row (Standard / Hair: the hair lobe's enabled flag, one
         // undo step) and the hair rows while it is Hair, into the current table
         void drawMaterialShadingModelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -1012,6 +1016,10 @@ namespace jasperengine::editor{
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // T6 R65 (InspectorVoxels.cpp)
         void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // V1 R100 (vertexcolor/VertexColorInspector.cpp): the component, and the Paint Vertex Colors
+        // entry of the Model and Mesh Inspectors
+        void drawVertexColorsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPaintVertexColorsButton(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces
         void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

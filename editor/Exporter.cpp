@@ -14,6 +14,7 @@
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
 #include "cook/VoxelVolumeCook.h"
+#include "vertexcolor/VertexColorProject.h"
 #include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
@@ -2628,6 +2629,12 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     importError = voxelProblems.front();
                     imported = false;
                 }
+                // V1 R92: a painted target that no longer fits its mesh would draw without its colors
+                const std::vector<std::string> vertexColorProblems = vertexColorExportProblems(*project);
+                if (imported && !vertexColorProblems.empty()) {
+                    importError = vertexColorProblems.front();
+                    imported = false;
+                }
                 if (config.mode != ExportMode::SourceCode) {
                     moduleUsage = ModuleUsageDetector::analyze(shipped);
                     moduleUsageKnown = true;
@@ -3841,6 +3848,16 @@ bool editor::Exporter::copyAssets() {
             std::string voxelError;
             if (!cook::cookVoxelVolumeFile(entry.path(), destPath, relPath.generic_string(), voxelOptions, voxelError)) {
                 setError(voxelError);
+                return stop();
+            }
+            return TreeStep::Skip;
+        }
+
+        // Vertex colors ship without their editor-only snapshot (V1 R92)
+        if (isVertexColorsFile(entry.path())) {
+            std::string vertexColorError;
+            if (!cookVertexColorsFile(entry.path(), destPath, vertexColorError)) {
+                setError("Cannot export " + relPath.generic_string() + ": " + vertexColorError);
                 return stop();
             }
             return TreeStep::Skip;

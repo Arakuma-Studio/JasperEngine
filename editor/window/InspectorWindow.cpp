@@ -7962,6 +7962,7 @@ void editor::InspectorWindow::drawSubmeshMaterialRows(ComponentType cpType, Scen
                                       firstMaterial.normalTexture, settingsMaterial.onValueChanged);
     }
     endTable();
+    drawMaterialVertexColorRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
     drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
     }else{
         // a library shader with @require normalmap reads the material's own Normal Texture
@@ -7994,6 +7995,8 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
         if (mesh && mesh->numSubmeshes == 0) parts = sceneProject->scene->getSystem<MeshSystem>()->getModelParts(entities[0]);
     }
     if (parts.empty()) {
+        // V1 R100: a primitive's vertex colors (a Model's GameObject has the entry on its Model)
+        if (entities.size() == 1 && !sceneProject->scene->findComponent<ModelComponent>(entities[0])) drawPaintVertexColorsButton(sceneProject, entities);
         drawMeshComponentFields(cpType, sceneProject, entities);
         return;
     }
@@ -8468,6 +8471,8 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
 }
 
 void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // V1 R100: the way to vertex colors, which this GameObject holds (never the model's file)
+    drawPaintVertexColorsButton(sceneProject, entities);
     beginTable(cpType, getLabelSize("Model File"));
 
     prefabRowProperty = "filename";
