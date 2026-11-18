@@ -2993,6 +2993,9 @@ std::string editor::Generator::audioInitSource(const AudioSettings& audioSetting
         source += "    { AudioConfig audioConfig = AudioSystem::getConfig(); audioConfig.musicGroup = " + Factory::formatString(audioSettings.musicGroup) +
                   "; AudioSystem::configure(audioConfig); }\n";
     }
+    if (audioSettings.unusedClipCacheMb != defaults.unusedClipCacheMb) {
+        source += "    SoundPool::setUnusedBudget(" + std::to_string(audioSettings.unusedClipCacheMb) + "ull * 1024 * 1024);\n";
+    }
     return source;
 }
 

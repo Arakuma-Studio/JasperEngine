@@ -1416,6 +1416,7 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMixerIO.cpp
     core/audio/AudioTap.cpp
     core/audio/SoloudEngineFile.cpp
+    core/audio/SourceEffects.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
@@ -1717,6 +1718,8 @@ set(JASPERENGINE_SRCS
     core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
+    core/object/sound/AudioSourceSlots.cpp
+    core/object/sound/AudioSourceEffect.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp

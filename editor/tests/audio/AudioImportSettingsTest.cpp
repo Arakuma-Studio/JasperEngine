@@ -1,10 +1,17 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "audio/AudioImportRegistry.h"
 #include "audio/AudioImportSettings.h"
 #include "audio/AudioProvenance.h"
+#include "component/AudioSourceComponent.h"
+#include "pool/SoundPool.h"
+
+#include "ScriptDataTestSupport.h"
 
 #include <gtest/gtest.h>
+
+#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -178,6 +185,82 @@ TEST(AudioImportSettings, ApplySetsAndRemovesTheMusicBlock) {
     ASSERT_TRUE(settings.apply({{"music", nullptr}}, error)) << error;
     EXPECT_TRUE(settings.isDefault());
     EXPECT_TRUE(settings.toYaml().IsNull());
+}
+
+// S97 REQ-16, REQ-17: load_type is the last key, never changes the samples, and travels in the export
+TEST(AudioImportSettings, LoadTypeKeyRoundTripsAndApplies) {
+    AudioImportSettings settings = parsed("load_type: streaming\ngain_db: -3\n");
+    EXPECT_EQ(settings.loadType, AudioLoadType::Streaming);
+    EXPECT_EQ(YAML::Dump(settings.toYaml()), "version: 1\ngain_db: -3\nload_type: streaming");
+    EXPECT_EQ(settings.toJson()["load_type"], "streaming");
+    EXPECT_TRUE(parsed("load_type: auto\n").toYaml().IsNull()) << "auto is the default: not written";
+    EXPECT_NE(refused("load_type: fast\n").find("decompress_on_load"), std::string::npos) << "names the values";
+
+    std::string error;
+    AudioImportSettings applied;
+    ASSERT_TRUE(applied.apply({{"load_type", "compressed_in_memory"}}, error)) << error;
+    EXPECT_EQ(applied.loadType, AudioLoadType::CompressedInMemory);
+    EXPECT_FALSE(applied.isDefault());
+    EXPECT_FALSE(applied.apply({{"load_type", "fast"}}, error));
+    EXPECT_NE(error.find("streaming"), std::string::npos);
+    EXPECT_FALSE(applied.apply({{"load_type", 3}}, error));
+    ASSERT_TRUE(applied.apply({{"load_type", nullptr}}, error)) << error;
+    EXPECT_TRUE(applied.isDefault());
+
+    // resolved with the clip, outside its hash: the samples are the same
+    ClipImportSettings plain;
+    ClipImportSettings streamed;
+    ASSERT_TRUE(parsed("gain_db: -3\n").resolve(48000, 48000, 0, 0, plain, error)) << error;
+    ASSERT_TRUE(settings.resolve(48000, 48000, 0, 0, streamed, error)) << error;
+    EXPECT_EQ(streamed.loadType, AudioLoadType::Streaming);
+    EXPECT_EQ(streamed.hash(), plain.hash());
+    EXPECT_FALSE(streamed == plain);
+    ClipImportSettings onlyStreamed;
+    onlyStreamed.loadType = AudioLoadType::Streaming;
+    EXPECT_FALSE(onlyStreamed.isDefault());
+    EXPECT_TRUE(onlyStreamed.playsAsFile()) << "not wrapped";
+
+    // je-audio-imports.json: an optional key, read back by a player
+    const std::string text = AudioImportRegistry::exportText({{"music/loop.ogg", onlyStreamed}});
+    EXPECT_NE(text.find("\"load_type\": \"streaming\""), std::string::npos) << text;
+    ASSERT_TRUE(AudioImportTable::parse(text, &error)) << error;
+    const std::optional<ClipImportSettings> read = AudioImportTable::find("music/loop.ogg");
+    ASSERT_TRUE(read.has_value());
+    EXPECT_EQ(read->loadType, AudioLoadType::Streaming);
+    ASSERT_TRUE(AudioImportTable::parse(R"({"format": "jasperengine.audio-imports", "version": 1, "clips": {"a.wav": {"gain_db": -1}}})", &error));
+    EXPECT_EQ(AudioImportTable::find("a.wav")->loadType, AudioLoadType::Auto) << "an older export's file";
+    AudioImportTable::clear();
+}
+
+namespace audio_import_settings_test {
+    class AudioImportSettingsLoadType : public scriptdata::ScriptDataTest {
+    protected:
+        void TearDown() override {
+            AudioImportTable::clear();
+            SoundPool::clear();
+            ScriptDataTest::TearDown();
+        }
+    };
+}
+using audio_import_settings_test::AudioImportSettingsLoadType;
+
+// AC16 (REQ-16, D9): the source's own load type, then the clip's, then Auto by size
+TEST_F(AudioImportSettingsLoadType, ResolvesAfterTheSource) {
+    {
+        // 100 KB: Auto decodes it
+        std::ofstream out(root / "assets" / "loop.wav", std::ios::binary);
+        out << std::string(100 * 1024, '\0');
+    }
+    SoundPool::clear();
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::DecompressOnLoad);
+    ClipImportSettings clip;
+    clip.loadType = AudioLoadType::Streaming;
+    AudioImportTable::set("loop.wav", clip);
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::Streaming) << "the clip's setting";
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::DecompressOnLoad), AudioLoadType::DecompressOnLoad) << "the source's wins";
+    EXPECT_EQ(SoundPool::key("loop.wav", AudioLoadType::Streaming), "loop.wav#streaming") << "no wrapped sample";
+    AudioImportTable::set("loop.wav", ClipImportSettings());
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::DecompressOnLoad);
 }
 
 TEST(AudioProvenance, RoundTripAndApply) {

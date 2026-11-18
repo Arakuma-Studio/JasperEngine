@@ -21,6 +21,7 @@ import zlib
 from pathlib import Path
 
 import pbxproj
+from audio_refs import write_tone
 from harness import Editor, record_built_player
 
 CI = True
@@ -49,7 +50,7 @@ def runtime_archive(path: Path, version: str) -> Path:
     info = {
         "schemaVersion": 1, "id": RUNTIME, "platform": "linux", "arch": "x64", "backend": "glcore", "flavour": "release",
         "engineVersion": version, "gitSha": "", "contentFormatVersion": content_format(), "modelCookFormats": [1],
-        "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders"], "notices": ["lua"],
+        "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders", "soundlayer"], "notices": ["lua"],
         "executables": {"files/jasperengine-player": hashlib.sha256(binary).hexdigest()}, "executable": "jasperengine-player",
     }
     with zipfile.ZipFile(path, "w") as zipped:
@@ -135,16 +136,21 @@ async def test_ios_simulator_parameter(ed: Editor):
 async def test_prebuilt_build_hears_the_projects_mixer_and_audio_settings(ed: Editor):
     """A prebuilt game sounds as Play does: Play applies Project Settings > Audio and the project's
     mixer, a Compile build's generated init does the same; game.json carries both to the player
-    (the mixer by its asset-relative path, which the build ships)."""
+    (the mixer by its asset-relative path, which the build ships). A clip's Load Type travels in
+    je-audio-imports.json and the Unused Clip Cache in game.json (S97 REQ-10, REQ-17)."""
     r = await ed.call_raw("audio_mixer", {"action": "edit", "ops": [
         {"op": "add_group", "name": "Music"},
         {"op": "add_effect", "group": "Music", "type": "lowpass", "params": {"cutoff": 800}},
     ]})
     ed.check(not r.is_error, f"the project's mixer: {r.text[:300]}")
-    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000})
+    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000,
+                                                  "audio.unused_clip_cache": 8})
+    write_tone(ed.project / "sounds" / "rain.wav", seconds=0.5)
+    await ed.call("sync_files", paths=["sounds/rain.wav"])
+    await ed.call("set_audio_import_settings", paths=["sounds/rain.wav"], settings={"load_type": "streaming"})
     await ed.call("save_project", untitled_scene_dir="scenes")
     played = (await ed.call("get_project_settings", keys=["audio.mixer", "audio.max_real_voices", "audio.max_voices",
-                                                           "audio.sample_rate"]))["settings"]
+                                                           "audio.sample_rate", "audio.unused_clip_cache"]))["settings"]
     print(f"[audio] Play's settings: {played}")
 
     out = ed.scratch.root / "game-linux-audio"
@@ -155,8 +161,11 @@ async def test_prebuilt_build_hears_the_projects_mixer_and_audio_settings(ed: Ed
     audio = game.get("audio")
     print(f"[audio] game.json audio: {audio}")
     ed.check(isinstance(audio, dict), f"game.json has the audio settings: {sorted(game)}")
-    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"]),
-                (played["audio.max_real_voices"], played["audio.max_voices"], 48000), "Project Settings > Audio, as Play has them")
+    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"], audio["unusedClipCacheMb"]),
+                (played["audio.max_real_voices"], played["audio.max_voices"], 48000, 8), "Project Settings > Audio, as Play has them")
+    tables = list(out.rglob("je-audio-imports.json"))
+    ed.check_eq(len(tables), 1, "the clip's import settings ship")
+    ed.check_eq(json.loads(tables[0].read_text())["clips"]["sounds/rain.wav"], {"load_type": "streaming"}, "its Load Type")
     ed.check(played["audio.mixer"].endswith(audio["mixer"]), f"the mixer Play loads ({played['audio.mixer']}): {audio['mixer']}")
     shipped = out / "assets" / audio["mixer"]
     ed.check(shipped.is_file(), f"the mixer ships at {shipped}")
@@ -187,7 +196,8 @@ async def test_native_code_compiles(ed: Editor):
     ed.check_eq(info["platforms"]["linux"]["method"], "prebuilt")
 
 
-FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders"]
+# a full runtime's modules: the mixer test leaves the project a clip with a Load Type, which needs the sound layer
+FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders", "soundlayer"]
 
 
 def fake_runtime(path: Path, version: str, runtime: str, platform: str, arch: str, backend: str, files: dict[str, bytes],

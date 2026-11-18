@@ -6,6 +6,7 @@
 #include "McpTools.h"
 #include "component/PrefabComponent.h"
 #include "component/Transform.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "LatticeShared.h"
 
 #include "mcp/McpCall.h"
@@ -130,6 +131,8 @@ Hierarchy buildHierarchy(SceneProject* scene) {
         const Entity entity = transforms->getEntity(i);
         if (!playing && !authored.count(entity)) continue;
         withTransform.insert(entity);
+        // an Audio Source slot is listed as its GameObject's audio_sources (get_entity), S97 REQ-25
+        if (AudioSourceSlots::isSlot(registry, entity)) continue;
         const Entity parent = transforms->getComponentFromIndex(i).parent;
         if (parent == NULL_ENTITY) transformRoots.push_back(entity);
         else hierarchy.children[parent].push_back(entity);
@@ -384,11 +387,13 @@ void getSceneTreeTool(const CallPtr& call) {
         rootJson = McpRefs::entityJson(scene, root);
     }
     const bool json = args.value("format", std::string("text")) == "json";
+    const size_t entityCount = (size_t)std::count_if(scene->entities.begin(), scene->entities.end(),
+        [scene](Entity entity) { return !AudioSourceSlots::isSlot(scene->scene, entity); });
     std::string header = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" (" +
-                         McpRefs::sceneTypeName(scene->sceneType) + ", " + std::to_string(scene->entities.size()) + " GameObjects" +
+                         McpRefs::sceneTypeName(scene->sceneType) + ", " + std::to_string(entityCount) + " GameObjects" +
                          (scene->playState != ScenePlayState::STOPPED ? ", " + McpRefs::playStateName(scene->playState) : "") + ")";
     if (!rootJson.is_null()) header += ", under " + rootJson["path"].get<std::string>();
-    Json data = {{"scene_id", scene->id}, {"scene_name", scene->name}, {"entity_count", scene->entities.size()}};
+    Json data = {{"scene_id", scene->id}, {"scene_name", scene->name}, {"entity_count", entityCount}};
     if (!rootJson.is_null()) data["root"] = rootJson;
 
     if (json) {
@@ -476,7 +481,7 @@ void findEntitiesTool(const CallPtr& call) {
     Json found = Json::array();
     size_t total = 0;
     for (Entity entity : candidates) {
-        if (!registry->isEntityCreated(entity)) continue;
+        if (!registry->isEntityCreated(entity) || AudioSourceSlots::isSlot(registry, entity)) continue;
         if (!namePattern.empty() && !wildcardMatch(namePattern, registry->getEntityName(entity))) continue;
         auto pathIt = paths.find(entity);
         const std::string path = pathIt != paths.end() ? pathIt->second : McpRefs::entityPath(scene, entity);
