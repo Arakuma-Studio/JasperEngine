@@ -342,10 +342,20 @@ async def test_crash_reports_window():
         ed.check(picker and picker["kind"] == "file_picker", f"Open Folder... asks for a folder: {picker}")
         await ed.call("respond_dialog", values={"path": str(root)})
 
-        crash = "20261104T100000Z-4001"
-        await ui.click_item(f"##row_{crash}", window)
         evidence = Path(os.environ.get("JE_EVIDENCE_DIR") or os.environ.get("JASPER_MCP_EVIDENCE_DIR") or ed.scratch.root) / "crash-reports"
         evidence.mkdir(parents=True, exist_ok=True)
+        crash = "20261104T100000Z-4001"
+        # a row spans every column, but is drawn while the Kind column clips it: find_ui_item reports its
+        # centre as not visible, so it is clicked inside the Kind column
+        row = None
+        for _ in range(60):
+            items = (await ed.call("find_ui_item", label=f"##row_{crash}", window=window)).get("items", [])
+            if items:
+                row = items[0]
+                break
+            await ui.frames(2)
+        ed.check(row is not None, "the opened folder's reports are listed")
+        await ui.click(ui.at(row["rect"], (12, row["rect"]["height"] / 2)))
         await ed.screenshot("editor", evidence / "crash-reports-window.png", focus=False, max_width=0)
         await ui.click_item("Mark Handled", window)
         handled = root / "reports" / crash / "handled"
