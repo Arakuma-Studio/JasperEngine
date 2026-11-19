@@ -71,7 +71,7 @@ namespace jasperengine::diag::crash {
     // One report folder (a session that ended in a crash, a hang, or without saying why)
     struct ReportInfo {
         std::string id;                            // the folder name: <yyyymmddThhmmssZ>-<pid>
-        std::string kind;                          // crash, hang or abnormal_exit
+        std::string kind;                          // crash, hang, abnormal_exit or user
         std::string reason;                        // "SIGSEGV (invalid memory access)", a hang's phase ...
         std::string time;                          // when it happened (UTC, ISO 8601)
         int64_t timeUnix = 0;
@@ -80,6 +80,7 @@ namespace jasperengine::diag::crash {
         std::filesystem::path folder;
         std::vector<std::filesystem::path> files;  // inside folder
         bool handled = false;
+        std::string category;                      // a user report's category ("other", "gameplay" ...)
     };
 
     // Once, on the main thread, as early as possible. Allocates the ring and prepares the

@@ -173,6 +173,24 @@ namespace je_crash_common {
 #endif
     }
 
+    // yyyy-mm-ddThh:mm:ssZ, 0 when it is not one
+    std::time_t isoTime(const std::string& text) {
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+        if (std::sscanf(text.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &year, &month, &day, &hour, &minute, &second) != 6) return 0;
+        std::tm tm{};
+        tm.tm_year = year - 1900;
+        tm.tm_mon = month - 1;
+        tm.tm_mday = day;
+        tm.tm_hour = hour;
+        tm.tm_min = minute;
+        tm.tm_sec = second;
+#if defined(_WIN32)
+        return _mkgmtime(&tm);
+#else
+        return timegm(&tm);
+#endif
+    }
+
     std::string readFile(const fs::path& path, size_t limit = 1 << 20) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return {};
@@ -417,6 +435,8 @@ namespace je_crash_common {
     std::string classify(const fs::path& folder) {
         std::error_code ec;
         if (fs::exists(folder / "crash.txt", ec)) return "crash";
+        // a player's "Report a Problem" (Crash.createReport): its own <session>-user<N> folder
+        if (fs::exists(folder / "user.txt", ec)) return "user";
         for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
             const std::string name = it->path().filename().string();
             if (name.rfind("hang-", 0) == 0 && name.size() > 9 && name.compare(name.size() - 4, 4, ".txt") == 0) return "hang";
@@ -826,6 +846,22 @@ namespace jasperengine::diag::crash {
             info.product = reportValue(text, "product");
             info.version = reportValue(text, "version");
             when = fileTime(last);
+        } else if (info.kind == "user") {
+            const std::string text = readFile(folder / "user.txt", 64 << 10);
+            info.product = reportValue(text, "product");
+            info.version = reportValue(text, "version");
+            info.category = reportValue(text, "category");
+            // the note follows its "note:" line verbatim; the reason names its first line
+            std::string note;
+            if (const size_t at = text.find("\nnote:\n"); at != std::string::npos) note = text.substr(at + 7);
+            note = note.substr(0, note.find('\n'));
+            if (note.size() > 80) {
+                size_t cut = 80;
+                while (cut > 0 && (static_cast<unsigned char>(note[cut]) & 0xC0) == 0x80) cut--;
+                note.resize(cut);
+            }
+            info.reason = "user report (" + info.category + "): " + note;
+            when = isoTime(reportValue(text, "time"));
         } else {
             nlohmann::json marker = nlohmann::json::parse(readFile(folder / "session.json", 64 << 10), nullptr, false);
             if (marker.is_object()) {
@@ -862,9 +898,13 @@ namespace jasperengine::diag::crash {
 
     std::vector<ReportInfo> pendingReports() {
         const std::string current = sessionId();
+        // this session's own user reports (<session>-user<N>) wait for the next start, when the
+        // game's upload either succeeded (handled) or offers them again
+        const std::string ownPrefix = current + "-";
         std::vector<ReportInfo> out;
         for (ReportInfo& info : listReports()) {
-            if (!info.handled && info.id != current) out.push_back(std::move(info));
+            if (info.handled || info.id == current || (!current.empty() && info.id.rfind(ownPrefix, 0) == 0)) continue;
+            out.push_back(std::move(info));
         }
         return out;
     }
