@@ -650,22 +650,18 @@ void LuaBinding::registerScriptClasses(lua_State* L) {
         .addFunction("getListeners", &ScriptEvent::luaGetListeners)
         .addFunction("cancel", &ScriptEvent::luaCancel)
         .addProperty("listenerCount", &ScriptEvent::listenerCount)
-        // a listener at this priority runs after every other one; on a CancellableEvent it sees the decision and cannot change it
         .addStaticProperty("MONITOR", &ScriptEvent::monitorPriority)
         .addFunction("__tostring", &ScriptEvent::luaToString)
         .endClass()
-        // An Event that asks its listeners first: they get a CancelEventArgs before invoke's arguments and may cancel(); invoke returns true when one did, and then the emitter must not apply the change
         .deriveClass<CancellableScriptEvent, ScriptEvent>("CancellableEvent")
         .addConstructor<void (*) ()>()
-        // the same dispatch as Event's (it returns cancelled): bound again for its own Lua API entry
+        // Event's dispatch (it returns cancelled for this class), bound again for its own Lua API entry
+
         .addFunction("invoke", &ScriptEvent::luaInvoke)
-        // the listener that cancelled the latest completed invoke (as in getListeners); nil when it went ahead or before the first invoke
         .addProperty("cancelledBy", &CancellableScriptEvent::cancelledBy)
         .endClass()
-        // A CancellableEvent listener's first argument: e:cancel() vetoes the change; monitors read e.cancelled
         .beginClass<ScriptCancelEventArgs>("CancelEventArgs")
         .addFunction("cancel", &ScriptCancelEventArgs::luaCancel)
-        // whether a listener of this invoke cancelled it (sticky: nothing clears it)
         .addProperty("cancelled", &ScriptCancelEventArgs::isCancelled)
         .endClass();
 }

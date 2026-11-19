@@ -23,7 +23,7 @@ namespace jasperengine {
     // Event.MONITOR runs last). A listener is a function, or a method of a script instance that
     // owns it (`ev:addListener(self, "onScore")`), dropped once that instance is released (its
     // GameObject destroyed or its scene unloaded). Lua only, main thread; the listeners are
-    // registry references released with the Event. CancellableScriptEvent asks them first.
+    // registry references released with the Event. A CancellableEvent asks them first.
     class JASPERENGINE_API ScriptEvent {
     public:
         ScriptEvent();
@@ -44,7 +44,8 @@ namespace jasperengine {
         // The priority argument at `index`: 0 when none or nil, else an integer in
         // EventPriority::Min..Max or Event.MONITOR; anything else raises an error naming `caller`
         static int32_t checkPriority(lua_State* L, int index, const char* caller);
-        // Event.MONITOR (EventPriority::Monitor)
+        // a listener at this priority runs after every other one, in the order added; on a
+        // CancellableEvent it sees the decision and cannot change it (EventPriority::Monitor)
         static int monitorPriority();
 
         // Lua methods (argument 1 is the Event)
@@ -110,13 +111,16 @@ namespace jasperengine {
     class JASPERENGINE_API CancellableScriptEvent : public ScriptEvent {
     public:
         CancellableScriptEvent();
-        // the listener that cancelled the latest completed invoke; nil when it went ahead
+        // the listener that cancelled the latest completed invoke (named as getListeners names it);
+        // nil when it went ahead or before the first invoke
         std::optional<std::string> cancelledBy() const;
     };
 
-    // Lua's CancelEventArgs: what a CancellableEvent's listener gets first (one per dispatch)
+    // Lua's CancelEventArgs: what a CancellableEvent's listener gets first (one per dispatch):
+    // e:cancel() vetoes the change, monitors read e.cancelled
     class JASPERENGINE_API ScriptCancelEventArgs {
     public:
+        // whether a listener of this invoke cancelled it (sticky: nothing clears it)
         bool isCancelled() const {
             return cancelled;
         }

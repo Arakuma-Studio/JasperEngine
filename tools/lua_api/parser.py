@@ -2039,9 +2039,12 @@ OVERRIDES.update({
         'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
     ('Event', 'addListener'): {
         'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
-                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
-                "same one again does nothing."],
-        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Listeners run by",
+                "`priority` (default 0, -1000000..1000000), highest first, equal ones in the order added; `Event.MONITOR`",
+                "runs after every other one. Adding the same one again does nothing, whatever its priority: remove it",
+                "first to change it."],
+        'overloads': [([('fn', 'function'), ('priority?', 'integer')], ''),
+                      ([('owner', 'table'), ('methodName', 'string'), ('priority?', 'integer')], '')]},
     ('Event', 'removeListener'): {
         'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
         'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
@@ -2049,21 +2052,38 @@ OVERRIDES.update({
         'doc': ["Removes every listener."],
         'overloads': [([], '')]},
     ('Event', 'invoke'): {
-        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
-                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'doc': ["Calls the listeners by priority with these arguments. A listener's error is logged with its",
+                "traceback and the others still run; one added meanwhile runs from the next invoke."],
         'overloads': [([('...', 'any')], '')]},
     ('Event', 'add'): {
-        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
-        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's,",
+                "which takes the new `priority` (default 0)."],
+        'overloads': [([('tag', 'string'), ('fn', 'function'), ('priority?', 'integer')], 'boolean')]},
     ('Event', 'remove'): {
         'doc': ["Removes the subscription with `tag`; true if there was one."],
         'overloads': [([('tag', 'string')], 'boolean')]},
     ('Event', 'has'): {
         'doc': ["Whether a subscription with `tag` exists."],
         'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'getListeners'): {
+        'doc': ["The listeners in the order they run: `name` is \"Class:method\" for a script's method (also",
+                "RegisterEvent's), the tag of another tagged one, \"function <source>:<line>\" for a function."],
+        'overloads': [([], '{name: string, priority: integer, monitor: boolean}[]')]},
+    ('Event', 'cancel'): {
+        'doc': ["Always an error: a CancellableEvent's listener cancels through its first argument (`e:cancel()`)."],
+        'overloads': [([], '')]},
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    ('CancellableEvent', 'invoke'): {
+        'doc': ["Calls the listeners as `fn(e, ...)` by priority until one calls `e:cancel()`, then the MONITOR",
+                "listeners. True when one cancelled: then do not apply the change."],
+        'overloads': [([('...', 'any')], 'boolean')],
+        'nodiscard': True},
+    ('CancelEventArgs', 'cancel'): {
+        'doc': ["Vetoes the change (nothing undoes it); the deciding listeners left are skipped. An error in a",
+                "MONITOR listener or after the invoke ended."],
+        'overloads': [([], '')]},
     # persistence (DontDestroyOnLoad)
     ('GameObject', 'dontDestroyOnLoad'): {
         'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
@@ -3761,6 +3781,7 @@ class Builder:
             m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
             m.doc = m.call.doc + ov.get('doc', [])
             m.is_async = ov.get('async', False)
+            m.nodiscard = ov.get('nodiscard', False)
             return
         sigs = []
         m.cpp_sigs = []

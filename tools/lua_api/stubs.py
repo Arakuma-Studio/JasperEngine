@@ -387,6 +387,8 @@ class Emitter:
                 L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
             if m.get('async'):
                 L.append('---@async')   # it yields: only inside an engine coroutine
+            if m.get('nodiscard'):
+                L.append('---@nodiscard')   # LuaLS reports a call whose result is dropped
             for u in m['unresolved']:
                 L.append(f'-- unresolved: {c["name"]}.{m["name"]}: {u}')
             if not sigs:

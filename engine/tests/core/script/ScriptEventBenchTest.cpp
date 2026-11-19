@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// What a Lua Event's invoke costs (docs/specs/cancellable-prioritised-events.md R23-R25): 0, 1 and
-// 8 function listeners. Each case is the median of 7 runs of a precompiled Lua loop of invokes,
+// What a Lua Event's and CancellableEvent's invoke cost (docs/specs/cancellable-prioritised-events.md
+// R23-R25): 0, 1 and 8 function listeners. Each case is the median of 7 runs of a precompiled Lua loop of invokes,
 // printed as a [bench] line in nanoseconds per invoke. The C++ heap allocations per invoke are
 // counted (ThreadAllocationCount, Linux) and the Lua bytes with the collector stopped. R25 compares
 // these numbers with the same bench run on the base tree (the PR records both runs).
@@ -89,15 +89,29 @@ TEST(ScriptEventBench, InvokeCosts) {
     constexpr int calls = 200000;
     // a new closure per listener: the same function twice is one listener
     const char* eventListener = "function(v) end";
+    const char* cancellableListener = "function(e, v) end";
 
     const InvokeCost event0 = measureEvent(L, "Event", eventListener, 0, calls);
     const InvokeCost event1 = measureEvent(L, "Event", eventListener, 1, calls);
     const InvokeCost event8 = measureEvent(L, "Event", eventListener, 8, calls);
+    const InvokeCost cancellable0 = measureEvent(L, "CancellableEvent", cancellableListener, 0, calls);
+    measureEvent(L, "CancellableEvent", cancellableListener, 1, calls);
+    const InvokeCost cancellable8 = measureEvent(L, "CancellableEvent", cancellableListener, 8, calls);
+    std::printf("[bench] CancellableEvent over Event: %.2fx idle (budget 1.2), %.2fx with 8 listeners (budget 1.15)\n",
+                cancellable0.ns / event0.ns, cancellable8.ns / event8.ns);
 
     if (testsupport::countsAllocations()) {
         EXPECT_EQ(event0.allocations, 0u);
         EXPECT_EQ(event1.allocations, 0u) << "Event:invoke copied its listeners";
         EXPECT_EQ(event8.allocations, 0u) << "Event:invoke copied its listeners";
+        EXPECT_EQ(cancellable0.allocations, 0u);
+        EXPECT_EQ(cancellable8.allocations, 0u) << "CancellableEvent:invoke made a CancelEventArgs";
     }
     EXPECT_EQ(event8.luaBytes, 0);
+    EXPECT_EQ(cancellable0.luaBytes, 0);
+    EXPECT_EQ(cancellable8.luaBytes, 0) << "the CancelEventArgs is reused";
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(cancellable0.ns, event0.ns * 1.2 * testsupport::perfSlack());
+        EXPECT_LE(cancellable8.ns, event8.ns * 1.15 * testsupport::perfSlack());
+    }
 }
