@@ -5278,4 +5278,56 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- culling-group-and-simulation-distance: Culling Groups and Simulation Culling
+    {
+        "id": "guard_culling_stats",
+        "kind": "guard",
+        "what_happened": "New text (R29, R35): get_render_stats returns `culling` (groups, spheres, simulation culled/full/"
+                         "ground_not_loaded). Asked whether far enemies still simulate, an agent reads it (or the component's "
+                         "state through get_runtime_entity) instead of guessing from screenshots.",
+        "text_at_issue": "get_render_stats description: '... culling: what is culled or frozen.'; jasper://docs/profiling Culling",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["profiling"],
+        "prompt": "The game is playing. Our enemies have Simulation Culling: are the far ones still simulating, or are they frozen?",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (frame): 42 draws (40 main, 2 shadow; 0 instanced), 3 passes, CPU 2.1 ms.",
+                {"view": "frame", "draw_calls": 42, "culling": {"groups": 0, "spheres": 0, "visible": 0, "per_band": [0],
+                 "evaluate_ms": 0.004, "simulation": {"components": 3, "full": 1, "reduced": 0, "culled": 2, "ground_not_loaded": 0,
+                                                      "focuses": 1, "script_updates_skipped": 6, "transitions_deferred": 0}}})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "Enemy [13]: transform, simulationculling (state culled, reason distance, focusDistance 41.2).",
+                {"id": 13, "components": {"simulationculling": {"simulationDistance": 20, "state": "culled", "reason": "distance",
+                                                                "focusDistance": 41.2}}})},
+            {"tool": "list_runtime_entities", "result": ok("4 GameObjects: 10 Main Camera, 12 Player, 13 Enemy, 14 Enemy (1)",
+                                                          {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "find_entities", "result": ok("2 GameObjects: 13 Enemy, 14 Enemy (1)",
+                                                  {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"any_of": [{"calls": ["get_render_stats"]}, {"calls": ["get_runtime_entity"]}],
+                   "reply_must": [r"(?i)frozen|culled|not simulat|stopped"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_culling_debug",
+        "kind": "guard",
+        "what_happened": "New text (R30, R35): configure_game_view culling_debug draws the Simulation Culling and Culling Group "
+                         "spheres; asked to show what is culled, an agent turns it on and takes a Game view screenshot.",
+        "text_at_issue": "configure_game_view culling_debug: 'Draws what is culled while playing (screenshot it).'",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["editor_ux"],
+        "prompt": "The game is playing. Show me which GameObjects are culled right now, as a picture.",
+        "mocks": [
+            {"tool": "configure_game_view", "result": ok("Updated the Game view: {\"culling_debug\": true, ...}",
+                                                        {"culling_debug": True, "changed": ["culling_debug"]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok("Render stats (frame): 42 draws.", {"view": "frame", "draw_calls": 42})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"],
+                   "order": [[{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"]]},
+        "max_turns": 10,
+    },
 ]

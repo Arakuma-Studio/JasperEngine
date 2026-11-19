@@ -4992,6 +4992,18 @@
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
+		4A534E47EF26AD2C82A98638 /* CullingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476C58E229D7E19832 /* CullingGroup.cpp */; };
+		4A534E477D20A08C20EA2F1F /* CullingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476C58E229D7E19832 /* CullingGroup.cpp */; };
+		4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47310A6F71AF79122B /* SimulationCulling.cpp */; };
+		4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47310A6F71AF79122B /* SimulationCulling.cpp */; };
+		4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */; };
+		4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */; };
+		4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B21A601EBC7437EE /* CullingSystem.cpp */; };
+		4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B21A601EBC7437EE /* CullingSystem.cpp */; };
+		4A534E4779D13C2717205DF4 /* SimulationCullingComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */; };
+		4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD378F6330680ED6 /* CullingGroup.h */; };
+		4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475EE51C3B38637EFB /* SimulationCulling.h */; };
+		4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A36A3DA3472854CC /* CullingSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9610,6 +9622,14 @@
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
+		4A534E476C58E229D7E19832 /* CullingGroup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingGroup.cpp; sourceTree = "<group>"; };
+		4A534E47310A6F71AF79122B /* SimulationCulling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SimulationCulling.cpp; sourceTree = "<group>"; };
+		4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47B21A601EBC7437EE /* CullingSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingSystem.cpp; sourceTree = "<group>"; };
+		4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCullingComponent.h; sourceTree = "<group>"; };
+		4A534E47AD378F6330680ED6 /* CullingGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingGroup.h; sourceTree = "<group>"; };
+		4A534E475EE51C3B38637EFB /* SimulationCulling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCulling.h; sourceTree = "<group>"; };
+		4A534E47A36A3DA3472854CC /* CullingSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10179,6 +10199,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -12122,6 +12143,7 @@
 				4A534E47BE8A0A760A25A6C5 /* GridComponent.h */,
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
+				4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12263,6 +12285,10 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E476C58E229D7E19832 /* CullingGroup.cpp */,
+				4A534E47310A6F71AF79122B /* SimulationCulling.cpp */,
+				4A534E47AD378F6330680ED6 /* CullingGroup.h */,
+				4A534E475EE51C3B38637EFB /* SimulationCulling.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12477,6 +12503,8 @@
 				4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */,
 				4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */,
 				4A534E538787E1C4ECC063A2 /* TilemapSystem.cpp */,
+				4A534E47B21A601EBC7437EE /* CullingSystem.cpp */,
+				4A534E47A36A3DA3472854CC /* CullingSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -17023,6 +17051,10 @@
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */,
+				4A534E4779D13C2717205DF4 /* SimulationCullingComponent.h in Headers */,
+				4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */,
+				4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */,
+				4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19727,6 +19759,10 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E47EF26AD2C82A98638 /* CullingGroup.cpp in Sources */,
+				4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */,
+				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
+				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20722,6 +20758,10 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E477D20A08C20EA2F1F /* CullingGroup.cpp in Sources */,
+				4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */,
+				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
+				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

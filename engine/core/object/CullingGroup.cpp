@@ -21,10 +21,10 @@ namespace {
     constexpr uint32_t BAND_MASK = 0x0Fu;
     constexpr uint32_t BAND_UNKNOWN = 0x0Fu;
 
-    CullingSystem::Group* groupOf(const CullingGroup& handle, const char* function) {
+    CullingSystem::GroupSlot* groupOf(const CullingGroup& handle, const char* function) {
         Scene* scene = handle.getScene();
         CullingSystem* system = scene ? scene->findSystem<CullingSystem>().get() : nullptr;
-        CullingSystem::Group* group = system ? system->findGroup(handle.getSlot(), handle.getGeneration()) : nullptr;
+        CullingSystem::GroupSlot* group = system ? system->findGroup(handle.getSlot(), handle.getGeneration()) : nullptr;
         if (!group && function) {
             // once per call site that keeps using a disposed group would flood: once per process
             static bool warned = false;
@@ -41,7 +41,7 @@ namespace {
                std::isfinite(sphere.radius) && sphere.radius >= 0.0f;
     }
 
-    void dropFollow(CullingSystem::Group& group, uint32_t index) {
+    void dropFollow(CullingSystem::GroupSlot& group, uint32_t index) {
         const uint32_t slot = group.meta[index] >> 8;
         if (slot == 0) return;
         const size_t f = slot - 1;
@@ -54,7 +54,7 @@ namespace {
         group.follows.pop_back();
     }
 
-    void resize(CullingSystem::Group& group, uint32_t count) {
+    void resize(CullingSystem::GroupSlot& group, uint32_t count) {
         // the follows of the spheres that go
         for (size_t f = 0; f < group.follows.size();) {
             if (group.follows[f].index >= count) {
@@ -70,14 +70,14 @@ namespace {
         group.meta.resize(count, BAND_UNKNOWN);
     }
 
-    bool checkIndex(const CullingSystem::Group& group, uint32_t index, const char* function) {
+    bool checkIndex(const CullingSystem::GroupSlot& group, uint32_t index, const char* function) {
         if (index < group.x.size()) return true;
         Log::error("CullingGroup.%s: sphere %u is past the group's %zu spheres", function, index, group.x.size());
         return false;
     }
 
     template<typename Match>
-    uint32_t query(const CullingSystem::Group* group, std::span<uint32_t> out, uint32_t first, Match match) {
+    uint32_t query(const CullingSystem::GroupSlot* group, std::span<uint32_t> out, uint32_t first, Match match) {
         if (!group) return 0;
         uint32_t written = 0, skipped = 0;
         for (uint32_t i = 0; i < group->meta.size() && written < out.size(); i++) {
@@ -117,25 +117,25 @@ bool CullingGroup::isValid() const {
 }
 
 void CullingGroup::setEnabled(bool enabled) {
-    if (CullingSystem::Group* group = groupOf(*this, "enabled")) group->enabled = enabled;
+    if (CullingSystem::GroupSlot* group = groupOf(*this, "enabled")) group->enabled = enabled;
 }
 
 bool CullingGroup::isEnabled() const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     return group && group->enabled;
 }
 
 void CullingGroup::setTargetCamera(Entity camera) {
-    if (CullingSystem::Group* group = groupOf(*this, "targetCamera")) group->targetCamera = camera;
+    if (CullingSystem::GroupSlot* group = groupOf(*this, "targetCamera")) group->targetCamera = camera;
 }
 
 Entity CullingGroup::getTargetCamera() const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     return group ? group->targetCamera : NULL_ENTITY;
 }
 
 void CullingGroup::setBoundingSpheres(std::span<const BoundingSphere> spheres) {
-    CullingSystem::Group* group = groupOf(*this, "setBoundingSpheres");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setBoundingSpheres");
     if (!group) return;
     if (spheres.size() > MAX_SPHERES) {
         Log::error("CullingGroup.setBoundingSpheres: %zu spheres; a group has at most %u", spheres.size(), MAX_SPHERES);
@@ -159,7 +159,7 @@ void CullingGroup::setBoundingSpheres(std::span<const BoundingSphere> spheres) {
 }
 
 void CullingGroup::setBoundingSphereCount(uint32_t count) {
-    CullingSystem::Group* group = groupOf(*this, "setBoundingSphereCount");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setBoundingSphereCount");
     if (!group) return;
     if (count > MAX_SPHERES) {
         Log::error("CullingGroup.setBoundingSphereCount: %u spheres; a group has at most %u", count, MAX_SPHERES);
@@ -169,12 +169,12 @@ void CullingGroup::setBoundingSphereCount(uint32_t count) {
 }
 
 uint32_t CullingGroup::getBoundingSphereCount() const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     return group ? static_cast<uint32_t>(group->x.size()) : 0;
 }
 
 void CullingGroup::setSphere(uint32_t index, const BoundingSphere& sphere) {
-    CullingSystem::Group* group = groupOf(*this, "setSphere");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setSphere");
     if (!group || !checkIndex(*group, index, "setSphere")) return;
     if (!validSphere(sphere)) {
         Log::error("CullingGroup.setSphere: the position must be finite and the radius finite and >= 0");
@@ -188,13 +188,13 @@ void CullingGroup::setSphere(uint32_t index, const BoundingSphere& sphere) {
 }
 
 BoundingSphere CullingGroup::getSphere(uint32_t index) const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     if (!group || index >= group->x.size()) return BoundingSphere();
     return BoundingSphere(Vector3(group->x[index], group->y[index], group->z[index]), group->r[index]);
 }
 
 void CullingGroup::setSphereTarget(uint32_t index, Entity entity, float radius, const Vector3& offset) {
-    CullingSystem::Group* group = groupOf(*this, "setSphereTarget");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setSphereTarget");
     if (!group || !checkIndex(*group, index, "setSphereTarget")) return;
     if (!std::isfinite(radius) || radius < 0.0f || !std::isfinite(offset.x) || !std::isfinite(offset.y) || !std::isfinite(offset.z)) {
         Log::error("CullingGroup.setSphereTarget: the radius must be finite and >= 0 and the offset finite");
@@ -222,7 +222,7 @@ void CullingGroup::setSphereTarget(uint32_t index, Entity entity, float radius, 
 }
 
 void CullingGroup::eraseSwapBack(uint32_t index) {
-    CullingSystem::Group* group = groupOf(*this, "eraseSwapBack");
+    CullingSystem::GroupSlot* group = groupOf(*this, "eraseSwapBack");
     if (!group || !checkIndex(*group, index, "eraseSwapBack")) return;
     dropFollow(*group, index);
     const uint32_t last = static_cast<uint32_t>(group->x.size()) - 1;
@@ -243,7 +243,7 @@ void CullingGroup::eraseSwapBack(uint32_t index) {
 }
 
 void CullingGroup::setBoundingDistances(std::span<const float> distances) {
-    CullingSystem::Group* group = groupOf(*this, "setBoundingDistances");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setBoundingDistances");
     if (!group) return;
     if (distances.size() > MAX_DISTANCES) {
         Log::error("CullingGroup.setBoundingDistances: %zu distances; at most %zu", distances.size(), MAX_DISTANCES);
@@ -260,7 +260,7 @@ void CullingGroup::setBoundingDistances(std::span<const float> distances) {
 }
 
 void CullingGroup::setDistanceReferencePoint(const Vector3& point) {
-    CullingSystem::Group* group = groupOf(*this, "setDistanceReferencePoint");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setDistanceReferencePoint");
     if (!group) return;
     group->hasReferencePoint = true;
     group->referencePoint = point;
@@ -268,30 +268,30 @@ void CullingGroup::setDistanceReferencePoint(const Vector3& point) {
 }
 
 void CullingGroup::setDistanceReferencePoint(Entity entity) {
-    CullingSystem::Group* group = groupOf(*this, "setDistanceReferencePoint");
+    CullingSystem::GroupSlot* group = groupOf(*this, "setDistanceReferencePoint");
     if (!group) return;
     group->hasReferencePoint = false;
     group->referenceEntity = entity;
 }
 
 void CullingGroup::setBandHysteresis(float metres) {
-    CullingSystem::Group* group = groupOf(*this, "bandHysteresis");
+    CullingSystem::GroupSlot* group = groupOf(*this, "bandHysteresis");
     if (!group) return;
     group->hysteresis = std::isfinite(metres) ? std::max(0.0f, metres) : 0.0f;
 }
 
 float CullingGroup::getBandHysteresis() const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     return group ? group->hysteresis : 0.0f;
 }
 
 bool CullingGroup::isVisible(uint32_t index) const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     return group && index < group->meta.size() && (group->meta[index] & VISIBLE_BIT) != 0;
 }
 
 int CullingGroup::getDistance(uint32_t index) const {
-    const CullingSystem::Group* group = groupOf(*this, nullptr);
+    const CullingSystem::GroupSlot* group = groupOf(*this, nullptr);
     if (!group || index >= group->meta.size()) return -1;
     const uint32_t band = group->meta[index] & BAND_MASK;
     return band == BAND_UNKNOWN ? -1 : static_cast<int>(band);
@@ -318,7 +318,7 @@ uint32_t CullingGroup::queryIndices(bool visible, int band, std::span<uint32_t> 
 }
 
 FunctionSubscribe<void(CullingGroupEvent)>& CullingGroup::onStateChanged() {
-    CullingSystem::Group* group = groupOf(*this, "onStateChanged");
+    CullingSystem::GroupSlot* group = groupOf(*this, "onStateChanged");
     if (!group) {
         // a disposed group's: subscriptions to it are never called
         static FunctionSubscribe<void(CullingGroupEvent)> none;

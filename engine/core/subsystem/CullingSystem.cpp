@@ -395,7 +395,7 @@ Vector3 CullingSystem::worldPositionOf(Entity entity) const {
     return transform ? transform->worldPosition : Vector3(0, 0, 0);
 }
 
-Vector3 CullingSystem::referenceOf(const Group& group) const {
+Vector3 CullingSystem::referenceOf(const GroupSlot& group) const {
     if (group.referenceEntity != NULL_ENTITY && scene->isEntityCreated(group.referenceEntity)) return worldPositionOf(group.referenceEntity);
     if (group.hasReferencePoint) return group.referencePoint;
     if (group.targetCamera != NULL_ENTITY && scene->isEntityCreated(group.targetCamera)) return worldPositionOf(group.targetCamera);
@@ -414,27 +414,27 @@ CullingGroup CullingSystem::createGroup() {
         return CullingGroup();
     }
     if (slot == groups.size()) groups.emplace_back();
-    Group& group = groups[slot];
+    GroupSlot& group = groups[slot];
     const uint32_t generation = group.generation;
-    group = Group();
+    group = GroupSlot();
     group.generation = generation;
     group.alive = true;
     liveGroups++;
     return CullingGroup(scene, slot, generation);
 }
 
-CullingSystem::Group* CullingSystem::findGroup(uint32_t slot, uint32_t generation) {
+CullingSystem::GroupSlot* CullingSystem::findGroup(uint32_t slot, uint32_t generation) {
     if (slot >= groups.size() || !groups[slot].alive || groups[slot].generation != generation) return nullptr;
     return &groups[slot];
 }
 
-const CullingSystem::Group* CullingSystem::findGroup(uint32_t slot, uint32_t generation) const {
+const CullingSystem::GroupSlot* CullingSystem::findGroup(uint32_t slot, uint32_t generation) const {
     if (slot >= groups.size() || !groups[slot].alive || groups[slot].generation != generation) return nullptr;
     return &groups[slot];
 }
 
 void CullingSystem::disposeGroup(uint32_t slot, uint32_t generation) {
-    Group* group = findGroup(slot, generation);
+    GroupSlot* group = findGroup(slot, generation);
     if (!group) return;
     if (group->owner) {
         if (std::shared_ptr<CullingGroupOwnership> state = ownershipOf(this, false)) {
@@ -442,30 +442,30 @@ void CullingSystem::disposeGroup(uint32_t slot, uint32_t generation) {
         }
     }
     const uint32_t next = group->generation + 1;
-    *group = Group();
+    *group = GroupSlot();
     group->generation = next == 0 ? 1 : next;
     group->alive = false;
     liveGroups--;
 }
 
 void CullingSystem::setGroupOwner(uint32_t slot, uint32_t generation, uint64_t ownerKey) {
-    Group* group = findGroup(slot, generation);
+    GroupSlot* group = findGroup(slot, generation);
     if (!group || ownerKey == 0) return;
     group->owner = ownerKey;
     SubscriptionOwnerIndex::add(ownerKey, ownershipOf(this, true), ownershipId(slot, generation));
 }
 
 void CullingSystem::setLuaCallback(uint32_t slot, uint32_t generation, std::shared_ptr<LuaFunction<void>> callback) {
-    if (Group* group = findGroup(slot, generation)) group->luaCallback = std::move(callback);
+    if (GroupSlot* group = findGroup(slot, generation)) group->luaCallback = std::move(callback);
 }
 
 bool CullingSystem::hasLuaCallback(uint32_t slot, uint32_t generation) const {
-    const Group* group = findGroup(slot, generation);
+    const GroupSlot* group = findGroup(slot, generation);
     return group && group->luaCallback;
 }
 
 void CullingSystem::clearSubscriptions() {
-    for (Group& group : groups) {
+    for (GroupSlot& group : groups) {
         group.forEachEvent([](auto& event) { event.clear(); });
         group.luaCallback.reset();
     }
@@ -473,21 +473,21 @@ void CullingSystem::clearSubscriptions() {
 }
 
 void CullingSystem::removeSubscriptionsByTag(const std::string& substring) {
-    for (Group& group : groups) {
+    for (GroupSlot& group : groups) {
         group.forEachEvent([&substring](auto& event) { event.removeByTagSubstring(substring); });
     }
 }
 
 void CullingSystem::evaluateGroups() {
     for (uint32_t slot = 0; slot < groups.size(); slot++) {
-        Group& group = groups[slot];
+        GroupSlot& group = groups[slot];
         if (!group.alive || !group.enabled) continue;
         evaluateGroup(slot, group);
         dispatchGroupEvents(slot);
     }
 }
 
-void CullingSystem::evaluateGroup(uint32_t slot, Group& group) {
+void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
     (void)slot;
     // the followed spheres where their GameObjects are now
     for (size_t f = 0; f < group.follows.size();) {
@@ -538,7 +538,7 @@ void CullingSystem::evaluateGroup(uint32_t slot, Group& group) {
     }
 }
 
-void CullingSystem::evaluateRange(Group& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
+void CullingSystem::evaluateRange(GroupSlot& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
                                   std::vector<CullingGroupEvent>& out) {
     const float* distances = group.distances.data();
     const uint32_t distanceCount = group.distanceCount;
@@ -576,7 +576,7 @@ void CullingSystem::dispatchGroupEvents(uint32_t slot) {
     const uint32_t generation = groups[slot].generation;
     for (size_t e = 0;; e++) {
         // read again each time: a callback may dispose the group or make others (which may move it)
-        Group* group = findGroup(slot, generation);
+        GroupSlot* group = findGroup(slot, generation);
         if (!group || e >= group->events.size()) return;
         const CullingGroupEvent event = group->events[e];
         if (group->onStateChanged && group->onStateChanged->hasSubscribers()) {
@@ -938,7 +938,7 @@ CullingSystem::Stats CullingSystem::getStats() const {
     out.spheres = 0;
     out.visible = 0;
     out.perBand.fill(0);
-    for (const Group& group : groups) {
+    for (const GroupSlot& group : groups) {
         if (!group.alive) continue;
         out.groups++;
         out.spheres += static_cast<uint32_t>(group.meta.size());
@@ -954,7 +954,7 @@ CullingSystem::Stats CullingSystem::getStats() const {
 
 size_t CullingSystem::getMemoryBytes() const {
     size_t bytes = 0;
-    for (const Group& group : groups) {
+    for (const GroupSlot& group : groups) {
         bytes += (group.x.capacity() + group.y.capacity() + group.z.capacity() + group.r.capacity()) * sizeof(float);
         bytes += group.meta.capacity() * sizeof(uint32_t);
         bytes += group.follows.capacity() * sizeof(Follow);
@@ -1007,7 +1007,7 @@ void CullingSystem::updateDebugLines() {
             : (c.reason == SimulationCullReason::GroundNotLoaded ? colorCulledGround : colorCulledDistance));
         wireSphere(lines, worldPositionOf(entity), c.boundsRadius > 0.0f ? c.boundsRadius : std::max(c.resolvedRadius, 0.5f), color);
     }
-    for (const Group& group : groups) {
+    for (const GroupSlot& group : groups) {
         if (!group.alive) continue;
         const uint32_t count = std::min<uint32_t>(static_cast<uint32_t>(group.x.size()), DEBUG_SPHERES_PER_GROUP);
         for (uint32_t i = 0; i < count; i++) {

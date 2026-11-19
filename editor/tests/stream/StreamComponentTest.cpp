@@ -74,6 +74,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 #include "component/ActionComponent.h"
@@ -217,6 +218,8 @@ STABLE(WaterVolumeComponent, WaterVolumeComponent, component.infinite = true; co
 STABLE(WaterExcluderComponent, WaterExcluderComponent, component.shape = WaterExcluderShape::SPHERE; component.center = Vector3(0.0f, 0.5f, 1.0f);
     component.size = Vector3(2.0f, 1.0f, 6.0f); component.enabled = false)
 STABLE(WaterWakeComponent, WaterWakeComponent, component.foam = 1.5f; component.waves = 0.25f; component.width = 2.0f; component.length = 7.0f)
+STABLE(SimulationCullingComponent, SimulationCullingComponent, component.simulationDistance = 80.0f; component.reducedRateDistance = 30.0f;
+    component.reducedUpdateInterval = 6; component.cullPhysics = false; component.simulateWhenVisible = false)
 STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
     component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
 #undef STABLE

@@ -76,6 +76,8 @@ Projects made before the rename are migrated once with
 | Unity term | Old JasperEngine name |
 |---|---|
 | `GameObject` | `Object` |
+| `CullingGroup` (`SetBoundingSpheres`, `SetBoundingDistances`, `onStateChanged`, `QueryIndices`, `EraseSwapBack`), `BoundingSphere`, `CullingGroupEvent` | `CullingGroup`, `BoundingSphere`, `CullingGroupEvent` (none before); frustum only, no occlusion; Lua indices 1-based ([docs/scripting/culling-groups.md](scripting/culling-groups.md)) |
+| A per-object simulation distance (Unreal's tick significance, an entity ticking range) | the **Simulation Culling** component, `SimulationCulling` in Lua, messages `onSimulationCulled` / `onSimulationResumed` (none before) |
 | `Primitive` (box, sphere, plane... meshes) | `Shape` |
 | `Rigidbody2D` / `Rigidbody2DComponent` | `Body2D` / `Body2DComponent` |
 | `Rigidbody` / `RigidbodyComponent` | `Body3D` / `Body3DComponent` |

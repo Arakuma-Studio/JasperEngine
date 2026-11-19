@@ -107,7 +107,7 @@ namespace jasperengine{
             Entity entity;
             Vector3 offset;
         };
-        struct Group {
+        struct GroupSlot {
             uint32_t generation = 1;
             bool alive = false;
             bool enabled = true;
@@ -136,8 +136,8 @@ namespace jasperengine{
 
         CullingGroup createGroup();
         // null for a disposed or stale handle
-        Group* findGroup(uint32_t slot, uint32_t generation);
-        const Group* findGroup(uint32_t slot, uint32_t generation) const;
+        GroupSlot* findGroup(uint32_t slot, uint32_t generation);
+        const GroupSlot* findGroup(uint32_t slot, uint32_t generation) const;
         void disposeGroup(uint32_t slot, uint32_t generation);
         // the group's owner: a Lua script instance (SubscriptionOwnerIndex key) releases it
         void setGroupOwner(uint32_t slot, uint32_t generation, uint64_t ownerKey);
@@ -196,7 +196,7 @@ namespace jasperengine{
             SimulationCullReason reason;
         };
 
-        std::vector<Group> groups;
+        std::vector<GroupSlot> groups;
         uint32_t liveGroups = 0;
         bool parallelEvaluation = true;
         uint64_t evaluatedSpheres = 0;
@@ -230,11 +230,11 @@ namespace jasperengine{
         void gatherCameras();
         bool sphereVisible(const Vector3& center, float radius, Entity targetCamera, bool anyCamera) const;
         Vector3 worldPositionOf(Entity entity) const;
-        Vector3 referenceOf(const Group& group) const;
+        Vector3 referenceOf(const GroupSlot& group) const;
 
         void evaluateGroups();
-        void evaluateGroup(uint32_t slot, Group& group);
-        void evaluateRange(Group& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
+        void evaluateGroup(uint32_t slot, GroupSlot& group);
+        void evaluateRange(GroupSlot& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
                            std::vector<CullingGroupEvent>& out);
         void dispatchGroupEvents(uint32_t slot);
 
