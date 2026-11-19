@@ -89,7 +89,13 @@ std::string jasperengine::player::usage() {
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
         "  --fail-on-error         exit 3 when an error is logged\n"
+        "  --command LINE          run a console command after \"Engine ready:\", one a frame (repeatable;\n"
+        "                          development players, or Project Settings > Debug > Console Commands: Always)\n"
         "  -- ARGS...              passed to the game's Lua (System.args)\n";
+}
+
+const char* jasperengine::player::commandsOffRefusal() {
+    return "--command needs a development player or Project Settings > Debug > Console Commands: Always.";
 }
 
 std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& query) {
@@ -233,6 +239,13 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             if (!DeviceNames::tierFromName(text.c_str(), tier))
                 return fail("--device-tier needs low, medium, high or ultra, for example --device-tier=low (got \"" + text + "\")");
             options.deviceTier = DeviceNames::tier(tier);
+        } else if (name == "--command") {
+            auto taken = takeValue("\"help\"");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string line = std::get<std::string>(taken);
+            if (line.find_first_not_of(" \t") == std::string::npos)
+                return fail("--command needs a console line, for example --command \"give gold 10\"");
+            options.commands.push_back(line);
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;

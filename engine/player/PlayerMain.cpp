@@ -312,6 +312,8 @@ namespace {
 }
 
 JASPERENGINE_INIT void init() {
+    // Project Settings > Debug > Console Commands: "development" follows the player's flavour
+    console::setCommandsEnabled(game.consoleCommands == "always" || (game.consoleCommands == "development" && JASPERENGINE_DEVELOPMENT_BUILD));
     const ThreadingSettings threadingDefaults;
     if (game.threading.workers != threadingDefaults.workers || game.threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers ||
         game.threading.ioThreads != threadingDefaults.ioThreads || game.threading.webPumpBudgetMs != threadingDefaults.webPumpBudgetMs)

@@ -46,6 +46,9 @@ namespace jasperengine::player {
         std::string logLevel;
         // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
         std::string deviceTier;
+        // --command (repeatable; web: ?command=... repeated): console lines run in order, one a
+        // frame, from the ready frame (RunControl)
+        std::vector<std::string> commands;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;
@@ -73,6 +76,9 @@ namespace jasperengine::player {
 
     // the usage text (--help)
     JASPERENGINE_API std::string usage();
+
+    // --command in a player whose Console Commands setting keeps typed commands off (exit 2)
+    JASPERENGINE_API const char* commandsOffRefusal();
 
     // whole-string numbers (no sign for the unsigned one, no trailing text)
     JASPERENGINE_API bool parseUint64(const std::string& text, uint64_t& out);

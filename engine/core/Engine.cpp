@@ -1735,6 +1735,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Audio::onMusicSection.removeByTagSubstring(substring);
 #endif
     DebugOverlay::removeCommandsByTag(substring);
+    console::Events::onCheatUsed.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
     // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
@@ -1788,6 +1789,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Audio::onMusicSection.clear();
 #endif
     DebugOverlay::removeOwnedCommands();
+    console::Events::onCheatUsed.clear();
 
     if (includeLifecycle) {
         onViewLoaded.clear();

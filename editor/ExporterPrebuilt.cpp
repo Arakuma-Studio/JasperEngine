@@ -9,6 +9,7 @@
 
 #include "Exporter.h"
 
+#include "DebugSettings.h"
 #include "EditorHost.h"
 #include "Generator.h"
 #include "Out.h"
@@ -681,6 +682,7 @@ bool editor::Exporter::writeGameConfig() {
     game.hangWatchdog = crash.hangWatchdog;
     game.hangMs = crash.hangSeconds * 1000;
     game.crashWebOverlay = crash.webCrashOverlay;
+    game.consoleCommands = DebugSettingsNames::name(project->getDebugSettings().consoleCommands);
     // Project Settings > Audio, as Play applies them (Project::setAudioSettings) and a Compile
     // build's init (Generator::audioInitSource): the mixer by its asset-relative path, which ships
     const AudioSettings& audio = project->getAudioSettings();

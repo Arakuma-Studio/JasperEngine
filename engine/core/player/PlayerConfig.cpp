@@ -149,6 +149,7 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    if (consoleCommands != "development") out["consoleCommands"] = consoleCommands;
     return out;
 }
 
@@ -357,6 +358,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
         }
+        // absent (an older editor's game.json): development
+        config.consoleCommands = in.value("consoleCommands", config.consoleCommands);
         // absent: no native plugin of the project is for other platforms only
         if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
             for (const auto& [plugin, message] : native->items()) {

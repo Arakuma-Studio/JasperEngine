@@ -2967,6 +2967,8 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
         out += std::string("        debugOverlay.statsCorner = DebugOverlaySettings::Corner::") + corners[static_cast<int>(debug.statsCorner)] + ";\n";
     }
     out += "        debugOverlay.allowLua = " + byMode(debug.allowLua == DebugSettings::AllowLua::AllBuilds, debug.allowLua == DebugSettings::AllowLua::Development) + ";\n";
+    out += "        debugOverlay.commands = " + byMode(debug.consoleCommands == DebugSettings::AllowLua::AllBuilds,
+                                                     debug.consoleCommands == DebugSettings::AllowLua::Development) + ";\n";
     out += "        DebugOverlay::configure(debugOverlay);\n";
     out += "    }\n";
     return out;

@@ -728,8 +728,12 @@ Graphy), details in `jasper://docs/debugging`:
 | `consoleVisible` | ro | |
 | `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
 | `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
-| `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
-| `removeCommand(name)`, `executeCommand(line)` | fn | |
+| `addCommand{name, description, aliases, args, cheat, run, complete, owner}` | fn | a typed console command: `args` `{name, type, optional, default, min, max, choices}` (`string`, `int`, `float`, `bool`, `enum`, `vector3`, `gameobject`, `rest`); `run(args, call)` gets them by name and position, `call:print(...)`, `call:fail(msg)`, its return is the result's `value`; `true` or `false, reason` |
+| `addCommand(name, description, fn [, owner])` | fn | the old form: `fn(args)` gets a list of strings; names `[a-z0-9_.-]`; removed with its script (`owner`, default the calling method's `self`) |
+| `executeCommand(line)` | fn | `{ok, status, command, lines, log, value, error, usage, cheat}`; the game's call, never gated |
+| `completeCommand(line [, cursor])`, `getCommands()`, `removeCommand(name)` | fn | `{replacement, candidates, start}`; `{name, description, usage, aliases, cheat, builtIn, args}` each |
+| `commandsEnabled` | rw | Project Settings > Debug > Console Commands: the field, agents and `--command` may type commands |
+| `cheatsUsed`, `onCheatUsed`, `resetCheatsUsed()` | ro, event, fn | a `cheat = true` command ended ok (the event fires once, with its name) |
 
 ### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 

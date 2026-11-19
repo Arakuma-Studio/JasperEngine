@@ -793,7 +793,8 @@ Json playStateJson(McpContext& ctx) {
         static const char* const statsModes[] = {"off", "fps", "full"};
         const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
         out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
-                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"},
+                                {"commands_enabled", console::commandsEnabled()}, {"cheats_used", console::cheatsUsed()}};
     }
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
@@ -2079,6 +2080,54 @@ void getPlayStateTool(const CallPtr& call) {
 
 // ================================================================== tool: eval_lua
 
+// eval_lua {command}: a console line run as the developer typed it (console::Source::Agent)
+void evalConsoleCommand(const CallPtr& call, const std::string& line) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    if (line.find_first_not_of(" \t") == std::string::npos) {
+        call->fail("command is empty. Example: {\"command\": \"help\"} lists the game's console commands.");
+        return;
+    }
+    if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
+        call->fail("Console commands run in the playing game: start it with play {action: \"start\"} first.");
+        return;
+    }
+    const uint64_t cursor = Out::lastLogId();
+    const console::Result result = console::execute(line, console::Source::Agent);
+
+    w3::ConsoleQuery query;
+    query.since = cursor;
+    query.limit = 50;
+    w3::ConsoleResult console = w3::queryConsole(query);
+
+    Json log = Json::array();
+    for (const console::LogLine& entry : result.log) log.push_back({{"level", logLevelName(entry.level)}, {"message", entry.message}});
+    Json command = {{"name", result.command}, {"status", console::statusName(result.status)}, {"ok", result.ok()},
+                    {"lines", result.lines}, {"log", log}, {"value", result.value}, {"cheat", result.cheat}};
+    if (!result.error.empty()) command["error"] = result.error;
+    if (!result.usage.empty()) command["usage"] = result.usage;
+    Json data = {{"mode", "play"}, {"command", command}, {"console", console.entries}, {"next_cursor", console.nextCursor}};
+
+    std::string text;
+    if (result.ok()) {
+        for (const std::string& printed : result.lines) text += (text.empty() ? "" : "\n") + printed;
+        if (text.empty()) text = "OK (no output).";
+        if (!result.value.is_null()) text += "\nvalue: " + result.value.dump();
+    } else {
+        text = result.error;
+        if (!result.usage.empty()) text += " Usage: " + result.usage;
+        if (result.status == console::Status::Unknown) text += " eval_lua {command: \"help\"} lists the commands.";
+        if (result.status == console::Status::Disabled)
+            text += " Turn them on: set_project_settings {values: {\"debug.console_commands\": \"development\"}}.";
+        for (const console::LogLine& entry : result.log) text += "\n" + std::string(logLevelName(entry.level)) + ": " + entry.message;
+    }
+    if (text.size() > 20000) text = text.substr(0, 20000) + " ... (see structuredContent)";
+    observeSession(ctx);
+    if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) text += "\nPlay ended: " + sessionSummaryText(state().last);
+    if (result.ok()) call->ok(text, data);
+    else call->fail(text, data);
+}
+
 void evalLuaTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2088,6 +2137,16 @@ void evalLuaTool(const CallPtr& call) {
         return;
     }
     observeSession(ctx);
+    const bool hasCode = args.contains("code") && !args["code"].is_null();
+    const bool hasCommand = args.contains("command") && !args["command"].is_null();
+    if (hasCode == hasCommand) {
+        call->fail("Pass code (Lua) or command (a console line), not both.");
+        return;
+    }
+    if (hasCommand) {
+        evalConsoleCommand(call, args["command"].is_string() ? args["command"].get<std::string>() : std::string());
+        return;
+    }
     const std::string code = args.value("code", "");
     if (code.empty()) {
         call->fail("code is empty. Example: {\"code\": \"local gc = script('GameController'); return gc.state, gc.score\"}");
@@ -4434,12 +4493,13 @@ void registerPlayTools(McpRegistry& registry) {
             "at stop. Stopped: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
             {"code", string("Expression, or chunk with return.")},
+            {"command", string("A console command line instead of code (help lists them).")},
             {"scene", runtimeScene},
             {"allow_edit_mode", withDefault(boolean(""), false)},
             {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},
             {"max_depth", withDefault(integer("Table nesting.", 1, 12), 4)},
             {"max_items", withDefault(integer("Entries per table.", 1, 5000), 200)}
-        }, {"code"});
+        });
         tool.annotations.destructive = true;
         tool.handler = evalLuaTool;
         registry.addTool(std::move(tool));

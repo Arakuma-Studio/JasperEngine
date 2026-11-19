@@ -130,6 +130,22 @@ TEST(LaunchOptions, RefusalsSayHowToFixThem) {
     EXPECT_NE(refused({"--content", "/nonexistent-dir-s30"}).find("not a directory"), std::string::npos);
     EXPECT_NE(refused({"--scene", ""}).find("scene name"), std::string::npos);
     EXPECT_NE(refused({"--help"}).find("--quit-after N"), std::string::npos);
+    // --command: a console line (and, in a player whose Console Commands keep typed commands
+    // off, RunControl's refusal: exit 2)
+    EXPECT_NE(refused({"--command", "  "}).find("needs a console line"), std::string::npos);
+    EXPECT_NE(refused({"--command"}).find("needs a value"), std::string::npos);
+    EXPECT_NE(refused({"--help"}).find("--command LINE"), std::string::npos);
+    EXPECT_EQ(std::string(commandsOffRefusal()),
+              "--command needs a development player or Project Settings > Debug > Console Commands: Always.");
+}
+
+// --command (dev-console-for-agents R16): repeatable, in order; the web's ?command= items too
+TEST(LaunchOptions, CommandRepeatsInOrder) {
+    const LaunchOptions options = ok({"--command", "give gold 10", "--headless", "--command=tp \"Big Tree\""});
+    EXPECT_EQ(options.commands, (std::vector<std::string>{"give gold 10", "tp \"Big Tree\""}));
+    EXPECT_TRUE(ok({}).commands.empty());
+    const LaunchOptions web = ok(argsFromQuery("?command=help&command=give+gold+10"), ParseMode::Lenient);
+    EXPECT_EQ(web.commands, (std::vector<std::string>{"help", "give gold 10"}));
 }
 
 TEST(LaunchOptions, LenientModeKeepsUnknownArguments) {

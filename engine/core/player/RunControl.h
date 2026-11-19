@@ -49,7 +49,7 @@ namespace jasperengine::player {
         static bool isHeadless();
         // a frame option is in use (quit, ready wait, screenshot, error watch)
         static bool isActive();
-        // the ready signal must run whatever the environment says
+        // the ready signal must run whatever the environment says (--after-ready, --command)
         static bool wantsReadySignal();
 
         // Engine::runFrame, before the draw: the frame draws into the engine's composite
@@ -58,7 +58,8 @@ namespace jasperengine::player {
         // a screenshot is still to be written (the run draws offscreen from its first frame)
         static bool wantsScreenshot();
         // after the frame drew and committed: readSignalled is the engine's ready state, reader
-        // reads the composite (null when the frame was not offscreen)
+        // reads the composite (null when the frame was not offscreen). From the ready frame it
+        // runs the --command lines, one a frame; the frames count from the one after the last
         static void frameDrawn(bool readySignalled, const FrameReader& reader);
 
         // Engine::quit and the timeouts: ends the run with this code (the first one wins)
