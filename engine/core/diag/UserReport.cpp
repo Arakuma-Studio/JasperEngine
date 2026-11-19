@@ -330,8 +330,8 @@ namespace jasperengine::diag::userreport {
         out["memory_mb"] = detection.profile.memoryMB > 0 ? detection.profile.memoryMB : (system ? System::instance().getSystemMemorySize() : 0);
         out["cores"] = detection.profile.cores > 0 ? detection.profile.cores : (system ? System::instance().getProcessorCount() : 0);
         const float dpi = system ? System::instance().getScreenDpi() : 0.0f;
-        const Engine::Platform platform = Engine::getPlatform();
-        const float baseDpi = platform == Engine::Platform::Android || platform == Engine::Platform::iOS ? 160.0f : 96.0f;
+        const Platform platform = Engine::getPlatform();
+        const float baseDpi = platform == Platform::Android || platform == Platform::iOS ? 160.0f : 96.0f;
         out["screen"] = {{"width", system ? System::instance().getScreenWidth() : 0},
                          {"height", system ? System::instance().getScreenHeight() : 0},
                          {"dpi_scale", dpi > 0.0f ? dpi / baseDpi : 1.0f}};
