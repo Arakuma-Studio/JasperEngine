@@ -539,4 +539,33 @@ stated. Each fails without the change because the API does not exist, plus the r
 
 ## Deviations
 
-None yet.
+- **`onCheatUsed` is `console::Events::onCheatUsed`**, a static member of a class:
+  `tools/check_event_clears.py` refuses an event at namespace scope (no clear walks it). Engine's
+  `clearAllSubscriptions` and `removeSubscriptionsByTag` clear it. The Lua name is as specified.
+- **API additions the sketch lacks**: `Completion::start` (where the replacement goes, so the overlay
+  and Lua can apply it), `Call::raise` (status `error`, used by the Lua binding), `Call::name`,
+  `Call::setScriptValue` and `Result::scriptValue` (Lua gets its own value back), `ArgValue::given`
+  (an optional argument left out), `usageOf`, `describe`, `typeName`, `parseType`, `disabledMessage`,
+  `endSession` (Play stop) and the test hooks `reset`/`isAllocated`.
+- **`args.count` in D3 is the argument named `count`** (the Lua sketch's): `run` gets arguments by name
+  and position, no count field.
+- **Usage and unknown results are logged as warnings, failed and error ones as errors, by
+  `console::execute` itself**: the overlay's colours (R15) are the log levels, and every source sees
+  the same text in the log.
+- **`lua` while Allow Lua Commands is off** stays hidden from `help`, completion and `getCommands`, but a
+  typed `lua` resolves and fails with the setting's name instead of `unknown`.
+- **The `--command` refusal of R16/AC15 is not a parse error**: the parser does not know the gate, which
+  the game's init (Compile) or `game.json` (prebuilt) sets after it. RunControl refuses at the first
+  drawn frame (exit 2); the text is `player::commandsOffRefusal()`, checked in
+  `LaunchOptions.RefusalsSayHowToFixThem`, the exit in `RunControlFixture.FailedCommandLogsAnError`
+  (the RunControl suite is `RunControlFixture`). `--command ""` is the parse-time refusal.
+- **Prebuilt players never configured the overlay**: Console Commands reaches them as `game.json`
+  `consoleCommands` (omitted at `development`), applied in `PlayerMain`'s init against the runtime's
+  `JASPERENGINE_DEVELOPMENT_BUILD`.
+- **AC16**: no `ReflectParity` golden covers `DebugSettings`, so the key is checked in
+  `DebugReflect.ConsoleCommandsKeyRoundTrips` only.
+- **AC11's "engine start and 100 frames"** is measured in the core test binary, which cannot restart the
+  engine: the start's gate setting, then 100 frames of the overlay's per-frame hooks and the session's
+  end, with no storage made and no allocation on the thread.
+- **`editor/players/ModuleUsage.cpp` is unchanged**: a script naming `DebugOverlay` still keeps the HTML
+  UI module in a prebuilt variant (conservative; the registry itself needs none).
