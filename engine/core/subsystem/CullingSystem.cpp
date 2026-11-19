@@ -549,10 +549,13 @@ void CullingSystem::evaluateGroups() {
 
 void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
     (void)slot;
-    // the followed spheres where their GameObjects are now
+    // the followed spheres where their GameObjects are now (one lookup each: a destroyed GameObject
+    // has no Transform left)
+    auto transforms = scene->getComponentArray<Transform>();
     for (size_t f = 0; f < group.follows.size();) {
         Follow& follow = group.follows[f];
-        if (!scene->isEntityCreated(follow.entity)) {
+        const Transform* transform = transforms->findComponent(follow.entity);
+        if (!transform) {
             if (!group.followWarned) {
                 group.followWarned = true;
                 Log::warn("CullingGroup: the GameObject sphere %u followed was destroyed; the sphere keeps its last position", follow.index);
@@ -566,7 +569,7 @@ void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
             group.follows.pop_back();
             continue;
         }
-        const Vector3 position = worldPositionOf(follow.entity) + follow.offset;
+        const Vector3 position = transform->worldPosition + follow.offset;
         group.x[follow.index] = position.x;
         group.y[follow.index] = position.y;
         group.z[follow.index] = position.z;
