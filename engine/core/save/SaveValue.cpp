@@ -22,7 +22,7 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::save;
+using namespace jasperengine::savegame;
 
 namespace {
 
@@ -141,10 +141,20 @@ namespace {
         lua_State* L;
         std::string& out;
         SaveError& error;
-        std::string path = "$";
+        // the keys down to the value being written, spelled out only for an error (a string per
+        // entry would cost more than the encode)
+        struct Step {
+            bool isInteger;
+            lua_Integer integer;
+            std::string_view text;
+        };
+        std::vector<Step> steps;
         std::vector<const void*> open;
 
         bool fail(const std::string& what){
+            std::string path = "$";
+            for (const Step& step : steps)
+                path += step.isInteger ? "[" + std::to_string(step.integer) + "]" : stringKeyPath(step.text);
             error = makeError(SaveErrorCode::Encode, what + " at " + path, path);
             return false;
         }
@@ -247,31 +257,30 @@ namespace {
             open.push_back(self);
             out.push_back(static_cast<char>(TagTable));
             putVarint(out, static_cast<uint64_t>(n));
-            const size_t pathLength = path.size();
             for (lua_Integer i = 1; i <= n; i++){
                 lua_rawgeti(L, index, i);
-                path += "[" + std::to_string(i) + "]";
+                steps.push_back({true, i, {}});
                 const bool ok = value(-1, depth);
                 lua_pop(L, 1);
                 if (!ok) return false;
-                path.resize(pathLength);
+                steps.pop_back();
             }
             putVarint(out, keys.size());
             for (const Key& key : keys){
                 if (key.isInteger){
                     putInteger(out, static_cast<int64_t>(key.integer));
                     lua_rawgeti(L, index, key.integer);
-                    path += "[" + std::to_string(key.integer) + "]";
+                    steps.push_back({true, key.integer, {}});
                 } else {
                     putString(out, key.text);
                     lua_pushlstring(L, key.text.data(), key.text.size());
                     lua_rawget(L, index);
-                    path += stringKeyPath(key.text);
+                    steps.push_back({false, 0, key.text});
                 }
                 const bool ok = value(-1, depth);
                 lua_pop(L, 1);
                 if (!ok) return false;
-                path.resize(pathLength);
+                steps.pop_back();
             }
             open.pop_back();
             return true;
@@ -833,7 +842,7 @@ namespace {
 
 }
 
-SaveError save::makeError(SaveErrorCode code, std::string message, std::string path){
+SaveError savegame::makeError(SaveErrorCode code, std::string message, std::string path){
     SaveError error;
     error.code = code;
     error.message = std::move(message);
@@ -841,7 +850,7 @@ SaveError save::makeError(SaveErrorCode code, std::string message, std::string p
     return error;
 }
 
-const char* save::errorCodeName(SaveErrorCode code){
+const char* savegame::errorCodeName(SaveErrorCode code){
     switch (code){
         case SaveErrorCode::None: return "";
         case SaveErrorCode::Name: return "name";
@@ -860,7 +869,7 @@ const char* save::errorCodeName(SaveErrorCode code){
     return "";
 }
 
-bool save::encodeLua(lua_State* L, int index, std::string& out, SaveError& error){
+bool savegame::encodeLua(lua_State* L, int index, std::string& out, SaveError& error){
     const int top = lua_gettop(L);
     index = lua_absindex(L, index);
     LuaEncoder encoder{L, out, error};
@@ -871,7 +880,7 @@ bool save::encodeLua(lua_State* L, int index, std::string& out, SaveError& error
     return ok;
 }
 
-bool save::decodeLua(lua_State* L, std::string_view payload, SaveError& error){
+bool savegame::decodeLua(lua_State* L, std::string_view payload, SaveError& error){
     Reader reader(payload, error);
     const int top = lua_gettop(L);
     if (!pushValue(L, reader, 0)){
@@ -885,17 +894,17 @@ bool save::decodeLua(lua_State* L, std::string_view payload, SaveError& error){
     return true;
 }
 
-bool save::validatePayload(std::string_view payload, SaveError& error){
+bool savegame::validatePayload(std::string_view payload, SaveError& error){
     Reader reader(payload, error);
     return skipValue(reader, 0) && reader.finish();
 }
 
-bool save::toJson(std::string_view payload, nlohmann::json& out, SaveError& error){
+bool savegame::toJson(std::string_view payload, nlohmann::json& out, SaveError& error){
     Reader reader(payload, error);
     return jsonValue(reader, out, 0) && reader.finish();
 }
 
-bool save::fromJson(const nlohmann::json& value, std::string& payload, SaveError& error){
+bool savegame::fromJson(const nlohmann::json& value, std::string& payload, SaveError& error){
     JsonEncoder encoder{error};
     std::string out;
     if (!encoder.value(value, out, 0)) return false;
@@ -903,21 +912,21 @@ bool save::fromJson(const nlohmann::json& value, std::string& payload, SaveError
     return true;
 }
 
-void save::beginPairTable(std::string& out, uint64_t pairCount){
+void savegame::beginPairTable(std::string& out, uint64_t pairCount){
     out.push_back(static_cast<char>(TagTable));
     putVarint(out, 0);
     putVarint(out, pairCount);
 }
 
-void save::appendString(std::string& out, std::string_view text){
+void savegame::appendString(std::string& out, std::string_view text){
     putString(out, text);
 }
 
-void save::appendInteger(std::string& out, int64_t value){
+void savegame::appendInteger(std::string& out, int64_t value){
     putInteger(out, value);
 }
 
-bool save::findField(std::string_view payload, std::string_view key, std::string_view& value){
+bool savegame::findField(std::string_view payload, std::string_view key, std::string_view& value){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;
@@ -948,7 +957,7 @@ bool save::findField(std::string_view payload, std::string_view key, std::string
     return false;
 }
 
-bool save::readString(std::string_view payload, std::string& out){
+bool savegame::readString(std::string_view payload, std::string& out){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;
@@ -958,7 +967,7 @@ bool save::readString(std::string_view payload, std::string& out){
     return true;
 }
 
-bool save::readInteger(std::string_view payload, int64_t& out){
+bool savegame::readInteger(std::string_view payload, int64_t& out){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;

@@ -20,19 +20,19 @@ namespace {
     // __saveRoundTrip(v): v encoded and decoded again (an error raised on failure)
     int saveValueRoundTrip(lua_State* L){
         std::string payload;
-        save::SaveError error;
-        if (!save::encodeLua(L, 1, payload, error)) return luaL_error(L, "encode: %s", error.message.c_str());
-        if (!save::decodeLua(L, payload, error)) return luaL_error(L, "decode: %s", error.message.c_str());
+        savegame::SaveError error;
+        if (!savegame::encodeLua(L, 1, payload, error)) return luaL_error(L, "encode: %s", error.message.c_str());
+        if (!savegame::decodeLua(L, payload, error)) return luaL_error(L, "decode: %s", error.message.c_str());
         return 1;
     }
 
     // __saveEncode(v): the payload as a Lua string, or nil, code, message
     int saveValueEncode(lua_State* L){
         std::string payload;
-        save::SaveError error;
-        if (!save::encodeLua(L, 1, payload, error)){
+        savegame::SaveError error;
+        if (!savegame::encodeLua(L, 1, payload, error)){
             lua_pushnil(L);
-            lua_pushstring(L, save::errorCodeName(error.code));
+            lua_pushstring(L, savegame::errorCodeName(error.code));
             lua_pushlstring(L, error.message.data(), error.message.size());
             return 3;
         }
@@ -163,27 +163,27 @@ TEST(SaveGameValue, JsonViewIsABijection){
         SCOPED_TRACE(text);
         const nlohmann::json json = nlohmann::json::parse(text);
         std::string payload;
-        save::SaveError error;
-        ASSERT_TRUE(save::fromJson(json, payload, error)) << error.message;
+        savegame::SaveError error;
+        ASSERT_TRUE(savegame::fromJson(json, payload, error)) << error.message;
         nlohmann::json back;
-        ASSERT_TRUE(save::toJson(payload, back, error)) << error.message;
+        ASSERT_TRUE(savegame::toJson(payload, back, error)) << error.message;
         // [[]] is the only non-canonical spelling here: an empty table is {}
         nlohmann::json expected = json;
         if (text == R"([null,false,{"deep":[[]]}])") expected = nlohmann::json::parse(R"([null,false,{"deep":[{}]}])");
         EXPECT_EQ(back.dump(), expected.dump());
         std::string again;
-        ASSERT_TRUE(save::fromJson(back, again, error)) << error.message;
+        ASSERT_TRUE(savegame::fromJson(back, again, error)) << error.message;
         EXPECT_EQ(again, payload) << "payload -> JSON -> payload";
     }
 
     std::string payload;
-    save::SaveError error;
-    EXPECT_FALSE(save::fromJson(nlohmann::json::parse(R"({"p":{"$vec5":[1]}})"), payload, error));
-    EXPECT_EQ(error.code, save::SaveErrorCode::Encode);
+    savegame::SaveError error;
+    EXPECT_FALSE(savegame::fromJson(nlohmann::json::parse(R"({"p":{"$vec5":[1]}})"), payload, error));
+    EXPECT_EQ(error.code, savegame::SaveErrorCode::Encode);
     EXPECT_NE(error.message.find("$vec2, $vec3, $vec4, $quat, $float, $bytes"), std::string::npos) << error.message;
-    EXPECT_FALSE(save::fromJson(nlohmann::json::parse(R"({"#x":1})"), payload, error));
+    EXPECT_FALSE(savegame::fromJson(nlohmann::json::parse(R"({"#x":1})"), payload, error));
     EXPECT_NE(error.message.find("bad integer key"), std::string::npos) << error.message;
-    EXPECT_FALSE(save::fromJson(nlohmann::json::parse(R"({"v":{"$vec3":[1,2]}})"), payload, error));
+    EXPECT_FALSE(savegame::fromJson(nlohmann::json::parse(R"({"v":{"$vec3":[1,2]}})"), payload, error));
     EXPECT_NE(error.message.find("[x, y, z]"), std::string::npos) << error.message;
 
     // a Lua table with a sparse integer key and a non-UTF-8 string shows as R21 says
@@ -197,6 +197,6 @@ TEST(SaveGameValue, JsonViewIsABijection){
     const std::string luaPayload(bytes, n);
     lua_pop(L, 1);
     nlohmann::json view;
-    ASSERT_TRUE(save::toJson(luaPayload, view, error)) << error.message;
+    ASSERT_TRUE(savegame::toJson(luaPayload, view, error)) << error.message;
     EXPECT_EQ(view.dump(), R"({"#1":"a","#5":"b","s":{"$bytes":"/w=="}})");
 }

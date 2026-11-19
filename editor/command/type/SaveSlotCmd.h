@@ -28,7 +28,7 @@ namespace jasperengine::editor{
         Action action;
         std::string slot;               // "" for ClearAll
         uint64_t generation = 0;        // Restore
-        save::CorruptMode mode = save::CorruptMode::Flip;
+        savegame::CorruptMode mode = savegame::CorruptMode::Flip;
 
         struct SlotState {
             // file name -> bytes, before the step
@@ -43,7 +43,7 @@ namespace jasperengine::editor{
         bool snapshot(const std::vector<std::string>& names);
 
     public:
-        SaveSlotCmd(Action action, std::string slot, uint64_t generation = 0, save::CorruptMode mode = save::CorruptMode::Flip);
+        SaveSlotCmd(Action action, std::string slot, uint64_t generation = 0, savegame::CorruptMode mode = savegame::CorruptMode::Flip);
 
         bool execute() override;
         void undo() override;

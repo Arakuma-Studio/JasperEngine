@@ -58,14 +58,14 @@ namespace {
         TestTempDir dir{"savegame-lua"};
 
         void SetUp() override {
-            save::SaveGameStore::instance().setFolder(dir.path() / "saves");
+            savegame::SaveGameStore::instance().setFolder(dir.path() / "saves");
             runSaveLua("SaveGame.version = 1");
         }
 
         void TearDown() override {
-            save::SaveGameStore::instance().flush();
+            savegame::SaveGameStore::instance().flush();
             jobs::drainMainQueue();
-            save::SaveGameStore::instance().setFolder({});
+            savegame::SaveGameStore::instance().setFolder({});
             lua_State* L = LuaBinding::getLuaState();
             lua_pushnil(L);
             lua_setfield(L, LUA_REGISTRYINDEX, "jasperengine.savegame.migrations");
@@ -218,7 +218,7 @@ TEST_F(SaveGameLua, SlotNameErrorSuggests){
         assert(err.message == "Slot names use a-z, 0-9, '_' and '-' (got \"Slot 1\"); try \"slot-1\".", err.message)
         local data, rerr = SaveGame.read("My Save!")
         assert(data == nil and rerr.code == "name")
-        assert(rerr.message:find("try \"my-save-\""), rerr.message)
+        assert(rerr.message:find('try "my-save-"', 1, true), rerr.message)
         local _, eerr = SaveGame.write("slot1", {f = print})
         assert(eerr.code == "encode" and eerr.message == "cannot save a function at $.f" and eerr.path == "$.f")
         local ok2, err2 = pcall(SaveGame.write, 42, {})

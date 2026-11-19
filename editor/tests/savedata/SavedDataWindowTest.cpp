@@ -44,17 +44,17 @@ namespace {
         return files;
     }
 
-    void writeSlot(save::SaveGameStore& store, const std::string& slot, const std::string& json) {
+    void writeSlot(savegame::SaveGameStore& store, const std::string& slot, const std::string& json) {
         std::string payload;
-        save::SaveError error;
-        ASSERT_TRUE(save::fromJson(nlohmann::json::parse(json), payload, error)) << error.message;
-        ASSERT_TRUE(store.write(slot, "main", payload, save::WriteOptions(), nullptr).ok());
+        savegame::SaveError error;
+        ASSERT_TRUE(savegame::fromJson(nlohmann::json::parse(json), payload, error)) << error.message;
+        ASSERT_TRUE(store.write(slot, "main", payload, savegame::WriteOptions(), nullptr).ok());
         ASSERT_TRUE(store.flush(slot).ok());
     }
 
     struct SavesOnTempDir {
         test::TempDir dir;
-        save::SaveGameStore& store = save::SaveGameStore::instance();
+        savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
         SavesOnTempDir() { store.setFolder(dir.path() / "saves"); }
         ~SavesOnTempDir() {
             store.flush();
@@ -84,7 +84,7 @@ TEST(SavedDataWindow, DeleteRestoreAndCorruptAreUndoable) {
     ASSERT_TRUE(history.undo());
     EXPECT_EQ(savedFiles(env.saves()), original);
 
-    for (save::CorruptMode mode : {save::CorruptMode::Truncate, save::CorruptMode::Flip, save::CorruptMode::Header}) {
+    for (savegame::CorruptMode mode : {savegame::CorruptMode::Truncate, savegame::CorruptMode::Flip, savegame::CorruptMode::Header}) {
         ASSERT_TRUE(history.addCommand(new SaveSlotCmd(SaveSlotCmd::Action::Corrupt, "slot1", 0, mode)));
         EXPECT_NE(savedFiles(env.saves()), original);
         ASSERT_TRUE(history.undo());
@@ -102,7 +102,7 @@ TEST(SavedDataWindow, DeleteRestoreAndCorruptAreUndoable) {
 
     // the store reads what undo put back
     std::string payload;
-    save::ReadInfo info;
+    savegame::ReadInfo info;
     ASSERT_TRUE(env.store.read("slot1", "main", payload, info).ok());
     EXPECT_EQ(info.generation, 3u);
 }
@@ -137,7 +137,7 @@ TEST(SavedDataWindow, SettingsRoundTripAndOmitDefaults) {
     SaveGameSettings changed;
     changed.backups = 5;
     project.setSaveGameSettings(changed);
-    EXPECT_EQ(save::settings().backups, 5) << "Play's store takes it at its next write";
+    EXPECT_EQ(savegame::settings().backups, 5) << "Play's store takes it at its next write";
     encoded = YAML::Load(YAML::Dump(Stream::encodeProject(&project)));
     ASSERT_TRUE(encoded["saveGame"]);
     EXPECT_EQ(encoded["saveGame"]["backups"].as<int>(), 5);

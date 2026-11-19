@@ -22,7 +22,7 @@ namespace {
 
 }
 
-editor::SaveSlotCmd::SaveSlotCmd(Action action, std::string slot, uint64_t generation, save::CorruptMode mode)
+editor::SaveSlotCmd::SaveSlotCmd(Action action, std::string slot, uint64_t generation, savegame::CorruptMode mode)
     : action(action), slot(std::move(slot)), generation(generation), mode(mode){
 }
 
@@ -37,7 +37,7 @@ std::string editor::SaveSlotCmd::label() const{
 }
 
 bool editor::SaveSlotCmd::snapshot(const std::vector<std::string>& names){
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     slots.clear();
     for (const std::string& name : names){
         // what is queued for the slot lands first: the bytes kept are what the game wrote
@@ -56,17 +56,17 @@ bool editor::SaveSlotCmd::snapshot(const std::vector<std::string>& names){
 }
 
 bool editor::SaveSlotCmd::execute(){
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     error.clear();
     std::vector<std::string> names;
     if (action == Action::ClearAll){
-        for (const save::SlotInfo& info : store.list()) names.push_back(info.slot);
+        for (const savegame::SlotInfo& info : store.list()) names.push_back(info.slot);
     } else {
         names.push_back(slot);
     }
     if (!snapshot(names)) return false;
 
-    save::SaveError result;
+    savegame::SaveError result;
     if (action == Action::Delete || action == Action::ClearAll){
         for (const std::string& name : names){
             result = store.remove(name);
@@ -89,7 +89,7 @@ bool editor::SaveSlotCmd::execute(){
 }
 
 std::string editor::SaveSlotCmd::undoRefusal() const{
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     for (const auto& entry : slots){
         if (store.newestGeneration(entry.first) != entry.second.newestAfter)
             return "Can't undo \"" + label() + "\": the game saved that slot since.";
@@ -98,7 +98,7 @@ std::string editor::SaveSlotCmd::undoRefusal() const{
 }
 
 void editor::SaveSlotCmd::undo(){
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     const fs::path folder = store.folder();
     for (const auto& entry : slots){
         store.flush(entry.first);

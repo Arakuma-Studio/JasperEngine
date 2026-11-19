@@ -59,10 +59,10 @@ namespace {
         return status.c_str();
     }
 
-    std::string titleOf(const save::SlotInfo& info) {
+    std::string titleOf(const savegame::SlotInfo& info) {
         nlohmann::json meta;
-        save::SaveError error;
-        if (info.meta.empty() || !save::toJson(info.meta, meta, error) || !meta.is_object()) return "";
+        savegame::SaveError error;
+        if (info.meta.empty() || !savegame::toJson(info.meta, meta, error) || !meta.is_object()) return "";
         auto title = meta.find("title");
         return title != meta.end() && title->is_string() ? title->get<std::string>() : "";
     }
@@ -149,7 +149,7 @@ void SavedDataWindow::setOpen(bool open) {
     if (open) seenChanges = UINT64_MAX;
 }
 
-bool SavedDataWindow::run(SaveSlotCmd::Action action, const std::string& slot, uint64_t generation, save::CorruptMode mode,
+bool SavedDataWindow::run(SaveSlotCmd::Action action, const std::string& slot, uint64_t generation, savegame::CorruptMode mode,
                           std::string* error) {
     auto* command = new SaveSlotCmd(action, slot, generation, mode);
     command->setNoMerge();
@@ -166,7 +166,7 @@ bool SavedDataWindow::run(SaveSlotCmd::Action action, const std::string& slot, u
 }
 
 void SavedDataWindow::refresh(bool force) {
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     const double now = nowSeconds();
     // at most 4 times a second, from the store's memory for the slots it holds
     if (!force && (now - lastRefresh < 0.25 || (store.changeCount() == seenChanges && now - lastRefresh < 1.0))) return;
@@ -181,24 +181,24 @@ void SavedDataWindow::loadSelected() {
     selectedProblem.clear();
     backups.clear();
     if (selected.empty()) return;
-    save::SaveGameStore& store = save::SaveGameStore::instance();
-    save::SlotData data;
-    const save::SaveError error = store.readSlot(selected, data);
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
+    savegame::SlotData data;
+    const savegame::SaveError error = store.readSlot(selected, data);
     if (!error.ok()) {
         selectedProblem = error.message;
     } else {
         selectedJson = nlohmann::json::object();
         nlohmann::json namespaces = nlohmann::json::object();
-        for (const save::SaveSection& section : data.sections) {
+        for (const savegame::SaveSection& section : data.sections) {
             nlohmann::json value;
-            save::SaveError decode;
-            if (save::toJson(*section.payload, value, decode)) namespaces[section.name] = std::move(value);
+            savegame::SaveError decode;
+            if (savegame::toJson(*section.payload, value, decode)) namespaces[section.name] = std::move(value);
         }
         selectedJson["namespaces"] = std::move(namespaces);
         nlohmann::json meta, requirements;
-        save::SaveError ignored;
-        if (!data.info.meta.empty() && save::toJson(data.info.meta, meta, ignored)) selectedJson["meta"] = meta;
-        if (!data.info.requirements.empty() && save::toJson(data.info.requirements, requirements, ignored)) selectedJson["requires"] = requirements;
+        savegame::SaveError ignored;
+        if (!data.info.meta.empty() && savegame::toJson(data.info.meta, meta, ignored)) selectedJson["meta"] = meta;
+        if (!data.info.requirements.empty() && savegame::toJson(data.info.requirements, requirements, ignored)) selectedJson["requires"] = requirements;
         selectedJson["version"] = data.info.version;
         selectedJson["generation"] = data.info.generation;
     }
@@ -230,7 +230,7 @@ void SavedDataWindow::show() {
 }
 
 void SavedDataWindow::drawSlots() {
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     bool force = false;
     if (ImGui::Button("Refresh")) force = true;
     ImGui::SameLine();
@@ -262,7 +262,7 @@ void SavedDataWindow::drawSlots() {
         ImGui::TableSetupColumn("Status");
         ImGui::TableSetupColumn("Title");
         ImGui::TableHeadersRow();
-        for (const save::SlotInfo& info : slots) {
+        for (const savegame::SlotInfo& info : slots) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // a dot: written in this Play session
@@ -306,9 +306,9 @@ void SavedDataWindow::drawSelected() {
     if (ImGui::Button("Testing")) ImGui::OpenPopup("##SaveTesting");
     if (ImGui::BeginPopup("##SaveTesting")) {
         ImGui::TextDisabled("Corrupt Newest Generation");
-        if (ImGui::MenuItem("Truncate")) run(SaveSlotCmd::Action::Corrupt, selected, 0, save::CorruptMode::Truncate);
-        if (ImGui::MenuItem("Flip a Byte")) run(SaveSlotCmd::Action::Corrupt, selected, 0, save::CorruptMode::Flip);
-        if (ImGui::MenuItem("Overwrite Header")) run(SaveSlotCmd::Action::Corrupt, selected, 0, save::CorruptMode::Header);
+        if (ImGui::MenuItem("Truncate")) run(SaveSlotCmd::Action::Corrupt, selected, 0, savegame::CorruptMode::Truncate);
+        if (ImGui::MenuItem("Flip a Byte")) run(SaveSlotCmd::Action::Corrupt, selected, 0, savegame::CorruptMode::Flip);
+        if (ImGui::MenuItem("Overwrite Header")) run(SaveSlotCmd::Action::Corrupt, selected, 0, savegame::CorruptMode::Header);
         ImGui::EndPopup();
     }
     if (!selectedProblem.empty()) ImGui::TextWrapped("%s", selectedProblem.c_str());
@@ -335,7 +335,7 @@ void SavedDataWindow::drawSelected() {
             ImGui::TableSetupColumn("State");
             ImGui::TableSetupColumn("");
             ImGui::TableHeadersRow();
-            for (const save::BackupInfo& backup : backups) {
+            for (const savegame::BackupInfo& backup : backups) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Text("%llu", static_cast<unsigned long long>(backup.generation));
@@ -352,7 +352,7 @@ void SavedDataWindow::drawSelected() {
                 ImGui::PushID(static_cast<int>(backup.generation));
                 if (ImGui::SmallButton("Restore Backup")) {
                     std::string error;
-                    run(SaveSlotCmd::Action::Restore, selected, backup.generation, save::CorruptMode::Flip, &error);
+                    run(SaveSlotCmd::Action::Restore, selected, backup.generation, savegame::CorruptMode::Flip, &error);
                 }
                 ImGui::PopID();
             }

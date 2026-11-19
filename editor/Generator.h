@@ -444,7 +444,7 @@ namespace jasperengine::editor {
         // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
         // configuration), the log buffer and stack traces, DebugOverlay::configure
         static std::string debugInitSource(const DebugSettings& debugSettings);
-        // save::configure of Project Settings > Player > Saved Data ("" for the defaults)
+        // savegame::configure of Project Settings > Player > Saved Data ("" for the defaults)
         static std::string saveGameInitSource(const SaveGameSettings& settings);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game

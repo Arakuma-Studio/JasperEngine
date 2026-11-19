@@ -12,7 +12,7 @@ namespace jasperengine::editor {
     // Project Settings > Player > Saved Data (docs/saved-data.md, docs/specs/savegame.md R34):
     // project.yaml `saveGame:` (only the values away from the defaults), game.json `saveGame`, the
     // generated init of compiled games and the editor's Play (its next write) through
-    // save::configure. Described by its reflection table (editor/reflect/SaveGameReflect.cpp).
+    // savegame::configure. Described by its reflection table (editor/reflect/SaveGameReflect.cpp).
     struct SaveGameSettings {
         int backups = 2;
         int maxSlotMiB = 8;
@@ -25,8 +25,8 @@ namespace jasperengine::editor {
             maxSlotMiB = std::clamp(maxSlotMiB, 1, 64);
         }
 
-        save::SaveSettings engineSettings() const {
-            save::SaveSettings out;
+        savegame::SaveSettings engineSettings() const {
+            savegame::SaveSettings out;
             out.backups = backups;
             out.maxSlotMiB = maxSlotMiB;
             return out;

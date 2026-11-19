@@ -157,8 +157,8 @@ namespace jasperengine::player {
         // Lua mock answering logs a warning
         std::map<std::string, std::string> nativePlatformOnly;
 
-        // Player > Saved Data (save::configure before the first scene; written only away from the defaults)
-        save::SaveSettings saveGame;
+        // Player > Saved Data (savegame::configure before the first scene; written only away from the defaults)
+        savegame::SaveSettings saveGame;
 
         PlayerConfig();
 

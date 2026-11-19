@@ -2939,7 +2939,7 @@ void Engine::systemShutdown(){
 
     Engine::onShutdown.call();
     // what the game queued in SaveGame (its onShutdown handlers too) lands before anything goes
-    save::flushForLifecycle("the app quit");
+    savegame::flushForLifecycle("the app quit");
 
 #if JASPERENGINE_AUDIO_CAPTURE
     // a player's capture ends with the run; its voices are still in their scenes
@@ -2968,7 +2968,7 @@ void Engine::systemShutdown(){
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();
     // and what scripts saved in their onDestroy
-    save::flushForLifecycle("the app quit");
+    savegame::flushForLifecycle("the app quit");
 
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
@@ -3058,7 +3058,7 @@ void Engine::applyPause(){
 
     // a paused app may be killed without another call (after the handlers, which may set some):
     // the saves first, then the PlayerPrefs
-    save::flushForLifecycle("the app paused");
+    savegame::flushForLifecycle("the app paused");
     UserSettings::save();
 }
 

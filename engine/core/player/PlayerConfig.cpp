@@ -149,7 +149,7 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
-    if (saveGame != save::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
+    if (saveGame != savegame::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
     return out;
 }
 

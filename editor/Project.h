@@ -2218,7 +2218,7 @@ namespace jasperengine::editor{
         const ShaderCreationProjectSettings& getShaderCreationSettings() const;
         void setShaderCreationSettings(const ShaderCreationProjectSettings& settings);
         // Project Settings > Player > Saved Data: Play's SaveGame store takes them at its next
-        // write (save::configure), exports bake them in
+        // write (savegame::configure), exports bake them in
         const SaveGameSettings& getSaveGameSettings() const;
         void setSaveGameSettings(const SaveGameSettings& settings);
         // the project's shader warm-up list (ShaderWarmup), next to project.yaml

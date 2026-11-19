@@ -32,7 +32,7 @@
 
 namespace jasperengine::jobs { class SerialQueue; }
 
-namespace jasperengine::save {
+namespace jasperengine::savegame {
 
     // Project Settings > Player > Saved Data (editor SaveGameSettings, game.json saveGame)
     struct SaveSettings {

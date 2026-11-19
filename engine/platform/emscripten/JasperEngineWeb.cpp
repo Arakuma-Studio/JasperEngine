@@ -129,7 +129,7 @@ extern "C" {
 	    if (failed) {
 		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
-        if (jasperengine::save::SaveGameStore* saves = jasperengine::save::SaveGameStore::existing())
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
             saves->fileSystemSynced(!failed, errName ? errName : "", err ? err : "");
     }
 
@@ -142,7 +142,7 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE
     void jasper_web_storage_estimated(double used, double quota) {
-        if (jasperengine::save::SaveGameStore* saves = jasperengine::save::SaveGameStore::existing())
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
             saves->setStorageEstimate(static_cast<int64_t>(used), static_cast<int64_t>(quota));
     }
 

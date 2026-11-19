@@ -22,7 +22,7 @@
 #include <string_view>
 #include <vector>
 
-namespace jasperengine::save {
+namespace jasperengine::savegame {
 
     constexpr uint16_t FORMAT_VERSION = 1;
     constexpr size_t HEADER_FIXED_BYTES = 44;

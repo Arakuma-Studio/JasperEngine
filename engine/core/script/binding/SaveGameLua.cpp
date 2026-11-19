@@ -28,8 +28,8 @@ using namespace jasperengine;
 #ifndef DISABLE_LUA_BINDINGS
 namespace {
 
-    using save::SaveError;
-    using save::SaveErrorCode;
+    using savegame::SaveError;
+    using savegame::SaveErrorCode;
 
     const char* const MIGRATIONS_KEY = "jasperengine.savegame.migrations";
     const char* const OPTION_NAMES = "namespace, meta, requires, replaceAll, force, onComplete, owner";
@@ -70,7 +70,7 @@ namespace {
 
     void pushError(lua_State* L, const SaveError& error){
         lua_createtable(L, 0, 3);
-        setString(L, "code", save::errorCodeName(error.code));
+        setString(L, "code", savegame::errorCodeName(error.code));
         setString(L, "message", error.message);
         if (!error.path.empty()) setString(L, "path", error.path);
     }
@@ -92,7 +92,7 @@ namespace {
     // An encoded payload as a Lua value, nil when empty or unreadable
     void pushPayload(lua_State* L, const std::string& payload){
         SaveError ignored;
-        if (payload.empty() || !save::decodeLua(L, payload, ignored)) lua_pushnil(L);
+        if (payload.empty() || !savegame::decodeLua(L, payload, ignored)) lua_pushnil(L);
     }
 
     void pushNames(lua_State* L, const std::vector<std::string>& names){
@@ -103,7 +103,7 @@ namespace {
         }
     }
 
-    void pushSlotInfo(lua_State* L, const save::SlotInfo& info){
+    void pushSlotInfo(lua_State* L, const savegame::SlotInfo& info){
         lua_createtable(L, 0, 9);
         setString(L, "slot", info.slot);
         setInteger(L, "version", info.version);
@@ -120,7 +120,7 @@ namespace {
         setString(L, "status", info.status);
     }
 
-    void pushReadInfo(lua_State* L, const std::string& slot, const save::ReadInfo& info, uint32_t migratedFrom){
+    void pushReadInfo(lua_State* L, const std::string& slot, const savegame::ReadInfo& info, uint32_t migratedFrom){
         lua_createtable(L, 0, 10);
         setString(L, "slot", slot);
         setInteger(L, "version", info.version);
@@ -173,7 +173,7 @@ namespace {
         callback.fn.reset();
     }
 
-    save::WriteCallback makeWriteCallback(lua_State* L, int fnIndex, const AsyncOwner& owner, const std::string& slot){
+    savegame::WriteCallback makeWriteCallback(lua_State* L, int fnIndex, const AsyncOwner& owner, const std::string& slot){
         if (!fnIndex) return {};
         auto callback = std::make_shared<LuaCallback>();
         callback->fn.set(L, fnIndex);
@@ -197,9 +197,9 @@ namespace {
     // back to the store (the files keep the old version until the next write). On success, when
     // `decoded` is set, the migrated namespace table stays pushed (nothing pushed otherwise).
     // migratedFrom: the version the data had (0: no migration ran)
-    SaveError migrate(lua_State* L, const std::string& slot, save::SlotData& data, uint32_t& migratedFrom, bool keepTable){
+    SaveError migrate(lua_State* L, const std::string& slot, savegame::SlotData& data, uint32_t& migratedFrom, bool keepTable){
         migratedFrom = 0;
-        const uint32_t target = save::gameDataVersion();
+        const uint32_t target = savegame::gameDataVersion();
         const uint32_t from = data.info.version;
         if (from >= target) return {};
         const int top = lua_gettop(L);
@@ -208,7 +208,7 @@ namespace {
         for (uint32_t v = from; v < target; v++){
             if (lua_rawgeti(L, migrations, v) != LUA_TFUNCTION){
                 lua_settop(L, top);
-                return save::makeError(SaveErrorCode::Migration, "slot \"" + slot + "\" is version " + std::to_string(from) +
+                return savegame::makeError(SaveErrorCode::Migration, "slot \"" + slot + "\" is version " + std::to_string(from) +
                     " and SaveGame.version is " + std::to_string(target) + ", but no migration from " + std::to_string(v) +
                     " is registered (SaveGame.addMigration(" + std::to_string(v) + ", fn))");
             }
@@ -216,9 +216,9 @@ namespace {
         }
         lua_createtable(L, 0, static_cast<int>(data.sections.size()));
         int namespaces = lua_gettop(L);
-        for (const save::SaveSection& section : data.sections){
+        for (const savegame::SaveSection& section : data.sections){
             SaveError error;
-            if (!save::decodeLua(L, *section.payload, error)){
+            if (!savegame::decodeLua(L, *section.payload, error)){
                 lua_settop(L, top);
                 error.message = "slot \"" + slot + "\" namespace \"" + section.name + "\": " + error.message;
                 return error;
@@ -235,28 +235,28 @@ namespace {
             if (LuaBinding::pcallWithTraceback(L, 2, 1) != LUA_OK){
                 const std::string message = LuaBinding::getLuaStackErrorString(L, -1);
                 lua_settop(L, top);
-                return save::makeError(SaveErrorCode::Migration, "the migration from " + std::to_string(v) + " of slot \"" + slot +
+                return savegame::makeError(SaveErrorCode::Migration, "the migration from " + std::to_string(v) + " of slot \"" + slot +
                                        "\" failed: " + message);
             }
             if (!lua_istable(L, -1)){
                 lua_settop(L, top);
-                return save::makeError(SaveErrorCode::Migration, "the migration from " + std::to_string(v) + " of slot \"" + slot +
+                return savegame::makeError(SaveErrorCode::Migration, "the migration from " + std::to_string(v) + " of slot \"" + slot +
                                        "\" returned no table (return the namespaces)");
             }
             lua_replace(L, namespaces);
         }
-        std::vector<save::SaveSection> sections;
+        std::vector<savegame::SaveSection> sections;
         lua_pushnil(L);
         while (lua_next(L, namespaces) != 0){
-            if (lua_type(L, -2) != LUA_TSTRING || !save::isValidName(lua_tostring(L, -2), save::MAX_SECTION_NAME)){
+            if (lua_type(L, -2) != LUA_TSTRING || !savegame::isValidName(lua_tostring(L, -2), savegame::MAX_SECTION_NAME)){
                 const std::string key = lua_type(L, -2) == LUA_TSTRING ? luaString(L, -2) : std::string(luaL_typename(L, -2));
                 lua_settop(L, top);
-                return save::makeError(SaveErrorCode::Migration, "the migrations of slot \"" + slot + "\" returned the namespace \"" +
+                return savegame::makeError(SaveErrorCode::Migration, "the migrations of slot \"" + slot + "\" returned the namespace \"" +
                                        key + "\": names use 1-32 characters of a-z, 0-9, '_' and '-'");
             }
             std::string payload;
             SaveError error;
-            if (!save::encodeLua(L, -1, payload, error)){
+            if (!savegame::encodeLua(L, -1, payload, error)){
                 const std::string name = luaString(L, -2);
                 lua_settop(L, top);
                 error.message = "the migrations of slot \"" + slot + "\" namespace \"" + name + "\": " + error.message;
@@ -265,7 +265,7 @@ namespace {
             sections.push_back({luaString(L, -2), std::make_shared<const std::string>(std::move(payload))});
             lua_pop(L, 1);
         }
-        const SaveError error = save::SaveGameStore::instance().markMigrated(slot, target, sections);
+        const SaveError error = savegame::SaveGameStore::instance().markMigrated(slot, target, sections);
         if (!error.ok()){
             lua_settop(L, top);
             return error;
@@ -273,7 +273,7 @@ namespace {
         data.sections = sections;
         data.info.version = target;
         data.info.namespaces.clear();
-        for (const save::SaveSection& section : data.sections) data.info.namespaces.push_back(section.name);
+        for (const savegame::SaveSection& section : data.sections) data.info.namespaces.push_back(section.name);
         migratedFrom = from;
         if (keepTable){
             lua_pushvalue(L, namespaces);
@@ -286,10 +286,10 @@ namespace {
     }
 
     // Pushes data, info (or nil, err) for `nameSpace` of a slot the store returned
-    int pushRead(lua_State* L, const std::string& slot, const std::string& nameSpace, save::SlotData& data){
-        const uint32_t target = save::gameDataVersion();
+    int pushRead(lua_State* L, const std::string& slot, const std::string& nameSpace, savegame::SlotData& data){
+        const uint32_t target = savegame::gameDataVersion();
         if (data.info.version > target){
-            return pushNilFailure(L, save::makeError(SaveErrorCode::NewerVersion, "slot \"" + slot + "\" is version " +
+            return pushNilFailure(L, savegame::makeError(SaveErrorCode::NewerVersion, "slot \"" + slot + "\" is version " +
                 std::to_string(data.info.version) + " and SaveGame.version is " + std::to_string(target) +
                 ": a newer build of the game wrote it; it is left as it is"));
         }
@@ -304,20 +304,20 @@ namespace {
                 lua_pop(L, 1);
                 std::string names;
                 for (const std::string& name : data.info.namespaces) names += (names.empty() ? "" : ", ") + name;
-                return pushNilFailure(L, save::makeError(SaveErrorCode::NotFound, "slot \"" + slot + "\" has no namespace \"" +
+                return pushNilFailure(L, savegame::makeError(SaveErrorCode::NotFound, "slot \"" + slot + "\" has no namespace \"" +
                                       nameSpace + "\" (namespaces: " + (names.empty() ? std::string("none") : names) + ")"));
             }
         } else {
-            const save::SaveSection* found = nullptr;
-            for (const save::SaveSection& section : data.sections) if (section.name == nameSpace) found = &section;
+            const savegame::SaveSection* found = nullptr;
+            for (const savegame::SaveSection& section : data.sections) if (section.name == nameSpace) found = &section;
             if (!found){
                 std::string names;
                 for (const std::string& name : data.info.namespaces) names += (names.empty() ? "" : ", ") + name;
-                return pushNilFailure(L, save::makeError(SaveErrorCode::NotFound, "slot \"" + slot + "\" has no namespace \"" +
+                return pushNilFailure(L, savegame::makeError(SaveErrorCode::NotFound, "slot \"" + slot + "\" has no namespace \"" +
                                       nameSpace + "\" (namespaces: " + (names.empty() ? std::string("none") : names) + ")"));
             }
             SaveError decodeError;
-            if (!save::decodeLua(L, *found->payload, decodeError)) return pushNilFailure(L, decodeError);
+            if (!savegame::decodeLua(L, *found->payload, decodeError)) return pushNilFailure(L, decodeError);
         }
         pushReadInfo(L, slot, data.info, migratedFrom);
         return 2;
@@ -371,8 +371,8 @@ namespace {
         std::string slot, raise;
         if (!slotArgument(L, 1, "write", slot, raise)) return pushRaise(L, raise);
         if (lua_gettop(L) < 2) lua_settop(L, 2);
-        save::WriteOptions options;
-        options.version = save::gameDataVersion();
+        savegame::WriteOptions options;
+        options.version = savegame::gameDataVersion();
         std::string nameSpace = "main";
         int completeIndex = 0;
         AsyncOwner owner;
@@ -389,7 +389,7 @@ namespace {
                 } else if (key == "meta"){
                     if (type != LUA_TTABLE) return pushRaise(L, "SaveGame.write: option 'meta' must be a table");
                     SaveError error;
-                    if (!save::encodeLua(L, value, options.meta, error)){
+                    if (!savegame::encodeLua(L, value, options.meta, error)){
                         error.message = "meta: " + error.message;
                         lua_settop(L, 3);
                         return pushFailure(L, error);
@@ -404,7 +404,7 @@ namespace {
                         lua_pop(L, 1);
                     }
                     SaveError error;
-                    if (!save::encodeLua(L, value, options.requirements, error)) return pushFailure(L, error);
+                    if (!savegame::encodeLua(L, value, options.requirements, error)) return pushFailure(L, error);
                     options.hasRequirements = true;
                 } else if (key == "replaceAll"){
                     if (type != LUA_TBOOLEAN) return pushRaise(L, "SaveGame.write: option 'replaceAll' must be a boolean");
@@ -433,17 +433,17 @@ namespace {
         std::string payload;
         SaveError error;
         const auto started = std::chrono::steady_clock::now();
-        if (!save::encodeLua(L, 2, payload, error)) return pushFailure(L, error);
+        if (!savegame::encodeLua(L, 2, payload, error)) return pushFailure(L, error);
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         if (ms > 8.0 && warnedOptions().insert("slow:" + nameSpace).second){
             Log::warn("SaveGame: encoding \"%s\" took %.0f ms; split it into namespaces", nameSpace.c_str(), ms);
         }
 
-        save::SaveGameStore& store = save::SaveGameStore::instance();
+        savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
         // the slot's other namespaces are brought to this version first, so a write never mixes
         // data of two versions
-        save::SlotData data;
-        error = save::isValidName(slot, save::MAX_SLOT_NAME) ? store.readSlot(slot, data) : SaveError();
+        savegame::SlotData data;
+        error = savegame::isValidName(slot, savegame::MAX_SLOT_NAME) ? store.readSlot(slot, data) : SaveError();
         if (error.ok() && !data.sections.empty()){
             uint32_t migratedFrom = 0;
             error = migrate(L, slot, data, migratedFrom, false);
@@ -460,11 +460,11 @@ namespace {
         if (!slotArgument(L, 1, "read", slot, raise)) return pushRaise(L, raise);
         ReadOptions options;
         if (readOptions(L, 2, "read", options) == RAISE) return RAISE;
-        save::SlotData data;
-        const SaveError error = save::SaveGameStore::instance().readSlot(slot, data);
+        savegame::SlotData data;
+        const SaveError error = savegame::SaveGameStore::instance().readSlot(slot, data);
         if (!error.ok()) return pushNilFailure(L, error);
-        if (!save::isValidName(options.nameSpace, save::MAX_SECTION_NAME)){
-            return pushNilFailure(L, save::makeError(SaveErrorCode::Name, "Namespace names use 1-32 characters of a-z, 0-9, '_' and '-' (got \"" +
+        if (!savegame::isValidName(options.nameSpace, savegame::MAX_SECTION_NAME)){
+            return pushNilFailure(L, savegame::makeError(SaveErrorCode::Name, "Namespace names use 1-32 characters of a-z, 0-9, '_' and '-' (got \"" +
                                   options.nameSpace + "\")"));
         }
         return pushRead(L, slot, options.nameSpace, data);
@@ -488,7 +488,7 @@ namespace {
         callback->owner = options.owner;
         callback->slot = slot;
         callback->nameSpace = options.nameSpace;
-        save::SaveGameStore::instance().readSlotAsync(slot, [callback](const SaveError& error, const save::SlotData& loaded){
+        savegame::SaveGameStore::instance().readSlotAsync(slot, [callback](const SaveError& error, const savegame::SlotData& loaded){
             lua_State* state = LuaBinding::getLuaState();
             if (state && callback->fn.isSet() && AsyncOwners::alive(callback->owner)){
                 const int top = lua_gettop(state);
@@ -496,7 +496,7 @@ namespace {
                 int results;
                 if (!error.ok()) results = pushNilFailure(state, error);
                 else {
-                    save::SlotData data = loaded;
+                    savegame::SlotData data = loaded;
                     results = pushRead(state, callback->slot, callback->nameSpace, data);
                 }
                 if (LuaBinding::pcallWithTraceback(state, results, 0) != LUA_OK){
@@ -511,7 +511,7 @@ namespace {
     }
 
     int listImpl(lua_State* L){
-        const std::vector<save::SlotInfo> slots = save::SaveGameStore::instance().list();
+        const std::vector<savegame::SlotInfo> slots = savegame::SaveGameStore::instance().list();
         lua_createtable(L, static_cast<int>(slots.size()), 0);
         for (size_t i = 0; i < slots.size(); i++){
             pushSlotInfo(L, slots[i]);
@@ -523,8 +523,8 @@ namespace {
     int infoImpl(lua_State* L){
         std::string slot, raise;
         if (!slotArgument(L, 1, "info", slot, raise)) return pushRaise(L, raise);
-        save::SlotInfo info;
-        const SaveError error = save::SaveGameStore::instance().info(slot, info);
+        savegame::SlotInfo info;
+        const SaveError error = savegame::SaveGameStore::instance().info(slot, info);
         if (!error.ok()) return pushNilFailure(L, error);
         pushSlotInfo(L, info);
         return 1;
@@ -533,14 +533,14 @@ namespace {
     int existsImpl(lua_State* L){
         std::string slot, raise;
         if (!slotArgument(L, 1, "exists", slot, raise)) return pushRaise(L, raise);
-        lua_pushboolean(L, save::SaveGameStore::instance().exists(slot) ? 1 : 0);
+        lua_pushboolean(L, savegame::SaveGameStore::instance().exists(slot) ? 1 : 0);
         return 1;
     }
 
     int deleteImpl(lua_State* L){
         std::string slot, raise;
         if (!slotArgument(L, 1, "delete", slot, raise)) return pushRaise(L, raise);
-        const SaveError error = save::SaveGameStore::instance().remove(slot);
+        const SaveError error = savegame::SaveGameStore::instance().remove(slot);
         if (!error.ok()) return pushFailure(L, error);
         lua_pushboolean(L, 1);
         return 1;
@@ -552,7 +552,7 @@ namespace {
             std::string raise;
             if (!slotArgument(L, 1, "flush", slot, raise)) return pushRaise(L, raise);
         }
-        const SaveError error = save::SaveGameStore::instance().flush(slot, std::chrono::seconds(2), "SaveGame.flush returned");
+        const SaveError error = savegame::SaveGameStore::instance().flush(slot, std::chrono::seconds(2), "SaveGame.flush returned");
         if (!error.ok()) return pushFailure(L, error);
         lua_pushboolean(L, 1);
         return 1;
@@ -561,12 +561,12 @@ namespace {
     int getBackupsImpl(lua_State* L){
         std::string slot, raise;
         if (!slotArgument(L, 1, "getBackups", slot, raise)) return pushRaise(L, raise);
-        std::vector<save::BackupInfo> backups;
-        const SaveError error = save::SaveGameStore::instance().backups(slot, backups);
+        std::vector<savegame::BackupInfo> backups;
+        const SaveError error = savegame::SaveGameStore::instance().backups(slot, backups);
         if (!error.ok()) return pushNilFailure(L, error);
         lua_createtable(L, static_cast<int>(backups.size()), 0);
         for (size_t i = 0; i < backups.size(); i++){
-            const save::BackupInfo& backup = backups[i];
+            const savegame::BackupInfo& backup = backups[i];
             lua_createtable(L, 0, 6);
             setInteger(L, "generation", static_cast<int64_t>(backup.generation));
             lua_pushnumber(L, backup.savedAt);
@@ -589,7 +589,7 @@ namespace {
         if (!isAbsent(L, 3) && lua_type(L, 3) != LUA_TFUNCTION)
             return pushRaise(L, "SaveGame.restoreBackup: onComplete must be a function(ok, err)");
         const uint64_t generation = static_cast<uint64_t>(lua_tointeger(L, 2));
-        const SaveError error = save::SaveGameStore::instance().restore(slot, generation,
+        const SaveError error = savegame::SaveGameStore::instance().restore(slot, generation,
             makeWriteCallback(L, isAbsent(L, 3) ? 0 : 3, AsyncOwner(), slot));
         if (!error.ok()) return pushFailure(L, error);
         lua_pushboolean(L, 1);
@@ -602,12 +602,12 @@ namespace {
             std::string raise;
             if (!slotArgument(L, 1, "unload", slot, raise)) return pushRaise(L, raise);
         }
-        save::SaveGameStore::instance().unload(slot);
+        savegame::SaveGameStore::instance().unload(slot);
         return 0;
     }
 
     int storageImpl(lua_State* L){
-        const save::StorageInfo info = save::SaveGameStore::instance().storage();
+        const savegame::StorageInfo info = savegame::SaveGameStore::instance().storage();
         lua_createtable(L, 0, 3);
         setInteger(L, "used", info.used);
         setInteger(L, "quota", info.quota);
@@ -644,7 +644,7 @@ namespace {
     // SaveGame.version lives in the engine (the store and the tools read it)
     int luaIndex(lua_State* L){
         if (lua_type(L, 2) == LUA_TSTRING && std::string(lua_tostring(L, 2)) == "version"){
-            lua_pushinteger(L, static_cast<lua_Integer>(save::gameDataVersion()));
+            lua_pushinteger(L, static_cast<lua_Integer>(savegame::gameDataVersion()));
             return 1;
         }
         lua_pushnil(L);
@@ -655,7 +655,7 @@ namespace {
         if (lua_type(L, 2) == LUA_TSTRING && std::string(lua_tostring(L, 2)) == "version"){
             if (!lua_isinteger(L, 3) || lua_tointeger(L, 3) < 1 || lua_tointeger(L, 3) > 0x7FFFFFFF)
                 return luaL_error(L, "SaveGame.version must be an integer >= 1");
-            save::setGameDataVersion(static_cast<uint32_t>(lua_tointeger(L, 3)));
+            savegame::setGameDataVersion(static_cast<uint32_t>(lua_tointeger(L, 3)));
             return 0;
         }
         lua_rawset(L, 1);
@@ -684,7 +684,7 @@ void LuaBinding::registerSaveGameClasses(lua_State* L){
         {nullptr, nullptr},
     };
     // a new state (Play started again) starts at version 1 with no migrations
-    save::setGameDataVersion(1);
+    savegame::setGameDataVersion(1);
     luaL_newlib(L, functions);
     lua_createtable(L, 0, 2);
     lua_pushcfunction(L, luaIndex);

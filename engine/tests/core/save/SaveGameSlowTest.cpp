@@ -37,7 +37,7 @@ namespace fs = std::filesystem;
 
 TEST(SaveGameStoreSlow, FlushPastTheLimitLogsAbandoned){
     TestTempDir dir("savegame-slow");
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     store.setFolder(dir.path() / "saves");
     std::atomic<bool> entered{false};
     std::atomic<bool> release{false};
@@ -49,9 +49,9 @@ TEST(SaveGameStoreSlow, FlushPastTheLimitLogsAbandoned){
         return {};
     });
     std::string payload;
-    save::SaveError error;
-    ASSERT_TRUE(save::fromJson(nlohmann::json::parse(R"({"a":1})"), payload, error));
-    ASSERT_TRUE(store.write("slot1", "main", payload, save::WriteOptions(), nullptr).ok());
+    savegame::SaveError error;
+    ASSERT_TRUE(savegame::fromJson(nlohmann::json::parse(R"({"a":1})"), payload, error));
+    ASSERT_TRUE(store.write("slot1", "main", payload, savegame::WriteOptions(), nullptr).ok());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!entered && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_TRUE(entered.load()) << "the worker started the write";
@@ -95,7 +95,7 @@ namespace {
             std::string slot;
             uint64_t generation = 0;
             bool corrupt = false;
-            if (save::parseSlotFileName(it->path().filename().string(), slot, generation, corrupt) && !corrupt)
+            if (savegame::parseSlotFileName(it->path().filename().string(), slot, generation, corrupt) && !corrupt)
                 newest = std::max(newest, generation);
         }
         return newest;
@@ -106,7 +106,7 @@ namespace {
 TEST(SaveGameKillSlow, KillDuringWritesLeavesAReadableSlot){
     TestTempDir dir("savegame-kill");
     const fs::path saves = dir.path() / "saves";
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     std::mt19937 random(12345);
     std::uniform_int_distribution<int> delay(0, 120);
     for (int round = 0; round < 20; round++){
@@ -125,13 +125,13 @@ TEST(SaveGameKillSlow, KillDuringWritesLeavesAReadableSlot){
         ASSERT_TRUE(WIFSIGNALED(status)) << "the loop ran until it was killed";
 
         store.setFolder(saves);
-        save::SlotData data;
-        const save::SaveError error = store.readSlot("slot1", data);
+        savegame::SlotData data;
+        const savegame::SaveError error = store.readSlot("slot1", data);
         ASSERT_TRUE(error.ok()) << error.message;
         ASSERT_EQ(data.sections.size(), 1u);
         nlohmann::json json;
-        save::SaveError decode;
-        ASSERT_TRUE(save::toJson(*data.sections[0].payload, json, decode)) << decode.message;
+        savegame::SaveError decode;
+        ASSERT_TRUE(savegame::toJson(*data.sections[0].payload, json, decode)) << decode.message;
         const int64_t i = json["i"].get<int64_t>();
         const std::string& blob = json["blob"].get_ref<const std::string&>();
         ASSERT_EQ(blob.size(), 4u * 1024u * 1024u);

@@ -33,7 +33,7 @@ extern "C" {
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::save;
+using namespace jasperengine::savegame;
 
 namespace {
 
@@ -130,7 +130,7 @@ namespace {
 
 }
 
-namespace jasperengine::save {
+namespace jasperengine::savegame {
 
     struct WriteJob {
         std::string slot;
@@ -602,36 +602,36 @@ namespace jasperengine::save {
 
 // ================================================================ free functions
 
-void save::configure(const SaveSettings& settings){
+void savegame::configure(const SaveSettings& settings){
     configuredBackups.store(std::clamp(settings.backups, 0, 9));
     configuredMaxSlotMiB.store(std::clamp(settings.maxSlotMiB, 1, 64));
 }
 
-SaveSettings save::settings(){
+SaveSettings savegame::settings(){
     SaveSettings out;
     out.backups = configuredBackups.load();
     out.maxSlotMiB = configuredMaxSlotMiB.load();
     return out;
 }
 
-void save::setGameDataVersion(uint32_t version){
+void savegame::setGameDataVersion(uint32_t version){
     dataVersion.store(std::max<uint32_t>(version, 1));
 }
 
-uint32_t save::gameDataVersion(){
+uint32_t savegame::gameDataVersion(){
     return dataVersion.load();
 }
 
-void save::flushForLifecycle(const char* when){
+void savegame::flushForLifecycle(const char* when){
     if (!storeInstance) return;
     storeInstance->flush({}, std::chrono::seconds(2), when);
 }
 
-std::string save::slotFileName(std::string_view slot, uint64_t generation){
+std::string savegame::slotFileName(std::string_view slot, uint64_t generation){
     return std::string(slot) + ".g" + std::to_string(generation) + ".jsave";
 }
 
-bool save::parseSlotFileName(std::string_view name, std::string& slot, uint64_t& generation, bool& corrupt){
+bool savegame::parseSlotFileName(std::string_view name, std::string& slot, uint64_t& generation, bool& corrupt){
     corrupt = false;
     constexpr std::string_view corruptSuffix = ".corrupt";
     if (name.size() > corruptSuffix.size() && name.substr(name.size() - corruptSuffix.size()) == corruptSuffix){

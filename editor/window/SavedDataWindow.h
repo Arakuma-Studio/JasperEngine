@@ -37,21 +37,21 @@ namespace jasperengine::editor {
         // One undoable step of the project history; a failure is told in the Console and the
         // status bar, and returned
         bool run(SaveSlotCmd::Action action, const std::string& slot, uint64_t generation = 0,
-                 save::CorruptMode mode = save::CorruptMode::Flip, std::string* error = nullptr);
+                 savegame::CorruptMode mode = savegame::CorruptMode::Flip, std::string* error = nullptr);
 
     private:
         Project* project;
         bool windowOpen = false;
         bool focusRequested = false;
 
-        std::vector<save::SlotInfo> slots;
+        std::vector<savegame::SlotInfo> slots;
         uint64_t seenChanges = UINT64_MAX;
         double lastRefresh = -1.0;
         std::string selected;
         // the selected slot as read (refreshed with the list)
         nlohmann::json selectedJson;
         std::string selectedProblem;
-        std::vector<save::BackupInfo> backups;
+        std::vector<savegame::BackupInfo> backups;
 
         void refresh(bool force);
         void loadSelected();

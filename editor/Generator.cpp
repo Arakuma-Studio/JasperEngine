@@ -2928,10 +2928,10 @@ std::string editor::Generator::saveGameInitSource(const SaveGameSettings& settin
     if (settings == SaveGameSettings()) return "";
     std::string out;
     out += "    {\n";
-    out += "        save::SaveSettings saveSettings;\n";
+    out += "        savegame::SaveSettings saveSettings;\n";
     out += "        saveSettings.backups = " + std::to_string(settings.backups) + ";\n";
     out += "        saveSettings.maxSlotMiB = " + std::to_string(settings.maxSlotMiB) + ";\n";
-    out += "        save::configure(saveSettings);\n";
+    out += "        savegame::configure(saveSettings);\n";
     out += "    }\n";
     return out;
 }

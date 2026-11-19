@@ -147,25 +147,25 @@ int main(int argc, char** argv) {
 
     if (std::strcmp(mode, "savegame_loop") == 0) {
         // each snapshot is whole and tells which one it is: {"i": n, "blob": 4 MiB of 'a' + n % 26}
-        save::SaveGameStore& store = save::SaveGameStore::instance();
+        savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
         store.setFolder(root / "saves");
         const bool inPlace = std::getenv("JASPER_SAVEGAME_INPLACE") != nullptr;
         for (int64_t i = 1;; i++) {
             std::string payload;
-            save::SaveError error;
+            savegame::SaveError error;
             nlohmann::json value = {{"i", i}, {"blob", std::string(4 * 1024 * 1024, static_cast<char>('a' + i % 26))}};
-            if (!save::fromJson(value, payload, error)) return 3;
+            if (!savegame::fromJson(value, payload, error)) return 3;
             if (inPlace) {
-                save::SaveFile file;
+                savegame::SaveFile file;
                 file.generation = 1;
                 file.sections.push_back({"main", std::make_shared<const std::string>(std::move(payload))});
-                const std::string bytes = save::buildSaveFile(file);
+                const std::string bytes = savegame::buildSaveFile(file);
                 std::filesystem::create_directories(root / "saves");
                 std::ofstream(root / "saves" / "slot1.g1.jsave", std::ios::binary | std::ios::trunc)
                     .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
                 continue;
             }
-            if (!store.write("slot1", "main", std::move(payload), save::WriteOptions(), nullptr).ok()) return 3;
+            if (!store.write("slot1", "main", std::move(payload), savegame::WriteOptions(), nullptr).ok()) return 3;
             store.flush("slot1");
             jobs::drainMainQueue();
         }

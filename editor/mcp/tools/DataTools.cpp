@@ -5,7 +5,7 @@
 // PlayerPrefs store. The editor and a game in Play share it (UserSettingsStore, the file
 // .jasperengine/user/rundata/UserSettings.xml), so what this tool changes a running game sees
 // at once, and what the game wrote is listed here. With store "saves" it works on the SaveGame
-// slots (docs/saved-data.md) of the store the game uses in Play (save::SaveGameStore), which the
+// slots (docs/saved-data.md) of the store the game uses in Play (savegame::SaveGameStore), which the
 // Saved Data window shows too; its destructive actions are the window's undo steps (SaveSlotCmd).
 #include "McpTools.h"
 #include "W4Shared.h"
@@ -69,26 +69,26 @@ std::string storeFile(McpContext& ctx) {
 Json payloadJson(const std::string& payload) {
     if (payload.empty()) return nullptr;
     Json out;
-    save::SaveError error;
-    if (!save::toJson(payload, out, error)) return nullptr;
+    savegame::SaveError error;
+    if (!savegame::toJson(payload, out, error)) return nullptr;
     return out;
 }
 
-Json slotInfoJson(const save::SlotInfo& info) {
+Json slotInfoJson(const savegame::SlotInfo& info) {
     return Json{{"slot", info.slot}, {"version", info.version}, {"saved_at", info.savedAt}, {"size", info.size},
                 {"generation", info.generation}, {"generations", info.generations}, {"namespaces", info.namespaces},
                 {"meta", payloadJson(info.meta)}, {"requires", payloadJson(info.requirements)}, {"status", info.status}};
 }
 
-std::string slotNames(save::SaveGameStore& store) {
+std::string slotNames(savegame::SaveGameStore& store) {
     std::string names;
-    for (const save::SlotInfo& info : store.list()) names += (names.empty() ? "" : ", ") + info.slot;
+    for (const savegame::SlotInfo& info : store.list()) names += (names.empty() ? "" : ", ") + info.slot;
     return names.empty() ? "none" : names;
 }
 
 // The undoable steps (the Saved Data window's)
 bool runSlotCommand(const CallPtr& call, SaveSlotCmd::Action action, const std::string& slot, uint64_t generation,
-                    save::CorruptMode mode) {
+                    savegame::CorruptMode mode) {
     Project* project = call->ctx().project();
     auto* command = new SaveSlotCmd(action, slot, generation, mode);
     command->setNoMerge();
@@ -102,7 +102,7 @@ bool runSlotCommand(const CallPtr& call, SaveSlotCmd::Action action, const std::
 
 void savesTool(const CallPtr& call, const std::string& action, const std::string& key) {
     const Json& args = call->args();
-    save::SaveGameStore& store = save::SaveGameStore::instance();
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     Project* project = call->ctx().project();
     const std::string folder = project ? w4::projectRelative(project, store.folder()) : store.folder().string();
     const std::string nameSpace = args.contains("namespace") && args["namespace"].is_string() ? args["namespace"].get<std::string>() : "main";
@@ -110,7 +110,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
     if (action == "list") {
         Json slots = Json::array();
         std::string text;
-        for (const save::SlotInfo& info : store.list()) {
+        for (const savegame::SlotInfo& info : store.list()) {
             slots.push_back(slotInfoJson(info));
             text += "\n" + info.slot + ": version " + std::to_string(info.version) + ", " + std::to_string(info.size) + " bytes, " +
                     std::to_string(info.generations) + " generation(s), " + info.status;
@@ -121,7 +121,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
     }
     if (action == "clear") {
         const size_t count = store.list().size();
-        if (count && !runSlotCommand(call, SaveSlotCmd::Action::ClearAll, "", 0, save::CorruptMode::Flip)) return;
+        if (count && !runSlotCommand(call, SaveSlotCmd::Action::ClearAll, "", 0, savegame::CorruptMode::Flip)) return;
         call->ok("Deleted all " + std::to_string(count) + (count == 1 ? " slot" : " slots") + " (undo brings them back).",
                  Json{{"deleted", count}, {"folder", folder}});
         return;
@@ -136,23 +136,23 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
             call->fail("get: cannot read the file " + path.string() + " (" + ec.message() + "); `file` is a project-relative or absolute path of a .jsave.");
             return;
         }
-        if (size > save::MAX_FILE_BYTES) {
+        if (size > savegame::MAX_FILE_BYTES) {
             call->fail("get: " + path.filename().string() + " is " + std::to_string(size) + " bytes, above the 64 MiB a save file may be.");
             return;
         }
         std::ifstream in(path, std::ios::binary);
         std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        save::SaveFile file;
-        save::SaveError error;
-        if (!save::parseSaveFile(bytes, file, error)) {
-            call->fail("get: " + path.filename().string() + " is not a readable save file (" + std::string(save::errorCodeName(error.code)) + ": " + error.message + ").");
+        savegame::SaveFile file;
+        savegame::SaveError error;
+        if (!savegame::parseSaveFile(bytes, file, error)) {
+            call->fail("get: " + path.filename().string() + " is not a readable save file (" + std::string(savegame::errorCodeName(error.code)) + ": " + error.message + ").");
             return;
         }
-        save::SaveMetadata metadata;
-        save::splitMetadata(file.metadata, metadata);
+        savegame::SaveMetadata metadata;
+        savegame::splitMetadata(file.metadata, metadata);
         Json namespaces = Json::object();
         std::vector<std::string> names;
-        for (const save::SaveSection& section : file.sections) {
+        for (const savegame::SaveSection& section : file.sections) {
             namespaces[section.name] = payloadJson(*section.payload);
             names.push_back(section.name);
         }
@@ -167,8 +167,8 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         call->fail(action + ": `key` (the slot name) is required. Slots: " + slotNames(store) + ".");
         return;
     }
-    if (!save::isValidName(key, save::MAX_SLOT_NAME)) {
-        call->fail("Slot names use a-z, 0-9, '_' and '-' (got \"" + key + "\"); try \"" + save::suggestName(key, save::MAX_SLOT_NAME) + "\".");
+    if (!savegame::isValidName(key, savegame::MAX_SLOT_NAME)) {
+        call->fail("Slot names use a-z, 0-9, '_' and '-' (got \"" + key + "\"); try \"" + savegame::suggestName(key, savegame::MAX_SLOT_NAME) + "\".");
         return;
     }
     const bool known = store.exists(key);
@@ -179,14 +179,14 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
 
     if (action == "get") {
         const uint64_t generation = args.contains("generation") && args["generation"].is_number_integer() ? args["generation"].get<uint64_t>() : 0;
-        save::SlotData data;
-        const save::SaveError error = store.readSlot(key, data, generation);
+        savegame::SlotData data;
+        const savegame::SaveError error = store.readSlot(key, data, generation);
         if (!error.ok()) {
-            call->fail("get: " + std::string(save::errorCodeName(error.code)) + ": " + error.message);
+            call->fail("get: " + std::string(savegame::errorCodeName(error.code)) + ": " + error.message);
             return;
         }
-        const save::SaveSection* found = nullptr;
-        for (const save::SaveSection& section : data.sections) if (section.name == nameSpace) found = &section;
+        const savegame::SaveSection* found = nullptr;
+        for (const savegame::SaveSection& section : data.sections) if (section.name == nameSpace) found = &section;
         if (!found) {
             call->fail("get: slot \"" + key + "\" has no namespace \"" + nameSpace + "\". Namespaces: " + Json(data.info.namespaces).dump() + ".");
             return;
@@ -209,29 +209,29 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
             call->fail("\"value\" must be an object or array in SaveGame JSON; vectors are {\"$vec3\": [x, y, z]}");
             return;
         }
-        if (!save::isValidName(nameSpace, save::MAX_SECTION_NAME)) {
+        if (!savegame::isValidName(nameSpace, savegame::MAX_SECTION_NAME)) {
             call->fail("set: namespace names use 1-32 characters of a-z, 0-9, '_' and '-' (got \"" + nameSpace + "\").");
             return;
         }
         std::string payload;
-        save::SaveError error;
-        if (!save::fromJson(args["value"], payload, error)) {
+        savegame::SaveError error;
+        if (!savegame::fromJson(args["value"], payload, error)) {
             call->fail("set: " + error.message);
             return;
         }
-        save::WriteOptions options;
+        savegame::WriteOptions options;
         const bool playing = project && project->isAnyScenePlaying();
         if (args.contains("version") && args["version"].is_number_integer()) {
             options.version = static_cast<uint32_t>(args["version"].get<uint64_t>());
         } else if (playing) {
-            options.version = save::gameDataVersion();
+            options.version = savegame::gameDataVersion();
         } else {
-            save::SlotInfo info;
+            savegame::SlotInfo info;
             options.version = known && store.info(key, info).ok() && info.version > 0 ? info.version : 1;
         }
         error = store.write(key, nameSpace, std::move(payload), options, nullptr);
-        if (error.code == save::SaveErrorCode::NewerVersion) {
-            save::SlotInfo info;
+        if (error.code == savegame::SaveErrorCode::NewerVersion) {
+            savegame::SlotInfo info;
             store.info(key, info);
             call->fail("slot \"" + key + "\" is version " + std::to_string(info.version) + " and this game writes " +
                        std::to_string(options.version) + ": pass version " + std::to_string(info.version) +
@@ -240,7 +240,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         }
         if (error.ok()) error = store.flush(key);
         if (!error.ok()) {
-            call->fail("set: " + std::string(save::errorCodeName(error.code)) + ": " + error.message);
+            call->fail("set: " + std::string(savegame::errorCodeName(error.code)) + ": " + error.message);
             return;
         }
         call->ok("Wrote " + key + "/" + nameSpace + " at version " + std::to_string(options.version) + " (generation " +
@@ -250,18 +250,18 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
     }
 
     if (action == "delete") {
-        if (!runSlotCommand(call, SaveSlotCmd::Action::Delete, key, 0, save::CorruptMode::Flip)) return;
+        if (!runSlotCommand(call, SaveSlotCmd::Action::Delete, key, 0, savegame::CorruptMode::Flip)) return;
         call->ok("Deleted slot \"" + key + "\" (undo brings it back).", Json{{"slot", key}, {"deleted", true}});
         return;
     }
 
     if (action == "corrupt") {
         const std::string modeName = args.value("mode", "flip");
-        const save::CorruptMode mode = modeName == "truncate" ? save::CorruptMode::Truncate
-                                     : modeName == "header" ? save::CorruptMode::Header : save::CorruptMode::Flip;
+        const savegame::CorruptMode mode = modeName == "truncate" ? savegame::CorruptMode::Truncate
+                                     : modeName == "header" ? savegame::CorruptMode::Header : savegame::CorruptMode::Flip;
         const uint64_t generation = store.newestGeneration(key);
         if (!runSlotCommand(call, SaveSlotCmd::Action::Corrupt, key, 0, mode)) return;
-        call->ok("Corrupted " + save::slotFileName(key, generation) + " (" + modeName + ").",
+        call->ok("Corrupted " + savegame::slotFileName(key, generation) + " (" + modeName + ").",
                  Json{{"slot", key}, {"generation", generation}, {"mode", modeName},
                       {"next", "Read it in the game (eval_lua \"return SaveGame.read('" + key + "')\") to see the recovery, or "
                                "user_settings {store: \"saves\", action: \"get\", key: \"" + key + "\"}."}});
@@ -270,20 +270,20 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
 
     if (action == "restore") {
         if (!args.contains("generation") || !args["generation"].is_number_integer()) {
-            std::vector<save::BackupInfo> backups;
+            std::vector<savegame::BackupInfo> backups;
             store.backups(key, backups);
             std::string list;
-            for (const save::BackupInfo& backup : backups)
+            for (const savegame::BackupInfo& backup : backups)
                 list += (list.empty() ? "" : ", ") + std::to_string(backup.generation) + (backup.valid ? "" : " (corrupt)");
             call->fail("restore: `generation` is required. Generations of \"" + key + "\": " + list + ".");
             return;
         }
         const uint64_t generation = args["generation"].get<uint64_t>();
-        std::vector<save::BackupInfo> backups;
+        std::vector<savegame::BackupInfo> backups;
         store.backups(key, backups);
-        const save::BackupInfo* chosen = nullptr;
+        const savegame::BackupInfo* chosen = nullptr;
         std::string list;
-        for (const save::BackupInfo& backup : backups) {
+        for (const savegame::BackupInfo& backup : backups) {
             if (backup.generation == generation) chosen = &backup;
             list += (list.empty() ? "" : ", ") + std::to_string(backup.generation);
         }
@@ -296,7 +296,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
                        chosen->problem + ").");
             return;
         }
-        if (!runSlotCommand(call, SaveSlotCmd::Action::Restore, key, generation, save::CorruptMode::Flip)) return;
+        if (!runSlotCommand(call, SaveSlotCmd::Action::Restore, key, generation, savegame::CorruptMode::Flip)) return;
         call->ok("Restored generation " + std::to_string(generation) + " of \"" + key + "\" as generation " +
                  std::to_string(store.newestGeneration(key)) + ".",
                  Json{{"slot", key}, {"restored", generation}, {"generation", store.newestGeneration(key)}});

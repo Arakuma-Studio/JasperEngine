@@ -26,7 +26,7 @@
 
 typedef struct lua_State lua_State;
 
-namespace jasperengine::save {
+namespace jasperengine::savegame {
 
     enum class SaveErrorCode { None, Name, Encode, TooLarge, NotFound, Corrupt, NewerVersion, NewerFormat,
                                Migration, Io, Quota, Unavailable, Cancelled };

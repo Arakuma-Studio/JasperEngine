@@ -670,5 +670,8 @@ without the change because the code it calls does not exist, plus the specific r
   slot back; `GATE=savegame-quota` (baseline key `project` points it at the savegame build) sets the
   site quota to 64 KiB with `Storage.overrideQuotaForOrigin` and expects `quota` from the 256 KiB
   slot's `onComplete`.
+- **D-m Namespace `jasperengine::savegame`.** The C++ API is in `jasperengine::savegame`, not `::save`: with
+  `using namespace jasperengine`, a namespace called `save` breaks every unqualified call of a function
+  named `save` in a file that sees it (the editor's Recorder window was the first).
 - **D-l Android kill and relaunch.** `tools/android-emulator-test.sh` gains `--kill-relaunch-after
   TEXT` (HOME, `am kill`, relaunch; the expectations then apply to the new process).

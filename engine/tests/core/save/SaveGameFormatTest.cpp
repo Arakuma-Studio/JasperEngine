@@ -26,23 +26,23 @@ namespace {
 
     std::string savePayload(const char* json){
         std::string payload;
-        save::SaveError error;
-        EXPECT_TRUE(save::fromJson(nlohmann::json::parse(json), payload, error)) << error.message;
+        savegame::SaveError error;
+        EXPECT_TRUE(savegame::fromJson(nlohmann::json::parse(json), payload, error)) << error.message;
         return payload;
     }
 
     // The SaveFile the golden holds
-    save::SaveFile saveGoldenFile(){
-        save::SaveFile file;
+    savegame::SaveFile saveGoldenFile(){
+        savegame::SaveFile file;
         file.generation = 7;
         file.savedAtMs = 1767225600000;
         file.dataVersion = 3;
-        save::SaveMetadata metadata;
+        savegame::SaveMetadata metadata;
         metadata.meta = savePayload(R"({"title":"Forest - 2h 13m","playTime":7980})");
         metadata.requirements = savePayload(R"({"dlc1":2})");
-        save::appendString(metadata.engine, "golden");
-        save::appendString(metadata.platform, "linux");
-        file.metadata = save::buildMetadata(metadata);
+        savegame::appendString(metadata.engine, "golden");
+        savegame::appendString(metadata.platform, "linux");
+        file.metadata = savegame::buildMetadata(metadata);
         file.sections.push_back({"inventory", std::make_shared<const std::string>(savePayload(R"({"#1":"sword","#3":"shield","gold":120})"))});
         file.sections.push_back({"main", std::make_shared<const std::string>(savePayload(
             R"({"level":"forest","pos":{"$vec3":[4.0,0.0,2.0]},"hp":0.75,"flags":[true,false,null]})"))});
@@ -60,7 +60,7 @@ namespace {
 
     // A footer checksum that matches the (patched) bytes again
     void resealSave(std::string& bytes){
-        const size_t body = bytes.size() - save::FOOTER_BYTES;
+        const size_t body = bytes.size() - savegame::FOOTER_BYTES;
         const uint64_t hash = hashContent64(bytes.data(), body, 0);
         for (int i = 0; i < 8; i++) bytes[body + i] = static_cast<char>((hash >> (8 * i)) & 0xFF);
     }
@@ -68,7 +68,7 @@ namespace {
 }
 
 TEST(SaveGameFormat, Version1Golden){
-    const std::string built = save::buildSaveFile(saveGoldenFile());
+    const std::string built = savegame::buildSaveFile(saveGoldenFile());
     if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")){
         std::filesystem::create_directories(saveGoldenPath().parent_path());
         std::ofstream(saveGoldenPath(), std::ios::binary).write(built.data(), static_cast<std::streamsize>(built.size()));
@@ -77,9 +77,9 @@ TEST(SaveGameFormat, Version1Golden){
     ASSERT_FALSE(golden.empty()) << saveGoldenPath();
     EXPECT_EQ(built, golden) << "buildSaveFile no longer writes format 1 byte for byte";
 
-    save::SaveFile parsed;
-    save::SaveError error;
-    ASSERT_TRUE(save::parseSaveFile(golden, parsed, error)) << error.message;
+    savegame::SaveFile parsed;
+    savegame::SaveError error;
+    ASSERT_TRUE(savegame::parseSaveFile(golden, parsed, error)) << error.message;
     EXPECT_EQ(parsed.format, 1);
     EXPECT_EQ(parsed.generation, 7u);
     EXPECT_EQ(parsed.savedAtMs, 1767225600000);
@@ -88,29 +88,29 @@ TEST(SaveGameFormat, Version1Golden){
     EXPECT_EQ(parsed.sections[0].name, "inventory");
     EXPECT_EQ(parsed.sections[1].name, "main");
     nlohmann::json main;
-    ASSERT_TRUE(save::toJson(*parsed.sections[1].payload, main, error)) << error.message;
+    ASSERT_TRUE(savegame::toJson(*parsed.sections[1].payload, main, error)) << error.message;
     EXPECT_EQ(main.dump(), R"({"flags":[true,false,null],"hp":0.75,"level":"forest","pos":{"$vec3":[4.0,0.0,2.0]}})");
-    save::SaveMetadata metadata;
-    ASSERT_TRUE(save::splitMetadata(parsed.metadata, metadata));
+    savegame::SaveMetadata metadata;
+    ASSERT_TRUE(savegame::splitMetadata(parsed.metadata, metadata));
     nlohmann::json meta;
-    ASSERT_TRUE(save::toJson(metadata.meta, meta, error));
+    ASSERT_TRUE(savegame::toJson(metadata.meta, meta, error));
     EXPECT_EQ(meta["title"], "Forest - 2h 13m");
 
-    save::SaveFile header;
-    ASSERT_TRUE(save::parseSaveHeader(std::string_view(golden).substr(0, save::MAX_HEADER_BYTES), header, error)) << error.message;
+    savegame::SaveFile header;
+    ASSERT_TRUE(savegame::parseSaveHeader(std::string_view(golden).substr(0, savegame::MAX_HEADER_BYTES), header, error)) << error.message;
     EXPECT_EQ(header.generation, 7u);
     EXPECT_EQ(header.sections.size(), 2u);
 }
 
 TEST(SaveGameFormat, RejectsDamage){
-    const std::string golden = save::buildSaveFile(saveGoldenFile());
+    const std::string golden = savegame::buildSaveFile(saveGoldenFile());
     const bool counting = testsupport::countsAllocations();
 
     auto rejected = [&](const std::string& bytes, const std::string& what){
-        save::SaveFile out;
-        save::SaveError error;
+        savegame::SaveFile out;
+        savegame::SaveError error;
         testsupport::resetLargestAllocation();
-        const bool ok = save::parseSaveFile(bytes, out, error);
+        const bool ok = savegame::parseSaveFile(bytes, out, error);
         EXPECT_FALSE(ok) << what;
         EXPECT_FALSE(error.message.empty()) << what;
         if (counting) {
@@ -131,24 +131,24 @@ TEST(SaveGameFormat, RejectsDamage){
     // a sealed file whose first section claims 4 GiB
     {
         std::string bytes = golden;
-        const save::SaveFile file = saveGoldenFile();
-        const size_t section = save::HEADER_FIXED_BYTES + file.metadata.size();
+        const savegame::SaveFile file = saveGoldenFile();
+        const size_t section = savegame::HEADER_FIXED_BYTES + file.metadata.size();
         const size_t lengthAt = section + 2 + file.sections[0].name.size();
         putLE32(bytes, lengthAt, 0xFFFFFFFFu);
         resealSave(bytes);
-        const save::SaveError error = rejected(bytes, "4 GiB section");
+        const savegame::SaveError error = rejected(bytes, "4 GiB section");
         EXPECT_EQ(error.message, "bad section length 4294967295 at offset " + std::to_string(lengthAt));
     }
     // a sealed file with an 11-byte varint in a payload
     {
-        save::SaveFile file = saveGoldenFile();
+        savegame::SaveFile file = saveGoldenFile();
         // a table {x = <integer>} whose integer's varint runs 11 bytes
         std::string payload{'\x05', '\x00', '\x01', '\x04', '\x01', 'x', '\x02'};
         payload += std::string(10, '\x80');
         payload += '\x01';
         file.sections[0].payload = std::make_shared<const std::string>(payload);
-        const std::string bytes = save::buildSaveFile(file);
-        const save::SaveError error = rejected(bytes, "11-byte varint");
+        const std::string bytes = savegame::buildSaveFile(file);
+        const savegame::SaveError error = rejected(bytes, "11-byte varint");
         EXPECT_NE(error.message.find("varint longer than 10 bytes"), std::string::npos) << error.message;
     }
     // a sealed file whose header claims 65 sections
@@ -160,10 +160,10 @@ TEST(SaveGameFormat, RejectsDamage){
     }
     // a file above the 64 MiB cap is refused before anything is read
     {
-        save::SaveFile out;
-        save::SaveError error;
-        const std::string huge(save::MAX_FILE_BYTES + 1, '\0');
-        EXPECT_FALSE(save::parseSaveFile(huge, out, error));
+        savegame::SaveFile out;
+        savegame::SaveError error;
+        const std::string huge(savegame::MAX_FILE_BYTES + 1, '\0');
+        EXPECT_FALSE(savegame::parseSaveFile(huge, out, error));
         EXPECT_NE(error.message.find("64 MiB"), std::string::npos) << error.message;
     }
     // a text-mode copy (CRLF) breaks the magic
@@ -175,13 +175,13 @@ TEST(SaveGameFormat, RejectsDamage){
 }
 
 TEST(SaveGameFormat, NewerFormatIsReportedNotRead){
-    std::string bytes = save::buildSaveFile(saveGoldenFile());
+    std::string bytes = savegame::buildSaveFile(saveGoldenFile());
     bytes[8] = 2;
-    save::SaveFile out;
-    save::SaveError error;
-    EXPECT_FALSE(save::parseSaveFile(bytes, out, error));
-    EXPECT_EQ(error.code, save::SaveErrorCode::NewerFormat);
-    EXPECT_STREQ(save::errorCodeName(error.code), "newer_format");
-    EXPECT_FALSE(save::parseSaveHeader(bytes, out, error));
-    EXPECT_EQ(error.code, save::SaveErrorCode::NewerFormat);
+    savegame::SaveFile out;
+    savegame::SaveError error;
+    EXPECT_FALSE(savegame::parseSaveFile(bytes, out, error));
+    EXPECT_EQ(error.code, savegame::SaveErrorCode::NewerFormat);
+    EXPECT_STREQ(savegame::errorCodeName(error.code), "newer_format");
+    EXPECT_FALSE(savegame::parseSaveHeader(bytes, out, error));
+    EXPECT_EQ(error.code, savegame::SaveErrorCode::NewerFormat);
 }
