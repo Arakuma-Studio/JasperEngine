@@ -2109,7 +2109,7 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
         }
         Json layer = {{"index", l}, {"name", layers[l].name}, {"weight", r6(l == 0 ? 1.0f : layers[l].weight)},
                       {"blend", layerBlendName(l == 0 ? AnimationLayerBlend::Override : layers[l].blend)},
-                      {"mask", assetJson(project, layers[l].mask)}, {"states", states}};
+                      {"mask", assetJson(project, layers[l].mask)}, {"mesh_space_rotation", layers[l].meshSpaceRotation}, {"states", states}};
         if (playing && l < player.runtime->layers.size()) {
             const LayerRuntime& runtime = player.runtime->layers[l];
             layer["live_weight"] = r6(player.runtime->layerWeight((int)l));

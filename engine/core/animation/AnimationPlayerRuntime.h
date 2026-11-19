@@ -470,6 +470,9 @@ namespace jasperengine::anim{
     JASPERENGINE_API void setLayerMask(AnimationPlayerComponent& player, int layer, const std::string& path, const std::string& who);
     // runtime blend (layer 0: always Override, warned once)
     JASPERENGINE_API void setLayerBlend(AnimationPlayerComponent& player, int layer, AnimationLayerBlend blend, const std::string& who);
+    // authored (docs/specs/mesh-space-rotation.md R17): the layer's meshSpaceRotation (needsLoad
+    // when it changes); kept, and ignored, on layer 0 and on additive layers
+    JASPERENGINE_API void setLayerMeshSpaceRotation(AnimationPlayerComponent& player, int layer, bool enabled);
     // every state of the layer fades out over `fade` (instant when <= 0) and stops; its queue clears
     JASPERENGINE_API void stopLayer(AnimationPlayerComponent& player, int layer, float fade);
     // authored: appends a layer (needsLoad); its index, or -1 when the name is taken or empty

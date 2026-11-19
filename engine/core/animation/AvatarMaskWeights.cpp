@@ -11,6 +11,8 @@
 #include "component/Transform.h"
 #include "pose/ModelRig.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 
 namespace{
@@ -236,4 +238,14 @@ float anim::maskWeightOf(const AvatarMaskDef& mask, EntityRegistry* scene, Entit
 
 float anim::maskRootMotionWeight(const AvatarMaskDef& mask){
     return mask.partWeight(AvatarBodyPart::Root);
+}
+
+void anim::maskBoundaryBones(const float* weights, const int* parents, size_t count, std::vector<uint16_t>& out){
+    out.clear();
+    const size_t listed = std::min<size_t>(count, (size_t)UINT16_MAX + 1);
+    for (size_t b = 0; b < listed; b++){
+        const int parent = parents[b];
+        if (parent < 0 || (size_t)parent >= count) continue;
+        if (weights[b] != weights[(size_t)parent]) out.push_back((uint16_t)b);
+    }
 }

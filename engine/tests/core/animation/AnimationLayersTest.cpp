@@ -506,6 +506,32 @@ TEST_F(Layers, HumanoidMasksCoverBodyParts){
     EXPECT_EQ(anim::maskWeightOf(data, &human, character, bone("mixamorig:RightHand"), &none), 0.0f);
 }
 
+// docs/specs/mesh-space-rotation.md R5: the boundary bones are where the weight changes from the
+// parent's; a child of the root (parent -1) is never one, a uniform mask has none
+TEST(AvatarMaskBoundary, BonesWhereTheWeightDiffersFromTheParent){
+    // Hips (-1) > Spine > Chest > Neck, Hips > LeftUpLeg > LeftLeg, Chest > LeftArm
+    const int parents[] = {-1, 0, 1, 2, 0, 4, 2};
+    std::vector<uint16_t> boundary = {42};
+    // a path mask from the spine
+    const float spineUp[] = {0, 1, 1, 1, 0, 0, 1};
+    anim::maskBoundaryBones(spineUp, parents, std::size(parents), boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{1})) << "Spine only (and the list cleared first)";
+    // a body mask with the torso on and the head and arms off: the edges in both directions
+    const float body[] = {1, 1, 1, 0, 0, 0, 0};
+    anim::maskBoundaryBones(body, parents, std::size(parents), boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{3, 4, 6})) << "Neck, LeftUpLeg, LeftArm";
+    const float all[] = {1, 1, 1, 1, 1, 1, 1};
+    anim::maskBoundaryBones(all, parents, std::size(parents), boundary);
+    EXPECT_TRUE(boundary.empty()) << "an unmasked layer has none";
+    const float fractional[] = {0.5f, 0.5f, 0.25f, 0.25f, 0.5f, 0.5f, 0.25f};
+    anim::maskBoundaryBones(fractional, parents, std::size(parents), boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{2})) << "a fractional step is an edge too";
+    const float rootOnly[] = {1, 0, 0, 0, 0, 0, 0};
+    const int roots[] = {-1, -1, -1, -1, -1, -1, -1};
+    anim::maskBoundaryBones(rootOnly, roots, std::size(roots), boundary);
+    EXPECT_TRUE(boundary.empty()) << "children of the root keep the root's space";
+}
+
 // Test 11: upstream's .mask format (version 1), read as S21's version 2 (UpstreamAnimFormats.h)
 TEST(AvatarMaskIO, UpstreamMaskReadsAsVersion2LenientAndRefusesUnityYaml){
     const std::string text =
@@ -693,6 +719,57 @@ TEST_F(Layers, LuaApi){
     lua_pop(L, 1);
     EXPECT_EQ(result, "2|Holding|1|0.25|override|1|true|false");
     luabridge::setGlobal(L, luabridge::LuaRef(L), "layersPlayer");
+}
+
+// docs/specs/mesh-space-rotation.md R17: the Player's setter sets the authored field (by index or
+// name, a reload follows), unlike the runtime weight / mask / blend setters
+TEST_F(Layers, LuaMeshSpaceRotationSetsTheAuthoredLayer){
+    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}}, {layer(anim::BASE_LAYER_NAME), layer("Holding")});
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
+    step(0.1);
+    ASSERT_FALSE(component.needsLoad);
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_TRUE(L != nullptr);
+    luabridge::setGlobal(L, object, "meshSpacePlayer");
+    ASSERT_EQ(luaL_dostring(L,
+        "local p = meshSpacePlayer\n"
+        "meshSpaceBefore = tostring(p:getLayerMeshSpaceRotation('Holding'))\n"
+        "p:setLayerMeshSpaceRotation('Holding', true)\n"
+        "meshSpaceAfter = tostring(p:getLayerMeshSpaceRotation(1))\n"), LUA_OK) << lua_tostring(L, -1);
+    lua_getglobal(L, "meshSpaceBefore");
+    const std::string before = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_getglobal(L, "meshSpaceAfter");
+    const std::string after = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 2);
+    EXPECT_EQ(before, "false");
+    EXPECT_EQ(after, "true");
+    EXPECT_TRUE(component.layers[1].meshSpaceRotation) << "the authored field";
+    EXPECT_FALSE(component.layers[0].meshSpaceRotation);
+    EXPECT_TRUE(component.needsLoad) << "the player reloads its layers";
+    step(0.1);
+    EXPECT_TRUE(component.layers[1].meshSpaceRotation) << "kept through the reload";
+    ASSERT_EQ(luaL_dostring(L, "meshSpacePlayer:setLayerMeshSpaceRotation(1, false)"), LUA_OK) << lua_tostring(L, -1);
+    EXPECT_FALSE(component.layers[1].meshSpaceRotation);
+    EXPECT_NE(luaL_dostring(L, "meshSpacePlayer:setLayerMeshSpaceRotation(1, 'yes')"), LUA_OK) << "enabled is a boolean";
+    lua_pop(L, 1);
+    // an unknown layer warns once and changes nothing
+    ASSERT_EQ(luaL_dostring(L, "meshSpacePlayer:setLayerMeshSpaceRotation('Nope', true)"), LUA_OK) << lua_tostring(L, -1);
+    EXPECT_FALSE(component.layers[1].meshSpaceRotation);
+    const std::vector<std::string> warnings = animtest::takeWarnings();
+    ASSERT_FALSE(warnings.empty());
+    EXPECT_NE(warnings.back().find("no layer named 'Nope'"), std::string::npos) << warnings.back();
+    luabridge::setGlobal(L, luabridge::LuaRef(L), "meshSpacePlayer");
+
+    // a player with the default layering gets its list (one Base Layer, where it is kept and ignored)
+    AnimationPlayerComponent& plain = component;
+    plain.layers.clear();
+    plain.needsLoad = true;
+    step(0.1);
+    object.setLayerMeshSpaceRotation(0, true);
+    ASSERT_EQ(plain.layers.size(), 1u);
+    EXPECT_EQ(plain.layers[0].name, anim::BASE_LAYER_NAME);
+    EXPECT_TRUE(plain.layers[0].meshSpaceRotation);
+    EXPECT_TRUE(object.getLayerMeshSpaceRotation(anim::BASE_LAYER_NAME));
 }
 
 // Spec 13 (host check): 40 characters x 65 bones, each with two player layers (the upper one an
