@@ -27,7 +27,11 @@ namespace jasperengine::player {
         EXIT_SCREENSHOT_FAILED = 4,
         EXIT_CONTENT_MISMATCH = 5,
         EXIT_NOT_READY = 6,
-        EXIT_NO_DISPLAY = 7
+        EXIT_NO_DISPLAY = 7,
+        // the project test runner (docs/specs/project-test-runner.md R27): a case failed, errored or
+        // hung; no case to run (the filter matched nothing, or the content holds no tests)
+        EXIT_TESTS_FAILED = 8,
+        EXIT_NO_TESTS = 9
     };
 
     // the composited frame: width * height RGBA8, rows top first; false when it cannot be read

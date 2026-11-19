@@ -6,6 +6,7 @@
 // .jasperengine/user/rundata/UserSettings.xml), so what this tool changes a running game sees
 // at once, and what the game wrote is listed here.
 #include "McpTools.h"
+#include "test/PlayData.h"
 #include "W4Shared.h"
 
 #include "mcp/McpCall.h"
@@ -61,6 +62,8 @@ void userSettingsTool(const CallPtr& call) {
     const std::string action = args.value("action", "");
     const std::string key = args.contains("key") && args["key"].is_string() ? args["key"].get<std::string>() : "";
     const std::string file = storeFile(call->ctx());
+    // the Play Data profile whose store this is (project-test-runner R43)
+    const std::string storeName = gametests::PlayData::get().profile();
     UserSettingsStore& store = UserSettingsStore::instance();
 
     if (action == "list") {
@@ -76,7 +79,7 @@ void userSettingsTool(const CallPtr& call) {
         }
         if (entries.size() > MAX_TEXT_KEYS)
             text += "\n... " + std::to_string(entries.size() - MAX_TEXT_KEYS) + " more in data.values";
-        call->ok(text, Json{{"values", values}, {"count", entries.size()}, {"file", file}});
+        call->ok(text, Json{{"store", storeName}, {"values", values}, {"count", entries.size()}, {"file", file}});
         return;
     }
 
@@ -85,7 +88,7 @@ void userSettingsTool(const CallPtr& call) {
         UserSettings::deleteAll();
         UserSettings::save();
         call->ok("Deleted all " + std::to_string(count) + (count == 1 ? " key" : " keys") + " of " + file + ".",
-                 Json{{"deleted", count}, {"file", file}});
+                 Json{{"store", storeName}, {"deleted", count}, {"file", file}});
         return;
     }
 
@@ -97,10 +100,10 @@ void userSettingsTool(const CallPtr& call) {
     if (action == "get") {
         std::string value;
         if (!store.get(key, value)) {
-            call->ok("No key " + shown(key) + " in " + file + ".", Json{{"key", key}, {"exists", false}});
+            call->ok("No key " + shown(key) + " in " + file + ".", Json{{"store", storeName}, {"key", key}, {"exists", false}});
             return;
         }
-        call->ok(key + " = " + shown(value), Json{{"key", key}, {"exists", true}, {"value", textJson(value)}});
+        call->ok(key + " = " + shown(value), Json{{"store", storeName}, {"key", key}, {"exists", true}, {"value", textJson(value)}});
         return;
     }
 
@@ -109,7 +112,7 @@ void userSettingsTool(const CallPtr& call) {
         UserSettings::deleteKey(key.c_str());
         UserSettings::save();
         call->ok(existed ? "Deleted " + shown(key) + "." : "No key " + shown(key) + " (nothing to delete).",
-                 Json{{"key", key}, {"deleted", existed}});
+                 Json{{"store", storeName}, {"key", key}, {"deleted", existed}});
         return;
     }
 
@@ -155,7 +158,7 @@ void userSettingsTool(const CallPtr& call) {
         std::string stored;
         store.get(key, stored);
         call->ok("Set " + key + " = " + shown(stored) + " (" + type + ") in " + file + ".",
-                 Json{{"key", key}, {"type", type}, {"value", textJson(stored)}, {"file", file}});
+                 Json{{"store", storeName}, {"key", key}, {"type", type}, {"value", textJson(stored)}, {"file", file}});
         return;
     }
 

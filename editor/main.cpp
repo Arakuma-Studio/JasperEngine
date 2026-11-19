@@ -8,6 +8,7 @@
 #include "cli/TitleArtCli.h"
 #include "cli/CommandLine.h"
 #include "cli/ProceduralMaterialCommand.h"
+#include "cli/TestCommand.h"
 #include "cli/ShippingCommands.h"
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
@@ -45,6 +46,9 @@ int runEditor(int argc, char* argv[]) {
         return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
     }
     // a bake through such an editor (S90 R39)
+    if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
+        return editor::cli::TestCommand::run(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "procedural-material") == 0) {
         return editor::cli::ProceduralMaterialCommand::run(argc - 1, argv + 1, argv[0]);
     }

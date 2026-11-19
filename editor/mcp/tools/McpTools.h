@@ -127,6 +127,8 @@ namespace jasperengine::editor::mcp {
     void registerEditorToolsTools(McpRegistry& registry);
     // S80: diff_images (editor_tools) and the title_art group
     void registerImageDiffTools(McpRegistry& registry);
+    // project-test-runner: run_tests (group testing)
+    void registerTestTools(McpRegistry& registry);
     void registerTitleArtTools(McpRegistry& registry);
     void registerHubTools(McpRegistry& registry);
 

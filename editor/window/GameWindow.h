@@ -25,6 +25,14 @@ namespace jasperengine::editor {
 
     class GameWindow {
     private:
+        std::string inputBlockedReason;
+        // the Play Data menu (project-test-runner R21, R41): profiles, Save Snapshot..., Open Data Folder
+        void drawPlayDataMenu();
+        bool snapshotPopupRequested = false;
+        char snapshotName[65] = {};
+        std::string snapshotError;
+        // the Play Data choice shown (read from the project's user folder on first draw)
+        std::string playDataChoice;
         Project* project;
         PlayInput* playInput;
         // the toolbar's Contact Sheet... window (S48 R40)
@@ -157,6 +165,11 @@ namespace jasperengine::editor {
         // the game renders at exactly w x h (the Recorder), the view showing it scaled to fit;
         // 0, 0 goes back to the view's own size
         void setRenderSizeOverride(int w, int h);
+        // While not empty the editor's input does not reach the game, and the view says why
+        // (a test run owns the game, project-test-runner R14)
+        void setInputBlockedReason(const std::string& reason) { inputBlockedReason = reason; }
+        // the Play Data profile the toolbar picked ("project", "clean", a snapshot name)
+        const std::string& getPlayDataChoice() const { return playDataChoice; }
         bool isGameCursorInView() const;
         // The game image has keyboard focus (keys go to the game while playing)
         bool hasKeyboardFocus() const;

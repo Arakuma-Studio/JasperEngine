@@ -256,6 +256,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "The Color window on its own: eyedropper, swatches, hexadecimal";
     b.menu("window.recorder", "Recorder", AppMenuCommand::ToggleRecorder).description =
         "Record the Game view to a PNG sequence or a movie";
+    b.menu("window.testRunner", "Test Runner", AppMenuCommand::ToggleTestRunner).description =
+        "The project's tests (Tests/*.test.lua): Edit Mode and Play Mode cases, results and goldens";
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);

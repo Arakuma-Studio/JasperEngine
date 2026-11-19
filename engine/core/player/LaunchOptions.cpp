@@ -4,6 +4,7 @@
 #include "LaunchOptions.h"
 
 #include "device/DeviceTypes.h"
+#include "TestRunnerConfig.h"
 
 #include <cctype>
 #include <cerrno>
@@ -88,8 +89,16 @@ std::string jasperengine::player::usage() {
         "  --content DIR           read the game's content from DIR\n"
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
-        "  --fail-on-error         exit 3 when an error is logged\n"
+        "  --fail-on-error         exit 3 when an error is logged (ignored with --run-tests)\n"
+        "  --run-tests             a development player: run the content's Play Mode tests (exit 8 failed, 9 none)\n"
+        "  --test-filter F         with --run-tests: case ids containing F, or tag:<t>; \",\" = or\n"
+        "  --test-results PATH     with --run-tests: write the results JSON there\n"
+        "  --keep-test-data        with --run-tests: keep each case's data folder\n"
         "  -- ARGS...              passed to the game's Lua (System.args)\n";
+}
+
+bool jasperengine::player::testRunnerCompiled() {
+    return JASPERENGINE_TEST_RUNNER != 0;
 }
 
 std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& query) {
@@ -233,6 +242,25 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             if (!DeviceNames::tierFromName(text.c_str(), tier))
                 return fail("--device-tier needs low, medium, high or ultra, for example --device-tier=low (got \"" + text + "\")");
             options.deviceTier = DeviceNames::tier(tier);
+        } else if (name == "--run-tests" || name == "--keep-test-data") {
+            if (!noValue()) return fail(name + " takes no value");
+            if (!testRunnerCompiled()) return fail(NO_TEST_RUNNER);
+            if (name == "--run-tests") options.runTests = true;
+            else options.keepTestData = true;
+        } else if (name == "--test-filter" || name == "--test-results") {
+            auto taken = takeValue(name == "--test-filter" ? "tag:smoke" : "results.json");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            if (!testRunnerCompiled()) return fail(NO_TEST_RUNNER);
+            const std::string text = std::get<std::string>(taken);
+            if (name == "--test-filter") {
+                options.testFilter = text;
+            } else {
+                if (text.empty()) return fail("--test-results needs a file name, for example --test-results results.json");
+                options.testResults = text;
+                std::string problem;
+                if (!writableDirectory(options.testResults, problem))
+                    return fail("--test-results " + text + ": " + problem + "; create it or write the results elsewhere");
+            }
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;
@@ -256,6 +284,10 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
         }
     }
 
+    if (!options.runTests && (!options.testFilter.empty() || !options.testResults.empty() || options.keepTestData))
+        return fail("--test-filter, --test-results and --keep-test-data go with --run-tests");
+    // a test run counts its frames from the ready frame (R23); --fixed-fps comes from tests.yaml unless given
+    if (options.runTests) options.afterReady = true;
     if (screenshotFrameGiven && options.screenshot.empty())
         return fail("--screenshot-frame needs --screenshot PATH");
     if (screenshotFrameGiven && quitAfterGiven && options.screenshotFrame > options.quitAfter)

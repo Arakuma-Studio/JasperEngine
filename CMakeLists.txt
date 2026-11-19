@@ -812,6 +812,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
+    ${EDITOR_DIR}/cli/TestCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
@@ -1617,6 +1618,7 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+include(${EDITOR_DIR}/test/GameTestsSources.cmake)
 # Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)

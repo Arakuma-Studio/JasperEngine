@@ -228,6 +228,55 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_tests_run_tests",
+        "kind": "guard",
+        "what_happened": "An agent fixed a bug, checked it by playing once and moved on; nothing kept the check. The guide's "
+                         "Other areas names run_tests and jasper://docs/testing, and authoring's Check what you built says to "
+                         "keep the check as a case (project-test-runner R46).",
+        "text_at_issue": "McpInstructions Other areas: 'testing (run_tests)'; authoring.md: 'Keep what you checked: a case in "
+                         "Tests/ and run_tests'.",
+        "source": "docs/specs/project-test-runner.md R46, AC20",
+        "prompt": "The player starts with 2 lives instead of 3 (player.lua). Fix it, and make sure the fix sticks.",
+        "files": {"scripts/player.lua": "local Player = {}\nfunction Player:init()\n    GameState = {lives = 2}\nend\nreturn Player\n",
+                  "Tests/tests.yaml": "version: 1\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "PASS player.test.lua#Player starts with three lives\n1 passed, 0 failed, 0 skipped.",
+                {"run_id": "20261119-101500-3f2a", "counts": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "error": 0, "hung": 0,
+                                                              "excluded_edit": 0},
+                 "failures": [], "unverified": {}, "results_file": ".jasperengine/test-results/runs/20261119-101500-3f2a.json"})},
+        ],
+        "checks": {"calls": [{"tool": "run_tests"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_tests_project_data",
+        "kind": "bad",
+        "what_happened": "A case used data = \"project\" to start from the developer's own save; the run refuses it and the error "
+                         "names the fix (a snapshot) (project-test-runner R20).",
+        "text_at_issue": "TestOptions PROJECT_DATA_REFUSED: 'tests never use the project's Play data: save a snapshot (Game view > "
+                         "Play Data > Save Snapshot...) and use data = \"<name>\"'.",
+        "source": "docs/specs/project-test-runner.md R20, AC20",
+        "prompt": "Run the shop test (Tests/shop.test.lua) and make it pass. It needs the save that has 100 coins, which is in "
+                  "Tests/Data/rich/.",
+        "files": {"Tests/tests.yaml": "version: 1\n", "Tests/Data/rich/progress.json": "{\"coins\": 100}",
+                  "Tests/shop.test.lua": "Test.case(\"Buying a hat costs 50\", {data = \"project\"}, function(t)\n"
+                                         "    Test.waitUntil(function() return Shop end)\n    Test.equal(Shop.buy(\"hat\"), true)\nend)\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "ERROR shop.test.lua#Buying a hat costs 50  shop.test.lua:1: tests never use the project's Play data: save a snapshot "
+                "(Game view > Play Data > Save Snapshot...) and use data = \"<name>\"\n0 passed, 0 failed, 0 skipped, 1 error.",
+                {"counts": {"total": 1, "passed": 0, "failed": 0, "skipped": 0, "error": 1, "hung": 0, "excluded_edit": 0},
+                 "failures": [{"id": "shop.test.lua#Buying a hat costs 50", "status": "error", "kind": "error",
+                               "message": "tests never use the project's Play data: save a snapshot (Game view > Play Data > Save "
+                                          "Snapshot...) and use data = \"<name>\"", "file": "shop.test.lua", "line": 1, "frame": 0}],
+                 "unverified": {}})},
+        ],
+        "checks": {"file_must": {"Tests/shop.test.lua": [r"data\s*=\s*\"rich\""]},
+                   "file_must_not": {"Tests/shop.test.lua": [r"data\s*=\s*\"project\""]}},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_linked_folder_rules",
         "kind": "guard",
         "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "

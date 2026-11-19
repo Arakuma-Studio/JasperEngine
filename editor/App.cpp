@@ -122,6 +122,9 @@
 #include "widget/ColorPickerWindow.h"
 #include "util/GraphicUtils.h"
 #include "recorder/RecorderSession.h"
+#include "test/PlayData.h"
+#include "test/TestRun.h"
+#include "window/TestRunnerWindow.h"
 #include "hub/HubPaths.h"
 #include "platform/LaunchKeys.h"
 #include "io/AtomicFile.h"
@@ -833,7 +836,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
             catalogItem("window.colorPicker"),
-            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME))
+            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME)),
+            catalogItem("window.testRunner", windowMenuLabel(TestRunnerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
@@ -1016,6 +1020,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleRecorder:
             recorderWindow.setOpen(!recorderWindow.isOpen());
+            break;
+        case AppMenuCommand::ToggleTestRunner:
+            TestRunnerWindow::get().setOpen(!TestRunnerWindow::get().isOpen());
             break;
         case AppMenuCommand::ToggleRecording:
             toggleRecording();
@@ -3264,6 +3271,13 @@ void editor::App::show(){
     recorderWindow.show();
     if (isRecording()) requestRedraw();
 
+    // the project's tests (project-test-runner): a run's next frame, Play Data's session folder,
+    // the Test Runner window
+    gametests::TestRun::get().tick();
+    gametests::PlayData::get().update(&project);
+    TestRunnerWindow::get().show(*this, &project);
+    if (gametests::TestRun::get().running()) requestRedraw();
+
     // S27: the field windows after every window with a field (a field takes its window's
     // changes on its next draw, before the window ends a session); the Gradient Editor's colour
     // keys open the Color window, so it comes last
@@ -3722,6 +3736,10 @@ void editor::App::toggleRecording() {
 }
 
 void editor::App::playStarting(uint32_t) {
+    // Play Data (project-test-runner R21): the folder data:// is for this session
+    std::string playDataError;
+    if (!gametests::PlayData::get().sessionStarting(&project, gametests::PlayData::selected(&project), playDataError))
+        Out::error("Play Data: %s (the session uses the project's data)", playDataError.c_str());
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
     if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
