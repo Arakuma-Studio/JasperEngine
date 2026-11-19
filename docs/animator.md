@@ -94,7 +94,7 @@ keep facing where the run faces. It needs no extra bone, export or script: it wo
 and rig, and a rig's `B-spineProxy` bone (Unity's Spine Proxy) is not needed. Unreal calls it Mesh
 Space Rotation Blend.
 
-| Without (the spine follows the run's hips) | With (the spine faces where the attack faces) |
+| Without (Compare on: the spine follows the run's hips) | With (the spine faces where the attack faces) |
 |---|---|
 | ![Without Mesh Space Rotation](img/animator/mesh-space-rotation-before.png) | ![With Mesh Space Rotation](img/animator/mesh-space-rotation-after.png) |
 
