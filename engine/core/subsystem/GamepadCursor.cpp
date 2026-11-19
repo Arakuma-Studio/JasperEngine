@@ -17,6 +17,26 @@
 
 using namespace jasperengine;
 
+namespace jasperengine {
+
+    // the file's helpers reach the Engine internals through GamepadCursor's friendship
+    struct GamepadCursorAccess {
+        static std::vector<Scene*> scenes(){ return GamepadCursor::scenesTopFirst(); }
+        static void cancelPress(){ GamepadCursor::cancelPress(); }
+    };
+
+}
+
+std::vector<Scene*> GamepadCursor::scenesTopFirst(){
+    std::vector<Scene*> scenes = Engine::getInputScenes(false);
+    std::reverse(scenes.begin(), scenes.end());
+    return scenes;
+}
+
+void GamepadCursor::cancelPress(){
+    Engine::cancelUIPointer(D_MOUSE_BUTTON_LEFT, false);
+}
+
 namespace {
 
     GamepadCursorSettings cursorDefaults;
@@ -41,9 +61,7 @@ namespace {
 
     // the input scenes, top layer first
     std::vector<Scene*> cursorScenes(){
-        std::vector<Scene*> scenes = Engine::getInputScenes(false);
-        std::reverse(scenes.begin(), scenes.end());
-        return scenes;
+        return GamepadCursorAccess::scenes();
     }
 
     // the focused element of the top scene that has one, its centre
@@ -124,7 +142,7 @@ namespace {
         // a held press ends without a click
         if (pressPad >= 0){
             pressPad = -1;
-            Engine::cancelUIPointer(D_MOUSE_BUTTON_LEFT, false);
+            GamepadCursorAccess::cancelPress();
         }
         placeOverlay(cursorScenes(), false);
     }

@@ -341,7 +341,7 @@ TEST_F(DocumentBackTest, MenuOpeningReleasesGameInput){
          "<onscreen-stick id=\"stick\"></onscreen-stick>");
     page("menu", "html, body { margin: 0; }\n#ok { position: absolute; left: 600px; top: 100px; width: 200px; height: 60px; }\n",
          "<button id=\"ok\">OK</button>");
-    UIDocument hud = fixture->addDocument("ui/hud.html");
+    fixture->addDocument("ui/hud.html");
     UIDocument menu = fixture->addDocument("ui/menu.html");
     menu.setMenu(true);
     menu.hide();
@@ -373,23 +373,21 @@ TEST_F(DocumentBackTest, MenuOpeningReleasesGameInput){
     Engine::systemKeyUp(D_KEY_W, false, 0);
     Engine::systemTouchEnd(0, 140, 260);
 
-    // a press the menu holds when another menu opens stays
-    menu.hide();
+    // a press the document holds when it becomes the menu stays
+    menu.setMenu(false);
     GpuEnvironment::drawFrames(2);
     EXPECT_FALSE(Engine::isMenuShowing());
-    menu.show();
-    GpuEnvironment::drawFrames(2);
     Engine::systemMouseMove(700, 130, 0);
     Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 700, 130, 0);
     Rml::ElementDocument* menuRml = fixture->getScene().getSystem<UIDocumentSystem>()->getDocument(menu.getEntity());
     Rml::Element* ok = menuRml->GetElementById("ok");
     ASSERT_TRUE(ok->IsPseudoClassSet("active"));
-    hud.setMenu(true);
+    menu.setMenu(true);
     GpuEnvironment::drawFrames(2);
+    EXPECT_TRUE(Engine::isMenuShowing());
     EXPECT_TRUE(ok->IsPseudoClassSet("active")) << "the menu's own press";
-    EXPECT_TRUE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
+    EXPECT_TRUE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT)) << "a press the UI took stays held";
     Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 700, 130, 0);
-    hud.setMenu(false);
 
     // enabled and interactive
     GpuEnvironment::drawFrames(1);

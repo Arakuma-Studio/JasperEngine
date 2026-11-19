@@ -16,8 +16,11 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
+
+    class Scene;
 
     // Project Settings > Input > Gamepad Cursor
     struct GamepadCursorSettings {
@@ -72,6 +75,12 @@ namespace jasperengine {
         static void resetSession();
         // the element under the cursor took a press or the cursor moved over it: not a focus change to follow
         static void noteFocusBaseline();
+
+    private:
+        // Engine's input scenes, top layer first, and the cancel of the cursor's press (Engine befriends this class)
+        static std::vector<Scene*> scenesTopFirst();
+        static void cancelPress();
+        friend struct GamepadCursorAccess;
     };
 
 }

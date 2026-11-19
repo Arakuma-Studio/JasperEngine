@@ -539,4 +539,31 @@ Red controls are run on the base commit first and named in the PR.
 
 ## Deviations
 
-None yet.
+- Parts B/C: `send_input` reports who took an `app: back` in one top-level `back` field (the last
+  such event of the call), not inside a per-event list, which `send_input` does not have.
+- Part C (R19): a menu appearing releases the keys, mouse and gamepad buttons whose press went to
+  the game (a press a document or the component UI took stays held in `Input`); virtual sources of
+  kind Control are released through their pointers' cancel (every on-screen control clears its
+  source on `pointercancel`), so a Control source no pointer holds stays.
+- Part C: `Engine.isMenuShowing()` and `GamepadCursor.isActive()` are Lua functions, as the spec
+  names them, although other bound getters are properties.
+- Part B (D6): the cursor updates after the input latch of a frame that runs its update (the
+  latched sticks and scheme); while the app or the editor's Play is paused it neither moves nor
+  activates.
+- Part B (AC13): the component UI goes through the same cursor dispatch as the documents (the
+  mouse's pointer -1), but no editor test drives a component Button with the cursor: the editor
+  test binary has no HTML documents, and a Gamepad Cursor document must show for the cursor to be
+  active. Not verified.
+- Part B (AC14, AC15): no counting allocator or bench line: `InputGamepadCursorTest.CursorZeroCostWhenOff`
+  checks that the overlay never loads and the cursor stays inactive with a pad moving; and
+  `CursorDrawnOnTop` checks the overlay document's layout (above the documents, hot spot on the
+  point, hidden in another scheme) instead of a golden image.
+- Tests: the Back tests are `DocumentBackTest.*` (an HTML fixture of their own in
+  `TestInputDocument.cpp`), the cursor tests `InputGamepadCursorTest.*`, AC18 and the menu clause
+  of AC19 are in the htmlui suite (`DocumentBackTest.MenuOpeningReleasesGameInput`,
+  `PauseRequestedOnlyWithoutMenu`, `PauseOnFocusLossWarnsWithoutSubscriber`; the editor tests have
+  no HTML documents), the rest of AC19 is `PlatformServicesTest.PauseRequestedOnlyWithoutMenu`;
+  AC20's cursor and Back cases are one MCP test, `test_gamepad_cursor_and_back_route`; AC21's
+  persistence is `StreamComponent.UIDocumentMenuAndCursorRoundTrip` and
+  `PresentationSettings.PauseOnFocusLossAndGamepadCursorRoundTrip` (the two Inspector rows use the
+  generic reflection `PropertyCmd` path of their neighbours; not tested on their own).

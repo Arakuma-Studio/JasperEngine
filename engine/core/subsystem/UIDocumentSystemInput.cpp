@@ -18,6 +18,7 @@
 #include "util/StringUtils.h"
 
 #include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
