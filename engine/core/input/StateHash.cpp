@@ -12,7 +12,7 @@
 #include "component/ScriptComponent.h"
 #include "component/Transform.h"
 
-#include "xxhash/xxhash.h"
+#include "util/ContentHash.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,17 +21,13 @@ namespace jasperengine::input {
 
 namespace {
 
+    // the bytes the hash reads, hashed once (XXH3-64, util/ContentHash.h)
     struct Hasher {
-        XXH3_state_t* state = XXH3_createState();
-        Hasher() { XXH3_64bits_reset(state); }
-        ~Hasher() { XXH3_freeState(state); }
-        Hasher(const Hasher&) = delete;
-        Hasher& operator=(const Hasher&) = delete;
-
-        void bytes(const void* data, size_t size) { XXH3_64bits_update(state, data, size); }
+        std::string bytesSeen;
+        void bytes(const void* data, size_t size) { bytesSeen.append(static_cast<const char*>(data), size); }
         void i32(int32_t v) { bytes(&v, sizeof(v)); }
         void f(float v) { i32(quantizeState(v)); }
-        uint64_t digest() const { return XXH3_64bits_digest(state); }
+        uint64_t digest() const { return hashContent64(bytesSeen.data(), bytesSeen.size(), 0); }
     };
 
     void hashValue(Hasher& h, const ScriptJson& value){
@@ -83,7 +79,7 @@ uint64_t hashState(const std::vector<Scene*>& scenes, const ScriptJson& values){
         auto* transforms = scene->getComponentArray<Transform>();
         if (!transforms)
             continue;
-        // one update a scene: a field at a time costs more than the hash itself
+        // a scene's fields gathered first: one append a scene
         const std::vector<Entity> entities = transformEntities(scene);
         std::vector<int32_t> fields;
         fields.reserve(entities.size() * 12);
