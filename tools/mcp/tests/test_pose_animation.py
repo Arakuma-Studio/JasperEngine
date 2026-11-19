@@ -22,6 +22,9 @@ TIMEOUT = 600
 HERO = "assets/models/hero_tpose.gltf"
 ROBOT = "assets/models/robot_apose.gltf"
 WALK = "assets/anim/walk.poseanim"
+B_RIG = "assets/models/b_rig_proxy.gltf"
+PROXY_NOTE = ("B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
+              "turn on Mesh Space Rotation on the layer instead.")
 
 
 def file_json(ed: Editor, rel: str) -> dict:
@@ -326,6 +329,19 @@ async def test_rig_and_metrics_on_the_preview_model(ed: Editor):
     ed.check(approx(air["lowest"], 0.3, 2e-3) and not air["balanced"], f"air: {air}")
     ed.check(one["feet"]["right"]["contact"] and not one["feet"]["left"]["contact"], f"one leg: {one}")
     ed.check(one["feet"]["left"]["height"] > 0.1, f"one leg: {one}")
+
+
+async def test_b_rig_maps_and_notes_its_spine_proxy(ed: Editor):
+    # Kevin Iglesias' B- names map every required slot; the animated spine proxy node beside the
+    # hips is said once in the notes (mesh-space-rotation R1, R3)
+    path = "assets/anim/b_rig.poseanim"
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": B_RIG}, ops=[{"op": "add_pose", "name": "Stand"}])
+    rig = (await ed.call("get_pose_animation", path=path))["rig"]
+    ed.check(rig is not None and "error" not in rig, f"rig: {rig}")
+    ed.check_eq((rig["mapped"], rig["missing"]), (21, []), f"every slot but the upper chest: {rig}")
+    ed.check_eq((rig["bones"]["hips"], rig["bones"]["spine"], rig["bones"]["left_upper_arm"]),
+                ("B-hips", "B-spine", "B-upperArm.L"), "B- names")
+    ed.check_eq(rig.get("notes", []).count(PROXY_NOTE), 1, f"the proxy note once: {rig.get('notes')}")
 
 
 async def test_joint_limits_clamp_touched_poses(ed: Editor):
