@@ -1348,7 +1348,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
                 }
                 args = json.dump();
             }
-            htmlui::HtmlL10n::setL10n(self->get(), key, args);
+            htmlui::HtmlL10n::setL10n(UIElementAccess::get(*self), key, args);
         })
         .addFunction("closest", [](const UIElement* self, const std::string& selector) -> std::optional<UIElement> {
             return optionalElement(self->closest(selector));
@@ -1535,7 +1535,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("querySelectorAll", &UIDocument::querySelectorAll)
         // game-ui-localization.md R11: collects the keyed elements again after scripts edited data-l10n-* directly
         .addFunction("translate", [](const UIDocument* self) {
-            Rml::Element* root = self->getDocumentElement().get();
+            Rml::Element* root = UIElementAccess::get(self->getDocumentElement());
             htmlui::HtmlL10n::translateDocument(root ? root->GetOwnerDocument() : nullptr);
         })
         // the document element (RML body)
