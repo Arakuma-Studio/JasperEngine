@@ -2724,6 +2724,21 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+const FieldEntry kBody_SimulationCullingComponent_fields[] = {
+    JE_RF(SimulationCullingComponent, enabled, 0xaf7f9315u, Bool),
+    JE_RF(SimulationCullingComponent, simulationDistance, 0x7be7276cu, Float),
+    JE_RF(SimulationCullingComponent, reducedRateDistance, 0x61257efbu, Float),
+    JE_RF(SimulationCullingComponent, reducedUpdateInterval, 0xa69dd5a2u, Int),
+    JE_RF(SimulationCullingComponent, hysteresis, 0x067c857bu, Float),
+    JE_RF(SimulationCullingComponent, boundsRadius, 0xf1a54d53u, Float),
+    JE_RF(SimulationCullingComponent, simulateWhenVisible, 0x1130f258u, Bool),
+    JE_RF(SimulationCullingComponent, freezeWhenGroundNotLoaded, 0x4fc844a8u, Bool),
+    JE_RF(SimulationCullingComponent, cullScripts, 0x434b1508u, Bool),
+    JE_RF(SimulationCullingComponent, cullAnimator, 0xd1bc3b2du, Bool),
+    JE_RF(SimulationCullingComponent, cullPhysics, 0xe162a179u, Bool),
+};
+const StructTable kBody_SimulationCullingComponent{"simulationculling", kBody_SimulationCullingComponent_fields, std::size(kBody_SimulationCullingComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2843,6 +2858,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(SimulationCullingComponent, "simulationculling", 0x71370112u),
     JE_RF_COMPONENTS_END
 };
 

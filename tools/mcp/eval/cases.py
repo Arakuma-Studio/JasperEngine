@@ -5315,14 +5315,18 @@ CASES = [
         "kind": "guard",
         "what_happened": "New text (R30, R35): configure_game_view culling_debug draws the Simulation Culling and Culling Group "
                          "spheres; asked to show what is culled, an agent turns it on and takes a Game view screenshot.",
-        "text_at_issue": "configure_game_view culling_debug: 'Draws what is culled while playing (screenshot it).'",
+        "text_at_issue": "configure_game_view's culling_debug parameter, its result's next ('screenshot the Game view while "
+                         "playing: green spheres simulate ...'); jasper://docs/profiling Culling",
         "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
         "playing": True,
         "groups_enabled": ["editor_ux"],
         "prompt": "The game is playing. Show me which GameObjects are culled right now, as a picture.",
         "mocks": [
             {"tool": "configure_game_view", "result": ok("Updated the Game view: {\"culling_debug\": true, ...}",
-                                                        {"culling_debug": True, "changed": ["culling_debug"]})},
+                                                        {"culling_debug": True, "changed": ["culling_debug"],
+                                                         "next": "screenshot the Game view while playing: green spheres simulate, yellow run "
+                                                                 "at the reduced rate, red are culled by distance, grey by unloaded ground; "
+                                                                 "cyan / dark blue are Culling Group spheres in / out of view."})},
             {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
             {"tool": "get_render_stats", "result": ok("Render stats (frame): 42 draws.", {"view": "frame", "draw_calls": 42})},
         ],
