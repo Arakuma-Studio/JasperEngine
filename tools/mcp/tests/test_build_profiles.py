@@ -154,7 +154,7 @@ async def test_build_without_profile_is_unchanged(ed: Editor):
     ed.check("profile" not in result, f"no profile in the result: {result}")
     actual = {"game.json": key_paths(json.loads((out / "game.json").read_text())),
               "content-manifest.json": key_paths(json.loads((out / "content-manifest.json").read_text()))}
-    if os.environ.get("JASPER_RECORD_FIXTURES") == "1":
+    if os.environ.get("JASPER_TEST_UPDATE_FIXTURES", "") not in ("", "0"):
         FIXTURE.parent.mkdir(parents=True, exist_ok=True)
         FIXTURE.write_text(json.dumps(actual, indent=2) + "\n")
     expected = json.loads(FIXTURE.read_text())
