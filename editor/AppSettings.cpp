@@ -1806,6 +1806,35 @@ bool AppSettings::setBuildSettings(const std::filesystem::path& projectFile, con
     return storeLocalSettings(projectFile, local);
 }
 
+CrashReportsLocations AppSettings::getCrashReportsLocations(const std::filesystem::path& projectFile) {
+    CrashReportsLocations result;
+    const YAML::Node entry = loadLocalSettings(projectFile)["crash_reports"];
+    if (!entry || !entry.IsMap()) return result;
+    try {
+        if (entry["folder"]) result.folder = std::filesystem::path(entry["folder"].as<std::string>());
+        if (entry["symbols"]) result.symbols = std::filesystem::path(entry["symbols"].as<std::string>());
+    } catch (const std::exception& e) {
+        Out::warning("Ignoring the Crash Reports folders in \"%s\": %s", localSettingsFile(projectFile).string().c_str(), e.what());
+        return CrashReportsLocations();
+    }
+    return result;
+}
+
+bool AppSettings::setCrashReportsLocations(const std::filesystem::path& projectFile, const CrashReportsLocations& value) {
+    const CrashReportsLocations previous = getCrashReportsLocations(projectFile);
+    if (previous.folder == value.folder && previous.symbols == value.symbols) return true;
+    YAML::Node local = loadLocalSettings(projectFile);
+    if (value.folder.empty() && value.symbols.empty()) {
+        local.remove("crash_reports");
+    } else {
+        YAML::Node entry(YAML::NodeType::Map);
+        if (!value.folder.empty()) entry["folder"] = value.folder.generic_string();
+        if (!value.symbols.empty()) entry["symbols"] = value.symbols.generic_string();
+        local["crash_reports"] = entry;
+    }
+    return storeLocalSettings(projectFile, local);
+}
+
 bool AppSettings::isAutosaveEnabled() {
     return autosaveEnabled;
 }

@@ -5278,4 +5278,60 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # -- shipped-game-diagnostics R40, AC23: get_crash_reports folder and group (R37). ----------------
+    {
+        "id": "crash_reports_new_in_version",
+        "kind": "guard",
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "Two hundred report folders from testers' devices: the agent must tell which crash is new in 1.4. A page "
+                         "of reports names no pattern; grouping by signature with counts per version does.",
+        "text_at_issue": "get_crash_reports: description sentence on folder and group; its folder and group parameters",
+        "source": "docs/specs/shipped-game-diagnostics.md R37, R40",
+        "prompt": "My testers pulled the crash folders off their phones and PCs into /home/me/crashes/forest-run (the game's "
+                  "crash folder, with reports/ inside). Version 1.4 went out last week: which crash is new in 1.4?",
+        "mocks": [
+            {"tool": "get_crash_reports", "args": {"group": True}, "result": ok(
+                "5 groups of 212 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "reports_read": 212, "session": "20261118T090000Z-4410",
+                    "notice_open": False,
+                    "next": "Names need symbols: python3 -I tools/crash/symbolicate.py --group /home/me/crashes/forest-run/reports --symbols <dir>",
+                    "groups": [
+                        {"signature": "crash | EXCEPTION_ACCESS_VIOLATION | game::Inventory::addItem | game::Player::pickUp | "
+                                      "(anonymous namespace)::onTouch", "kind": "crash", "count": 91, "versions": {"1.3": 58, "1.4": 33},
+                         "platforms": {"windows-x86_64": 91}, "first_seen": "2026-10-02T10:00:30Z", "last_seen": "2026-11-17T21:12:09Z",
+                         "report_ids": ["20261117T211200Z-8812"], "unresolved": False},
+                        {"signature": "crash | SIGSEGV | forestrun+0x4f2a0 | libjasperengine.so+0x1a000 | forestrun+0x4e100 | build "
+                                      "3f1c9e07b2d84a6c5e91f0a2b7c4d6e8f9a0b1c2", "kind": "crash", "count": 52, "versions": {"1.3": 30, "1.4": 22},
+                         "platforms": {"linux-x86_64": 52}, "first_seen": "2026-10-05T08:10:00Z", "last_seen": "2026-11-18T07:40:44Z",
+                         "report_ids": ["20261118T074000Z-1209"], "unresolved": True},
+                        {"signature": "crash | terminate | std::vector::_Xlength | game::Level::load | game::Game::start", "kind": "crash",
+                         "count": 37, "versions": {"1.4": 37}, "platforms": {"windows-x86_64": 29, "android-arm64": 8},
+                         "first_seen": "2026-11-11T14:02:13Z", "last_seen": "2026-11-18T08:55:01Z",
+                         "report_ids": ["20261118T085500Z-7310"], "unresolved": False},
+                        {"signature": "hang | lua | Spawning enemies | NtDelayExecution | SleepEx | game::Ai::think", "kind": "hang",
+                         "count": 20, "versions": {"1.3": 12, "1.4": 8}, "platforms": {"windows-x86_64": 20},
+                         "first_seen": "2026-10-09T19:30:00Z", "last_seen": "2026-11-16T12:00:30Z",
+                         "report_ids": ["20261116T120000Z-5001"], "unresolved": False},
+                        {"signature": "abnormal_exit", "kind": "abnormal_exit", "count": 12, "versions": {"1.3": 7, "1.4": 5},
+                         "platforms": {"unknown": 12}, "first_seen": "2026-10-03T07:00:00Z", "last_seen": "2026-11-15T22:10:00Z",
+                         "report_ids": ["20261115T221000Z-6120"], "unresolved": False},
+                    ]})},
+            {"tool": "get_crash_reports", "result": ok(
+                "10 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "session": "20261118T090000Z-4410", "notice_open": False,
+                    "reports": [{"id": f"2026111{d}T0{h}0000Z-{4000 + d * 10 + h}", "kind": "crash", "time": f"2026-11-1{d}T0{h}:00:30Z",
+                                 "reason": reason, "product": "Forest Run", "version": version,
+                                 "folder": f"/home/me/crashes/forest-run/reports/2026111{d}T0{h}0000Z-{4000 + d * 10 + h}",
+                                 "files": ["crash.txt", "log-tail.txt"], "handled": False, "this_session": False}
+                                for d, h, reason, version in [
+                                    (8, 8, "unhandled exception: vector too long", "1.4"), (8, 7, "SIGSEGV (invalid memory access)", "1.4"),
+                                    (8, 6, "unhandled Windows exception", "1.3"), (7, 9, "unhandled Windows exception", "1.4"),
+                                    (7, 5, "SIGSEGV (invalid memory access)", "1.3"), (7, 2, "unhandled Windows exception", "1.4"),
+                                    (6, 8, "SIGSEGV (invalid memory access)", "1.4"), (6, 4, "unhandled Windows exception", "1.3"),
+                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]})},
+        ],
+        "checks": {"calls": [{"tool": "get_crash_reports", "args": {"folder": "re:forest-run", "group": True}}],
+                   "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
+        "max_turns": 10,
+    },
 ]

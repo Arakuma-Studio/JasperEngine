@@ -101,6 +101,7 @@
 #include "window/JobsMemoryWindow.h"
 #include "window/MeshAuditWindow.h"
 #include "window/BuildReportWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/ImporterFields.h"
 #include "window/AnimationStatisticsWindow.h"
 #include "window/ReduceKeysDialog.h"
@@ -328,6 +329,7 @@ editor::App::App(){
     jobsMemoryWindow = new JobsMemoryWindow();
     meshAuditWindow = new MeshAuditWindow(&project);
     buildReportWindow = new BuildReportWindow(&project);
+    crashReportsWindow = new CrashReportsWindow(&project);
     animationStatisticsWindow = new AnimationStatisticsWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
@@ -871,6 +873,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
             catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
             catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME)),
+            catalogItem("window.crashReports", windowMenuLabel(CrashReportsWindow::WINDOW_NAME)),
             catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
@@ -1149,6 +1152,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleBuildReport:
             showEditorWindow(buildReportWindow);
+            break;
+        case AppMenuCommand::ToggleCrashReports:
+            showEditorWindow(crashReportsWindow);
             break;
         case AppMenuCommand::ToggleAnimationStatistics:
             showEditorWindow(animationStatisticsWindow);
@@ -3238,6 +3244,7 @@ void editor::App::show(){
     jobsMemoryWindow->show();
     meshAuditWindow->show();
     buildReportWindow->show();
+    crashReportsWindow->show();
     animationStatisticsWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();

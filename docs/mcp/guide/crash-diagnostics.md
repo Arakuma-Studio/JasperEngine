@@ -21,10 +21,19 @@ past its budget the stall is reported.
 ## Reports
 
 `get_crash_reports {limit, include_text}`: the editor's report folders, newest first, each
-`{id, kind: crash|hang|abnormal_exit, time, reason, files, handled, this_session}`, and
+`{id, kind: crash|hang|abnormal_exit|user, time, reason, files, handled, this_session}`, and
 `notice_open` (the startup notice "JasperEngine closed unexpectedly last time"). `include_text`
 adds crash.txt or the newest hang report. A hang of this session is listed as soon as it is
 written. `dismiss_crash_notice {id?}` is the notice's Dismiss (marks the report handled).
+
+- Many reports -> `get_crash_reports {group: true}`: one row per signature (kind, signal, first 3
+  frames of the game), with `count`, `versions`, `platforms`, `first_seen`, `last_seen`. A crash
+  new in a version has only that version in `versions`.
+- A game's reports pulled from a device -> `folder` (its crash root or `reports/`). `kinds`
+  filters; `files: ["journal.txt", "user.txt"]` inlines those files of each report.
+- `unresolved: true`: its frames have no names, so it groups only within one build; `next` gives
+  the `tools/crash/symbolicate.py --group` command that names them from the build's symbols.
+- Window > Analysis > Crash Reports (`focus_window {window: "crash_reports"}`) shows the same.
 
 ## A game's own reports
 
