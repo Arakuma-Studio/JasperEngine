@@ -1038,27 +1038,27 @@ bool editor::Exporter::finalizeMacOS() {
     setProgressRaw("Finishing the macOS build...", 0.9f);
     const std::string app = getAppName();
     const fs::path bundle = stagingDir / (app + ".app");
-    platform::MacBundleSettings settings;
+    platform::MacBundleSettings macBundle;
     const MacOSProjectSettings& mac = settings->getMacOSProjectSettings();
-    settings.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
-    settings.executable = app;
-    settings.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
-    settings.version = mac.versionName.empty() ? "1.0" : mac.versionName;
-    settings.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
-    settings.highDpi = mac.highDpi;
+    macBundle.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
+    macBundle.executable = app;
+    macBundle.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
+    macBundle.version = mac.versionName.empty() ? "1.0" : mac.versionName;
+    macBundle.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
+    macBundle.highDpi = mac.highDpi;
     fs::path icon = mac.icon.empty() ? settings->getWindowIcon() : mac.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
+    macBundle.iconPng = icon;
     // the privacy manifest and Info.plist entries (macos.plist_entries) the source export has too
     const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), settings->getApplePrivacy(), "macos");
     warnPrivacy("macOS", privacy.warnings);
-    settings.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
+    macBundle.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
     if (!mac.plistEntries.empty()) {
-        settings.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
+        macBundle.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
     }
     std::string error;
     std::vector<BuildWarning> warnings;
-    if (!platform::finishMacBundle(bundle, settings, warnings, error)) {
+    if (!platform::finishMacBundle(bundle, macBundle, warnings, error)) {
         setError("macOS bundle: " + error);
         return false;
     }
@@ -1256,34 +1256,34 @@ bool editor::Exporter::finalizeAndroid() {
 
 bool editor::Exporter::finalizeIOS() {
     setProgressRaw("Writing the Xcode project...", 0.9f);
-    platform::IosProjectSettings settings;
+    platform::IosProjectSettings xcode;
     const IOSProjectSettings& ios = settings->getIOSProjectSettings();
-    settings.appName = getAppName();
-    settings.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
-    settings.bundleIdentifier = ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
-    settings.version = ios.versionName.empty() ? "1.0" : ios.versionName;
-    settings.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
-    settings.teamId = ios.teamId;
-    settings.exportMethod = ios.exportMethod;
-    settings.hideStatusBar = ios.hideStatusBar;
+    xcode.appName = getAppName();
+    xcode.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
+    xcode.bundleIdentifier = ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
+    xcode.version = ios.versionName.empty() ? "1.0" : ios.versionName;
+    xcode.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
+    xcode.teamId = ios.teamId;
+    xcode.exportMethod = ios.exportMethod;
+    xcode.hideStatusBar = ios.hideStatusBar;
     fs::path icon = ios.icon.empty() ? settings->getWindowIcon() : ios.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
-    settings.runtimeDir = player->dir / "ios";
-    settings.projectDir = stagingDir / getAppName();
-    settings.simulator = config.iosSimulator;
+    xcode.iconPng = icon;
+    xcode.runtimeDir = player->dir / "ios";
+    xcode.projectDir = stagingDir / getAppName();
+    xcode.simulator = config.iosSimulator;
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
     std::vector<BuildWarning> warnings;
-    if (!platform::stageIosProject(settings, error)) {
+    if (!platform::stageIosProject(xcode, error)) {
         setError(error);
         return false;
     }
     // the game's Objective-C/Swift plugins, SDKs, packages, Info.plist entries, entitlements and
     // privacy manifest: the template is an Xcode project, so they are carried, not dropped
-    if (!addNativeToIosPlayer(settings.projectDir)) return false;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
+    if (!addNativeToIosPlayer(xcode.projectDir)) return false;
+    if (!platform::buildIosProject(xcode, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
@@ -1292,6 +1292,6 @@ bool editor::Exporter::finalizeIOS() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;
     result.artifacts = artifacts;
-    result.executable = artifacts.empty() ? settings.projectDir : artifacts.front();
+    result.executable = artifacts.empty() ? xcode.projectDir : artifacts.front();
     return true;
 }
