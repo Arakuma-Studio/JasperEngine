@@ -1947,9 +1947,14 @@ void AnimatorWindow::drawLayerInspector(ControllerDef& def){
     changed |= ImGui::Checkbox("Mesh Space Rotation", &l.meshSpaceRotation);
     ImGui::EndDisabled();
     UIProbe::item("animator.layer.meshSpaceRotation");
-    ImGui::SetItemTooltip("%s", meshSpaceOff ? meshSpaceOff :
-        "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following their parent. "
-        "Use it for upper-body layers over locomotion, so the torso faces where this layer's clip faces. Unreal: Mesh Space Rotation Blend.");
+    if (ImGui::BeginItemTooltip()){
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(meshSpaceOff ? meshSpaceOff :
+            "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following their parent. "
+            "Use it for upper-body layers over locomotion, so the torso faces where this layer's clip faces. Unreal: Mesh Space Rotation Blend.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
     if (l.meshSpaceRotation && !meshSpaceOff){
         ImGui::Indent();
         ImGui::TextDisabled("%s", meshSpaceAppliesLine(boundInstance(), l.name).c_str());
