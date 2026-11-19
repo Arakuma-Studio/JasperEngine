@@ -19,6 +19,7 @@
 #include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/InputFieldComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -762,6 +763,16 @@ namespace {
         {v(TextureFilter::LINEAR_MIPMAP_LINEAR), "linear_mipmap_linear", "Linear Mipmap Linear", "TextureFilter::LINEAR_MIPMAP_LINEAR"},
     };
 
+    constexpr EnumItem kInputFieldKeyboardTypeItems[] = {
+        {v(InputFieldKeyboardType::DEFAULT), "default", "Default", "InputFieldKeyboardType::DEFAULT"},
+        {v(InputFieldKeyboardType::NUMBER_PAD), "number_pad", "Number Pad", "InputFieldKeyboardType::NUMBER_PAD"},
+        {v(InputFieldKeyboardType::DECIMAL_PAD), "decimal_pad", "Decimal Pad", "InputFieldKeyboardType::DECIMAL_PAD"},
+        {v(InputFieldKeyboardType::PHONE_PAD), "phone_pad", "Phone Pad", "InputFieldKeyboardType::PHONE_PAD"},
+        {v(InputFieldKeyboardType::EMAIL_ADDRESS), "email_address", "Email Address", "InputFieldKeyboardType::EMAIL_ADDRESS"},
+        {v(InputFieldKeyboardType::URL), "url", "URL", "InputFieldKeyboardType::URL"},
+        {v(InputFieldKeyboardType::SEARCH), "search", "Search", "InputFieldKeyboardType::SEARCH"},
+    };
+
     constexpr EnumItem kTextureWrapItems[] = {
         {v(TextureWrap::REPEAT), "repeat", "Repeat", "TextureWrap::REPEAT"},
         {v(TextureWrap::MIRRORED_REPEAT), "mirrored_repeat", "Mirrored Repeat", "TextureWrap::MIRRORED_REPEAT"},
@@ -886,6 +897,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kCapsuleDirection{"CapsuleDirection", kCapsuleDirectionItems, v(CapsuleDirection::Y_AXIS)};
     const EnumDesc kTextureAlphaBorder{"TextureAlphaBorder", kTextureAlphaBorderItems, v(TextureAlphaBorder::AUTO), nullptr, kTextureAlphaBorderOrder};
     const EnumDesc kTextureFilter{"TextureFilter", kTextureFilterItems, v(TextureFilter::LINEAR)};
+    const EnumDesc kInputFieldKeyboardType{"InputFieldKeyboardType", kInputFieldKeyboardTypeItems, v(InputFieldKeyboardType::DEFAULT)};
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};
     const EnumDesc kUIDocumentRenderMode{"UIDocumentRenderMode", kUIDocumentRenderModeItems, v(UIDocumentRenderMode::SCREEN), nullptr,
                                          kUIDocumentRenderModeOrder};
