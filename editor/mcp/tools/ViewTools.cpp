@@ -2000,6 +2000,10 @@ void configureGameViewTool(const CallPtr& call) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
     }
+    if (args.contains("physics_debug_queries")) {
+        Physics::setDebugDrawQueries(args.value("physics_debug_queries", false));
+        changed.push_back("physics_debug_queries");
+    }
     if (args.contains("network")) {
         const std::string network = args.value("network", "");
         if (network != "online" && network != "offline") {
@@ -2159,6 +2163,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_queries", Physics::isDebugDrawQueries()},
         {"physics_debug_lines", physicsDebugLines},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
@@ -2368,6 +2373,7 @@ void registerViewTools(McpRegistry& registry) {
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
+            {"physics_debug_queries", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
             {"device", string("A devices id, custom or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},

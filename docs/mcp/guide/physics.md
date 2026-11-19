@@ -196,7 +196,9 @@ Animation Player, Model animations, Pose and Vertex Animators) and resumes it af
 `configure_game_view {physics_debug: true}` (Game view toolbar Physics, Lua `Physics.debugDraw =
 true`) draws every collider while playing (green awake, dark green asleep, blue kinematic, grey
 static, yellow triggers), joints in magenta and, with `physics_debug_contacts`, contact points in
-red; 2D too. A screenshot then shows them.
+red; 2D too. A screenshot then shows them. `physics_debug_queries` (toolbar Queries, Lua
+`Physics.debugDrawQueries`) draws the queries scripts run for 1 s: shape, sweep, hits as crosses,
+green with hits, red without.
 
 Each scene's 3D world holds at most Project Settings > Physics > 3D World Capacity: Max Bodies,
 Max Body Pairs, Max Contact Constraints (8192 each, about 3.6 MB per world; `set_project_settings`
@@ -507,6 +509,20 @@ Inspector shows the same under each body in Play.
   rects, no body needed, also in the editor (`raycast_meshes`). Use Physics for gameplay against
   colliders; MeshRaycast for aiming, placement and line of sight on visible geometry.
   `jasper://docs/scene-view` has the details.
+- What is near, by colliders: `Physics.overlapSphere / overlapBox / overlapCapsule` (all hits),
+  `checkSphere / checkBox / checkCapsule` (any), `sphereCast / boxCast / capsuleCast` (+ `All`),
+  2D `Physics2D.overlapPoint / overlapCircle / overlapBox / overlapCapsule / overlapArea` (first,
+  `All`, `NonAlloc`) and `circleCast / boxCast / capsuleCast`. Results are sorted by (body,
+  collider); casts skip what they start in. `...NonAlloc(..., results)` writes entity ids into a
+  reused table: no garbage per frame. They see the world of the last physics step.
+- Triggers: a trailing `QueryTriggerInteraction.Ignore / Collide / UseGlobal` (the default:
+  `Physics.queriesHitTriggers`, Project Settings > Physics > Queries Hit Triggers, on), raycasts too.
+- In Play, check a query from outside: `query_physics` (group `physics`) runs overlap, check,
+  cast or raycast and returns entity paths. Recipe, a pickup radius: `query_physics {shape:
+  {type: sphere, radius: 3}, origin: [x, y, z], triggers: collide, verify: true}`; `verify.ok`
+  false means the query and the brute-force sweep differ: report it. Zero hits come with a `next`
+  naming the layer mask or the triggers setting that left bodies out. `world: drawn` overlaps
+  drawn bounds, also in edit mode.
 - **Global contact events** (every pair of the scene: filter by body; the per-object callbacks
   above are simpler): 2D `beginContact2D`, `endContact2D`, `stayContact2D` (once a
   step per touching shape pair, from the step after its begin, while a body is awake), `hitContact2D`,

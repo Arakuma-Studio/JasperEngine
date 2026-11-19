@@ -303,7 +303,7 @@ namespace {
             collector.points = recording ? points : nullptr;
             const JPH::NarrowPhaseQuery& query = system->getNarrowPhaseQuery3D();
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                query.CollideShape(&joltShape, JPH::Vec3::sOne(), transform, settings, JPH::RVec3::sZero(), collector,
+                query.CollideShape(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, settings, JPH::RVec3::sZero(), collector,
                                    JPH::BroadPhaseLayerFilter(), layerFilter, bodyFilter);
             });
             out.resize(physics::sortOverlapHits(out.data(), out.size()));
@@ -330,7 +330,7 @@ namespace {
             const JPH::CollideShapeSettings settings = overlapSettings();
             const JPH::NarrowPhaseQuery& query = system->getNarrowPhaseQuery3D();
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                query.CollideShape(&joltShape, JPH::Vec3::sOne(), transform, settings, JPH::RVec3::sZero(), collector,
+                query.CollideShape(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, settings, JPH::RVec3::sZero(), collector,
                                    JPH::BroadPhaseLayerFilter(), layerFilter, bodyFilter);
             });
         }
@@ -365,7 +365,7 @@ namespace {
             settings.mReturnDeepestPoint = false;
             const JPH::NarrowPhaseQuery& query = system->getNarrowPhaseQuery3D();
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                const JPH::RShapeCast cast(&joltShape, JPH::Vec3::sOne(), transform, unit * maxDistance);
+                const JPH::RShapeCast cast(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, unit * maxDistance);
                 query.CastShape(cast, settings, JPH::RVec3::sZero(), collector, JPH::BroadPhaseLayerFilter(), layerFilter, bodyFilter);
             });
         }
@@ -506,7 +506,7 @@ void physics::referenceOverlap3D(Scene* scene, const QueryShape& shape, const Ph
         collector.OnBody(body);
         const JPH::TransformedShape transformed = body.GetTransformedShape();
         withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-            transformed.CollideShape(&joltShape, JPH::Vec3::sOne(), transform, settings, JPH::RVec3::sZero(), collector);
+            transformed.CollideShape(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, settings, JPH::RVec3::sZero(), collector);
         });
     }
     out.resize(sortOverlapHits(out.data(), out.size()));

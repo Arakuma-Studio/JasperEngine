@@ -440,6 +440,22 @@ TEST(ModuleUsage, PhysicsDebugDrawingNeedsRuntimeShaders) {
     EXPECT_FALSE(withLua("local hit = Physics.raycast(self.scene, Ray(Vector3(0, 0, 0), Vector3(0, 1, 0)))").needs("runtimeshaders"));
 }
 
+// spatial-queries AC23: the query debug draw draws lines (runtimeshaders); the queries select no
+// module, as raycast (the bodies decide the physics module)
+TEST(ModuleUsage, PhysicsQueryDebugNeedsRuntimeShaders) {
+    EXPECT_TRUE(withLua("Physics.debugDrawQueries = true").needs("runtimeshaders"));
+    const ModuleUsage queries = withLua(
+        "local near = Physics.overlapSphere(self.scene, Vector3(0, 0, 0), 8)\n"
+        "local n = Physics.overlapSphereNonAlloc(self.scene, Vector3(0, 0, 0), 8, {})\n"
+        "local hit = Physics.sphereCast(self.scene, Vector3(0, 0, 0), 1, Vector3(1, 0, 0), 10)\n"
+        "Physics.queriesHitTriggers = false\n"
+        "local first = Physics2D.overlapCircle(self.scene, Vector2(0, 0), 8)\n"
+        "local seen = MeshRaycast.overlapSphere(self.scene, Vector3(0, 0, 0), 8)");
+    EXPECT_FALSE(queries.needs("runtimeshaders"));
+    EXPECT_FALSE(queries.needs("physics3d"));
+    EXPECT_FALSE(queries.needs("physics2d"));
+}
+
 TEST(ModuleUsage, RuntimeShadersFollowShaderRelevantNames) {
     // moves, spawns prefabs, plays sounds and animations, reads input: every variant is cooked
     const std::string neutral =

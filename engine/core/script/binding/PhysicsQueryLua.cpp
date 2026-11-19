@@ -18,6 +18,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "LuaBridgeAddon.h"
 
 #include "Scene.h"
 #include "object/EntityHandle.h"
@@ -30,6 +31,12 @@
 using namespace jasperengine;
 
 #ifndef DISABLE_LUA_BINDINGS
+// the enums as integers (only this file passes them to Lua)
+namespace luabridge{
+    template<> struct Stack<jasperengine::QueryTriggerInteraction> : EnumWrapper<jasperengine::QueryTriggerInteraction>{};
+    template<> struct Stack<jasperengine::CapsuleDirection2D> : EnumWrapper<jasperengine::CapsuleDirection2D>{};
+}
+
 namespace {
 
     // the main thread's buffers (the Lua state belongs to it)
@@ -561,18 +568,19 @@ namespace {
 
 void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
 #ifndef DISABLE_LUA_BINDINGS
-    // Unity's QueryTriggerInteraction and CapsuleDirection2D (the same values)
+    // Unity's QueryTriggerInteraction (whether a query reports triggers)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("QueryTriggerInteraction")
-        .addVariable("UseGlobal", (int)QueryTriggerInteraction::UseGlobal)
-        .addVariable("Ignore", (int)QueryTriggerInteraction::Ignore)
-        .addVariable("Collide", (int)QueryTriggerInteraction::Collide)
+        .addVariable("UseGlobal", QueryTriggerInteraction::UseGlobal)
+        .addVariable("Ignore", QueryTriggerInteraction::Ignore)
+        .addVariable("Collide", QueryTriggerInteraction::Collide)
         .endNamespace();
 
+    // Unity's CapsuleDirection2D (the axis of a 2D capsule's round ends)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("CapsuleDirection2D")
-        .addVariable("Vertical", (int)CapsuleDirection2D::Vertical)
-        .addVariable("Horizontal", (int)CapsuleDirection2D::Horizontal)
+        .addVariable("Vertical", CapsuleDirection2D::Vertical)
+        .addVariable("Horizontal", CapsuleDirection2D::Horizontal)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

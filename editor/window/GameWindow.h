@@ -117,6 +117,9 @@ namespace jasperengine::editor {
         void drawTransitionMenu();
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
+        // the physics query totals at the last Stats draw: their difference is the frame's
+        uint64_t statsQueryTotal = 0;
+        uint64_t statsQueryHitTotal = 0;
         bool computeAspect(float& aspect) const;
         uint32_t getTargetSceneId() const;
         // S41: the shown scene's main camera draws through a Pixel Perfect Camera (its request)

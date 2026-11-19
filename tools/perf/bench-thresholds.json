@@ -21,6 +21,15 @@
     "range_allocator_alloc_free_p99_ns": {"max": 250, "spec": "R26 RangeAllocator allocate+free with 10k live ranges, p99"},
     "stats_and_hooks_overhead_pct": {"max": 2, "spec": "R26 stats per job, one thread (bounds the share of R23), median of 41 paired trials"}
   },
+  "je-bench-physics-query": {
+    "overlap_sphere_p95_ms": {"max": 0.0066, "spec": "spatial-queries R19 overlapSphere r 5 m (about 10 hits), C++ caller buffer, query_city, p95"},
+    "overlap_box_p95_ms": {"max": 0.0088, "spec": "spatial-queries R19 overlapBox 5 m half extents, rotated, p95"},
+    "check_sphere_p95_ms": {"max": 0.0033, "spec": "spatial-queries R19 checkSphere r 5 m, p95"},
+    "sphere_cast_p95_ms": {"max": 0.013, "spec": "spatial-queries R19 sphereCast r 0.5 m over 30 m, p95"},
+    "lua_overlap_nonalloc_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 Lua Physics.overlapSphereNonAlloc r 5 m, binding included, p95"},
+    "overlap_circle_2d_p95_ms": {"max": 0.0044, "spec": "spatial-queries R19 2D overlapCircle r 100 points, caller buffer, p95"},
+    "mesh_overlap_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere, 10,000 leaves, no refit due, p95"}
+  },
   "je-bench-picking": {
     "pick_p99_ms_1000x1k": {"max": 1.0, "spec": "R28 closest hit, 1,000 entities x 1k tris, p99 of 10k rays"},
     "pick_p99_ms_1m_plus_500": {"max": 1.0, "spec": "R28 closest hit, one 1M-tri mesh + 500 small meshes, p99 of 10k rays"},

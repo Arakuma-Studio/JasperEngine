@@ -2923,9 +2923,67 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
         OVERRIDES[(_phys, 'raycastAll' if _all else 'raycast')] = {
             'doc': [('Every hit' if _all else 'The closest hit') + f' of a ray in the scene\'s physics world ({_vec} origin and',
                     'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).'],
-            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer')], _ret),
+            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer'), ('qti?', 'integer')], _ret),
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
-                            ('layerMask?', 'integer')], _ret)]}
+                            ('layerMask?', 'integer'), ('qti?', 'integer')], _ret)]}
+
+# spatial queries (docs/scripting/spatial-queries.md): overlaps, checks and shape casts; qti is a
+# QueryTriggerInteraction, ignore a list of bodies the query passes through
+_QTI = [('layerMask?', 'integer'), ('qti?', 'integer')]
+_IGNORE = [('ignore?', '(EntityHandle|integer)[]')]
+_NONALLOC_TAIL = [('layerMask?', 'integer'), ('qti?', 'integer'), ('colliders?', 'SpatialQueryColliders')] + _IGNORE
+_SHAPES_3D = {
+    'Sphere': [('center', 'Vector3'), ('radius', 'number')],
+    'Box': [('center', 'Vector3'), ('halfExtents', 'Vector3')],
+    'Capsule': [('point0', 'Vector3'), ('point1', 'Vector3'), ('radius', 'number')],
+}
+for _shape, _args in _SHAPES_3D.items():
+    _rot = [('rotation?', 'Quaternion')] if _shape == 'Box' else []
+    OVERRIDES[('Physics', 'overlap' + _shape)] = {
+        'doc': [f'Every collider (one hit per collider) touching the {_shape.lower()}, by (body, colliderIndex); the world of',
+                'the last physics step. Allocates the result table: overlap' + _shape + 'NonAlloc reuses one.'],
+        'overloads': [([('scene', 'Scene')] + _args + _rot + _QTI + _IGNORE, 'OverlapHit[]')]}
+    OVERRIDES[('Physics', 'overlap' + _shape + 'NonAlloc')] = {
+        'doc': ['The colliders\' bodies (entity ids) into `results` (entries past the count cleared, so #results is the',
+                'count), their collider indices into `colliders` when given. Returns the count; no garbage once the table has grown.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _rot + _NONALLOC_TAIL, 'integer')]}
+    OVERRIDES[('Physics', 'check' + _shape)] = {
+        'doc': [f'Whether any collider touches the {_shape.lower()} (stops at the first).'],
+        'overloads': [([('scene', 'Scene')] + _args + _rot + _QTI + _IGNORE, 'boolean')]}
+    _castArgs = [(('origin' if _shape == 'Sphere' else 'center') if n == 'center' else n, t) for n, t in _args]
+    for _all in (False, True):
+        OVERRIDES[('Physics', _shape.lower() + 'Cast' + ('All' if _all else ''))] = {
+            'doc': [('Every collider, nearest first,' if _all else 'The closest collider') + f' the {_shape.lower()} meets moving along',
+                    '`direction` for `maxDistance` (world units); colliders it starts in are not reported.'],
+            'overloads': [([('scene', 'Scene')] + _castArgs + [('direction', 'Vector3'), ('maxDistance', 'number')] + _rot + _QTI + _IGNORE,
+                           'RayReturn[]' if _all else 'RayReturn')]}
+_SHAPES_2D = {
+    'Point': [('point', 'Vector2')],
+    'Circle': [('center', 'Vector2'), ('radius', 'number')],
+    'Box': [('center', 'Vector2'), ('size', 'Vector2'), ('angle?', 'number')],
+    'Capsule': [('center', 'Vector2'), ('size', 'Vector2'), ('direction', 'integer'), ('angle?', 'number')],
+    'Area': [('pointA', 'Vector2'), ('pointB', 'Vector2')],
+}
+for _shape, _args in _SHAPES_2D.items():
+    OVERRIDES[('Physics2D', 'overlap' + _shape)] = {
+        'doc': [f'The first collider (lowest body, then colliderIndex) touching the {_shape.lower()}, or nil. Scene units; angles in degrees.'],
+        'overloads': [([('scene', 'Scene')] + _args + _QTI + _IGNORE, 'OverlapHit|nil')]}
+    OVERRIDES[('Physics2D', 'overlap' + _shape + 'All')] = {
+        'doc': [f'Every collider touching the {_shape.lower()}, by (body, colliderIndex).'],
+        'overloads': [([('scene', 'Scene')] + _args + _QTI + _IGNORE, 'OverlapHit[]')]}
+    OVERRIDES[('Physics2D', 'overlap' + _shape + 'NonAlloc')] = {
+        'doc': ['The colliders\' bodies (entity ids) into `results` (#results is the count after), collider indices into',
+                '`colliders` when given. Returns the count.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _NONALLOC_TAIL, 'integer')]}
+for _shape in ('Circle', 'Box', 'Capsule'):
+    _args = [('origin', 'Vector2')] + _SHAPES_2D[_shape][1:]
+    _args = [(n[:-1], t) if n == 'angle?' else (('capsuleDirection', t) if n == 'direction' else (n, t)) for n, t in _args]
+    for _all in (False, True):
+        OVERRIDES[('Physics2D', _shape.lower() + 'Cast' + ('All' if _all else ''))] = {
+            'doc': [('Every collider, nearest first,' if _all else 'The closest collider') + f' the {_shape.lower()} meets moving along',
+                    '`direction` for `distance` (scene units, z = 0); colliders it starts in are not reported.'],
+            'overloads': [([('scene', 'Scene')] + _args + [('direction', 'Vector2'), ('distance', 'number')] + _QTI + _IGNORE,
+                           'RayReturn[]' if _all else 'RayReturn')]}
 
 # S26: MeshRaycast, the triangle-exact raycast without physics (Physics.raycast's arguments)
 _MESH_RAYCAST_OPTIONS = '{hitBackfaces: boolean?, includeInactive: boolean?, ignore: (EntityHandle|integer)[]?, kinds: integer?}'
@@ -2943,6 +3001,19 @@ OVERRIDES[('MeshRaycast', 'raycastEntity')] = {
     'doc': ['The closest hit of a ray on one GameObject only (distance: the fraction of ray.direction).'],
     'overloads': [([('scene', 'Scene'), ('entity', 'EntityHandle|integer'), ('ray', 'Ray'), ('options?', _MESH_RAYCAST_OPTIONS)],
                    'MeshRaycastHit')]}
+_MESH_OVERLAP_OPTIONS = 'MeshOverlapOptions'
+for _box in (False, True):
+    _args = [('center', 'Vector3'), ('halfExtents', 'Vector3')] if _box else [('center', 'Vector3'), ('radius', 'number')]
+    _name = 'overlapBox' if _box else 'overlapSphere'
+    OVERRIDES[('MeshRaycast', _name)] = {
+        'doc': ['Objects whose world bounds touch the ' + ('oriented box' if _box else 'sphere') + ' (bounds, not triangles), by (entity,',
+                'instance); the bounds of the frame\'s first overlap unless options.current. Default kinds MESH | INSTANCE | BOUNDS.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation?', 'Quaternion')] if _box else []) +
+                       [('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'MeshOverlapHit[]')]}
+    OVERRIDES[('MeshRaycast', _name + 'NonAlloc')] = {
+        'doc': ['The objects\' entity ids into `results` (#results is the count after). Returns the count.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation', 'Quaternion')] if _box else []) +
+                       [('results', 'SpatialQueryResults'), ('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'integer')]}
 OVERRIDES[('MeshRaycast', 'prepare')] = {
     'doc': ['Builds the triangle trees of these GameObjects\' meshes (all when none) in the background, so a later',
             'raycast does not build them inline.'],

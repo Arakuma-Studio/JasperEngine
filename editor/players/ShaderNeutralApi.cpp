@@ -54,7 +54,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"OverallBuildProgress", 0x2336bf6fu},
         {"PhysicsMaterial", 0xbfd7eb57u},
         {"ControllerStateInfo", 0x4c569349u},
-        {"Physics2D", 0x4a1ccb1bu},
+        {"Physics2D", 0x8f05e207u},
+        {"OverlapHit", 0x474c0ab9u},
         {"PhysicsSystem", 0x20f6cb78u},
         {"Rigidbody", 0x1e9ac738u},
         {"Rigidbody2D", 0x6b62a5d7u},
@@ -71,7 +72,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"WaterVolume", 0x1399452eu},
         {"Water", 0x91f19d94u},
         {"WaterSample", 0xca646e06u},
-        {"MeshRaycast", 0x5dfe6f84u},
+        {"MeshRaycast", 0xf31893fcu},
+        {"MeshOverlapHit", 0x2e882809u},
         {"MeshRaycastHit", 0x79d628f8u},
         {"Audio", 0xff36e463u},
         {"SoundHandle", 0x3606cf71u},
@@ -143,7 +145,11 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "ALL_LAYERS", "DEFAULT_RAYCAST_LAYERS", "IGNORE_RAYCAST_LAYER", "getIgnoreCollision",
             "getIgnoreLayerCollision", "getLayerCollisionMask", "ignoreCollision",
             "ignoreLayerCollision", "raycast", "raycastAll", "resetLayerCollisionMatrix",
-            "setLayerCollisionMask"
+            "setLayerCollisionMask",
+            // spatial queries (not debugDrawQueries, which draws lines)
+            "boxCast", "boxCastAll", "capsuleCast", "capsuleCastAll", "checkBox", "checkCapsule", "checkSphere",
+            "overlapBox", "overlapBoxNonAlloc", "overlapCapsule", "overlapCapsuleNonAlloc", "overlapSphere",
+            "overlapSphereNonAlloc", "queriesHitTriggers", "sphereCast", "sphereCastAll"
         }},
         // scene layers and loading, the canvas and input routing, time, threads, events (not the
         // texture or atmosphere quality setters, nor rendering into a framebuffer; the foliage distance only
