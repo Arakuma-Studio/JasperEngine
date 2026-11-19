@@ -340,8 +340,6 @@ static jasperengine::android::ComponentTextInput componentTextInput;
 
 // Set on the UI thread by MainActivity's back callback; Android 16 no longer sends Back as a key
 static std::atomic<bool> backPressed(false);
-// the Escape press a Back made, released on the next frame
-static bool backEscapeDown = false;
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_jaspergameengine_jasperengine_MainActivity_onBackPressedNative(JNIEnv* env, jobject obj) {
@@ -1520,18 +1518,10 @@ void NativeEngine::handleGamepadMotion(GameActivityMotionEvent* motionEvent){
 }
 
 void NativeEngine::handleGameActivityInput(){
-    // Back plays as an Escape press, released on the next frame
-    if (backEscapeDown) {
-        jasperengine::Engine::systemKeyUp(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
-        backEscapeDown = false;
-    }
-    if (backPressed.exchange(false)) {
-        jasperengine::Engine::systemCharInput('\x1b');
-        // the engine's Escape, not a key the player pressed (the input scheme stays)
-        jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::Synthetic);
-        jasperengine::Engine::systemKeyDown(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
-        backEscapeDown = true;
-    }
+    // Back: the top menu document's `back`, then Engine.onBack; not consumed, the engine presses
+    // Escape (released on the next frame), as Back always played
+    if (backPressed.exchange(false))
+        jasperengine::Engine::systemBack(jasperengine::BackSource::BackButton);
 
     android_input_buffer* inputBuffer = android_app_swap_input_buffers(mApp);
 

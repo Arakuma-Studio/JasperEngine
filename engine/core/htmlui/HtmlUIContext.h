@@ -69,6 +69,9 @@ namespace jasperengine {
         // below in z-order, then to the game when none takes it. Every hit test of the context
         // uses it (Rml::Context::SetPointerPassThrough): hover, presses, touches, wheel, drags.
         static bool passesPointerThrough(Rml::Element* element);
+        // the element or an ancestor takes pointer input: a button, a link, a form control, [onclick],
+        // a click or pointerdown listener (the gamepad cursor slows down over it)
+        static bool takesPointerInput(Rml::Element* element);
         void setDebuggerVisible(bool visible);
 
         // --- phase 2 (p2-html, hooks H1/H1b/H4) ---

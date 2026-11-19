@@ -12,6 +12,8 @@
 #include "htmlui/RmlKeyMap.h"
 #include "htmlui/RmlSystem.h"
 #include "htmlui/RmlTextInputHandler.h"
+#include "htmlui/compat/runtime/HtmlDialogElement.h"
+#include "htmlui/compat/VirtualFiles.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "util/StringUtils.h"
 
@@ -674,6 +676,218 @@ bool UIDocumentSystem::eventOnGamepadKeyUp(int gamepad, GamepadUIKey key){
 bool UIDocumentSystem::hasGamepadFocus() const{
     HtmlUIContext* keys = keyContext();
     return keys && gamepadFocusElement(keys->getRmlContext()) != nullptr;
+}
+
+namespace {
+
+    // the open modal <dialog> an element sits in, else null
+    htmlui::compat::HtmlDialogElement* enclosingModalDialog(Rml::Element* element){
+        for (Rml::Element* node = element; node; node = node->GetParentNode()){
+            auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(node);
+            if (dialog && dialog->isModal() && dialog->isOpen())
+                return dialog;
+        }
+        return nullptr;
+    }
+
+    bool isOpenSelect(Rml::Element* element){
+        auto* select = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(element);
+        return select && select->IsSelectBoxVisible();
+    }
+
+}
+
+bool UIDocumentSystem::hasBackOverlay() const{
+    HtmlUIContext* keys = keyContext();
+    if (!keys)
+        return false;
+    Rml::Element* focus = focusedElement(keys->getRmlContext());
+    return focus && (isOpenSelect(focus) || enclosingModalDialog(focus));
+}
+
+bool UIDocumentSystem::dispatchBack(){
+    // the top menu document: the highest sortOrder, then the one that became a menu last
+    Entity top = NULL_ENTITY;
+    int topSort = 0;
+    uint64_t topOrder = 0;
+    for (const auto& entry : menuEntities){
+        const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entry.first);
+        if (!component)
+            continue;
+        if (top == NULL_ENTITY || component->sortOrder > topSort || (component->sortOrder == topSort && entry.second > topOrder)){
+            top = entry.first;
+            topSort = component->sortOrder;
+            topOrder = entry.second;
+        }
+    }
+    Rml::ElementDocument* document = (top != NULL_ENTITY) ? getDocument(top) : nullptr;
+    if (!document || !document->GetContext())
+        return false;
+    // a document on a mesh hears Back only while it holds the keys
+    if (getTextureContext(top) && getTextureFocus() != top)
+        return false;
+
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
+    Rml::Element* focus = focusedElement(document->GetContext());
+    if (focus && focus->GetOwnerDocument() != document)
+        focus = nullptr;
+    Rml::Element* target = focus ? focus : document;
+    bool prevented = false;
+    target->DispatchEvent(Rml::RegisterEventType("back", true, true), Rml::Dictionary(), &prevented);
+    if (prevented)
+        return true;
+
+    // the default action: an open select closes, else the topmost open modal dialog
+    if (focus && isOpenSelect(focus)){
+        rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(focus)->HideSelectBox();
+        return true;
+    }
+    Rml::ElementList dialogs;
+    document->GetElementsByTagName(dialogs, "dialog");
+    for (auto it = dialogs.rbegin(); it != dialogs.rend(); ++it){
+        auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(*it);
+        if (!dialog || !dialog->isModal() || !dialog->isOpen())
+            continue;
+        // as Escape does: a cancelable `cancel`, then close
+        if (dialog->DispatchEvent("cancel", Rml::Dictionary(), true, false))
+            dialog->close();
+        return !dialog->isOpen();
+    }
+    return false;
+}
+
+void UIDocumentSystem::cancelPointersOutsideMenus(std::vector<int>& keptFingers){
+    HtmlUIContext* screen = getContext();
+    if (!screen)
+        return;
+    auto inMenu = [this](Rml::Element* element){
+        Rml::ElementDocument* owner = element ? element->GetOwnerDocument() : nullptr;
+        for (const auto& entry : menuEntities){
+            if (owner && getDocument(entry.first) == owner)
+                return true;
+        }
+        return false;
+    };
+    Rml::Context* rmlContext = screen->getRmlContext();
+    const std::vector<int> fingers = screen->getTouches();
+    for (int pointer : fingers){
+        if (inMenu(rmlContext->GetHoverElement(HtmlUIContext::touchPointerId(pointer))))
+            keptFingers.push_back(pointer);
+        else
+            eventOnTouchCancel(pointer);
+    }
+    HtmlUIInputState& state = getInputState();
+    if (!state.capturedButtons.empty() && !inMenu(rmlContext->GetHoverElement())){
+        state.capturedButtons.clear();
+        screen->processMouseCancel();
+    }
+    // documents on meshes: unless one of them is a menu, what they hold ends too
+    bool textureMenu = false;
+    for (const auto& entry : menuEntities)
+        textureMenu = textureMenu || getTextureContext(entry.first) != nullptr;
+    if (!textureMenu)
+        textureCancelAll();
+}
+
+// ---- the gamepad cursor (GamepadCursor)
+
+namespace {
+
+    // the built-in cursor graphic: an arrow, hot spot at its top-left (engine-authored, CC0)
+    const char* const kCursorArrowPath = "@htmlui/gamepad-cursor/arrow.svg";
+    const char* const kCursorArrowSvg =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">"
+        "<path d=\"M2 2 L2 26 L8.5 20 L13 30 L17.5 28 L13 18.5 L22 18.5 Z\" fill=\"#ffffff\" stroke=\"#000000\" "
+        "stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>";
+    // above every document's sort order; never hit (pointer-events)
+    const char* const kCursorOverlayRml =
+        "<rml><head><style>"
+        "body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }"
+        "img { position: absolute; left: 0; top: 0; pointer-events: none; }"
+        "</style></head><body><img id=\"cursor\"/></body></rml>";
+    constexpr float kCursorOverlayZ = 2000000000.0f;
+    uint32_t cursorOverlayLoads = 0;
+
+}
+
+uint32_t UIDocumentSystem::getCursorOverlayLoads(){
+    return cursorOverlayLoads;
+}
+
+Rml::Element* UIDocumentSystem::getMouseHoverElement() const{
+    if (!getContext() || !hasVisibleDocument() || !getContext()->isPointerOverContent())
+        return nullptr;
+    return getContext()->getRmlContext()->GetHoverElement();
+}
+
+bool UIDocumentSystem::isMouseOverControl() const{
+    return HtmlUIContext::takesPointerInput(getMouseHoverElement());
+}
+
+bool UIDocumentSystem::getFocusCenter(float& x, float& y, const void*& focus) const{
+    focus = nullptr;
+    if (!getContext())
+        return false;
+    Rml::Element* element = focusedElement(getContext()->getRmlContext());
+    if (!element)
+        return false;
+    const Rml::Vector2f offset = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+    const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
+    x = offset.x + size.x * 0.5f;
+    y = offset.y + size.y * 0.5f;
+    toCanvas(x, y);
+    focus = element;
+    return true;
+}
+
+bool UIDocumentSystem::focusHoveredElement(){
+    if (!getContext() || focusedElement(getContext()->getRmlContext()))
+        return false;
+    for (Rml::Element* node = getMouseHoverElement(); node && !rmlui_dynamic_cast<Rml::ElementDocument*>(node); node = node->GetParentNode()){
+        if (node->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto)
+            return node->Focus(true);
+    }
+    return false;
+}
+
+void UIDocumentSystem::setCursorOverlay(bool show, float x, float y, const std::string& graphic, float size, float hotX, float hotY){
+    if (!show){
+        if (cursorOverlay && cursorOverlay->IsVisible())
+            cursorOverlay->Hide();
+        return;
+    }
+    if (!getContext())
+        return;
+    if (!cursorOverlay){
+        if (!htmlui::compat::VirtualFiles::exists(kCursorArrowPath))
+            htmlui::compat::VirtualFiles::add(kCursorArrowPath, kCursorArrowSvg);
+        cursorOverlay = getContext()->getRmlContext()->LoadDocumentFromMemory(kCursorOverlayRml, "[gamepad-cursor]");
+        if (!cursorOverlay)
+            return;
+        cursorOverlayLoads++;
+        cursorOverlay->SetProperty(Rml::PropertyId::ZIndex, Rml::Property(kCursorOverlayZ, Rml::Unit::NUMBER));
+        cursorOverlayGraphic.clear();
+    }
+    Rml::Element* image = cursorOverlay->GetElementById("cursor");
+    if (!image)
+        return;
+    const std::string source = graphic.empty() ? std::string("/") + kCursorArrowPath : graphic;
+    if (source != cursorOverlayGraphic){
+        image->SetAttribute("src", source);
+        cursorOverlayGraphic = source;
+    }
+    // CSS px of the document are dp of the context; the hot spot sits on the point
+    float cx = x, cy = y;
+    toContext(cx, cy);
+    image->SetProperty(Rml::PropertyId::Width, Rml::Property(size, Rml::Unit::DP));
+    image->SetProperty(Rml::PropertyId::Height, Rml::Property(size, Rml::Unit::DP));
+    image->SetProperty(Rml::PropertyId::Left, Rml::Property(cx, Rml::Unit::PX));
+    image->SetProperty(Rml::PropertyId::Top, Rml::Property(cy, Rml::Unit::PX));
+    image->SetProperty(Rml::PropertyId::MarginLeft, Rml::Property(-hotX, Rml::Unit::DP));
+    image->SetProperty(Rml::PropertyId::MarginTop, Rml::Property(-hotY, Rml::Unit::DP));
+    if (!cursorOverlay->IsVisible())
+        cursorOverlay->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
 }
 
 void UIDocumentSystem::updateInput(){

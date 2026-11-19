@@ -112,6 +112,8 @@ Screen.orientation = ScreenOrientation.AutoRotation
 | `Engine.isFocused` | Unity's `Application.isFocused`; `true` at start |
 | `Engine.onFocus` `(hasFocus)` | the app is frontmost and gets input, or something covers it (a system dialog, the notification shade, another window) |
 | `Engine.onPause`, `Engine.onResume` | the app goes to the background and comes back |
+| `Engine.onPauseRequested` `(reason)` | Project Settings > Player > Pause On Focus Loss on and no Is Menu document showing: once after `onFocus(false)` (`"focus_lost"`), after an `onPause` no focus loss announced (`"app_paused"`), after the disconnect of the pad that holds the Gamepad scheme (`"gamepad_disconnected"`). Open the pause menu there; the engine changes no time scale. On without a subscriber: one warning at Play start |
+| `Engine.onBack` `(source)`, `Engine.isMenuShowing()` | Back (Android's Back button, Escape, gamepad B) that no menu document took; whether an Is Menu document shows (jasper://docs/html-ui "Back and menus") |
 | `Engine.onLowMemory` | the system is short of memory (Android, iOS): free caches |
 | `Device.onLowMemory` | the next frame, after the engine cleared its own caches (Android `onTrimMemory`, iOS, the web's heap heuristic; jasper://docs/device) |
 | `Device.thermalState`, `Device.onThermalStateChanged` `(state)` | the platform's thermal state (`ThermalState`; Android, iOS and macOS report one) |

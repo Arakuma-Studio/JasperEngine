@@ -1555,7 +1555,7 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 |---|---|---|---|
 | d-pad, left stick | `"ArrowUp"` ... `"ArrowRight"` | `"GamepadDPadUp"` ..., `"GamepadLeftThumbstickUp"` ... | moves the focus to the nearest element that way and scrolls it into view; a focused range adjusts with left/right, an open select moves through its options |
 | A | `"Enter"` | `"GamepadA"` | activates the focused element as the keyboard does (Enter: a click on press; Space on a checkbox or radio: a toggle on release; a select opens and chooses); `:active` while held; on a text field it opens the virtual keyboard |
-| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise nothing: your menu closes on it |
+| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise it is Back first (below, "Back and menus"), then nothing: your menu closes on it |
 | X, Y, shoulders, triggers, View, Menu, Guide, stick buttons | the `code` | `"GamepadX"`, `"GamepadY"`, `"GamepadLeftShoulder"`, `"GamepadRightShoulder"`, `"GamepadLeftTrigger"`, `"GamepadRightTrigger"`, `"GamepadView"` (Back), `"GamepadMenu"` (Start), `"GamepadGuide"`, `"GamepadLeftThumbstickButton"`, `"GamepadRightThumbstickButton"` | none |
 
 - `event.gamepad` is the pad's id (`-1` for the keyboard), `event.keyCode` the keyboard key it
@@ -1583,6 +1583,57 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 - `:focus-visible` shows on the element the gamepad moves to, and on a clicked element once the
   gamepad is used, so style it (`.btn:focus-visible`).
 - Documents on meshes get the gamepad like the keys: the one that took the last press.
+
+### Gamepad cursor
+
+Turn on **Gamepad Cursor** on a UI Document (`set_properties UIDocument gamepadCursor true`,
+Lua `doc.gamepadCursor = true`) for menus a pad player should point at, not only Tab through.
+While the input scheme is Gamepad (jasper://docs/input "Input scheme") and such a document
+shows (screen mode, interactive), the engine draws a pointer above every document:
+
+- The left stick moves it (Project Settings > Input > Gamepad Cursor: Cursor Speed at a 1080 px
+  tall canvas, Acceleration Time, slower over buttons, links, form controls and component UI
+  Buttons by Slow Over Controls, Deadzone); it starts on the focused element, else where it
+  was, else the canvas centre.
+- A is a mouse click at it (`pointerType "mouse"`, `:hover` follows it); holding A drags
+  ranges, scroll boxes, `drag` sources and `setPointerCapture` sliders. The right stick scrolls
+  under it (Scroll Speed lines/s). The d-pad moves the focus as above (from the element under
+  the cursor when nothing is focused) and the cursor jumps to it; so does `el:focus()`.
+- The sticks, A, B and the d-pad are the UI's while it shows: the game sees them at rest, input
+  actions that ignore UI input skip them. B is Back. It never moves `Input.getMousePosition()`,
+  presses `Input.getMouseButton`, fires `Engine.onMouse*` or changes the scheme; a real mouse
+  move switches the scheme, which hides it (a held A ends with `pointercancel`, no click).
+- Lua `GamepadCursor.isActive()`, `GamepadCursor.position` (set warps), `.enabled`, `.speed`,
+  `.scrollSpeed` (this Play only). Agents: `send_input` gamepad events take `x, y` or `target`
+  to warp it first; `inspect_ui` returns `gamepad_cursor {active, x, y, over}`.
+
+### Back and menus
+
+**Is Menu.** Mark pause menus, dialogs and settings screens Is Menu (`isMenu`); HUDs stay off.
+`Engine.isMenuShowing()` is true while a shown, interactive Is Menu document exists. A menu
+appearing releases what the game held in the next frame: keys and buttons come up, the game's
+and the HUD's fingers are cancelled (on-screen sticks let go), nothing is replayed after.
+
+**Back** is Android's Back button, Escape and gamepad B (never a repeat), and
+`send_input {type: "app", action: "back"}`:
+
+1. An open select or a modal `<dialog>` holding the focus closes as today; that is not a Back.
+2. The top menu document (highest sort order, top scene first) gets a cancelable, bubbling
+   `back` event at its focused element, else its root. `event:preventDefault()` takes it;
+   otherwise it closes an open select, else the topmost open modal `<dialog>`.
+3. Not taken: `Engine.onBack(source)` (`"back_button"`, `"escape"`, `"gamepad"`, `"agent"`);
+   one subscriber takes it.
+4. Not taken: Escape and B go on as keys; Android's Back presses Escape, as before.
+
+A taken Escape or B reaches no `keydown` and not the game.
+
+```lua
+menu:addEventListener("back", function(event)
+    closeMenu()
+    event:preventDefault()
+end)
+Engine.onBack = function(source) openPauseMenu() end
+```
 
 ### Touch, text fields and the cursor
 

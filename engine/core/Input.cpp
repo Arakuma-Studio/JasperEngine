@@ -9,6 +9,7 @@
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
 #include "input/InputControlNames.h"
+#include "subsystem/GamepadCursor.h"
 
 #include <array>
 #include <algorithm>
@@ -688,6 +689,21 @@ void Input::releaseAll(){
     clearPendingDeltas();
 }
 
+void Input::releaseGameHeld(const std::vector<int>& keptFingers){
+    InputState& s = state();
+    for (int control = 0; control < CONTROL_COUNT; control++){
+        if (!s.controls[control].uiHeld)
+            releaseControl(control);
+    }
+    for (size_t i = 0; i < s.touchCount; i++){
+        TouchRecord& record = s.touches[i];
+        if (record.released || std::find(keptFingers.begin(), keptFingers.end(), record.pointer) != keptFingers.end())
+            continue;
+        reportEnd(record, TouchPhase::CANCELED);
+        record.released = true;
+    }
+}
+
 void Input::reset(){
     resetFrameState();
     InputState& s = state();
@@ -808,6 +824,7 @@ void Input::beginFrame(double unscaledDeltaTime){
     InputSuppression suppression;
     suppression.keyboard = Engine::isTextInputFocused();
     Engine::getUINavigationWants(suppression.gamepadNavigation, suppression.keyboardNavigation);
+    suppression.gamepadCursor = GamepadCursor::isActive();
     beginFrame(unscaledDeltaTime, suppression);
 }
 

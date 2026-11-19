@@ -14,6 +14,7 @@
 #include "Log.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
+#include "subsystem/GamepadCursor.h"
 #if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
 #endif
@@ -305,5 +306,19 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addStaticFunction("bindVirtualButton", &InputVirtualControls::bindButton)
         .addStaticFunction("unbindVirtualControl", &InputVirtualControls::unbind)
 #endif
+        .endClass();
+
+    // the gamepad cursor (UIDocument.gamepadCursor; Project Settings > Input > Gamepad Cursor)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<GamepadCursor>("GamepadCursor")
+        // it shows: the scheme is Gamepad and a shown Gamepad Cursor document exists
+        .addStaticFunction("isActive", &GamepadCursor::isActive)
+        // canvas px; setting it warps the cursor (also while inactive: the next activation starts there)
+        .addStaticProperty("position", &GamepadCursor::getPosition, &GamepadCursor::setPosition)
+        // false hides it and leaves the sticks, A, B and the d-pad to the game and the focus
+        .addStaticProperty("enabled", &GamepadCursor::isEnabled, &GamepadCursor::setEnabled)
+        // canvas px/s at a 1080 px tall canvas, and wheel lines/s: this Play's values (the project's at start)
+        .addStaticProperty("speed", &GamepadCursor::getSpeed, &GamepadCursor::setSpeed)
+        .addStaticProperty("scrollSpeed", &GamepadCursor::getScrollSpeed, &GamepadCursor::setScrollSpeed)
         .endClass();
 }

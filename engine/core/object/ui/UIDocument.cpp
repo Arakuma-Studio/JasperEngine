@@ -122,6 +122,22 @@ int UIDocument::getSortOrder() const{
     return getComponent<UIDocumentComponent>().sortOrder;
 }
 
+void UIDocument::setMenu(bool menu){
+    getComponent<UIDocumentComponent>().isMenu = menu;
+}
+
+bool UIDocument::isMenu() const{
+    return getComponent<UIDocumentComponent>().isMenu;
+}
+
+void UIDocument::setGamepadCursor(bool enabled){
+    getComponent<UIDocumentComponent>().gamepadCursor = enabled;
+}
+
+bool UIDocument::isGamepadCursor() const{
+    return getComponent<UIDocumentComponent>().gamepadCursor;
+}
+
 UIElement UIDocument::getElementById(const std::string& id) const{
     loadedDocument(scene, entity);
     UIElement element = scene->getSystem<UIDocumentSystem>()->getElementById(entity, id);

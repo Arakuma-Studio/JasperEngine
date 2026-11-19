@@ -20,6 +20,7 @@
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
 #include "pixelart/ScreenTransition.h"
+#include "subsystem/GamepadCursor.h"
 
 #include "json.hpp"
 
@@ -65,6 +66,8 @@ namespace jasperengine::player {
         bool vsync = true;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -95,6 +98,7 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        GamepadCursorSettings gamepadCursor;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;

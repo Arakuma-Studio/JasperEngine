@@ -41,6 +41,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/GamepadCursor.h"
 #include "subsystem/TitleArtSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
@@ -286,6 +287,47 @@ FunctionSubscribe<void(int,int)> Engine::onGamepadButtonUp;
 FunctionSubscribe<void(int,int,float)> Engine::onGamepadAxisMove;
 FunctionSubscribe<void(const std::string&)> Engine::onButtonDown;
 FunctionSubscribe<void(const std::string&)> Engine::onButtonUp;
+FunctionSubscribe<void(const std::string&)> Engine::onBack;
+FunctionSubscribe<void(const std::string&)> Engine::onPauseRequested;
+
+namespace {
+
+    // ---- Back and menus (Engine::systemBack, Engine::isMenuShowing)
+    BackRoute lastBackRoute = BackRoute::None;
+    // the Escape a Back button or agent Back pressed: released at the start of the frame after the
+    // one that latched it (as Android's Back always played)
+    bool backEscapeDown = false;
+    uint64_t backEscapeFrame = 0;
+    // the Escape key and the pads' B whose down Back consumed: their ups are swallowed too
+    bool backEscapeKeyHeld = false;
+    std::set<std::pair<int, int>> backPadButtonsHeld;
+    // isMenuShowing's and isGamepadCursorShown's cache: valid for a document revision and a scene count
+    bool menuCacheValid = false;
+    bool menuCacheValue = false;
+    bool cursorCacheValue = false;
+    uint32_t menuCacheRevision = 0;
+    size_t menuCacheScenes = 0;
+    // the pads' buttons the gamepad cursor took (A, the d-pad, B it routed): their ups are the UI's too
+    std::set<std::pair<int, int>> cursorPadButtonsHeld;
+    // what the last input latch saw (a menu appearing releases the game's input once)
+    bool menuShownAtLatch = false;
+
+    // ---- Pause On Focus Loss (Engine::onPauseRequested)
+    bool pauseOnFocusLoss = false;
+    // a focus loss happened since the focus last came back: a pause adds no second request
+    bool focusLossSeen = false;
+    // systemPause's own focus loss: the pause asks instead ("app_paused")
+    bool focusLossFromPause = false;
+    // the first frame of a Play warns once when nothing subscribes
+    bool pauseRequestCheckPending = true;
+
+    void requestPause(const char* reason){
+        if (!pauseOnFocusLoss || Engine::isMenuShowing())
+            return;
+        Engine::onPauseRequested.call(std::string(reason));
+    }
+
+}
 
 FunctionSubscribe<void()>& Engine::getOnInit() {
     // This static variable is guaranteed to be created the first time this function is called
@@ -1726,6 +1768,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onLowMemory.removeByTagSubstring(substring);
     onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
+    onBack.removeByTagSubstring(substring);
+    onPauseRequested.removeByTagSubstring(substring);
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
@@ -1779,6 +1823,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onGamepadAxisMove.clear();
     onButtonDown.clear();
     onButtonUp.clear();
+    onBack.clear();
+    onPauseRequested.clear();
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
@@ -2106,6 +2152,16 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     nativePaused = false;
     focused = true;
     visible = true;
+    focusLossSeen = false;
+    pauseRequestCheckPending = true;
+    menuShownAtLatch = false;
+    menuCacheValid = false;
+    backEscapeDown = false;
+    backEscapeKeyHeld = false;
+    backPadButtonsHeld.clear();
+    cursorPadButtonsHeld.clear();
+    lastBackRoute = BackRoute::None;
+    GamepadCursor::resetSession();
     lastOrientation = 0;
     orientationPendingSince = 0.0;
 
@@ -2515,6 +2571,11 @@ void Engine::runFrame(bool draw){
 
     {
         JE_PROFILE_SCOPE("Input");
+        // the Escape a Back pressed comes up the frame after the one that saw it
+        if (backEscapeDown && drawnFrames >= backEscapeFrame + 2){
+            backEscapeDown = false;
+            systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
+        }
         // the input of this frame is over: no low surrogate will follow a pending high one
         flushCharInput();
         // held gamepad directions repeat on the UI clock
@@ -2596,7 +2657,14 @@ void Engine::runFrame(bool draw){
         // the input of the frame: the events since the last running frame (Input.h), then
         // the actions it drives (their callbacks, onButtonDown / onButtonUp run here, before the
         // fixed steps), on the unscaled frame time
+        // a menu appeared since the last latch: what the game holds lets go, once
+        const bool menuShown = isMenuShowing();
+        if (menuShown && !menuShownAtLatch)
+            releaseInputForMenu();
+        menuShownAtLatch = menuShown;
         Input::beginFrame(frameTime);
+        // the gamepad cursor on the latched sticks and scheme, before the scenes' UI updates
+        GamepadCursor::update(frameTime);
 
         double frameDelta = deltatime;
         gameTime += frameDelta;
@@ -2686,6 +2754,12 @@ void Engine::runFrame(bool draw){
             MainThreadQueue::drain();
         }
         Engine::onUpdate.call();
+        // Pause On Focus Loss without a listener: one warning in the first frame of a Play
+        if (pauseRequestCheckPending && Engine::onUpdate.isEnabled()){
+            pauseRequestCheckPending = false;
+            if (pauseOnFocusLoss && !onPauseRequested.hasSubscribers())
+                Log::warn("Pause On Focus Loss is on but nothing subscribes to Engine.onPauseRequested: the game is never asked to pause");
+        }
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
@@ -3013,9 +3087,16 @@ void Engine::systemShutdown(){
 void Engine::systemPause(){
     if (osPaused) return;
     // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    focusLossFromPause = true;
     systemFocus(false);
+    focusLossFromPause = false;
     osPaused = true;
     applyPause();
+    // Pause On Focus Loss: a pause no focus loss announced asks once (after onPause)
+    if (!focusLossSeen){
+        focusLossSeen = true;
+        requestPause("app_paused");
+    }
 }
 
 void Engine::systemResume(){
@@ -3079,6 +3160,13 @@ void Engine::systemFocus(bool hasFocus){
     ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
         [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
     Engine::onFocus.call(hasFocus);
+    // Pause On Focus Loss, after onFocus(false); a pause's own focus loss leaves it to the pause
+    if (hasFocus){
+        focusLossSeen = false;
+    }else if (!focusLossFromPause){
+        focusLossSeen = true;
+        requestPause("focus_lost");
+    }
 }
 
 void Engine::systemVisibilityChanged(bool isVisible){
@@ -3849,6 +3937,18 @@ void Engine::cancelUIPointer(int pointerOrButton, bool touch){
     }
 }
 
+void Engine::releaseInputForMenu(){
+    // the presses of the other documents and of the component UI end (on-screen controls let go of
+    // their actions); a menu document keeps what it holds
+    std::vector<int> keptFingers;
+    for (Scene* scene : getInputScenes(false)){
+        scene->getSystem<UIDocumentSystem>()->cancelPointersOutsideMenus(keptFingers);
+        scene->getSystem<UISystem>()->cancelAllPointers();
+    }
+    // keys, buttons and fingers the game holds come up in this latch; nothing is replayed later
+    Input::releaseGameHeld(keptFingers);
+}
+
 void Engine::cancelAllUIPointers(){
     // the debug overlay's gestures too: no finger stays held across a pause or a focus loss
     DebugOverlay::cancelGestures();
@@ -4117,6 +4217,17 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     // the debug overlay's toggle and stats keys; never consumed
     DebugOverlay::handleKey(key, mods, true, repeat);
 
+    // Escape is Back first (the engine's own Escape of a Back button already was); a consumed press
+    // and its up reach neither the documents nor the game
+    if (key == D_KEY_ESCAPE && (repeat ? backEscapeKeyHeld : InputSchemeTracker::getSourceTag() != InputSourceTag::Synthetic && systemBack(BackSource::Escape))){
+        backEscapeKeyHeld = true;
+        if (!repeat)
+            Input::setPressConsumedByUI(Input::keyControl(key));
+        // the ESC character a platform sends after the key (Windows) is not typed
+        navigationSwallowedChar = 0x1B;
+        return;
+    }
+
     const std::vector<Scene*> scenes = getInputScenes(true);
 
     // a component InputField typed in, in any scene, takes the keys first: all but Escape and
@@ -4177,6 +4288,10 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
 #endif
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
+    if (key == D_KEY_ESCAPE && backEscapeKeyHeld){
+        backEscapeKeyHeld = false;
+        return;
+    }
 
     // every document hears the release; the one that took the press consumes it. While a text
     // field is typed in, the other documents do not hear a typing key's release either (a focused
@@ -4353,9 +4468,22 @@ void Engine::systemGamepadDisconnect(int gamepad){
         if (it->first == gamepad) it = gamepadUI.takenAxes.erase(it); else ++it;
     }
 
+    for (auto it = backPadButtonsHeld.begin(); it != backPadButtonsHeld.end();){
+        if (it->first == gamepad) it = backPadButtonsHeld.erase(it); else ++it;
+    }
+    for (auto it = cursorPadButtonsHeld.begin(); it != cursorPadButtonsHeld.end();){
+        if (it->first != gamepad){ ++it; continue; }
+        if (it->second == D_GAMEPAD_BUTTON_A) GamepadCursor::releaseA(gamepad);
+        it = cursorPadButtonsHeld.erase(it);
+    }
+
+    // the pad that holds the Gamepad scheme went: Pause On Focus Loss asks after the event
+    const bool schemePad = InputSchemeTracker::getCurrent() == InputScheme::Gamepad && InputSchemeTracker::getLastGamepad() == gamepad;
     Input::removeGamepad(gamepad);
     InputSchemeTracker::noteGamepadDisconnected(gamepad);
     Engine::onGamepadDisconnect.call(gamepad);
+    if (schemePad)
+        requestPause("gamepad_disconnected");
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
@@ -4364,6 +4492,36 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 #endif
     InputSchemeTracker::noteGamepadButton(gamepad);
     Input::addGamepadButtonPressed(gamepad, button);
+
+    // B is Back first (not a platform's repeat of a held B); a consumed press and its up reach
+    // neither the documents nor the game
+    if (button == D_GAMEPAD_BUTTON_B){
+        const std::pair<int, int> id(gamepad, button);
+        if (backPadButtonsHeld.count(id) || (!findGamepadHeld(gamepad, GamepadUIKey::B) && systemBack(BackSource::Gamepad))){
+            backPadButtonsHeld.insert(id);
+            Input::setPressConsumedByUI(Input::gamepadControl(Input::getGamepadSlot(gamepad), button));
+            return;
+        }
+    }
+
+    // the gamepad cursor owns A (a click at it), the d-pad (the focus, which it follows) and B (Back,
+    // then the documents' Escape): never the game's while it shows
+    if (GamepadCursor::isActive() && (button == D_GAMEPAD_BUTTON_A || button == D_GAMEPAD_BUTTON_B ||
+                                      gamepadMoveDirection(gamepadKeyOfButton(button)) != MoveDirection::NONE)){
+        cursorPadButtonsHeld.insert(std::make_pair(gamepad, button));
+        Input::setPressConsumedByUI(Input::gamepadControl(Input::getGamepadSlot(gamepad), button));
+        if (button == D_GAMEPAD_BUTTON_A){
+            GamepadCursor::pressA(gamepad);
+        }else{
+            const bool direction = button != D_GAMEPAD_BUTTON_B;
+            if (direction)
+                GamepadCursor::prepareNavigation();
+            gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+            if (direction)
+                GamepadCursor::followFocus();
+        }
+        return;
+    }
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
     if (consumed)
@@ -4378,6 +4536,15 @@ void Engine::systemGamepadButtonUp(int gamepad, int button){
     if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "up", button, 0.0f, 0.0f);
 #endif
     Input::releaseGamepadButtonPressed(gamepad, button);
+    if (backPadButtonsHeld.erase(std::make_pair(gamepad, button)))
+        return;
+    if (cursorPadButtonsHeld.erase(std::make_pair(gamepad, button))){
+        if (button == D_GAMEPAD_BUTTON_A)
+            GamepadCursor::releaseA(gamepad);
+        else
+            gamepadKeyUp(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+        return;
+    }
 
     // consumed iff its down was, so the game never gets an up without a down
     const bool consumed = gamepadKeyUp(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -4390,7 +4557,10 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     InputSchemeTracker::noteGamepadAxis(gamepad, axis, Input::getGamepadAxis(gamepad, axis), value);
     Input::setGamepadAxisValue(gamepad, axis, value);
 
-    const bool consumed = gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
+    // the gamepad cursor's sticks (the left one moves it, the right one scrolls) are never the game's
+    const bool cursorAxis = GamepadCursor::isActive() && (axis == D_GAMEPAD_AXIS_LEFT_X || axis == D_GAMEPAD_AXIS_LEFT_Y ||
+                                                          axis == D_GAMEPAD_AXIS_RIGHT_X || axis == D_GAMEPAD_AXIS_RIGHT_Y);
+    const bool consumed = cursorAxis || gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
     Input::setGamepadAxisConsumedByUI(gamepad, axis, consumed);
 
     const std::pair<int, int> id(gamepad, axis);
@@ -4414,6 +4584,181 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
 }
 
+const char* Engine::backSourceName(BackSource source){
+    switch (source){
+        case BackSource::BackButton: return "back_button";
+        case BackSource::Escape: return "escape";
+        case BackSource::Gamepad: return "gamepad";
+        default: return "agent";
+    }
+}
+
+BackRoute Engine::getLastBackRoute(){
+    return lastBackRoute;
+}
+
+bool Engine::systemBack(BackSource source){
+    // keys go to every scene that takes keys; the pad's B to every scene, as their own routing does
+    const std::vector<Scene*> scenes = (source == BackSource::Gamepad) ? getScenesSnapshot() : getInputScenes(true);
+    BackRoute route = BackRoute::None;
+    // 0. an open select or modal dialog where the key goes closes as today: not a Back
+    for (auto it = scenes.rbegin(); it != scenes.rend() && route == BackRoute::None; ++it){
+        if (canSendDocumentEvents(*it) && (*it)->getSystem<UIDocumentSystem>()->hasBackOverlay())
+            route = BackRoute::Key;
+    }
+    // 1. the top menu document: the first scene with one, top layer first
+    if (route == BackRoute::None){
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>().get();
+            if (!canSendDocumentEvents(*it) || !documents->hasMenuDocument())
+                continue;
+            if (documents->dispatchBack())
+                route = BackRoute::Document;
+            break;
+        }
+    }
+    // 2. the game, when it listens
+    if (route == BackRoute::None && onBack.hasSubscribers()){
+        route = BackRoute::Game;
+        onBack.call(std::string(backSourceName(source)));
+    }
+    lastBackRoute = route;
+    const bool consumed = route == BackRoute::Document || route == BackRoute::Game;
+    // 3. the Back button and an agent's Back press Escape (a game written for Back = Escape), released
+    //    the frame after the one that sees it
+    if (!consumed && (source == BackSource::BackButton || source == BackSource::Agent)){
+        if (backEscapeDown)
+            systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
+        systemCharInput(U'\x1b');
+        // the engine's Escape, not a key the player pressed: no second Back, the scheme stays
+        setInputSource(InputSourceTag::Synthetic);
+        systemKeyDown(D_KEY_ESCAPE, false, Input::getModifiers());
+        backEscapeDown = true;
+        backEscapeFrame = drawnFrames;
+    }
+    return consumed;
+}
+
+namespace {
+
+    // the documents report when one starts or stops counting (UIDocumentSystem::getMenuRevision): a
+    // look at the scenes only after a change
+    template<typename Scenes>
+    void refreshDocumentFlags(const Scenes& scenes, Scene* overlay){
+        const uint32_t revision = UIDocumentSystem::getMenuRevision();
+        const size_t sceneCount = scenes.size() + (overlay ? 1 : 0);
+        if (menuCacheValid && revision == menuCacheRevision && sceneCount == menuCacheScenes)
+            return;
+        menuCacheValue = false;
+        cursorCacheValue = false;
+        for (size_t i = 0; i <= scenes.size(); i++){
+            Scene* scene = i < scenes.size() ? scenes[i] : overlay;
+            if (!scene)
+                continue;
+            const std::shared_ptr<UIDocumentSystem> documents = scene->getSystem<UIDocumentSystem>();
+            menuCacheValue = menuCacheValue || documents->hasMenuDocument();
+            cursorCacheValue = cursorCacheValue || documents->hasCursorDocument();
+        }
+        menuCacheValid = true;
+        menuCacheRevision = revision;
+        menuCacheScenes = sceneCount;
+    }
+
+}
+
+bool Engine::isMenuShowing(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    refreshDocumentFlags(scenes, DebugOverlay::getScene());
+    return menuCacheValue;
+}
+
+bool Engine::isGamepadCursorShown(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    refreshDocumentFlags(scenes, DebugOverlay::getScene());
+    return cursorCacheValue;
+}
+
+bool Engine::dispatchCursorPointer(CursorPhase phase, float x, float y){
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    const int button = D_MOUSE_BUTTON_LEFT;
+    bool consumed = false;
+    if (phase == CURSOR_DOWN){
+        Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerDown(0, button, x, y, 0, false, false);
+        });
+        consumed = documentScene != nullptr;
+        if (!documentScene){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->eventOnPointerDown(-1 - button, button, x, y, false))
+                    consumed = true;
+            }
+        }
+        if (dispatchToWorldDocuments(scenes, consumed, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, 0, PointerPhase::DOWN, false, covered);
+            }))
+            consumed = true;
+    }else if (phase == CURSOR_UP){
+        consumed = dispatchReleaseToDocuments(scenes, 0, button, false, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerUp(0, button, x, y, 0, false, false);
+        });
+        for (Scene* scene : scenes){
+            if (scene->canReceiveUIEvents() && scene->getSystem<UISystem>()->eventOnPointerUp(-1 - button, button, x, y, false))
+                consumed = true;
+        }
+        if (dispatchToWorldDocuments(scenes, consumed, true, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, 0, PointerPhase::UP, false, covered);
+            }))
+            consumed = true;
+    }else{
+        // as the mouse: below the document it is over, documents lose their hover
+        UIDocumentSystem* over = nullptr;
+        for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
+            if (over && !documents->hasPointerCapture(0, D_MOUSE_BUTTON_1, false)){
+                documents->eventOnMouseLeave();
+                continue;
+            }
+            if (documents->eventOnPointerMove(0, x, y, 0, false, false)){
+                over = over ? over : documents;
+                consumed = true;
+            }
+        }
+        bool overComponentUI = false;
+        for (Scene* scene : scenes){
+            if (canSendUIEvents(scene)){
+                UISystem* ui = scene->getSystem<UISystem>().get();
+                if (ui->eventOnPointerMove(-1, x, y, false))
+                    consumed = true;
+                overComponentUI = overComponentUI || ui->isPointerOverUI(-1);
+            }
+        }
+        if (dispatchToWorldDocuments(scenes, consumed || overComponentUI, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, -1, x, y, 0, PointerPhase::MOVE, false, covered);
+            }))
+            consumed = true;
+    }
+    return consumed;
+}
+
+bool Engine::dispatchCursorWheel(float dx, float dy){
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+        return documents->eventOnWheel(dx, dy, 0);
+    }) != nullptr;
+    for (auto it = scenes.rbegin(); it != scenes.rend() && !consumed; ++it){
+        if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->eventOnScroll(dx, dy))
+            consumed = true;
+    }
+    return consumed;
+}
+
+void Engine::setPauseOnFocusLoss(bool enabled){
+    pauseOnFocusLoss = enabled;
+}
+
+bool Engine::isPauseOnFocusLoss(){
+    return pauseOnFocusLoss;
+}
+
 void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
     const std::vector<Scene*> scenes = getScenesSnapshot();
     // a selected Button (the component UI's menu, or one its history gives back); no callbacks here
@@ -4424,7 +4769,8 @@ void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
             break;
         }
     }
-    gamepad = keyboard || documentsHaveGamepadFocus(scenes);
+    // the gamepad cursor holds the sticks, A and the d-pad while it shows
+    gamepad = keyboard || GamepadCursor::isActive() || documentsHaveGamepadFocus(scenes);
 }
 
 bool Engine::wantsGamepadNavigation(){

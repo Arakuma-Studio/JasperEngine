@@ -433,7 +433,26 @@ namespace {
                     control.index == D_KEY_RIGHT || control.index == D_KEY_TAB || control.index == D_KEY_ENTER ||
                     control.index == D_KEY_KP_ENTER || control.index == D_KEY_SPACE);
         }
-        if (!r.suppression.gamepadNavigation)
+        // the gamepad cursor's controls: both sticks, A, B and the d-pad
+        if (r.suppression.gamepadCursor){
+            switch (control.kind){
+                case InputControlKind::GAMEPAD_BUTTON:
+                    if (control.index == D_GAMEPAD_BUTTON_B)
+                        return true;
+                    break;
+                case InputControlKind::GAMEPAD_AXIS:
+                    if (control.index == D_GAMEPAD_AXIS_RIGHT_X || control.index == D_GAMEPAD_AXIS_RIGHT_Y)
+                        return true;
+                    break;
+                case InputControlKind::GAMEPAD_STICK:
+                    if (control.index == 1)
+                        return true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (!r.suppression.gamepadNavigation && !r.suppression.gamepadCursor)
             return false;
         switch (control.kind){
             case InputControlKind::GAMEPAD_BUTTON:

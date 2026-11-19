@@ -72,3 +72,9 @@ function UIDataModel:set(path, value) end
 ---@field ["data-glyph"] string set by the engine: the glyph key ("gamepad/playstation/cross", "" without a binding)
 ---@field ["data-scheme"] HtmlInputScheme set by the engine: the scheme shown
 ---@field ["data-empty"] "true"|"false" set by the engine: "true" when the action has no binding for that scheme
+
+---The `back` event (`doc:addEventListener("back", fn)`): Back (Android's Back button, Escape,
+---gamepad B) reached the top Is Menu document (UIDocument.isMenu), at its focused element, else its
+---root; it bubbles. `event:preventDefault()` takes it; otherwise an open select, else the topmost
+---modal dialog closes, then Engine.onBack(source) gets it.
+---@alias UIBackEventType "back"

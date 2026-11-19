@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "subsystem/GamepadCursor.h"
 #include "terrain/TerrainQuality.h"
 #include "window/GameResolutions.h"
 #include "Scene.h"
@@ -667,13 +668,16 @@ namespace jasperengine::editor{
         bool keepScreenOn = true;
         // -1 = the platform's rate
         int targetFrameRate = -1;
+        // Engine.onPauseRequested on a focus loss, an app pause or the gamepad's disconnect while no menu shows
+        bool pauseOnFocusLoss = false;
 
         // the allowed set with a fixed default in it, never empty
         uint8_t effectiveAllowedOrientations() const;
 
         bool operator==(const PresentationSettings& other) const {
             return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
-                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate
+                && pauseOnFocusLoss == other.pauseOnFocusLoss;
         }
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
@@ -952,6 +956,7 @@ namespace jasperengine::editor{
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
+        GamepadCursorSettings gamepadCursorSettings;
         float inputDeadzone = 0.15f;
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
@@ -1825,6 +1830,9 @@ namespace jasperengine::editor{
         std::string getInputActionsEnginePath() const;
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
+        // Project Settings > Input > Gamepad Cursor (GamepadCursor's defaults at Play and in the game)
+        void setGamepadCursorSettings(const GamepadCursorSettings& settings);
+        const GamepadCursorSettings& getGamepadCursorSettings() const;
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports

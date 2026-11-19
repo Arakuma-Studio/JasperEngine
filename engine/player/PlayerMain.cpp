@@ -326,6 +326,7 @@ JASPERENGINE_INIT void init() {
     Engine::setFoliageQualityDefaults(game.foliageQuality[0], game.foliageQuality[1], game.foliageQuality[2], game.foliageQualityUncapped);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
+    GamepadCursor::setDefaults(game.gamepadCursor);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
 #if JASPERENGINE_VOXEL
@@ -343,6 +344,7 @@ JASPERENGINE_INIT void init() {
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
     Engine::setDynamicBatchingDefault(game.dynamicBatching);
+    Engine::setPauseOnFocusLoss(game.pauseOnFocusLoss);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
     // Screen Transitions (S48): Lua's defaults
     pixelart::ScreenTransition::setDefaults(game.transitions);

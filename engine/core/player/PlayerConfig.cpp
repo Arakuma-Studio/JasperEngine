@@ -96,6 +96,12 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (gamepadCursor != GamepadCursorSettings()){
+        out["input"]["gamepadCursor"] = {{"speed", gamepadCursor.speed}, {"accelerationTime", gamepadCursor.accelerationTime},
+                                         {"slowOverControls", gamepadCursor.slowOverControls}, {"scrollSpeed", gamepadCursor.scrollSpeed},
+                                         {"deadzone", gamepadCursor.deadzone}, {"graphic", gamepadCursor.graphic}, {"size", gamepadCursor.size},
+                                         {"hotSpot", {gamepadCursor.hotSpot.x, gamepadCursor.hotSpot.y}}};
+    }
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
         areas.push_back({{"name", area.name}, {"cost", area.cost}, {"color", {area.color.x, area.color.y, area.color.z, area.color.w}}});
@@ -116,6 +122,7 @@ json PlayerConfig::toJson() const {
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
+    out["pauseOnFocusLoss"] = pauseOnFocusLoss;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
     if (transitions != pixelart::TransitionDefaults()){
         char color[8];
@@ -238,6 +245,19 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+            if (const auto cursor = input->find("gamepadCursor"); cursor != input->end() && cursor->is_object()){
+                GamepadCursorSettings& c = config.gamepadCursor;
+                c.speed = cursor->value("speed", c.speed);
+                c.accelerationTime = cursor->value("accelerationTime", c.accelerationTime);
+                c.slowOverControls = cursor->value("slowOverControls", c.slowOverControls);
+                c.scrollSpeed = cursor->value("scrollSpeed", c.scrollSpeed);
+                c.deadzone = cursor->value("deadzone", c.deadzone);
+                c.graphic = cursor->value("graphic", c.graphic);
+                c.size = cursor->value("size", c.size);
+                if (const auto hot = cursor->find("hotSpot"); hot != cursor->end() && hot->is_array() && hot->size() == 2 &&
+                    (*hot)[0].is_number() && (*hot)[1].is_number())
+                    c.hotSpot = Vector2((*hot)[0].get<float>(), (*hot)[1].get<float>());
+            }
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
@@ -286,6 +306,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
+        config.pauseOnFocusLoss = in.value("pauseOnFocusLoss", config.pauseOnFocusLoss);
         // absent (a config written before it) or unknown: Automatic
         if (const auto transitions = in.find("transitions"); transitions != in.end() && transitions->is_object()){
             pixelart::TransitionDefaults& t = config.transitions;

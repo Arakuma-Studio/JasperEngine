@@ -71,6 +71,7 @@ namespace jasperengine::editor {
         int m_defaultOrientationIndex = 4;
         uint8_t m_allowedOrientations = PresentationSettings{}.allowedOrientations;
         bool m_keepScreenOn = true;
+        bool m_pauseOnFocusLoss = false;
         int m_targetFrameRate = -1;
         char m_applicationNameBuffer[256] = {0};
         char m_applicationIdentifierBuffer[256] = {0};
@@ -118,6 +119,8 @@ namespace jasperengine::editor {
         // .inputactions files of the assets directory as the picker lists them
         fs::path m_inputActionsAsset;
         float m_inputDeadzone = 0.15f;
+        GamepadCursorSettings m_gamepadCursor;
+        char m_gamepadCursorGraphic[512] = {};
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
         // Pixel Art: the Default Palette (project-relative, or "builtin:<id>" until OK copies it

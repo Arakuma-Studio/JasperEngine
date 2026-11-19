@@ -344,10 +344,15 @@ namespace {
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
+        JE_FIELD(UIDocumentComponent, isMenu, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "Back goes here first; opening it releases the game's held input; Pause On Focus Loss does not fire while it shows."),
+        JE_FIELD(UIDocumentComponent, gamepadCursor, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "While the player uses a gamepad, the stick moves a pointer over this document."),
     };
 
     constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio"
+        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio",
+        "isMenu", "gamepadCursor"
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do

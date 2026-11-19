@@ -2421,6 +2421,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
         .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // a shown, interactive UIDocument with Is Menu exists (Back goes there first)
+        .addStaticFunction("isMenuShowing", &Engine::isMenuShowing)
         // false while the window can't be seen: the game updates without drawing (desktops)
         .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
@@ -2446,6 +2448,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onBack", [] () { return &Engine::onBack; }, [] (lua_State* L) { Engine::onBack = L; })
+        .addStaticProperty("onPauseRequested", [] () { return &Engine::onPauseRequested; }, [] (lua_State* L) { Engine::onPauseRequested = L; })
         .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })

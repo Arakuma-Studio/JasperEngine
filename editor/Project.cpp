@@ -1829,6 +1829,16 @@ float editor::Project::getInputDeadzone() const{
     return inputDeadzone;
 }
 
+void editor::Project::setGamepadCursorSettings(const GamepadCursorSettings& settings){
+    GamepadCursor::setDefaults(settings);
+    // as the engine keeps them (finite, within their ranges)
+    gamepadCursorSettings = GamepadCursor::getDefaults();
+}
+
+const GamepadCursorSettings& editor::Project::getGamepadCursorSettings() const{
+    return gamepadCursorSettings;
+}
+
 void editor::Project::setPlayerCrash(const PlayerCrashSettings& settings){
     playerCrash = settings;
     playerCrash.hangSeconds = std::clamp(settings.hangSeconds, PlayerCrashSettings::minHangSeconds, PlayerCrashSettings::maxHangSeconds);
@@ -3527,6 +3537,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.allowedOrientations = presentationSettings.effectiveAllowedOrientations();
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
+    settings.pauseOnFocusLoss = presentationSettings.pauseOnFocusLoss;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
@@ -3552,6 +3563,7 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    Engine::setPauseOnFocusLoss(presentationSettings.pauseOnFocusLoss);
     // S87: a Play starts in the device's language with the project's default
     TitleArtLanguage::setGlobal("");
     TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
@@ -6547,6 +6559,7 @@ void editor::Project::resetConfigs() {
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
+    setGamepadCursorSettings(GamepadCursorSettings());
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
     packContent = false;
@@ -8543,6 +8556,7 @@ void editor::Project::configureGenerator() {
     generator.setDrawSubmission(drawSubmission);
     generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setGamepadCursorSettings(gamepadCursorSettings);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -10757,6 +10771,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setDrawSubmission(drawSubmission);
     generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setGamepadCursorSettings(gamepadCursorSettings);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -11430,6 +11445,7 @@ void editor::Project::start(uint32_t sceneId) {
     // Project Settings > Input: the default actions asset, its maps as the asset has them
     InputActions::unload();
     InputActions::setDefaultDeadzone(inputDeadzone);
+    GamepadCursor::setDefaults(gamepadCursorSettings);
     if (const std::string actions = getInputActionsEnginePath(); !actions.empty()) {
         // an older editor's Input Manager actions not written yet: from memory
         if (inputMigration.pending && inputMigration.asset == inputActionsAsset)
