@@ -766,7 +766,7 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   is read by `Project::getUserDataPath` from `gametests::PlayData` (no `Project` member): no
   project-wide header changes for a per-session value.
 - **The Project window.** As `Recordings` and `EditorSettings` are, the test root stays visible in the
-  Project window (its files are edited there); asset scans, imports, `check` and exports skip it.
+  Project window (its files are edited there); asset scans, imports and exports skip it.
 - **Replacing a snapshot.** Save Snapshot over an existing name writes the new files as one undo step;
   files of the earlier snapshot that the new data lacks are kept and named in a warning (a
   `WriteFilesCmd` step cannot delete).
@@ -781,7 +781,8 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   project's Lua modules, seeds `math.random` and sets the fixed delta; it does not re-create the Lua
   state or reset the persistent scene (no `Engine::resetGameSession()` was extracted).
 - **Not done in this change** (each named in the PR): Build Settings Include Tests (R40) and the
-  exporters' `tests/` (R50, AC17's export half), hence `run_tests {target: "desktop"}` (AC10, refused
+  exporters' `tests/` for Development builds (R50, AC17's export half; exports do leave the test root
+  out), hence `run_tests {target: "desktop"}` (AC10, refused
   with how to run a player and import), the web gate and the Android run (AC12, AC13, and the
   emulator script's `--setprop` widening), replay cases (R9, AC16: they need the input spec's recorder
   merged), and the size and benchmark evidence of AC18 beyond `TestRunnerBench.FrameOverhead`.
