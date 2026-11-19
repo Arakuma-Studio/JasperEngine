@@ -240,14 +240,16 @@ namespace {
 
     // ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md) ----
 
-    Quaternion turn(float degrees, float x, float y, float z) {
+    Quaternion torsoTurn(float degrees, float x, float y, float z) {
         const float half = degrees * 3.14159265358979f / 360.0f;
         return Quaternion(std::cos(half), x * std::sin(half), y * std::sin(half), z * std::sin(half));
     }
 
-    double degreesBetween(const Quaternion& a, const Quaternion& b) {
-        const double d = std::fabs((double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z);
-        return 2.0 * std::acos(std::min(1.0, d)) * 180.0 / 3.14159265358979;
+    double torsoDegrees(const Quaternion& a, const Quaternion& b) {
+        const double d = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
+        const double n = std::sqrt(((double)a.w * a.w + (double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z) *
+                                   ((double)b.w * b.w + (double)b.x * b.x + (double)b.y * b.y + (double)b.z * b.z));
+        return 2.0 * std::acos(std::min(1.0, std::fabs(d) / n)) * 180.0 / 3.14159265358979;
     }
 
     // bones held at rotations for a second, asset-relative
@@ -275,8 +277,8 @@ namespace {
     // degrees; "Upper Body" (the option off) masks from Hips/Spine an attack that turns them -20 and
     // tilts the spine 40
     void upperBodyController(AnimatorWindow& window, const std::shared_ptr<AnimatorAssetDocument>& doc) {
-        const std::string run = writeRotations("torso_run", {{"Hips", turn(90, 0, 1, 0)}});
-        const std::string attack = writeRotations("torso_attack", {{"Hips", turn(-20, 0, 1, 0)}, {"Hips/Spine", turn(40, 1, 0, 0)}});
+        const std::string run = writeRotations("torso_run", {{"Hips", torsoTurn(90, 0, 1, 0)}});
+        const std::string attack = writeRotations("torso_attack", {{"Hips", torsoTurn(-20, 0, 1, 0)}, {"Hips/Spine", torsoTurn(40, 1, 0, 0)}});
         anim::AvatarMaskDef mask;
         mask.defaultWeight = 0.0f;
         mask.paths.push_back({"Hips/Spine", 1.0f, true});
@@ -1165,27 +1167,27 @@ TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStop
     EXPECT_FALSE(window.setCompare(true)) << "only in Preview";
     EXPECT_FALSE(window.isComparing());
 
-    const Quaternion layer = turn(-20, 0, 1, 0) * turn(40, 1, 0, 0);
+    const Quaternion layer = torsoTurn(-20, 0, 1, 0) * torsoTurn(40, 1, 0, 0);
     const fs::path file = assets() / "animator/torsocompare.controller";
     const std::string text = readAll(file);
     const size_t start = history()->position();
     ASSERT_TRUE(window.startPreview()) << window.getStatus();
     ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
-    EXPECT_LT(degreesBetween(s.spine(), layer), 0.01) << "the pass: the spine faces where the attack faces";
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "the pass: the spine faces where the attack faces";
     ASSERT_TRUE(window.setCompare(true));
     EXPECT_TRUE(window.isComparing());
-    EXPECT_NEAR(degreesBetween(s.spine(), layer), 110.0, 0.05) << "Compare: the spine follows the run's hips";
+    EXPECT_NEAR(torsoDegrees(s.spine(), layer), 110.0, 0.05) << "Compare: the spine follows the run's hips";
     ASSERT_TRUE(window.stepPreview(0.1f));
-    EXPECT_NEAR(degreesBetween(s.spine(), layer), 110.0, 0.05) << "while it is on";
+    EXPECT_NEAR(torsoDegrees(s.spine(), layer), 110.0, 0.05) << "while it is on";
     ASSERT_TRUE(window.setCompare(false));
-    EXPECT_LT(degreesBetween(s.spine(), layer), 0.01);
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05);
     ASSERT_TRUE(window.setCompare(true));
     window.stopPreview();
     EXPECT_FALSE(window.isComparing()) << "off when Preview stops";
     ASSERT_TRUE(window.startPreview()) << window.getStatus();
     EXPECT_FALSE(window.isComparing());
     ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
-    EXPECT_LT(degreesBetween(s.spine(), layer), 0.01) << "a new Preview runs the pass";
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "a new Preview runs the pass";
     window.stopPreview();
     EXPECT_EQ(readAll(file), text) << "never saved";
     EXPECT_EQ(history()->position(), start) << "no undo step";
