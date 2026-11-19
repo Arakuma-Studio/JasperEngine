@@ -4,6 +4,7 @@
 #include "FrameTimes.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 
 using namespace jasperengine;
@@ -26,6 +27,9 @@ namespace {
         uint32_t pendingGpuFlags = 0;
         bool hostWork = false;      // markHostWork in the current frame
     };
+
+    // currentFrame() for any thread: the Gameplay Journal stamps entries written by workers
+    std::atomic<uint64_t> publishedFrame{0};
 
     State& state() {
         static State s;
@@ -61,6 +65,7 @@ void FrameTimes::beginFrame() {
     s.started = true;
     s.hostWork = false;
     s.frame++;
+    publishedFrame.store(s.frame, std::memory_order_relaxed);
     s.frameStart = now;
     s.cpuMs = -1.0;
     s.drawCalls = 0;
@@ -80,6 +85,7 @@ void FrameTimes::recordSample(float frameMs, float cpuMs) {
     s.started = true;
     s.hostWork = false;
     s.frame++;
+    publishedFrame.store(s.frame, std::memory_order_relaxed);
     s.frameStart = std::chrono::steady_clock::now();
     s.cpuMs = -1.0;
     s.drawCalls = 0;
@@ -100,7 +106,7 @@ bool FrameTimes::hasExternalFrames() {
 }
 
 uint64_t FrameTimes::currentFrame() {
-    return state().frame;
+    return publishedFrame.load(std::memory_order_relaxed);
 }
 
 void FrameTimes::markHostWork() {

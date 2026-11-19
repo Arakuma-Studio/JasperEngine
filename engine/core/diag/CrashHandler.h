@@ -11,8 +11,11 @@
 //   <root>/reports/<yyyymmddThhmmssZ>-<pid>/crash.txt      header, reason, registers, frames, modules
 //                                           crash.dmp      Windows minidump
 //                                           log-tail.txt   the last log lines (the crash ring)
+//                                           journal.txt    the Gameplay Journal (Journal.h)
 //                                           hang-001.txt   hang watchdog reports (HangWatchdog.h)
 //                                           handled        the notice was dismissed / the hook took it
+//   <root>/reports/<session>-user<N>/user.txt              a player's "Report a Problem" (UserReport.h):
+//                                           device.json, journal.txt, log-tail.txt, screenshot.jpg
 //   <root>/sessions/<pid>.json                             this session is running
 //
 // and then hands the crash on to whatever handled it before (debuggerd tombstones, sanitizers,
@@ -30,6 +33,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <signal.h>
@@ -148,6 +152,27 @@ namespace jasperengine::diag::crash {
     // Writes `name` into this session's report folder (creating it), outside any handler: the
     // hang watchdog's reports. Returns the file's path, empty on failure.
     JASPERENGINE_API std::filesystem::path writeSessionFile(const std::string& name, std::string_view text);
+
+    // A user report's content (UserReport.h gathers it): written as <session>-user<N>/ through
+    // io::writeFileAtomic, or kept in memory where there are no report folders (the web, a game
+    // without a crash handler)
+    struct UserReportContent {
+        std::string note;
+        std::string category = "other";
+        std::vector<std::pair<std::string, std::string>> fields;   // field.<key>: <value> lines
+        std::string deviceJson;
+        std::string journal;                                       // empty: no journal.txt
+        std::optional<std::string> logTail;                        // nullopt: no log-tail.txt
+        std::string screenshotJpeg;                                // empty: no screenshot.jpg
+        std::string perfJson;                                      // empty: no perf.json
+    };
+    // At most kMaxPendingUserReports unhandled ones: then nullopt with error
+    // "too_many_pending: ..." and nothing written
+    constexpr size_t kMaxPendingUserReports = 3;
+    JASPERENGINE_API std::optional<ReportInfo> writeUserReport(const UserReportContent& content, std::string& error);
+    // A report file's bytes (at most 8 MiB): the folder's, or the in-memory report's; nullopt for
+    // an unknown report or file
+    JASPERENGINE_API std::optional<std::string> readReportFile(std::string_view id, std::string_view name);
 
     // The crash.txt header fields (also the hang reports')
     JASPERENGINE_API const std::string& buildId();

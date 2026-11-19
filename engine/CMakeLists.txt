@@ -1431,6 +1431,7 @@ set(JASPERENGINE_SRCS
     core/diag/HangStackCapture.cpp
     core/diag/CrashHandlerWeb.cpp
     core/diag/HangWatchdog.cpp
+    core/diag/Journal.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp
