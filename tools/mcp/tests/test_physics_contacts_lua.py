@@ -137,6 +137,8 @@ async def test_query_physics_overlap(ed: Editor):
         ed.check(abs(cast["hits"][0]["distance"] - 4.25) < 0.01 and cast["hits"][0]["normal"][0] < -0.99, f"{cast['hits'][0]}")
         ray = await ed.call("query_physics", op="raycast", origin=[0, 5, 3], direction=[0, -1, 0], max_distance=10)
         ed.check_eq(paths(ray), ["Pickup"], f"raycast hits the trigger by default: {ray}")
+        await ed.check_error("query_physics", {"shape": {"type": "sphere", "radius": 1, "height": 2}, "origin": [0, 0, 0]},
+                             contains="not a shape field")
         capped = await ed.call("query_physics", shape={"type": "sphere", "radius": 5}, origin=[0, 0, 0], layer_mask=-1, max_hits=2)
         ed.check(capped["count"] == 4 and capped["truncated"] is True and len(capped["hits"]) == 2, f"{capped}")
         problems = await ed.call("read_console", types=["error"], limit=20)
