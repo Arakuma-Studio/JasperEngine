@@ -75,6 +75,8 @@ namespace jasperengine::editor::mcp {
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
+    // BuildProfileTools.cpp: edit_build_profile (build-profiles), registered with the publish tools
+    void registerBuildProfileTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
     // AnimatorTools.cpp: edit_animator (Animator Controllers, anim layers spec 11.5)
     void registerAnimatorTools(McpRegistry& registry);

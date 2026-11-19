@@ -156,6 +156,11 @@ namespace jasperengine::player {
         // Lua mock answering logs a warning
         std::map<std::string, std::string> nativePlatformOnly;
 
+        // the Build Profile the game was built with and its Scripting Define Symbols (System.isDefined);
+        // both absent without a profile
+        std::string buildProfile;
+        std::vector<std::string> defines;
+
         PlayerConfig();
 
         nlohmann::json toJson() const;

@@ -3078,6 +3078,14 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# build-profiles: the build's define list and BuildInfo (LuaRef tables; BuildInfo is in
+# engine/core/script/binding/stubs/BuildInfo.lua)
+OVERRIDES[('System', 'getDefines')] = {
+    'doc': ["The build's Scripting Define Symbols (in Play: the active Build Profile's); {} without a profile."],
+    'overloads': [([], 'string[]')]}
+OVERRIDES[('System', 'getBuildInfo')] = {
+    'doc': ['What the build is: its Build Profile, defines and Development Build flag.'],
+    'overloads': [([], 'BuildInfo')]}
 # anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
 OVERRIDES[('AnimationPlayer', 'addClip')] = {
     'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",

@@ -593,6 +593,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     if (r.mode == ExportMode::Player) {
         const ExportResult& report = r.result;
         result["platform"] = buildPlatformName(r.config.platform);
+        if (!report.buildProfile.empty()) result["profile"] = report.buildProfile;
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
         result["carried"] = report.carried;
@@ -838,6 +839,44 @@ void buildProjectTool(const CallPtr& call) {
         return;
     }
 
+    // ---- Build Profile (R23): its platform, Graphics API, Development Build and output folder
+    BuildProfile profile;
+    const bool profileGiven = args.contains("profile") && args["profile"].is_string() && !args["profile"].get<std::string>().empty();
+    if (profileGiven) {
+        std::string profileError;
+        if (!buildprofiles::load(project->getProjectPath(), args["profile"].get<std::string>(), profile, profileError)) {
+            call->fail(profileError + ".");
+            return;
+        }
+        const std::string profilePlatform = buildPlatformName(profile.platform);
+        if (mode != ExportMode::Player || (modeText == "web" && profile.platform != BuildPlatform::Web)) {
+            call->fail("Build Profile '" + profile.name + "' builds a " + profilePlatform + " player: drop mode (the profile supplies it).");
+            return;
+        }
+        if (platformGiven && lowerText(args["platform"].get<std::string>()) != profilePlatform) {
+            call->fail("platform " + lowerText(args["platform"].get<std::string>()) + " differs from Build Profile '" + profile.name + "', which builds for " +
+                       profilePlatform + ": drop platform, or change the profile (edit_build_profile).");
+            return;
+        }
+        if (args.contains("development") && profile.development && args.value("development", false) != *profile.development) {
+            call->fail(std::string("development differs from Build Profile '") + profile.name + "' (Development Build " +
+                       (*profile.development ? "on" : "off") + "): drop development, or change the profile (edit_build_profile).");
+            return;
+        }
+        if (args.contains("graphics_api") && args["graphics_api"].is_string() && !profile.backend.empty() &&
+            normalizeBackend(args["graphics_api"].get<std::string>()) != normalizeBackend(profile.backend)) {
+            call->fail("graphics_api differs from Build Profile '" + profile.name + "' (" + normalizeBackend(profile.backend) +
+                       "): drop graphics_api, or change the profile (edit_build_profile).");
+            return;
+        }
+        const std::vector<std::string> findings = validateProfile(*project, profile);
+        if (!findings.empty()) {
+            call->fail("Build Profile '" + profile.name + "': " + findings.front() + ".");
+            return;
+        }
+        platform = profile.platform;
+    }
+
     // ---- scenes
     bool hasSavedScene = false;
     for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || !scene.filepath.empty();
@@ -889,6 +928,9 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("output_dir must be an absolute directory outside the project.");
             return;
         }
+    } else if (profileGiven && !profile.outputDir.empty()) {
+        outputDir = FileUtils::pathFromUtf8(profile.outputDir);
+        if (outputDir.is_relative()) outputDir = project->getProjectPath() / outputDir;
     } else {
         outputDir = mode == ExportMode::Player ? defaultPlayerDir(project, platform) : defaultOutputDir(project, mode);
     }
@@ -966,6 +1008,7 @@ void buildProjectTool(const CallPtr& call) {
                 desktop.graphicBackendConfigured = true;
             }
         }
+        if (profileGiven && !profile.backend.empty()) backend = normalizeBackend(profile.backend);
         if (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end()) backend = backends.front();
         config.graphicBackend = backend;
         config.selectedBackends = {shaderBackendOf(platform, backend)};
@@ -974,7 +1017,8 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("method must be auto (the project's choice), prebuilt or compile.");
             return;
         }
-        config.developmentBuild = args.value("development", false);
+        config.developmentBuild = profileGiven && profile.development ? *profile.development : args.value("development", false);
+        if (profileGiven) config.buildProfile = profile.name;
         // the project's package format (Project Settings > Android), unless the call names one
         const std::string format = lowerText(args.value("android_format", project->getAndroidProjectSettings().packageFormat));
         if (!parseAndroidFormat(format, config.androidFormat)) {
@@ -1468,6 +1512,18 @@ void getBuildInfoTool(const CallPtr& call) {
     }
     data["shader_count"] = included;
     if (args.value("include_shaders", false)) data["shaders"] = shaders;
+
+    // Build Profiles (R23): the project's, and this user's active one
+    const std::string activeProfile = buildprofiles::activeName(project->getProjectPath());
+    Json profiles = Json::array();
+    for (const BuildProfileEntry& entry : buildprofiles::list(project->getProjectPath())) {
+        Json item = {{"name", entry.name}, {"platform", entry.readable ? buildPlatformName(entry.profile.platform) : ""},
+                     {"active", buildprofiles::find({entry}, activeProfile) != nullptr}, {"readable", entry.readable}};
+        if (!entry.readable) item["error"] = entry.error;
+        profiles.push_back(item);
+    }
+    data["profiles"] = profiles;
+    data["active_profile"] = activeProfile.empty() ? Json(nullptr) : Json(activeProfile);
 
     {
         std::lock_guard<std::mutex> lock(manager().mutex);
@@ -2407,7 +2463,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
             "native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform "
-            "(get_build_info). Saves scenes first. Past timeout_seconds: {job_id} (get_job).";
+            "(get_build_info). profile: a Build Profile supplies platform, API, flavour and folder. Saves scenes first. Past "
+            "timeout_seconds: {job_id} (get_job).";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside the project.")},
@@ -2416,6 +2473,7 @@ void registerBuildTools(McpRegistry& registry) {
             {"allow_missing_assets", withDefault(boolean(""), false)},
             {"graphics_api", string("opengl/vulkan/d3d11/metal-macos/opengles. Remembered.")},
             {"platform", stringEnum("player/source target.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"profile", string("")},
             {"method", withDefault(stringEnum("", {"auto", "prebuilt", "compile"}), "auto")},
             {"development", withDefault(boolean(""), false)},
             {"android_format", stringEnum("Default: project's.", {"aab", "apk-per-abi", "apk"})},

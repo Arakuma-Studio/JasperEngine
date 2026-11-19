@@ -6,6 +6,7 @@
 #include "AppSettings.h"
 #include "Exporter.h"
 #include "ScenesWindow.h"
+#include "BuildProfilesPane.h"
 #include "players/PlayerRuntimes.h"
 #include "publish/Publishing.h"
 #include "imgui.h"
@@ -70,6 +71,11 @@ namespace jasperengine::editor {
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.
         ScenesWindow m_scenesWindow;
+        // Build Profiles: the list under the platforms and the selected profile's pane; a build of
+        // the selected profile (Build and Build And Run) instead of the platform's
+        BuildProfilesPane m_profiles;
+        // the build running now is of a profile for this computer (Build And Run launches it)
+        bool m_profileBuildRunnable = false;
 
         // UI state
         fs::path m_targetDir;

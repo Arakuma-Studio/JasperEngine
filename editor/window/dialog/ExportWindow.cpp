@@ -97,6 +97,12 @@ void ExportWindow::open(Project* project) {
     m_launchDone = false;
     m_playerSettingsRequested = false;
     m_publishingLoaded = false;
+    m_profiles.reset();
+    // Build Settings opens on the active Build Profile (R9)
+    {
+        const buildprofiles::View& profiles = buildprofiles::view(project->getProjectPath());
+        if (profiles.active) m_profiles.selectName(profiles.active->name);
+    }
 
     populateBackendList();
     // Remember the platform between openings, like Unity's active build target, within a project:
@@ -629,6 +635,7 @@ void ExportWindow::drawPlatformList() {
         int chosen = static_cast<int>(m_platform);
         if (EditorModal::enumField("platform", chosen, names) && chosen != static_cast<int>(m_platform)) {
             selectPlatform(static_cast<BuildPlatform>(chosen), platformCanBuildPlayer(static_cast<BuildPlatform>(chosen)));
+            m_profiles.clearSelection();
         }
     }
     for (int i = 0; i < static_cast<int>(BuildPlatform::Count); i++) {
@@ -639,8 +646,11 @@ void ExportWindow::drawPlatformList() {
         ImGui::PushID(i);
         const ImVec2 rowPos = ImGui::GetCursorScreenPos();
         const bool isPlatform = platform != BuildPlatform::Custom;
-        if (ImGui::Selectable("##platform", m_platform == platform, isPlatform ? ImGuiSelectableFlags_AllowOverlap : 0, ImVec2(0, rowHeight))) {
+        if (ImGui::Selectable("##platform", m_platform == platform && !m_profiles.hasSelection(), isPlatform ? ImGuiSelectableFlags_AllowOverlap : 0,
+                              ImVec2(0, rowHeight))) {
             if (m_platform != platform) selectPlatform(platform, platformCanBuildPlayer(platform));
+            // a platform builds without a profile, as before
+            m_profiles.clearSelection();
         }
         if (platform == hostPlatform()) {
             ImGui::SetItemTooltip("This computer: builds a ready-to-run game.");
@@ -745,7 +755,7 @@ fs::path ExportWindow::builtPlayerPath() const {
 }
 
 void ExportWindow::launchBuiltPlayer() {
-    if (m_mode != ExportMode::Desktop && !(m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform())) return;
+    if (m_mode != ExportMode::Desktop && !(m_mode == ExportMode::Player && (shipPlatform() == hostBuildPlatform() || m_profileBuildRunnable))) return;
 
     fs::path exePath = builtPlayerPath();
     if (m_mode == ExportMode::Player) {
@@ -1332,12 +1342,17 @@ void ExportWindow::drawBuildTab() {
     ImGui::BeginGroup();
     settingsui::boldText("Platform");
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-    if (ImGui::BeginChild("##PlatformList", ImVec2(listWidth, std::max(1.0f, bottomHeight - ImGui::GetTextLineHeightWithSpacing())),
-                          ImGuiChildFlags_Borders)) {
+    const float platformsHeight = std::max(1.0f, (bottomHeight - ImGui::GetTextLineHeightWithSpacing() * 2.0f) * 0.55f);
+    if (ImGui::BeginChild("##PlatformList", ImVec2(listWidth, platformsHeight), ImGuiChildFlags_Borders)) {
         drawPlatformList();
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
+    settingsui::boldText("Build Profiles");
+    if (ImGui::BeginChild("##BuildProfiles", ImVec2(listWidth, std::max(1.0f, bottomHeight - platformsHeight - ImGui::GetTextLineHeightWithSpacing() * 2.0f)))) {
+        m_profiles.drawList(m_project, std::max(Theme::dpi(40.0f), ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 3.0f));
+    }
+    ImGui::EndChild();
     ImGui::EndGroup();
 
     ImGui::SameLine();
@@ -1346,7 +1361,14 @@ void ExportWindow::drawBuildTab() {
     bool canExport = false;
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(12.0f, 8.0f)));
     if (ImGui::BeginChild("##PlatformSettings", ImVec2(0, bottomHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding)) {
-        canExport = drawPlatformSettings(targetNotEmpty);
+        if (m_profiles.hasSelection()) {
+            canExport = m_profiles.drawPane(m_project);
+            std::error_code ec;
+            const fs::path out = m_profiles.outputDir(m_project);
+            targetNotEmpty = !out.empty() && fs::is_directory(out, ec) && !fs::is_empty(out, ec);
+        } else {
+            canExport = drawPlatformSettings(targetNotEmpty);
+        }
     }
     ImGui::EndChild();
     ImGui::PopStyleVar();
@@ -1378,7 +1400,11 @@ void ExportWindow::drawBuildTab() {
         }
     };
 
-    const bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
+    bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
+    if (m_profiles.hasSelection()) {
+        const BuildProfileEntry* profile = buildprofiles::find(buildprofiles::view(m_project->getProjectPath()).entries, m_profiles.selectedName());
+        runnable = profile && profile->readable && profile->profile.platform == hostBuildPlatform();
+    }
     ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
     EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run. A target that is not empty asks first.");
     if (EditorModal::button("Build", "ok", ImVec2(actionWidth, 0))) startBuild(false);
@@ -1452,6 +1478,39 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
     exportConfig.allowMissingAssets = m_allowMissingAssets;
+    m_profileBuildRunnable = false;
+
+    if (m_profiles.hasSelection()) {
+        // the selected Build Profile: its platform, Graphics API, flavour and folder (R19)
+        std::string error;
+        exportConfig.destinationDir = m_profiles.outputDir(m_project);
+        if (!applyBuildProfile(*m_project, m_profiles.selectedName(), exportConfig, error)) {
+            editor::getEditorHost().registerAlert("Cannot Build", error);
+            return;
+        }
+        if (exportConfig.graphicBackend.empty()) exportConfig.graphicBackend = jasperengine::editor::platformBackends(exportConfig.platform).front();
+        parseAndroidFormat(m_project->getAndroidProjectSettings().packageFormat, exportConfig.androidFormat);
+        const LocalBuildSettings build = AppSettings::getBuildSettings(m_project->getProjectPath() / "project.yaml");
+        exportConfig.cmakeCCompiler = build.cCompiler;
+        exportConfig.cmakeCxxCompiler = build.cxxCompiler;
+        exportConfig.cmakeGenerator = build.generator;
+        exportConfig.buildJobs = static_cast<unsigned int>(m_desktopBuildJobs);
+        exportConfig.emsdkPath = m_emsdkOverride;
+        exportConfig.assetsDir = m_project->getAssetsPath();
+        exportConfig.luaDir = m_project->getLuaPath();
+        exportConfig.shaderAdditions = m_shaderAdditions;
+        exportConfig.shaderExclusions = m_shaderExclusions;
+        const std::string conflict = editor::getEditorHost().backgroundWorkConflict("export");
+        if (!conflict.empty()) {
+            editor::getEditorHost().registerAlert("Cannot Export", conflict);
+            return;
+        }
+        m_mode = ExportMode::Player;
+        m_profileBuildRunnable = exportConfig.platform == hostBuildPlatform();
+        m_step = Step::Progress;
+        m_exporter.startExport(m_project, exportConfig);
+        return;
+    }
 
     if (m_mode == ExportMode::Player) {
         // an Android release build with a keystore asks its passwords first (never saved)

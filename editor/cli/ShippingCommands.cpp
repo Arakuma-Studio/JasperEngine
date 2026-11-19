@@ -148,7 +148,10 @@ namespace {
     void printBuildUsage(const char* executableName) {
         std::printf(
             "Usage: %s build --project P --platform <windows|linux|macos|android|ios|web> --out D [options]\n"
+            "       %s build --project P --profile <name> [--out D] [options]\n"
             "Builds a game: with a prebuilt player when the project needs no native code, else from source (S30).\n"
+            "  --profile name           a Build Profile (EditorSettings/BuildProfiles): its platform, backend,\n"
+            "                           flavour and Output Folder; a --platform that differs exits 2\n"
             "  --backend b              glcore, gles3, vulkan, d3d11 or metal (default: the platform's first)\n"
             "  --method m               auto (default: the project's), prebuilt or compile\n"
             "  --development            the development flavour (the profiler, --profile)\n"
@@ -163,8 +166,8 @@ namespace {
             "  --json                   the result as JSON\n"
             "Prints method, compile_reason, player, modules (the engine modules the build ships), left_out,\n"
             "module (why one is needed), output, executable, content_manifest, artifact, warning and note\n"
-            "lines; exits 1 when the build fails, 2 on bad arguments.\n",
-            executableName);
+            "lines (and profile: with --profile); exits 1 when the build fails, 2 on bad arguments.\n",
+            executableName, executableName);
     }
 
 }
@@ -175,7 +178,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     attachConsole();
     EditorHostOverrideGuard hostOverride(nullptr);
     fs::path projectPath, out, playersDir;
-    std::string platformName, backend, method = "auto", androidFormat, startScene;
+    std::string platformName, backend, method = "auto", androidFormat, startScene, profileName;
     bool development = false, pack = false, json = false, mismatch = false, simulator = false, allowMissing = false;
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -188,6 +191,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             projectPath = CommandLine::projectArgPath(value);
         } else if (arg == "--platform") {
             if (!takeValue(argc, argv, i, platformName, "build")) return 2;
+        } else if (arg == "--profile") {
+            if (!takeValue(argc, argv, i, profileName, "build")) return 2;
         } else if (arg == "--out") {
             if (!takeValue(argc, argv, i, value, "build")) return 2;
             out = CommandLine::absoluteArgPath(value);
@@ -221,11 +226,11 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     }
     ExportConfig config;
     config.mode = ExportMode::Player;
-    if (projectPath.empty() || platformName.empty() || out.empty()) {
-        std::fprintf(stderr, "build: --project, --platform and --out are required (try --help)\n");
+    if (projectPath.empty() || (profileName.empty() && (platformName.empty() || out.empty()))) {
+        std::fprintf(stderr, "build: --project, and --platform and --out (or --profile) are required (try --help)\n");
         return 2;
     }
-    if (!parseBuildPlatform(platformName, config.platform)) {
+    if (!platformName.empty() && !parseBuildPlatform(platformName, config.platform)) {
         std::fprintf(stderr, "build: unknown platform %s (windows, linux, macos, android, ios, web)\n", platformName.c_str());
         return 2;
     }
@@ -253,6 +258,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     config.keyPassword = envOr("JASPER_ANDROID_KEY_PASS");
 
     bool ok = false;
+    int exitCode = 1;
     ExportResult result;
     std::string error;
     {
@@ -278,7 +284,32 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             config.startSceneId = sceneIdOf(project, startScene);
             // no --android-format: the project's (Project Settings > Android > Package Format)
             if (androidFormat.empty()) parseAndroidFormat(project.getAndroidProjectSettings().packageFormat, config.androidFormat);
-            if (!startScene.empty() && config.startSceneId == 0) {
+            // a Build Profile supplies the platform, backend, flavour and folder; an explicit one that differs is refused
+            const BuildPlatform asked = config.platform;
+            const std::string askedBackend = normalizeBackend(config.graphicBackend);
+            bool profileOk = true;
+            if (!profileName.empty()) {
+                if (!applyBuildProfile(project, profileName, config, error)) {
+                    profileOk = false;
+                } else if (!platformName.empty() && asked != config.platform) {
+                    error = "--platform " + platformName + " differs from Build Profile '" + config.buildProfile + "', which builds for " +
+                            buildPlatformName(config.platform);
+                    profileOk = false;
+                } else if (!backend.empty() && askedBackend != normalizeBackend(config.graphicBackend)) {
+                    error = "--backend " + backend + " differs from Build Profile '" + config.buildProfile + "' (" + config.graphicBackend + ")";
+                    profileOk = false;
+                } else {
+                    if (!out.empty()) config.destinationDir = out;
+                    if (config.destinationDir.empty()) {
+                        error = "--out is needed: Build Profile '" + config.buildProfile + "' has no Output Folder";
+                        profileOk = false;
+                    }
+                }
+                if (!profileOk) exitCode = 2;
+            }
+            if (!profileOk) {
+                // the reason is in error, the exit code 2
+            } else if (!startScene.empty() && config.startSceneId == 0) {
                 error = "--start-scene " + startScene + ": no scene of that id or name";
             } else {
                 Exporter exporter;
@@ -291,6 +322,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     if (json) {
         ordered_json report;
         report["ok"] = ok;
+        if (!result.buildProfile.empty()) report["profile"] = result.buildProfile;
         report["method_used"] = buildMethodName(result.methodUsed);
         report["compile_reasons"] = result.compileReasons;
         report["carried"] = result.carried;
@@ -320,6 +352,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());
     } else {
+        if (!result.buildProfile.empty()) std::printf("profile: %s\n", result.buildProfile.c_str());
         if (result.methodUsed != BuildMethod::Auto) std::printf("method: %s\n", buildMethodName(result.methodUsed));
         for (const std::string& reason : result.compileReasons) std::printf("compile_reason: %s\n", reason.c_str());
         for (const std::string& item : result.carried) std::printf("carried: %s\n", item.c_str());
@@ -350,7 +383,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     std::fflush(stdout);
     if (!ok) {
         std::fprintf(stderr, "build: %s\n", error.empty() ? "the build failed" : error.c_str());
-        return 1;
+        return exitCode;
     }
     return 0;
 }

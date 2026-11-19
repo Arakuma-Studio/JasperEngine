@@ -37,6 +37,7 @@ namespace jasperengine::editor {
 
         std::string platform;           // "linux", "web"...
         std::string method;             // "prebuilt", "compile", "source"
+        std::string buildProfile;       // the Build Profile ("" none: absent from the file)
         uint64_t totalBytes = 0;
         std::map<std::string, uint64_t> categories;
         std::vector<BuildReportFile> largest;

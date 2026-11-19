@@ -149,6 +149,8 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
+    if (!buildProfile.empty()) out["defines"] = defines;
     return out;
 }
 
@@ -363,6 +365,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
             }
         }
+        config.buildProfile = in.value("buildProfile", std::string());
+        config.defines = in.value("defines", std::vector<std::string>{});
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
         out = std::move(config);
