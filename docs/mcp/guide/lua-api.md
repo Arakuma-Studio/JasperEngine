@@ -1480,6 +1480,27 @@ co:cancel(); co:isActive(); Timer.cancelAll(self)
 
 For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
+### 2.13.1 InputRecording (static): record and replay input
+
+```lua
+InputRecording.start({ checkpointFrames = 60 })            -- true | nil, err (one at a time)
+local path = InputRecording.stop("data://recordings/run.input.json")   -- written on a job
+local replay = InputRecording.play("asset://demo/attract.input.json",
+    { loop = true, stopOnRealInput = true, onFinished = function(r) self:showMenu() end })
+InputRecording.checkpoint("score", self.score)            -- a value checkpoints compare
+local _ = replay:isDone(), replay.frame, replay.diverged, InputRecording.frame
+replay:stop(); InputRecording.stopReplay()
+```
+
+- A recording from `start()` is `start: "now"`; `stop()` writes `data://` only (`lua://` and
+  `asset://` are read-only). `maxBytes` caps it (1 MB, at most 16 MB): at the cap it stops with a
+  warning and the file says `truncated: true`.
+- `play(source)` takes a `lua://`, `asset://` or `data://` path, or a decoded file table. While it
+  runs real device input is blocked (`blockRealInput = false` lets it through); with
+  `stopOnRealInput` the first real key, button or touch ends it and reaches the game (attract mode).
+- `replay.diverged` is nil or `{frame, differences}` (recordings with checkpoints, on the platform
+  that recorded them). `Coroutine.waitFor(replay)` waits for it.
+
 ### 2.14 Profiler (static): samples, counters, frame statistics
 
 ```lua

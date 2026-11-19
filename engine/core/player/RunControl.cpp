@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "player/InputScriptRun.h"
 #include "audio/AudioCapture.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
@@ -150,14 +151,16 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    InputScriptRun::reset();
 }
 
 void RunControl::configure(const LaunchOptions& options) {
     reset();
     State& s = state();
     s.options = options;
-    s.active = options.quitAfter > 0 || options.afterReady || !options.screenshot.empty() || options.failOnError;
-    s.counting = !options.afterReady;
+    InputScriptRun::configure(s.options);
+    s.active = s.options.quitAfter > 0 || s.options.afterReady || !s.options.screenshot.empty() || s.options.failOnError;
+    s.counting = !s.options.afterReady;
 }
 
 const LaunchOptions& RunControl::options() {
@@ -167,6 +170,7 @@ const LaunchOptions& RunControl::options() {
 void RunControl::engineStarted() {
     State& s = state();
     s.started = std::chrono::steady_clock::now();
+    InputScriptRun::engineStarted(s.options);
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
     if (s.options.fixedFps > 0.0 && s.options.afterReady) {
@@ -214,6 +218,7 @@ bool RunControl::wantsScreenshot() {
 
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
+    if (s.active && InputScriptRun::wantsOffscreenFrame()) return true;
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
     if (s.captureWaiting) return true;
     const uint64_t target = screenshotTarget();
@@ -227,9 +232,11 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
     if (!s.active) return;
     s.drawn++;
 
+    InputScriptRun::frameDrawn(reader);
     if (!s.counting) {
         if (readySignalled) {
             s.counting = true;
+            InputScriptRun::ready();
             if (s.heldUntilReady) {
                 Engine::pauseGameEvents(false);
                 s.heldUntilReady = false;

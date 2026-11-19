@@ -3,6 +3,8 @@
 
 #include "input/InputScript.h"
 #include "input/InputScriptRunner.h"
+#include "input/InputRecorder.h"
+#include "Log.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -1370,6 +1372,9 @@ ScriptPlayer::ScriptPlayer(std::shared_ptr<const ParsedScript> script, PlayerHos
     heldBefore_ = *held_;
     if (!script_)
         script_ = std::make_shared<ParsedScript>();
+    // checkpoints compare only from a known start, on the platform that recorded them (R19)
+    const ScriptHeader& h = script_->header;
+    report_.comparable = h.kind == ScriptKind::Recording && h.fromPlayStart && !h.checkpoints.empty() && h.platform == platformTag();
 }
 
 ScriptPlayer::~ScriptPlayer(){
@@ -1434,6 +1439,16 @@ bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point,
 
 bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
     InjectScope injecting;
+    // what the interpreter forces counts as input (an agent's forced action), never game code's
+    switch (a.type) {
+        case ActionType::ActionDown: case ActionType::ActionUp: case ActionType::Axis: case ActionType::AxisDelta:
+        case ActionType::InputActionPress: case ActionType::InputActionDown: case ActionType::InputActionUp:
+            if (InputRecorder::isActive())
+                InputRecorder::recordForced(a, *script_);
+            break;
+        default:
+            break;
+    }
     HeldInput& held = *held_;
     const std::string& text = script_->stringAt(a.string);
     auto pointerInjected = [this]() {
@@ -1871,7 +1886,31 @@ bool ScriptPlayer::beforeFrame(uint64_t frameIndex){
     return false;
 }
 
-void ScriptPlayer::afterUpdate(uint64_t){
+void ScriptPlayer::afterUpdate(uint64_t frameIndex){
+    const std::vector<Checkpoint>& checkpoints = script_->header.checkpoints;
+    if (finished() || checkpoints.empty())
+        return;
+    // the frame that just updated is the (frameIndex + 1)th: a checkpoint's frame counts frames run
+    const uint64_t frame = frameIndex + 1;
+    while (nextCheckpoint_ < checkpoints.size() && checkpoints[nextCheckpoint_].frame < frame)
+        nextCheckpoint_++;
+    if (nextCheckpoint_ >= checkpoints.size() || checkpoints[nextCheckpoint_].frame != frame)
+        return;
+    const Checkpoint& recorded = checkpoints[nextCheckpoint_++];
+    // later checkpoints are not compared: past the first difference they all differ
+    if (!report_.comparable || report_.divergedAtFrame >= 0)
+        return;
+    const Checkpoint replayed = sampleCheckpoint(static_cast<uint32_t>(frame), script_->header.probes);
+    ScriptJson differences;
+    report_.compared++;
+    if (compareCheckpoint(recorded, replayed, script_->header.probes, differences))
+        return;
+    report_.divergedAtFrame = static_cast<int64_t>(frame);
+    report_.differences = differences;
+    const ScriptJson line = {{"frame", frame}, {"differences", differences}};
+    Log::print("[input] diverged %s", line.dump(-1, ' ', false, ScriptJson::error_handler_t::replace).c_str());
+    if (options_.stopOnDivergence && !script_->actions.empty())
+        fail(script_->actions[std::min(next_, script_->actions.size() - 1)], "the replay diverged at frame " + std::to_string(frame));
 }
 
 void releaseHeldInput(HeldInput& held, const std::string& actionSource){

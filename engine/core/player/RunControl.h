@@ -27,7 +27,10 @@ namespace jasperengine::player {
         EXIT_SCREENSHOT_FAILED = 4,
         EXIT_CONTENT_MISMATCH = 5,
         EXIT_NOT_READY = 6,
-        EXIT_NO_DISPLAY = 7
+        EXIT_NO_DISPLAY = 7,
+        // --input-script with --quit-after-input (docs/specs/input-recorder-and-input-scripts.md R26)
+        EXIT_INPUT_FAILED = 10,
+        EXIT_INPUT_DIVERGED = 11
     };
 
     // the composited frame: width * height RGBA8, rows top first; false when it cannot be read
