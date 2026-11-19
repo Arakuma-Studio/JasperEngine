@@ -207,7 +207,7 @@ TEST_F(SimulationCullingScriptTest, LuaCullingGroupOwnershipAndReentry) {
     start();
     frame();
     EXPECT_EQ(lua("return tostring(held:isValid())"), "true");
-    lua("GameObject(testScene, " + std::to_string(owner) + "):destroy()");
+    lua("GameObject.destroy(GameObject(testScene, " + std::to_string(owner) + "))");
     frames(2);
     EXPECT_EQ(lua("return tostring(held:isValid())"), "false") << "released with its script";
 

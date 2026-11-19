@@ -24211,6 +24211,210 @@
    "type": 103,
    "type_of_key": 103,
    "type_of_name": 103
+  },
+  {
+   "display_name": "Simulation Culling",
+   "enum_options": {
+    "reason": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "distance",
+      "Distance"
+     ],
+     [
+      2,
+      "ground_not_loaded",
+      "Ground Not Loaded"
+     ]
+    ],
+    "state": [
+     [
+      0,
+      "full",
+      "Full"
+     ],
+     [
+      1,
+      "reduced",
+      "Reduced"
+     ],
+     [
+      2,
+      "culled",
+      "Culled"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef81b0",
+   "key": "simulationculling",
+   "known_keys": [
+    "boundsRadius",
+    "cullAnimator",
+    "cullPhysics",
+    "cullScripts",
+    "enabled",
+    "freezeWhenGroundNotLoaded",
+    "hysteresis",
+    "reducedRateDistance",
+    "reducedUpdateInterval",
+    "simulateWhenVisible",
+    "simulationDistance"
+   ],
+   "name": "SimulationCullingComponent",
+   "properties_of_default": {
+    "boundsRadius": [
+     2,
+     0,
+     true
+    ],
+    "cullAnimator": [
+     0,
+     0,
+     true
+    ],
+    "cullPhysics": [
+     0,
+     0,
+     true
+    ],
+    "cullScripts": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focusDistance": [
+     2,
+     0,
+     true
+    ],
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
+     13,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "boundsRadius": [
+     2,
+     0,
+     true
+    ],
+    "cullAnimator": [
+     0,
+     0,
+     true
+    ],
+    "cullPhysics": [
+     0,
+     0,
+     true
+    ],
+    "cullScripts": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focusDistance": [
+     2,
+     0,
+     true
+    ],
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
+     13,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 104,
+   "type_of_key": 104,
+   "type_of_name": 104
   }
  ],
  "ease_options": [
