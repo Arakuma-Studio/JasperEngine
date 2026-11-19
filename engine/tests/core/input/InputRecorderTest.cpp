@@ -90,6 +90,7 @@ namespace {
 }
 
 TEST_F(InputRecorderTest, RecordsEveryEntryPointOnce){
+    Engine::systemFocus(true);
     std::string error;
     ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
     Engine::systemKeyDown(D_KEY_A, false, D_MODIFIER_SHIFT);
@@ -202,6 +203,9 @@ TEST_F(InputRecorderTest, ReplayHitsTheSameFrameEdges){
 
 TEST_F(InputRecorderTest, IdleCostsNothing){
     ASSERT_FALSE(InputRecorder::isActive());
+    // the entry points' own first-call setup, before counting
+    Engine::systemGamepadAxisMove(0, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
+    Engine::systemKeyUp(D_KEY_Q, false, 0);
     testsupport::AllocationCountScope allocations;
     for (int i = 0; i < 100000; i++) {
         Engine::systemGamepadAxisMove(0, D_GAMEPAD_AXIS_LEFT_X, (i & 1) ? 0.25f : 0.5f);

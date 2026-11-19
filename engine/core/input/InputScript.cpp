@@ -1878,7 +1878,7 @@ bool ScriptPlayer::beforeFrame(uint64_t frameIndex){
     if (!recording && pendingFrames_ > 0)
         return true;
     const std::vector<Checkpoint>& checkpoints = script_->header.checkpoints;
-    if (recording && !checkpoints.empty() && frameIndex + 1 < checkpoints.back().frame)
+    if (recording && !checkpoints.empty() && frameIndex < checkpoints.back().frame)
         return true;
     report_.done = true;
     if (options_.releaseAtEnd)
