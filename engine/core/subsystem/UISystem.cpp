@@ -3604,7 +3604,7 @@ TextEntryTraits UISystem::inputFieldTraits(const InputFieldComponent& inputfield
 
 bool UISystem::getTypingInputFieldTraits(TextEntryTraits& traits) const{
     auto inputfields = scene->getComponentArray<InputFieldComponent>();
-    for (int i = 0; i < inputfields->size(); i++){
+    for (size_t i = 0; i < inputfields->size(); i++){
         const Entity entity = inputfields->getEntity(i);
         const Signature signature = scene->getSignature(entity);
         if (!signature.test(scene->getComponentId<UIComponent>()))
