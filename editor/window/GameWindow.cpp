@@ -1653,6 +1653,8 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     // the Main Thread CPU and Sampling rows as items find_ui_item reports (drawn text is no item;
     // these take no input)
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    ImGuiContext& g = *GImGui;   // (IMGUI_TEST_ENGINE_ITEM_INFO reads it)
+    (void)g;
     for (size_t i = 0; i < all.size(); i++) {
         const char* label = all[i].rfind("Main Thread CPU", 0) == 0 ? "Main Thread CPU##stats"
                             : all[i].rfind("Sampling", 0) == 0     ? "Sampling##stats"
