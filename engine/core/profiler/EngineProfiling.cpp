@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "FrameTimes.h"
+#include "PerfSampler.h"
 #include "GpuMemory.h"
 #include "Profiler.h"
 #include "Scene.h"
@@ -155,6 +156,7 @@ namespace {
         static MonitorHandle m18 = nullptr;
         static MonitorHandle m19 = nullptr;
         static MonitorHandle m20 = nullptr;
+        static MonitorHandle m21 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -208,6 +210,13 @@ namespace {
         counter(handle(m19, "Anim Finalize ms", MonitorUnit::TimeMs), animation.finalizeMs);
         // the pool serves every scene, so this one is not a sum of theirs
         counter(handle(m20, "Clip memory", MonitorUnit::Memory), (double)AnimationClipPool::loadedBytes());
+        // the frame thread's own CPU per frame, from its thread clock read once a second while the
+        // Profiler records (a point a second: the value holds between reads)
+        if (isEnabled())
+            PerfSampler::watchThreadCpu();
+        const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+        if (isEnabled() && threadCpu >= 0.0)
+            counter(handle(m21, "Main thread CPU ms", MonitorUnit::TimeMs), threadCpu);
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

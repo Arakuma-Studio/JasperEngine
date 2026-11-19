@@ -3176,6 +3176,8 @@ void Engine::resetApplicationState(){
     targetFrameRate = -1;
     // no tier a script set, no Game view simulation, the thermal and memory response at rest
     Device::resetSession();
+    // the Performance sampler off, its window and the game's reasons gone (R11)
+    PerfSampler::resetSession();
     applyFramePacing();
     dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)

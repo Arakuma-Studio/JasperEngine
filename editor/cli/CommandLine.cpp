@@ -397,6 +397,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
         << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
         << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
+        << "      --gpu-quirk <name:on|off>  Force a GPU quirk on or off for the run (repeatable).\n"
         << "  -h, --help             Show this help.\n\n"
         << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
