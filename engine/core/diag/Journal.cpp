@@ -351,6 +351,10 @@ namespace jasperengine::diag::journal {
         copyField(s.session, sizeof(s.session), session.empty() ? std::string_view("-") : session);
     }
 
+    std::string identityVersion() {
+        return journalState.version;
+    }
+
     namespace detail {
 
         char* ring() {

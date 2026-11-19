@@ -2792,6 +2792,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         crashNode["hangWatchdog"] = crash.hangWatchdog;
         crashNode["hangSeconds"] = crash.hangSeconds;
         crashNode["webOverlay"] = crash.webCrashOverlay;
+        crashNode["journalKiB"] = crash.journalKiB;
+        crashNode["journalEngineEvents"] = crash.journalEngineEvents;
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
@@ -3614,6 +3616,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (crashNode["hangWatchdog"].IsDefined()) crash.hangWatchdog = YamlNumbers::as<bool>(crashNode["hangWatchdog"]);
             if (crashNode["hangSeconds"].IsDefined()) crash.hangSeconds = YamlNumbers::as<int>(crashNode["hangSeconds"]);
             if (crashNode["webOverlay"].IsDefined()) crash.webCrashOverlay = YamlNumbers::as<bool>(crashNode["webOverlay"]);
+            if (crashNode["journalKiB"].IsDefined()) {
+                crash.journalKiB = std::clamp(YamlNumbers::as<int>(crashNode["journalKiB"]), 0, PlayerCrashSettings::maxJournalKiB);
+            }
+            if (crashNode["journalEngineEvents"].IsDefined()) crash.journalEngineEvents = YamlNumbers::as<bool>(crashNode["journalEngineEvents"]);
         }
         project->setPlayerCrash(crash);
     }

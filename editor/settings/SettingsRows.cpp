@@ -2814,6 +2814,26 @@ std::vector<Setting> mcpSettingsTable() {
                   &PlayerCrashSettings::hangWatchdog);
         crashBool("player.crash.web_overlay", "Web: show \"The game stopped working. [Reload]\" after a crash.",
                   &PlayerCrashSettings::webCrashOverlay);
+        crashBool("player.crash.journal_engine_events", "The Gameplay Journal also records the engine's own events (scene loads, pause, focus...).",
+                  &PlayerCrashSettings::journalEngineEvents);
+        {
+            Setting s;
+            s.key = "player.crash.journal_kib";
+            s.type = "int";
+            s.description = "Gameplay Journal (Journal.log) memory in KiB, saved with crash, hang and user reports; 0 turns it off.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPlayerCrash().journalKiB); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, PlayerCrashSettings::maxJournalKiB, v, error)) return false;
+                if (apply) {
+                    PlayerCrashSettings crash = ctx.project()->getPlayerCrash();
+                    crash.journalKiB = static_cast<int>(v);
+                    ctx.project()->setPlayerCrash(crash);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "player.crash.hang_seconds";

@@ -144,7 +144,8 @@ json PlayerConfig::toJson() const {
     out["collision2D"] = collision2D;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
-                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
+                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay},
+                    {"journalBytes", crashJournalBytes}, {"journalEngineEvents", crashJournalEngineEvents}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
@@ -345,6 +346,9 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.hangWatchdog = crash->value("hangWatchdog", config.hangWatchdog);
             config.hangMs = crash->value("hangMs", config.hangMs);
             config.crashWebOverlay = crash->value("webOverlay", config.crashWebOverlay);
+            // absent (an older editor's game.json): the default journal
+            config.crashJournalBytes = crash->value("journalBytes", config.crashJournalBytes);
+            config.crashJournalEngineEvents = crash->value("journalEngineEvents", config.crashJournalEngineEvents);
         }
         // absent (a game.json of an older editor): no mixer, the default voices
         if (const auto audio = in.find("audio"); audio != in.end()) {

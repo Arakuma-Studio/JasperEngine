@@ -6,6 +6,8 @@
 #include "EditorVersion.h"
 #include "Out.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
+#include "log/Logger.h"
 #include "script/LuaWatchdog.h"
 
 #include <cstdio>
@@ -19,6 +21,14 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // the Console's "journal" category (Category menu): every Gameplay Journal entry, its time
+    // left to the Console
+    JE_LOG_CATEGORY(logCategoryJournal, "journal", ::jasperengine::LogLevel::Info)
+
+    void mirrorJournalEntry(std::string_view entry) {
+        Logger::write(LogLevel::Info, logCategoryJournal(), entry, nullptr, LogFlagNoRateLimit);
+    }
 
     struct State {
         std::mutex mutex;
@@ -81,6 +91,10 @@ void EditorDiagnostics::install(const fs::path& configDirectory) {
     if (const char* allow = std::getenv("JASPERENGINE_ALLOW_DEBUG_CRASH"); allow && std::strcmp(allow, "1") == 0) {
         s.debugCrashAllowed = true;
     }
+
+    // the editor's Gameplay Journal: 64 KiB, before the handler takes its ring
+    diag::journal::configure(64 << 10);
+    diag::journal::setListener(&mirrorJournalEntry);
 
     diag::crash::Config config = diag::crash::editorConfig(configDirectory, JASPERENGINE_EDITOR_VERSION);
     config.logFile = configDirectory / "editor.log";

@@ -50,6 +50,8 @@ namespace jasperengine {
         int hangWatchdog = -1;
         int hangMs = 0;
         int crashWebOverlay = -1;
+        int crashJournalBytes = -1;
+        int crashJournalEngineEvents = -1;
 
         // The build's own Player > Logging and Crash Handling: a Compile build's settings, which
         // the Exporter sets as macros of the game's executable and applyPlatformDefaults() copies
@@ -62,6 +64,9 @@ namespace jasperengine {
         bool builtCrashDumpWithHeap = false;
         int builtHangMs = 5000;
         bool builtCrashWebOverlay = true;
+        // the Gameplay Journal (diag/Journal.h): its ring and the engine's own entries
+        int builtCrashJournalBytes = 32 << 10;
+        bool builtCrashJournalEngineEvents = true;
     };
 
     JASPERENGINE_API PlatformConfig& platformConfig();

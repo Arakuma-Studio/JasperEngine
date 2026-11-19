@@ -66,6 +66,8 @@ namespace jasperengine::diag::journal {
 
     // The header's identity (diag::crash::install calls it): product, version, session
     JASPERENGINE_API void setIdentity(std::string_view product, std::string_view version, std::string_view session);
+    // the version setIdentity got ("unknown" before)
+    JASPERENGINE_API std::string identityVersion();
 
     namespace detail {
         // What the crash handler copies at install (constant afterwards)

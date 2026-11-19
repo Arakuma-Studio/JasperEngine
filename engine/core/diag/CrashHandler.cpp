@@ -1161,7 +1161,18 @@ namespace jasperengine::diag::crash {
         if (content.note.empty() || content.note.back() != '\n') user += "\n";
 
         std::vector<std::pair<std::string, std::string>> files;
-        if (!content.deviceJson.empty()) files.emplace_back("device.json", content.deviceJson);
+        {
+            // the device's fields (UserReport.cpp), and who reports: the same identity as user.txt
+            nlohmann::json device = nlohmann::json::parse(content.deviceJson.empty() ? std::string("{}") : content.deviceJson, nullptr, false);
+            if (!device.is_object()) device = nlohmann::json::object();
+            device["product"] = product;
+            device["version"] = version;
+            device["build_id"] = build;
+            device["platform"] = platformName();
+            device["backend"] = backend;
+            device["session"] = session;
+            files.emplace_back("device.json", device.dump(2) + "\n");
+        }
         if (!content.journal.empty()) files.emplace_back("journal.txt", content.journal);
         if (content.logTail) files.emplace_back("log-tail.txt", *content.logTail);
         if (!content.screenshotJpeg.empty()) files.emplace_back("screenshot.jpg", content.screenshotJpeg);

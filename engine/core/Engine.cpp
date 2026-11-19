@@ -11,6 +11,8 @@
 #include "log/Logger.h"
 #include "diag/CrashHandler.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
+#include "diag/UserReport.h"
 #include "script/LuaWatchdog.h"
 #include "util/Scheduler.h"
 #include "Scene.h"
@@ -200,6 +202,7 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 bool Engine::captureFrame = false;
+bool Engine::userCaptureFrame = false;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
@@ -1605,7 +1608,7 @@ void Engine::beginCompositeFramebuffer(){
     // differ: a pipeline made on the capture frame would leave it empty). The debug overlay's
     // Scene is drawn as one more layer (while it draws anything).
     const bool screenshotRun = player::RunControl::isActive() && player::RunControl::wantsScreenshot();
-    if (framebuffer || !(stacked || DebugOverlay::isDrawn() || captureFrame || screenshotRun))
+    if (framebuffer || !(stacked || DebugOverlay::isDrawn() || captureFrame || userCaptureFrame || screenshotRun))
         return;
 
     if (ensureCompositeFramebuffer())
@@ -1620,6 +1623,20 @@ bool Engine::readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& hei
     width = static_cast<int>(compositeFramebuffer.getWidth());
     height = static_cast<int>(compositeFramebuffer.getHeight());
     return FrameReadback::readFramebuffer(compositeFramebuffer, rgba, &error);
+}
+
+bool Engine::readUserReportFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+    // a host drawing the game into its own target (the editor's Game view) keeps it set
+    if (framebuffer && framebuffer != &compositeFramebuffer){
+        if (!framebuffer->isCreated()){
+            error = "the game's target is not created";
+            return false;
+        }
+        width = static_cast<int>(framebuffer->getWidth());
+        height = static_cast<int>(framebuffer->getHeight());
+        return FrameReadback::readFramebuffer(*framebuffer, rgba, &error);
+    }
+    return readCompositeFrame(rgba, width, height, error);
 }
 
 bool Engine::isHeadless(){
@@ -1782,6 +1799,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+    // Crash.beginReport's and createReport's callbacks, with the draft they were for
+    diag::userreport::reset();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
@@ -2027,6 +2046,11 @@ namespace {
         // a prebuilt player's Player > Crash Handling (game.json) over the build's
         const PlatformConfig& platform = platformConfig();
         auto setting = [](int runtime, int built) { return runtime >= 0 ? runtime != 0 : built != 0; };
+        // the Gameplay Journal before the handler takes its ring (D3), and with the handler off
+        // too: user reports and Journal.getText use it
+        const int journalBytes = platform.crashJournalBytes >= 0 ? platform.crashJournalBytes : platform.builtCrashJournalBytes;
+        diag::journal::configure(static_cast<size_t>(std::clamp(journalBytes, 0, 256 << 10)));
+        diag::journal::setEngineEvents(setting(platform.crashJournalEngineEvents, platform.builtCrashJournalEngineEvents));
     #if JASPERENGINE_CRASH_HANDLER
         if (!setting(platform.crashHandler, 1)) {
             (void)system;
@@ -2161,6 +2185,17 @@ void Engine::systemViewLoaded(){
               SystemRender::getDeviceName().c_str());
     // the GPU's tier (spec S56 R2), logged with its reason; a player applies it from here
     Device::detect();
+    {
+        // the Gameplay Journal's first engine entry: what the game runs on
+        const std::string gpu = Device::getGpuName();
+        const char* tier = DeviceNames::tier(Device::getTier());
+        const std::string version = diag::journal::identityVersion();
+        const diag::journal::Field fields[] = {{"backend", std::string_view(SystemRender::getBackendName())},
+                                               {"gpu", std::string_view(gpu)},
+                                               {"tier", std::string_view(tier)},
+                                               {"version", std::string_view(version)}};
+        diag::journal::logEngine("engine.start", fields);
+    }
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
@@ -2581,6 +2616,10 @@ void Engine::runFrame(bool draw){
 
     // a --screenshot run's capture frame draws offscreen (R20); a run without it never does
     captureFrame = draw && player::RunControl::isActive() && player::RunControl::wantsOffscreenFrame();
+    // a player's "Report a Problem" capture draws its frame offscreen too (no frame otherwise)
+    userCaptureFrame = draw && diag::userreport::wantsCapture();
+    if (userCaptureFrame)
+        diag::userreport::beforeCaptureFrame();
 
     // before the update, which bakes the PIP_RTT pipelines from the target in use
     if (draw)
@@ -2814,6 +2853,14 @@ void Engine::runFrame(bool draw){
         player::RunControl::frameDrawn(readySignalled, captured ? player::FrameReader(&Engine::readCompositeFrame) : player::FrameReader());
     }
 
+    // Crash.beginReport: the draft's callbacks of what finished before this frame, then the frame
+    // just drawn
+    diag::userreport::update();
+    if (userCaptureFrame){
+        userCaptureFrame = false;
+        diag::userreport::frameDrawn(&Engine::readUserReportFrame);
+    }
+
 #if JASPERENGINE_PROFILER
     // the built-in monitors, and the command line's capture once the scenes are loaded
     profiler::engineFrameEnd(areScenesLoaded());
@@ -3030,6 +3077,16 @@ void Engine::applyPause(){
     paused = want;
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
+    {
+        static double journalPausedAt = 0.0;
+        if (want){
+            journalPausedAt = getSystemTime();
+            diag::journal::logEngine("engine.pause");
+        }else{
+            const diag::journal::Field fields[] = {{"after_s", getSystemTime() - journalPausedAt}};
+            diag::journal::logEngine("engine.resume", fields);
+        }
+    }
     if (!want){
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
@@ -3062,6 +3119,10 @@ void Engine::systemFocus(bool hasFocus){
         systemResume();
     }
     focused = hasFocus;
+    {
+        const diag::journal::Field fields[] = {{"focused", hasFocus}};
+        diag::journal::logEngine("engine.focus", fields);
+    }
     // the key and button ups after a focus loss go to another window: the next frame sees them; the
     // UI presses end now (D6, cancelled)
     if (!hasFocus){

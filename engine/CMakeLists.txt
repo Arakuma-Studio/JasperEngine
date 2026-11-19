@@ -169,7 +169,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
     endforeach()
-    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY)
+    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY
+            JASPERENGINE_CRASH_JOURNAL_ENGINE_EVENTS)
         if(DEFINED ${crashSetting})
             if(${crashSetting})
                 list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=1")
@@ -180,6 +181,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endforeach()
     if(DEFINED JASPERENGINE_CRASH_HANG_MS)
         list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+    endif()
+    if(DEFINED JASPERENGINE_CRASH_JOURNAL_BYTES)
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_JOURNAL_BYTES=${JASPERENGINE_CRASH_JOURNAL_BYTES}")
     endif()
 
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
@@ -1432,6 +1436,7 @@ set(JASPERENGINE_SRCS
     core/diag/CrashHandlerWeb.cpp
     core/diag/HangWatchdog.cpp
     core/diag/Journal.cpp
+    core/diag/UserReport.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp

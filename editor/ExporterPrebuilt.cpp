@@ -681,6 +681,8 @@ bool editor::Exporter::writeGameConfig() {
     game.hangWatchdog = crash.hangWatchdog;
     game.hangMs = crash.hangSeconds * 1000;
     game.crashWebOverlay = crash.webCrashOverlay;
+    game.crashJournalBytes = crash.journalKiB * 1024;
+    game.crashJournalEngineEvents = crash.journalEngineEvents;
     // Project Settings > Audio, as Play applies them (Project::setAudioSettings) and a Compile
     // build's init (Generator::audioInitSource): the mixer by its asset-relative path, which ships
     const AudioSettings& audio = project->getAudioSettings();

@@ -482,6 +482,10 @@ namespace jasperengine {
         static bool captureFrame;
         // the composite of the frame that just drew, for the run control's screenshot
         static bool readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
+        // a user report's capture frame (Crash.beginReport): drawn offscreen, read after it
+        static bool userCaptureFrame;
+        // that frame: the composite, or the host's own target (the editor's Game view)
+        static bool readUserReportFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
 
         static bool transformCoordPos(float& x, float& y);
         // ui-multitouch D6: a pointer ends without a click in the documents and the component

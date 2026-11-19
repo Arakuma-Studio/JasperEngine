@@ -1793,6 +1793,28 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                     "(window.jasperengine.onCrash gets the report either way).");
             }
 
+            if (settingsui::beginRow("player.crash.journal_kib")) {
+                if (projectBeginSettingsRow("Gameplay Journal (KiB)", m_playerCrash.journalKiB != defaults.journalKiB)) {
+                    m_playerCrash.journalKiB = defaults.journalKiB;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##PlayerCrashJournalKiB", &m_playerCrash.journalKiB, 0.5f, 0, PlayerCrashSettings::maxJournalKiB, "%d",
+                               ImGuiSliderFlags_AlwaysClamp);
+                endSettingsRow("Recent game events (Journal.log) kept in memory and saved with crash, hang and user reports. "
+                    "0 turns the journal off.");
+            }
+
+            ImGui::BeginDisabled(m_playerCrash.journalKiB == 0);
+            if (settingsui::beginRow("player.crash.journal_engine_events")) {
+                if (projectBeginSettingsRow("Journal Engine Events", m_playerCrash.journalEngineEvents != defaults.journalEngineEvents)) {
+                    m_playerCrash.journalEngineEvents = defaults.journalEngineEvents;
+                }
+                ImGui::Checkbox("##PlayerCrashJournalEngineEvents", &m_playerCrash.journalEngineEvents);
+                endSettingsRow("The journal also records the engine's own events: start, scene loads, pause and resume, "
+                    "focus, low memory, thermal state, device tier, Play in the editor.");
+            }
+            ImGui::EndDisabled();
+
             ImGui::EndTable();
         }
 

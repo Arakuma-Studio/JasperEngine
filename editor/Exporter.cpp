@@ -4687,6 +4687,8 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANG_WATCHDOG ") + (crash.hangWatchdog ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_CRASH_HANG_MS " + std::to_string(crash.hangSeconds * 1000) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_WEB_OVERLAY ") + (crash.webCrashOverlay ? "ON" : "OFF") + ")";
+        projectSettings += indent + "set(JASPERENGINE_CRASH_JOURNAL_BYTES " + std::to_string(crash.journalKiB * 1024) + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_JOURNAL_ENGINE_EVENTS ") + (crash.journalEngineEvents ? "ON" : "OFF") + ")";
         // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
         projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
                            (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";

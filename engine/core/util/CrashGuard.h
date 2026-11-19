@@ -13,6 +13,7 @@
 
 #include <functional>
 #include "diag/CrashHandler.h"
+#include "diag/Journal.h"
 
 // IMPORTANT: Include platform headers at global scope (not inside any namespace)
 // to avoid injecting standard names inside jasperengine::std, which breaks builds.
@@ -227,6 +228,10 @@ namespace jasperengine {
         }
 
         diag::crash::ringWrite("CrashGuard: recovered a guarded callback crash");
+        {
+            const diag::journal::Field fields[] = {{"signal", std::string_view(sigName(g_tls.lastSig))}};
+            diag::journal::logEngine("engine.guard_recovered", fields);
+        }
         // We jumped back from a signal
         if (outInfo) {
             outInfo->code = g_tls.lastSig;
