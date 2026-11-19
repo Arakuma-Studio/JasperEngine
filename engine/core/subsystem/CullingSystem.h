@@ -209,6 +209,8 @@ namespace jasperengine{
         bool cameraIsFocus = true;
         std::function<bool(const Vector3&, float)> groundCheck;
         std::vector<Entity> pendingNew;
+        // GameObjects whose component went while it held flags
+        std::vector<Entity> removedComponents;
         std::vector<Transition> transitions;
         std::vector<Message> messages;
         std::vector<Vector3> focusPoints;
@@ -247,6 +249,7 @@ namespace jasperengine{
         void applyFlags(Entity root, const SimulationCullingComponent& component, SimulationState state);
         void setEntityFlags(Entity entity, uint8_t flags, uint8_t interval, bool physics);
         void sendMessages();
+        void flushRemoved();
 
         void updateDebugLines();
     };

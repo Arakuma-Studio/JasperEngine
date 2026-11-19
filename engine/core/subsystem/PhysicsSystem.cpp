@@ -2801,6 +2801,9 @@ void PhysicsSystem::setSimulationFrozen3D(Entity entity, bool frozen){
     const BodyType liveType = motion == JPH::EMotionType::Dynamic ? BodyType::DYNAMIC
                             : (motion == JPH::EMotionType::Kinematic ? BodyType::KINEMATIC : BodyType::STATIC);
     if (body->type == BodyType::DYNAMIC){
+        // a Transform moved while it was kinematic does not lead it now
+        body->followingPosition = false;
+        body->followingRotation = false;
         const bool added = bodyInterface.IsAdded(body->body);
         bodyInterface.SetMotionType(body->body, JPH::EMotionType::Dynamic, added ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
         const Vector3& linear = body->frozenLinearVelocity;

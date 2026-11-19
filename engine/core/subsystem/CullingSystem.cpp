@@ -277,17 +277,33 @@ void CullingSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         return;
     }
     if (componentId != scene->getComponentId<SimulationCullingComponent>()) return;
-    // what it froze runs again (a destroyed GameObject's bodies go anyway)
-    if (!scene->isTearingDown()) {
-        const SimulationCullingComponent defaults;
-        applyFlags(entity, defaults, SimulationState::Full);
+    // what it froze runs again once the removal is over (a destroyed GameObject's flags went with
+    // its Transform): not inside the removal, which must not reorder the arrays
+    if (!scene->isTearingDown() && simFlags[entity]) removedComponents.push_back(entity);
+}
+
+void CullingSystem::flushRemoved() {
+    if (removedComponents.empty()) return;
+    std::vector<Entity> removed;
+    removed.swap(removedComponents);
+    const SimulationCullingComponent defaults;
+    for (Entity entity : removed) {
+        if (scene->isEntityCreated(entity) && !scene->findComponent<SimulationCullingComponent>(entity)) {
+            applyFlags(entity, defaults, SimulationState::Full);
+        }
     }
+    refreshActive();
 }
 
 void CullingSystem::preUpdate() {
     stats.scriptUpdatesSkipped = skippedThisFrame;
     skippedThisFrame = 0;
-    if (paused || !hasWork()) return;
+    if (paused) return;
+    flushRemoved();
+    if (!hasWork()) {
+        if (registeredActive) refreshActive();
+        return;
+    }
     refreshActive();
     if (!started) {
         start();
@@ -332,7 +348,11 @@ void CullingSystem::evaluateNow() {
 
 void CullingSystem::update(double dt) {
     (void)dt;
+    if (!paused) flushRemoved();
     if (paused || !hasWork()) {
+        // edit mode adds and removes components: nothing to evaluate until Play starts the scene
+        if (paused) pendingNew.clear();
+        else if (registeredActive) refreshActive();
         if (debugLinesShown) updateDebugLines();
         return;
     }
@@ -344,9 +364,16 @@ void CullingSystem::update(double dt) {
     evaluateGroups();
     if (scene->getComponentArray<SimulationCullingComponent>()->size() > 0) {
         gatherFocuses();
-        pendingNew.clear();
+        // made since the frame started (in onUpdate): their first evaluation is never paced
+        if (!pendingNew.empty()) {
+            std::vector<Entity> only;
+            only.swap(pendingNew);
+            evaluateSimulation(true, &only);
+        }
         evaluateSimulation(false, nullptr);
         sendMessages();
+    } else {
+        pendingNew.clear();
     }
     stats.evaluateMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
     if (cullingDebugDraw || debugLinesShown) updateDebugLines();
