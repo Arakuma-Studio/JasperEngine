@@ -1745,6 +1745,7 @@ const StructTable kBody_SpriteComponent{"sprite", kBody_SpriteComponent_fields, 
 const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, font, 0xb59282fdu, Font),
     JE_RF(TextComponent, text, 0x538c6907u, String),
+    JE_RF(TextComponent, textKey, 0xcf529a9eu, String),
     JE_RF(TextComponent, fontSize, 0xc3119214u, UInt),
     JE_RF(TextComponent, multiline, 0x24769fc7u, Bool),
     JE_RF(TextComponent, maxTextSize, 0x52da0394u, UInt),
