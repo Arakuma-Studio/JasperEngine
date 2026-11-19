@@ -255,7 +255,9 @@ TEST(PhysicsQuery, RaycastUnchangedByDefault){
     }
     const std::string path = JASPER_TEST_REPO_DIR "/engine/tests/core/fixtures/physics/ray_city_hits.txt";
     if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")){
-        std::ofstream(path) << lines.str();
+        std::ofstream file(path);
+        file << lines.str();
+        ASSERT_TRUE(file.good()) << "cannot write " << path;
         GTEST_SKIP() << "wrote " << path;
     }
     std::ifstream file(path);
