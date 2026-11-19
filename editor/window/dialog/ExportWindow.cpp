@@ -1406,7 +1406,8 @@ void ExportWindow::drawBuildTab() {
         runnable = profile && profile->readable && profile->profile.platform == hostBuildPlatform();
     }
     ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
-    EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run. A target that is not empty asks first.");
+    EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run. A target that is not empty asks first." +
+                         (m_profiles.hasSelection() && !m_profiles.agentNotice().empty() ? " " + m_profiles.agentNotice() : std::string()));
     if (EditorModal::button("Build", "ok", ImVec2(actionWidth, 0))) startBuild(false);
     ImGui::SameLine();
     ImGui::BeginDisabled(!runnable);

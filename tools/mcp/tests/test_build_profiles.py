@@ -30,8 +30,12 @@ PROFILES = Path("EditorSettings") / "BuildProfiles"
 
 
 async def setup(ed: Editor) -> dict:
-    """three saved scenes (Menu, Level1 with the child scene Hud, Bonus), the stand-in runtime installed"""
+    """three saved scenes (Menu, Level1 with the child scene Hud, Bonus), the stand-in runtime installed, and no
+    profile left by an earlier test of the file (they share one project)"""
     await ed.call("tool_groups", enable=["shipping", "editor_ux"])
+    for entry in (await ed.call("edit_build_profile", action="list"))["profiles"]:
+        await ed.call("edit_build_profile", action="delete", name=entry["name"])
+    await ed.call("edit_build_profile", action="activate", name=None)
     if (ed.project / "scenes" / "Menu.scene").exists():
         return {s["name"]: s for s in (await ed.call("list_scenes"))["scenes"]}
     await ed.call("create_scene", name="Menu", path="scenes/Menu.scene", close_previous=True, unsaved="discard")
@@ -130,7 +134,7 @@ async def test_edit_build_profile(ed: Editor):
     ed.check_eq(r["active_profile"], "Demo")
     ed.check_eq((await ed.call("get_build_info"))["active_profile"], "Demo")
     ed.check_eq([p["name"] for p in (await ed.call("get_build_info"))["profiles"] if p["active"]], ["Demo"])
-    ed.check_eq((await ed.call("get_undo_history", scope="project"))["steps"][:1], history["steps"][:1], "activate is no undo step")
+    ed.check_eq(len((await ed.call("get_undo_history", scope="project"))["entries"]), len(history["entries"]), "activate is no undo step")
     await ed.call("edit_build_profile", action="activate", name=None)
     ed.check_eq((await ed.call("get_build_info"))["active_profile"], None)
 
@@ -215,8 +219,8 @@ async def test_excluded_asset_referenced_by_a_scene_fails(ed: Editor):
     ed.check(not any(p.name == "boss.png" for p in out.rglob("*")), "the excluded texture is not shipped")
     # used by a shipped scene: the build fails naming the scene and the asset
     await ed.call("open_scene", scene="Level1")
-    await ed.call("create_entity", name="Boss", type="sprite")
-    await ed.call("set_properties", entity="Boss", values={"sprite": {"texture": "art/full/boss.png"}})
+    await ed.call("create_entity", name="Boss", type="sprite",
+                  values={"sprite": {"width": 8, "height": 8}, "mesh": {"submeshes[0].material.baseColorTexture": "art/full/boss.png"}})
     await ed.call("save_project")
     r = await ed.call("build_project", profile="Lite", output_dir=str(ed.scratch.root / "lite2"), timeout_seconds=600, expect_error=True)
     ed.check_in("Scene Level1 uses art/full/boss.png, which Build Profile 'Lite' excludes (label full-only)", str(r))

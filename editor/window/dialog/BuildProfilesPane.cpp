@@ -70,6 +70,7 @@ namespace {
 }
 
 void BuildProfilesPane::reset() {
+    notice.clear();
     selected.clear();
     renaming.clear();
     confirmDelete.clear();
@@ -325,7 +326,8 @@ void BuildProfilesPane::drawStore(BuildProfile& next, bool& changed, std::string
         ImGui::TextColored(color, "%zu / %zu", length, limit);
         if (length > limit) {
             const std::string warning = "W-STORE-TITLE-LENGTH: " + next.store + " allows " + std::to_string(limit) + " characters";
-            EditorModal::error(warning);
+            // a warning, not a refusal: the dialog's message carries it for agents (ExportWindow)
+            notice = "Build Profile '" + next.name + "': " + warning;
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::TableNextColumn();
@@ -651,6 +653,7 @@ void BuildProfilesPane::drawOverrides(Project* project, BuildProfile& next, bool
 }
 
 bool BuildProfilesPane::drawPane(Project* project) {
+    notice.clear();
     const fs::path projectPath = project->getProjectPath();
     const buildprofiles::View& view = buildprofiles::view(projectPath);
     const BuildProfileEntry* entry = buildprofiles::find(view.entries, selected);

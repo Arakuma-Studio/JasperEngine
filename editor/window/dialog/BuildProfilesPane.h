@@ -32,6 +32,8 @@ namespace jasperengine::editor {
         // where a build of the selected profile goes (its Output Folder, else Build Settings' folder
         // for its platform)
         std::filesystem::path outputDir(Project* project) const;
+        // the selected profile's warning this frame (a Store Title over its store's limit), "" none
+        const std::string& agentNotice() const { return notice; }
 
     private:
         std::string selected;
@@ -57,6 +59,7 @@ namespace jasperengine::editor {
         char newPath[512] = {};
         char overrideSearch[128] = {};
         std::string message;
+        std::string notice;
 
         void load(const BuildProfile& profile);
         // one undo step (merged with the step before for the same `mergeKey` while typing)

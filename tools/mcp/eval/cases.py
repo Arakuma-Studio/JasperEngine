@@ -5286,8 +5286,8 @@ CASES = [
                          "defines) and build_project profile builds it; asked for a demo build, an agent makes a profile instead "
                          "of renaming the project and removing scenes from its build list, then putting them back.",
         "text_at_issue": "edit_build_profile: 'Build Profiles (Build Settings): named per-platform variants overriding identity, "
-                         "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile supplies platform, API, "
-                         "flavour and folder.'",
+                         "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile sets platform, API, "
+                         "flavour, folder.'",
         "source": "build-profiles R22, R23 (new tool text); no failure on record",
         "prompt": "Make a Linux demo build of this game: only scenes/Level1.scene, titled \"Box Demo\", with a DEMO switch my "
                   "scripts can check. Don't change the full game's settings.",
