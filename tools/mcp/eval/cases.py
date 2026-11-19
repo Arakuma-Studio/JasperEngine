@@ -675,7 +675,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Agents repeating a menu flow re-sent the same send_input events by hand each time; a script "
                          "file runs the flow with one call and keeps it for the next run.",
-        "text_at_issue": "send_input parameter file: 'A script .input.json, run now as its events.'",
+        "text_at_issue": "send_input parameter file: 'Script .input.json.'",
         "source": "input-recorder-and-input-scripts spec, AC19",
         "prompt": "The game is playing. Tests/Input/menu.input.json is a script that taps through the main menu. Run it "
                   "and tell me whether it worked.",
@@ -694,7 +694,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Agents writing input files used wall-clock ms waits; in a file ms are frames at its fixed_fps, "
                          "and a load that takes longer on a slow machine is waited for with wait until.",
-        "text_at_issue": "send_input description: 'wait: frames, ms, or until (Lua; frames caps it: 600)'",
+        "text_at_issue": "send_input description: 'wait: frames, ms, or until (Lua; frames caps)'",
         "source": "input-recorder-and-input-scripts spec, AC19",
         "prompt": "The game is playing. Wait until the Lua global MenuReady is true (it takes a few seconds to load), "
                   "then press space.",

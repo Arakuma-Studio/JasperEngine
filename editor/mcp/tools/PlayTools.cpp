@@ -3634,7 +3634,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
                                         {"none", "all"})},
-            {"input", string("start: replay a .input.json from the first frame the scene runs.")}
+            {"input", string("start: replay this .input.json.")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3646,10 +3646,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
-            "(voices, mixer_meters dB), "
-            "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
-            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
+            "frames, errors, crash), how the last one ended, held input, the game's input (actions, touches, keys, input "
+            "replays), debug_overlay, audio, console_cursor, coroutines and timers, the clock, platform "
+            "(lifecycle, orientation, opened_urls...), http, safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3717,7 +3716,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"frames", integer("", 0, 1000000)},
             {"until", string("Lua condition (eval_lua helpers).")},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
-            {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
             {"timeout_seconds", number("Wall clock. Default: 30 (until alone); frames/game_seconds run in full "
                                        "(error if no frame for 60 s).", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
@@ -3826,22 +3825,21 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
+            "Input into the running game. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
             "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
-            "value, or action connect|disconnect (+name)\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "value, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)\nwait: frames, ms, or until (Lua; frames caps it: 600)\nshot: name (PNG, returned in shots). release_all.\n"
-            "space: canvas px, normalized 0..1, safe_area 0..1 of Screen.safeArea, view = Game view px. "
-            "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
-            "frames_after only).";
+            "(+orientation)\nwait: frames, ms, or until (Lua; frames caps)\nshot: name (PNG). release_all.\n"
+            "space: canvas px, normalized 0..1, safe_area 0..1 of safeArea, view = Game view px. "
+            "down holds until up/release_all/stop. auto_pause: events + frames_after only.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
-            {"file", string("A script .input.json, run now as its events.")},
+            {"file", string("Script .input.json.")},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
             {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
             {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},
