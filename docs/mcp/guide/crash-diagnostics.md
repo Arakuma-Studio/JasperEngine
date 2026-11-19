@@ -26,6 +26,15 @@ past its budget the stall is reported.
 adds crash.txt or the newest hang report. A hang of this session is listed as soon as it is
 written. `dismiss_crash_notice {id?}` is the notice's Dismiss (marks the report handled).
 
+- Many reports -> `get_crash_reports {group: true}`: one row per signature (kind, signal, first 3
+  frames of the game), with `count`, `versions`, `platforms`, `first_seen`, `last_seen`. A crash
+  new in a version has only that version in `versions`.
+- A game's reports pulled from a device -> `folder` (its crash root or `reports/`). `kinds`
+  filters; `files: ["journal.txt", "user.txt"]` inlines those files of each report.
+- `unresolved: true`: its frames have no names, so it groups only within one build; `next` gives
+  the `tools/crash/symbolicate.py --group` command that names them from the build's symbols.
+- Window > Analysis > Crash Reports (`focus_window {window: "crash_reports"}`) shows the same.
+
 ## Runaway Lua in Play
 
 A Lua function that does not return in Play stalls the editor. After

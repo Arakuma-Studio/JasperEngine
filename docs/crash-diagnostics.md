@@ -171,12 +171,54 @@ report prints the steps: `cdb -z crash.dmp -y <symbols> -c "!analyze -v; .ecxr; 
 (`build_id` matches the binary: ELF build id, Mach-O UUID as `dwarfdump --uuid` prints it, the
 PDB GUID and age).
 
+## Grouping reports
+
+Many report folders (a game's, pulled from testers' devices, or the editor's) are merged into
+groups of the same problem. A report's **signature** is:
+
+| Kind | Signature |
+|---|---|
+| crash | `crash`, the signal or exception (`SIGSEGV`, `EXCEPTION_ACCESS_VIOLATION`, `abort`, `terminate`), and the first 3 frames of the game's executable or `libjasperengine*` (else of any module) |
+| hang | `hang`, the phase, the innermost busy scope, and the stack's first 3 frames as above |
+| user | `user` and the category |
+| abnormal_exit | `abnormal_exit` |
+
+Frames resolved to `abort`, `raise`, `__pthread_kill*`, `std::terminate`, `__cxa_*`,
+`jasperengine::diag::*` or `jasperengine::CrashGuard*` are skipped. A frame is its short name
+(`std::vector<int>::push_back(int const&)` is `std::vector::push_back`, a lambda
+`game::World::tick::<lambda>`), else `<module>+0x<offset>`. A frame without a name holds only
+within one build, so such a group also keys on the build id and is marked **unresolved**: add
+symbols. Each group has its count, versions, platforms, first and last seen, and its reports.
+
+```sh
+python3 -I tools/crash/symbolicate.py --group <folder> [--symbols <dir>]... [--binary-dir <dir>]... \
+    [--by version|platform] [--kinds crash,hang,abnormal_exit,user] [--since 2026-11-01] [--json] [--top N]
+```
+
+`<folder>` is searched to depth 3 for report folders (a folder holding `crash.txt`, `hang-*.txt`,
+`user.txt` or `session.json`). Each group prints its count, signature, versions, platforms, first
+and last seen, up to 3 example folders and the newest report's top frames; `--by` splits groups by
+version or platform. `--symbols` takes any tree (S28's `<platform>/<build_id>/`, a release's
+`symbols/` from `publish prepare`): its ELF and Mach-O files are indexed by build id, and a frame
+is named only from a file whose build id is the report's. A file of another build is never used,
+even under the same name. One symbolizer runs per module file. Exit 0 when a report was read, 1
+when none, 2 on a bad argument.
+
+The editor groups the same way without a symbolizer (names only where the report has them, as
+Windows reports do): **Window > Analysis > Crash Reports** shows the editor's reports or a game's
+(**Open Folder...**, remembered per project), one row per report or per group (**Group
+Similar**), filtered by **Kinds** and a search, with the selected report's Report, Journal, Log
+Tail, Device and Screenshot. **Mark Handled** writes `handled` (a group: every report in it);
+**Copy Symbolicate Command** copies the command above for the selection, with the **Symbols
+Folder...** chosen there. Both follow the cases of `tools/crash/fixtures/group/expected.json`.
+
 ## Agents (MCP)
 
 The `diagnostics` tool group: `get_editor_health` (answered off the main thread, so it replies
 while the editor is hung), `get_crash_reports`, `dismiss_crash_notice`, `set_hang_watchdog`,
 `debug_crash` (refused unless the editor started with `--allow-debug-crash` or
-`JASPERENGINE_ALLOW_DEBUG_CRASH=1`). `run_build` adds `crash_report` when the player printed a
+`JASPERENGINE_ALLOW_DEBUG_CRASH=1`). `get_crash_reports` reads a game's reports with `folder`,
+filters `kinds`, inlines `files` and returns groups with `group: true`. `run_build` adds `crash_report` when the player printed a
 `JASPERENGINE CRASH:` line. See `jasper://docs/crash-diagnostics`.
 
 ## Budgets
