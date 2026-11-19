@@ -35,7 +35,7 @@ namespace {
 }
 
 TEST(TestScriptScan, ListsCasesWithoutRunningCode) {
-    const std::string code = R"(-- a file whose top level fails when it runs
+    const std::string code = R"lua(-- a file whose top level fails when it runs
 error("this file is never run by the listing")
 Test.config{ scene = "Scenes/Menu.scene", tags = {"smoke"} }
 --[[ Test.case("in a comment", function(t) end) ]]
@@ -45,7 +45,7 @@ end)
 Test.case('edit case', {mode = "edit", tags = {"fast", "red"}}, function(t) end)
 Test.case("skipped", {skip = "later", data = "one_coin", fixedFps = 30}, function(t) end)
 Test.case(computedName(), function(t) end)
-)";
+)lua";
     gametest::Settings settings;
     const gametest::ScannedFile file = gametest::TestScan::scanText(code, "ui/menu.test.lua", settings);
     ASSERT_EQ(file.cases.size(), 3u);
