@@ -5278,4 +5278,41 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- build-profiles: a variant is a Build Profile, not an edit of the project's settings
+    {
+        "id": "guard_build_profile_demo",
+        "kind": "guard",
+        "what_happened": "New text (build-profiles R22, R23): edit_build_profile makes a named variant (identity, Scene List, "
+                         "defines) and build_project profile builds it; asked for a demo build, an agent makes a profile instead "
+                         "of renaming the project and removing scenes from its build list, then putting them back.",
+        "text_at_issue": "edit_build_profile: 'Build Profiles (Build Settings): named per-platform variants overriding identity, "
+                         "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile supplies platform, API, "
+                         "flavour and folder.'",
+        "source": "build-profiles R22, R23 (new tool text); no failure on record",
+        "prompt": "Make a Linux demo build of this game: only scenes/Level1.scene, titled \"Box Demo\", with a DEMO switch my "
+                  "scripts can check. Don't change the full game's settings.",
+        "mocks": [
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 12 shader(s).",
+                {"host_platform": "linux", "scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
+                                                      {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
+                                                      {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}],
+                 "profiles": [], "active_profile": None})},
+            {"tool": "edit_build_profile", "result": ok(
+                "Created Build Profile 'Demo' (linux).",
+                {"files_written": ["EditorSettings/BuildProfiles/Demo.buildprofile"],
+                 "values": {"product_name": "Box Demo", "scenes": [{"guid": "0a9e00000000000000000000000000bb", "path": "scenes/Level1.scene"}],
+                            "defines": ["DEMO"]},
+                 "next": "build it with build_project profile \"Demo\""})},
+            {"tool": "build_project", "result": ok(
+                "Built linux (prebuilt player linux-x64-glcore-release) in /home/me/Box-Demo.",
+                {"profile": "Demo", "platform": "linux", "method_used": "prebuilt", "warnings": []})},
+            {"tool": "list_scenes", "result": ok("3 scene(s).", {"scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
+                                                                            {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
+                                                                            {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_build_profile", "args": {"action": "create"}}, {"tool": "build_project", "args": {"profile": "*"}}],
+                   "must_not_call": ["set_project_settings", "edit_build_scenes"]},
+        "max_turns": 12,
+    },
 ]

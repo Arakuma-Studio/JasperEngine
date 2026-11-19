@@ -100,10 +100,39 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
+## Build Profiles (group `shipping`)
+
+Make a Build Profile when one project ships more than one variant: a demo, a store edition, a
+white-label copy, a test build with cheats. A profile is a platform plus overrides; the project's
+own settings never change. Do not rename the project, edit its Scenes In Build or flip settings
+before a build and back after it.
+
+1. `edit_build_profile {action: create, name, platform, values?, overrides?}`: `values` holds
+   `product_name`, `identifier`, `version_suffix`, `icon`, `store`, `store_title`, `backend`,
+   `development`, `output_dir`, `scenes` (paths or GUIDs of the project's scenes), `start_scene`,
+   `defines`, `exclude_labels`, `exclude_paths`. `overrides` takes `get_project_settings` keys of
+   the categories `player`, `graphics`, `quality` and the profile's platform (`android.*` for an
+   Android profile); others are refused, naming the allowed ones. A refused edit writes nothing.
+2. `edit_build_profile {action: get, name}`: the stored values, `resolved` (each value the build
+   writes and where it comes from) and `store_findings`.
+3. `build_project {profile}`: platform, Graphics API, Development Build and folder come from the
+   profile; a `platform`, `graphics_api` or `development` that differs is refused. The result
+   names `profile`; store limits are `warnings[]` (`W-STORE-TITLE-LENGTH`, `W-LABEL-TRUNCATED`).
+4. `edit_build_profile {action: activate, name}` makes Play use the profile's name, identifier,
+   version, defines and Scene List (per user, not undoable); `name: null` for none.
+
+Scripting Define Symbols are runtime values (`System.isDefined("DEMO")`, `System.getBuildInfo()`):
+the code behind them still ships. Code that must not ship goes in a folder `exclude_paths` names.
+A shipped scene that uses an excluded asset fails the build naming both. Store limits: Google Play
+and App Store titles 30 characters, home-screen labels warn above 12. A publishing.json target may
+name `"profile"`: `publish_prepare` refuses a build of another profile, another platform, backend
+or flavour, or a store title over its limit. A Build Profile is not a Device Profile
+(`deviceProfile`, S56).
+
 ## Releases (group `shipping`)
 
 `publishing.json` (project root, committed) lists the targets: `{platform, arch, backend,
-flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[]}`, plus
+flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[], profile?}`, plus
 `steam{appId}` and `deck{host, user, remoteDir}`. `jasperengine-editor publish init` writes one.
 
 - `publish_prepare {release}`: validates every target's build (architecture, exec bits, case
