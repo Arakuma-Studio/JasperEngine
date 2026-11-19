@@ -1419,6 +1419,7 @@ set(JASPERENGINE_SRCS
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
+    core/input/InputScript.cpp
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp

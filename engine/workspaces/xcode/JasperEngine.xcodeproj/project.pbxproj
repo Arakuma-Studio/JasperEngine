@@ -4992,6 +4992,10 @@
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
+		4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
+		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9610,6 +9614,9 @@
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
+		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
+		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
+		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11338,6 +11345,9 @@
 				4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */,
 				4A534E47DA77C1DF72E1D462 /* InputActions.h */,
 				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
+				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
+				4A534E4708A47DEEE94F83AE /* InputScript.h */,
+				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -17023,6 +17033,8 @@
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */,
+				4A534E47233962EE4B8553AD /* InputScript.h in Headers */,
+				4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19727,6 +19739,7 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20722,6 +20735,7 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
