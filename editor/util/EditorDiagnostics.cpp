@@ -231,7 +231,7 @@ fs::path EditorDiagnostics::primaryFile(const diag::crash::ReportInfo& report) {
     fs::path best;
     for (const fs::path& file : report.files) {
         const std::string name = file.filename().string();
-        if (name == "crash.txt") return file;
+        if (name == "crash.txt" || name == "user.txt") return file;
         if (name.rfind("hang-", 0) == 0 && file.extension() == ".txt") best = file;
         if (best.empty() && name == "session.json") best = file;
     }

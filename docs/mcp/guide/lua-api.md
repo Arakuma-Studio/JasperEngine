@@ -1523,6 +1523,32 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+
+"Report a Problem" (user reports, kind `"user"`): capture, then the game's own form, then write.
+
+```lua
+Crash.beginReport(function(ok, err) openReportForm() end)   -- ok: the frame is in the draft (fn runs a frame later)
+local report, err = Crash.createReport{note = "the door does not open", category = "gameplay", fields = {level = "forest-2"}}
+-- report: {id = "<session>-user1", kind = "user", category = "gameplay", files, ...}; nil, "too_many_pending: ..." past 3
+local bytes = Crash.readReportFile(report.id, "user.txt")   -- an Http body; nil, "not_found"
+Crash.markHandled(report.id)                                -- after the upload; else offered again next start
+Crash.cancelReport()                                        -- drops the draft
+```
+
+- `createReport` options: `note` (required, 4000 bytes), `category` (`[a-z0-9_]{1,32}`), `fields` (16),
+  `screenshot` (true), `logTail`, `done(report, err)` (write on a job). The web keeps them in memory.
+
+**Journal** (static): the Gameplay Journal, recent game events saved with crash, hang and user reports.
+
+```lua
+Journal.log("level.start", {name = "forest-2", seed = 42})   -- kind [A-Za-z0-9_.:-]{1,48}, 12 fields
+Journal.enabled                                              -- read-only property
+Journal.getEntries(20)                                       -- {{time, frame, kind, text}, ...} oldest first
+Journal.getText()                                            -- journal.txt
+Journal.clear()
+```
+
+- Events, not frames. The editor's Console shows each entry in the `journal` category.
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;

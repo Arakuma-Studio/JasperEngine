@@ -26,6 +26,13 @@ past its budget the stall is reported.
 adds crash.txt or the newest hang report. A hang of this session is listed as soon as it is
 written. `dismiss_crash_notice {id?}` is the notice's Dismiss (marks the report handled).
 
+## A game's own reports
+
+- A game's player hits a bug: in Play, `eval_lua` `Crash.beginReport(function(ok) shot = ok end)`, `wait` until
+  `shot ~= nil`, then `Crash.createReport{note = "..."}`; read it with `get_crash_reports kinds: ["user"]`.
+- What the game did before a crash or a report: `read_console categories: ["journal"]` (Lua `Journal.log`
+  and the engine's `engine.*` entries), or the report's `journal.txt`.
+
 ## Runaway Lua in Play
 
 A Lua function that does not return in Play stalls the editor. After
