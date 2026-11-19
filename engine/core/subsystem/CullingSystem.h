@@ -89,8 +89,9 @@ namespace jasperengine{
         // tests: groups above PARALLEL_THRESHOLD on parallelFor (default) or inline
         void setParallelEvaluation(bool parallel) { parallelEvaluation = parallel; }
 
-        // Engine::clearComponentSubscriptions and Scene::removeSubscriptionsByTag: the groups'
-        // onStateChanged callbacks and the ground check go while their code is still loaded
+        // Engine::clearComponentSubscriptions (Stop) and Scene::removeSubscriptionsByTag: the
+        // groups' onStateChanged callbacks and the ground check go while their code is still
+        // loaded; at Stop the groups, focuses and frozen state of the session go too
         void clearSubscriptions();
         void removeSubscriptionsByTag(const std::string& substring);
 

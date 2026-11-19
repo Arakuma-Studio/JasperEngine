@@ -142,16 +142,16 @@ async def culling_scene(ed: Editor) -> int:
     for name, position in (("Enemy", [0, 0.5, 0]), ("Enemy (1)", [0, 0.5, -40]), ("Enemy (2)", [3, 0.5, -40])):
         await ed.call("create_entity", scene=scene, type="box", name=name, position=position, select=False)
         await ed.call("add_component", scene=scene, entity=name, component="simulationculling",
-                      values={"simulationculling": {"simulationDistance": 20, "boundsRadius": 0.5, "simulateWhenVisible": False,
+                      values={"simulationculling": {"simulationDistance": 20, "boundsRadius": 1.5, "simulateWhenVisible": False,
                                                     "freezeWhenGroundNotLoaded": False}})
     S["culling"] = scene
     return scene
 
 
-# a Lua group of three spheres 2, 13 and 68 m from the camera: bands 0, 1, 2 of {5, 30}
+# a Lua group of three 1 m spheres 2, 13 and 68 m from the camera (surface): bands 0, 1, 2 of {5, 30}
 GROUP_LUA = ("cullingTest = CullingGroup(scene); cullingTest:setBoundingDistances({5, 30}); "
-             "cullingTest:setBoundingSpheres({BoundingSphere(Vector3(0, 2, 6), 0), BoundingSphere(Vector3(0, 2, -5), 0), "
-             "BoundingSphere(Vector3(0, 2, -60), 0)}); return cullingTest:isValid()")
+             "cullingTest:setBoundingSpheres({BoundingSphere(Vector3(0, 2, 5), 1), BoundingSphere(Vector3(0, 2, -6), 1), "
+             "BoundingSphere(Vector3(0, 2, -61), 1)}); return cullingTest:isValid()")
 
 
 async def test_culling_block(ed: Editor):
@@ -176,7 +176,7 @@ async def test_culling_block(ed: Editor):
         ed.check_eq(culling["groups"], 1, f"{culling}")
         ed.check_eq(culling["per_band"], [1, 1, 1], f"the group's bands: {culling}")
         far = await ed.call("get_runtime_entity", entity="Enemy (1)", include_script_state=False)
-        component = far["simulationculling"]
+        component = harness.find_key(far, "simulationculling")
         ed.check(component["state"] == "culled" and component["reason"] == "distance", f"{component}")
 
         # the camera beside the far ones: they run, the near one is culled, after one frame
@@ -184,7 +184,7 @@ async def test_culling_block(ed: Editor):
         await ed.call("wait", frames=1)
         moved = (await ed.call("get_render_stats", view="game"))["culling"]
         ed.check_eq(moved["simulation"]["culled"], 1, f"{moved}")
-        near = (await ed.call("get_runtime_entity", entity="Enemy", include_script_state=False))["simulationculling"]
+        near = harness.find_key(await ed.call("get_runtime_entity", entity="Enemy", include_script_state=False), "simulationculling")
         ed.check_eq(near["state"], "culled", f"{near}")
     finally:
         await ed.call("play", action="stop", fixed_fps=0)
@@ -196,12 +196,12 @@ async def test_culling_debug_screenshot(ed: Editor):
     try:
         await ed.call("eval_lua", code=GROUP_LUA)
         await ed.call("wait", frames=5)
-        off = await ed.call_raw("screenshot", {"view": "game", "max_width": 320})
+        off = await ed.call_raw("screenshot", {"view": "game", "max_width": 640})
         ed.check(not off.is_error and off.images, off.text)
         view = await ed.call("configure_game_view", culling_debug=True)
         ed.check(view["culling_debug"] is True, f"{view}")
         await ed.call("wait", frames=3)
-        on = await ed.call_raw("screenshot", {"view": "game", "max_width": 320})
+        on = await ed.call_raw("screenshot", {"view": "game", "max_width": 640})
         ed.check(not on.is_error and on.images, on.text)
         w, h, a = pngdiff.decode(off.images[0][0])
         w2, h2, b = pngdiff.decode(on.images[0][0])

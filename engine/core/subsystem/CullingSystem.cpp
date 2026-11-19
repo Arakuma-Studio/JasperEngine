@@ -497,6 +497,39 @@ void CullingSystem::clearSubscriptions() {
         group.luaCallback.reset();
     }
     groundCheck = nullptr;
+    // Stop: what the session made goes with the code that made it (the editor plays a scene in
+    // place and edits it again): its groups, focuses and frozen GameObjects
+    for (uint32_t slot = 0; slot < groups.size(); slot++) {
+        if (groups[slot].alive) disposeGroup(slot, groups[slot].generation);
+    }
+    scriptFocuses.clear();
+    cameraIsFocus = true;
+    PhysicsSystem* physics = scene->getSystem<PhysicsSystem>().get();
+    for (Entity entity = 0; entity < simFlags.size(); entity++) {
+        if (simFlags[entity] & SimPhysicsFrozen) {
+            physics->setSimulationFrozen3D(entity, false);
+            physics->setSimulationFrozen2D(entity, false);
+        }
+    }
+    simFlags.clear();
+    reducedTimings.clear();
+    pendingNew.clear();
+    removedComponents.clear();
+    auto components = scene->getComponentArray<SimulationCullingComponent>();
+    for (size_t i = 0; i < components->size(); i++) {
+        SimulationCullingComponent& component = components->getComponentFromIndex(i);
+        component.state = SimulationState::Full;
+        component.reason = SimulationCullReason::None;
+        component.evaluated = false;
+        component.groundChecked = false;
+    }
+    started = false;
+    if (registeredActive) {
+        auto& list = activeCulling();
+        list.erase(std::remove_if(list.begin(), list.end(), [this](const ActiveCulling& a) { return a.system == this; }), list.end());
+        detail::simulationCullingActive.fetch_sub(1, std::memory_order_relaxed);
+        registeredActive = false;
+    }
 }
 
 void CullingSystem::removeSubscriptionsByTag(const std::string& substring) {
