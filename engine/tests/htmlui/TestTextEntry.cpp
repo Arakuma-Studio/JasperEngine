@@ -28,7 +28,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    TextEntryTraits traits(KeyboardType keyboard, EnterKey enterKey = EnterKey::Default, AutoCapitalize capitalize = AutoCapitalize::Off,
+    TextEntryTraits entryTraits(KeyboardType keyboard, EnterKey enterKey = EnterKey::Default, AutoCapitalize capitalize = AutoCapitalize::Off,
                            bool autocorrect = false, bool secure = false, bool multiline = false, int maxLength = -1, bool signedNumber = false){
         TextEntryTraits t;
         t.keyboard = keyboard;
@@ -42,19 +42,19 @@ namespace {
         return t;
     }
 
-    std::string describe(const TextEntryTraits& t){
+    std::string describeTraits(const TextEntryTraits& t){
         return std::string(keyboardTypeName(t.keyboard)) + " enter=" + enterKeyName(t.enterKey) + " cap=" + autoCapitalizeName(t.capitalize) +
                " autocorrect=" + std::to_string(t.autocorrect) + " secure=" + std::to_string(t.secure) + " multiline=" +
                std::to_string(t.multiline) + " max=" + std::to_string(t.maxLength) + " signed=" + std::to_string(t.signedNumber);
     }
 
-    class CountingListener : public Rml::EventListener {
+    class SubmitCounter : public Rml::EventListener {
     public:
         void ProcessEvent(Rml::Event&) override{ count++; }
         int count = 0;
     };
 
-    class PreventListener : public Rml::EventListener {
+    class EnterPreventer : public Rml::EventListener {
     public:
         void ProcessEvent(Rml::Event& event) override{
             hint = event.GetParameter<Rml::String>("enterKeyHint", "<none>");
@@ -63,7 +63,7 @@ namespace {
         std::string hint;
     };
 
-    class HintListener : public Rml::EventListener {
+    class EnterHintRecorder : public Rml::EventListener {
     public:
         void ProcessEvent(Rml::Event& event) override{
             hints.push_back(event.GetParameter<Rml::String>("enterKeyHint", "<none>"));
@@ -132,30 +132,30 @@ TEST_F(TextEntryTest, TraitsFromAttributes){
         TextEntryTraits expected;
     };
     const Row rows[] = {
-        {"text", traits(KeyboardType::Text)},
-        {"email", traits(KeyboardType::Email)},
-        {"url", traits(KeyboardType::Url)},
-        {"tel", traits(KeyboardType::Phone)},
-        {"search", traits(KeyboardType::Search, EnterKey::Search)},
-        {"count", traits(KeyboardType::Number)},
-        {"amount", traits(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, false, -1, true)},
-        {"offset", traits(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, false, -1, true)},
-        {"half", traits(KeyboardType::Decimal)},
-        {"any", traits(KeyboardType::Decimal)},
-        {"password", traits(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, false, true)},
-        {"pin", traits(KeyboardType::Number, EnterKey::Default, AutoCapitalize::Off, false, true)},
-        {"notes", traits(KeyboardType::Text, EnterKey::Enter, AutoCapitalize::Off, false, false, true)},
-        {"decimal", traits(KeyboardType::Decimal)},
-        {"hidden-keyboard", traits(KeyboardType::None)},
-        {"mail-send", traits(KeyboardType::Email, EnterKey::Send, AutoCapitalize::Sentences, false, false, false, 32)},
-        {"next", traits(KeyboardType::Text, EnterKey::Next)},
-        {"previous", traits(KeyboardType::Text, EnterKey::Previous, AutoCapitalize::Words)},
-        {"done", traits(KeyboardType::Text, EnterKey::Done, AutoCapitalize::Characters)},
-        {"go", traits(KeyboardType::Text, EnterKey::Go, AutoCapitalize::Sentences, true)},
-        {"find", traits(KeyboardType::Text, EnterKey::Search, AutoCapitalize::Off, false)},
-        {"short", traits(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, false, false, false, 5)},
-        {"web", traits(KeyboardType::Url)},
-        {"message", traits(KeyboardType::Text, EnterKey::Send, AutoCapitalize::Off, true, false, true, 100)},
+        {"text", entryTraits(KeyboardType::Text)},
+        {"email", entryTraits(KeyboardType::Email)},
+        {"url", entryTraits(KeyboardType::Url)},
+        {"tel", entryTraits(KeyboardType::Phone)},
+        {"search", entryTraits(KeyboardType::Search, EnterKey::Search)},
+        {"count", entryTraits(KeyboardType::Number)},
+        {"amount", entryTraits(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, false, -1, true)},
+        {"offset", entryTraits(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, false, -1, true)},
+        {"half", entryTraits(KeyboardType::Decimal)},
+        {"any", entryTraits(KeyboardType::Decimal)},
+        {"password", entryTraits(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, false, true)},
+        {"pin", entryTraits(KeyboardType::Number, EnterKey::Default, AutoCapitalize::Off, false, true)},
+        {"notes", entryTraits(KeyboardType::Text, EnterKey::Enter, AutoCapitalize::Off, false, false, true)},
+        {"decimal", entryTraits(KeyboardType::Decimal)},
+        {"hidden-keyboard", entryTraits(KeyboardType::None)},
+        {"mail-send", entryTraits(KeyboardType::Email, EnterKey::Send, AutoCapitalize::Sentences, false, false, false, 32)},
+        {"next", entryTraits(KeyboardType::Text, EnterKey::Next)},
+        {"previous", entryTraits(KeyboardType::Text, EnterKey::Previous, AutoCapitalize::Words)},
+        {"done", entryTraits(KeyboardType::Text, EnterKey::Done, AutoCapitalize::Characters)},
+        {"go", entryTraits(KeyboardType::Text, EnterKey::Go, AutoCapitalize::Sentences, true)},
+        {"find", entryTraits(KeyboardType::Text, EnterKey::Search, AutoCapitalize::Off, false)},
+        {"short", entryTraits(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, false, false, false, 5)},
+        {"web", entryTraits(KeyboardType::Url)},
+        {"message", entryTraits(KeyboardType::Text, EnterKey::Send, AutoCapitalize::Off, true, false, true, 100)},
     };
     ASSERT_EQ(sizeof(rows) / sizeof(rows[0]), 24u);
     for (const Row& row : rows){
@@ -163,7 +163,7 @@ TEST_F(TextEntryTest, TraitsFromAttributes){
         ASSERT_NE(field, nullptr) << row.id;
         EXPECT_TRUE(htmlui::isTextEntryField(field)) << row.id;
         const TextEntryTraits actual = htmlui::textEntryTraitsOf(field);
-        EXPECT_EQ(describe(actual), describe(row.expected)) << row.id;
+        EXPECT_EQ(describeTraits(actual), describeTraits(row.expected)) << row.id;
     }
 
     // focusing a field hands its traits to the platform's keyboard
@@ -171,7 +171,7 @@ TEST_F(TextEntryTest, TraitsFromAttributes){
     const int shows = system.virtualKeyboardShows;
     focus("mail-send");
     EXPECT_EQ(system.virtualKeyboardShows, shows + 1);
-    EXPECT_EQ(describe(system.virtualKeyboardTraits), describe(rows[15].expected));
+    EXPECT_EQ(describeTraits(system.virtualKeyboardTraits), describeTraits(rows[15].expected));
 
     // an attribute a script changes while focused re-sends the traits
     element("mail-send")->SetAttribute("enterkeyhint", "go");
@@ -235,7 +235,7 @@ TEST_F(TextEntryTest, NoResyncWhereTheKeyboardKeepsNoText){
 TEST_F(TextEntryTest, EnterKeyHintActions){
     TestSystem& system = TestSystem::get();
     load("text-entry/form.html");
-    CountingListener submits;
+    SubmitCounter submits;
     element("form")->AddEventListener(Rml::EventId::Submit, &submits);
 
     // next: the next text field, its traits re-sent, the keyboard kept
@@ -276,7 +276,7 @@ TEST_F(TextEntryTest, EnterKeyHintActions){
     EXPECT_NE(focused(), element("mail"));
 
     // a keydown listener's preventDefault stops all of it, and sees the hint
-    PreventListener prevent;
+    EnterPreventer prevent;
     element("mail")->AddEventListener(Rml::EventId::Keydown, &prevent);
     focus("mail");
     Engine::systemEditorAction(EnterKey::Send);
@@ -296,7 +296,7 @@ TEST_F(TextEntryTest, EnterKeyHintActions){
 
     // a hardware Enter applies the field's own enterkeyhint (D2); the platform's default key
     // carries "" as its hint
-    HintListener hints;
+    EnterHintRecorder hints;
     element("name")->AddEventListener(Rml::EventId::Keydown, &hints);
     focus("name");
     Engine::systemKeyDown(D_KEY_ENTER, false, 0);
@@ -312,7 +312,7 @@ TEST_F(TextEntryTest, EnterKeyHintActions){
     element("name")->RemoveEventListener(Rml::EventId::Keydown, &hints);
 
     // without a hint, a hardware Enter is today's: no enterKeyHint, the form submitted, the field kept
-    HintListener plainHints;
+    EnterHintRecorder plainHints;
     element("plain")->AddEventListener(Rml::EventId::Keydown, &plainHints);
     focus("plain");
     Engine::systemKeyDown(D_KEY_ENTER, false, 0);

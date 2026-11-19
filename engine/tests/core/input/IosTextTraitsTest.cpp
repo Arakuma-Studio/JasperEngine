@@ -12,7 +12,7 @@ using namespace jasperengine;
 
 namespace {
 
-    TextEntryTraits make(KeyboardType keyboard, EnterKey enterKey = EnterKey::Default, AutoCapitalize capitalize = AutoCapitalize::Off,
+    TextEntryTraits iosEntry(KeyboardType keyboard, EnterKey enterKey = EnterKey::Default, AutoCapitalize capitalize = AutoCapitalize::Off,
                          bool autocorrect = false, bool secure = false, bool signedNumber = false){
         TextEntryTraits t;
         t.keyboard = keyboard;
@@ -36,26 +36,26 @@ TEST(IosTextTraits, MapOfTraits){
     };
     // the fields of TextEntryTest.TraitsFromAttributes (engine/tests/htmlui/TestTextEntry.cpp)
     const Row rows[] = {
-        {"text", make(KeyboardType::Text), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"email", make(KeyboardType::Email), KEYBOARD_EMAIL_ADDRESS, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"url", make(KeyboardType::Url), KEYBOARD_URL, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"tel", make(KeyboardType::Phone), KEYBOARD_PHONE_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"search", make(KeyboardType::Search, EnterKey::Search), KEYBOARD_WEB_SEARCH, RETURN_SEARCH, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"count", make(KeyboardType::Number), KEYBOARD_NUMBER_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"amount", make(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, true), KEYBOARD_NUMBERS_AND_PUNCTUATION,
+        {"text", iosEntry(KeyboardType::Text), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"email", iosEntry(KeyboardType::Email), KEYBOARD_EMAIL_ADDRESS, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"url", iosEntry(KeyboardType::Url), KEYBOARD_URL, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"tel", iosEntry(KeyboardType::Phone), KEYBOARD_PHONE_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"search", iosEntry(KeyboardType::Search, EnterKey::Search), KEYBOARD_WEB_SEARCH, RETURN_SEARCH, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"count", iosEntry(KeyboardType::Number), KEYBOARD_NUMBER_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"amount", iosEntry(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, true), KEYBOARD_NUMBERS_AND_PUNCTUATION,
          RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"half", make(KeyboardType::Decimal), KEYBOARD_DECIMAL_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"password", make(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, true, true), KEYBOARD_DEFAULT, RETURN_DEFAULT,
+        {"half", iosEntry(KeyboardType::Decimal), KEYBOARD_DECIMAL_PAD, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"password", iosEntry(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, true, true), KEYBOARD_DEFAULT, RETURN_DEFAULT,
          CAPITALIZE_NONE, AUTOCORRECT_NO, true, false},
-        {"hidden-keyboard", make(KeyboardType::None), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, true},
-        {"mail-send", make(KeyboardType::Email, EnterKey::Send, AutoCapitalize::Sentences), KEYBOARD_EMAIL_ADDRESS, RETURN_SEND,
+        {"hidden-keyboard", iosEntry(KeyboardType::None), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, true},
+        {"mail-send", iosEntry(KeyboardType::Email, EnterKey::Send, AutoCapitalize::Sentences), KEYBOARD_EMAIL_ADDRESS, RETURN_SEND,
          CAPITALIZE_SENTENCES, AUTOCORRECT_NO, false, false},
-        {"next", make(KeyboardType::Text, EnterKey::Next), KEYBOARD_DEFAULT, RETURN_NEXT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
-        {"previous", make(KeyboardType::Text, EnterKey::Previous, AutoCapitalize::Words), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_WORDS,
+        {"next", iosEntry(KeyboardType::Text, EnterKey::Next), KEYBOARD_DEFAULT, RETURN_NEXT, CAPITALIZE_NONE, AUTOCORRECT_NO, false, false},
+        {"previous", iosEntry(KeyboardType::Text, EnterKey::Previous, AutoCapitalize::Words), KEYBOARD_DEFAULT, RETURN_DEFAULT, CAPITALIZE_WORDS,
          AUTOCORRECT_NO, false, false},
-        {"done", make(KeyboardType::Text, EnterKey::Done, AutoCapitalize::Characters), KEYBOARD_DEFAULT, RETURN_DONE, CAPITALIZE_ALL_CHARACTERS,
+        {"done", iosEntry(KeyboardType::Text, EnterKey::Done, AutoCapitalize::Characters), KEYBOARD_DEFAULT, RETURN_DONE, CAPITALIZE_ALL_CHARACTERS,
          AUTOCORRECT_NO, false, false},
-        {"go", make(KeyboardType::Text, EnterKey::Go, AutoCapitalize::Sentences, true), KEYBOARD_DEFAULT, RETURN_GO, CAPITALIZE_SENTENCES,
+        {"go", iosEntry(KeyboardType::Text, EnterKey::Go, AutoCapitalize::Sentences, true), KEYBOARD_DEFAULT, RETURN_GO, CAPITALIZE_SENTENCES,
          AUTOCORRECT_YES, false, false},
     };
     for (const Row& row : rows){
