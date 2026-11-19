@@ -10,7 +10,12 @@ handler, which answers inside the step, makes the step run on the main thread.
 
 from __future__ import annotations
 
+import os
+import subprocess
+
+import harness
 from harness import Editor
+from htmlui_pixels import decode_png
 
 CI = True
 EDITOR = {"create": True, "name": "Physics Contacts Lua"}
@@ -140,10 +145,8 @@ async def test_query_physics_overlap(ed: Editor):
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
     # the CLI shares the registry (R30)
-    import harness
-    import subprocess
     help_text = subprocess.run(harness.editor_command() + ["call", "query_physics", "--help"], capture_output=True, text=True,
-                               timeout=300, env={k: v for k, v in __import__("os").environ.items() if k != "DISPLAY"})
+                               timeout=300, env={k: v for k, v in os.environ.items() if k != "DISPLAY"})
     ed.check(help_text.returncode == 0 and "--max-distance" in help_text.stdout and "--verify" in help_text.stdout,
              f"call query_physics --help lists its parameters: {help_text.returncode} {help_text.stdout[:400]} {help_text.stderr[-400:]}")
 
@@ -182,7 +185,6 @@ async def test_query_physics_hints(ed: Editor):
 
 
 async def test_query_debug_draw(ed: Editor):
-    from htmlui_pixels import decode_png
     await ed.call("tool_groups", enable=["physics"])
     scene = "scenes/QueryDraw.scene"
     await ed.call("create_scene", path=scene, name="QueryDraw", type="3D")

@@ -23,10 +23,6 @@ using namespace jasperengine;
 
 namespace {
 
-    bool finite2D(const Vector2& v){
-        return std::isfinite(v.x) && std::isfinite(v.y);
-    }
-
     // The scene's world when it can be queried now (D6, R18)
     struct QueryWorld2D{
         PhysicsSystem* system = nullptr;
