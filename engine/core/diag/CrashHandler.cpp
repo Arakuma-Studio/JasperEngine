@@ -878,7 +878,10 @@ namespace jasperengine::diag::crash {
     }
 
     std::vector<ReportInfo> listReports(size_t limit) {
-        const fs::path dir = reportsDirectory();
+        return listReportsIn(reportsDirectory(), limit);
+    }
+
+    std::vector<ReportInfo> listReportsIn(const fs::path& dir, size_t limit) {
         std::vector<std::string> names;
         std::error_code ec;
         for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {

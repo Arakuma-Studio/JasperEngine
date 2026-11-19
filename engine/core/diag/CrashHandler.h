@@ -116,6 +116,8 @@ namespace jasperengine::diag::crash {
 
     // Report folders, newest first (limit 0: all)
     JASPERENGINE_API std::vector<ReportInfo> listReports(size_t limit = 0);
+    // The same for any folder of <yyyymmddThhmmssZ>-<pid> folders: a game's reports pulled from a device
+    JASPERENGINE_API std::vector<ReportInfo> listReportsIn(const std::filesystem::path& reportsDir, size_t limit = 0);
     // Reports of earlier sessions nobody handled yet, newest first
     JASPERENGINE_API std::vector<ReportInfo> pendingReports();
     JASPERENGINE_API std::optional<ReportInfo> findReport(std::string_view id);
