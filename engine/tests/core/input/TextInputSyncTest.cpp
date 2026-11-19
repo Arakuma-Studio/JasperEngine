@@ -6,9 +6,13 @@
 // NativeEngine.cpp, now shared with iOS.
 
 #include "input/TextInputSync.h"
+#include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -168,4 +172,44 @@ TEST(TextInputSync, ResetStartsOverWithoutEdits){
     EXPECT_EQ(sync.caret(), 2u);
     syncTyped(sync, U"ab", 2, out);
     EXPECT_TRUE(out.edits.empty());
+}
+
+namespace {
+
+    class CountingEdits : public TextInputSync::Output {
+    public:
+        size_t edits = 0;
+        void moveCaret(int) override { edits++; }
+        void backspace() override { edits++; }
+        void insertText(const std::string&) override { edits++; }
+        void compose(const std::string&, int) override { edits++; }
+        void cancelComposition() override { edits++; }
+    };
+
+}
+
+// R26: one edit batch of a 4,096 code point field costs O(length), within 50 us on the mobile
+// reference device; printed here, enforced with JASPER_TEST_PERF_SLACK (the benchmark run)
+TEST(TextInputSyncBench, EditOfA4096CodePointField){
+    std::u32string base(4096, U'a');
+    std::u32string edited = base;
+    edited[2048] = U'b';    // a correction in the middle, the caret at the end
+    const std::u16string after = syncUnitsOf(edited);
+
+    double best = 1e9;
+    for (int run = 0; run < 50; run++){
+        TextInputSync sync;
+        sync.reset(base, base.size());
+        CountingEdits out;
+        const auto start = std::chrono::steady_clock::now();
+        sync.update(after, 4096, 4096, -1, -1, out);
+        const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+        best = std::min(best, us);
+        ASSERT_EQ(out.edits, 4u) << "caret there, one backspace, the text, the caret back";
+        ASSERT_EQ(sync.text(), edited);
+    }
+    std::printf("[bench] TextInputSync, one edit of a 4096 code point field %.1f us (budget 50 us mobile)\n", best);
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LE(best, 50.0 * testsupport::perfSlack());
+    }
 }
