@@ -33,13 +33,14 @@
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
 #include "subsystem/AnimatorSystem.h"
+#include "util/UiItemLocator.h"
 #include "window/AnimatorWindow.h"
 
 #include "imgui.h"
-#include "imgui_internal.h"
 
 #include "support/PosixCompat.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -328,60 +329,45 @@ namespace {
         return out;
     }
 
-    // The Inspector alone at a fixed place, driven by the mouse: a vertical sweep finds its items
-    // (ImGui's hovered id, set for disabled items too) in the order they are drawn
+    // The Inspector alone at a fixed place: its items found as find_ui_item finds them
+    // (UiItemLocator), clicked with the mouse
     struct InspectorProbe : Frames {
-        struct Item {
-            ImGuiID id = 0;
-            float top = 0.0f, bottom = 0.0f;
-            bool disabled = false;
-        };
-        ImGuiID mask = 0, meshSpace = 0;
-        static constexpr float kX = 20.0f;
-
-        void at(AnimatorWindow& window, float y, bool down = false) {
+        void at(AnimatorWindow& window, float x, float y, bool down = false) {
             ImGuiIO& io = ImGui::GetIO();
-            io.AddMousePosEvent(kX, y);
+            io.AddMousePosEvent(x, y);
             io.AddMouseButtonEvent(0, down);
             ImGui::NewFrame();
             ImGui::SetNextWindowPos(ImVec2(0, 0));
             ImGui::SetNextWindowSize(ImVec2(520, 860));
             ImGui::Begin("Inspector");
             window.drawSelectionInspector();
-            ImGui::PushID("animator_inspector");
-            mask = ImGui::GetID("Mask");
-            meshSpace = ImGui::GetID("Mesh Space Rotation");
-            ImGui::PopID();
             ImGui::End();
             ImGui::EndFrame();
         }
 
-        std::vector<Item> sweep(AnimatorWindow& window) {
-            std::vector<Item> items;
-            at(window, 0.0f);
-            for (float y = 24.0f; y < 850.0f; y += 2.0f) {
-                at(window, y);
-                const ImGuiContext& g = *ImGui::GetCurrentContext();
-                if (g.HoveredId == 0) continue;
-                if (!items.empty() && items.back().id == g.HoveredId) {
-                    items.back().bottom = y;
-                    continue;
-                }
-                items.push_back({g.HoveredId, y, y, g.HoveredIdIsDisabled});
-            }
-            return items;
+        UiItemLocator::Item locate(AnimatorWindow& window, const std::string& label) {
+            UiItemLocator::start(label, "Inspector");
+            at(window, 0.0f, 0.0f);
+            const std::vector<UiItemLocator::Item> items = UiItemLocator::stop();
+            EXPECT_EQ(items.size(), 1u) << label;
+            return items.empty() ? UiItemLocator::Item() : items[0];
         }
 
-        // the item after Mask (null when none)
-        static const Item* afterMask(const std::vector<Item>& items, ImGuiID mask) {
-            for (size_t i = 0; i + 1 < items.size(); i++) if (items[i].id == mask) return &items[i + 1];
-            return nullptr;
+        // the checkbox is the next row after Mask, before Montage Slot
+        void expectUnderMask(AnimatorWindow& window, const UiItemLocator::Item& box) {
+            const UiItemLocator::Item mask = locate(window, "Mask");
+            const UiItemLocator::Item slot = locate(window, "Montage Slot");
+            const float gap = box.y - (mask.y + mask.height);
+            EXPECT_GE(gap, 0.0f) << "under Mask";
+            EXPECT_LE(gap, ImGui::GetStyle().ItemSpacing.y + 1.0f) << "directly under Mask";
+            EXPECT_LT(box.y, slot.y) << "above Montage Slot";
         }
 
-        void click(AnimatorWindow& window, float y) {
-            at(window, y);
-            at(window, y, true);
-            at(window, y, false);
+        void click(AnimatorWindow& window, const UiItemLocator::Item& item) {
+            const float x = item.x + item.width * 0.5f, y = item.y + item.height * 0.5f;
+            at(window, x, y);
+            at(window, x, y, true);
+            at(window, x, y, false);
         }
     };
 
@@ -1071,13 +1057,12 @@ TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
     const std::string before = readAll(file);
 
     InspectorProbe probe;
-    std::vector<InspectorProbe::Item> items = probe.sweep(window);
-    const InspectorProbe::Item* box = InspectorProbe::afterMask(items, probe.mask);
-    ASSERT_TRUE(box) << "the Inspector draws Mask and an item after it (" << items.size() << " items)";
-    EXPECT_EQ(box->id, probe.meshSpace) << "Mesh Space Rotation is directly under Mask";
-    EXPECT_FALSE(box->disabled) << "an Override layer above 0";
+    probe.at(window, 0.0f, 0.0f);
+    UiItemLocator::Item box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_TRUE(box.enabled) << "an Override layer above 0";
     const size_t start = history()->position();
-    probe.click(window, (box->top + box->bottom) * 0.5f);
+    probe.click(window, box);
     ASSERT_TRUE(doc->controller().layers[1].meshSpaceRotation) << window.getStatus();
     EXPECT_EQ(history()->position(), start + 1) << "one step";
     ASSERT_TRUE(history()->top());
@@ -1095,23 +1080,19 @@ TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
     additive.layers[1].blending = AnimatorLayerBlending::Additive;
     std::string error;
     ASSERT_TRUE(doc->commit(additive, "Edit Layer Upper Body", "", &error)) << error;
-    items = probe.sweep(window);
-    box = InspectorProbe::afterMask(items, probe.mask);
-    ASSERT_TRUE(box);
-    EXPECT_EQ(box->id, probe.meshSpace);
-    EXPECT_TRUE(box->disabled) << "an Additive layer";
+    box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_FALSE(box.enabled) << "an Additive layer";
     const size_t additiveAt = history()->position();
-    probe.click(window, (box->top + box->bottom) * 0.5f);
+    probe.click(window, box);
     EXPECT_EQ(history()->position(), additiveAt) << "a disabled checkbox edits nothing";
     EXPECT_TRUE(doc->controller().layers[1].meshSpaceRotation) << "kept, and ignored by the runtime";
 
     // the base layer: disabled
     ASSERT_TRUE(window.inspect("layers[0]"));
-    items = probe.sweep(window);
-    box = InspectorProbe::afterMask(items, probe.mask);
-    ASSERT_TRUE(box);
-    EXPECT_EQ(box->id, probe.meshSpace);
-    EXPECT_TRUE(box->disabled) << "layer 0";
+    box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_FALSE(box.enabled) << "layer 0";
 }
 
 // AC19 (R27, R29): on the bound Animator (Preview) the AC4 setup warns once, naming the spine;
