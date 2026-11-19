@@ -68,6 +68,7 @@
 #include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "device/Device.h"
+#include "localization/Localization.h"
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -1730,6 +1731,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+    Localization::onLanguageChanged.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
@@ -1782,6 +1784,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+    Localization::onLanguageChanged.clear();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();

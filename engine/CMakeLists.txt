@@ -1828,6 +1828,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1992,6 +1993,10 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/TitleArtBakeInfo.cpp
     core/util/TitleArtLanguage.cpp
+    core/localization/Localization.cpp
+    core/localization/MessageFormat.cpp
+    core/localization/PluralRules.cpp
+    core/localization/StringTableRuntime.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp
@@ -2330,6 +2335,8 @@ target_compile_definitions(jasperengine
         JASPERENGINE_BACKEND_TIME=$<OR:$<BOOL:${JASPERENGINE_TESTS}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
+        # missing-translation capture (game-ui-localization.md D8): where the profiler is on by default
+        JASPERENGINE_L10N_CAPTURE=$<BOOL:${JASPERENGINE_PROFILER_DEFAULT}>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
         JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
