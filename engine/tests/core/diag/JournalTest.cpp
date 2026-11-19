@@ -21,6 +21,7 @@
 #include <vector>
 
 using namespace jasperengine;
+using namespace jasperengine::test;
 namespace journal = jasperengine::diag::journal;
 
 namespace {
@@ -111,7 +112,9 @@ TEST(Journal, RingKeepsTheNewestWholeEntries) {
     for (const std::string& line : lines) {
         ASSERT_TRUE(std::regex_match(line, std::regex(R"(\+\d+\.\d{3} f\d+ entry i=\d+)"))) << line;
         const int i = std::stoi(line.substr(line.find("i=") + 2));
-        if (expected >= 0) EXPECT_EQ(i, expected) << "consecutive, oldest first";
+        if (expected >= 0) {
+            EXPECT_EQ(i, expected) << "consecutive, oldest first";
+        }
         expected = i + 1;
     }
     EXPECT_EQ(expected, 1000) << "the last is entry 999";
