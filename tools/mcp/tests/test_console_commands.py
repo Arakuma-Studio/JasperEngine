@@ -49,6 +49,10 @@ return Cheats
 
 
 async def setup_cheats(ed: Editor) -> None:
+    """The Cheats script on a GameObject of the saved scene (once per editor: the file's tests share it)."""
+    if getattr(ed, "console_cheats_ready", False):
+        return
+    ed.console_cheats_ready = True
     await ed.call("create_entity", name="Cheats", type="empty")
     await ed.call("create_script", kind="lua", name="Cheats", entity="Cheats", content=CHEATS)
     await ed.call("save_project", untitled_scene_dir="scenes")
