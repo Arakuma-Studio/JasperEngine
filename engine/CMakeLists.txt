@@ -1691,6 +1691,8 @@ set(JASPERENGINE_SRCS
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
     core/object/HitStopExempt.cpp
+    core/object/CullingGroup.cpp
+    core/object/SimulationCulling.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1846,6 +1848,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    core/script/binding/CullingClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp
     # S48 PixelFX player
@@ -1876,6 +1879,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/CullingSystem.cpp
     core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp

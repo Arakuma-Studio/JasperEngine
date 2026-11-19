@@ -117,3 +117,21 @@ uint64_t SubscriptionOwnerIndex::setRegistrationOwner(uint64_t ownerKey) {
 uint64_t SubscriptionOwnerIndex::registrationOwner() {
     return threadRegistrationOwner();
 }
+
+namespace je_owner_index {
+    uint64_t& threadScriptOwner() {
+        thread_local uint64_t owner = 0;
+        return owner;
+    }
+}
+
+uint64_t SubscriptionOwnerIndex::setScriptOwner(uint64_t ownerKey) {
+    uint64_t& owner = threadScriptOwner();
+    const uint64_t previous = owner;
+    owner = ownerKey;
+    return previous;
+}
+
+uint64_t SubscriptionOwnerIndex::scriptOwner() {
+    return threadScriptOwner();
+}

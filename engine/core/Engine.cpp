@@ -5,6 +5,7 @@
 #include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "component/ComponentEvents.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
 #include "Log.h"
@@ -1816,6 +1817,7 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     forEachComponentEvent(*scene, [](auto& event) { event.clear(); });
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
     scene->getSystem<TitleArtSystem>()->clearSubscriptions();
+    scene->getSystem<CullingSystem>()->clearSubscriptions();
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -2615,6 +2617,13 @@ void Engine::runFrame(bool draw){
         // moves their GameObjects (they shake it again in the scene update)
         for (int i = 0; i < scenes.size(); i++) {
             if (auto cameras = scenes[i]->findSystem<CameraControlSystem>()) cameras->preUpdate();
+        }
+
+        // Simulation Culling's first evaluation of a scene and the GameObjects made since its last
+        // update, before their scripts start and the fixed steps run (culling-group-and-
+        // simulation-distance R18)
+        for (int i = 0; i < scenes.size(); i++) {
+            if (auto culling = scenes[i]->findSystem<CullingSystem>()) culling->preUpdate();
         }
 
         // 0) start of the scripts enabled since the last frame, before their first fixed

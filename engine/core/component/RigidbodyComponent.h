@@ -214,6 +214,13 @@ namespace jasperengine{
         // a type change asked for inside a step, applied right after it
         bool hasPendingType = false;
         BodyType pendingType = BodyType::STATIC;
+        // Simulation Culling froze it (PhysicsSystem::setSimulationFrozen3D): a dynamic body is
+        // kinematic in place; its velocities and awake state are kept here, read and written by
+        // scripts meanwhile and applied when it thaws (type is the authored one)
+        bool simulationFrozen = false;
+        Vector3 frozenLinearVelocity;
+        Vector3 frozenAngularVelocity;
+        bool frozenAwake = true;
 
         // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
         // bodies collide when each one's category meets the other's mask and the Layer

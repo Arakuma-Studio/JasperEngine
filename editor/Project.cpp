@@ -18,6 +18,7 @@
 #include "component/TerrainComponent.h"
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/TitleArtSystem.h"
 #include "subsystem/TilemapSystem.h"
@@ -6682,6 +6683,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     // Scene view's Always Refresh (updateSceneRender)
     scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
+    // Culling Groups and Simulation Culling evaluate in Play only
+    scene->getSystem<CullingSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<PoseAnimatorSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);

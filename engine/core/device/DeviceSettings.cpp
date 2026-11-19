@@ -51,6 +51,8 @@ namespace {
             OverrideKind::Cap, true, 1.0f, 1000.0f, false, nullptr, 0},
         {"max_pixel_lights", "Max Pixel Lights", "Lights per object at most.", OverrideKind::Cap, true, 1.0f, 64.0f, false, nullptr, 0},
         {"particle_budget", "Particle Budget", "Live particles of a scene at most.", OverrideKind::Cap, true, 1.0f, 4194304.0f, false, nullptr, 0},
+        {"simulation_distance", "Simulation Distance", "Multiplies every Simulation Culling distance: below 1 simulates a smaller radius.",
+            OverrideKind::Multiplier, false, 0.25f, 1.0f, false, nullptr, 0},
     };
 
     template<size_t N>
@@ -228,7 +230,9 @@ DeviceSettings::DeviceSettings(){
         low.set(DeviceOverride::LodBias, 0.5f);
         low.set(DeviceOverride::Volumetrics, 0.0f);
         low.set(DeviceOverride::SSAO, 0.0f);
+        low.set(DeviceOverride::SimulationDistance, 0.6f);
         tiers[group][(size_t)DeviceTier::Medium].set(DeviceOverride::RenderScale, 0.85f);
+        tiers[group][(size_t)DeviceTier::Medium].set(DeviceOverride::SimulationDistance, 0.8f);
     }
 }
 
