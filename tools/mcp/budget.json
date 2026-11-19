@@ -140,8 +140,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list"
         },
         "send_input": {
-            "limit": 1990,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
+            "limit": 2086,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); 2086 measured with input-recorder-and-input-scripts' file parameter and shot, wait until, gamepad connect|disconnect and safe_area steps after trimming its description (eval cases guard_input_script_file, bad_input_ms_in_file)"
         },
         "create_particles": {
             "limit": 1888,

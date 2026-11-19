@@ -1395,7 +1395,7 @@ After play stop: the edits made while playing that can be kept, rows {id, kind, 
 
 Group: `core`. Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio (voices, mixer_meters dB), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, the game's input (actions, touches, keys, input replays), debug_overlay, audio, console_cursor, coroutines and timers, the clock, platform (lifecycle, orientation, opened_urls...), http, safe_area; stopped: play_would_start.
 
 No parameters.
 
@@ -1451,6 +1451,7 @@ Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, au
 | `auto_pause` | boolean |  |  |
 | `fixed_fps` | integer (0..1000) |  | 0 = real time. Default: `0`. |
 | `frames` | integer (1..600) |  | Default: `1`. |
+| `input` | string |  | start: replay this .input.json. |
 | `keep_changes` | `"none"` \| `"all"` |  | stop: keep all or none of the edits made while playing (absent: get_play_changes). |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `scene` | integer or string |  | start: default the start scene (else selected). |
@@ -1466,28 +1467,30 @@ Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, au
 
 Group: `core`
 
-Input into the running game, over frames. events in order, {type, ...} (first action: default):
+Input into the running game. events in order, {type, ...} (first action: default):
 key: key (space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods [shift,ctrl,alt,super]
 text: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel
 mouse_leave, mouse_enter
 mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)
 touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to
-target / to_target: UI Document element CSS selector (document: which)
-gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value
+target / to_target: UI Document CSS selector (document: which)
+gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value, or action connect|disconnect
 input_action: name Map/Action, action press|down|up|value, value
 action|axis|axis_delta: name + phase (press|down|up)|value|delta
 app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation (+orientation)
-wait: frames, ms. release_all.
-space: canvas px, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + frames_after only).
+wait: frames, ms, or until (Lua; frames caps)
+shot: name (PNG). release_all.
+space: canvas px, normalized 0..1, safe_area 0..1 of safeArea, view = Game view px. down holds until up/release_all/stop. auto_pause: events + frames_after only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `events` | array of object {document, target, to_target} | yes |  |
+| `events` | array of object {document, target, to_target} |  |  |
+| `file` | string |  | Script .input.json. |
 | `frames_after` | integer (0..100000) |  | Run before replying. Default: `1`. |
 | `gap_frames` | integer (0..1000) |  | Between events. Default: `1`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `screenshot` | boolean or `"game"` \| `"scene"` \| `"editor"` |  | Also return an image (true: game). |
-| `space` | `"canvas"` \| `"normalized"` \| `"view"` |  | Default: `"canvas"`. |
+| `space` | `"canvas"` \| `"normalized"` \| `"safe_area"` \| `"view"` |  | Default: `"canvas"`. |
 
 
 ### `set_runtime_property`
