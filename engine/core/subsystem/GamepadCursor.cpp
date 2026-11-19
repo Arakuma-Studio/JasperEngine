@@ -35,7 +35,7 @@ namespace {
     // the focus the cursor last saw: another one (the d-pad, a script, autofocus) moves the cursor to it
     const void* seenFocus = nullptr;
 
-    float sanitized(float value, float fallback){
+    float cursorFinite(float value, float fallback){
         return std::isfinite(value) ? value : fallback;
     }
 
@@ -94,7 +94,7 @@ namespace {
         float bestLength = 0.0f;
         for (size_t i = 0; i < Input::numGamepads(); i++){
             const int id = Input::getGamepadId(i);
-            const Vector2 value(sanitized(Input::getGamepadAxis(id, axisX), 0.0f), sanitized(Input::getGamepadAxis(id, axisY), 0.0f));
+            const Vector2 value(cursorFinite(Input::getGamepadAxis(id, axisX), 0.0f), cursorFinite(Input::getGamepadAxis(id, axisY), 0.0f));
             const float length = std::sqrt(value.x * value.x + value.y * value.y);
             if (length > bestLength){
                 bestLength = length;
@@ -118,7 +118,7 @@ namespace {
         return jump;
     }
 
-    void deactivate(){
+    void deactivateCursor(){
         cursorActive = false;
         stickHeld = 0.0;
         // a held press ends without a click
@@ -133,12 +133,12 @@ namespace {
 
 void GamepadCursor::setDefaults(const GamepadCursorSettings& settings){
     cursorDefaults = settings;
-    cursorDefaults.speed = std::max(sanitized(settings.speed, 1000.0f), 0.0f);
-    cursorDefaults.accelerationTime = std::max(sanitized(settings.accelerationTime, 0.15f), 0.0f);
-    cursorDefaults.slowOverControls = std::clamp(sanitized(settings.slowOverControls, 0.5f), 0.0f, 1.0f);
-    cursorDefaults.scrollSpeed = std::max(sanitized(settings.scrollSpeed, 20.0f), 0.0f);
-    cursorDefaults.deadzone = std::clamp(sanitized(settings.deadzone, 0.2f), 0.0f, 0.95f);
-    cursorDefaults.size = std::max(sanitized(settings.size, 32.0f), 1.0f);
+    cursorDefaults.speed = std::max(cursorFinite(settings.speed, 1000.0f), 0.0f);
+    cursorDefaults.accelerationTime = std::max(cursorFinite(settings.accelerationTime, 0.15f), 0.0f);
+    cursorDefaults.slowOverControls = std::clamp(cursorFinite(settings.slowOverControls, 0.5f), 0.0f, 1.0f);
+    cursorDefaults.scrollSpeed = std::max(cursorFinite(settings.scrollSpeed, 20.0f), 0.0f);
+    cursorDefaults.deadzone = std::clamp(cursorFinite(settings.deadzone, 0.2f), 0.0f, 0.95f);
+    cursorDefaults.size = std::max(cursorFinite(settings.size, 32.0f), 1.0f);
 }
 
 const GamepadCursorSettings& GamepadCursor::getDefaults(){
@@ -154,7 +154,7 @@ bool GamepadCursor::isEnabled(){
 }
 
 void GamepadCursor::setSpeed(float speed){
-    speedOverride = std::max(sanitized(speed, cursorDefaults.speed), 0.0f);
+    speedOverride = std::max(cursorFinite(speed, cursorDefaults.speed), 0.0f);
 }
 
 float GamepadCursor::getSpeed(){
@@ -162,7 +162,7 @@ float GamepadCursor::getSpeed(){
 }
 
 void GamepadCursor::setScrollSpeed(float speed){
-    scrollSpeedOverride = std::max(sanitized(speed, cursorDefaults.scrollSpeed), 0.0f);
+    scrollSpeedOverride = std::max(cursorFinite(speed, cursorDefaults.scrollSpeed), 0.0f);
 }
 
 float GamepadCursor::getScrollSpeed(){
@@ -178,7 +178,7 @@ Vector2 GamepadCursor::getPosition(){
 }
 
 void GamepadCursor::setPosition(Vector2 position){
-    cursorPosition = Vector2(sanitized(position.x, 0.0f), sanitized(position.y, 0.0f));
+    cursorPosition = Vector2(cursorFinite(position.x, 0.0f), cursorFinite(position.y, 0.0f));
     clampToCanvas(cursorPosition);
     cursorHasPosition = true;
     if (!cursorActive)
@@ -189,7 +189,7 @@ void GamepadCursor::setPosition(Vector2 position){
 
 void GamepadCursor::resetSession(){
     if (cursorActive)
-        deactivate();
+        deactivateCursor();
     cursorEnabled = true;
     speedOverride.reset();
     scrollSpeedOverride.reset();
@@ -211,7 +211,7 @@ void GamepadCursor::update(double deltaTime){
     const bool wanted = cursorEnabled && InputSchemeTracker::getCurrent() == InputScheme::Gamepad && Engine::isGamepadCursorShown();
     if (!wanted){
         if (cursorActive)
-            deactivate();
+            deactivateCursor();
         return;
     }
     const std::vector<Scene*> scenes = cursorScenes();
