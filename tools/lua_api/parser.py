@@ -3975,6 +3975,9 @@ OVERRIDES[('DebugOverlay', 'executeCommand')] = {
 OVERRIDES[('DebugOverlay', 'completeCommand')] = {
     'doc': ['The completion of the word at the cursor (the bytes of `line` before it; default: the end).'],
     'overloads': [([('line', 'string'), ('cursor?', 'integer')], 'ConsoleCompletion')]}
+OVERRIDES[('DebugOverlay', 'resetCheatsUsed')] = {
+    'doc': ['Clears DebugOverlay.cheatsUsed (a new game); the next cheat fires onCheatUsed again.'],
+    'overloads': [([], '')]}
 OVERRIDES[('DebugOverlay', 'getCommands')] = {
     'doc': ['Every command listed, sorted by name.'],
     'overloads': [([], 'ConsoleCommandInfo[]')]}

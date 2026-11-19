@@ -4145,7 +4145,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("commandsEnabled", [] () -> bool { return console::commandsEnabled(); },
                            [] (bool enabled) { console::setCommandsEnabled(enabled); })
         .addStaticProperty("cheatsUsed", [] () -> bool { return console::cheatsUsed(); })
-        .addStaticFunction("resetCheatsUsed", [] () { console::resetCheatsUsed(); })
+        .addStaticFunction("resetCheatsUsed", &console::resetCheatsUsed)
         // (name) of the first cheat command that ends ok
         .addStaticProperty("onCheatUsed", [] () { return &console::Events::onCheatUsed; },
                            [] (lua_State* L) { console::Events::onCheatUsed = L; })

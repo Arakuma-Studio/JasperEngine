@@ -2098,7 +2098,7 @@ void evalConsoleCommand(const CallPtr& call, const std::string& line) {
     w3::ConsoleQuery query;
     query.since = cursor;
     query.limit = 50;
-    w3::ConsoleResult console = w3::queryConsole(query);
+    w3::ConsoleResult lines = w3::queryConsole(query);
 
     Json log = Json::array();
     for (const console::LogLine& entry : result.log) log.push_back({{"level", logLevelName(entry.level)}, {"message", entry.message}});
@@ -2106,7 +2106,7 @@ void evalConsoleCommand(const CallPtr& call, const std::string& line) {
                     {"lines", result.lines}, {"log", log}, {"value", result.value}, {"cheat", result.cheat}};
     if (!result.error.empty()) command["error"] = result.error;
     if (!result.usage.empty()) command["usage"] = result.usage;
-    Json data = {{"mode", "play"}, {"command", command}, {"console", console.entries}, {"next_cursor", console.nextCursor}};
+    Json data = {{"mode", "play"}, {"command", command}, {"console", lines.entries}, {"next_cursor", lines.nextCursor}};
 
     std::string text;
     if (result.ok()) {

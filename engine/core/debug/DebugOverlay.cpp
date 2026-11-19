@@ -1155,7 +1155,7 @@ namespace {
         Rml::Element* box = byId("chips");
         if (!box)
             return;
-        s.chips.assign(candidates.begin(), candidates.begin() + static_cast<long>(std::min(candidates.size(), chipCount)));
+        s.chips.assign(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(std::min(candidates.size(), chipCount)));
         while (box->GetNumChildren() > 0)
             box->RemoveChild(box->GetChild(0));
         for (size_t i = 0; i < s.chips.size(); i++){

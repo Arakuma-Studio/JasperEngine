@@ -20,6 +20,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -544,7 +545,7 @@ namespace {
             const std::string& alias = spec.aliases[i];
             if (!validName(alias))
                 return "alias '" + alias + "' is not a command name (lower-case letters, digits, '_', '-' and '.', 1-48 characters)";
-            if (alias == spec.name || std::find(spec.aliases.begin(), spec.aliases.begin() + static_cast<long>(i), alias) != spec.aliases.begin() + static_cast<long>(i))
+            if (alias == spec.name || std::find(spec.aliases.begin(), spec.aliases.begin() + static_cast<std::ptrdiff_t>(i), alias) != spec.aliases.begin() + static_cast<std::ptrdiff_t>(i))
                 return "alias '" + alias + "' is given twice";
         }
         if (spec.maxArgs >= 0 && spec.maxArgs < spec.minArgs)
