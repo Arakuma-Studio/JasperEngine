@@ -572,5 +572,7 @@ end)
     worst = perFrameMs;
     std::printf("[bench] TestRunnerBench.FrameOverhead %.4f ms/frame (budget 0.05)\n", worst);
     const double slack = testsupport::perfSlack();
-    if (slack > 0.0) EXPECT_LE(perFrameMs, 0.05 * slack);
+    if (slack > 0.0) {
+        EXPECT_LE(perFrameMs, 0.05 * slack);
+    }
 }

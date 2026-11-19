@@ -71,7 +71,9 @@ Test.case(computedName(), function(t) end)
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     EXPECT_EQ(files.size(), 200u) << "Golden/ is not scanned";
     std::printf("[bench] TestScriptScan 200 files %.2f ms (budget 50)\n", ms);
-    if (editor::test::perfSlack() > 0.0) EXPECT_LE(ms, 50.0 * editor::test::perfSlack());
+    if (editor::test::perfSlack() > 0.0) {
+        EXPECT_LE(ms, 50.0 * editor::test::perfSlack());
+    }
 }
 
 TEST(TestScriptScan, DuplicateNamesAreMarked) {
