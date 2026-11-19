@@ -183,6 +183,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Miscellaneous", ICON_FA_PUZZLE_PIECE, {
             {ComponentType::Transform, "Position, rotation, scale and parent"},
+            {ComponentType::SimulationCullingComponent, "Freezes its scripts' updates, Animator and bodies while far from the player or over unloaded ground"},
         }},
     };
 }

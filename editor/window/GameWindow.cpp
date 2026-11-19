@@ -23,6 +23,7 @@
 #include "window/DeviceProfiles.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "registry/PhysicsLayers.h"
@@ -102,6 +103,7 @@ void editor::GameWindow::loadSettings() {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
 }
 
@@ -491,6 +493,7 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
     editPassDirty = true;
     saveSettings();
@@ -945,13 +948,14 @@ void editor::GameWindow::drawToolbar() {
     const TextureFamily viewFamily = cooks.getViewFamily();
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
+    const char* cullingLabel = "Culling##GameCullingDebug";
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
         return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
-               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
+               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 7.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -961,6 +965,7 @@ void editor::GameWindow::drawToolbar() {
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
         physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
+        cullingLabel = ICON_FA_EYE_SLASH "##GameCullingDebug";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
@@ -1035,6 +1040,15 @@ void editor::GameWindow::drawToolbar() {
     const bool physicsShown = Physics::isDebugDraw();
     if (toggleButton(physicsLabel, physicsShown, "Physics: draw colliders, joints and contacts while playing")) {
         Physics::setDebugDraw(!physicsShown);
+    }
+
+    ImGui::SameLine();
+    // Simulation Culling and Culling Group spheres while playing (saved with the Game view)
+    if (toggleButton(cullingLabel, settings.cullingDebug, "Culling: draw Simulation Culling spheres (green Full, yellow Reduced, red culled by "
+            "distance, grey by unloaded ground), Culling Group spheres (cyan visible, dark blue not) and the focuses while playing")) {
+        settings.cullingDebug = !settings.cullingDebug;
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        saveSettings();
     }
 
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
@@ -1535,7 +1549,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[16][112];
+    char lines[18][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1610,6 +1624,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "Batches: %u   Saved by batching: %u", batching->stats.batches,
                      batching->stats.savedByBatching());
             lineCount++;
+        }
+    }
+    // Culling Groups and Simulation Culling, when the scene has any
+    if (sceneProject && sceneProject->scene) {
+        if (auto culling = sceneProject->scene->findSystem<CullingSystem>()) {
+            const CullingSystem::Stats c = culling->getStats();
+            if (c.groups > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Culling groups: %u (%u spheres, %u visible)", c.groups, c.spheres, c.visible);
+                lineCount++;
+            }
+            if (c.components > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Simulation: %u full, %u reduced, %u culled (%u ground)  Script updates skipped: %u",
+                         c.full, c.reduced, c.culled, c.groundNotLoaded, c.scriptUpdatesSkipped);
+                lineCount++;
+            }
         }
     }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)

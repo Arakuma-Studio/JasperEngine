@@ -50,6 +50,7 @@
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -2000,6 +2001,12 @@ void configureGameViewTool(const CallPtr& call) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
     }
+    // the Game view's Culling toggle: Simulation Culling and Culling Group spheres, every playing scene
+    if (args.contains("culling_debug")) {
+        settings.cullingDebug = args.value("culling_debug", false);
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        changed.push_back("culling_debug");
+    }
     if (args.contains("network")) {
         const std::string network = args.value("network", "");
         if (network != "online" && network != "offline") {
@@ -2160,6 +2167,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
         {"physics_debug_lines", physicsDebugLines},
+        {"culling_debug", CullingSystem::isDebugDraw()},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
@@ -2368,6 +2376,7 @@ void registerViewTools(McpRegistry& registry) {
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
+            {"culling_debug", boolean("Draws what is culled while playing (screenshot it).")},
             {"network", stringEnum("", {"online", "offline"})},
             {"device", string("A devices id, custom or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},

@@ -23,7 +23,7 @@ namespace jasperengine::test {
             "TerrainWorldSystem",
 #endif
             "LatticeSystem", "VertexAnimatorSystem", "CameraControlSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "TitleArtSystem", "VideoPlayerSystem", "RenderSystem", "TrailSystem", "WaterInteractionSystem",
-            "NavigationSystem", "TilemapSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"
+            "NavigationSystem", "TilemapSystem", "PhysicsSystem", "CullingSystem", "ParticleSubsystem", "AudioSystem"
         };
         return names;
     }

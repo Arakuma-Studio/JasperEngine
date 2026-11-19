@@ -37,3 +37,10 @@
 ---@field coroutines integer # engine coroutines running
 ---@field timers integer # engine timers pending
 ---@field htmlUiDrawCalls integer # HTML UI draw calls of the last frame
+---@field cullingGroups integer # Culling Groups of the running scenes
+---@field cullingSpheres integer # their bounding spheres
+---@field cullingVisible integer # of those, visible in a camera
+---@field simulationFull integer # Simulation Culling components simulating fully
+---@field simulationReduced integer # in the reduced band
+---@field simulationCulled integer # culled (by distance or unloaded ground)
+---@field scriptUpdatesSkipped integer # update callbacks Simulation Culling skipped in the last frame
