@@ -1380,9 +1380,10 @@ namespace {
 
     // the values joined with tabs (tostring), pushed as one string
     void pushJoined(lua_State* L, int from){
+        // (before luaL_buffinit, which may push a placeholder of its own)
+        const int top = lua_gettop(L);
         luaL_Buffer buffer;
         luaL_buffinit(L, &buffer);
-        const int top = lua_gettop(L);
         for (int i = from; i <= top; i++){
             if (i > from)
                 luaL_addchar(&buffer, '\t');
