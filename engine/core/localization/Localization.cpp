@@ -275,9 +275,11 @@ namespace {
 
     // ---- capture (D8)
 
+#if JASPERENGINE_L10N_CAPTURE
     uint64_t hashText(std::string_view text) {
         return StringTable::hashKey(text, 0x5bd1e995ull);
     }
+#endif
 
     void remember(State& s, std::string_view text) {
 #if JASPERENGINE_L10N_CAPTURE
