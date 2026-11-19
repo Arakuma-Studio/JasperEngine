@@ -8,6 +8,7 @@
 #include "debug/ConsoleCommands.h"
 #include "debug/DebugOverlay.h"
 #include "script/LuaBinding.h"
+#include "util/FunctionSubscribe.h"
 
 #include "lua.hpp"
 
