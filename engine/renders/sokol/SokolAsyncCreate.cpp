@@ -174,8 +174,9 @@ namespace {
         ShaderCreationSettings settings;
         GpuCreationMode mode = GpuCreationMode::Sync;
         sgj_async_caps caps = {};
-        // parallel mode enabled the driver's compile threads at setup
+        // parallel mode enabled the driver's compile threads at setup; and on the context since
         bool compileThreads = false;
+        bool contextCompileThreads = false;
 
         std::unique_ptr<GpuWorkerContext> workerContext;
         // a creation on the worker starts at least this long after its request (setup)
@@ -693,6 +694,11 @@ namespace {
         if (!GpuQuirks::active(GpuQuirk::GlNoCompileThreads)){
             sgj_gl_enable_compile_threads();
             s.compileThreads = true;
+            s.contextCompileThreads = true;
+        }else if (s.contextCompileThreads){
+            // an earlier setup on this context turned them on (a test forcing the lever both ways)
+            sgj_gl_disable_compile_threads();
+            s.contextCompileThreads = false;
         }
         return GpuCreationMode::GlParallel;
     }

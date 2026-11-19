@@ -211,6 +211,9 @@ void PerfSampler::setSampling(bool on, std::string_view reason){
         if (!s.sampling){
             s.sampling = true;
             s.clockRunning = true;
+            // on before any frame of this second: the second is gameplay whole
+            if (s.secondFramesAll == 0)
+                s.gameOffInSecond = false;
             // the thread clock's first reading: the next tick's delta starts here
             if (ThreadCpuClock::isAvailable())
                 s.lastCpuMs = ThreadCpuClock::nowMs();
@@ -332,6 +335,9 @@ void PerfSampler::notePaused(bool paused){
         s.pausedInSecond = true;
     }else if (s.paused){
         s.paused = false;
+        // resumed before any frame of this second: it is the resume's, not the pause's
+        if (s.secondFramesAll == 0 && !s.hidden)
+            s.pausedInSecond = false;
         noteResumed();
     }
 }
@@ -343,6 +349,8 @@ void PerfSampler::noteHidden(bool hidden){
         s.pausedInSecond = true;
     }else if (s.hidden){
         s.hidden = false;
+        if (s.secondFramesAll == 0 && !s.paused)
+            s.pausedInSecond = false;
         noteResumed();
     }
 }
