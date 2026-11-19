@@ -203,7 +203,7 @@ a sound -> `"AudioSource"`).
 | Function | Meaning |
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
-| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+| `RegisterEvent(self, eventObject, "methodName" [, tag] [, priority])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). `priority` is for an `Event` or `CancellableEvent` only (pass `nil` as the tag: `RegisterEvent(self, ev, "m", nil, 10)`); engine events run in subscription order. |
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -231,12 +231,51 @@ function Hud:onDisable() self.health.onDied:removeListener(self, "showGameOver")
 | Member | Meaning |
 |---|---|
 | `Event()` | a new event |
-| `ev:addListener(fn)` / `ev:addListener(self, "method")` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored |
+| `ev:addListener(fn [, priority])` / `ev:addListener(self, "method" [, priority])` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored, whatever its priority: remove it first to change its priority |
 | `ev:removeListener(fn)` / `ev:removeListener(self, "method")` | `true` if it was there |
 | `ev:removeAllListeners()` | |
-| `ev:invoke(...)` | calls the listeners in add order with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
+| `ev:invoke(...)` | calls the listeners by priority with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
 | `ev.listenerCount` | ro |
-| `ev:add(tag, fn)`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it |
+| `ev:add(tag, fn [, priority])`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it; a tag added again replaces its listener, with the new priority |
+| `ev:getListeners()` | `{name, priority, monitor}` per listener, in the order they run: `name` is `"Class:method"` for a script's method (`RegisterEvent`'s too), the tag of another tagged listener, `"function <source>:<line>"` for a function |
+
+**Priority.** Every listener form takes an integer `priority` from -1000000 to 1000000 (default 0):
+higher runs first, equal ones in the order added (all 0: add order). `Event.MONITOR` runs after every
+other listener; side effects go in monitors: they run after the decision.
+
+**`CancellableEvent()`**: an `Event` whose listeners may refuse the change before it happens. Read
+`invoke`'s result; when `true`, do not apply the change. Each listener gets a `CancelEventArgs` first,
+then `invoke`'s arguments; `e:cancel()` vetoes, and the deciding listeners after it are skipped. Then
+the `Event.MONITOR` listeners run with `e.cancelled` final (they cannot cancel).
+
+```lua
+function Door:init() self.onOpening = CancellableEvent() end
+function Door:open(by)
+    if self.onOpening:invoke(self, by) then return false end   -- a listener refused
+    self.isOpen = true
+    return true
+end
+
+function Lock:onEnable()
+    self.door = GameObject.findObjectOfType("Door")
+    RegisterEvent(self, self.door.onOpening, "check", nil, 10)
+    RegisterEvent(self, self.door.onOpening, "report", nil, Event.MONITOR)
+end
+function Lock:check(e, door, by) if self.locked then e:cancel() end end
+function Lock:report(e, door, by) if e.cancelled then print("locked") end end
+```
+
+| Member | Meaning |
+|---|---|
+| `ev:invoke(...)` | `true` when a listener cancelled (then do not apply the change), else `false` |
+| `e:cancel()` | vetoes; nothing undoes it. An error in a monitor listener or after its `invoke` ended |
+| `e.cancelled` | ro: whether a listener of this invoke cancelled |
+| `ev.cancelledBy` | ro: the listener (as `getListeners` names it) that cancelled the latest invoke; `nil` when it went ahead |
+| `tostring(ev)` | `CancellableEvent(N listeners, last invoke cancelled by <name>)`, `(…, last invoke went ahead)` or `(…, not invoked yet)` |
+
+A listener that should change a value instead of refusing gets a table: pass `{amount = 10}` to
+`invoke`, let listeners change `amount`, and read it after `invoke`. A plain `Event` has no veto
+(`ev:cancel()` is an error).
 
 Engine events (names valid for `RegisterEngineEvent`; handler arguments in order):
 

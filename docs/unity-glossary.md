@@ -119,6 +119,7 @@ Projects made before the rename are migrated once with
 | `SceneManager.MoveGameObjectToScene(go, scene)` -> `SceneManager.moveGameObjectToScene(obj, scene)` (C++ `SceneManager::moveGameObjectToScene`) | none (new) |
 | Singleton pattern `if (instance == null) { instance = this; DontDestroyOnLoad(gameObject); } else if (instance != this) Destroy(gameObject);` -> `if GameObject.persistSingleton(self) ~= self then return end` in `init` (C++ `persistSingleton<T>()`); module tables are per instance, so no `static Instance` | none (new) |
 | `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
+| none: `UnityEvent` has no veto or listener order; C# `System.ComponentModel.CancelEventArgs` (`Cancel`) | none (new): `CancellableEvent()`, whose listeners get a `CancelEventArgs` first (`e:cancel()`, `e.cancelled`) and whose `invoke` returns whether one cancelled; every `Event` listener takes a `priority` (`Event.MONITOR` runs after the decision) |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
