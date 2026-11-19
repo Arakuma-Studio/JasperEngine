@@ -498,17 +498,11 @@ TEST(TestRunnerCore, FiltersAndCaseIdPaths) {
 // a recording is refused, a malformed event is the case's error
 TEST(TestRunnerCore, InputRunsOnTheSharedInterpreter) {
     FakeHost host;
-    lua_register(host.L, "keyDown", [](lua_State* L) -> int {
-        lua_pushboolean(L, Input::isKeyPressed(D_KEY_B));
-        return 1;
-    });
     host.files["i.test.lua"] = R"(
 Test.case("press", function(t)
     local start = t.frame
     Test.input({ {type = "key", key = "b", action = "down"}, {type = "wait", frames = 3} })
-    Test.check(keyDown(), "b is held after the events")
     Test.check(t.frame - start >= 3, "the events' frames passed")
-    Test.input({ {type = "key", key = "b", action = "up"} })
 end)
 Test.case("recording refused", function(t)
     Test.input("Input/rec.input.json")
@@ -521,10 +515,12 @@ end)
         "events": [{"frame": 1, "type": "key", "key": "b", "action": "down"}]})";
     TestRunner runner;
     runner.start(host.planOf("i.test.lua", {"press", "recording refused", "bad event"}), host, RunOptions());
+    bool sawB = false;
     for (int i = 0; i < 1000 && runner.frame(); i++) {
         // the engine's frame loop: the interpreter before the input latch, then the update
         input::ScriptRunner::beforeFrame(true);
         Input::beginFrame();
+        sawB = sawB || Input::isKeyPressed(D_KEY_B);
         input::ScriptRunner::afterUpdate();
         host.frames++;
         host.time += 1.0 / 60.0;
@@ -532,6 +528,8 @@ end)
     const RunResult& result = runner.result();
     const CaseResult& press = byName(result, "press");
     EXPECT_EQ(press.status, Status::Passed) << (press.failures.empty() ? "" : press.failures[0].message);
+    EXPECT_TRUE(sawB) << "the key reached the game through Engine::system*";
+    EXPECT_FALSE(Input::isKeyPressed(D_KEY_B)) << "what the events held is released at their end";
     const CaseResult& refused = byName(result, "recording refused");
     ASSERT_FALSE(refused.failures.empty());
     EXPECT_NE(refused.failures[0].message.find("a recording replays from Play's start: use Test.case{replay = ...}"), std::string::npos)
