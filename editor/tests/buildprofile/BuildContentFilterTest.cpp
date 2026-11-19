@@ -66,7 +66,9 @@ TEST(BuildContentFilter, ExcludesByLabelAndPath) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     EXPECT_EQ(excluded, 0u);
     std::printf("[ bench ] content filter over 10,000 paths: %.2f ms\n", ms);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LT(ms, 20.0 * slack);
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(ms, 20.0 * slack);
+    }
 }
 
 TEST(BuildContentFilter, RejectsEscapingPaths) {

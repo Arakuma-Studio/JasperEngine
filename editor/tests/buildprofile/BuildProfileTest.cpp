@@ -334,7 +334,9 @@ TEST(BuildProfileResolve, TheOpenProjectNeverChanges) {
 
     std::printf("[ bench ] settings snapshot of a %zu-line project.yaml: %.1f ms (budget 50)\n",
                 static_cast<size_t>(std::count(before.begin(), before.end(), '\n')), ms);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LT(ms, 50.0 * slack);
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(ms, 50.0 * slack);
+    }
 }
 
 // ---------------------------------------------------------------- AC4: validation
