@@ -173,6 +173,7 @@ TEST(AnimationLayersEditor, MeshSpaceRotationRoundTripsAndIsWrittenOnlyWhenSet) 
     EXPECT_EQ(without.find("meshSpaceRotation"), std::string::npos) << without;
     player.layers[1].meshSpaceRotation = true;
     const YAML::Node node = Stream::encodeAnimationPlayerComponent(player);
+    ASSERT_TRUE(node["layers"][1]["meshSpaceRotation"]) << YAML::Dump(node);
     EXPECT_EQ(node["layers"][1]["meshSpaceRotation"].Scalar(), "true");
     EXPECT_FALSE(node["layers"][0]["meshSpaceRotation"]);
     EXPECT_FALSE(node["layers"][2]["meshSpaceRotation"]);
