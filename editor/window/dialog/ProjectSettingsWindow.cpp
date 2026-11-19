@@ -2621,6 +2621,7 @@ namespace {
             case DeviceOverride::TargetFrameRate: return 30.0f;
             case DeviceOverride::MaxPixelLights: return 4.0f;
             case DeviceOverride::ParticleBudget: return 16384.0f;
+            case DeviceOverride::SimulationDistance: return 0.8f;
             default: return 0.0f;
         }
     }

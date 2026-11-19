@@ -16170,16 +16170,7 @@ bool RenderSystem::isInsideCamera(CameraComponent& camera, const Vector3& center
 }
 
 bool RenderSystem::isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const Vector3& center, const float& radius){
-    for (int plane = 0; plane < 6; ++plane){
-        if (plane == FRUSTUM_PLANE_FAR && cameraFar == 0)
-            continue;
-
-        if (frustumPlanes[plane].getDistance(center) < -radius){
-            return false;
-        }
-    }
-
-    return true;
+    return math::sphereInFrustum(frustumPlanes, cameraFar, center, radius);
 }
 
 void RenderSystem::needReloadPoints() {

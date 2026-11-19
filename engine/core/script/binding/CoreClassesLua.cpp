@@ -1303,6 +1303,13 @@ namespace {
         integer("coroutines", s.coroutines);
         integer("timers", s.timers);
         integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        integer("cullingGroups", s.cullingGroups);
+        integer("cullingSpheres", s.cullingSpheres);
+        integer("cullingVisible", s.cullingVisible);
+        integer("simulationFull", s.simulationFull);
+        integer("simulationReduced", s.simulationReduced);
+        integer("simulationCulled", s.simulationCulled);
+        integer("scriptUpdatesSkipped", s.scriptUpdatesSkipped);
         return 1;
     }
 

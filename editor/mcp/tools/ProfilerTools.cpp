@@ -20,6 +20,7 @@
 #include "App.h"
 #include "Project.h"
 #include "render/RenderUtil.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "render/DrawBatcher.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -365,6 +366,44 @@ void getRenderStatsTool(const CallPtr& call){
                               " probes with slots";
                 }
             }
+        }
+    }
+    // Culling Groups and Simulation Culling of the running scenes (absent when none has any)
+    {
+        CullingSystem::Stats culling;
+        bool used = false;
+        for (Scene* scene : Engine::getSceneLayers()){
+            std::shared_ptr<CullingSystem> system = scene->findSystem<CullingSystem>();
+            if (!system) continue;
+            const CullingSystem::Stats c = system->getStats();
+            if (!c.groups && !c.components) continue;
+            used = true;
+            culling.groups += c.groups;
+            culling.spheres += c.spheres;
+            culling.visible += c.visible;
+            for (size_t b = 0; b < c.perBand.size(); b++) culling.perBand[b] += c.perBand[b];
+            culling.evaluateMs += c.evaluateMs;
+            culling.components += c.components;
+            culling.full += c.full;
+            culling.reduced += c.reduced;
+            culling.culled += c.culled;
+            culling.groundNotLoaded += c.groundNotLoaded;
+            culling.focuses += c.focuses;
+            culling.scriptUpdatesSkipped += c.scriptUpdatesSkipped;
+            culling.transitionsDeferred += c.transitionsDeferred;
+        }
+        if (used){
+            // the bands up to the farthest one in use
+            size_t bands = culling.perBand.size();
+            while (bands > 1 && culling.perBand[bands - 1] == 0) bands--;
+            Json perBand = Json::array();
+            for (size_t b = 0; b < bands; b++) perBand.push_back(culling.perBand[b]);
+            data["culling"] = {{"groups", culling.groups}, {"spheres", culling.spheres}, {"visible", culling.visible}, {"per_band", perBand},
+                               {"evaluate_ms", round3(culling.evaluateMs)},
+                               {"simulation", {{"components", culling.components}, {"full", culling.full}, {"reduced", culling.reduced},
+                                               {"culled", culling.culled}, {"ground_not_loaded", culling.groundNotLoaded},
+                                               {"focuses", culling.focuses}, {"script_updates_skipped", culling.scriptUpdatesSkipped},
+                                               {"transitions_deferred", culling.transitionsDeferred}}}};
         }
     }
     std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws (" +
@@ -1194,7 +1233,7 @@ void registerProfilerTools(McpRegistry& registry){
             "A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, "
             "alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,"
             "pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. "
-            "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
+            "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). culling: what is culled or frozen. Also jasper://stats.";
         tool.inputSchema = object({{"view", viewSchema()}, {"batch_breaks", integer("Lists the first N draws that did not batch and why.", 0, 100)}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

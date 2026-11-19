@@ -3970,3 +3970,46 @@ OVERRIDES[('DebugOverlay', 'addCommand')] = {
             'the name. It goes with `owner` (default: the `self` of the calling script method). False for a bad',
             'or built-in name.'],
     'overloads': [([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]}
+
+# Culling Groups and Simulation Culling (engine/core/script/binding/CullingClassesLua.cpp): the
+# lua_CFunctions taking 1-based indices, GameObjects or ids, Lua lists and functions
+_SPHERE_TARGET = 'GameObject|integer'
+OVERRIDES[('CullingGroup', 'setSphereTarget')] = {
+    'doc': ['Sphere `index` follows the GameObject\'s world position plus `offset` at each evaluation;',
+            'a destroyed GameObject\'s sphere keeps its last position.'],
+    'overloads': [([('index', 'integer'), ('target', _SPHERE_TARGET), ('radius', 'number'), ('offset?', 'Vector3')], '')]}
+OVERRIDES[('CullingGroup', 'setSphere')] = {
+    'doc': ['Sets sphere `index` (it stops following).'],
+    'overloads': [([('index', 'integer'), ('sphere', 'BoundingSphere')], '')]}
+OVERRIDES[('CullingGroup', 'getSphere')] = {'overloads': [([('index', 'integer')], 'BoundingSphere')]}
+OVERRIDES[('CullingGroup', 'setBoundingSpheres')] = {
+    'doc': ['Copies the spheres (at most 100,000); they stop following.'],
+    'overloads': [([('spheres', 'BoundingSphere[]')], '')]}
+OVERRIDES[('CullingGroup', 'setBoundingDistances')] = {
+    'doc': ['0 to 8 ascending, positive distances: band 0 below the first, band n at or beyond the last.'],
+    'overloads': [([('distances', 'number[]')], '')]}
+OVERRIDES[('CullingGroup', 'setDistanceReferencePoint')] = {
+    'doc': ['Distances are measured from this point, or from this GameObject (followed). None set: the',
+            'target camera, else the scene\'s main camera.'],
+    'overloads': [([('point', 'Vector3|GameObject|integer')], '')]}
+OVERRIDES[('CullingGroup', 'eraseSwapBack')] = {
+    'doc': ['Removes sphere `index`: the last sphere and its state move into it.'],
+    'overloads': [([('index', 'integer')], '')]}
+OVERRIDES[('CullingGroup', 'isVisible')] = {'overloads': [([('index', 'integer')], 'boolean')]}
+OVERRIDES[('CullingGroup', 'getDistance')] = {
+    'doc': ['The sphere\'s band (0 nearest); -1 before the first evaluation.'],
+    'overloads': [([('index', 'integer')], 'integer')]}
+OVERRIDES[('CullingGroup', 'queryIndices')] = {
+    'doc': ['Fills `out[1..n]` with the 1-based indices of the matching spheres, skipping the first `first`',
+            'matches, and returns n (CullingGroupIndices).'],
+    'overloads': [([('visible', 'boolean'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('visible', 'boolean'), ('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'addFocus')] = {
+    'doc': ['A simulation focus at a position, or following a GameObject (one per player); its id. At most 16.'],
+    'overloads': [([('scene', 'Scene'), ('focus', 'Vector3|GameObject|integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'setGroundCheck')] = {
+    'doc': ['The game\'s own ground check for worlds it streams itself; nil removes it.'],
+    'overloads': [([('scene', 'Scene'), ('check', 'SimulationGroundCheck|nil')], '')]}
+PROPERTY_OVERRIDES[('CullingGroup', 'targetCamera')] = ('integer|nil', False)
+PROPERTY_OVERRIDES[('CullingGroup', 'onStateChanged')] = ('CullingGroupStateChanged|nil', False)

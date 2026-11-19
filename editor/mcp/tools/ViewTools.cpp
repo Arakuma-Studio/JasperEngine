@@ -50,6 +50,7 @@
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -2008,6 +2009,12 @@ void configureGameViewTool(const CallPtr& call) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
     }
+    // the Game view's Culling toggle: Simulation Culling and Culling Group spheres, every playing scene
+    if (args.contains("culling_debug")) {
+        settings.cullingDebug = args.value("culling_debug", false);
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        changed.push_back("culling_debug");
+    }
     if (args.contains("network")) {
         const std::string network = args.value("network", "");
         if (network != "online" && network != "offline") {
@@ -2169,6 +2176,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
         {"physics_debug_lines", physicsDebugLines},
+        {"culling_debug", CullingSystem::isDebugDraw()},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
@@ -2195,6 +2203,10 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         const CustomDeviceSettings& c = settings.custom;
         data["custom_device"] = {{"width", c.width}, {"height", c.height}, {"corner_radius", c.cornerRadius},
                                  {"dpi", c.dpi}, {"insets", {{"top", c.top}, {"right", c.right}, {"bottom", c.bottom}, {"left", c.left}}}};
+    }
+    if (std::find(changed.begin(), changed.end(), "culling_debug") != changed.end() && CullingSystem::isDebugDraw()) {
+        data["next"] = "screenshot the Game view while playing: green spheres simulate, yellow run at the reduced rate, "
+                       "red are culled by distance, grey by unloaded ground; cyan / dark blue are Culling Group spheres in / out of view.";
     }
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
 }
@@ -2365,8 +2377,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
             "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
-            "device, orientation and language (editor only; safe_area is Screen.safeArea), the input scheme forced at Play "
-            "start. Options: jasper://docs/ui.";
+            "device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -2379,6 +2390,7 @@ void registerViewTools(McpRegistry& registry) {
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
+            {"culling_debug", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
             {"device", string("A devices id, custom or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},

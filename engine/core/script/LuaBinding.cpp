@@ -567,6 +567,8 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushvalue(L, methodFuncIndex); // method
     lua_pushvalue(L, selfIndex);       // self
     lua_pushboolean(L, guardActive ? 1 : 0);
+    // Simulation Culling's family of the engine event (D7), learnt once here from its name
+    lua_pushinteger(L, guardActive ? detail::engineEventFamily(methodName) : 0);
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
@@ -574,6 +576,9 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // exemption (S48)
             Scene* ownerScene = nullptr;
             Entity ownerEntity = NULL_ENTITY;
+            // a Simulation Culling reduced call (its delta) and whether it is one
+            double reducedDelta = 0.0;
+            bool reduced = false;
 
             if (lua_toboolean(Linner, lua_upvalueindex(3))) {
                 const int self = lua_upvalueindex(2);
@@ -606,6 +611,14 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 if (scene && entity > 0 && !isScriptActive(scene, static_cast<Entity>(entity), instance)) {
                     return 0;
                 }
+                const int family = static_cast<int>(lua_tointeger(Linner, lua_upvalueindex(4)));
+                if (family != 0 && scene && entity > 0 && detail::simulationCullingActive.load(std::memory_order_relaxed)) {
+                    const SimulationGate gate = simulationCullingGate(scene, static_cast<unsigned int>(entity), family, reducedDelta);
+                    if (gate == SimulationGate::Skip) {
+                        return 0;
+                    }
+                    reduced = gate == SimulationGate::Reduced;
+                }
                 if (scene && entity > 0) {
                     ownerScene = scene;
                     ownerEntity = static_cast<Entity>(entity);
@@ -624,7 +637,16 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             int status;
             {
                 pixelart::HitStop::ScriptScope owner(ownerScene, ownerEntity);
-                status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                // what the script makes that it owns (a CullingGroup) is released with it
+                const uint64_t previousScript = SubscriptionOwnerIndex::setScriptOwner(
+                    lua_toboolean(Linner, lua_upvalueindex(3)) ? ownerKeyOf(lua_topointer(Linner, lua_upvalueindex(2))) : 0);
+                if (reduced) {
+                    SimulationReducedScope reducedScope(ownerScene, ownerEntity, reducedDelta);
+                    status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                } else {
+                    status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                }
+                SubscriptionOwnerIndex::setScriptOwner(previousScript);
             }
             if (status != LUA_OK) {
                 return lua_error(Linner);
@@ -632,7 +654,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        3);
+        4);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
@@ -983,6 +1005,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelArtClasses(L);
     registerSortingClasses(L);
     registerHitStopClasses(L);
+    registerCullingClasses(L);
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set
     registerPixelFxClasses(L);

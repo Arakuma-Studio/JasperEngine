@@ -1589,6 +1589,33 @@ assert(HitStop.active)
 HitStop.stop()
 ```
 
+#### CullingGroup, BoundingSphere and SimulationCulling
+
+Culling (`docs/scripting/culling-groups.md`): which spheres are on screen and in which distance
+band, and a component that freezes far GameObjects. Sphere indices are 1-based, bands 0-based (0
+nearest, -1 before the first evaluation). Frustum only: no occlusion.
+
+| `CullingGroup(scene)` | Notes |
+|---|---|
+| `setBoundingSphereCount(n)`, `setBoundingSpheres({BoundingSphere...})`, `setSphere(i, s)`, `getSphere(i)` | at most 100,000 spheres; new ones at the origin, radius 0 |
+| `setSphereTarget(i, go \| entity, radius [, offset])` | the sphere follows the GameObject |
+| `eraseSwapBack(i)` | the last sphere and its state move into i |
+| `setBoundingDistances({d1, ...})` | 0 to 8 ascending distances; band b holds [d[b-1], d[b]) |
+| `setDistanceReferencePoint(Vector3 \| go)` | default: the target camera, else the main camera |
+| `onStateChanged = function(index, isVisible, wasVisible, band, previousBand)` | each changed sphere after the evaluation; the first reports all (previousBand -1) |
+| `isVisible(i)`, `getDistance(i)`, `queryIndices(visible \| band \| visible, band, out [, first])` | queryIndices fills out[1..n] and returns n |
+| `enabled`, `targetCamera` (entity or nil = any camera), `bandHysteresis`, `boundingSphereCount` (ro) | |
+| `dispose()`, `isValid()` | made in a script's callback: disposed with the script; at most 256 a scene |
+
+`SimulationCulling(scene, entity)` adds the component when missing: rw `enabled`,
+`simulationDistance`, `reducedRateDistance`, `reducedUpdateInterval`, `hysteresis`, `boundsRadius`,
+`simulateWhenVisible`, `freezeWhenGroundNotLoaded`, `cullScripts`, `cullAnimator`, `cullPhysics`;
+ro `state` ("full", "reduced", "culled"), `reason` ("none", "distance", "ground_not_loaded"),
+`focusDistance`. Statics: `addFocus(scene, Vector3 | go)` (id), `setFocus(scene, id, Vector3)`,
+`removeFocus(scene, id)`, `setCameraIsFocus(scene, bool)`, `isCameraFocus(scene)`, `distanceScale`
+(rw), `setGroundCheck(scene, function(x, y, z, radius) return loaded end | nil)`. Messages:
+`onSimulationCulled(reason)`, `onSimulationResumed()`.
+
 ### 2.17 Coroutines and invoke (Coroutine, self:startCoroutine, self:invoke)
 
 Engine coroutines are Lua functions the engine resumes: a wait helper suspends the running one

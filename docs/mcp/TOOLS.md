@@ -1540,12 +1540,13 @@ Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a pause
 
 Group: `editor_ux` (listed once `tool_groups` enables it, callable either way). Hints: idempotent
 
-Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated device, orientation and language (editor only; safe_area is Screen.safeArea), the input scheme forced at Play start. Options: jasper://docs/ui.
+Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `aspect` | `"free"` \| `"project"` \| `"16:9"` \| `"16:10"` \| `"4:3"` \| `"9:16"` |  |  |
 | `atmosphere_quality` | `"project"` \| `"off"` \| `"low"` \| `"medium"` \| `"high"` |  |  |
+| `culling_debug` | boolean |  |  |
 | `custom_device` | object |  |  |
 | `device` | string |  | A devices id, custom or none. |
 | `device_overlay` | boolean |  |  |
@@ -4378,7 +4379,7 @@ The ordered sokol passes of a view's frame: targets, actions, draws, triangles, 
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
+A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). culling: what is culled or frozen. Also jasper://stats.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

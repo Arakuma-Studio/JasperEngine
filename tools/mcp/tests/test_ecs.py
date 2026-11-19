@@ -27,7 +27,7 @@ SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "Render
 # Excluders' and Wakes' system (the timing checks stay on SYSTEMS: those have nothing to do in these scenes)
 ALL_SYSTEMS = ["ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "SplineSystem", "MeshSystem", "LatticeSystem", "VertexAnimatorSystem",
                "CameraControlSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "VideoPlayerSystem", "RenderSystem", "TrailSystem",
-               "WaterInteractionSystem", "NavigationSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
+               "WaterInteractionSystem", "NavigationSystem", "PhysicsSystem", "CullingSystem", "ParticleSubsystem", "AudioSystem"]
 
 
 def type_count(stats, name):

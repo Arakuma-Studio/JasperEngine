@@ -43,6 +43,7 @@
 #include "component/Joint3DComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "render/LineRibbonBuilder.h"
 #include "render/OrderIndependentTransparency.h"
@@ -448,6 +449,18 @@ namespace {
         {v(WaterExcluderShape::CONVEX_HULL), "convex_hull", "Convex Hull", "WaterExcluderShape::CONVEX_HULL"},
     };
 
+    constexpr EnumItem kSimulationStateItems[] = {
+        {v(SimulationState::Full), "full", "Full", "SimulationState::Full"},
+        {v(SimulationState::Reduced), "reduced", "Reduced", "SimulationState::Reduced"},
+        {v(SimulationState::Culled), "culled", "Culled", "SimulationState::Culled"},
+    };
+
+    constexpr EnumItem kSimulationCullReasonItems[] = {
+        {v(SimulationCullReason::None), "none", "None", "SimulationCullReason::None"},
+        {v(SimulationCullReason::Distance), "distance", "Distance", "SimulationCullReason::Distance"},
+        {v(SimulationCullReason::GroundNotLoaded), "ground_not_loaded", "Ground Not Loaded", "SimulationCullReason::GroundNotLoaded"},
+    };
+
     constexpr EnumItem kBuoyancyColumnsItems[] = {
         {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
         {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
@@ -817,6 +830,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
     const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
+    const EnumDesc kSimulationState{"SimulationState", kSimulationStateItems, v(SimulationState::Full)};
+    const EnumDesc kSimulationCullReason{"SimulationCullReason", kSimulationCullReasonItems, v(SimulationCullReason::None)};
     const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
     const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
     const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};
